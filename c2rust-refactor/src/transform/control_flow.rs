@@ -123,7 +123,7 @@ impl Transform for ReconstructForRange {
             let tcx = cx.ty_ctxt();
             let parent_did = match_or!([hir_map.opt_local_def_id(parent_hir_id)]
                                        Some(x) => x; return);
-			let parent_body_id = match_or!([hir_map.maybe_body_owned_by(parent_hir_id)]
+            let parent_body_id = match_or!([hir_map.maybe_body_owned_by(parent_did)]
                                            Some(x) => x; return);
             let parent_body = hir_map.body(parent_body_id);
             let tables = tcx.typeck_body(parent_body_id);
