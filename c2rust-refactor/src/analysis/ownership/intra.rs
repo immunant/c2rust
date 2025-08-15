@@ -347,7 +347,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
                 (arr_ty, Perm::move_())
             }
-            Rvalue::Ref(_, _, ref lv) => {
+            Rvalue::Ref(_, _, ref lv) | Rvalue::AddressOf(_, ref lv) => {
                 let (ty, perm) = self.place_lty(lv);
                 let args = self.ilcx.mk_slice(&[ty]);
                 let ref_ty = self
@@ -433,6 +433,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 AggregateKind::Closure(_, _) => unimplemented!(),
                 AggregateKind::Generator(_, _, _) => unimplemented!(),
             },
+            Rvalue::CopyForDeref(ref lv) => self.place_lty(lv),
+            // TODO: implement these; we shouldn't see them in transpiled
+            // code for now, but we should handle them when we do
+            Rvalue::ThreadLocalRef(..) | Rvalue::ShallowInitBox(..) => unimplemented!()
         }
     }
 
@@ -582,12 +586,19 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     debug!("    {:?}: {:?}", lv, lv_ty);
                     debug!("    ^-- {:?}: {:?}", rv, rv_ty);
                 },
+                StatementKind::Deinit(box ref pl) => {
+                    let (_pl_ty, pl_perm) = self.place_lty(pl);
+                    // TODO: is this needed?
+                    self.propagate_perm(Perm::write(), pl_perm);
+                },
+                StatementKind::CopyNonOverlapping(..) => unimplemented!(),
                 StatementKind::FakeRead(..) |
                 StatementKind::SetDiscriminant { .. } |
                 StatementKind::StorageLive(_) |
                 StatementKind::StorageDead(_) |
                 StatementKind::Retag { .. } |
                 StatementKind::AscribeUserType(..) |
+                StatementKind::Coverage(..) |
                 StatementKind::Nop => {},
             }
         }
