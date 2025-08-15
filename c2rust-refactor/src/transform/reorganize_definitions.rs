@@ -373,7 +373,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             if !decl_ids.is_empty() {
                 let def_id = self.cx.node_def_id(item.id);
                 let dest_path = self.cx.def_path(def_id);
-                let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
+                let ldid = def_id.expect_local();
+                let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(ldid);
                 let mod_id = self.cx.hir_map().local_def_id_to_node_id(mod_hir_id);
                 decl_ids.into_iter()
                     .for_each(|decl_id| {
@@ -768,8 +769,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     // Canonicalize a new path from the crate root. Will rewrite
                     // any relative paths that we may have moved into absolute
                     // paths.
-                    if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(def_id) {
-                        let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
+                    if let Some(ldid) = def_id.as_local() {
+                        let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(ldid);
                         let mod_id = self.cx.hir_map().local_def_id_to_node_id(mod_hir_id);
                         let inserted = remapped_paths.insert(id, (mod_id, def_id)).is_none();
                         assert!(inserted);
@@ -852,8 +853,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     // Canonicalize a new path from the crate root. Will rewrite
                                     // any relative paths that we may have moved into absolute
                                     // paths.
-                                    if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(*def_id) {
-                                        let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(*def_id);
+                                    if let Some(ldid) = def_id.as_local() {
+                                        let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(ldid);
                                         let mod_id = self.cx.hir_map().local_def_id_to_node_id(mod_hir_id);
                                         if other_mod_id != mod_id {
                                             let new_node_id = self.st.next_node_id();
@@ -933,8 +934,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     let mod_id = if let Some(Replacement {parent, ..}) = self.path_mapping.get(&def_id) {
                                         *parent
                                     } else {
-                                        if let Some(hir_id) = self.cx.hir_map().local_def_id_to_hir_id(def_id) {
-                                            let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(def_id);
+                                        if let Some(ldid) = def_id.as_local() {
+                                            let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(ldid);
                                             self.cx.hir_map().local_def_id_to_node_id(mod_hir_id)
                                         } else {
                                             DUMMY_NODE_ID
