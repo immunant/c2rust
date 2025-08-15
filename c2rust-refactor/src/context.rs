@@ -208,8 +208,12 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     self.hir_map().get_parent_node(hir_id)
                 ))
             }
-            Some(Node::Item(item)) => self.hir_map().local_def_id(item.hir_id()),
-            _ => self.hir_map().local_def_id_from_node_id(id),
+            Some(Node::Item(item)) => {
+                self.hir_map().local_def_id(item.hir_id()).to_def_id()
+            }
+            _ => {
+                self.hir_map().local_def_id_from_node_id(id).to_def_id()
+            }
         }
     }
 
