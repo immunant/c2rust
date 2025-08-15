@@ -258,7 +258,7 @@ impl Transform for RetypeStatic {
             })]
         });
 
-        FlatMapNodes::visit(krate, |mut fi: ForeignItem| {
+        FlatMapNodes::visit(krate, |mut fi: P<ForeignItem>| {
             if !st.marked(fi.id, "target") {
                 return smallvec![fi];
             }
