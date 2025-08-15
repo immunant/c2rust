@@ -218,11 +218,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn res_to_hir_id(&self, res: &hir::def::Res) -> Option<hir::HirId> {
         match res {
             Res::Def(_, did) | Res::SelfCtor(did) => {
-                if did.is_local() {
-                    Some(self.hir_map().local_def_id_to_hir_id(did.to_local()))
-                } else {
-                    None
-                }
+                did.as_local().map(|ldid| {
+                    self.hir_map().local_def_id_to_hir_id(ldid)
+                })
             }
             Res::Local(id) => Some(*id),
 
