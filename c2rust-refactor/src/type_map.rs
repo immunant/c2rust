@@ -168,7 +168,7 @@ where
             }
 
             ExprKind::Closure(_, _, _, _, ref decl, _, _) => {
-                let def_id = self.hir_map.local_def_id_from_node_id(e.id);
+                let def_id = self.hir_map.local_def_id_from_node_id(e.id).to_def_id();
                 if let Some(sig) = self.source.closure_sig(def_id) {
                     self.record_fn_decl(sig, decl);
                 }
@@ -211,7 +211,7 @@ where
     }
 
     fn visit_item(&mut self, i: &'ast Item) {
-        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(i.id).to_def_id();
         match i.kind {
             ItemKind::Static(ref ast_ty, _, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
@@ -251,7 +251,7 @@ where
     }
 
     fn visit_field_def(&mut self, f: &'ast FieldDef) {
-        let def_id = self.hir_map.local_def_id_from_node_id(f.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(f.id).to_def_id();
         if let Some(ty) = self.source.def_type(def_id) {
             self.record_ty(ty, &f.ty);
         }
@@ -260,7 +260,7 @@ where
     }
 
     fn visit_assoc_item(&mut self, i: &'ast AssocItem, ctxt: AssocCtxt) {
-        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(i.id).to_def_id();
         match i.kind {
             AssocItemKind::Const(_, ref ast_ty, _) => {
                 if let Some(ty) = self.source.def_type(def_id) {
@@ -287,7 +287,7 @@ where
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
-        let def_id = self.hir_map.local_def_id_from_node_id(i.id);
+        let def_id = self.hir_map.local_def_id_from_node_id(i.id).to_def_id();
         match i.kind {
             ForeignItemKind::Fn(box Fn { sig: ref ast_sig, .. }) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
