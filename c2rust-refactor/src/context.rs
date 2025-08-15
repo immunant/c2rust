@@ -135,7 +135,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn node_type(&self, id: NodeId) -> Ty<'tcx> {
         let hir_id = self.hir_map().node_to_hir_id(id);
         if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
-            return self.def_type(def_id);
+            return self.def_type(def_id.to_def_id());
         }
         let parent = self.hir_map().get_parent_item(hir_id);
         let tables = self.ty_ctxt().typeck(parent);
@@ -145,7 +145,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn opt_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
         let hir_id = self.hir_map().opt_node_to_hir_id(id)?;
         if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
-            return Some(self.def_type(def_id));
+            return Some(self.def_type(def_id.to_def_id()));
         }
         let parent_node = self.hir_map().get_parent_item(hir_id);
         let parent = self.hir_map().opt_local_def_id(parent_node)?;
@@ -167,7 +167,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn opt_adjusted_node_type(&self, id: NodeId) -> Option<Ty<'tcx>> {
         let hir_id = self.hir_map().node_to_hir_id(id);
         if let Some(def_id) = self.hir_map().opt_local_def_id(hir_id) {
-            return Some(self.def_type(def_id));
+            return Some(self.def_type(def_id.to_def_id()));
         }
         let parent_node = self.hir_map().get_parent_item(hir_id);
         let parent = self.hir_map().opt_local_def_id(parent_node)?;
