@@ -93,7 +93,7 @@ impl Transform for Ionize {
             if st.marked(i.id, "target") {
                 if let ItemKind::Union(VariantData::Struct(ref _fields, _), _) = i.kind {
                     if let Some(def_id) = cx.hir_map().opt_local_def_id_from_node_id(i.id) {
-                        targets.insert(def_id);
+                        targets.insert(def_id.to_def_id());
                     } else {
                         panic!("Bad target, no def id")
                     }
@@ -155,7 +155,7 @@ impl Transform for Ionize {
         // Replace union with enum
         FlatMapNodes::visit(krate, |i: P<Item>| {
             match cx.hir_map().opt_local_def_id_from_node_id(i.id) {
-                Some(ref def_id) if targets.contains(def_id) => {}
+                Some(ref def_id) if targets.contains(&def_id.to_def_id()) => {}
                 _ => return smallvec![i]
             }
 
