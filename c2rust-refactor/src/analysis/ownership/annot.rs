@@ -189,7 +189,7 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
     let mut variant_group_primary = HashMap::new();
 
     for (node_id, attrs) in v.def_attrs {
-        let def_id = match_or!([dcx.hir_map().opt_local_def_id_from_node_id(node_id)] Some(x) => x; continue);
+        let def_id = match_or!([dcx.hir_map().opt_local_def_id_from_node_id(node_id)] Some(x) => x.to_def_id(); continue);
 
         // Handle `ownership_variant_of` first.
         let mut is_variant = false;
