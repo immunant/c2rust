@@ -844,7 +844,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     if other_mod_id != *parent {
                                         items.push(mk().use_simple_item(
                                             path,
-                                            None,
+                                            None::<String>,
                                         ));
                                     }
                                 } else if is_relative_path(&path) {
@@ -860,7 +860,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                             assert!(inserted);
                                             items.push(mk().id(new_node_id).use_simple_item(
                                                 self.cx.def_path(*def_id),
-                                                None,
+                                                None::<String>,
                                             ));
                                         }
                                     }
