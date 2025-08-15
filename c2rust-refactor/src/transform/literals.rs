@@ -377,7 +377,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             Res::Local(id) => {
                 // This is a local variable that may have a type,
                 // try to get that type and unify it
-                let pid = tcx.hir().get_parent_node(id);
+                let pid = self.cx.hir_map().get_parent_node(id);
                 let node = match_or!([tcx.hir().find(pid)]
                                      Some(x) => x;
                                      return self.new_empty_node());
@@ -569,9 +569,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             ExprKind::MethodCall(ref segment, ref args, ref _span) => {
-                let hir_id = tcx.hir().node_to_hir_id(ex.id);
-                let parent = tcx.hir().get_parent_item(hir_id);
-                let body = tcx.hir().body_owned_by(parent);
+                let hir_id = self.cx.hir_map().node_to_hir_id(ex.id);
+                let parent = self.cx.hir_map().get_parent_item(hir_id);
+                let body = self.cx.hir_map().body_owned_by(parent);
                 let tables = tcx.typeck_body(body);
                 let did = tables.type_dependent_def_id(hir_id).unwrap();
                 let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
