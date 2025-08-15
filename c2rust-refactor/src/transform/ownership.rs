@@ -70,7 +70,7 @@ fn do_annotate(st: &CommandState,
     struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
         ana: ownership::AnalysisResult<'tcx, 'tcx>,
-        hir_map: HirMap<'tcx>,
+        hir_map: &'a HirMap<'tcx>,
         st: &'a CommandState,
     }
 
