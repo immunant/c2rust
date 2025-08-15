@@ -517,7 +517,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
         ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
-        hir_map: HirMap<'tcx>,
+        hir_map: &'lty HirMap<'tcx>,
     }
 
     impl<'lty, 'tcx> type_map::TypeSource for AnalysisTypeSource<'lty, 'tcx> {
