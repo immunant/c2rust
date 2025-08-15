@@ -725,7 +725,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 .retain(|attr| !is_c2rust_attr(attr, "src_loc"));
             smallvec![item]
         });
-        FlatMapNodes::visit(krate, |mut item: ForeignItem| {
+        FlatMapNodes::visit(krate, |mut item: P<ForeignItem>| {
             item.attrs
                 .retain(|attr| !is_c2rust_attr(attr, "src_loc"));
             smallvec![item]
