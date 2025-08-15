@@ -678,7 +678,7 @@ where
     let mut p = make_parser(sess, src);
     match f(&mut p) {
         Ok(x) => Some(x),
-        Err(mut db) => {
+        Err(db) => {
             db.cancel();
             None
         }
@@ -697,7 +697,7 @@ where
     );
     match f(&mut p) {
         Ok(x) => Some(x),
-        Err(mut db) => {
+        Err(db) => {
             db.cancel();
             None
         }
