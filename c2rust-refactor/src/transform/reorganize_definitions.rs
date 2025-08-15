@@ -1144,11 +1144,10 @@ struct SrcLoc {
 
 impl From<&Attribute> for SrcLoc {
     fn from(attr: &Attribute) -> Self {
-        let value_str = attr
+        let value_sym = attr
             .value_str()
-            .expect("Expected a value for src_loc attribute")
-            .as_str();
-        let mut iter = value_str.split(':');
+            .expect("Expected a value for src_loc attribute");
+        let mut iter = value_sym.as_str().split(':');
         let line: usize = iter
             .next()
             .and_then(|x| x.parse().ok())
@@ -1666,11 +1665,10 @@ fn has_source_header(attrs: &[Attribute]) -> bool {
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute
 fn parse_source_header(attrs: &[Attribute]) -> Option<(String, usize)> {
     attrs.iter().find(|a| is_c2rust_attr(a, "header_src")).map(|attr| {
-        let value_str = attr
+        let value_sym = attr
             .value_str()
-            .expect("Expected a value for header_src attribute")
-            .as_str();
-        let mut iter = value_str.split(':');
+            .expect("Expected a value for header_src attribute");
+        let mut iter = value_sym.as_str().split(':');
         let path = iter
             .next()
             .expect("Expected a path in header_src attribute");
