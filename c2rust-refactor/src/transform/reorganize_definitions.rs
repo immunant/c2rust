@@ -705,7 +705,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // FIXME: we should also check if items overlap
                         mod_items.extend(new_items.into_iter());
                     } else {
-                        let mut new_mod = mk().mod_(new_items);
+                        let new_mod = mk().mod_(new_items);
                         let new_mod_item = mk()
                             .pub_()
                             .id(mod_info.id)
