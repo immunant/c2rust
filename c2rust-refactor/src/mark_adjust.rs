@@ -47,6 +47,7 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                 }
             }
             &hir::QPath::TypeRelative(..) => {}
+            &hir::QPath::LangItem(..) => unimplemented!()
         }
     }
 }
