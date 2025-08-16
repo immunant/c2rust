@@ -261,6 +261,7 @@ version = "0.20.0"
 dependencies = [
  "anyhow",
  "c2rust-build-paths",
+ "c2rust-refactor",
  "c2rust-transpile",
  "clap 3.2.25",
  "env_logger 0.10.0",
@@ -425,6 +426,7 @@ version = "0.20.0"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
+ "c2rust-build-paths",
  "c2rust-macros",
  "cargo",
  "cargo-util",
