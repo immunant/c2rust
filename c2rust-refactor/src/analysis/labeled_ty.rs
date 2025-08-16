@@ -239,7 +239,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
 }
 
 impl<'lty, 'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'lty, 'tcx, L> {
-    fn sty(&self) -> &TyKind {
+    fn sty(&self) -> &'tcx TyKind {
         &self.ty.kind()
     }
 
