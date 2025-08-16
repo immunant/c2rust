@@ -192,6 +192,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                             e.attrs = new_attrs.into();
                         }
                         StmtKind::MacCall(..) => {}
+                        StmtKind::Empty => {}
                     }
                     self.record_matched_ids(s.id, s.id);
                 }
