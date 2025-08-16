@@ -176,6 +176,8 @@ where
                 new_path.segments.push(tail);
                 (new_qself, new_path)
             }
+
+            hir::QPath::LangItem(..) => unimplemented!(),
         }
     }
 
