@@ -4146,6 +4146,11 @@ impl<'c> Translation<'c> {
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
         let expr_kind = &self.ast_context[expr_id].kind;
+        // TODO We'd like to get rid of this cast eventually (see #1321).
+        // Currently, const macros do not get the correct `override_ty` themselves,
+        // so they aren't declared with the correct portable type,
+        // but its uses are expecting the correct portable type,
+        // so we need to cast it to the `override_ty` here.
         let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
             self.convert_cast(
