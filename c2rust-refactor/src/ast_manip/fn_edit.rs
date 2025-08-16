@@ -127,20 +127,20 @@ where
             _ => return mut_visit::noop_flat_map_assoc_item(i, self),
         }
 
-        let (defaultness, generics, sig, body) = expect!([i.kind]
+        let AssocItem { attrs, id, span, vis, ident, kind, tokens: _ } = i.into_inner();
+        let (defaultness, generics, sig, body) = expect!([kind]
             AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
-        let vis = i.vis;
         let FnSig { header, decl, span: sig_span } = sig;
 
         let fl = FnLike {
             kind: FnKind::ImplMethod,
-            id: i.id,
-            ident: i.ident,
-            span: i.span,
+            id,
+            ident,
+            span,
             decl,
             body,
-            attrs: i.attrs,
+            attrs,
         };
         let fls = (self.callback)(fl);
 
@@ -176,20 +176,20 @@ where
             _ => return mut_visit::noop_flat_map_assoc_item(i, self),
         }
 
-        let (defaultness, generics, sig, body) = expect!([i.kind]
+        let AssocItem { attrs, id, span, vis, ident, kind, tokens: _ } = i.into_inner();
+        let (defaultness, generics, sig, body) = expect!([kind]
             AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
         let FnSig { header, decl, span: sig_span } = sig;
-        let vis = i.vis;
 
         let fl = FnLike {
             kind: FnKind::TraitMethod,
-            id: i.id,
-            ident: i.ident,
-            span: i.span,
+            id,
+            ident,
+            span,
             decl,
             body,
-            attrs: i.attrs,
+            attrs,
         };
         let fls = (self.callback)(fl);
 
@@ -230,20 +230,21 @@ where
             _ => return mut_visit::noop_flat_map_foreign_item(i, self),
         }
 
-        let (defaultness, generics, sig, body) = expect!([i.kind]
+        let ForeignItem { attrs, id, span, vis, ident, kind, tokens: _ } = i.into_inner();
+        let (defaultness, generics, sig, body) = expect!([kind]
             ForeignItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
         let FnSig { header, decl, span: sig_span } = sig;
-        let vis = i.vis;
 
+        // TODO: do we need vis and tokens in here too?
         let fl = FnLike {
             kind: FnKind::Foreign,
-            id: i.id,
-            ident: i.ident,
-            span: i.span,
+            id,
+            ident,
+            span,
             decl,
             body,
-            attrs: i.attrs,
+            attrs,
         };
         let fls = (self.callback)(fl);
 
