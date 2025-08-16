@@ -391,6 +391,7 @@ fn is_derived<'a>(
                     }
                     StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
                     StmtKind::MacCall(..) => None,
+                    StmtKind::Empty => None,
                 },
                 MacNodeRef::Expr(e) => Some(&e.attrs[..]),
                 MacNodeRef::AssocItem(i) => Some(&i.attrs[..]),
