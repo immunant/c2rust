@@ -328,9 +328,9 @@ impl<'lty, 'tcx> type_map::Signature<LTy<'lty, 'tcx>> for LFnSig<'lty, 'tcx> {
 
 /// Label the `ty::Ty` for every `ast::Ty` in the crate.
 fn label_tys<'lty, 'a: 'lty, 'tcx: 'a>(
-    cx: &RefactorCtxt<'a, 'tcx>,
+    cx: &'lty RefactorCtxt<'a, 'tcx>,
     ltt: &'lty LTyTable<'lty>,
-    krate: &ast::Crate,
+    krate: &'lty ast::Crate,
 ) -> HashMap<HirId, LTy<'lty, 'tcx>> {
     let mut ty_nodes = HashMap::new();
     let source = LabelTysSource { tcx: cx.ty_ctxt(), hir_map: cx.hir_map(), ltt };
