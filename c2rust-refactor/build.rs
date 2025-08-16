@@ -1,3 +1,4 @@
+use c2rust_build_paths::SysRoot;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -62,4 +63,7 @@ fn main() {
         }
         println!("cargo:rerun-if-changed=gen/{}", name);
     }
+
+    let sysroot = SysRoot::resolve();
+    sysroot.link_rustc_private();
 }
