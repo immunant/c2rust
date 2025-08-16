@@ -46,10 +46,10 @@ type TranspileResult = Result<(PathBuf, PragmaVec, CrateSet), ()>;
 #[derive(Default, Debug)]
 pub enum TranslateMacros {
     /// Don't translate any macros.
-    #[default]
     None,
 
     /// Translate the conservative subset of macros known to always work.
+    #[default]
     Conservative,
 
     /// Try to translate more, but this is experimental and not guaranteed to work.

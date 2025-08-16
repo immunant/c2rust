@@ -15,6 +15,7 @@ input_file: c2rust-transpile/tests/snapshots/macros.c
 extern "C" {
     fn extern_fn() -> std::ffi::c_int;
 }
+pub type uintptr_t = usize;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct S {
@@ -29,6 +30,7 @@ pub struct fn_ptrs {
     pub fn2: Option<unsafe extern "C" fn(std::ffi::c_int) -> std::ffi::c_int>,
 }
 pub type zstd_platform_dependent_type = std::ffi::c_long;
+pub const UINTPTR_MAX: std::ffi::c_ulong = 18446744073709551615 as std::ffi::c_ulong;
 pub const NESTED_INT: std::ffi::c_int = 0xffff as std::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn local_muts() {
@@ -445,6 +447,10 @@ pub unsafe extern "C" fn local_fn() -> std::ffi::c_int {
 #[no_mangle]
 pub unsafe extern "C" fn use_local_value() -> std::ffi::c_int {
     return local_fn();
+}
+#[no_mangle]
+pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
+    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as uintptr_t);
 }
 unsafe extern "C" fn run_static_initializers() {
     global_static_const_ptr_arithmetic = (b"hello\0" as *const u8 as *const std::ffi::c_char)
