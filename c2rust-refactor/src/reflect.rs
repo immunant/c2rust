@@ -343,12 +343,16 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::Stmt(_)
         | Node::PathSegment(_)
         | Node::Ty(_)
+        // TODO: return true here?
+        | Node::TypeBinding(_)
         | Node::TraitRef(_)
         | Node::Pat(_)
         | Node::Arm(_)
         | Node::Param(_)
         | Node::Block(_)
         | Node::Lifetime(_)
+        // TODO: return true here?
+        | Node::Infer(_)
         | Node::Crate(_) => false,
     }
 }
