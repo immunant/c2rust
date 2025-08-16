@@ -222,7 +222,8 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
-            match &*attr.name_or_empty().as_str() {
+            let meta_name = meta.name_or_empty();
+            match meta_name.as_str() {
                 "ownership_constraints" => {
                     let cset = parse_ownership_constraints(&meta, cx.arena).unwrap_or_else(|e| {
                         panic!("bad #[ownership_constraints] for {:?}: {}", def_id, e)
@@ -367,18 +368,19 @@ fn parse_perm<'lty>(
     } else {
         meta_item_word(meta)?;
 
-        let name = meta.name_or_empty().as_str();
-        match &*name {
+        let meta_name = meta.name_or_empty();
+        let meta_str = meta_name.as_str();
+        match meta_str {
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
             "MOVE" => return Ok(Perm::move_()),
             _ => {}
         }
 
-        if !name.starts_with('_') {
+        if !meta_str.starts_with('_') {
             return Err("invalid permission variable");
         }
-        let idx = FromStr::from_str(&name[1..]).map_err(|_| "invalid permission variable")?;
+        let idx = FromStr::from_str(&meta_str[1..]).map_err(|_| "invalid permission variable")?;
         Ok(Perm::SigVar(Var(idx)))
     }
 }
@@ -386,7 +388,8 @@ fn parse_perm<'lty>(
 fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     meta_item_word(meta)?;
 
-    match &*meta.name_or_empty().as_str() {
+    let meta_name = meta.name_or_empty();
+    match meta_name.as_str() {
         "READ" => Ok(ConcretePerm::Read),
         "WRITE" => Ok(ConcretePerm::Write),
         "MOVE" => Ok(ConcretePerm::Move),
