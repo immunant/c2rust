@@ -71,11 +71,8 @@ fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
     store.add_use_with_attr(
         vec!["core".into(), "arch".into(), arch_name.into()],
         item_name,
-        mk().meta_item_attr(
-            AttrStyle::Outer,
-            mk().meta_list("cfg", vec![mk().meta_namevalue("target_arch", arch_name)]),
-        )
-        .pub_(),
+        mk().call_attr("cfg", vec![mk().meta_namevalue("target_arch", arch_name)])
+            .pub_(),
     );
 }
 
