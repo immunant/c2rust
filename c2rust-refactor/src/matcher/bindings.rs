@@ -327,7 +327,10 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
         let new_tt = match tt {
             TokenTree::Token(Token{kind: TokenKind::Dollar, ..}, _) => match c.look_ahead(0) {
                 Some(TokenTree::Token(Token{kind: TokenKind::Ident(ident, is_raw), span}, spacing)) => {
+                    // Copy the fields out of the borrowed cursor so we can call c.next()
+                    let (ident, is_raw, span, spacing) = (*ident, *is_raw, *span, *spacing);
                     c.next();
+
                     let dollar_sym = Symbol::intern(&format!("${}", ident));
                     let ident_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, ident_ty);
@@ -338,15 +341,17 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                             // inside a LitKind::Err
                             TokenKind::lit(TokenLitKind::Err, dollar_sym, None)
                         }
-                        _ => TokenKind::Ident(dollar_sym, *is_raw)
+                        _ => TokenKind::Ident(dollar_sym, is_raw)
                     };
-                    TokenTree::Token(Token{kind: token_kind, span: *span}, *spacing)
+                    TokenTree::Token(Token{kind: token_kind, span}, spacing)
                 }
 
                 Some(TokenTree::Token(Token{kind: TokenKind::Lifetime(ident), span}, spacing)) => {
+                    // Copy the fields out of the borrowed cursor so we can call c.next()
+                    let (ident, span, spacing) = (*ident, *span, *spacing);
                     c.next();
-                    let ident_str = &*ident.as_str();
-                    let (prefix, label) = ident_str.split_at(1);
+
+                    let (prefix, label) = ident.as_str().split_at(1);
                     assert!(
                         prefix == "'",
                         "Lifetime identifier does not start with ': {}",
@@ -355,7 +360,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     let dollar_sym = Symbol::intern(&format!("'${}", label));
                     let label_ty = maybe_get_type(&mut c);
                     bt.set_type(dollar_sym, label_ty);
-                    TokenTree::Token(Token{kind: TokenKind::Lifetime(dollar_sym), span: *span}, *spacing)
+                    TokenTree::Token(Token{kind: TokenKind::Lifetime(dollar_sym), span}, spacing)
                 }
 
                 _ => TokenTree::Token(Token{kind: TokenKind::Dollar, span: DUMMY_SP}, Spacing::Alone),
