@@ -2174,11 +2174,8 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let (expr_id, ty) = self
-                    .ast_context
-                    .resolve_expr_type_id(id)
-                    .unwrap_or((id, ty));
-                let expr = self.convert_expr(ctx, expr_id, None)?;
+                let ty = self.ast_context[id].kind.get_type().unwrap_or(ty);
+                let expr = self.convert_expr(ctx, id, None)?;
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
@@ -4414,7 +4411,8 @@ impl<'c> Translation<'c> {
             | CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
-            | CastKind::IntegralToFloating => {
+            | CastKind::IntegralToFloating
+            | CastKind::BooleanToSignedIntegral => {
                 let target_ty = self.convert_type(ty.ctype)?;
                 let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
 
@@ -4570,11 +4568,6 @@ impl<'c> Translation<'c> {
                     Ok(val.map(|e| self.match_bool(true, source_ty.ctype, e)))
                 }
             }
-
-            // I don't know how to actually cause clang to generate this
-            CastKind::BooleanToSignedIntegral => Err(TranslationError::generic(
-                "TODO boolean to signed integral not supported",
-            )),
 
             CastKind::FloatingRealToComplex
             | CastKind::FloatingComplexToIntegralComplex
