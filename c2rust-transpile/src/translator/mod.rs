@@ -4414,7 +4414,8 @@ impl<'c> Translation<'c> {
             | CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
-            | CastKind::IntegralToFloating => {
+            | CastKind::IntegralToFloating
+            | CastKind::BooleanToSignedIntegral => {
                 let target_ty = self.convert_type(ty.ctype)?;
                 let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
 
@@ -4570,11 +4571,6 @@ impl<'c> Translation<'c> {
                     Ok(val.map(|e| self.match_bool(true, source_ty.ctype, e)))
                 }
             }
-
-            // I don't know how to actually cause clang to generate this
-            CastKind::BooleanToSignedIntegral => Err(TranslationError::generic(
-                "TODO boolean to signed integral not supported",
-            )),
 
             CastKind::FloatingRealToComplex
             | CastKind::FloatingComplexToIntegralComplex
