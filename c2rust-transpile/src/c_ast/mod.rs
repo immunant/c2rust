@@ -948,6 +948,19 @@ impl TypedAstContext {
                         self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
                     ),
                     CExprKind::Paren(_ty, e) => self.ast_context.c_exprs[&e].kind.get_qual_type(),
+                    CExprKind::UnaryType(_, op, _, _) => {
+                        // All of these `UnTypeOp`s should return `size_t`.
+                        let kind = match op {
+                            UnTypeOp::SizeOf => CTypeKind::Size,
+                            UnTypeOp::AlignOf => CTypeKind::Size,
+                            UnTypeOp::PreferredAlignOf => CTypeKind::Size,
+                        };
+                        let ty = self
+                            .ast_context
+                            .type_for_kind(&kind)
+                            .expect("CTypeKind::Size should be size_t");
+                        Some(CQualTypeId::new(ty))
+                    }
                     _ => return,
                 };
                 let ty = self
