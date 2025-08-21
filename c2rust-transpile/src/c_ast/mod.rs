@@ -1186,6 +1186,9 @@ pub enum OffsetOfKind {
 
 /// Represents an expression in C (6.5 Expressions)
 ///
+/// This is modeled on Clang's APIs, so where documentation
+/// is lacking here, look at Clang.
+///
 /// We've kept a qualified type on every node since Clang has this information available, and since
 /// the semantics of translations of certain constructs often depend on the type of the things they
 /// are given.
