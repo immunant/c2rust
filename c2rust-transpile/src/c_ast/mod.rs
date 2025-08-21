@@ -33,6 +33,8 @@ pub type CTypedefId = CDeclId; // Typedef types need to point to 'DeclKind::Type
 pub type CEnumId = CDeclId; // Enum types need to point to 'DeclKind::Enum'
 pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::EnumConstant's
 
+use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
+
 pub use self::conversion::*;
 pub use self::print::Printer;
 
@@ -888,7 +890,6 @@ impl TypedAstContext {
             ast_context: &'a mut TypedAstContext,
         }
 
-        use iterators::{immediate_children_all_types, NodeVisitor};
         impl<'a> NodeVisitor for BubbleExprTypes<'a> {
             fn children(&mut self, id: SomeId) -> Vec<SomeId> {
                 immediate_children_all_types(self.ast_context, id)
