@@ -368,6 +368,4 @@ int local_fn(void) { return 1234; }
 
 int use_local_value(void) { return LOCAL_VALUE; }
 
-bool use_portable_type(uintptr_t len) {
-  return len <= UINTPTR_MAX / 2;
-}
+bool use_portable_type(uintptr_t len) { return len <= UINTPTR_MAX / 2; }
