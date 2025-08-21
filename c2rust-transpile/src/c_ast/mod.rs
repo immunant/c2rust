@@ -1,3 +1,5 @@
+use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
+use crate::iterators::{DFNodes, SomeId};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use std::cell::RefCell;
@@ -9,7 +11,13 @@ use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+pub use self::conversion::*;
+pub use self::print::Printer;
 pub use c2rust_ast_exporter::clang_ast::{BuiltinVaListKind, SrcFile, SrcLoc, SrcSpan};
+
+mod conversion;
+pub mod iterators;
+mod print;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -32,17 +40,6 @@ pub type CRecordId = CDeclId; // Record types need to point to 'DeclKind::Record
 pub type CTypedefId = CDeclId; // Typedef types need to point to 'DeclKind::Typedef'
 pub type CEnumId = CDeclId; // Enum types need to point to 'DeclKind::Enum'
 pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::EnumConstant's
-
-use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
-
-pub use self::conversion::*;
-pub use self::print::Printer;
-
-mod conversion;
-pub mod iterators;
-mod print;
-
-use iterators::{DFNodes, SomeId};
 
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone)]
