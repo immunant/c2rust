@@ -2123,15 +2123,16 @@ impl<'c> Translation<'c> {
 
     /// Determine if we're able to convert this const macro expansion.
     fn can_convert_const_macro_expansion(&self, expr_id: CExprId) -> TranslationResult<()> {
-        let kind = &self.ast_context[expr_id].kind;
         match self.tcfg.translate_const_macros {
             TranslateMacros::None => Err(format_err!("translate_const_macros is None"))?,
-            TranslateMacros::Conservative => match *kind {
-                CExprKind::Literal(..) => Ok(()), // Literals are leaf expressions, so they should always be const-compatible.
-                _ => Err(format_err!(
-                    "conservative const macros don't yet allow {kind:?}"
-                ))?,
-            },
+            TranslateMacros::Conservative => {
+                // TODO We still allow `CExprKind::ExplicitCast`s
+                // even though they're broken (see #853).
+                if !self.ast_context.is_const_expr(expr_id) {
+                    Err(format_err!("non-const expr {expr_id:?}"))?;
+                }
+                Ok(())
+            }
             TranslateMacros::Experimental => Ok(()),
         }
     }
