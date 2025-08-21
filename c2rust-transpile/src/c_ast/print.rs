@@ -300,10 +300,24 @@ impl<W: Write> Printer<W> {
         match *lit {
             Integer(i, _) => self.writer.write_fmt(format_args!("{}", i)),
             Floating(f, ref str) if str.is_empty() => self.writer.write_fmt(format_args!("{}", f)),
-            Floating(_, ref str) if str.is_empty() => {
-                self.writer.write_fmt(format_args!("{}", str))
+            Floating(_, ref str) => self.writer.write_fmt(format_args!("{}", str)),
+            Character(n) => {
+                if let Some(c) = u32::try_from(n).ok().and_then(char::from_u32) {
+                    let mut s = std::string::String::new();
+                    s.push(c);
+                    let escaped: std::string::String = s.escape_default().collect();
+                    self.writer.write_fmt(format_args!("'{}'", escaped))
+                } else {
+                    self.writer.write_fmt(format_args!("'\\x{:04x}'", n)) //unimplemented!("Printer::print_lit"),
+                }
             }
-            _ => unimplemented!("Printer::print_lit"),
+            String(ref s, _n) => {
+                let escaped: std::string::String = std::string::String::from_utf8(s.to_owned())
+                    .unwrap_or("<invalid utf8>".into())
+                    .escape_default()
+                    .collect();
+                self.writer.write_fmt(format_args!("\"{}\"", escaped))
+            }
         }
     }
 
@@ -479,7 +493,11 @@ impl<W: Write> Printer<W> {
                 }
             }
 
-            _ => unimplemented!("Printer::print_stmt"),
+            _ => {
+                let s = format!("<unhandled pp stmt> {:?}", stmt);
+                self.writer.write_all(s.as_bytes())?
+                //unimplemented!("Printer::print_stmt"),
+            }
         };
 
         Ok(())

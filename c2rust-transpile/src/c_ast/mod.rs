@@ -2047,7 +2047,7 @@ impl CTypeKind {
         ]
     };
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> String {
         use CTypeKind::*;
         match self {
             Void => "void",
@@ -2089,8 +2089,9 @@ impl CTypeKind {
             PtrDiff => "ptrdiff_t",
             WChar => "wchar_t",
 
-            _ => unimplemented!("Printer::print_type({:?})", self),
+            _ => return format!("Printer::print_type({:?})", self),
         }
+        .into()
     }
 }
 
