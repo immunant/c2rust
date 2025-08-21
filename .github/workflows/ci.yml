@@ -18,10 +18,6 @@ jobs:
             os: Linux
             arch: x86_64
             clang-version: 15
-          - runner: macos-13
-            os: macOS
-            arch: x86_64
-            clang-version: 17
           - runner: macos-15
             os: macOS
             arch: aarch64
