@@ -626,6 +626,8 @@ impl TypedAstContext {
 
     /// Pessimistically try to check if an expression is `const`.
     /// If it's not, or we can't tell if it is, return `false`.
+    ///
+    /// This should be a top-down, pessimistic/conservative analysis.
     pub fn is_const_expr(&self, expr: CExprId) -> bool {
         let is_const = |expr| self.is_const_expr(expr);
 
