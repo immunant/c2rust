@@ -894,71 +894,74 @@ impl TypedAstContext {
             fn children(&mut self, id: SomeId) -> Vec<SomeId> {
                 immediate_children_all_types(self.ast_context, id)
             }
+
             fn post(&mut self, id: SomeId) {
-                if let SomeId::Expr(e) = id {
-                    let new_ty = match self.ast_context.c_exprs[&e].kind {
-                        CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
-                            let lhs_type_id =
-                                self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
-                            let rhs_type_id =
-                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+                let e = match id {
+                    SomeId::Expr(e) => e,
+                    _ => return,
+                };
 
-                            let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                            let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+                let new_ty = match self.ast_context.c_exprs[&e].kind {
+                    CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
+                        let lhs_type_id =
+                            self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
+                        let rhs_type_id =
+                            self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
 
+                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+
+                        if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                            Some(lhs_type_id)
+                        } else if CTypeKind::PULLBACK_KINDS.contains(&rhs_resolved_ty.kind) {
+                            Some(rhs_type_id)
+                        } else {
+                            None
+                        }
+                    }
+                    CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
+                        let rhs_type_id =
+                            self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+                        let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
+                        let lhs_type_id = lhs_kind.get_qual_type().unwrap();
+
+                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+
+                        let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
+                            && !rhs_resolved_ty.kind.is_pointer();
+
+                        if op.all_types_same() && neither_ptr {
                             if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
                                 Some(lhs_type_id)
-                            } else if CTypeKind::PULLBACK_KINDS.contains(&rhs_resolved_ty.kind) {
+                            } else {
                                 Some(rhs_type_id)
-                            } else {
-                                None
                             }
+                        } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
+                            Some(lhs_type_id)
+                        } else {
+                            return;
                         }
-                        CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
-                            let rhs_type_id =
-                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
-                            let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
-                            let lhs_type_id = lhs_kind.get_qual_type().unwrap();
-
-                            let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                            let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
-
-                            let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
-                                && !rhs_resolved_ty.kind.is_pointer();
-
-                            if op.all_types_same() && neither_ptr {
-                                if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
-                                    Some(lhs_type_id)
-                                } else {
-                                    Some(rhs_type_id)
-                                }
-                            } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
-                                Some(lhs_type_id)
-                            } else {
-                                return;
-                            }
-                        }
-                        CExprKind::Unary(_ty, op, e, _idk) => op.expected_result_type(
-                            self.ast_context,
-                            self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
-                        ),
-                        CExprKind::Paren(_ty, e) => {
-                            self.ast_context.c_exprs[&e].kind.get_qual_type()
-                        }
-                        _ => return,
-                    };
-                    if let (Some(ty), Some(new_ty)) = (
-                        self.ast_context
-                            .c_exprs
-                            .get_mut(&e)
-                            .and_then(|e| e.kind.get_qual_type_mut()),
-                        new_ty,
-                    ) {
-                        *ty = new_ty;
-                    };
-                }
+                    }
+                    CExprKind::Unary(_ty, op, e, _idk) => op.expected_result_type(
+                        self.ast_context,
+                        self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
+                    ),
+                    CExprKind::Paren(_ty, e) => self.ast_context.c_exprs[&e].kind.get_qual_type(),
+                    _ => return,
+                };
+                if let (Some(ty), Some(new_ty)) = (
+                    self.ast_context
+                        .c_exprs
+                        .get_mut(&e)
+                        .and_then(|e| e.kind.get_qual_type_mut()),
+                    new_ty,
+                ) {
+                    *ty = new_ty;
+                };
             }
         }
+
         for decl in self.c_decls_top.clone() {
             BubbleExprTypes { ast_context: self }.visit_tree(SomeId::Decl(decl));
         }
