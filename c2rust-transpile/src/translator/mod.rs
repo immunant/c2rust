@@ -2128,6 +2128,13 @@ impl<'c> Translation<'c> {
             TranslateMacros::Conservative => {
                 // TODO We still allow `CExprKind::ExplicitCast`s
                 // even though they're broken (see #853).
+
+                // This is a top-down, complete, pessimistic/conservative analysis.
+                // This is somewhat duplicative of `fn convert_expr` simply checking
+                // `ExprContext::is_const` and returning errors where the expr is not `const`,
+                // which is an incomplete analysis scattered across all of the `fn expr_*`s.
+                // That's what's done for `TranslateMacros::Experimental`,
+                // as opposed to the conservative analysis done here for `TranslateMacros::Conservative`.
                 if !self.ast_context.is_const_expr(expr_id) {
                     Err(format_err!("non-const expr {expr_id:?}"))?;
                 }
