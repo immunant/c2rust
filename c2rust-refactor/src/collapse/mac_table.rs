@@ -15,7 +15,7 @@ use std::rc::Rc;
 use rustc_ast::ptr::P;
 use rustc_span::source_map::Spanned;
 use rustc_ast::visit::{AssocCtxt, Visitor};
-use rustc_span::Symbol;
+use rustc_span::{Symbol, sym};
 
 use crate::ast_manip::Visit;
 use crate::ast_manip::{GetNodeId, GetSpan};
@@ -398,7 +398,7 @@ fn is_derived<'a>(
                 _ => None,
             };
             if let Some(attrs) = attrs {
-                if crate::util::contains_name(attrs, Symbol::intern("automatically_derived")) {
+                if crate::util::contains_name(attrs, sym::automatically_derived) {
                     return true;
                 }
             }
@@ -513,9 +513,9 @@ impl CollectMacros for NodeId {
 }
 
 fn has_macro_attr(attrs: &[Attribute]) -> bool {
-    crate::util::contains_name(attrs, Symbol::intern("derive"))
-        || crate::util::contains_name(attrs, Symbol::intern("cfg"))
-        || crate::util::contains_name(attrs, Symbol::intern("test"))
+    crate::util::contains_name(attrs, sym::derive)
+        || crate::util::contains_name(attrs, sym::cfg)
+        || crate::util::contains_name(attrs, sym::test)
 }
 
 trait MaybeInvoc {
