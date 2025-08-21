@@ -19,3 +19,8 @@ extern "C" {
 pub unsafe extern "C" fn errno_is_error() -> bool {
     return *__errno_location() != 0 as std::ffi::c_int;
 }
+#[no_mangle]
+pub unsafe extern "C" fn size_of_const() -> std::ffi::c_int {
+    let mut a: [std::ffi::c_int; 10] = [0; 10];
+    return ::core::mem::size_of::<[std::ffi::c_int; 10]>() as std::ffi::c_int;
+}
