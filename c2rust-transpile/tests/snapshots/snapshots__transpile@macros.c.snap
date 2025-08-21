@@ -35,7 +35,7 @@ pub const NESTED_INT: std::ffi::c_int = 0xffff as std::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn local_muts() {
     let mut literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
-    let mut literal_bool: bool = 1 as std::ffi::c_int != 0;
+    let mut literal_bool: bool = true;
     let mut literal_float: std::ffi::c_float = 3.14f32;
     let mut literal_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
     let mut literal_str_ptr: *const std::ffi::c_char =
@@ -54,7 +54,7 @@ pub unsafe extern "C" fn local_muts() {
         init
     };
     let mut nested_int: std::ffi::c_int = NESTED_INT;
-    let mut nested_bool: bool = 1 as std::ffi::c_int != 0;
+    let mut nested_bool: bool = true;
     let mut nested_float: std::ffi::c_float = 3.14f32;
     let mut nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
     let mut nested_str_ptr: *const std::ffi::c_char =
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn local_muts() {
         };
         init
     } as *mut S;
-    let mut ternary: std::ffi::c_int = if 1 as std::ffi::c_int != 0 {
+    let mut ternary: std::ffi::c_int = if true {
         1 as std::ffi::c_int
     } else {
         2 as std::ffi::c_int
@@ -121,7 +121,7 @@ pub unsafe extern "C" fn local_muts() {
 #[no_mangle]
 pub unsafe extern "C" fn local_consts() {
     let literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
-    let literal_bool: bool = 1 as std::ffi::c_int != 0;
+    let literal_bool: bool = true;
     let literal_float: std::ffi::c_float = 3.14f32;
     let literal_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
     let literal_str_ptr: *const std::ffi::c_char =
@@ -140,7 +140,7 @@ pub unsafe extern "C" fn local_consts() {
         init
     };
     let nested_int: std::ffi::c_int = NESTED_INT;
-    let nested_bool: bool = 1 as std::ffi::c_int != 0;
+    let nested_bool: bool = true;
     let nested_float: std::ffi::c_float = 3.14f32;
     let nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
     let nested_str_ptr: *const std::ffi::c_char =
@@ -190,7 +190,7 @@ pub unsafe extern "C" fn local_consts() {
         };
         init
     } as *mut S;
-    let ternary: std::ffi::c_int = if 1 as std::ffi::c_int != 0 {
+    let ternary: std::ffi::c_int = if true {
         1 as std::ffi::c_int
     } else {
         2 as std::ffi::c_int
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn local_consts() {
     .i;
 }
 static mut global_static_const_literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
-static mut global_static_const_literal_bool: bool = 1 as std::ffi::c_int != 0;
+static mut global_static_const_literal_bool: bool = true;
 static mut global_static_const_literal_float: std::ffi::c_float = 3.14f32;
 static mut global_static_const_literal_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
 static mut global_static_const_literal_str_ptr: *const std::ffi::c_char =
@@ -221,7 +221,7 @@ static mut global_static_const_literal_struct: S = {
     init
 };
 static mut global_static_const_nested_int: std::ffi::c_int = NESTED_INT;
-static mut global_static_const_nested_bool: bool = 1 as std::ffi::c_int != 0;
+static mut global_static_const_nested_bool: bool = true;
 static mut global_static_const_nested_float: std::ffi::c_float = 3.14f32;
 static mut global_static_const_nested_char: std::ffi::c_char = 'x' as i32 as std::ffi::c_char;
 static mut global_static_const_nested_str_ptr: *const std::ffi::c_char =
@@ -272,7 +272,7 @@ pub unsafe extern "C" fn global_static_consts() {}
 #[no_mangle]
 pub static mut global_const_literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
 #[no_mangle]
-pub static mut global_const_literal_bool: bool = 1 as std::ffi::c_int != 0;
+pub static mut global_const_literal_bool: bool = true;
 #[no_mangle]
 pub static mut global_const_literal_float: std::ffi::c_float = 3.14f32;
 #[no_mangle]
@@ -297,7 +297,7 @@ pub static mut global_const_literal_struct: S = {
 #[no_mangle]
 pub static mut global_const_nested_int: std::ffi::c_int = NESTED_INT;
 #[no_mangle]
-pub static mut global_const_nested_bool: bool = 1 as std::ffi::c_int != 0;
+pub static mut global_const_nested_bool: bool = true;
 #[no_mangle]
 pub static mut global_const_nested_float: std::ffi::c_float = 3.14f32;
 #[no_mangle]
@@ -462,7 +462,7 @@ unsafe extern "C" fn run_static_initializers() {
     global_static_const_ref_indexing = &*(b"hello\0" as *const u8 as *const std::ffi::c_char)
         .offset(3.14f64 as std::ffi::c_int as isize)
         as *const std::ffi::c_char;
-    global_static_const_ternary = if 1 as std::ffi::c_int != 0 {
+    global_static_const_ternary = if true {
         1 as std::ffi::c_int
     } else {
         2 as std::ffi::c_int
@@ -481,7 +481,7 @@ unsafe extern "C" fn run_static_initializers() {
     global_const_ref_indexing = &*(b"hello\0" as *const u8 as *const std::ffi::c_char)
         .offset(3.14f64 as std::ffi::c_int as isize)
         as *const std::ffi::c_char;
-    global_const_ternary = if 1 as std::ffi::c_int != 0 {
+    global_const_ternary = if true {
         1 as std::ffi::c_int
     } else {
         2 as std::ffi::c_int
