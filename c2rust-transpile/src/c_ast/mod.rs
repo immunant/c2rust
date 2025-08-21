@@ -601,8 +601,8 @@ impl TypedAstContext {
         }
     }
 
-    // Pessimistically try to check if an expression doesn't return. If it does, or we can't tell
-    /// that it doesn't, return `false`.
+    /// Pessimistically try to check if an expression doesn't return.
+    /// If it does, or we can't tell that it doesn't, return `false`.
     pub fn expr_diverges(&self, expr_id: CExprId) -> bool {
         let func_id = match self.index(expr_id).kind {
             CExprKind::Call(_, func_id, _) => func_id,
