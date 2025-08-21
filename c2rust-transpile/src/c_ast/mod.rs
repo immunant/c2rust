@@ -640,12 +640,10 @@ impl TypedAstContext {
             // Unary ops should be `const`.
             // TODO handle `f128` or use the primitive type.
             Unary(_, _, expr, _) => is_const(expr),
-            UnaryType(_, _, _, _) => false, // TODO disabled for now as tests are broken
             // Not sure what a `None` `CExprId` means here
             // or how to detect a `sizeof` of a VLA, which is non-`const`,
             // although it seems we don't handle `sizeof(VLAs)`
             // correctly in macros elsewhere already.
-            #[allow(unreachable_patterns)]
             UnaryType(_, _, expr, _) => expr.map_or(true, is_const),
             // Not sure what a `OffsetOfKind::Variable` means.
             OffsetOf(_, _) => true,
