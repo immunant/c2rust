@@ -288,7 +288,7 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
     config.file_loader = file_loader;
-    config.opts.edition = Edition::Edition2018;
+    config.opts.edition = Edition::Edition2021;
 
     interface::run_compiler(config, f)
 }
@@ -308,7 +308,7 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    run_in_thread_pool_with_globals(Edition::Edition2018, 1, move || {
+    run_in_thread_pool_with_globals(Edition::Edition2021, 1, move || {
         let state = RefactorState::new(config, cmd_reg, file_io, marks);
         f(state)
     })
