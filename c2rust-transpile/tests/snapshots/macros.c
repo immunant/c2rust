@@ -289,7 +289,9 @@ struct fn_ptrs {
 
 typedef int (*fn_ptr_ty)(char);
 
-const struct fn_ptrs fns = {NULL, NULL, NULL};
+// TODO Skip for now since it uses `libc`, which we don't test in snapshots.
+// const struct fn_ptrs fns = {NULL, NULL, NULL};
+const struct fn_ptrs fns = {};
 
 // Make sure we can't refer to globals in a const macro
 #define GLOBAL_REF &fns
