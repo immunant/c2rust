@@ -29,8 +29,9 @@ pub unsafe extern "C" fn errno_is_error() -> bool {
 #[no_mangle]
 pub unsafe extern "C" fn size_of_const() -> std::ffi::c_int {
     let mut a: [std::ffi::c_int; 10] = [0; 10];
-    return ::core::mem::size_of::<[std::ffi::c_int; 10]>() as std::ffi::c_int;
+    return SIZE as std::ffi::c_int;
 }
+pub const SIZE: usize = unsafe { ::core::mem::size_of::<[std::ffi::c_int; 10]>() };
 #[no_mangle]
 pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut std::ffi::c_char) {
     memcpy(
