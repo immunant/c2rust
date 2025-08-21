@@ -950,13 +950,12 @@ impl TypedAstContext {
                     CExprKind::Paren(_ty, e) => self.ast_context.c_exprs[&e].kind.get_qual_type(),
                     _ => return,
                 };
-                if let (Some(ty), Some(new_ty)) = (
-                    self.ast_context
-                        .c_exprs
-                        .get_mut(&e)
-                        .and_then(|e| e.kind.get_qual_type_mut()),
-                    new_ty,
-                ) {
+                let ty = self
+                    .ast_context
+                    .c_exprs
+                    .get_mut(&e)
+                    .and_then(|e| e.kind.get_qual_type_mut());
+                if let (Some(ty), Some(new_ty)) = (ty, new_ty) {
                     *ty = new_ty;
                 };
             }
