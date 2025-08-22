@@ -9,6 +9,5 @@ fn test_tokenize() {
     assert_eq!(pathsegment.to_token_stream().to_string(), "x :: < t >");
 
     let path = mk().path(vec![pathsegment]);
-    assert_eq!(path.to_token_stream().to_string(), "x :: < t > ::");
-    // bug: path should not end with Colon2
+    assert_eq!(path.to_token_stream().to_string(), "x :: < t >");
 }
