@@ -3847,7 +3847,7 @@ impl<'c> Translation<'c> {
 
                     // Function pointer call
                     _ => {
-                        let callee = self.convert_expr(ctx.used(), func, None)?;
+                        let mut callee = self.convert_expr(ctx.used(), func, None)?;
                         let make_fn_ty = |ret_ty: Box<Type>| {
                             let ret_ty = match *ret_ty {
                                 Type::Tuple(TypeTuple { elems: ref v, .. }) if v.is_empty() => ReturnType::Default,
@@ -3865,6 +3865,7 @@ impl<'c> Translation<'c> {
                                 // K&R function pointer without arguments
                                 let ret_ty = self.convert_type(ret_ty.ctype)?;
                                 let target_ty = make_fn_ty(ret_ty);
+                                callee.set_unsafe();
                                 callee.map(|fn_ptr| {
                                     let fn_ptr = unwrap_function_pointer(fn_ptr);
                                     transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
@@ -3874,6 +3875,7 @@ impl<'c> Translation<'c> {
                                 // We have to infer the return type from our expression type
                                 let ret_ty = self.convert_type(call_expr_ty.ctype)?;
                                 let target_ty = make_fn_ty(ret_ty);
+                                callee.set_unsafe();
                                 callee.map(|fn_ptr| {
                                     transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
                                 })
