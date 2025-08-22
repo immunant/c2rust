@@ -2701,7 +2701,15 @@ impl<'c> Translation<'c> {
                 let mut init = init?;
 
                 stmts.append(init.stmts_mut());
-                let init = init.into_value();
+                // A const context is not "already unsafe" the way code within a `fn` is (since we
+                // translate all fns as unsafe). Therefore, in const context expose any underlying
+                // unsafety in the initializer with an unsafe block.
+                let init = if ctx.is_const {
+                    init.to_unsafe_pure_expr()
+                        .expect("init should not have any statements")
+                } else {
+                    init.into_value()
+                };
 
                 let zeroed = self.implicit_default_expr(typ.ctype, false)?;
                 let zeroed = if ctx.is_const {
