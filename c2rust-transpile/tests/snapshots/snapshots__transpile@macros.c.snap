@@ -72,9 +72,10 @@ pub const CONVERSION_CAST: std::ffi::c_int = unsafe { LITERAL_INT };
 pub const STMT_EXPR: std::ffi::c_float = unsafe {
     ({
         let mut builtin: std::ffi::c_int = (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
-        let mut indexing: std::ffi::c_char =
+        let mut indexing: std::ffi::c_char = unsafe {
             (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
-                [LITERAL_FLOAT as std::ffi::c_int as usize];
+                [LITERAL_FLOAT as std::ffi::c_int as usize]
+        };
         let mut mixed: std::ffi::c_float =
             (LITERAL_INT as std::ffi::c_double + NESTED_FLOAT * LITERAL_CHAR as std::ffi::c_double
                 - true_0 as std::ffi::c_double) as std::ffi::c_float;
