@@ -3764,21 +3764,26 @@ impl<'c> Translation<'c> {
                         };
 
                         let lhs = self.convert_expr(ctx.used(), arr, None)?;
-                        Ok(lhs.map(|lhs| {
+                        lhs.and_then(|lhs| {
                             // stmts.extend(lhs.stmts_mut());
                             // is_unsafe = is_unsafe || lhs.is_unsafe();
 
                             // Don't dereference the offset if we're still within the variable portion
                             if let Some(elt_type_id) = var_elt_type_id {
                                 let mul = self.compute_size_of_expr(elt_type_id);
-                                pointer_offset(lhs, rhs, mul, false, true)
+                                Ok(WithStmts::new_unsafe_val(pointer_offset(
+                                    lhs, rhs, mul, false, true,
+                                )))
                             } else {
-                                mk().index_expr(lhs, cast_int(rhs, "usize", false))
+                                Ok(WithStmts::new_val(
+                                    mk().index_expr(lhs, cast_int(rhs, "usize", false)),
+                                ))
                             }
-                        }))
+                        })
                     } else {
                         // LHS must be ref decayed for the offset method call's self param
-                        let lhs = self.convert_expr(ctx.used().decay_ref(), *lhs, None)?;
+                        let mut lhs = self.convert_expr(ctx.used().decay_ref(), *lhs, None)?;
+                        lhs.set_unsafe(); // `pointer_offset` is unsafe.
                         lhs.result_map(|lhs| {
                             // stmts.extend(lhs.stmts_mut());
                             // is_unsafe = is_unsafe || lhs.is_unsafe();

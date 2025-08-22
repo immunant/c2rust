@@ -846,6 +846,8 @@ impl<'c> Translation<'c> {
                     _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
                 };
 
+                let mut is_unsafe = false; // Track unsafety if we call `pointer::offset`.
+
                 // *p + 1
                 let val = if let &CTypeKind::Pointer(pointee) =
                     &self.ast_context.resolve_type(ty.ctype).kind
@@ -859,6 +861,7 @@ impl<'c> Translation<'c> {
                     } else {
                         mk().unary_expr(UnOp::Neg(Default::default()), one)
                     };
+                    is_unsafe = true;
                     mk().method_call_expr(read, "offset", vec![n])
                 } else if self
                     .ast_context
@@ -884,10 +887,14 @@ impl<'c> Translation<'c> {
                     mk().assign_expr(write, val)
                 };
 
-                Ok(WithStmts::new(
+                let mut val = WithStmts::new(
                     vec![save_old_val, mk().expr_stmt(assign_stmt)],
                     mk().ident_expr(val_name),
-                ))
+                );
+                if is_unsafe {
+                    val.set_unsafe();
+                }
+                Ok(val)
             },
         )
     }
