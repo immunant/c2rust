@@ -178,7 +178,7 @@ impl<'c> Translation<'c> {
                     self.convert_expr(ctx, lhs, Some(lhs_type_id))?
                         .and_then(|lhs_val| {
                             self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?
-                                .result_map(|rhs_val| {
+                                .and_then(|rhs_val| {
                                     let expr_ids = Some((lhs, rhs));
                                     self.convert_binary_operator(
                                         op,
@@ -233,7 +233,7 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(read, lhs_type.clone())
             };
             let ty = self.convert_type(compute_res_type_id.ctype)?;
-            let val = self.convert_binary_operator(
+            let mut val = self.convert_binary_operator(
                 bin_op,
                 ty,
                 compute_res_type_id.ctype,
@@ -251,16 +251,16 @@ impl<'c> Translation<'c> {
                 .is_enum();
             let result_type = self.convert_type(lhs_type_id.ctype)?;
             let val = if is_enum_result {
-                WithStmts::new_unsafe_val(transmute_expr(lhs_type, result_type, val))
+                val.set_unsafe();
+                val.map(|val| transmute_expr(lhs_type, result_type, val))
             } else {
                 // We can't as-cast from a non primitive like f128 back to the result_type
                 if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
                     let resolved_lhs_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-                    let val = WithStmts::new_val(val);
 
                     self.f128_cast_to(val, resolved_lhs_kind)?
                 } else {
-                    WithStmts::new_val(mk().cast_expr(val, result_type))
+                    val.map(|val| mk().cast_expr(val, result_type))
                 }
             };
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
@@ -454,7 +454,6 @@ impl<'c> Translation<'c> {
 
                         // Anything volatile needs to be desugared into explicit reads and writes
                         op if is_volatile || is_unsigned_arith => {
-                            let mut is_unsafe = false;
                             let op = op
                                 .underlying_assignment()
                                 .expect("Cannot convert non-assignment operator");
@@ -476,7 +475,7 @@ impl<'c> Translation<'c> {
                                 let write_type = self.convert_type(expr_type_id.ctype)?;
                                 let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
                                 let ty = self.convert_type(result_type_id.ctype)?;
-                                let val = self.convert_binary_operator(
+                                let mut val = self.convert_binary_operator(
                                     op,
                                     ty,
                                     result_type_id.ctype,
@@ -492,36 +491,36 @@ impl<'c> Translation<'c> {
                                 let is_enum_result = expr_resolved_ty.kind.is_enum();
                                 let expr_type = self.convert_type(expr_type_id.ctype)?;
                                 let val = if is_enum_result {
-                                    is_unsafe = true;
-                                    transmute_expr(lhs_type, expr_type, val)
+                                    val.set_unsafe();
+                                    val.map(|val| transmute_expr(lhs_type, expr_type, val))
                                 } else {
-                                    mk().cast_expr(val, expr_type)
+                                    val.map(|val| mk().cast_expr(val, expr_type))
                                 };
-                                mk().cast_expr(val, write_type)
+                                val.map(|val| mk().cast_expr(val, write_type))
                             };
 
                             let write = if is_volatile {
-                                self.volatile_write(write, initial_lhs_type_id, val)?
+                                val.and_then(|val| {
+                                    TranslationResult::Ok(WithStmts::new_val(
+                                        self.volatile_write(write, initial_lhs_type_id, val)?,
+                                    ))
+                                })?
                             } else {
-                                mk().assign_expr(write, val)
+                                val.map(|val| mk().assign_expr(write, val))
                             };
-                            if is_unsafe {
-                                WithStmts::new_unsafe_val(write)
-                            } else {
-                                WithStmts::new_val(write)
-                            }
+                            write
                         }
 
                         // Everything else
                         AssignAdd if pointer_lhs.is_some() => {
                             let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                             let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
-                            WithStmts::new_val(mk().assign_expr(write, ptr))
+                            WithStmts::new_unsafe_val(mk().assign_expr(write, ptr))
                         }
                         AssignSubtract if pointer_lhs.is_some() => {
                             let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
                             let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
-                            WithStmts::new_val(mk().assign_expr(write, ptr))
+                            WithStmts::new_unsafe_val(mk().assign_expr(write, ptr))
                         }
 
                         _ => {
@@ -536,7 +535,7 @@ impl<'c> Translation<'c> {
                                     op == AssignSubtract,
                                     false,
                                 );
-                                WithStmts::new_val(mk().assign_expr(write, ptr))
+                                WithStmts::new_unsafe_val(mk().assign_expr(write, ptr))
                             } else {
                                 fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
                                     f(Default::default())
@@ -590,44 +589,38 @@ impl<'c> Translation<'c> {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
         lhs_rhs_ids: Option<(CExprId, CExprId)>,
-    ) -> TranslationResult<Box<Expr>> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let is_unsigned_integral_type = self
             .ast_context
             .resolve_type(ctype)
             .kind
             .is_unsigned_integral_type();
 
-        match op {
-            c_ast::BinOp::Add => self.convert_addition(lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::Subtract => self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
+        Ok(WithStmts::new_val(match op {
+            c_ast::BinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
+            c_ast::BinOp::Subtract => {
+                return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)
+            }
 
             c_ast::BinOp::Multiply if is_unsigned_integral_type => {
-                Ok(mk().method_call_expr(lhs, "wrapping_mul", vec![rhs]))
+                mk().method_call_expr(lhs, "wrapping_mul", vec![rhs])
             }
-            c_ast::BinOp::Multiply => {
-                Ok(mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs))
-            }
+            c_ast::BinOp::Multiply => mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs),
 
             c_ast::BinOp::Divide if is_unsigned_integral_type => {
-                Ok(mk().method_call_expr(lhs, "wrapping_div", vec![rhs]))
+                mk().method_call_expr(lhs, "wrapping_div", vec![rhs])
             }
-            c_ast::BinOp::Divide => Ok(mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs)),
+            c_ast::BinOp::Divide => mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs),
 
             c_ast::BinOp::Modulus if is_unsigned_integral_type => {
-                Ok(mk().method_call_expr(lhs, "wrapping_rem", vec![rhs]))
+                mk().method_call_expr(lhs, "wrapping_rem", vec![rhs])
             }
-            c_ast::BinOp::Modulus => Ok(mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs)),
+            c_ast::BinOp::Modulus => mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::BitXor => {
-                Ok(mk().binary_expr(BinOp::BitXor(Default::default()), lhs, rhs))
-            }
+            c_ast::BinOp::BitXor => mk().binary_expr(BinOp::BitXor(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::ShiftRight => {
-                Ok(mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs))
-            }
-            c_ast::BinOp::ShiftLeft => {
-                Ok(mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs))
-            }
+            c_ast::BinOp::ShiftRight => mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs),
+            c_ast::BinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
 
             c_ast::BinOp::EqualEqual => {
                 // Using is_none method for null comparison means we don't have to
@@ -649,7 +642,7 @@ impl<'c> Translation<'c> {
                     mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs)
                 };
 
-                Ok(bool_to_int(expr))
+                bool_to_int(expr)
             }
             c_ast::BinOp::NotEqual => {
                 // Using is_some method for null comparison means we don't have to
@@ -671,36 +664,26 @@ impl<'c> Translation<'c> {
                     mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs)
                 };
 
-                Ok(bool_to_int(expr))
+                bool_to_int(expr)
             }
-            c_ast::BinOp::Less => Ok(bool_to_int(mk().binary_expr(
-                BinOp::Lt(Default::default()),
-                lhs,
-                rhs,
-            ))),
-            c_ast::BinOp::Greater => Ok(bool_to_int(mk().binary_expr(
-                BinOp::Gt(Default::default()),
-                lhs,
-                rhs,
-            ))),
-            c_ast::BinOp::GreaterEqual => Ok(bool_to_int(mk().binary_expr(
-                BinOp::Ge(Default::default()),
-                lhs,
-                rhs,
-            ))),
-            c_ast::BinOp::LessEqual => Ok(bool_to_int(mk().binary_expr(
-                BinOp::Le(Default::default()),
-                lhs,
-                rhs,
-            ))),
+            c_ast::BinOp::Less => {
+                bool_to_int(mk().binary_expr(BinOp::Lt(Default::default()), lhs, rhs))
+            }
+            c_ast::BinOp::Greater => {
+                bool_to_int(mk().binary_expr(BinOp::Gt(Default::default()), lhs, rhs))
+            }
+            c_ast::BinOp::GreaterEqual => {
+                bool_to_int(mk().binary_expr(BinOp::Ge(Default::default()), lhs, rhs))
+            }
+            c_ast::BinOp::LessEqual => {
+                bool_to_int(mk().binary_expr(BinOp::Le(Default::default()), lhs, rhs))
+            }
 
-            c_ast::BinOp::BitAnd => {
-                Ok(mk().binary_expr(BinOp::BitAnd(Default::default()), lhs, rhs))
-            }
-            c_ast::BinOp::BitOr => Ok(mk().binary_expr(BinOp::BitOr(Default::default()), lhs, rhs)),
+            c_ast::BinOp::BitAnd => mk().binary_expr(BinOp::BitAnd(Default::default()), lhs, rhs),
+            c_ast::BinOp::BitOr => mk().binary_expr(BinOp::BitOr(Default::default()), lhs, rhs),
 
             op => unimplemented!("Translation of binary operator {:?}", op),
-        }
+        }))
     }
 
     fn convert_addition(
@@ -709,20 +692,32 @@ impl<'c> Translation<'c> {
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = lhs_type {
             let mul = self.compute_size_of_expr(pointee.ctype);
-            Ok(pointer_offset(lhs, rhs, mul, false, false))
+            Ok(WithStmts::new_unsafe_val(pointer_offset(
+                lhs, rhs, mul, false, false,
+            )))
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
             let mul = self.compute_size_of_expr(pointee.ctype);
-            Ok(pointer_offset(rhs, lhs, mul, false, false))
+            Ok(WithStmts::new_unsafe_val(pointer_offset(
+                rhs, lhs, mul, false, false,
+            )))
         } else if lhs_type.is_unsigned_integral_type() {
-            Ok(mk().method_call_expr(lhs, "wrapping_add", vec![rhs]))
+            Ok(WithStmts::new_val(mk().method_call_expr(
+                lhs,
+                "wrapping_add",
+                vec![rhs],
+            )))
         } else {
-            Ok(mk().binary_expr(BinOp::Add(Default::default()), lhs, rhs))
+            Ok(WithStmts::new_val(mk().binary_expr(
+                BinOp::Add(Default::default()),
+                lhs,
+                rhs,
+            )))
         }
     }
 
@@ -733,7 +728,7 @@ impl<'c> Translation<'c> {
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
@@ -745,14 +740,24 @@ impl<'c> Translation<'c> {
                 offset = mk().binary_expr(BinOp::Div(Default::default()), offset, div);
             }
 
-            Ok(mk().cast_expr(offset, ty))
+            Ok(WithStmts::new_unsafe_val(mk().cast_expr(offset, ty)))
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             let mul = self.compute_size_of_expr(pointee.ctype);
-            Ok(pointer_offset(lhs, rhs, mul, true, false))
+            Ok(WithStmts::new_unsafe_val(pointer_offset(
+                lhs, rhs, mul, true, false,
+            )))
         } else if lhs_type.is_unsigned_integral_type() {
-            Ok(mk().method_call_expr(lhs, "wrapping_sub", vec![rhs]))
+            Ok(WithStmts::new_val(mk().method_call_expr(
+                lhs,
+                "wrapping_sub",
+                vec![rhs],
+            )))
         } else {
-            Ok(mk().binary_expr(BinOp::Sub(Default::default()), lhs, rhs))
+            Ok(WithStmts::new_val(mk().binary_expr(
+                BinOp::Sub(Default::default()),
+                lhs,
+                rhs,
+            )))
         }
     }
 
