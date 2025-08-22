@@ -2160,7 +2160,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         expansions: &[CExprId],
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        let (mut val, ty) = expansions
+        let (val, ty) = expansions
             .iter()
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
@@ -2197,7 +2197,6 @@ impl<'c> Translation<'c> {
             })?
             .ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
 
-        val.set_unsafe();
         val.to_unsafe_pure_expr()
             .map(|val| (val, ty))
             .ok_or_else(|| TranslationError::generic("Macro expansion is not a pure expression"))
