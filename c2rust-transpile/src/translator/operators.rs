@@ -446,7 +446,7 @@ impl<'c> Translation<'c> {
                     let assign_stmt = match op {
                         // Regular (possibly volatile) assignment
                         Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
-                        Assign => WithStmts::new_val(self.volatile_write(
+                        Assign => WithStmts::new_unsafe_val(self.volatile_write(
                             write,
                             initial_lhs_type_id,
                             rhs,
@@ -501,7 +501,7 @@ impl<'c> Translation<'c> {
 
                             let write = if is_volatile {
                                 val.and_then(|val| {
-                                    TranslationResult::Ok(WithStmts::new_val(
+                                    TranslationResult::Ok(WithStmts::new_unsafe_val(
                                         self.volatile_write(write, initial_lhs_type_id, val)?,
                                     ))
                                 })?
@@ -887,6 +887,7 @@ impl<'c> Translation<'c> {
 
                 // *p = *p + rhs
                 let assign_stmt = if ty.qualifiers.is_volatile {
+                    is_unsafe = true;
                     self.volatile_write(write, ty, val)?
                 } else {
                     mk().assign_expr(write, val)
