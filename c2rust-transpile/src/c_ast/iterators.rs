@@ -184,16 +184,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         Field { typ, .. } => intos![typ.ctype],
         MacroObject { .. } | MacroFunction { .. } => vec![],
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
-        StaticAssert {
-            assert_expr,
-            message,
-        } => {
-            if let Some(message) = message {
-                intos![assert_expr, message]
-            } else {
-                intos![assert_expr]
-            }
-        }
+        StaticAssert { assert_expr, .. } => intos![assert_expr],
     }
 }
 

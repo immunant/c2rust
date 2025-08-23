@@ -1151,7 +1151,7 @@ pub enum CDeclKind {
 
     StaticAssert {
         assert_expr: CExprId,
-        message: Option<CExprId>,
+        message: Option<String>,
     },
 }
 
