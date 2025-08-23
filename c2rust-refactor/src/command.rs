@@ -28,7 +28,7 @@ use crate::ast_manip::number_nodes::{
     number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };
 use crate::ast_manip::{collect_comments, gather_comments, Comment, CommentMap};
-use crate::ast_manip::{remove_paren, ListNodeIds, MutVisit, Visit};
+use crate::ast_manip::{load_modules, remove_paren, ListNodeIds, MutVisit, Visit};
 use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
@@ -315,6 +315,9 @@ impl RefactorState {
             // Initialize initial parsed crate if not previously parsed
             let disk_state = disk_state.get_or_insert_with(|| {
                 let mut krate = parse.peek().clone();
+                // Expand all the Unloaded modules ourselves
+                // since rustc folded that operation into expansion
+                load_modules(&mut krate, &session.parse_sess, source_map);
                 remove_paren(&mut krate);
                 number_nodes(&mut krate);
 
@@ -324,15 +327,24 @@ impl RefactorState {
             // The newly loaded `krate` and reinitialized `node_map` reference
             // none of the old `parsed_nodes`.  That means we can reset the ID
             // counter without risk of ID collisions.
+            let mut need_load = true;
             let mut cs = CommandState::new(
-                krate
-                    .take()
-                    .unwrap_or_else(|| disk_state.orig_krate.clone()),
+                krate.take().unwrap_or_else(|| {
+                    // The original crate already has all modules
+                    need_load = false;
+                    disk_state.orig_krate.clone()
+                }),
                 Phase::Phase1,
                 marks.clone(),
                 ParsedNodes::default(),
                 node_id_counter.clone(),
             );
+
+            // Expand all the Unloaded modules ourselves
+            // since rustc folded that operation into expansion
+            if need_load {
+                load_modules(&mut *cs.krate.borrow_mut(), &session.parse_sess, source_map);
+            }
 
             let unexpanded = cs.krate().clone();
             if phase != Phase::Phase1 {
