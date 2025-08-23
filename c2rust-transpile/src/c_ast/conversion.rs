@@ -2360,13 +2360,19 @@ impl ConversionContext {
                 }
 
                 ASTEntryTag::TagStaticAssertDecl if expected_ty & DECL != 0 => {
-                    let assert_expr = CExprId(
-                        node.children[0].expect("StaticAssert must point to an expression"),
-                    );
+                    let assert_expr =
+                        node.children[0].expect("StaticAssert must point to an expression");
+                    let assert_expr = self.visit_expr(assert_expr);
+
                     let message = if node.children.len() > 1 {
-                        Some(CExprId(
-                            node.children[1].expect("Expected static assert message"),
-                        ))
+                        let message = node.children[1].expect("Expected static assert message");
+                        let message = untyped_context
+                            .ast_nodes
+                            .get(&message)
+                            .expect("Expected string literal node");
+                        let message = from_value::<String>(message.extras[2].clone())
+                            .expect("string literal bytes");
+                        Some(message)
                     } else {
                         None
                     };
@@ -2375,6 +2381,7 @@ impl ConversionContext {
                         message,
                     };
                     self.add_decl(new_id, located(node, static_assert));
+                    self.processed_nodes.insert(new_id, OTHER_DECL);
                 }
 
                 t => panic!("Could not translate node {:?} as type {}", t, expected_ty),
