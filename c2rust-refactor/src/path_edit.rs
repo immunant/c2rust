@@ -1,15 +1,17 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
-use rustc::hir;
-use rustc::hir::def::Res;
+use log::debug;
+use rustc_hir as hir;
+use rustc_hir::def::Res;
 use smallvec::SmallVec;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::util::map_in_place::MapInPlace;
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_data_structures::map_in_place::MapInPlace;
 use smallvec::smallvec;
 
 use crate::ast_manip::util::split_uses;
 use crate::ast_manip::MutVisit;
+use crate::{expect, unpack};
 use crate::RefactorCtxt;
 
 struct ResolvedPathFolder<'a, 'tcx: 'a, F>
@@ -30,7 +32,8 @@ where
         let id = p.id;
         match hir.kind {
             hir::PatKind::Struct(ref qpath, _, _) => {
-                unpack!([&mut p.kind] PatKind::Struct(path, _fields, _dotdot));
+                unpack!([&mut p.kind] PatKind::Struct(_qself, path, _fields, _dotdot));
+                // TODO: can we pass _qself to handle_qpath???
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -40,7 +43,8 @@ where
             }
 
             hir::PatKind::TupleStruct(ref qpath, _, _) => {
-                unpack!([&mut p.kind] PatKind::TupleStruct(path, _fields));
+                unpack!([&mut p.kind] PatKind::TupleStruct(_qself, path, _fields));
+                // TODO: can we pass _qself to handle_qpath???
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -51,7 +55,7 @@ where
 
             hir::PatKind::Path(ref qpath) => {
                 let (qself, path) = match &mut p.kind {
-                    PatKind::Ident(BindingMode::ByValue(Mutability::Immutable), ident, None) => {
+                    PatKind::Ident(BindingMode::ByValue(Mutability::Not), ident, None) => {
                         (None, Path::from_ident(*ident))
                     }
                     PatKind::Path(qself, path) => (qself.clone(), path.clone()),
@@ -64,7 +68,7 @@ where
                 // instead, we run into "new and reparsed ASTs don't match" during rewriting.
                 if new_qself.is_none() && new_path.segments.len() == 1 {
                     p.kind = PatKind::Ident(
-                        BindingMode::ByValue(Mutability::Immutable),
+                        BindingMode::ByValue(Mutability::Not),
                         new_path.segments[0].ident,
                         None,
                     );
@@ -96,7 +100,8 @@ where
                     _ => {}
                 }
 
-                unpack!([&mut e.kind] ExprKind::Struct(path, _fields, _base));
+                let path = expect!([&mut e.kind] ExprKind::Struct(se) => &mut se.path);
+                // TODO: can we pass _qself to handle_qpath???
                 let (new_qself, new_path) = self.handle_qpath(id, None, path.clone(), qpath);
                 assert!(
                     new_qself.is_none(),
@@ -171,6 +176,8 @@ where
                 new_path.segments.push(tail);
                 (new_qself, new_path)
             }
+
+            hir::QPath::LangItem(..) => unimplemented!(),
         }
     }
 
@@ -213,9 +220,7 @@ where
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(node) = self.cx.hir_map().find(p.id) {
-            let hir = expect!([node]
-                              hir::Node::Pat(pat) => pat,
-                              hir::Node::Binding(pat) => pat);
+            let hir = expect!([node] hir::Node::Pat(pat) => pat);
 
             self.alter_pat_path(p, hir);
         }

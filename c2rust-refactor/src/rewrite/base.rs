@@ -14,22 +14,24 @@
 //! specialized function, such as `rewrite_seq_comma_sep`) to get better results than the generic
 //! `[T]` implementation.
 use rustc_target::spec::abi::Abi;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::source_map::{Span, SyntaxContext};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
+use rustc_ast::*;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_span::source_map::{Span, SyntaxContext};
+use rustc_span::symbol::{Ident, Symbol};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_data_structures::thin_vec::ThinVec;
 
 use diff;
-use rustc::session::Session;
+use log::{debug, info, warn};
+use rustc_session::Session;
 use std::fmt::Debug;
 use std::iter::Sum;
 use std::rc::Rc;
-use syntax::ptr::P;
-use syntax::source_map::{Spanned, DUMMY_SP};
-use syntax::util::parser::{AssocOp, Fixity};
-use syntax_pos::{BytePos, Pos};
+use rustc_ast::ptr::P;
+use rustc_span::source_map::{Spanned, DUMMY_SP};
+use rustc_ast::util::parser::{AssocOp, Fixity};
+use rustc_span::{BytePos, Pos};
 
 use crate::ast_manip::{AstDeref, CommentStyle, GetSpan};
 
@@ -48,13 +50,19 @@ include!(concat!(env!("OUT_DIR"), "/rewrite_rewrite_gen.inc.rs"));
 
 // Generic Rewrite impls
 
-impl<T: Rewrite> Rewrite for P<T> {
+impl<T: Rewrite + ?Sized> Rewrite for P<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         <T as Rewrite>::rewrite(old, new, rcx)
     }
 }
 
-impl<T: Rewrite> Rewrite for Rc<T> {
+impl<T: Rewrite + ?Sized> Rewrite for Box<T> {
+    fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
+        <T as Rewrite>::rewrite(old, new, rcx)
+    }
+}
+
+impl<T: Rewrite + ?Sized> Rewrite for Rc<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         <T as Rewrite>::rewrite(old, new, rcx)
     }
@@ -134,7 +142,7 @@ impl SeqItem for Param {
     }
 }
 
-impl<T: SeqItem> SeqItem for P<T> {
+impl<T: SeqItem + ?Sized> SeqItem for P<T> {
     fn seq_item_id(&self) -> SeqItemId {
         <T as SeqItem>::seq_item_id(self)
     }
@@ -162,6 +170,7 @@ include!(concat!(
 
 impl<T: Rewrite> MaybeRewriteSeq for Spanned<T> {}
 impl<A: Rewrite, B: Rewrite> MaybeRewriteSeq for (A, B) {}
+impl<A: Rewrite, B: Rewrite, C: Rewrite> MaybeRewriteSeq for (A, B, C) {}
 
 /// Fallback case for `rewrite_seq` on unsupported types.
 pub fn rewrite_seq_unsupported<T: Rewrite>(old: &[T], new: &[T], mut rcx: RewriteCtxtRef) -> bool {
@@ -442,7 +451,7 @@ pub fn is_rewritable(sp: Span) -> bool {
 
 pub fn describe(sess: &Session, span: Span) -> String {
     let cm = sess.source_map();
-    let loc = cm.span_to_string(span);
+    let loc = cm.span_to_diagnostic_string(span);
     let src = cm.span_to_snippet(span);
 
     if let Ok(src) = src {

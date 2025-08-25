@@ -11,6 +11,7 @@ mod fold;
 mod get_node_id;
 mod get_span;
 mod list_node_ids;
+mod load_modules;
 mod output_exprs;
 mod remove_paren;
 mod seq_edit;
@@ -32,6 +33,7 @@ pub use self::seq_edit::{fold_blocks, fold_modules};
 pub use self::visit::Visit;
 pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
 pub use self::comments::{collect_comments, gather_comments, Comment, CommentMap, CommentStyle};
+pub use self::load_modules::load_modules;
 
 // Modules with more complex APIs are left as `pub`.
 pub mod comments;

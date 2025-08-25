@@ -1,8 +1,8 @@
-use rustc::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
-use syntax::ast::{Crate, Expr, ExprKind, Mutability, UnOp};
-use syntax::ptr::P;
+use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
+use rustc_ast::{Crate, Expr, ExprKind, Mutability, UnOp};
+use rustc_ast::ptr::P;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::MutVisitNodes;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
@@ -17,8 +17,8 @@ impl Transform for CanonicalizeRefs {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
             let hir_id = cx.hir_map().node_to_hir_id(expr.id);
             let hir_expr = cx.hir_map().expect_expr(hir_id);
-            let parent = cx.hir_map().get_parent_did(hir_id);
-            let tables = cx.ty_ctxt().typeck_tables_of(parent);
+            let parent = cx.hir_map().get_parent_item(hir_id);
+            let tables = cx.ty_ctxt().typeck(parent);
             for adjustment in tables.expr_adjustments(hir_expr) {
                 match adjustment.kind {
                     Adjust::Deref(_) => {
@@ -26,8 +26,8 @@ impl Transform for CanonicalizeRefs {
                     }
                     Adjust::Borrow(AutoBorrow::Ref(_, ref mutability)) => {
                         let mutability = match mutability {
-                            AutoBorrowMutability::Mutable{..} => Mutability::Mutable,
-                            AutoBorrowMutability::Immutable => Mutability::Immutable,
+                            AutoBorrowMutability::Mut { .. } => Mutability::Mut,
+                            AutoBorrowMutability::Not => Mutability::Not,
                         };
                         *expr = mk().set_mutbl(mutability).addr_of_expr(expr.clone());
                     }
@@ -50,7 +50,7 @@ impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
             match &mut expr.kind {
-                ExprKind::MethodCall(_path, args) => {
+                ExprKind::MethodCall(_path, args, _span) => {
                     let (receiver, rest) = args.split_first_mut().unwrap();
                     remove_reborrow(receiver);
                     remove_ref(receiver);
