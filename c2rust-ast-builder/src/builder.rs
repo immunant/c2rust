@@ -631,32 +631,15 @@ impl Builder {
         K: Make<Path>,
         V: Make<Lit>,
     {
-        let key = key.make(&self);
-        let value = value.make(&self);
-
-        let mnv = MetaNameValue {
-            path: key,
-            eq_token: Token![=](self.span),
-            value: Expr::Lit(ExprLit {
-                attrs: vec![],
-                lit: value,
-            }),
-        };
-        self.prepared_attr(Meta::NameValue(mnv))
+        let meta = mk().meta_namevalue(key, value);
+        self.prepared_attr(meta)
     }
 
     pub fn single_attr<K>(self, key: K) -> Self
     where
-        K: Make<PathSegment>,
+        K: Make<Path>,
     {
-        let mut segments = Punctuated::new();
-        segments.push(key.make(&self));
-
-        let meta = Meta::Path(Path {
-            leading_colon: None,
-            segments,
-        });
-
+        let meta = mk().meta_path(key);
         self.prepared_attr(meta)
     }
 
@@ -665,7 +648,7 @@ impl Builder {
         K: Make<Path>,
         V: Make<TokenStream>,
     {
-        let meta = self.clone().meta_list(func, arguments);
+        let meta = mk().meta_list(func, arguments);
         self.prepared_attr(meta)
     }
 
