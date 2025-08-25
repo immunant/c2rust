@@ -1034,9 +1034,9 @@ impl<'c> Translation<'c> {
             }
         }?;
 
-        // Unused unary operators (`-foo()`) may have side effects, so we need
-        // to add them to stmts.
-        if ctx.is_unused() {
+        // Some unused unary operators (`-foo()`) may have side effects, so we need
+        // to add them to stmts when arg expr is not pure
+        if ctx.is_unused() && unary.stmts().is_empty() && !self.ast_context.is_expr_pure(arg) {
             let v = unary.clone().into_value();
             unary
                 .stmts_mut()
