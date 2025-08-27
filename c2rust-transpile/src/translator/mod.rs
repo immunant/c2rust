@@ -2934,10 +2934,10 @@ impl<'c> Translation<'c> {
             return Ok(mk().path_expr(vec!["None"]));
         }
 
-        let pointee = match self.ast_context.resolve_type(type_id).kind {
-            CTypeKind::Pointer(pointee) => pointee,
-            _ => return Err(TranslationError::generic("null_ptr requires a pointer")),
-        };
+        let pointee = self
+            .ast_context
+            .get_pointee_qual_type(type_id)
+            .ok_or(TranslationError::generic("null_ptr requires a pointer"))?;
         let ty = self.convert_type(type_id)?;
         let mut zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
         if is_static && !pointee.qualifiers.is_const {
@@ -4485,10 +4485,10 @@ impl<'c> Translation<'c> {
                     return Ok(val);
                 }
 
-                let pointee = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::Pointer(pointee) => pointee,
-                    _ => panic!("Dereferencing a non-pointer"),
-                };
+                let pointee = self
+                    .ast_context
+                    .get_pointee_qual_type(ty.ctype)
+                    .unwrap_or_else(|| panic!("dereferencing a non-pointer"));
 
                 let is_const = pointee.qualifiers.is_const;
 
