@@ -649,7 +649,6 @@ impl TypedAstContext {
             // TODO `f128` is not yet handled, as we should eventually
             // switch to the (currently unstable) `f128` primitive type (#1262).
             Binary(_, _, lhs, rhs, _, _) => is_const(lhs) && is_const(rhs),
-            ImplicitCast(_, _, CastKind::ArrayToPointerDecay, _, _) => false, // TODO disabled for now as tests are broken
             // `as` casts are always `const`.
             ImplicitCast(_, expr, _, _, _) => is_const(expr),
             // `as` casts are always `const`.
