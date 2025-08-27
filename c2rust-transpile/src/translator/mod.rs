@@ -4524,6 +4524,19 @@ impl<'c> Translation<'c> {
 
                             let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
 
+                            // If the target pointee type is different from the source element type,
+                            // then we need to cast the ptr type as well.
+                            let call = match source_ty_kind.element_ty() {
+                                None => call,
+                                Some(source_element_ty) if source_element_ty == pointee.ctype => {
+                                    call
+                                }
+                                Some(_) => {
+                                    let target_ty = self.convert_type(target_cty.ctype)?;
+                                    call.map(|ptr| mk().cast_expr(ptr, target_ty))
+                                }
+                            };
+
                             // Static arrays can now use as_ptr. Can also cast that const ptr to a
                             // mutable pointer as we do here:
                             if ctx.is_static && !is_const {
