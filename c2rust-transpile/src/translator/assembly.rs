@@ -141,45 +141,54 @@ fn parse_constraints(
     }
 
     // Handle register names
-    let mut constraints = constraints.replace(['{', '}'], "\"");
+    let constraints = constraints.replace(['{', '}'], "\"");
+    let mut llvm_constraints = constraints.clone();
+    let mut constraints = constraints.as_str();
 
     // Convert (simple) constraints to ones rustc understands
-    match &*constraints {
-        "m" => {
-            mem_only = true;
-            constraints = "reg".into();
-        }
-        "r" => {
-            constraints = "reg".into();
-        }
-        "i" => {
-            // Rust inline assembly has no constraint for that, but uses the argument as an
-            // immediate value anyway
-            constraints = "reg".into();
-        }
-        _ => {
-            let is_explicit_reg = constraints.starts_with('"');
-            let is_tied = !constraints.contains(|c: char| !c.is_ascii_digit());
+    while constraints != "" {
+        let (c, rest) = constraints.split_at(1);
+        let c = c.chars().next().unwrap();
+        match c {
+            'm' => {
+                mem_only = true;
+                llvm_constraints = "reg".into();
+            }
+            'r' => {
+                llvm_constraints = "reg".into();
+            }
+            'i' => {
+                // Rust inline assembly has no constraint for that, but uses the argument as an
+                // immediate value anyway
+                llvm_constraints = "reg".into();
+            }
+            _ => {
+                let is_explicit_reg = c == '"';
+                let is_tied = !constraints.contains(|c: char| !c.is_ascii_digit());
 
-            if !(is_explicit_reg || is_tied) {
-                // Attempt to parse machine-specific constraints
-                if let Some((machine_constraints, is_mem)) =
-                    translate_machine_constraint(&constraints, arch)
-                {
-                    constraints = machine_constraints.into();
-                    mem_only = is_mem;
-                } else {
-                    warn!(
-                        "Did not recognize inline asm constraint: {}\n\
-                    It is likely that this will cause compilation errors or \
-                    incorrect semantics in the translated program; please \
-                    manually correct.",
-                        constraints
-                    );
+                if !(is_explicit_reg || is_tied) {
+                    // Attempt to parse machine-specific constraints
+                    if let Some((machine_constraints, is_mem)) =
+                        translate_machine_constraint(&constraints, arch)
+                    {
+                        llvm_constraints = machine_constraints.into();
+                        mem_only = is_mem;
+                    } else {
+                        warn!(
+                            "Did not recognize inline asm constraint: {}\n\
+                            It is likely that this will cause compilation errors or \
+                            incorrect semantics in the translated program; please \
+                            manually correct.",
+                            constraints
+                        );
+                        llvm_constraints = constraints.into();
+                    }
                 }
+                break;
             }
         }
-    };
+        constraints = rest;
+    }
 
     let mode = if mem_only {
         In
@@ -192,7 +201,7 @@ fn parse_constraints(
         }
     };
 
-    Ok((mode, mem_only, constraints))
+    Ok((mode, mem_only, llvm_constraints))
 }
 
 fn is_regname_or_int(parsed_constraint: &str) -> bool {
