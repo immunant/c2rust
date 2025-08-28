@@ -13,7 +13,7 @@ use rustc_hir::def::{DefKind, Namespace, Res};
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::{self as hir, BodyId, HirId, Node};
 use rustc_index::vec::IndexVec;
-use rustc_middle::hir::map as hir_map;
+use rustc_middle::hir::{map as hir_map, nested_filter};
 use rustc_middle::ty::subst::InternalSubsts;
 use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_session::config::CrateType;
@@ -22,7 +22,7 @@ use rustc_span::Span;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::util::{is_export_attr, namespace};
-use crate::ast_manip::AstEquiv;
+use crate::ast_manip::{AstEquiv, AstSpanMaps, NodeSpan, SpanNodeKind};
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
 use crate::reflect;
 use crate::{expect, match_or};
@@ -48,6 +48,64 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 }
 
+type SpanToHirMap = FxHashMap<NodeSpan, HirId>;
+
+struct SpanToHirMapper<'hir> {
+    hir_map: hir_map::Map<'hir>,
+    span_to_hir_map: SpanToHirMap,
+}
+
+fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
+    use SpanNodeKind::*;
+    let ns = match hir_map.find(id) {
+        Some(Node::Param(param)) => Some(NodeSpan::new(param.span, Param)),
+        Some(Node::Item(item)) => Some(NodeSpan::new(item.span, Item)),
+        Some(Node::ForeignItem(foreign_item)) => {
+            Some(NodeSpan::new(foreign_item.span, ForeignItem))
+        }
+        Some(Node::TraitItem(trait_item)) => Some(NodeSpan::new(trait_item.span, AssocItem)),
+        Some(Node::ImplItem(impl_item)) => Some(NodeSpan::new(impl_item.span, AssocItem)),
+        Some(Node::Variant(variant)) => Some(NodeSpan::new(variant.span, Variant)),
+        Some(Node::Field(field)) => Some(NodeSpan::new(field.span, FieldDef)),
+        Some(Node::Expr(expr)) => Some(NodeSpan::new(expr.span, Expr)),
+        Some(Node::Stmt(stmt)) => Some(NodeSpan::new(stmt.span, Stmt)),
+        // Intentionally skip PathSegment to avoid collisions
+        Some(Node::Ty(ty)) => Some(NodeSpan::new(ty.span, Ty)),
+        // We do not have a SpanNodeKind for TyBinding
+        // We do not have a SpanNodeKind for TraitRef
+        Some(Node::Pat(pat)) => Some(NodeSpan::new(pat.span, Pat)),
+        Some(Node::Arm(arm)) => Some(NodeSpan::new(arm.span, Arm)),
+        Some(Node::Block(block)) => Some(NodeSpan::new(block.span, Block)),
+        // We do not have a SpanNodeKind for Ctor
+        // We do not have a SpanNodeKind for Lifetime
+        // We do not have a SpanNodeKind for GenericParam
+        // We do not have a SpanNodeKind for Infer
+        Some(Node::Local(local)) => Some(NodeSpan::new(local.span, Local)),
+        Some(Node::Crate(item)) => Some(NodeSpan::new(item.spans.inner_span, Crate)),
+        _ => None,
+    };
+
+    // Filter out dummy spans
+    ns.filter(|ns| !ns.span.is_dummy())
+}
+
+impl<'hir> hir::intravisit::Visitor<'hir> for SpanToHirMapper<'hir> {
+    type NestedFilter = nested_filter::OnlyBodies;
+
+    fn nested_visit_map(&mut self) -> Self::Map {
+        self.hir_map
+    }
+
+    fn visit_id(&mut self, id: HirId) {
+        if let Some(ns) = hir_id_to_span(id, self.hir_map) {
+            let _old_id = self.span_to_hir_map.insert(ns, id);
+            // Sometimes we get different HirId's with the same span, e.g., Expr
+            // TODO: we still should assert here
+            //assert!(old_id.is_none(), "span {ns:?} already has id {old_id:?} != {id:?}");
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct HirMap<'hir> {
     map: hir_map::Map<'hir>,
@@ -58,6 +116,9 @@ pub struct HirMap<'hir> {
 
     node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
     def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
+
+    span_to_hir_map: SpanToHirMap,
+    ast_span_maps: AstSpanMaps,
 }
 
 impl<'hir> HirMap<'hir> {
@@ -66,12 +127,24 @@ impl<'hir> HirMap<'hir> {
         map: hir_map::Map<'hir>,
         node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
+        ast_span_maps: AstSpanMaps,
     ) -> Self {
+        let mut mapper = SpanToHirMapper {
+            hir_map: map,
+            span_to_hir_map: Default::default(),
+        };
+        map.visit_all_item_likes_in_crate(&mut mapper);
+        let SpanToHirMapper {
+            span_to_hir_map, ..
+        } = mapper;
+
         Self {
             map,
             max_node_id,
             node_id_to_def_id,
             def_id_to_node_id,
+            span_to_hir_map,
+            ast_span_maps,
         }
     }
 }
@@ -608,9 +681,14 @@ impl<'hir> HirMap<'hir> {
         if id > self.max_node_id {
             None
         } else {
-            self.node_id_to_def_id
+            if let Some(ldid) = self.node_id_to_def_id.get(&id) {
+                return Some(self.map.local_def_id_to_hir_id(*ldid));
+            }
+
+            self.ast_span_maps
+                .node_id_to_span_map
                 .get(&id)
-                .map(|ldid| self.map.local_def_id_to_hir_id(*ldid))
+                .and_then(|span| self.span_to_hir_map.get(&span).copied())
         }
     }
 
@@ -640,6 +718,11 @@ impl<'hir> HirMap<'hir> {
     }
 
     pub fn hir_to_node_id(&self, id: HirId) -> NodeId {
+        let ns = hir_id_to_span(id, self.map);
+        if let Some(id) = ns.and_then(|ns| self.ast_span_maps.span_to_node_id_map.get(&ns)) {
+            return *id;
+        }
+
         self.map
             .opt_local_def_id(id)
             .and_then(|id| self.def_id_to_node_id.get(id))
