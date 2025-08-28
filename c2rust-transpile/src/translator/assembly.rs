@@ -52,7 +52,8 @@ impl ArgDirSpec {
 /// A machine architecture that rustc inline assembly knows about
 #[derive(Copy, Clone, PartialEq)]
 enum Arch {
-    X86OrX86_64,
+    X86,
+    X86_64,
     Arm,
     Aarch64,
     Riscv,
@@ -60,14 +61,15 @@ enum Arch {
 
 /// Parse a machine architecture from a target tuple. This is a best-effort attempt.
 fn parse_arch(target_tuple: &str) -> Option<Arch> {
-    if target_tuple.starts_with("i386")
+    if target_tuple.starts_with("x86_64") {
+        Some(Arch::X86_64)
+    } else if target_tuple.starts_with("i386")
         || target_tuple.starts_with("i486")
         || target_tuple.starts_with("i586")
         || target_tuple.starts_with("i686")
-        || target_tuple.starts_with("x86_64")
         || target_tuple.starts_with("x86")
     {
-        Some(Arch::X86OrX86_64)
+        Some(Arch::X86)
     } else if target_tuple.starts_with("aarch64")
         || target_tuple.starts_with("armv8")
         || target_tuple.starts_with("arm64")
@@ -207,7 +209,7 @@ fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, b
     let mem = &mut false;
     // Many constraints are not handled here, because rustc does. The best we can
     let constraint = match arch {
-        Arch::X86OrX86_64 => match constraint {
+        Arch::X86 | Arch::X86_64 => match constraint {
             // "R" => "reg_word", // rust does not support this
             "Q" => "reg_abcd",
             "q" => "reg_byte",
@@ -289,7 +291,7 @@ fn translate_machine_constraint(constraint: &str, arch: Arch) -> Option<(&str, b
 /// See <https://doc.rust-lang.org/nightly/reference/inline-assembly.html#template-modifiers>
 fn translate_modifier(modifier: char, arch: Arch) -> Option<char> {
     Some(match arch {
-        Arch::X86OrX86_64 => match modifier {
+        Arch::X86 | Arch::X86_64 => match modifier {
             'k' => 'e',
             'q' => 'r',
             'b' => 'l',
@@ -328,10 +330,18 @@ impl BidirAsmOperand {
 /// uses a reserved register.
 fn reg_is_reserved(constraint: &str, arch: Arch) -> Option<(&str, &str)> {
     Some(match arch {
-        Arch::X86OrX86_64 => match constraint {
-            // rbx is reserved on x86_64 but not x86, and esi is reserved on x86
-            // but not x86_64. It would be nice to distinguish these
-            // architectures here.
+        Arch::X86 => match constraint {
+            // esi is reserved on x86
+            "\"esi\"" | "\"si\"" => {
+                let reg = constraint.trim_matches('"');
+                // "e" if esi, "" if si
+                let mods = &reg[..reg.len() - 2];
+                (reg, mods)
+            }
+            _ => return None,
+        },
+        Arch::X86_64 => match constraint {
+            // rbx is reserved on x86_64
             "\"bl\"" | "\"bh\"" | "\"bx\"" | "\"ebx\"" | "\"rbx\"" => {
                 let reg = constraint.trim_matches('"');
                 let mods = if reg.len() == 2 {
@@ -792,7 +802,7 @@ impl<'c> Translation<'c> {
 
         // Determine whether the assembly is in AT&T syntax
         let att_syntax = match arch {
-            Arch::X86OrX86_64 => asm_is_att_syntax(&rewritten_asm),
+            Arch::X86 | Arch::X86_64 => asm_is_att_syntax(&rewritten_asm),
             _ => false,
         };
 
