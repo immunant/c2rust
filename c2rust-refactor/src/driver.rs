@@ -42,7 +42,7 @@ use rustc_span::{FileName, Span, DUMMY_SP};
 use rustc_span::edition::Edition;
 use rustc_span::def_id::LocalDefId;
 
-use crate::ast_manip::remove_paren;
+use crate::ast_manip::{AstSpanMaps, remove_paren};
 use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
 use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
@@ -76,8 +76,9 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
         tcx: GenerationalTyCtxt<'tcx>,
+        span_maps: AstSpanMaps,
     ) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map, node_id_to_def_id, def_id_to_node_id)), Some(tcx))
+        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map, node_id_to_def_id, def_id_to_node_id, span_maps)), Some(tcx))
     }
 }
 

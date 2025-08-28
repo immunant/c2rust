@@ -28,6 +28,7 @@ use crate::ast_manip::number_nodes::{
 };
 use crate::ast_manip::{load_modules, remove_paren, ListNodeIds, MutVisit, Visit};
 use crate::ast_manip::{collect_comments, gather_comments, Comment, CommentMap};
+use crate::ast_manip::AstSpanMaps;
 use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
 use crate::file_io::FileIO;
@@ -425,6 +426,7 @@ impl RefactorState {
                             node_id_to_def_id,
                             def_id_to_node_id,
                             GenerationalTyCtxt(tcx, tcx_gen.clone()),
+                            AstSpanMaps::new(&expanded),
                         );
                         profile_end!("Lower to HIR");
 
@@ -453,6 +455,7 @@ impl RefactorState {
                             node_id_to_def_id,
                             def_id_to_node_id,
                             GenerationalTyCtxt(tcx, tcx_gen.clone()),
+                            AstSpanMaps::new(&expanded),
                         );
                         profile_end!("Compiler Phase 3");
 

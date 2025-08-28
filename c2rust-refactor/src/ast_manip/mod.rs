@@ -15,6 +15,7 @@ mod load_modules;
 mod output_exprs;
 mod remove_paren;
 mod seq_edit;
+mod span_maps;
 mod visit;
 mod visit_node;
 
@@ -34,6 +35,7 @@ pub use self::visit::Visit;
 pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
 pub use self::comments::{collect_comments, gather_comments, Comment, CommentMap, CommentStyle};
 pub use self::load_modules::load_modules;
+pub use self::span_maps::{AstSpanMaps, SpanNodeKind, NodeSpan};
 
 // Modules with more complex APIs are left as `pub`.
 pub mod comments;
