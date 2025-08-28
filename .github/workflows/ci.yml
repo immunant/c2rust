@@ -90,8 +90,9 @@ jobs:
       - name: Install packages (macOS)
         if: runner.os == 'macOS'
         run: |
-          # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly
-          brew install -q cmake ninja gpg llvm@${{ matrix.clang-version }} bash
+          # `cmake` needed, but should be already installed.
+          # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly.
+          brew install -q ninja gpg llvm@${{ matrix.clang-version }} bash
 
       - name: cargo build --release
         run: |
