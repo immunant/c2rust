@@ -9,14 +9,24 @@ macro_rules! match_or {
 }
 
 #[macro_export]
+macro_rules! match_or_else {
+    ([$e:expr] $($arm_pat:pat => $arm_body:expr),*; $or_else:expr) => {
+        match $e {
+            $( $arm_pat => $arm_body, )*
+            ref x @ _ => $or_else(x),
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! expect {
     ([$e:expr] $arm_pat:pat => $arm_body:expr) => {
-        $crate::match_or!([$e] $arm_pat => $arm_body;
-            panic!("expected {}", stringify!($arm_pat)))
+        $crate::match_or_else!([$e] $arm_pat => $arm_body;
+            |x| panic!("expected {}, got {:?}", stringify!($arm_pat), x))
     };
     ([$e:expr] $($arm_pat:pat => $arm_body:expr),*) => {
-        $crate::match_or!([$e] $($arm_pat => $arm_body),*;
-            panic!("expected one of: {}", stringify!($($arm_pat),*)))
+        $crate::match_or_else!([$e] $($arm_pat => $arm_body),*;
+            |x| panic!("expected one of: {}, got {:?}", stringify!($($arm_pat),*), x))
     };
 }
 
