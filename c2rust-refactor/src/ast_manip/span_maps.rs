@@ -22,6 +22,12 @@ pub enum SpanNodeKind {
     Item,
     ForeignItem,
     AssocItem,
+    // We need a separate kind for ExprKind::Path because
+    // the rustc macro expander emits `*foo` expressions where
+    // both the outer and inner expressions have the same span
+    // We disambiguate by assigning (span, Expr) to the outer one,
+    // and (span, PathExpr) to the inner expression.
+    PathExpr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -114,7 +120,11 @@ impl Visitor<'_> for AstSpanMapper {
     }
 
     fn visit_expr(&mut self, expr: &Expr) {
-        self.insert_mapping(expr.id, expr.span, SpanNodeKind::Expr);
+        if matches!(expr.kind, ExprKind::Path(..)) {
+            self.insert_mapping(expr.id, expr.span, SpanNodeKind::PathExpr);
+        } else {
+            self.insert_mapping(expr.id, expr.span, SpanNodeKind::Expr);
+        }
         visit::walk_expr(self, expr);
     }
 
