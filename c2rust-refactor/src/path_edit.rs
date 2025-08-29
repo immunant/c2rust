@@ -119,7 +119,7 @@ where
         match hir.kind {
             hir::TyKind::Path(ref qpath) => {
                 // Bail out early if it's not really a path type in the original AST.
-                match t.kind {
+                match t.peel_refs().kind {
                     TyKind::ImplicitSelf => return,
                     _ => {}
                 }
