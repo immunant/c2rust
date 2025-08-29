@@ -68,7 +68,13 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
         Some(Node::Variant(variant)) => Some(NodeSpan::new(variant.span, Variant)),
         Some(Node::Field(field)) => Some(NodeSpan::new(field.span, FieldDef)),
         Some(Node::AnonConst(_)) => None,
-        Some(Node::Expr(expr)) => Some(NodeSpan::new(expr.span, Expr)),
+        Some(Node::Expr(expr)) => {
+            if matches!(expr.kind, hir::ExprKind::Path(..)) {
+                Some(NodeSpan::new(expr.span, PathExpr))
+            } else {
+                Some(NodeSpan::new(expr.span, Expr))
+            }
+        }
         Some(Node::Stmt(stmt)) => Some(NodeSpan::new(stmt.span, Stmt)),
         // Intentionally skip PathSegment to avoid collisions
         Some(Node::PathSegment(_)) => None,
