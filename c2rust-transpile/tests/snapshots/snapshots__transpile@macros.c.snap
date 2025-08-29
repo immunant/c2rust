@@ -30,8 +30,8 @@ pub struct fn_ptrs {
     pub fn2: Option<unsafe extern "C" fn(std::ffi::c_int) -> std::ffi::c_int>,
 }
 pub type zstd_platform_dependent_type = std::ffi::c_long;
-pub const UINTPTR_MAX: std::ffi::c_ulong = 18446744073709551615 as std::ffi::c_ulong;
-pub const NESTED_INT: std::ffi::c_int = 0xffff as std::ffi::c_int;
+pub const UINTPTR_MAX: std::ffi::c_ulong = unsafe { 18446744073709551615 as std::ffi::c_ulong };
+pub const NESTED_INT: std::ffi::c_int = unsafe { 0xffff as std::ffi::c_int };
 #[no_mangle]
 pub unsafe extern "C" fn local_muts() {
     let mut literal_int: std::ffi::c_int = 0xffff as std::ffi::c_int;
@@ -367,7 +367,7 @@ pub static mut global_const_member: std::ffi::c_int = 0;
 pub unsafe extern "C" fn test_fn_macro(mut x: std::ffi::c_int) -> std::ffi::c_int {
     return x * x;
 }
-pub const TEST_CONST2: std::ffi::c_int = 2 as std::ffi::c_int;
+pub const TEST_CONST2: std::ffi::c_int = unsafe { 2 as std::ffi::c_int };
 #[no_mangle]
 pub unsafe extern "C" fn reference_define() -> std::ffi::c_int {
     let mut x: std::ffi::c_int = 1 as std::ffi::c_int;
@@ -388,8 +388,8 @@ pub static mut fns: fn_ptrs = {
 };
 #[no_mangle]
 pub static mut p: *const fn_ptrs = unsafe { &fns as *const fn_ptrs };
-pub const ZSTD_WINDOWLOG_MAX_32: std::ffi::c_int = 30 as std::ffi::c_int;
-pub const ZSTD_WINDOWLOG_MAX_64: std::ffi::c_int = 31 as std::ffi::c_int;
+pub const ZSTD_WINDOWLOG_MAX_32: std::ffi::c_int = unsafe { 30 as std::ffi::c_int };
+pub const ZSTD_WINDOWLOG_MAX_64: std::ffi::c_int = unsafe { 31 as std::ffi::c_int };
 #[no_mangle]
 pub unsafe extern "C" fn test_zstd() -> U64 {
     return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as std::ffi::c_ulong
