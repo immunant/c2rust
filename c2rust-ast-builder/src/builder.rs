@@ -315,13 +315,7 @@ impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
     fn make(self, mk: &Builder) -> Path {
         let mut segments = Punctuated::new();
         for s in self {
-            let segment = s.make(mk);
-            let has_params = !segment.arguments.is_empty();
-            segments.push(segment);
-            // separate params from their segment with ::
-            if has_params {
-                segments.push_punct(Default::default());
-            }
+            segments.push(s.make(mk));
         }
         Path {
             leading_colon: None,
