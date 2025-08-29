@@ -19,7 +19,6 @@ pub unsafe extern "C" fn factorial(mut n: std::ffi::c_ushort) -> std::ffi::c_ush
     while (i as std::ffi::c_int) < n as std::ffi::c_int {
         result = (result as std::ffi::c_int * i as std::ffi::c_int) as std::ffi::c_ushort;
         i = i.wrapping_add(1);
-        i;
     }
     return result;
 }
