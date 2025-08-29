@@ -1005,7 +1005,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
             _ => {}
         }
-        match (self.cx.try_resolve_ty(ty1), self.cx.try_resolve_ty(ty1)) {
+        match (self.cx.try_resolve_ty(ty1), self.cx.try_resolve_ty(ty2)) {
             (Some(did1), Some(did2)) => self.structural_eq_defs(did1, did2),
             _ => ty1.unnamed_equiv(ty2),
         }
