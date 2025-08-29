@@ -155,7 +155,7 @@ class Parser:
             # Nullary tuple struct, with no parens
             return Struct(name, [], True, attrs)
 
-        fields = self.parse_fields(end_delim)
+        fields = self.parse_fields(end_delim, is_tuple)
         self.take_symbol_from(end_delim)
         if top_level and is_tuple:
             self.take_symbol_from(';')
@@ -184,12 +184,13 @@ class Parser:
         self.take_symbol_from(';')
         return Flag(name, attrs)
 
-    def parse_fields(self, end_delim):
+    def parse_fields(self, end_delim, is_tuple):
         fields = []
         while self.peek_symbol() != end_delim:
             attrs = self.parse_attrs()
             name = self.take_ident()
-            fields.append(Field(name, attrs))
+            dot_name = str(len(fields)) if is_tuple else name
+            fields.append(Field(name, dot_name, attrs))
             if self.peek_symbol() == ',':
                 self.take()
             else:
@@ -252,9 +253,6 @@ if __name__ == '__main__':
     elif mode == 'ast_names':
         import ast_names
         text = ast_names.generate(decls)
-    elif mode == 'lua_ast_node':
-        import lua_ast_node
-        text = lua_ast_node.generate(decls)
     else:
         raise ValueError('unknown mode: %r' % mode)
 

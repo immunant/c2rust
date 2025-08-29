@@ -2,17 +2,16 @@ use std::collections::HashMap;
 use std::iter::Peekable;
 use std::ops::Index;
 use std::slice;
-use syntax::ast::*;
-// use syntax::util::comments::Comment as LexComment;
-use syntax::util::comments::{is_block_doc_comment, is_doc_comment};
-use syntax::sess::ParseSess;
-use syntax::source_map::{SourceMap, Span};
-use syntax::visit::*;
-use syntax_pos::{BytePos, CharPos, Pos, FileName};
+use rustc_ast::*;
+// use rustc_ast::util::comments::Comment as LexComment;
+use rustc_session::parse::ParseSess;
+use rustc_span::source_map::{SourceMap, Span};
+use rustc_ast::visit::*;
+use rustc_span::{BytePos, CharPos, Pos, FileName};
 
 use crate::ast_manip::Visit;
 
-pub use syntax::util::comments::{Comment, CommentStyle};
+pub use rustc_ast::util::comments::{Comment, CommentStyle};
 
 #[derive(Default)]
 pub struct CommentMap(HashMap<NodeId, Vec<Comment>>);
@@ -118,12 +117,12 @@ impl<'a> Visitor<'a> for CommentCollector<'a> {
     check_comment!(visit_stmt, Stmt, walk_stmt);
     check_comment!(visit_expr, Expr, walk_expr);
     check_comment!(visit_foreign_item, ForeignItem, walk_foreign_item);
-    fn visit_mac(&mut self, mac: &'a Mac) {
+    fn visit_mac_call(&mut self, mac: &'a MacCall) {
         walk_mac(self, mac);
     }
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 /// Returns `None` if the first `col` chars of `s` contain a non-whitespace char.
 /// Otherwise returns `Some(k)` where `k` is first char offset after that leading
 /// whitespace. Note that `k` may be outside bounds of `s`.
@@ -138,7 +137,7 @@ fn all_whitespace(s: &str, col: CharPos) -> Option<usize> {
     Some(idx)
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 fn trim_whitespace_prefix(s: &str, col: CharPos) -> &str {
     let len = s.len();
     match all_whitespace(&s, col) {
@@ -147,7 +146,7 @@ fn trim_whitespace_prefix(s: &str, col: CharPos) -> &str {
     }
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 fn split_block_comment_into_lines(
     text: &str,
     col: CharPos,
@@ -163,9 +162,9 @@ fn split_block_comment_into_lines(
     res
 }
 
-// From libsyntax::util::comments
+// From librustc_ast::util::comments
 pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Comment> {
-    use syntax::util::comments::CommentStyle::*;
+    use rustc_ast::util::comments::CommentStyle::*;
 
     let cm = SourceMap::new(sess.source_map().path_mapping().clone());
     let source_file = cm.new_source_file(path, src);
@@ -187,7 +186,7 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
     }
 
     for token in rustc_lexer::tokenize(&text[pos..]) {
-        let token_text = &text[pos..pos + token.len];
+        let token_text = &text[pos..pos + token.len as usize];
         match token.kind {
             rustc_lexer::TokenKind::Whitespace => {
                 if let Some(mut idx) = token_text.find('\n') {
@@ -202,9 +201,9 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
                     }
                 }
             }
-            rustc_lexer::TokenKind::BlockComment { terminated: _ } => {
-                if !is_block_doc_comment(token_text) {
-                    let code_to_the_right = match text[pos + token.len..].chars().next() {
+            rustc_lexer::TokenKind::BlockComment { doc_style, .. } => {
+                if doc_style.is_none() {
+                    let code_to_the_right = match text[pos + token.len as usize..].chars().next() {
                         Some('\r') | Some('\n') => false,
                         _ => true,
                     };
@@ -224,8 +223,8 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
                     comments.push(Comment { style, lines, pos: pos_in_file })
                 }
             }
-            rustc_lexer::TokenKind::LineComment => {
-                if !is_doc_comment(token_text) {
+            rustc_lexer::TokenKind::LineComment { doc_style } => {
+                if doc_style.is_none() {
                     comments.push(Comment {
                         style: if code_to_the_left { Trailing } else { Isolated },
                         lines: vec![token_text.to_string()],
@@ -237,7 +236,7 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
                 code_to_the_left = true;
             }
         }
-        pos += token.len;
+        pos += token.len as usize;
     }
 
     comments

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
-use syntax::ast::*;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
 use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes};
@@ -10,7 +10,7 @@ use crate::driver::{parse_ty};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 
 
 /// # `generalize_items` Command
@@ -90,7 +90,7 @@ impl Transform for GeneralizeItems {
 
             let hir_id = cx.hir_map().node_to_hir_id(ty.id);
             let parent_id = cx.hir_map().get_parent_item(hir_id);
-            let parent_id = cx.hir_map().hir_to_node_id(parent_id);
+            let parent_id = cx.hir_map().local_def_id_to_node_id(parent_id);
             if !st.marked(parent_id, "target") {
                 return;
             }
@@ -112,12 +112,12 @@ impl Transform for GeneralizeItems {
             smallvec![i.map(|mut i| {
                 {
                     let gen = match i.kind {
-                        ItemKind::Fn(_, ref mut gen, _) => gen,
+                        ItemKind::Fn(box Fn { generics: ref mut gen, .. }) => gen,
                         ItemKind::Enum(_, ref mut gen) => gen,
                         ItemKind::Struct(_, ref mut gen) => gen,
                         ItemKind::Union(_, ref mut gen) => gen,
-                        ItemKind::Trait(_, _, ref mut gen, _, _) => gen,
-                        ItemKind::Impl(_, _, _, ref mut gen, _, _, _) => gen,
+                        ItemKind::Trait(box Trait { ref mut generics, .. }) => generics,
+                        ItemKind::Impl(box Impl { ref mut generics, .. }) => generics,
                         _ => panic!("item has no room for generics"),
                     };
                     gen.params.push(mk().ty_param(self.ty_var_name));
@@ -141,7 +141,7 @@ impl Transform for GeneralizeItems {
 
             let hir_id = cx.hir_map().node_to_hir_id(path_id);
             let parent_id = cx.hir_map().get_parent_item(hir_id);
-            let parent_id = cx.hir_map().hir_to_node_id(parent_id);
+            let parent_id = cx.hir_map().local_def_id_to_node_id(parent_id);
             let arg = if st.marked(parent_id, "target") {
                 mk().ident_ty(self.ty_var_name)
             } else {
@@ -154,7 +154,7 @@ impl Transform for GeneralizeItems {
                     *args = args.clone().map(|mut args| {
                         match args {
                             GenericArgs::AngleBracketed(ref mut abpd) =>
-                                abpd.args.push(mk().generic_arg(arg)),
+                                abpd.args.push(AngleBracketedArg::Arg(mk().generic_arg(arg))),
                             GenericArgs::Parenthesized(..) =>
                                 panic!("expected angle bracketed params, but found parenthesized"),
                         }
