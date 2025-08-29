@@ -37,8 +37,8 @@ use rustc_hir::definitions::DefPathData;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, Constant, Local, LocalDecl, LocalInfo, LocalKind, Location,
-    Operand, Place, PlaceElem, PlaceRef, Rvalue, StatementKind,
+    self, AggregateKind, BindingForm, Body, Constant, Local, LocalDecl, LocalInfo, LocalKind,
+    Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, StatementKind, VarDebugInfoContents,
 };
 use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::Ty;
@@ -1454,6 +1454,40 @@ fn run2<'tcx>(
                 asn.perms(),
                 asn.flags(),
             );
+        }
+
+        let mut local_names = vec![(mir::RETURN_PLACE, "return")];
+        for dbg in &mir.var_debug_info {
+            if let VarDebugInfoContents::Place(ref p) = dbg.value {
+                if let Some(local) = p.as_local() {
+                    local_names.push((local, dbg.name.as_str()));
+                }
+            }
+        }
+        let fn_name = name;
+        for (local, name) in local_names {
+            let lty = acx.local_tys[local];
+            let ptr = lty.label;
+            if ptr.is_none() {
+                continue;
+            }
+            let perms = asn.perms()[ptr];
+            let j = serde_json::json!({
+                "func": fn_name.as_str(),
+                "var": name,
+                "perms": {
+                    "read": perms.contains(PermissionSet::READ),
+                    "write": perms.contains(PermissionSet::WRITE),
+                    "unique": perms.contains(PermissionSet::UNIQUE),
+                    "offset_add": perms.contains(PermissionSet::OFFSET_ADD),
+                    "offset_sub": perms.contains(PermissionSet::OFFSET_SUB),
+                    "free": perms.contains(PermissionSet::FREE),
+                    "non_null": perms.contains(PermissionSet::NON_NULL),
+                    "heap": perms.contains(PermissionSet::HEAP),
+                    "stack": perms.contains(PermissionSet::STACK),
+                },
+            });
+            eprintln!("JSON: {}", serde_json::to_string(&j).unwrap());
         }
 
         debug!("\ntype assignment for {:?}:", name);
