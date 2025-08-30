@@ -705,7 +705,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         // FIXME: we should also check if items overlap
                         mod_items.extend(new_items.into_iter());
                     } else {
-                        let new_mod = mk().mod_(new_items);
+                        // TODO: we should outline the modules, but there
+                        // is currently an issue with the pretty-printer
+                        // where it both writes an output file, and the inline
+                        // module in the parent
+                        let new_mod = mk().inline().mod_(new_items);
                         let new_mod_item = mk()
                             .pub_()
                             .id(mod_info.id)
