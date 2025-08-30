@@ -364,6 +364,7 @@ pub struct Builder {
     unsafety: Unsafe,
     constness: Const,
     ext: Extern,
+    inline: Inline,
     attrs: AttrVec,
     span: Span,
     id: NodeId,
@@ -383,6 +384,7 @@ impl Builder {
             unsafety: Unsafe::No,
             constness: Const::No,
             ext: Extern::None,
+            inline: Inline::No,
             attrs: AttrVec::new(),
             span: DUMMY_SP,
             id: DUMMY_NODE_ID,
@@ -398,6 +400,10 @@ impl Builder {
 
     pub fn pub_(self) -> Self {
         self.vis("pub")
+    }
+
+    pub fn inline(self) -> Self {
+        Builder { inline: Inline::Yes, ..self }
     }
 
     pub fn set_mutbl<M: Make<Mutability>>(self, mutbl: M) -> Self {
@@ -1793,7 +1799,7 @@ impl Builder {
             inner_span: self.span,
             inject_use_span: DUMMY_SP,
         };
-        ModKind::Loaded(items, Inline::Yes, spans)
+        ModKind::Loaded(items, self.inline, spans)
     }
 
     pub fn mac_item<M>(self, mac: M) -> P<Item>
