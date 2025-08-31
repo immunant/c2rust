@@ -29,13 +29,9 @@ pub unsafe extern "C" fn unary_without_side_effect() {
     &mut i;
     i;
     i += 1;
-    i;
     i -= 1;
-    i;
     i -= 1;
-    i;
     i += 1;
-    i;
 }
 #[no_mangle]
 pub unsafe extern "C" fn unary_with_side_effect() {
@@ -50,11 +46,7 @@ pub unsafe extern "C" fn unary_with_side_effect() {
     >(side_effect)() as isize) as *const std::ffi::c_char;
     *arr[side_effect() as usize];
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(1);
-    arr[side_effect() as usize];
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);
-    arr[side_effect() as usize];
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(1);
-    arr[side_effect() as usize];
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);
-    arr[side_effect() as usize];
 }

@@ -1034,13 +1034,19 @@ impl<'c> Translation<'c> {
             }
         }?;
 
-        // Unused unary operators (`-foo()`) may have side effects, so we need
-        // to add them to stmts.
-        if ctx.is_unused() {
+        // Some unused unary operators (`-foo()`) may have side effects, so we need
+        // to add them to stmts when name is not increment/decrement operator.
+        if ctx.is_unused()
+            && !matches!(
+                name,
+                c_ast::UnOp::PreDecrement
+                    | c_ast::UnOp::PreIncrement
+                    | c_ast::UnOp::PostDecrement
+                    | c_ast::UnOp::PostIncrement
+            )
+        {
             let v = unary.clone().into_value();
-            unary
-                .stmts_mut()
-                .push(Stmt::Expr(*v, Some(Default::default())));
+            unary.add_stmt(mk().semi_stmt(v));
         }
         Ok(unary)
     }
