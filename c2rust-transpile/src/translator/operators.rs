@@ -901,7 +901,6 @@ impl<'c> Translation<'c> {
         lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let CQualTypeId { ctype, .. } = cqual_type;
-        let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         let mut unary = match name {
@@ -942,35 +941,8 @@ impl<'c> Translation<'c> {
                         Mutability::Mutable
                     };
 
-                    arg.result_map(|a| {
-                        let mut addr_of_arg: Box<Expr>;
-
-                        if ctx.is_static {
-                            // static variable initializers aren't able to use &mut,
-                            // so we work around that by using & and an extra cast
-                            // through & to *const to *mut
-                            addr_of_arg = mk().addr_of_expr(a);
-                            if let Mutability::Mutable = mutbl {
-                                let mut qtype = pointee_ty;
-                                qtype.qualifiers.is_const = true;
-                                let ty_ = self
-                                    .type_converter
-                                    .borrow_mut()
-                                    .convert_pointer(&self.ast_context, qtype)?;
-                                addr_of_arg = mk().cast_expr(addr_of_arg, ty_);
-                            }
-                        } else {
-                            // Normal case is allowed to use &mut if needed
-                            addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
-
-                            // Avoid unnecessary reference to pointer decay in fn call args:
-                            if ctx.decay_ref.is_no() {
-                                return Ok(addr_of_arg);
-                            }
-                        }
-
-                        Ok(mk().cast_expr(addr_of_arg, ty))
-                    })
+                    self.use_feature("raw_ref_op");
+                    Ok(arg.map(|a| mk().set_mutbl(mutbl).raw_borrow_expr(a)))
                 }
             }
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
