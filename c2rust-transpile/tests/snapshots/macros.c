@@ -289,7 +289,9 @@ struct fn_ptrs {
 
 typedef int (*fn_ptr_ty)(char);
 
-const struct fn_ptrs fns = {NULL, NULL, NULL};
+// TODO Skip for now since it uses `libc`, which we don't test in snapshots.
+// const struct fn_ptrs fns = {NULL, NULL, NULL};
+const struct fn_ptrs fns = {};
 
 // Make sure we can't refer to globals in a const macro
 #define GLOBAL_REF &fns
@@ -366,6 +368,4 @@ int local_fn(void) { return 1234; }
 
 int use_local_value(void) { return LOCAL_VALUE; }
 
-bool use_portable_type(uintptr_t len) {
-  return len <= UINTPTR_MAX / 2;
-}
+bool use_portable_type(uintptr_t len) { return len <= UINTPTR_MAX / 2; }

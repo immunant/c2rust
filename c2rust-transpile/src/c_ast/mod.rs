@@ -624,6 +624,78 @@ impl TypedAstContext {
         }
     }
 
+    /// Pessimistically try to check if an expression is `const`.
+    /// If it's not, or we can't tell if it is, return `false`.
+    ///
+    /// This should be a top-down, pessimistic/conservative analysis.
+    pub fn is_const_expr(&self, expr: CExprId) -> bool {
+        let is_const = |expr| self.is_const_expr(expr);
+
+        use CExprKind::*;
+        match self[expr].kind {
+            // A literal is always `const`.
+            Literal(_, _) => true,
+            // Unary ops should be `const`.
+            // TODO handle `f128` or use the primitive type.
+            Unary(_, _, expr, _) => is_const(expr),
+            UnaryType(_, _, _, _) => false, // TODO disabled for now as tests are broken
+            // Not sure what a `None` `CExprId` means here
+            // or how to detect a `sizeof` of a VLA, which is non-`const`,
+            // although it seems we don't handle `sizeof(VLAs)`
+            // correctly in macros elsewhere already.
+            #[allow(unreachable_patterns)]
+            UnaryType(_, _, expr, _) => expr.map_or(true, is_const),
+            // Not sure what a `OffsetOfKind::Variable` means.
+            OffsetOf(_, _) => true,
+            // `ptr::offset` (ptr `BinOp::Add`) was `const` stabilized in `1.61.0`.
+            // `ptr::offset_from` (ptr `BinOp::Subtract`) was `const` stabilized in `1.65.0`.
+            // TODO `f128` is not yet handled, as we should eventually
+            // switch to the (currently unstable) `f128` primitive type (#1262).
+            Binary(_, _, lhs, rhs, _, _) => is_const(lhs) && is_const(rhs),
+            ImplicitCast(_, _, CastKind::ArrayToPointerDecay, _, _) => false, // TODO disabled for now as tests are broken
+            // `as` casts are always `const`.
+            ImplicitCast(_, expr, _, _, _) => is_const(expr),
+            // `as` casts are always `const`.
+            // TODO This is `const`, although there's a bug #853.
+            ExplicitCast(_, expr, _, _, _) => is_const(expr),
+            // This is used in `const` locations like `match` patterns and array lengths, so it must be `const`.
+            ConstantExpr(_, _, _) => true,
+            // A reference in an already otherwise `const` context should be `const` itself.
+            DeclRef(_, _, _) => true,
+            Call(_, fn_expr, ref args) => {
+                let is_const_fn = false; // TODO detect which `fn`s are `const`.
+                is_const(fn_expr) && args.iter().copied().all(is_const) && is_const_fn
+            }
+            Member(_, expr, _, _, _) => is_const(expr),
+            ArraySubscript(_, array, index, _) => is_const(array) && is_const(index),
+            Conditional(_, cond, if_true, if_false) => {
+                is_const(cond) && is_const(if_true) && is_const(if_false)
+            }
+            BinaryConditional(_, cond, if_false) => is_const(cond) && is_const(if_false),
+            InitList(_, ref inits, _, _) => inits.iter().copied().all(is_const),
+            ImplicitValueInit(_) => true,
+            Paren(_, expr) => is_const(expr),
+            CompoundLiteral(_, expr) => is_const(expr),
+            Predefined(_, expr) => is_const(expr),
+            Statements(_, stmt) => self.is_const_stmt(stmt),
+            VAArg(_, expr) => is_const(expr),
+            // SIMD is not yet `const` in Rust.
+            ShuffleVector(_, _) | ConvertVector(_, _) => false,
+            DesignatedInitExpr(_, _, expr) => is_const(expr),
+            Choose(_, cond, if_true, if_false, _) => {
+                is_const(cond) && is_const(if_true) && is_const(if_false)
+            }
+            // Atomics are not yet `const` in Rust.
+            Atomic { .. } => false,
+            BadExpr => false,
+        }
+    }
+
+    pub fn is_const_stmt(&self, _stmt: CStmtId) -> bool {
+        // TODO
+        false
+    }
+
     pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
         // Starting from a set of root declarations, walk each one to find declarations it
         // depends on. Then walk each of those, recursively.
