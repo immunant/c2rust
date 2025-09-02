@@ -2979,12 +2979,8 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
-                let addr_lhs = mk().set_mutbl(mutbl).addr_of_expr(lhs);
-
-                let lhs_type = self.convert_type(lhs_type.ctype)?;
-                let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
-
-                mk().cast_expr(addr_lhs, ty)
+                self.use_feature("raw_ref_op");
+                mk().set_mutbl(mutbl).raw_borrow_expr(lhs)
             }
         };
         Ok(addr_lhs)
@@ -4512,25 +4508,19 @@ impl<'c> Translation<'c> {
                         {
                             Ok(val)
                         } else {
-                            let method = if is_const || ctx.is_static {
-                                "as_ptr"
+                            let mutbl = if is_const {
+                                Mutability::Immutable
                             } else {
-                                "as_mut_ptr"
+                                Mutability::Mutable
                             };
+                            let target_ty = self.convert_type(ty.ctype)?;
 
-                            let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
-
-                            // Static arrays can now use as_ptr. Can also cast that const ptr to a
-                            // mutable pointer as we do here:
-                            if ctx.is_static && !is_const {
-                                return Ok(call.map(|val| {
-                                    let inferred_type = mk().infer_ty();
-                                    let ptr_type = mk().mutbl().ptr_ty(inferred_type);
-                                    mk().cast_expr(val, ptr_type)
-                                }));
-                            }
-
-                            Ok(call)
+                            Ok(val.map(|x| {
+                                self.use_feature("raw_ref_op");
+                                let borrow = mk().set_mutbl(mutbl).raw_borrow_expr(x);
+                                // TODO: Change to call `ptr::as_[mut]_ptr` once that is available.
+                                mk().cast_expr(borrow, target_ty)
+                            }))
                         }
                     }
                 }
