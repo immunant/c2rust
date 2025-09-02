@@ -3004,12 +3004,8 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
-                let addr_lhs = mk().set_mutbl(mutbl).addr_of_expr(lhs);
-
-                let lhs_type = self.convert_type(lhs_type.ctype)?;
-                let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
-
-                mk().cast_expr(addr_lhs, ty)
+                self.use_feature("raw_ref_op");
+                mk().set_mutbl(mutbl).raw_borrow_expr(lhs)
             }
         };
         Ok(addr_lhs)
@@ -4548,41 +4544,36 @@ impl<'c> Translation<'c> {
                     _ => {
                         // Variable length arrays are already represented as pointers.
                         if let CTypeKind::VariableArray(..) = source_ty_kind {
-                            Ok(val)
+                            return Ok(val);
+                        }
+
+                        let mutbl = if is_const {
+                            Mutability::Immutable
                         } else {
-                            let method = if is_const || ctx.is_static {
-                                "as_ptr"
+                            Mutability::Mutable
+                        };
+
+                        let target_element_ty = self.convert_type(target_cty.ctype)?;
+
+                        Ok(val.map(|mut val| {
+                            self.use_feature("raw_ref_op");
+
+                            // TODO: The currently used nightly doesn't allow `&raw mut` in
+                            // static initialisers, but it's allowed since version 1.83.
+                            // So we take a `&raw const` and then cast.
+                            // Remove this exemption when the version is updated.
+                            if ctx.is_static && matches!(mutbl, Mutability::Mutable) {
+                                val = mk().raw_borrow_expr(val);
                             } else {
-                                "as_mut_ptr"
-                            };
-
-                            let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
-
-                            // If the target pointee type is different from the source element type,
-                            // then we need to cast the ptr type as well.
-                            let call = match source_ty_kind.element_ty() {
-                                None => call,
-                                Some(source_element_ty) if source_element_ty == pointee.ctype => {
-                                    call
-                                }
-                                Some(_) => {
-                                    let target_ty = self.convert_type(target_cty.ctype)?;
-                                    call.map(|ptr| mk().cast_expr(ptr, target_ty))
-                                }
-                            };
-
-                            // Static arrays can now use as_ptr. Can also cast that const ptr to a
-                            // mutable pointer as we do here:
-                            if ctx.is_static && !is_const {
-                                return Ok(call.map(|val| {
-                                    let inferred_type = mk().infer_ty();
-                                    let ptr_type = mk().mutbl().ptr_ty(inferred_type);
-                                    mk().cast_expr(val, ptr_type)
-                                }));
+                                val = mk().set_mutbl(mutbl).raw_borrow_expr(val);
                             }
 
-                            Ok(call)
-                        }
+                            // Cast to element type.
+                            // TODO: Change to call `ptr::as_[mut]_ptr` once that is available,
+                            // and cast only if `source_ty_kind.element_ty() != pointee.ctype`
+                            // (`array_ptr_get` feature added to nightly in January 2024)
+                            mk().cast_expr(val, target_element_ty)
+                        }))
                     }
                 }
             }
