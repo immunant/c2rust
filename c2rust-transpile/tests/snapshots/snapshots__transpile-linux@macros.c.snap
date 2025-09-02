@@ -31,11 +31,13 @@ pub unsafe extern "C" fn size_of_const() -> std::ffi::c_int {
     return SIZE as std::ffi::c_int;
 }
 pub const SIZE: usize = unsafe { ::core::mem::size_of::<[std::ffi::c_int; 10]>() };
+pub const POS: [std::ffi::c_char; 3] =
+    unsafe { *::core::mem::transmute::<&[u8; 3], &[std::ffi::c_char; 3]>(b"\"]\0") };
 #[no_mangle]
 pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut std::ffi::c_char) {
     memcpy(
         out as *mut std::ffi::c_void,
-        b"\"]\0" as *const u8 as *const std::ffi::c_char as *const std::ffi::c_void,
+        POS.as_ptr() as *const std::ffi::c_void,
         (::core::mem::size_of::<[std::ffi::c_char; 3]>() as size_t)
             .wrapping_div(::core::mem::size_of::<std::ffi::c_char>() as size_t)
             .wrapping_sub(1 as size_t)
