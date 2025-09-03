@@ -2542,22 +2542,24 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
-                Ok(val.map(|e| {
-                    if self.ast_context.is_function_pointer(ptr_type) {
-                        if negated {
-                            mk().method_call_expr(e, "is_some", vec![])
+                val.and_then(|e| {
+                    Ok(WithStmts::new_val(
+                        if self.ast_context.is_function_pointer(ptr_type) {
+                            if negated {
+                                mk().method_call_expr(e, "is_some", vec![])
+                            } else {
+                                mk().method_call_expr(e, "is_none", vec![])
+                            }
                         } else {
-                            mk().method_call_expr(e, "is_none", vec![])
-                        }
-                    } else {
-                        let is_null = mk().method_call_expr(e, "is_null", vec![]);
-                        if negated {
-                            mk().unary_expr(UnOp::Not(Default::default()), is_null)
-                        } else {
-                            is_null
-                        }
-                    }
-                }))
+                            let is_null = mk().method_call_expr(e, "is_null", vec![]);
+                            if negated {
+                                mk().unary_expr(UnOp::Not(Default::default()), is_null)
+                            } else {
+                                is_null
+                            }
+                        },
+                    ))
+                })
             };
 
         match self.ast_context[cond_id].kind {
@@ -2595,7 +2597,7 @@ impl<'c> Translation<'c> {
                 // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
                 // specify Yes for that particular case, given enough analysis.
                 let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
-                Ok(val.map(|e| self.match_bool(target, ty_id, e)))
+                val.result_map(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
     }
@@ -3674,7 +3676,7 @@ impl<'c> Translation<'c> {
                         |NamedReference {
                              rvalue: lhs_val, ..
                          }| {
-                            let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
+                            let cond = self.match_bool(ctx, true, ty.ctype, lhs_val.clone())?;
                             let ite = mk().ifte_expr(
                                 cond,
                                 mk().block(vec![mk().expr_stmt(lhs_val)]),
@@ -4621,7 +4623,7 @@ impl<'c> Translation<'c> {
                 if let Some(expr) = expr {
                     self.convert_condition(ctx, true, expr)
                 } else {
-                    Ok(val.map(|e| self.match_bool(true, source_cty.ctype, e)))
+                    val.result_map(|e| self.match_bool(ctx, true, source_cty.ctype, e))
                 }
             }
 
@@ -4943,10 +4945,16 @@ impl<'c> Translation<'c> {
     }
 
     /// Convert a boolean expression to a boolean for use in && or || or if
-    fn match_bool(&self, target: bool, ty_id: CTypeId, val: Box<Expr>) -> Box<Expr> {
+    fn match_bool(
+        &self,
+        ctx: ExprContext,
+        target: bool,
+        ty_id: CTypeId,
+        val: Box<Expr>,
+    ) -> TranslationResult<Box<Expr>> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
-        if self.ast_context.is_function_pointer(ty_id) {
+        Ok(if self.ast_context.is_function_pointer(ty_id) {
             if target {
                 mk().method_call_expr(val, "is_some", vec![])
             } else {
@@ -4982,16 +4990,16 @@ impl<'c> Translation<'c> {
                     ..
                 }) = *unparen(arg)
                 {
-                    if target {
+                    return Ok(if target {
                         // If target == true, just return the argument
-                        return Box::new(unparen(arg).clone());
+                        Box::new(unparen(arg).clone())
                     } else {
                         // If target == false, return !arg
-                        return mk().unary_expr(
+                        mk().unary_expr(
                             UnOp::Not(Default::default()),
                             Box::new(unparen(arg).clone()),
-                        );
-                    }
+                        )
+                    });
                 }
             }
 
@@ -5013,7 +5021,7 @@ impl<'c> Translation<'c> {
             } else {
                 mk().binary_expr(BinOp::Eq(Default::default()), val, zero)
             }
-        }
+        })
     }
 
     pub fn with_scope<F, A>(&self, f: F) -> A
