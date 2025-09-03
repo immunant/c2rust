@@ -4424,6 +4424,12 @@ impl<'c> Translation<'c> {
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
             | CastKind::BooleanToSignedIntegral => {
+                if kind == CastKind::PointerToIntegral && ctx.is_const {
+                    return Err(format_translation_err!(
+                        None,
+                        "cannot observe pointer values in `const` context",
+                    ));
+                }
                 let target_ty = self.convert_type(ty.ctype)?;
                 let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
 
