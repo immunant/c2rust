@@ -15,6 +15,10 @@ input_file: c2rust-transpile/tests/snapshots/exprs.c
 extern "C" {
     fn puts(str: *const std::ffi::c_char) -> std::ffi::c_int;
 }
+pub type C2RustUnnamed = std::ffi::c_uint;
+pub const C: C2RustUnnamed = 2;
+pub const B: C2RustUnnamed = 1;
+pub const A: C2RustUnnamed = 0;
 unsafe extern "C" fn side_effect() -> std::ffi::c_int {
     puts(b"the return of side effect\0" as *const u8 as *const std::ffi::c_char);
     return 10 as std::ffi::c_int;
@@ -49,4 +53,8 @@ pub unsafe extern "C" fn unary_with_side_effect() {
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(1);
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);
+}
+#[no_mangle]
+pub unsafe extern "C" fn compound_literal() {
+    let mut i: std::ffi::c_int = B as std::ffi::c_int;
 }
