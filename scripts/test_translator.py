@@ -535,7 +535,10 @@ class TestDirectory:
             sys.stdout.write('\n')
             sys.stdout.write(stdout)
         else:
-            sys.stdout.write("\n".join(line for line in stdout.split("\n") if "... ok" in line or "... FAILED" in line))
+            for line in stdout.split("\n"):
+                if "... ok" in line:
+                    self.print_status(Colors.OKGREEN, "OK", "{}".format(line))
+                    sys.stdout.write('\n')
         
         # Don't distinguish between expected and unexpected failures.
         # `#[should_panic]` is used for that instead of `// xfail` now.
