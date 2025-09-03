@@ -2551,6 +2551,13 @@ impl<'c> Translation<'c> {
                                 mk().method_call_expr(e, "is_none", vec![])
                             }
                         } else {
+                            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
+                            if ctx.is_const {
+                                return Err(format_translation_err!(
+                                    None,
+                                    "cannot check nullity of pointer in `const` context",
+                                ));
+                            }
                             let is_null = mk().method_call_expr(e, "is_null", vec![]);
                             if negated {
                                 mk().unary_expr(UnOp::Not(Default::default()), is_null)
@@ -4961,6 +4968,13 @@ impl<'c> Translation<'c> {
                 mk().method_call_expr(val, "is_none", vec![])
             }
         } else if ty.is_pointer() {
+            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "cannot check nullity of pointer in `const` context",
+                ));
+            }
             let mut res = mk().method_call_expr(val, "is_null", vec![]);
             if target {
                 res = mk().unary_expr(UnOp::Not(Default::default()), res)
