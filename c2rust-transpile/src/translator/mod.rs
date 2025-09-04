@@ -4672,7 +4672,7 @@ impl<'c> Translation<'c> {
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
                 return val.map(|x| match *unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
-                    _ => panic!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl),
+                    ref e => mk().cast_expr(x, target_ty),
                 });
             }
 
