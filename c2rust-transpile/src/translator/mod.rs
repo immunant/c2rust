@@ -4736,7 +4736,13 @@ impl<'c> Translation<'c> {
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
                 return val.map(|x| match *unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
-                    _ => panic!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl),
+                    // If this DeclRef expanded to a const macro, we actually need to insert a cast,
+                    // because the translation of a const macro skips implicit casts in its context.
+                    Expr::Path(..) => mk().cast_expr(x, target_ty),
+                    _ => panic!(
+                        "DeclRef {:?} of enum {:?} is not cast: {x:?}",
+                        expr, enum_decl
+                    ),
                 });
             }
 
