@@ -213,6 +213,8 @@ pub struct FuncContext {
     va_list_arg_name: Option<String>,
     /// The va_list decls that are either `va_start`ed or `va_copy`ed.
     va_list_decl_ids: Option<IndexSet<CDeclId>>,
+    /// The name we give to the Rust variable holding all allocations made with `alloca`.
+    alloca_allocations_name: Option<String>,
 }
 
 impl FuncContext {
@@ -2318,13 +2320,36 @@ impl<'c> Translation<'c> {
                     CStmtKind::Compound(ref stmts) => stmts,
                     _ => panic!("function body expects to be a compound statement"),
                 };
-                body_stmts.append(&mut self.convert_function_body(
-                    ctx,
-                    name,
-                    body_ids,
-                    return_type,
-                    ret,
-                )?);
+                let mut converted_body =
+                    self.convert_function_body(ctx, name, body_ids, return_type, ret)?;
+
+                // If `alloca` was used in the function body, include a variable to hold the
+                // allocations.
+                if let Some(alloca_allocations_name) = self
+                    .function_context
+                    .borrow_mut()
+                    .alloca_allocations_name
+                    .take()
+                {
+                    // let mut alloca_allocations: Vec<Vec<u8>> = Vec::new();
+                    let inner_vec = mk().path_ty(vec![mk().path_segment_with_args(
+                        "Vec",
+                        mk().angle_bracketed_args(vec![mk().ident_ty("u8")]),
+                    )]);
+                    let outer_vec = mk().path_ty(vec![mk().path_segment_with_args(
+                        "Vec",
+                        mk().angle_bracketed_args(vec![inner_vec]),
+                    )]);
+                    let alloca_allocations_stmt = mk().local_stmt(Box::new(mk().local(
+                        mk().mutbl().ident_pat(alloca_allocations_name),
+                        Some(outer_vec),
+                        Some(mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![])),
+                    )));
+
+                    body_stmts.push(alloca_allocations_stmt);
+                }
+
+                body_stmts.append(&mut converted_body);
                 let mut block = stmts_block(body_stmts);
                 if let Some(span) = self.get_span(SomeId::Stmt(body)) {
                     block.set_span(span);
