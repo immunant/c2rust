@@ -223,9 +223,10 @@ impl FuncContext {
     }
 
     pub fn enter_new(&mut self, fn_name: &str) {
-        self.name = Some(fn_name.to_string());
-        self.va_list_arg_name = None;
-        self.va_list_decl_ids = None;
+        *self = Self {
+            name: Some(fn_name.to_string()),
+            ..Default::default()
+        };
     }
 
     pub fn get_name(&self) -> &str {
