@@ -4508,7 +4508,11 @@ impl<'c> Translation<'c> {
                         {
                             Ok(val)
                         } else {
-                            let mutbl = if is_const {
+                            // TODO: The currently used nightly doesn't allow `&raw mut` in static
+                            // initialisers, but the latest version does.
+                            // So we take a `&raw const` and then cast.
+                            // Remove this exemption when the version is updated.
+                            let mutbl = if is_const || ctx.is_static {
                                 Mutability::Immutable
                             } else {
                                 Mutability::Mutable

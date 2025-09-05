@@ -901,6 +901,7 @@ impl<'c> Translation<'c> {
         lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let CQualTypeId { ctype, .. } = cqual_type;
+        let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         let mut unary = match name {
@@ -941,8 +942,19 @@ impl<'c> Translation<'c> {
                         Mutability::Mutable
                     };
 
-                    self.use_feature("raw_ref_op");
-                    Ok(arg.map(|a| mk().set_mutbl(mutbl).raw_borrow_expr(a)))
+                    Ok(arg.map(|a| {
+                        self.use_feature("raw_ref_op");
+
+                        if ctx.is_static && matches!(mutbl, Mutability::Mutable) {
+                            // TODO: The currently used nightly doesn't allow `&raw mut` in static
+                            // initialisers, but the latest version does.
+                            // So we take a `&raw const` and then cast.
+                            // Remove this exemption when the version is updated.
+                            mk().cast_expr(mk().raw_borrow_expr(a), ty)
+                        } else {
+                            mk().set_mutbl(mutbl).raw_borrow_expr(a)
+                        }
+                    }))
                 }
             }
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
