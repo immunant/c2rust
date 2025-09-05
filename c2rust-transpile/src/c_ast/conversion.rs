@@ -559,16 +559,27 @@ impl ConversionContext {
     /// Visit child nodes of a `RecordDecl` (`struct` or `union`) and collect `FieldDecl` node IDs.
     fn visit_record_children<'a>(
         &'a mut self,
+        untyped_context: &'a AstContext,
         node: &'a AstNode,
         new_id: ImporterId,
     ) -> impl Iterator<Item = CDeclId> + 'a {
         use self::node_types::*;
 
         node.children.iter().filter_map(move |id| {
-            let field = id.expect("Record field decl not found");
-            let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
+            let decl = id.expect("Record decl not found");
+            let decl_node = untyped_context
+                .ast_nodes
+                .get(&decl)
+                .expect("child node not found");
+
+            let id = CDeclId(self.visit_node_type(decl, FIELD_DECL | ENUM_DECL | RECORD_DECL));
             self.typed_context.parents.insert(id, CDeclId(new_id));
-            Some(id)
+
+            if decl_node.tag == ASTEntryTag::TagFieldDecl {
+                Some(id)
+            } else {
+                None
+            }
         })
     }
 
@@ -2261,7 +2272,10 @@ impl ConversionContext {
                         from_value(node.extras[6].clone()).expect("Expected struct alignment");
 
                     let fields: Option<Vec<CDeclId>> = if has_def {
-                        Some(self.visit_record_children(node, new_id).collect())
+                        Some(
+                            self.visit_record_children(untyped_context, node, new_id)
+                                .collect(),
+                        )
                     } else {
                         None
                     };
@@ -2289,7 +2303,10 @@ impl ConversionContext {
                     let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
                         .expect("Expected attribute array on record");
                     let fields: Option<Vec<CDeclId>> = if has_def {
-                        Some(self.visit_record_children(node, new_id).collect())
+                        Some(
+                            self.visit_record_children(untyped_context, node, new_id)
+                                .collect(),
+                        )
                     } else {
                         None
                     };
