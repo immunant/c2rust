@@ -942,35 +942,19 @@ impl<'c> Translation<'c> {
                         Mutability::Mutable
                     };
 
-                    arg.result_map(|a| {
-                        let mut addr_of_arg: Box<Expr>;
+                    Ok(arg.map(|a| {
+                        self.use_feature("raw_ref_op");
 
-                        if ctx.is_static {
-                            // static variable initializers aren't able to use &mut,
-                            // so we work around that by using & and an extra cast
-                            // through & to *const to *mut
-                            addr_of_arg = mk().addr_of_expr(a);
-                            if let Mutability::Mutable = mutbl {
-                                let mut qtype = pointee_ty;
-                                qtype.qualifiers.is_const = true;
-                                let ty_ = self
-                                    .type_converter
-                                    .borrow_mut()
-                                    .convert_pointer(&self.ast_context, qtype)?;
-                                addr_of_arg = mk().cast_expr(addr_of_arg, ty_);
-                            }
+                        if ctx.is_static && matches!(mutbl, Mutability::Mutable) {
+                            // TODO: The currently used nightly doesn't allow `&raw mut` in static
+                            // initialisers, but the latest version does.
+                            // So we take a `&raw const` and then cast.
+                            // Remove this exemption when the version is updated.
+                            mk().cast_expr(mk().raw_borrow_expr(a), ty)
                         } else {
-                            // Normal case is allowed to use &mut if needed
-                            addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
-
-                            // Avoid unnecessary reference to pointer decay in fn call args:
-                            if ctx.decay_ref.is_no() {
-                                return Ok(addr_of_arg);
-                            }
+                            mk().set_mutbl(mutbl).raw_borrow_expr(a)
                         }
-
-                        Ok(mk().cast_expr(addr_of_arg, ty))
-                    })
+                    }))
                 }
             }
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),

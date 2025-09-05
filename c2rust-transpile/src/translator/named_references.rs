@@ -124,11 +124,11 @@ impl<'c> Translation<'c> {
 
                 let ptr_name = self.renamer.borrow_mut().fresh();
 
-                // let ref mut p = lhs;
+                // let freshN = &raw mut lhs;
                 let compute_ref = mk().local_stmt(Box::new(mk().local(
-                    mk().mutbl().ident_ref_pat(&ptr_name),
+                    mk().mutbl().ident_pat(&ptr_name),
                     None,
-                    Some(reference),
+                    Some(mk().mutbl().raw_borrow_expr(reference)),
                 )));
 
                 let write =
