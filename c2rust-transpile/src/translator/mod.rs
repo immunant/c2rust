@@ -2174,11 +2174,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let (expr_id, ty) = self
-                    .ast_context
-                    .resolve_expr_type_id(id)
-                    .unwrap_or((id, ty));
-                let expr = self.convert_expr(ctx, expr_id, None)?;
+                let expr = self.convert_expr(ctx, id, None)?;
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
@@ -2525,22 +2521,30 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
-                Ok(val.map(|e| {
-                    if self.ast_context.is_function_pointer(ptr_type) {
-                        if negated {
-                            mk().method_call_expr(e, "is_some", vec![])
+                val.and_then(|e| {
+                    Ok(WithStmts::new_val(
+                        if self.ast_context.is_function_pointer(ptr_type) {
+                            if negated {
+                                mk().method_call_expr(e, "is_some", vec![])
+                            } else {
+                                mk().method_call_expr(e, "is_none", vec![])
+                            }
                         } else {
-                            mk().method_call_expr(e, "is_none", vec![])
-                        }
-                    } else {
-                        let is_null = mk().method_call_expr(e, "is_null", vec![]);
-                        if negated {
-                            mk().unary_expr(UnOp::Not(Default::default()), is_null)
-                        } else {
-                            is_null
-                        }
-                    }
-                }))
+                            if ctx.is_const {
+                                return Err(format_translation_err!(
+                                    None,
+                                    "cannot check nullity of pointer in `const` context",
+                                ));
+                            }
+                            let is_null = mk().method_call_expr(e, "is_null", vec![]);
+                            if negated {
+                                mk().unary_expr(UnOp::Not(Default::default()), is_null)
+                            } else {
+                                is_null
+                            }
+                        },
+                    ))
+                })
             };
 
         match self.ast_context[cond_id].kind {
@@ -2578,7 +2582,7 @@ impl<'c> Translation<'c> {
                 // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
                 // specify Yes for that particular case, given enough analysis.
                 let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
-                Ok(val.map(|e| self.match_bool(target, ty_id, e)))
+                val.result_map(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
     }
@@ -3649,7 +3653,7 @@ impl<'c> Translation<'c> {
                         |NamedReference {
                              rvalue: lhs_val, ..
                          }| {
-                            let cond = self.match_bool(true, ty.ctype, lhs_val.clone());
+                            let cond = self.match_bool(ctx, true, ty.ctype, lhs_val.clone())?;
                             let ite = mk().ifte_expr(
                                 cond,
                                 mk().block(vec![mk().expr_stmt(lhs_val)]),
@@ -4414,7 +4418,14 @@ impl<'c> Translation<'c> {
             | CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
-            | CastKind::IntegralToFloating => {
+            | CastKind::IntegralToFloating
+            | CastKind::BooleanToSignedIntegral => {
+                if kind == CastKind::PointerToIntegral && ctx.is_const {
+                    return Err(format_translation_err!(
+                        None,
+                        "cannot observe pointer values in `const` context",
+                    ));
+                }
                 let target_ty = self.convert_type(ty.ctype)?;
                 let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
 
@@ -4567,14 +4578,9 @@ impl<'c> Translation<'c> {
                 if let Some(expr) = expr {
                     self.convert_condition(ctx, true, expr)
                 } else {
-                    Ok(val.map(|e| self.match_bool(true, source_ty.ctype, e)))
+                    val.result_map(|e| self.match_bool(ctx, true, source_ty.ctype, e))
                 }
             }
-
-            // I don't know how to actually cause clang to generate this
-            CastKind::BooleanToSignedIntegral => Err(TranslationError::generic(
-                "TODO boolean to signed integral not supported",
-            )),
 
             CastKind::FloatingRealToComplex
             | CastKind::FloatingComplexToIntegralComplex
@@ -4666,7 +4672,7 @@ impl<'c> Translation<'c> {
             CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
                 return val.map(|x| match *unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
-                    _ => panic!("DeclRef {:?} of enum {:?} is not cast", expr, enum_decl),
+                    ref e => mk().cast_expr(x, target_ty),
                 });
             }
 
@@ -4891,16 +4897,28 @@ impl<'c> Translation<'c> {
     }
 
     /// Convert a boolean expression to a boolean for use in && or || or if
-    fn match_bool(&self, target: bool, ty_id: CTypeId, val: Box<Expr>) -> Box<Expr> {
+    fn match_bool(
+        &self,
+        ctx: ExprContext,
+        target: bool,
+        ty_id: CTypeId,
+        val: Box<Expr>,
+    ) -> TranslationResult<Box<Expr>> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
-        if self.ast_context.is_function_pointer(ty_id) {
+        Ok(if self.ast_context.is_function_pointer(ty_id) {
             if target {
                 mk().method_call_expr(val, "is_some", vec![])
             } else {
                 mk().method_call_expr(val, "is_none", vec![])
             }
         } else if ty.is_pointer() {
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "cannot check nullity of pointer in `const` context",
+                ));
+            }
             let mut res = mk().method_call_expr(val, "is_null", vec![]);
             if target {
                 res = mk().unary_expr(UnOp::Not(Default::default()), res)
@@ -4930,16 +4948,16 @@ impl<'c> Translation<'c> {
                     ..
                 }) = *unparen(arg)
                 {
-                    if target {
+                    return Ok(if target {
                         // If target == true, just return the argument
-                        return Box::new(unparen(arg).clone());
+                        Box::new(unparen(arg).clone())
                     } else {
                         // If target == false, return !arg
-                        return mk().unary_expr(
+                        mk().unary_expr(
                             UnOp::Not(Default::default()),
                             Box::new(unparen(arg).clone()),
-                        );
-                    }
+                        )
+                    });
                 }
             }
 
@@ -4961,7 +4979,7 @@ impl<'c> Translation<'c> {
             } else {
                 mk().binary_expr(BinOp::Eq(Default::default()), val, zero)
             }
-        }
+        })
     }
 
     pub fn with_scope<F, A>(&self, f: F) -> A
