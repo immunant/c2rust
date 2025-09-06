@@ -1,11 +1,12 @@
 //! `ConstraintSet` and related definitions.
+use log::debug;
 use std::cmp;
 use std::collections::btree_set::{self, BTreeSet};
 use std::collections::Bound;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 
 use super::{ConcretePerm, PermVar, Var};
 
@@ -63,7 +64,7 @@ impl<'lty, 'tcx> Perm<'lty> {
 
     /// Construct the minimum of two permissions.  This needs a reference to the arena, since it
     /// may need to allocate a new slice for `Min`.
-    pub fn min(a: Perm<'lty>, b: Perm<'lty>, arena: &'lty SyncDroplessArena) -> Perm<'lty> {
+    pub fn min(a: Perm<'lty>, b: Perm<'lty>, arena: &'lty DroplessArena) -> Perm<'lty> {
         debug!("finding min of {:?} and {:?}", a, b);
         match (a, b) {
             // A few easy cases
@@ -136,7 +137,7 @@ impl<'lty, 'tcx> Perm<'lty> {
     /// to `callback`.
     pub fn for_each_replacement<F>(
         &self,
-        arena: &'lty SyncDroplessArena,
+        arena: &'lty DroplessArena,
         old: Perm<'lty>,
         news: &[Perm<'lty>],
         mut callback: F,
@@ -261,7 +262,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     pub fn import_substituted<F>(
         &mut self,
         other: &ConstraintSet<'lty>,
-        arena: &'lty SyncDroplessArena,
+        arena: &'lty DroplessArena,
         f: F,
     ) where
         F: Fn(Perm<'lty>) -> Perm<'lty>,
@@ -293,7 +294,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     }
 
     /// Clone `self`, substituting each atomic permission using the callback `f`.
-    pub fn clone_substituted<F>(&self, arena: &'lty SyncDroplessArena, f: F) -> ConstraintSet<'lty>
+    pub fn clone_substituted<F>(&self, arena: &'lty DroplessArena, f: F) -> ConstraintSet<'lty>
     where
         F: Fn(Perm<'lty>) -> Perm<'lty>,
     {
@@ -572,7 +573,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
 
     /// Simplify `min(...) <= ...` constraints as much as possible.  Unlike `... <= min(...)`, it
     /// may not always be possible to completely eliminate such constraints.
-    pub fn simplify_min_lhs(&mut self, arena: &'lty SyncDroplessArena) {
+    pub fn simplify_min_lhs(&mut self, arena: &'lty DroplessArena) {
         let mut edit = self.edit();
 
         'next: while let Some((a, b)) = edit.next() {
@@ -673,7 +674,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     }
 
     /// Simplify the constraint set as best we can.
-    pub fn simplify(&mut self, arena: &'lty SyncDroplessArena) {
+    pub fn simplify(&mut self, arena: &'lty DroplessArena) {
         self.remove_useless();
         self.expand_min_rhs();
         self.simplify_min_lhs(arena);
@@ -685,7 +686,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     ///
     /// This may be imprecise if a removed permission appears as an argument of a `Min`.  Simplify
     /// the constraint set first to remove as many `Min`s as possible before using this function.
-    pub fn retain_perms<F>(&mut self, arena: &'lty SyncDroplessArena, filter: F)
+    pub fn retain_perms<F>(&mut self, arena: &'lty DroplessArena, filter: F)
     where
         F: Fn(Perm<'lty>) -> bool,
     {

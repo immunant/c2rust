@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::ops::{Deref, DerefMut};
-use syntax::ast::*;
-use syntax::visit::{self, Visitor};
+use rustc_ast::*;
+use rustc_ast::visit::{self, Visitor};
 
 use super::{AstNodeRef, Visit};
 
@@ -135,7 +135,7 @@ impl<'a, 's> Visitor<'s> for MapAstInto<'a, 's> {
         visit::walk_block(self, x);
     }
 
-    fn visit_mac(&mut self, mac: &'s Mac) {
+    fn visit_mac_call(&mut self, mac: &'s MacCall) {
         visit::walk_mac(self, mac);
     }
 }
@@ -214,7 +214,7 @@ impl<'a, 's> Visitor<'s> for MapAstIntoUnified<'a, 's> {
         visit::walk_block(self, x);
     }
 
-    fn visit_mac(&mut self, mac: &'s Mac) {
+    fn visit_mac_call(&mut self, mac: &'s MacCall) {
         visit::walk_mac(self, mac);
     }
 }

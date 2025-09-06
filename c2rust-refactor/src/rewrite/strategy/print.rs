@@ -9,28 +9,30 @@
 //! pretty-printer output, since it likely has nicer formatting, comments, etc.  So there is some
 //! logic in this module for "recovering" from needing to use this strategy by splicing old AST
 //! text back into the new AST's pretty printer output.
-use rustc::session::Session;
+use log::{info, warn};
+use rustc_session::Session;
 use rustc_data_structures::sync::Lrc;
 use rustc_target::spec::abi::Abi;
 use std::fmt::Debug;
 use std::fs;
 use std::path;
 use std::rc::Rc;
-use syntax::ast::*;
-use syntax::attr;
-use syntax_pos::hygiene::SyntaxContext;
-use syntax::util::comments::CommentStyle;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::ptr::P;
-use syntax::source_map::{BytePos, FileName, SourceFile, Span, Spanned};
-use syntax::symbol::Symbol;
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::util::parser;
-use syntax::ThinVec;
-use syntax_pos::DUMMY_SP;
+use rustc_ast::*;
+use rustc_ast::attr;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_ast::util::comments::CommentStyle;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::ptr::P;
+use rustc_ast_pretty::pprust::{self, PrintState};
+use rustc_parse::parser::attr::InnerAttrPolicy;
+use rustc_span::source_map::{BytePos, FileName, RealFileName, SourceFile, Span, Spanned};
+use rustc_span::symbol::{Ident, Symbol};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::util::parser;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::DUMMY_SP;
 
-use c2rust_ast_printer::pprust::{self, PrintState};
 use crate::ast_manip::NodeTable;
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
@@ -98,7 +100,9 @@ impl PrintParse for Stmt {
         // nodes.
         match self.kind {
             StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
-            _ => pprust::stmt_to_string(self),
+            _ => pprust::to_string(|s| {
+                s.stmt_to_string(self);
+            }),
         }
     }
 
@@ -123,10 +127,12 @@ impl PrintParse for Item {
 
 impl PrintParse for ForeignItem {
     fn to_string(&self) -> String {
-        pprust::to_string(|s| s.print_foreign_item(self))
+        pprust::to_string(|s| {
+            s.foreign_item_to_string(self);
+        })
     }
 
-    type Parsed = ForeignItem;
+    type Parsed = P<ForeignItem>;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
         driver::parse_foreign_items(sess, src).lone()
     }
@@ -134,7 +140,9 @@ impl PrintParse for ForeignItem {
 
 impl PrintParse for Block {
     fn to_string(&self) -> String {
-        pprust::block_to_string(self)
+        pprust::to_string(|s| {
+            s.block_to_string(self);
+        })
     }
 
     type Parsed = P<Block>;
@@ -145,7 +153,9 @@ impl PrintParse for Block {
 
 impl PrintParse for Param {
     fn to_string(&self) -> String {
-        pprust::param_to_string(self)
+        pprust::to_string(|s| {
+            s.param_to_string(self);
+        })
     }
 
     type Parsed = Param;
@@ -164,16 +174,16 @@ impl PrintParse for Attribute {
         driver::run_parser(sess, src, |p| {
             match p.token.kind {
                 // `parse_attribute` doesn't handle inner or outer doc comments.
-                TokenKind::DocComment(s) => {
+                TokenKind::DocComment(kind, style, s) => {
                     assert!(src.ends_with('\n'));
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_doc_comment(AttrStyle::Outer, s, span);
+                    let attr = attr::mk_doc_comment(kind, style, s, span);
                     p.bump();
                     return Ok(attr);
                 }
-                _ => p.parse_attribute(true),
+                _ => p.parse_attribute(InnerAttrPolicy::Permitted),
             }
         })
     }
@@ -344,7 +354,7 @@ pub trait RecoverChildren: Debug {
     fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef);
 }
 
-impl<T: RecoverChildren> RecoverChildren for P<T> {
+impl<T: RecoverChildren + ?Sized> RecoverChildren for P<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_children(reparsed, new, rcx)
     }
@@ -358,7 +368,21 @@ impl<T: RecoverChildren> RecoverChildren for P<T> {
     }
 }
 
-impl<T: RecoverChildren> RecoverChildren for Rc<T> {
+impl<T: RecoverChildren + ?Sized> RecoverChildren for Box<T> {
+    fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_children(reparsed, new, rcx)
+    }
+
+    fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_and_children(reparsed, new, rcx)
+    }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
+    }
+}
+
+impl<T: RecoverChildren + ?Sized> RecoverChildren for Rc<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_children(reparsed, new, rcx)
     }
@@ -549,12 +573,8 @@ where
         return false;
     }
 
-    let sf = rcx
-        .session()
-        .source_map()
-        .lookup_byte_offset(old_span.lo())
-        .sf;
-    if let FileName::Macros(..) = sf.name {
+    let sm = rcx.session().source_map();
+    if sm.is_imported(old_span) {
         return false;
     }
 
@@ -709,9 +729,12 @@ fn create_file_for_module(
     let old_sf = source_map.lookup_byte_offset(old_span.lo()).sf;
     let mut path_attr = None;
     let filename = match old_sf.name.clone() {
-        FileName::Real(mut path) => {
+        FileName::Real(path) => {
             let mod_file_name = format!("{}.rs", module_item.ident.to_string());
-            if let Some(path_attr) = attr::first_attr_value_str_by_name(&module_item.attrs, Symbol::intern("path")) {
+            let mut path = path
+                .into_local_path()
+                .expect("module file has no local path");
+            if let Some(path_attr) = crate::util::first_attr_value_str_by_name(&module_item.attrs, Symbol::intern("path")) {
                 path.pop();
                 path.push(path_attr.to_string());
             } else {
@@ -753,19 +776,20 @@ fn create_file_for_module(
         _ => panic!("Could not construct file path for external module {:?}", module_item.ident),
     };
 
-    let sf = source_map.new_source_file(FileName::Real(filename), String::new());
+    let rfn = RealFileName::LocalPath(filename);
+    let sf = source_map.new_source_file(FileName::Real(rfn), String::new());
     (sf, path_attr)
 }
 
 impl RewriteAt for Item {
     fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
-        if let ItemKind::Mod(module) = &self.kind {
-            if !module.inline {
+        if let ItemKind::Mod(_, ModKind::Loaded(m_items, m_inline, m_spans)) = &self.kind {
+            if *m_inline == Inline::No {
                 // We need to print the `mod name;` in the parent and the module
                 // contents in its own file. If there are no items, delete the
                 // `mod name;`.
 
-                if module.items.is_empty() {
+                if m_items.is_empty() {
                     info!("DELETE {}", describe(rcx.session(), old_span));
                     rcx.record(TextRewrite::new(old_span, DUMMY_SP));
                     return true;
@@ -776,15 +800,15 @@ impl RewriteAt for Item {
                 // let old_span = rewind_span_over_whitespace(old_span, &rcx);
 
                 // Where should the module contents be printed?
-                let inner_span = if !is_rewritable(module.inner) {
+                let inner_span = if !is_rewritable(m_spans.inner_span) {
                     // Need to create a new file
                     let (sf, path_attr) = create_file_for_module(self, old_span, rcx.session());
                     if let Some(attr) = path_attr {
                         item.attrs.push(attr);
                     }
-                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root())
+                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root(), None)
                 } else {
-                    module.inner
+                    m_spans.inner_span
                 };
 
                 // Print the module (mod foo;) in the parent
@@ -802,8 +826,10 @@ impl RewriteAt for Item {
                 rcx.record(rw);
 
                 // Print the module items in the external file
-                let mut printed = pprust::to_string(|s| s.print_inner_attributes(&self.attrs));
-                for item in &module.items {
+                let mut printed = pprust::to_string(|s| {
+                    s.print_inner_attributes(&self.attrs);
+                });
+                for item in m_items {
                     printed.push_str(&add_comments(item.to_string(), item, &rcx));
                 }
                 let reparsed = driver::parse_items(rcx.session(), &printed);
@@ -821,7 +847,7 @@ impl RewriteAt for Item {
                     reparsed_span,
                     self.get_adjustment(&rcx),
                 );
-                RecoverChildren::recover_children(&reparsed, &module.items, rcx.enter(&mut rw));
+                RecoverChildren::recover_children(&reparsed, &m_items, rcx.enter(&mut rw));
                 rcx.record(rw);
 
                 return true;

@@ -1,9 +1,9 @@
-//! Provides a wrapper around `rustc::ty::Ty` with a label attached to each type constructor.  This
+//! Provides a wrapper around `rustc_middle::ty::Ty` with a label attached to each type constructor.  This
 //!
 //! Labeled type data is manipulated by reference, the same as with `Ty`s, and the data is stored
 //! in the same arena as the underlying `Ty`s.
-use arena::SyncDroplessArena;
-use rustc::ty::{Ty, TyKind};
+use rustc_arena::DroplessArena;
+use rustc_middle::ty::{Ty, TyKind};
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -30,7 +30,7 @@ pub struct LabeledTyS<'lty, 'tcx: 'lty, L: 'lty> {
     pub label: L,
 }
 
-/// A labeled type.  Like `rustc::ty::Ty`, this is a reference to some arena-allocated data.
+/// A labeled type.  Like `rustc_middle::ty::Ty`, this is a reference to some arena-allocated data.
 pub type LabeledTy<'lty, 'tcx, L> = &'lty LabeledTyS<'lty, 'tcx, L>;
 
 impl<'lty, 'tcx, L: fmt::Debug> fmt::Debug for LabeledTyS<'lty, 'tcx, L> {
@@ -50,14 +50,14 @@ impl<'lty, 'tcx, L> LabeledTyS<'lty, 'tcx, L> {
 
 /// Context for constructing `LabeledTy`s.
 pub struct LabeledTyCtxt<'lty, L: 'lty> {
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
     _marker: PhantomData<L>,
 }
 
 impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     /// Build a new `LabeledTyCtxt`.  The `arena` must be the same one used by the `TyCtxt` that
     /// built the underlying `Ty`s to be labeled.
-    pub fn new(arena: &'lty SyncDroplessArena) -> LabeledTyCtxt<'lty, L> {
+    pub fn new(arena: &'lty DroplessArena) -> LabeledTyCtxt<'lty, L> {
         LabeledTyCtxt {
             arena,
             _marker: PhantomData,
@@ -90,43 +90,43 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         ty: Ty<'tcx>,
         f: &mut F,
     ) -> LabeledTy<'lty, 'tcx, L> {
-        use rustc::ty::TyKind::*;
+        use rustc_type_ir::sty::TyKind;
         let label = f(ty);
-        match ty.kind {
+        match ty.kind() {
             // Types with no arguments
-            Bool | Char | Int(_) | Uint(_) | Float(_) | Str | Foreign(_) | Never => {
+            TyKind::Bool | TyKind::Char | TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_) | TyKind::Str | TyKind::Foreign(_) | TyKind::Never => {
                 self.mk(ty, &[], label)
             }
 
             // Types with arguments
-            Adt(_, substs) => {
+            TyKind::Adt(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Array(elem, _) => {
-                let args = [self.label(elem, f)];
+            TyKind::Array(elem, _) => {
+                let args = [self.label(*elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Slice(elem) => {
-                let args = [self.label(elem, f)];
+            TyKind::Slice(elem) => {
+                let args = [self.label(*elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            RawPtr(mty) => {
+            TyKind::RawPtr(mty) => {
                 let args = [self.label(mty.ty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Ref(_, mty, _) => {
-                let args = [self.label(mty, f)];
+            TyKind::Ref(_, mty, _) => {
+                let args = [self.label(*mty, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            FnDef(_, substs) => {
+            TyKind::FnDef(_, substs) => {
                 let args = substs
                     .types()
                     .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            FnPtr(ref sig) => {
+            TyKind::FnPtr(ref sig) => {
                 let args = sig
                     .skip_binder()
                     .inputs_and_output
@@ -135,27 +135,26 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            Tuple(ref elems) => {
+            TyKind::Tuple(ref elems) => {
                 let args = elems
-                    .types()
+                    .iter()
                     .map(|ty| self.label(ty, f))
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..)
-            | Closure(..)
-            | Generator(..)
-            | GeneratorWitness(..)
-            | Projection(..)
-            | UnnormalizedProjection(..)
-            | Opaque(..)
-            | Param(..)
-            | Bound(..)
-            | Placeholder(..)
-            | Infer(..)
-            | Error => self.mk(ty, &[], label),
+            TyKind::Dynamic(..)
+            | TyKind::Closure(..)
+            | TyKind::Generator(..)
+            | TyKind::GeneratorWitness(..)
+            | TyKind::Projection(..)
+            | TyKind::Opaque(..)
+            | TyKind::Param(..)
+            | TyKind::Bound(..)
+            | TyKind::Placeholder(..)
+            | TyKind::Infer(..)
+            | TyKind::Error(..) => self.mk(ty, &[], label),
         }
     }
 
@@ -164,7 +163,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
     where
         F: FnMut(Ty<'tcx>) -> L,
     {
-        self.mk_slice(&tys.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>())
+        self.mk_slice(&tys.iter().map(|ty| self.label(*ty, f)).collect::<Vec<_>>())
     }
 
     /// Substitute in arguments for any type parameter references (`Param`) in a labeled type.
@@ -180,7 +179,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         lty: LabeledTy<'lty, 'tcx, L>,
         substs: &[LabeledTy<'lty, 'tcx, L>],
     ) -> LabeledTy<'lty, 'tcx, L> {
-        if let TyKind::Param(ref ty) = lty.ty.kind {
+        if let TyKind::Param(ref ty) = lty.ty.kind() {
             if let Some(p) = substs.get(ty.index as usize) {
                 return p;
             }
@@ -239,8 +238,8 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
 }
 
 impl<'lty, 'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'lty, 'tcx, L> {
-    fn sty(&self) -> &TyKind {
-        &self.ty.kind
+    fn sty(&self) -> &'tcx TyKind {
+        &self.ty.kind()
     }
 
     fn num_args(&self) -> usize {

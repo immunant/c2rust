@@ -31,7 +31,7 @@ impl VisitorImpls {
             self.tokens.extend(quote! {
                 impl WalkAst for #ty {
                     fn walk<T: MutVisitor>(&mut self, v: &mut T) {
-                        syntax::mut_visit::#noop_fn(self, v);
+                        rustc_ast::mut_visit::#noop_fn(self, v);
                     }
                 }
             });
@@ -89,7 +89,7 @@ impl VisitorImpls {
             self.tokens.extend(quote! {
                 impl WalkAst for #ty {
                     fn walk<T: MutVisitor>(&mut self, v: &mut T) {
-                        *self = syntax::mut_visit::#noop_fn(self.clone(), v).lone();
+                        *self = rustc_ast::mut_visit::#noop_fn(self.clone(), v).lone();
                     }
                 }
             })
