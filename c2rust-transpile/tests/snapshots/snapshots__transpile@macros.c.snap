@@ -5,7 +5,6 @@ input_file: c2rust-transpile/tests/snapshots/macros.c
 ---
 #![allow(
     dead_code,
-    mutable_transmutes,
     non_camel_case_types,
     non_snake_case,
     non_upper_case_globals,
@@ -37,7 +36,7 @@ pub const LITERAL_BOOL: std::ffi::c_int = true_0;
 pub const LITERAL_FLOAT: std::ffi::c_double = 3.14f64;
 pub const LITERAL_CHAR: std::ffi::c_int = 'x' as i32;
 pub const LITERAL_STR: [std::ffi::c_char; 6] =
-    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+    unsafe { ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0") };
 pub const LITERAL_STRUCT: S = {
     let mut init = S {
         i: 5 as std::ffi::c_int,
@@ -49,7 +48,7 @@ pub const NESTED_BOOL: std::ffi::c_int = 1 as std::ffi::c_int;
 pub const NESTED_FLOAT: std::ffi::c_double = LITERAL_FLOAT;
 pub const NESTED_CHAR: std::ffi::c_int = 'x' as i32;
 pub const NESTED_STR: [std::ffi::c_char; 6] =
-    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+    unsafe { ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0") };
 pub const NESTED_STRUCT: S = {
     let mut init = S {
         i: 5 as std::ffi::c_int,
@@ -68,7 +67,7 @@ pub const CONVERSION_CAST: std::ffi::c_int = LITERAL_INT;
 pub const STMT_EXPR: std::ffi::c_float = ({
     let mut builtin: std::ffi::c_int = (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
     let mut indexing: std::ffi::c_char = unsafe {
-        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+        ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0")
             [LITERAL_FLOAT as std::ffi::c_int as usize]
     };
     let mut mixed: std::ffi::c_float = (LITERAL_INT as std::ffi::c_double
@@ -117,12 +116,12 @@ pub unsafe extern "C" fn local_muts() {
     let mut narrowing_cast: std::ffi::c_char = LITERAL_INT as std::ffi::c_char;
     let mut conversion_cast: std::ffi::c_double = CONVERSION_CAST as std::ffi::c_double;
     let mut indexing: std::ffi::c_char =
-        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+        ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0")
             [LITERAL_FLOAT as std::ffi::c_int as usize];
     let mut str_concatenation_ptr: *const std::ffi::c_char =
         b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
     let mut str_concatenation: [std::ffi::c_char; 18] =
-        *::core::mem::transmute::<&[u8; 18], &mut [std::ffi::c_char; 18]>(b"hello hello world\0");
+        ::core::mem::transmute::<[u8; 18], [std::ffi::c_char; 18]>(*b"hello hello world\0");
     let mut builtin: std::ffi::c_int = (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
     let mut ref_indexing: *const std::ffi::c_char = &*NESTED_STR
         .as_ptr()
@@ -173,12 +172,12 @@ pub unsafe extern "C" fn local_consts() {
     let narrowing_cast: std::ffi::c_char = LITERAL_INT as std::ffi::c_char;
     let conversion_cast: std::ffi::c_double = CONVERSION_CAST as std::ffi::c_double;
     let indexing: std::ffi::c_char =
-        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+        ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0")
             [LITERAL_FLOAT as std::ffi::c_int as usize];
     let str_concatenation_ptr: *const std::ffi::c_char =
         b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
     let str_concatenation: [std::ffi::c_char; 18] =
-        *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0");
+        ::core::mem::transmute::<[u8; 18], [std::ffi::c_char; 18]>(*b"hello hello world\0");
     let builtin: std::ffi::c_int = (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
     let ref_indexing: *const std::ffi::c_char = &*NESTED_STR
         .as_ptr()
@@ -234,9 +233,8 @@ static mut global_static_const_conversion_cast: std::ffi::c_double =
 static mut global_static_const_indexing: std::ffi::c_char = 0;
 static mut global_static_const_str_concatenation_ptr: *const std::ffi::c_char =
     b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
-static mut global_static_const_str_concatenation: [std::ffi::c_char; 18] = unsafe {
-    *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0")
-};
+static mut global_static_const_str_concatenation: [std::ffi::c_char; 18] =
+    unsafe { ::core::mem::transmute::<[u8; 18], [std::ffi::c_char; 18]>(*b"hello hello world\0") };
 static mut global_static_const_builtin: std::ffi::c_int =
     (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
 static mut global_static_const_ref_indexing: *const std::ffi::c_char = 0 as *const std::ffi::c_char;
@@ -310,9 +308,8 @@ pub static mut global_const_indexing: std::ffi::c_char = 0;
 pub static mut global_const_str_concatenation_ptr: *const std::ffi::c_char =
     b"hello hello world\0" as *const u8 as *const std::ffi::c_char;
 #[no_mangle]
-pub static mut global_const_str_concatenation: [std::ffi::c_char; 18] = unsafe {
-    *::core::mem::transmute::<&[u8; 18], &[std::ffi::c_char; 18]>(b"hello hello world\0")
-};
+pub static mut global_const_str_concatenation: [std::ffi::c_char; 18] =
+    unsafe { ::core::mem::transmute::<[u8; 18], [std::ffi::c_char; 18]>(*b"hello hello world\0") };
 #[no_mangle]
 pub static mut global_const_builtin: std::ffi::c_int =
     (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
@@ -390,7 +387,7 @@ pub const silk_int16_MIN: std::ffi::c_int = 0x8000 as std::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn test_silk_int16_MIN() -> std::ffi::c_int {
     let mut _null: std::ffi::c_char =
-        (*::core::mem::transmute::<&[u8; 1], &[std::ffi::c_char; 1]>(b"\0"))[(silk_int16_MIN
+        ::core::mem::transmute::<[u8; 1], [std::ffi::c_char; 1]>(*b"\0")[(silk_int16_MIN
             as std::ffi::c_short
             as std::ffi::c_int
             + 0x8000 as std::ffi::c_int)
@@ -416,7 +413,7 @@ pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
 unsafe extern "C" fn run_static_initializers() {
     global_static_const_ptr_arithmetic = PTR_ARITHMETIC;
     global_static_const_indexing =
-        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+        ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0")
             [LITERAL_FLOAT as std::ffi::c_int as usize];
     global_static_const_ref_indexing = &*NESTED_STR
         .as_ptr()
@@ -429,9 +426,8 @@ unsafe extern "C" fn run_static_initializers() {
     };
     global_static_const_member = LITERAL_STRUCT.i;
     global_const_ptr_arithmetic = PTR_ARITHMETIC;
-    global_const_indexing =
-        (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
-            [LITERAL_FLOAT as std::ffi::c_int as usize];
+    global_const_indexing = ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0")
+        [LITERAL_FLOAT as std::ffi::c_int as usize];
     global_const_ref_indexing = &*NESTED_STR
         .as_ptr()
         .offset(LITERAL_FLOAT as std::ffi::c_int as isize)
