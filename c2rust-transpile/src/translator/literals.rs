@@ -154,29 +154,44 @@ impl<'c> Translation<'c> {
             CLiteral::String(ref val, width) => {
                 let mut val = val.to_owned();
 
-                let num_elems = match self.ast_context.resolve_type(ty.ctype).kind {
-                    // Match the literal size to the expected size padding with zeros as needed
-                    CTypeKind::ConstantArray(_elem_ty, size) => size,
-                    // zero terminator
-                    _ => 1,
-                };
-                let size = num_elems * (width as usize);
-                val.resize(size, 0);
+                match self.ast_context.resolve_type(ty.ctype).kind {
+                    CTypeKind::ConstantArray(_elem_ty, num_elems) => {
+                        // Match the literal size to the expected size padding with zeros as needed
+                        let size = num_elems * (width as usize);
+                        val.resize(size, 0);
 
-                let u8_ty = mk().path_ty(vec!["u8"]);
-                let width_lit = mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
-                let array_ty = mk().array_ty(u8_ty, width_lit);
-                let source_ty = mk().ref_ty(array_ty);
-                let mutbl = if ty.qualifiers.is_const {
-                    Mutability::Immutable
-                } else {
-                    Mutability::Mutable
-                };
-                let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
-                let byte_literal = mk().lit_expr(val);
-                let pointer = transmute_expr(source_ty, target_ty, byte_literal);
-                let array = mk().unary_expr(UnOp::Deref(Default::default()), pointer);
-                Ok(WithStmts::new_unsafe_val(array))
+                        // std::mem::transmute::<[u8; size], ctype>(*b"xxxx")
+                        let u8_ty = mk().path_ty(vec!["u8"]);
+                        let width_lit = mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
+                        Ok(WithStmts::new_unsafe_val(transmute_expr(
+                            mk().array_ty(u8_ty, width_lit),
+                            self.convert_type(ty.ctype)?,
+                            mk().unary_expr("*", mk().lit_expr(val)),
+                        )))
+                    }
+                    // zero terminator
+                    _ => {
+                        let num_elems = 1;
+                        let size = num_elems * (width as usize);
+                        val.resize(size, 0);
+
+                        // *std::mem::transmute::<&[u8; size], &{mut} ctype>(b"xxxx")
+                        let u8_ty = mk().path_ty(vec!["u8"]);
+                        let width_lit = mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
+                        let array_ty = mk().array_ty(u8_ty, width_lit);
+                        let source_ty = mk().ref_ty(array_ty);
+                        let mutbl = if ty.qualifiers.is_const {
+                            Mutability::Immutable
+                        } else {
+                            Mutability::Mutable
+                        };
+                        let target_ty = mk().set_mutbl(mutbl).ref_ty(self.convert_type(ty.ctype)?);
+                        let byte_literal = mk().lit_expr(val);
+                        let pointer = transmute_expr(source_ty, target_ty, byte_literal);
+                        let array = mk().unary_expr(UnOp::Deref(Default::default()), pointer);
+                        Ok(WithStmts::new_unsafe_val(array))
+                    }
+                }
             }
         }
     }
