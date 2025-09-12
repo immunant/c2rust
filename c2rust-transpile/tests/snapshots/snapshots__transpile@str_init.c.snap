@@ -96,9 +96,7 @@ pub unsafe extern "C" fn array_of_arrays_static_struct() {
         {
             let mut init = s {
                 entries: [
-                    ::core::mem::transmute::<[u8; 10], [std::ffi::c_char; 10]>(
-                        *b"hello\0\0\0\0\0",
-                    ),
+                    ::core::mem::transmute::<[u8; 10], [std::ffi::c_char; 10]>(*b"hello\0\0\0\0\0"),
                     [0; 10],
                     [0; 10],
                 ],
