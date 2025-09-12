@@ -10,15 +10,15 @@ const BUFFER_SIZE: usize = 1;
 
 #[test]
 pub fn test_struct_with_exp() {
-  let mut buffer = [0; BUFFER_SIZE];
-  let mut rust_buffer = [0; BUFFER_SIZE];
-  let expected_buffer = [42];
+    let mut buffer = [0; BUFFER_SIZE];
+    let mut rust_buffer = [0; BUFFER_SIZE];
+    let expected_buffer = [42];
 
-  unsafe {
-      struct_with_exp(BUFFER_SIZE as u32, buffer.as_mut_ptr());
-      rust_struct_with_exp(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
-  }
+    unsafe {
+        struct_with_exp(BUFFER_SIZE as u32, buffer.as_mut_ptr());
+        rust_struct_with_exp(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
+    }
 
-  assert_eq!(buffer, rust_buffer);
-  assert_eq!(buffer, expected_buffer);
+    assert_eq!(buffer, rust_buffer);
+    assert_eq!(buffer, expected_buffer);
 }

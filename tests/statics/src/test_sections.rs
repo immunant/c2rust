@@ -40,7 +40,9 @@ pub fn test_sectioned_used_static() {
 
         let pos = lines
             .iter()
-            .position(|&x| x == "static mut rust_used_static4: std::ffi::c_int = 1 as std::ffi::c_int;")
+            .position(|&x| {
+                x == "static mut rust_used_static4: std::ffi::c_int = 1 as std::ffi::c_int;"
+            })
             .expect("Did not find expected static string in source");
         // The ordering of these attributes is not stable between LLVM versions
         assert!(

@@ -1,6 +1,5 @@
 //! xfail
 
-
 use crate::implicit_int::{identity as rust_identity, implicit_int as rust_implicit_int};
 use std::ffi::{c_int, c_uint};
 
@@ -17,7 +16,6 @@ pub fn test_identity() {
         assert_eq!(rust_identity(1), 1);
     }
 }
-
 
 #[test]
 pub fn test_implicit_int() {

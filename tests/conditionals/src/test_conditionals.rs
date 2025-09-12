@@ -1,10 +1,10 @@
 use crate::binary_conditional::rust_entry3;
 use crate::conditional::rust_entry;
 use crate::conditionals::{rust_entry2, rust_ternaries};
+use crate::else_if_chain::rust_entry4;
 use crate::unused_conditionals::{
     rust_unused_conditional1, rust_unused_conditional2, rust_unused_conditional3,
 };
-use crate::else_if_chain::rust_entry4;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
@@ -14,7 +14,7 @@ extern "C" {
     fn entry2(_: c_uint, _: *mut c_int);
 
     fn entry3(_: c_uint, _: *mut c_int);
-    
+
     fn entry4(_: c_int) -> c_int;
 
     fn unused_conditional1() -> c_int;
@@ -83,11 +83,11 @@ pub fn test_unused_conditional() {
 }
 
 #[test]
-pub fn test_else_if_chain(){
+pub fn test_else_if_chain() {
     unsafe {
-        assert_eq!(entry4(0) , rust_entry4(0));
-        assert_eq!(entry4(10) , rust_entry4(10));
-        assert_eq!(entry4(20) , rust_entry4(20));
-        assert_eq!(entry4(30) , rust_entry4(30));
+        assert_eq!(entry4(0), rust_entry4(0));
+        assert_eq!(entry4(10), rust_entry4(10));
+        assert_eq!(entry4(20), rust_entry4(20));
+        assert_eq!(entry4(30), rust_entry4(30));
     }
 }
