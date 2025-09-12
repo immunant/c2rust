@@ -697,7 +697,6 @@ impl TypedAstContext {
 
         use CStmtKind::*;
         match self[stmt].kind {
-            Label(stmt) => is_const(stmt),
             Case(expr, stmt, _const_expr) => is_const_expr(expr) && is_const(stmt),
             Default(stmt) => is_const(stmt),
             Compound(ref stmts) => stmts.iter().copied().all(is_const),
@@ -726,7 +725,6 @@ impl TypedAstContext {
                     && increment.map_or(true, is_const_expr)
                     && is_const(body)
             }
-            Goto(label) => is_const(label),
             Break => true,
             Continue => true,
             Return(expr) => expr.map_or(true, is_const_expr),
@@ -736,6 +734,17 @@ impl TypedAstContext {
                 attributes: _,
                 substatement,
             } => is_const(substatement),
+            // `goto`s are tricky, because they can be non-local
+            // and jump out of the context of the macro.
+            // A `goto` and its labels are `const` if the whole state machine
+            // we compile to has all `const` statements,
+            // but determining what that is exactly is trickier,
+            // and might depend on the context in which the macro is used.
+            // This is probably fairly uncommon, so we just assume it's not `const` for now.
+            // Note that in C, labels are for `goto`s.
+            // There are no labeled `break`s and `continue`s.
+            Label(_stmt) => false,
+            Goto(_label) => false,
         }
     }
 
