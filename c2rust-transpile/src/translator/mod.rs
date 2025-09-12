@@ -4447,6 +4447,12 @@ impl<'c> Translation<'c> {
                     self.use_crate(ExternCrate::Libc);
                     let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
                     let intptr = mk().cast_expr(x, intptr_t.clone());
+                    if ctx.is_const {
+                        return Err(format_translation_err!(
+                            None,
+                            "cannot transmute integers to Option<fn ...> in `const` context",
+                        ));
+                    }
                     Ok(WithStmts::new_unsafe_val(transmute_expr(
                         intptr_t, target_ty, intptr,
                     )))
