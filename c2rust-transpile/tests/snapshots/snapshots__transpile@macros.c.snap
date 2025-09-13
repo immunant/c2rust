@@ -59,6 +59,23 @@ pub const NESTED_STRUCT: S = unsafe {
 pub const PARENS: std::ffi::c_int = unsafe { NESTED_INT * (LITERAL_CHAR + true_0) };
 pub const WIDENING_CAST: std::ffi::c_int = unsafe { LITERAL_INT };
 pub const CONVERSION_CAST: std::ffi::c_int = unsafe { LITERAL_INT };
+pub const STMT_EXPR: std::ffi::c_float = unsafe {
+    ({
+        let mut builtin: std::ffi::c_int = (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
+        let mut indexing: std::ffi::c_char =
+            (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+                [LITERAL_FLOAT as std::ffi::c_int as usize];
+        let mut mixed: std::ffi::c_float =
+            (LITERAL_INT as std::ffi::c_double + NESTED_FLOAT * LITERAL_CHAR as std::ffi::c_double
+                - true_0 as std::ffi::c_double) as std::ffi::c_float;
+        let mut i: std::ffi::c_int = 0 as std::ffi::c_int;
+        while i < builtin {
+            mixed += indexing as std::ffi::c_float;
+            i += 1;
+        }
+        mixed
+    })
+};
 #[no_mangle]
 pub unsafe extern "C" fn local_muts() {
     let mut literal_int: std::ffi::c_int = LITERAL_INT;
@@ -119,6 +136,7 @@ pub unsafe extern "C" fn local_muts() {
         2 as std::ffi::c_int
     };
     let mut member: std::ffi::c_int = LITERAL_STRUCT.i;
+    let mut stmt_expr: std::ffi::c_float = STMT_EXPR;
 }
 #[no_mangle]
 pub unsafe extern "C" fn local_consts() {
@@ -180,6 +198,7 @@ pub unsafe extern "C" fn local_consts() {
         2 as std::ffi::c_int
     };
     let member: std::ffi::c_int = LITERAL_STRUCT.i;
+    let stmt_expr: std::ffi::c_float = STMT_EXPR;
 }
 static mut global_static_const_literal_int: std::ffi::c_int = LITERAL_INT;
 static mut global_static_const_literal_bool: bool = LITERAL_BOOL != 0;

@@ -691,9 +691,61 @@ impl TypedAstContext {
         }
     }
 
-    pub fn is_const_stmt(&self, _stmt: CStmtId) -> bool {
-        // TODO
-        false
+    pub fn is_const_stmt(&self, stmt: CStmtId) -> bool {
+        let is_const = |stmt| self.is_const_stmt(stmt);
+        let is_const_expr = |expr| self.is_const_expr(expr);
+
+        use CStmtKind::*;
+        match self[stmt].kind {
+            Case(expr, stmt, _const_expr) => is_const_expr(expr) && is_const(stmt),
+            Default(stmt) => is_const(stmt),
+            Compound(ref stmts) => stmts.iter().copied().all(is_const),
+            Expr(expr) => is_const_expr(expr),
+            Empty => true,
+            If {
+                scrutinee,
+                true_variant,
+                false_variant,
+            } => {
+                is_const_expr(scrutinee)
+                    && is_const(true_variant)
+                    && false_variant.map_or(true, is_const)
+            }
+            Switch { scrutinee, body } => is_const_expr(scrutinee) && is_const(body),
+            While { condition, body } => is_const_expr(condition) && is_const(body),
+            DoWhile { body, condition } => is_const(body) && is_const_expr(condition),
+            ForLoop {
+                init,
+                condition,
+                increment,
+                body,
+            } => {
+                init.map_or(true, is_const)
+                    && condition.map_or(true, is_const_expr)
+                    && increment.map_or(true, is_const_expr)
+                    && is_const(body)
+            }
+            Break => true,
+            Continue => true,
+            Return(expr) => expr.map_or(true, is_const_expr),
+            Decls(ref _decls) => true,
+            Asm { .. } => false,
+            Attributed {
+                attributes: _,
+                substatement,
+            } => is_const(substatement),
+            // `goto`s are tricky, because they can be non-local
+            // and jump out of the context of the macro.
+            // A `goto` and its labels are `const` if the whole state machine
+            // we compile to has all `const` statements,
+            // but determining what that is exactly is trickier,
+            // and might depend on the context in which the macro is used.
+            // This is probably fairly uncommon, so we just assume it's not `const` for now.
+            // Note that in C, labels are for `goto`s.
+            // There are no labeled `break`s and `continue`s.
+            Label(_stmt) => false,
+            Goto(_label) => false,
+        }
     }
 
     pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
