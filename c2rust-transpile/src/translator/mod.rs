@@ -2934,10 +2934,10 @@ impl<'c> Translation<'c> {
             return Ok(mk().path_expr(vec!["None"]));
         }
 
-        let pointee = match self.ast_context.resolve_type(type_id).kind {
-            CTypeKind::Pointer(pointee) => pointee,
-            _ => return Err(TranslationError::generic("null_ptr requires a pointer")),
-        };
+        let pointee = self
+            .ast_context
+            .get_pointee_qual_type(type_id)
+            .ok_or(TranslationError::generic("null_ptr requires a pointer"))?;
         let ty = self.convert_type(type_id)?;
         let mut zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
         if is_static && !pointee.qualifiers.is_const {
@@ -4293,15 +4293,15 @@ impl<'c> Translation<'c> {
     fn convert_cast(
         &self,
         ctx: ExprContext,
-        source_ty: CQualTypeId,
-        ty: CQualTypeId,
+        source_cty: CQualTypeId,
+        target_cty: CQualTypeId,
         val: WithStmts<Box<Expr>>,
         expr: Option<CExprId>,
         kind: Option<CastKind>,
         opt_field_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let source_ty_kind = &self.ast_context.resolve_type(source_ty.ctype).kind;
-        let target_ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
+        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
+        let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
 
         if source_ty_kind == target_ty_kind {
             return Ok(val);
@@ -4382,24 +4382,26 @@ impl<'c> Translation<'c> {
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
                 val.and_then(|x| {
-                    if self.ast_context.is_function_pointer(ty.ctype)
-                        || self.ast_context.is_function_pointer(source_ty.ctype)
+                    if self.ast_context.is_function_pointer(target_cty.ctype)
+                        || self.ast_context.is_function_pointer(source_cty.ctype)
                     {
-                        let source_ty = self.convert_type(source_ty.ctype)?;
-                        let target_ty = self.convert_type(ty.ctype)?;
+                        let source_ty = self.convert_type(source_cty.ctype)?;
+                        let target_ty = self.convert_type(target_cty.ctype)?;
                         Ok(WithStmts::new_unsafe_val(transmute_expr(
                             source_ty, target_ty, x,
                         )))
                     } else {
                         // Normal case
-                        let target_ty = self.convert_type(ty.ctype)?;
+                        let target_ty = self.convert_type(target_cty.ctype)?;
                         Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
                     }
                 })
             }
 
-            CastKind::IntegralToPointer if self.ast_context.is_function_pointer(ty.ctype) => {
-                let target_ty = self.convert_type(ty.ctype)?;
+            CastKind::IntegralToPointer
+                if self.ast_context.is_function_pointer(target_cty.ctype) =>
+            {
+                let target_ty = self.convert_type(target_cty.ctype)?;
                 val.and_then(|x| {
                     let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
                     let intptr = mk().cast_expr(x, intptr_t.clone());
@@ -4415,13 +4417,10 @@ impl<'c> Translation<'c> {
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating => {
-                let target_ty = self.convert_type(ty.ctype)?;
-                let target_ty_ctype = &self.ast_context.resolve_type(ty.ctype).kind;
+                let target_ty = self.convert_type(target_cty.ctype)?;
+                let source_ty = self.convert_type(source_cty.ctype)?;
 
-                let source_ty_ctype_id = source_ty.ctype;
-
-                let source_ty = self.convert_type(source_ty_ctype_id)?;
-                if let CTypeKind::LongDouble = target_ty_ctype {
+                if let CTypeKind::LongDouble = target_ty_kind {
                     if ctx.is_const {
                         return Err(format_translation_err!(
                                 None,
@@ -4433,21 +4432,28 @@ impl<'c> Translation<'c> {
 
                     let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
                     Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
-                } else if let CTypeKind::LongDouble = self.ast_context[source_ty_ctype_id].kind {
-                    self.f128_cast_to(val, target_ty_ctype)
-                } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_ctype {
+                } else if let CTypeKind::LongDouble = self.ast_context[source_cty.ctype].kind {
+                    self.f128_cast_to(val, target_ty_kind)
+                } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
                     // Casts targeting `enum` types...
                     let expr =
                         expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
-                    Ok(self.enum_cast(ty.ctype, enum_decl_id, expr, val, source_ty, target_ty))
-                } else if target_ty_ctype.is_floating_type() && source_ty_kind.is_bool() {
+                    Ok(self.enum_cast(
+                        target_cty.ctype,
+                        enum_decl_id,
+                        expr,
+                        val,
+                        source_ty,
+                        target_ty,
+                    ))
+                } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     val.and_then(|x| {
                         Ok(WithStmts::new_val(mk().cast_expr(
                             mk().cast_expr(x, mk().path_ty(vec!["u8"])),
                             target_ty,
                         )))
                     })
-                } else if target_ty_ctype.is_pointer() && source_ty_kind.is_bool() {
+                } else if target_ty_kind.is_pointer() && source_ty_kind.is_bool() {
                     val.and_then(|x| {
                         Ok(WithStmts::new_val(mk().cast_expr(
                             mk().cast_expr(x, mk().path_ty(vec!["libc", "size_t"])),
@@ -4458,7 +4464,7 @@ impl<'c> Translation<'c> {
                     // Other numeric casts translate to Rust `as` casts,
                     // unless the cast is to a function pointer then use `transmute`.
                     val.and_then(|x| {
-                        if self.ast_context.is_function_pointer(source_ty_ctype_id) {
+                        if self.ast_context.is_function_pointer(source_cty.ctype) {
                             Ok(WithStmts::new_unsafe_val(transmute_expr(
                                 source_ty, target_ty, x,
                             )))
@@ -4481,21 +4487,21 @@ impl<'c> Translation<'c> {
                 // and to be a pointer as a function argument we would get
                 // spurious casts when trying to treat it like a VaList which
                 // has reference semantics.
-                if self.ast_context.is_va_list(ty.ctype) {
+                if self.ast_context.is_va_list(target_cty.ctype) {
                     return Ok(val);
                 }
 
-                let pointee = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::Pointer(pointee) => pointee,
-                    _ => panic!("Dereferencing a non-pointer"),
-                };
+                let pointee = self
+                    .ast_context
+                    .get_pointee_qual_type(target_cty.ctype)
+                    .unwrap_or_else(|| panic!("dereferencing a non-pointer"));
 
                 let is_const = pointee.qualifiers.is_const;
 
                 let expr_kind = expr.map(|e| &self.ast_context.index(e).kind);
                 match expr_kind {
                     Some(&CExprKind::Literal(_, CLiteral::String(ref bytes, 1))) if is_const => {
-                        let target_ty = self.convert_type(ty.ctype)?;
+                        let target_ty = self.convert_type(target_cty.ctype)?;
 
                         let mut bytes = bytes.to_owned();
                         bytes.push(0);
@@ -4507,9 +4513,7 @@ impl<'c> Translation<'c> {
                     }
                     _ => {
                         // Variable length arrays are already represented as pointers.
-                        if let CTypeKind::VariableArray(..) =
-                            self.ast_context.resolve_type(source_ty.ctype).kind
-                        {
+                        if let CTypeKind::VariableArray(..) = source_ty_kind {
                             Ok(val)
                         } else {
                             let method = if is_const || ctx.is_static {
@@ -4519,6 +4523,19 @@ impl<'c> Translation<'c> {
                             };
 
                             let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
+
+                            // If the target pointee type is different from the source element type,
+                            // then we need to cast the ptr type as well.
+                            let call = match source_ty_kind.element_ty() {
+                                None => call,
+                                Some(source_element_ty) if source_element_ty == pointee.ctype => {
+                                    call
+                                }
+                                Some(_) => {
+                                    let target_ty = self.convert_type(target_cty.ctype)?;
+                                    call.map(|ptr| mk().cast_expr(ptr, target_ty))
+                                }
+                            };
 
                             // Static arrays can now use as_ptr. Can also cast that const ptr to a
                             // mutable pointer as we do here:
@@ -4538,7 +4555,9 @@ impl<'c> Translation<'c> {
 
             CastKind::NullToPointer => {
                 assert!(val.stmts().is_empty());
-                Ok(WithStmts::new_val(self.null_ptr(ty.ctype, ctx.is_static)?))
+                Ok(WithStmts::new_val(
+                    self.null_ptr(target_cty.ctype, ctx.is_static)?,
+                ))
             }
 
             CastKind::ToUnion => {
@@ -4567,7 +4586,7 @@ impl<'c> Translation<'c> {
                 if let Some(expr) = expr {
                     self.convert_condition(ctx, true, expr)
                 } else {
-                    Ok(val.map(|e| self.match_bool(true, source_ty.ctype, e)))
+                    Ok(val.map(|e| self.match_bool(true, source_cty.ctype, e)))
                 }
             }
 

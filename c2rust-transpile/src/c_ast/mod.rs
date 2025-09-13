@@ -649,7 +649,6 @@ impl TypedAstContext {
             // TODO `f128` is not yet handled, as we should eventually
             // switch to the (currently unstable) `f128` primitive type (#1262).
             Binary(_, _, lhs, rhs, _, _) => is_const(lhs) && is_const(rhs),
-            ImplicitCast(_, _, CastKind::ArrayToPointerDecay, _, _) => false, // TODO disabled for now as tests are broken
             // `as` casts are always `const`.
             ImplicitCast(_, expr, _, _, _) => is_const(expr),
             // `as` casts are always `const`.
@@ -2329,6 +2328,17 @@ impl CTypeKind {
             _ => return None,
         };
         Some(ty)
+    }
+
+    /// Return the element type of a pointer or array
+    pub fn element_ty(&self) -> Option<CTypeId> {
+        Some(match *self {
+            Self::Pointer(ty) => ty.ctype,
+            Self::ConstantArray(ty, _) => ty,
+            Self::IncompleteArray(ty) => ty,
+            Self::VariableArray(ty, _) => ty,
+            _ => return None,
+        })
     }
 }
 
