@@ -33,3 +33,8 @@ void unary_with_side_effect(){
     arr[side_effect()]++;
     arr[side_effect()]--;
 }
+
+void compound_literal(){
+    /// https://github.com/immunant/c2rust/issues/1234
+    int i = (enum {A, B, C}){1};
+}
