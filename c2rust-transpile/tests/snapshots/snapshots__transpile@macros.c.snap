@@ -372,9 +372,7 @@ pub const ZSTD_WINDOWLOG_MAX_32: std::ffi::c_int = unsafe { 30 as std::ffi::c_in
 pub const ZSTD_WINDOWLOG_MAX_64: std::ffi::c_int = unsafe { 31 as std::ffi::c_int };
 #[no_mangle]
 pub unsafe extern "C" fn test_zstd() -> U64 {
-    return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as std::ffi::c_ulong
-        == 4 as std::ffi::c_ulong
-    {
+    return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as usize == 4 as usize {
         ZSTD_WINDOWLOG_MAX_32
     } else {
         ZSTD_WINDOWLOG_MAX_64
