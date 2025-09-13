@@ -4517,7 +4517,7 @@ impl<'c> Translation<'c> {
                             } else {
                                 Mutability::Mutable
                             };
-                            let target_ty = self.convert_type(ty.ctype)?;
+                            let target_ty = self.convert_type(target_cty.ctype)?;
 
                             Ok(val.map(|x| {
                                 self.use_feature("raw_ref_op");
