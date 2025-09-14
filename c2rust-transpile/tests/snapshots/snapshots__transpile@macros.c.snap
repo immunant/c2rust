@@ -36,7 +36,7 @@ pub const LITERAL_BOOL: std::ffi::c_int = unsafe { true_0 };
 pub const LITERAL_FLOAT: std::ffi::c_double = unsafe { 3.14f64 };
 pub const LITERAL_CHAR: std::ffi::c_int = unsafe { 'x' as i32 };
 pub const LITERAL_STR: [std::ffi::c_char; 6] =
-    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+    unsafe { ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0") };
 pub const LITERAL_STRUCT: S = unsafe {
     {
         let mut init = S {
@@ -50,7 +50,7 @@ pub const NESTED_BOOL: std::ffi::c_int = unsafe { 1 as std::ffi::c_int };
 pub const NESTED_FLOAT: std::ffi::c_double = unsafe { LITERAL_FLOAT };
 pub const NESTED_CHAR: std::ffi::c_int = unsafe { 'x' as i32 };
 pub const NESTED_STR: [std::ffi::c_char; 6] =
-    unsafe { *::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0") };
+    unsafe { ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0") };
 pub const NESTED_STRUCT: S = unsafe {
     {
         let mut init = S {
@@ -72,7 +72,7 @@ pub const STMT_EXPR: std::ffi::c_float = unsafe {
     ({
         let mut builtin: std::ffi::c_int = (LITERAL_INT as std::ffi::c_uint).leading_zeros() as i32;
         let mut indexing: std::ffi::c_char =
-            (*::core::mem::transmute::<&[u8; 6], &[std::ffi::c_char; 6]>(b"hello\0"))
+            ::core::mem::transmute::<[u8; 6], [std::ffi::c_char; 6]>(*b"hello\0")
                 [LITERAL_FLOAT as std::ffi::c_int as usize];
         let mut mixed: std::ffi::c_float =
             (LITERAL_INT as std::ffi::c_double + NESTED_FLOAT * LITERAL_CHAR as std::ffi::c_double
