@@ -1,5 +1,6 @@
 use crate::big_enum::{rust_entry5, E1, E2, E3};
 use crate::enum_as_int::{rust_entry, A, B, E};
+use crate::enum_compound::rust_entry6;
 use crate::enum_duplicate::{e, rust_entry3};
 use crate::enum_fwd_decl::rust_foo;
 use crate::enum_ret::{rust_entry2, Color};
@@ -7,7 +8,6 @@ use crate::non_canonical_enum_def::{
     hrtimer_restart, rust_abc, HRTIMER_NORESTART, HRTIMER_RESTART,
 };
 use crate::top_enum::{rust_entry4, E as otherE};
-use crate::enum_compound::rust_entry6;
 
 use std::ffi::{c_int, c_uint};
 
