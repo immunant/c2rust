@@ -18,3 +18,4 @@ int alloca_sum(int val1, int val2) {
 
     return *alloca1 + *alloca2;
 }
+
