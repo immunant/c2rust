@@ -1,3 +1,5 @@
+use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
+use crate::iterators::{DFNodes, SomeId};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use std::cell::RefCell;
@@ -9,7 +11,13 @@ use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+pub use self::conversion::*;
+pub use self::print::Printer;
 pub use c2rust_ast_exporter::clang_ast::{BuiltinVaListKind, SrcFile, SrcLoc, SrcSpan};
+
+mod conversion;
+pub mod iterators;
+mod print;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub struct CTypeId(pub u64);
@@ -32,15 +40,6 @@ pub type CRecordId = CDeclId; // Record types need to point to 'DeclKind::Record
 pub type CTypedefId = CDeclId; // Typedef types need to point to 'DeclKind::Typedef'
 pub type CEnumId = CDeclId; // Enum types need to point to 'DeclKind::Enum'
 pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::EnumConstant's
-
-pub use self::conversion::*;
-pub use self::print::Printer;
-
-mod conversion;
-pub mod iterators;
-mod print;
-
-use iterators::{DFNodes, SomeId};
 
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone)]
@@ -638,12 +637,10 @@ impl TypedAstContext {
             // Unary ops should be `const`.
             // TODO handle `f128` or use the primitive type.
             Unary(_, _, expr, _) => is_const(expr),
-            UnaryType(_, _, _, _) => false, // TODO disabled for now as tests are broken
             // Not sure what a `None` `CExprId` means here
             // or how to detect a `sizeof` of a VLA, which is non-`const`,
             // although it seems we don't handle `sizeof(VLAs)`
             // correctly in macros elsewhere already.
-            #[allow(unreachable_patterns)]
             UnaryType(_, _, expr, _) => expr.map_or(true, is_const),
             // Not sure what a `OffsetOfKind::Variable` means.
             OffsetOf(_, _) => true,
@@ -652,7 +649,6 @@ impl TypedAstContext {
             // TODO `f128` is not yet handled, as we should eventually
             // switch to the (currently unstable) `f128` primitive type (#1262).
             Binary(_, _, lhs, rhs, _, _) => is_const(lhs) && is_const(rhs),
-            ImplicitCast(_, _, CastKind::ArrayToPointerDecay, _, _) => false, // TODO disabled for now as tests are broken
             // `as` casts are always `const`.
             ImplicitCast(_, expr, _, _, _) => is_const(expr),
             // `as` casts are always `const`.
@@ -691,9 +687,61 @@ impl TypedAstContext {
         }
     }
 
-    pub fn is_const_stmt(&self, _stmt: CStmtId) -> bool {
-        // TODO
-        false
+    pub fn is_const_stmt(&self, stmt: CStmtId) -> bool {
+        let is_const = |stmt| self.is_const_stmt(stmt);
+        let is_const_expr = |expr| self.is_const_expr(expr);
+
+        use CStmtKind::*;
+        match self[stmt].kind {
+            Case(expr, stmt, _const_expr) => is_const_expr(expr) && is_const(stmt),
+            Default(stmt) => is_const(stmt),
+            Compound(ref stmts) => stmts.iter().copied().all(is_const),
+            Expr(expr) => is_const_expr(expr),
+            Empty => true,
+            If {
+                scrutinee,
+                true_variant,
+                false_variant,
+            } => {
+                is_const_expr(scrutinee)
+                    && is_const(true_variant)
+                    && false_variant.map_or(true, is_const)
+            }
+            Switch { scrutinee, body } => is_const_expr(scrutinee) && is_const(body),
+            While { condition, body } => is_const_expr(condition) && is_const(body),
+            DoWhile { body, condition } => is_const(body) && is_const_expr(condition),
+            ForLoop {
+                init,
+                condition,
+                increment,
+                body,
+            } => {
+                init.map_or(true, is_const)
+                    && condition.map_or(true, is_const_expr)
+                    && increment.map_or(true, is_const_expr)
+                    && is_const(body)
+            }
+            Break => true,
+            Continue => true,
+            Return(expr) => expr.map_or(true, is_const_expr),
+            Decls(ref _decls) => true,
+            Asm { .. } => false,
+            Attributed {
+                attributes: _,
+                substatement,
+            } => is_const(substatement),
+            // `goto`s are tricky, because they can be non-local
+            // and jump out of the context of the macro.
+            // A `goto` and its labels are `const` if the whole state machine
+            // we compile to has all `const` statements,
+            // but determining what that is exactly is trickier,
+            // and might depend on the context in which the macro is used.
+            // This is probably fairly uncommon, so we just assume it's not `const` for now.
+            // Note that in C, labels are for `goto`s.
+            // There are no labeled `break`s and `continue`s.
+            Label(_stmt) => false,
+            Goto(_label) => false,
+        }
     }
 
     pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
@@ -836,76 +884,90 @@ impl TypedAstContext {
             ast_context: &'a mut TypedAstContext,
         }
 
-        use iterators::{immediate_children_all_types, NodeVisitor};
         impl<'a> NodeVisitor for BubbleExprTypes<'a> {
             fn children(&mut self, id: SomeId) -> Vec<SomeId> {
                 immediate_children_all_types(self.ast_context, id)
             }
+
             fn post(&mut self, id: SomeId) {
-                if let SomeId::Expr(e) = id {
-                    let new_ty = match self.ast_context.c_exprs[&e].kind {
-                        CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
-                            let lhs_type_id =
-                                self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
-                            let rhs_type_id =
-                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+                let e = match id {
+                    SomeId::Expr(e) => e,
+                    _ => return,
+                };
 
-                            let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                            let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+                let new_ty = match self.ast_context.c_exprs[&e].kind {
+                    CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
+                        let lhs_type_id =
+                            self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
+                        let rhs_type_id =
+                            self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
 
+                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+
+                        if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                            Some(lhs_type_id)
+                        } else if CTypeKind::PULLBACK_KINDS.contains(&rhs_resolved_ty.kind) {
+                            Some(rhs_type_id)
+                        } else {
+                            None
+                        }
+                    }
+                    CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
+                        let rhs_type_id =
+                            self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+                        let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
+                        let lhs_type_id = lhs_kind.get_qual_type().unwrap();
+
+                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+
+                        let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
+                            && !rhs_resolved_ty.kind.is_pointer();
+
+                        if op.all_types_same() && neither_ptr {
                             if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
                                 Some(lhs_type_id)
-                            } else if CTypeKind::PULLBACK_KINDS.contains(&rhs_resolved_ty.kind) {
+                            } else {
                                 Some(rhs_type_id)
-                            } else {
-                                None
                             }
+                        } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
+                            Some(lhs_type_id)
+                        } else {
+                            return;
                         }
-                        CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
-                            let rhs_type_id =
-                                self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
-                            let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
-                            let lhs_type_id = lhs_kind.get_qual_type().unwrap();
-
-                            let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                            let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
-
-                            let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
-                                && !rhs_resolved_ty.kind.is_pointer();
-
-                            if op.all_types_same() && neither_ptr {
-                                if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
-                                    Some(lhs_type_id)
-                                } else {
-                                    Some(rhs_type_id)
-                                }
-                            } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
-                                Some(lhs_type_id)
-                            } else {
-                                return;
-                            }
-                        }
-                        CExprKind::Unary(_ty, op, e, _idk) => op.expected_result_type(
-                            self.ast_context,
-                            self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
-                        ),
-                        CExprKind::Paren(_ty, e) => {
-                            self.ast_context.c_exprs[&e].kind.get_qual_type()
-                        }
-                        _ => return,
-                    };
-                    if let (Some(ty), Some(new_ty)) = (
-                        self.ast_context
-                            .c_exprs
-                            .get_mut(&e)
-                            .and_then(|e| e.kind.get_qual_type_mut()),
-                        new_ty,
-                    ) {
-                        *ty = new_ty;
-                    };
-                }
+                    }
+                    CExprKind::Unary(_ty, op, e, _idk) => op.expected_result_type(
+                        self.ast_context,
+                        self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
+                    ),
+                    CExprKind::Paren(_ty, e) => self.ast_context.c_exprs[&e].kind.get_qual_type(),
+                    CExprKind::UnaryType(_, op, _, _) => {
+                        // All of these `UnTypeOp`s should return `size_t`.
+                        let kind = match op {
+                            UnTypeOp::SizeOf => CTypeKind::Size,
+                            UnTypeOp::AlignOf => CTypeKind::Size,
+                            UnTypeOp::PreferredAlignOf => CTypeKind::Size,
+                        };
+                        let ty = self
+                            .ast_context
+                            .type_for_kind(&kind)
+                            .expect("CTypeKind::Size should be size_t");
+                        Some(CQualTypeId::new(ty))
+                    }
+                    _ => return,
+                };
+                let ty = self
+                    .ast_context
+                    .c_exprs
+                    .get_mut(&e)
+                    .and_then(|e| e.kind.get_qual_type_mut());
+                if let (Some(ty), Some(new_ty)) = (ty, new_ty) {
+                    *ty = new_ty;
+                };
             }
         }
+
         for decl in self.c_decls_top.clone() {
             BubbleExprTypes { ast_context: self }.visit_tree(SomeId::Decl(decl));
         }
@@ -2266,6 +2328,17 @@ impl CTypeKind {
             _ => return None,
         };
         Some(ty)
+    }
+
+    /// Return the element type of a pointer or array
+    pub fn element_ty(&self) -> Option<CTypeId> {
+        Some(match *self {
+            Self::Pointer(ty) => ty.ctype,
+            Self::ConstantArray(ty, _) => ty,
+            Self::IncompleteArray(ty) => ty,
+            Self::VariableArray(ty, _) => ty,
+            _ => return None,
+        })
     }
 }
 
