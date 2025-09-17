@@ -1,10 +1,10 @@
 //! Code for applying `TextRewrite`s to the actual source files.
 use diff;
 use log::{info, warn};
-use std::collections::{HashMap, VecDeque};
-use std::io;
 use rustc_span::source_map::{SourceFile, SourceMap};
 use rustc_span::{BytePos, FileName};
+use std::collections::{HashMap, VecDeque};
+use std::io;
 
 use crate::file_io::FileIO;
 use crate::rewrite::cleanup::cleanup_rewrites;
@@ -45,7 +45,7 @@ pub fn rewrite_files_with(cm: &SourceMap, rw: &TextRewrite, io: &dyn FileIO) -> 
         };
         let path = match path.local_path() {
             Some(path) => path,
-            None => continue
+            None => continue,
         };
 
         // TODO: do something with nodes

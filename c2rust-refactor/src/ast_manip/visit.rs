@@ -1,6 +1,6 @@
 //! `Visit` trait for AST types that can be visited.
-use rustc_ast::*;
 use rustc_ast::visit::Visitor;
+use rustc_ast::*;
 
 /// A trait for AST nodes that can accept a `Visitor`.
 pub trait Visit {

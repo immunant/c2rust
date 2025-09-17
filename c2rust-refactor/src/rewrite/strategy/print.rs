@@ -10,38 +10,40 @@
 //! logic in this module for "recovering" from needing to use this strategy by splicing old AST
 //! text back into the new AST's pretty printer output.
 use log::{info, warn};
-use rustc_session::Session;
+use rustc_ast::attr;
+use rustc_ast::ptr::P;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::util::comments::CommentStyle;
+use rustc_ast::util::parser;
+use rustc_ast::*;
+use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_data_structures::sync::Lrc;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_parse::parser::attr::InnerAttrPolicy;
+use rustc_session::Session;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{BytePos, FileName, RealFileName, SourceFile, Span, Spanned};
+use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::DUMMY_SP;
 use rustc_target::spec::abi::Abi;
 use std::fmt::Debug;
 use std::fs;
 use std::path;
 use std::rc::Rc;
-use rustc_ast::*;
-use rustc_ast::attr;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_ast::util::comments::CommentStyle;
-use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
-use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use rustc_ast::ptr::P;
-use rustc_ast_pretty::pprust::{self, PrintState};
-use rustc_parse::parser::attr::InnerAttrPolicy;
-use rustc_span::source_map::{BytePos, FileName, RealFileName, SourceFile, Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
-use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
-use rustc_ast::util::parser;
-use rustc_data_structures::thin_vec::ThinVec;
-use rustc_span::DUMMY_SP;
 
-use crate::ast_manip::NodeTable;
 use crate::ast_manip::util::extend_span_attrs;
+use crate::ast_manip::NodeTable;
 use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
 use crate::driver;
 use crate::rewrite::base::{binop_left_prec, binop_right_prec};
-use crate::rewrite::base::{describe, extend_span_comments, extend_span_comments_strict, is_rewritable, rewind_span_over_whitespace};
+use crate::rewrite::base::{
+    describe, extend_span_comments, extend_span_comments_strict, is_rewritable,
+    rewind_span_over_whitespace,
+};
 use crate::rewrite::{ExprPrec, Rewrite, RewriteCtxt, RewriteCtxtRef, TextAdjust, TextRewrite};
 use crate::util::Lone;
-
 
 // PrintParse
 
@@ -476,7 +478,8 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
         assert!(
             reparsed.len() == new.len(),
             "new and reparsed ASTs don't match: {:?} != {:?}",
-            new, reparsed
+            new,
+            reparsed
         );
         for i in 0..reparsed.len() {
             RecoverChildren::recover_children(&reparsed[i], &new[i], rcx.borrow());
@@ -487,7 +490,8 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
         assert!(
             reparsed.len() == new.len(),
             "new and reparsed ASTs don't match: {:?} != {:?}",
-            new, reparsed
+            new,
+            reparsed
         );
         for i in 0..reparsed.len() {
             RecoverChildren::recover_node_and_children(&reparsed[i], &new[i], rcx.borrow());
@@ -591,11 +595,7 @@ where
     info!("REVERT {}", describe(rcx.session(), reparsed_span));
     info!("    TO {}", describe(rcx.session(), old_span));
 
-    let mut rw = TextRewrite::adjusted(
-        reparsed_span,
-        old_span,
-        new.get_adjustment(&rcx),
-    );
+    let mut rw = TextRewrite::adjusted(reparsed_span, old_span, new.get_adjustment(&rcx));
     let mark = rcx.mark();
     let ok = Rewrite::rewrite(old, new, rcx.enter(&mut rw));
     if !ok {
@@ -628,21 +628,16 @@ where
 fn describe_rewrite(old_span: Span, new_span: Span, rcx: &RewriteCtxt) {
     if old_span.lo() != old_span.hi() {
         info!("REWRITE {}", describe(rcx.session(), old_span));
-        info!(
-            "   INTO {}",
-            describe(rcx.session(), new_span)
-        );
+        info!("   INTO {}", describe(rcx.session(), new_span));
     } else {
         info!("INSERT AT {}", describe(rcx.session(), old_span));
-        info!(
-            "     TEXT {}",
-            describe(rcx.session(), new_span)
-        );
+        info!("     TEXT {}", describe(rcx.session(), new_span));
     }
 }
 
 fn add_comments<T>(s: String, node: &T, rcx: &RewriteCtxt) -> String
-    where T: MaybeGetNodeId
+where
+    T: MaybeGetNodeId,
 {
     if <T as MaybeGetNodeId>::supported() {
         if let Some(comments) = rcx.comments().get(&rcx.new_to_old_id(node.get_node_id())) {
@@ -713,7 +708,8 @@ pub trait RewriteAt {
 }
 
 impl<T> RewriteAt for T
-    where T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId
+where
+    T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
     default fn rewrite_at(&self, old_span: Span, rcx: RewriteCtxtRef) -> bool {
         rewrite_at_impl(old_span, self, rcx)
@@ -734,11 +730,18 @@ fn create_file_for_module(
             let mut path = path
                 .into_local_path()
                 .expect("module file has no local path");
-            if let Some(path_attr) = crate::util::first_attr_value_str_by_name(&module_item.attrs, Symbol::intern("path")) {
+            if let Some(path_attr) = crate::util::first_attr_value_str_by_name(
+                &module_item.attrs,
+                Symbol::intern("path"),
+            ) {
                 path.pop();
                 path.push(path_attr.to_string());
             } else {
-                if sess.local_crate_source_file.as_ref().map_or(false, |f| *f == path) {
+                if sess
+                    .local_crate_source_file
+                    .as_ref()
+                    .map_or(false, |f| *f == path)
+                {
                     path.pop();
                     if path.file_name().map_or(true, |path| path != "src") {
                         path.push("src");
@@ -773,7 +776,10 @@ fn create_file_for_module(
             path
         }
 
-        _ => panic!("Could not construct file path for external module {:?}", module_item.ident),
+        _ => panic!(
+            "Could not construct file path for external module {:?}",
+            module_item.ident
+        ),
     };
 
     let rfn = RealFileName::LocalPath(filename);
@@ -836,17 +842,16 @@ impl RewriteAt for Item {
 
                 // Extend span to cover comments before and after items
                 let first_node = reparsed.first().unwrap();
-                let first_span = extend_span_comments(&first_node.get_node_id(), first_node.splice_span(), &rcx);
+                let first_span =
+                    extend_span_comments(&first_node.get_node_id(), first_node.splice_span(), &rcx);
                 let last_node = reparsed.last().unwrap();
-                let last_span = extend_span_comments(&last_node.get_node_id(), last_node.splice_span(), &rcx);
+                let last_span =
+                    extend_span_comments(&last_node.get_node_id(), last_node.splice_span(), &rcx);
                 let reparsed_span = first_span.with_hi(last_span.hi());
 
                 describe_rewrite(inner_span, reparsed_span, &rcx);
-                let mut rw = TextRewrite::adjusted(
-                    inner_span,
-                    reparsed_span,
-                    self.get_adjustment(&rcx),
-                );
+                let mut rw =
+                    TextRewrite::adjusted(inner_span, reparsed_span, self.get_adjustment(&rcx));
                 RecoverChildren::recover_children(&reparsed, &m_items, rcx.enter(&mut rw));
                 rcx.record(rw);
 

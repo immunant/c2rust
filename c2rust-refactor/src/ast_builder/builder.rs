@@ -2,19 +2,19 @@
 //!
 //! This is a fork of c2rust-ast-builder, since that one switched to
 //! the syn crate while this copy uses the old internal rustc AST.
+use rustc_ast::attr::mk_attr_inner;
+use rustc_ast::ptr::P;
+use rustc_ast::token::{Token, TokenKind};
+use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenStreamBuilder, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_middle::ty;
+use rustc_span::source_map::{dummy_spanned, Spanned};
+use rustc_span::symbol::Ident;
+use rustc_span::{Span, DUMMY_SP};
 use rustc_target::spec::abi::{self, Abi};
 use std::rc::Rc;
 use std::str;
-use rustc_ast::*;
-use rustc_ast::attr::mk_attr_inner;
-use rustc_ast::token::{TokenKind, Token};
-use rustc_ast::ptr::P;
-use rustc_span::{Span, DUMMY_SP};
-use rustc_span::source_map::{dummy_spanned, Spanned};
-use rustc_span::symbol::Ident;
-use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenStreamBuilder, TokenTree};
-use rustc_data_structures::thin_vec::ThinVec;
-use rustc_middle::ty;
 
 use super::IntoSymbol;
 
@@ -293,51 +293,36 @@ impl<L: Make<Lit>> Make<MetaItemKind> for L {
 }
 
 impl<'a, S> Make<Lit> for S
-    where S: IntoSymbol
+where
+    S: IntoSymbol,
 {
-    fn make(self, mk: &Builder) -> Lit
-    {
+    fn make(self, mk: &Builder) -> Lit {
         let s = self.into_symbol();
-        Lit::from_lit_kind(
-            LitKind::Str(s, StrStyle::Cooked),
-            mk.span
-        )
+        Lit::from_lit_kind(LitKind::Str(s, StrStyle::Cooked), mk.span)
     }
 }
 
 impl Make<Lit> for Vec<u8> {
     fn make(self, mk: &Builder) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::ByteStr(Rc::from(self)),
-            mk.span
-        )
+        Lit::from_lit_kind(LitKind::ByteStr(Rc::from(self)), mk.span)
     }
 }
 
 impl Make<Lit> for u8 {
     fn make(self, mk: &Builder) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::Byte(self),
-            mk.span
-        )
+        Lit::from_lit_kind(LitKind::Byte(self), mk.span)
     }
 }
 
 impl Make<Lit> for char {
     fn make(self, mk: &Builder) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::Char(self),
-            mk.span
-        )
+        Lit::from_lit_kind(LitKind::Char(self), mk.span)
     }
 }
 
 impl Make<Lit> for u128 {
     fn make(self, mk: &Builder) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::Int(self, LitIntType::Unsuffixed),
-            mk.span
-        )
+        Lit::from_lit_kind(LitKind::Int(self, LitIntType::Unsuffixed), mk.span)
     }
 }
 
@@ -469,14 +454,17 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId::from_u32(0),
             style: AttrStyle::Outer,
-            kind: AttrKind::Normal(AttrItem {
-                path: key,
-                args: MacArgs::Eq(
-                    DUMMY_SP,
-                    MacArgsEq::Ast(mk().lit_expr(mk().str_lit(value).as_lit())),
-                ),
-                tokens: None,
-            }, None),
+            kind: AttrKind::Normal(
+                AttrItem {
+                    path: key,
+                    args: MacArgs::Eq(
+                        DUMMY_SP,
+                        MacArgsEq::Ast(mk().lit_expr(mk().str_lit(value).as_lit())),
+                    ),
+                    tokens: None,
+                },
+                None,
+            ),
             span: DUMMY_SP,
         });
         Builder {
@@ -495,11 +483,14 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId::from_u32(0),
             style: AttrStyle::Outer,
-            kind: AttrKind::Normal(AttrItem {
-                path: key,
-                args: MacArgs::Empty,
-                tokens: None,
-            }, None),
+            kind: AttrKind::Normal(
+                AttrItem {
+                    path: key,
+                    args: MacArgs::Empty,
+                    tokens: None,
+                },
+                None,
+            ),
             span: DUMMY_SP,
         });
         Builder {
@@ -515,38 +506,37 @@ impl Builder {
     {
         let func: Path = vec![func].make(&self);
 
-        let args = MacArgs::Delimited(
-            DelimSpan::dummy(),
-            MacDelimiter::Parenthesis,
-            {
-                let mut builder = TokenStreamBuilder::new();
+        let args = MacArgs::Delimited(DelimSpan::dummy(), MacDelimiter::Parenthesis, {
+            let mut builder = TokenStreamBuilder::new();
 
-                let mut is_first = true;
-                for argument in arguments {
-                    if is_first {
-                        is_first = false;
-                    } else {
-                        builder.push(TokenStream::token_alone(TokenKind::Comma, DUMMY_SP));
-                    }
-
-                    let argument: Ident = argument.make(&self);
-                    let token_kind = TokenKind::Ident(argument.name, argument.is_raw_guess());
-                    builder.push(TokenStream::token_alone(token_kind, DUMMY_SP));
+            let mut is_first = true;
+            for argument in arguments {
+                if is_first {
+                    is_first = false;
+                } else {
+                    builder.push(TokenStream::token_alone(TokenKind::Comma, DUMMY_SP));
                 }
 
-                builder.build()
-            },
-        );
+                let argument: Ident = argument.make(&self);
+                let token_kind = TokenKind::Ident(argument.name, argument.is_raw_guess());
+                builder.push(TokenStream::token_alone(token_kind, DUMMY_SP));
+            }
+
+            builder.build()
+        });
 
         let mut attrs = std::mem::take(&mut self.attrs);
         attrs.push(Attribute {
             id: AttrId::from_u32(0),
             style: AttrStyle::Outer,
-            kind: AttrKind::Normal(AttrItem {
-                path: func,
-                args,
-                tokens: None,
-            }, None),
+            kind: AttrKind::Normal(
+                AttrItem {
+                    path: func,
+                    args,
+                    tokens: None,
+                },
+                None,
+            ),
             span: DUMMY_SP,
         });
         Builder {
@@ -588,7 +578,10 @@ impl Builder {
     where
         A: Make<GenericArg>,
     {
-        let args = args.into_iter().map(|arg| AngleBracketedArg::Arg(arg.make(&self))).collect();
+        let args = args
+            .into_iter()
+            .map(|arg| AngleBracketedArg::Arg(arg.make(&self)))
+            .collect();
         AngleBracketedArgs {
             span: self.span,
             args: args,
@@ -637,20 +630,20 @@ impl Builder {
         }
     }
 
-//    pub fn abs_path<Pa>(self, path: Pa) -> Path
-//    where
-//        Pa: Make<Path>,
-//    {
-//        let mut p = path.make(&self);
-//        if !p
-//            .segments
-//            .get(0)
-//            .map_or(false, |s| s.ident.name == kw::Crate)
-//        {
-//            p.segments.insert(0, kw::Crate.ident().make(&self));
-//        }
-//        p
-//    }
+    //    pub fn abs_path<Pa>(self, path: Pa) -> Path
+    //    where
+    //        Pa: Make<Path>,
+    //    {
+    //        let mut p = path.make(&self);
+    //        if !p
+    //            .segments
+    //            .get(0)
+    //            .map_or(false, |s| s.ident.name == kw::Crate)
+    //        {
+    //            p.segments.insert(0, kw::Crate.ident().make(&self));
+    //        }
+    //        p
+    //    }
 
     pub fn anon_const<E>(self, expr: E) -> AnonConst
     where
@@ -1019,7 +1012,12 @@ impl Builder {
     }
 
     // struct_expr, but with optional base expression
-    pub fn struct_expr_base<Pa, E>(self, path: Pa, fields: Vec<ExprField>, base: Option<E>) -> P<Expr>
+    pub fn struct_expr_base<Pa, E>(
+        self,
+        path: Pa,
+        fields: Vec<ExprField>,
+        base: Option<E>,
+    ) -> P<Expr>
     where
         Pa: Make<Path>,
         E: Make<P<Expr>>,
@@ -1132,10 +1130,7 @@ impl Builder {
         T: Make<LitIntType>,
     {
         let ty = ty.make(&self);
-        Lit::from_lit_kind(
-            LitKind::Int(i, ty),
-            self.span
-        )
+        Lit::from_lit_kind(LitKind::Int(i, ty), self.span)
     }
 
     pub fn float_lit<S, T>(self, s: S, ty: T) -> Lit
@@ -1145,10 +1140,7 @@ impl Builder {
     {
         let s = s.into_symbol();
         let ty = ty.make(&self);
-        Lit::from_lit_kind(
-            LitKind::Float(s, LitFloatType::Suffixed(ty)),
-            self.span
-        )
+        Lit::from_lit_kind(LitKind::Float(s, LitFloatType::Suffixed(ty)), self.span)
     }
 
     pub fn float_unsuffixed_lit<S>(self, s: S) -> Lit
@@ -1156,17 +1148,11 @@ impl Builder {
         S: IntoSymbol,
     {
         let s = s.into_symbol();
-        Lit::from_lit_kind(
-            LitKind::Float(s, LitFloatType::Unsuffixed),
-            self.span
-        )
+        Lit::from_lit_kind(LitKind::Float(s, LitFloatType::Unsuffixed), self.span)
     }
 
     pub fn bool_lit(self, b: bool) -> Lit {
-        Lit::from_lit_kind(
-            LitKind::Bool(b),
-            self.span
-        )
+        Lit::from_lit_kind(LitKind::Bool(b), self.span)
     }
 
     pub fn ifte_expr<C, T, E>(self, cond: C, then_case: T, else_case: Option<E>) -> P<Expr>
@@ -1701,10 +1687,7 @@ impl Builder {
     }
 
     pub fn fn_decl(self, inputs: Vec<Param>, output: FnRetTy) -> P<FnDecl> {
-        P(FnDecl {
-            inputs,
-            output,
-        })
+        P(FnDecl { inputs, output })
     }
 
     pub fn struct_item<I>(self, name: I, fields: Vec<FieldDef>, tuple: bool) -> P<Item>
@@ -1767,10 +1750,7 @@ impl Builder {
         let kind = ItemKind::TyAlias(Box::new(TyAlias {
             defaultness: Defaultness::Final,
             generics: self.generics,
-            where_clauses: (
-                TyAliasWhereClause::default(),
-                TyAliasWhereClause::default(),
-            ),
+            where_clauses: (TyAliasWhereClause::default(), TyAliasWhereClause::default()),
             where_predicates_split: 0,
             bounds: vec![],
             ty,
@@ -2298,11 +2278,14 @@ impl Builder {
         Attribute {
             id: AttrId::from_u32(0),
             style,
-            kind: AttrKind::Normal(AttrItem {
-                path,
-                args,
-                tokens: None,
-            }, None),
+            kind: AttrKind::Normal(
+                AttrItem {
+                    path,
+                    args,
+                    tokens: None,
+                },
+                None,
+            ),
             span: self.span,
         }
     }
@@ -2371,11 +2354,7 @@ impl Builder {
     {
         let func: Path = func.make(&self);
 
-        let args = MacArgs::Delimited(
-            DelimSpan::dummy(),
-            delim,
-            arguments.make(&self),
-        );
+        let args = MacArgs::Delimited(DelimSpan::dummy(), delim, arguments.make(&self));
 
         MacCall {
             path: func,
@@ -2471,7 +2450,15 @@ impl Builder {
         let body = body.make(&self);
         P(Expr {
             id: self.id,
-            kind: ExprKind::Closure(ClosureBinder::NotPresent, capture, Async::No, mov, decl, body, DUMMY_SP),
+            kind: ExprKind::Closure(
+                ClosureBinder::NotPresent,
+                capture,
+                Async::No,
+                mov,
+                decl,
+                body,
+                DUMMY_SP,
+            ),
             span: self.span,
             attrs: self.attrs.into(),
             tokens: None,

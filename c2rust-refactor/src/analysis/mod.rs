@@ -3,10 +3,10 @@
 use log::info;
 use std::collections::HashSet;
 
+use crate::ast_builder::IntoSymbol;
 use crate::command::{DriverCommand, Registry};
 use crate::driver::Phase;
 use rustc_arena::DroplessArena;
-use crate::ast_builder::IntoSymbol;
 
 pub mod labeled_ty;
 pub mod ownership;

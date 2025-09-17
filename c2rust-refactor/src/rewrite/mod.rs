@@ -54,15 +54,15 @@
 //! happens: when `recursive` fails, `Rewrite::rewrite` will try the next strategy (such as
 //! `print`), which can perform rewrites to correct the error at this higher level.
 
+use rustc_ast::*;
 use rustc_session::Session;
+use rustc_span::source_map::{Span, DUMMY_SP};
 use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use rustc_ast::*;
-use rustc_span::source_map::{Span, DUMMY_SP};
 
 use crate::ast_manip::{map_ast, AstMap};
-use crate::ast_manip::{GetSpan, Visit, CommentMap};
+use crate::ast_manip::{CommentMap, GetSpan, Visit};
 use crate::driver;
 
 mod cleanup;

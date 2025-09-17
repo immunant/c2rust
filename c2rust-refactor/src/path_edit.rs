@@ -1,18 +1,18 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
 use log::debug;
-use rustc_hir as hir;
-use rustc_hir::def::Res;
-use smallvec::SmallVec;
-use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::*;
 use rustc_data_structures::map_in_place::MapInPlace;
+use rustc_hir as hir;
+use rustc_hir::def::Res;
 use smallvec::smallvec;
+use smallvec::SmallVec;
 
 use crate::ast_manip::util::split_uses;
 use crate::ast_manip::MutVisit;
-use crate::{expect, unpack};
 use crate::RefactorCtxt;
+use crate::{expect, unpack};
 
 struct ResolvedPathFolder<'a, 'tcx: 'a, F>
 where
@@ -138,15 +138,19 @@ where
     pub fn alter_use_path(&mut self, item: &mut P<Item>, nodes: &[hir::Node]) {
         let id = item.id;
         unpack!([&mut item.kind] ItemKind::Use(tree));
-        let resolutions: Vec<_> = nodes.iter().map(|node| {
-            let hir = expect!([node] hir::Node::Item(i) => i);
-            if let hir::ItemKind::Use(ref hir_path, _) = hir.kind {
-                debug!("{:?}", hir_path);
-                Some(hir_path.res)
-            } else {
-                None
-            }
-        }).flatten().collect();
+        let resolutions: Vec<_> = nodes
+            .iter()
+            .map(|node| {
+                let hir = expect!([node] hir::Node::Item(i) => i);
+                if let hir::ItemKind::Use(ref hir_path, _) = hir.kind {
+                    debug!("{:?}", hir_path);
+                    Some(hir_path.res)
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
         let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &resolutions);
         tree.prefix = new_path;
     }
@@ -296,9 +300,6 @@ where
     T: MutVisit,
     F: FnMut(NodeId, Option<QSelf>, Path, &[Res]) -> (Option<QSelf>, Path),
 {
-    let mut f = ResolvedPathFolder {
-        cx,
-        callback,
-    };
+    let mut f = ResolvedPathFolder { cx, callback };
     target.visit(&mut f)
 }

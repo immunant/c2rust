@@ -1,9 +1,9 @@
 //! `fold_output_exprs` function, for visiting return-value expressions.
-use smallvec::SmallVec;
-use rustc_ast::*;
 use rustc_ast::mut_visit::{self, visit_opt, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::*;
 use rustc_data_structures::map_in_place::MapInPlace;
+use smallvec::SmallVec;
 
 use crate::ast_manip::MutVisit;
 use crate::util::Lone;
@@ -139,9 +139,6 @@ where
     T: MutVisit,
     F: FnMut(&mut P<Expr>),
 {
-    let mut f = OutputFolder {
-        callback,
-        trailing,
-    };
+    let mut f = OutputFolder { callback, trailing };
     target.visit(&mut f)
 }

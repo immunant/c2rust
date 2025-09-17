@@ -7,17 +7,17 @@
 //! `token_rewrite_map`, and nodes outside of macros in `ReplaceTokens`.
 use crate::ast_builder::mk;
 use log::{debug, trace, warn};
-use rustc_data_structures::sync::Lrc;
-use smallvec::SmallVec;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::ptr::P;
-use rustc_span::source_map::{BytePos, Span};
+use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::tokenstream::{self, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::sync::Lrc;
+use rustc_span::source_map::{BytePos, Span};
 use rustc_span::sym;
 use smallvec::smallvec;
+use smallvec::SmallVec;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::mac_table::{InvocId, InvocKind, MacTable};
 use super::nt_match::{self, NtMatch};
@@ -86,14 +86,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
         if let Some(info) = self.mac_table.get(e.id) {
             if let InvocKind::Mac(mac) = info.invoc {
-                let old = info
-                    .expanded
-                    .as_expr()
-                    .unwrap_or_else(|| panic!(
+                let old = info.expanded.as_expr().unwrap_or_else(|| {
+                    panic!(
                         "replaced {:?} with {:?} which is a different type?",
-                        e,
-                        info.expanded,
-                    ));
+                        e, info.expanded,
+                    )
+                });
                 self.collect_token_rewrites(info.id, old, &e as &Expr);
                 let new_e = mk().id(e.id).span(root_callsite_span(e.span)).mac_expr(mac);
                 trace!("collapse: {:?} -> {:?}", e, new_e);
@@ -109,14 +107,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         if let Some(info) = self.mac_table.get(p.id) {
             if let InvocKind::Mac(mac) = info.invoc {
-                let old = info
-                    .expanded
-                    .as_pat()
-                    .unwrap_or_else(|| panic!(
+                let old = info.expanded.as_pat().unwrap_or_else(|| {
+                    panic!(
                         "replaced {:?} with {:?} which is a different type?",
-                        p,
-                        info.expanded,
-                    ));
+                        p, info.expanded,
+                    )
+                });
                 self.collect_token_rewrites(info.id, old, &p as &Pat);
                 let new_p = mk().id(p.id).span(root_callsite_span(p.span)).mac_pat(mac);
                 trace!("collapse: {:?} -> {:?}", p, new_p);
@@ -132,14 +128,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
     fn visit_ty(&mut self, t: &mut P<Ty>) {
         if let Some(info) = self.mac_table.get(t.id) {
             if let InvocKind::Mac(mac) = info.invoc {
-                let old = info
-                    .expanded
-                    .as_ty()
-                    .unwrap_or_else(|| panic!(
+                let old = info.expanded.as_ty().unwrap_or_else(|| {
+                    panic!(
                         "replaced {:?} with {:?} which is a different type?",
-                        t,
-                        info.expanded,
-                    ));
+                        t, info.expanded,
+                    )
+                });
                 self.collect_token_rewrites(info.id, old, &t as &Ty);
                 let new_t = mk().id(t.id).span(root_callsite_span(t.span)).mac_ty(mac);
                 trace!("collapse: {:?} -> {:?}", t, new_t);
@@ -156,14 +150,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         if let Some(info) = self.mac_table.get(s.id) {
             match info.invoc {
                 InvocKind::Mac(mac) => {
-                    let old = info
-                        .expanded
-                        .as_stmt()
-                        .unwrap_or_else(|| panic!(
+                    let old = info.expanded.as_stmt().unwrap_or_else(|| {
+                        panic!(
                             "replaced {:?} with {:?} which is a different type?",
-                            s,
-                            info.expanded,
-                        ));
+                            s, info.expanded,
+                        )
+                    });
                     self.collect_token_rewrites(info.id, old, &s as &Stmt);
 
                     if !self.seen_invocs.contains(&info.id) {
@@ -209,14 +201,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         if let Some(info) = self.mac_table.get(i.id) {
             match info.invoc {
                 InvocKind::Mac(mac) => {
-                    let old = info
-                        .expanded
-                        .as_item()
-                        .unwrap_or_else(|| panic!(
+                    let old = info.expanded.as_item().unwrap_or_else(|| {
+                        panic!(
                             "replaced {:?} with {:?} which is a different type?",
-                            i,
-                            info.expanded,
-                        ));
+                            i, info.expanded,
+                        )
+                    });
                     self.collect_token_rewrites(info.id, old, &i as &Item);
 
                     if !self.seen_invocs.contains(&info.id) {
@@ -247,14 +237,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
     fn flat_map_impl_item(&mut self, ii: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if let Some(info) = self.mac_table.get(ii.id) {
             if let InvocKind::Mac(mac) = info.invoc {
-                let old = info
-                    .expanded
-                    .as_assoc_item()
-                    .unwrap_or_else(|| panic!(
+                let old = info.expanded.as_assoc_item().unwrap_or_else(|| {
+                    panic!(
                         "replaced {:?} with {:?} which is a different type?",
-                        ii,
-                        info.expanded,
-                    ));
+                        ii, info.expanded,
+                    )
+                });
                 self.collect_token_rewrites(info.id, old, &ii as &AssocItem);
 
                 if !self.seen_invocs.contains(&info.id) {
@@ -280,14 +268,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
     fn flat_map_trait_item(&mut self, ti: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if let Some(info) = self.mac_table.get(ti.id) {
             if let InvocKind::Mac(mac) = info.invoc {
-                let old = info
-                    .expanded
-                    .as_assoc_item()
-                    .unwrap_or_else(|| panic!(
+                let old = info.expanded.as_assoc_item().unwrap_or_else(|| {
+                    panic!(
                         "replaced {:?} with {:?} which is a different type?",
-                        ti,
-                        info.expanded,
-                    ));
+                        ti, info.expanded,
+                    )
+                });
                 self.collect_token_rewrites(info.id, old, &ti as &AssocItem);
 
                 if !self.seen_invocs.contains(&info.id) {
@@ -313,14 +299,12 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
     fn flat_map_foreign_item(&mut self, fi: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         if let Some(info) = self.mac_table.get(fi.id) {
             if let InvocKind::Mac(mac) = info.invoc {
-                let old = info
-                    .expanded
-                    .as_foreign_item()
-                    .unwrap_or_else(|| panic!(
+                let old = info.expanded.as_foreign_item().unwrap_or_else(|| {
+                    panic!(
                         "replaced {:?} with {:?} which is a different type?",
-                        fi,
-                        info.expanded,
-                    ));
+                        fi, info.expanded,
+                    )
+                });
                 self.collect_token_rewrites(info.id, old, &fi as &ForeignItem);
 
                 if !self.seen_invocs.contains(&info.id) {
@@ -479,10 +463,13 @@ fn rewrite_tokens(
 
         if let Some(item) = rewrites.remove(&tt.span().lo()) {
             assert!(item.invoc_id == invoc_id);
-            new_tts.push(TokenTree::Token(Token {
-                kind: TokenKind::Interpolated(Lrc::new(item.nt)),
-                span: item.span,
-            }, Spacing::Alone));
+            new_tts.push(TokenTree::Token(
+                Token {
+                    kind: TokenKind::Interpolated(Lrc::new(item.nt)),
+                    span: item.span,
+                },
+                Spacing::Alone,
+            ));
             ignore_until = Some(item.span.hi());
             continue;
         }

@@ -1,12 +1,12 @@
 //! Intraprocedural step of the analysis.
 
-use log::{debug, Level, log_enabled};
+use log::{debug, log_enabled, Level};
 use rustc_hir::def_id::DefId;
+use rustc_index::vec::IndexVec;
 use rustc_middle::mir::*;
 use rustc_middle::ty::{Ty, TyKind};
-use rustc_index::vec::IndexVec;
+use rustc_span::source_map::{Spanned, DUMMY_SP};
 use rustc_target::abi::VariantIdx;
-use rustc_span::source_map::{DUMMY_SP, Spanned};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::expect;
@@ -138,15 +138,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let span = match &decl.local_info {
                 Some(box LocalInfo::User(ClearCrossCrate::Set(binding))) => Some(binding),
                 _ => None,
-            }.map(|binding| match binding {
+            }
+            .map(|binding| match binding {
                 BindingForm::Var(var) => var.pat_span,
                 _ => DUMMY_SP,
-            }).unwrap_or(DUMMY_SP);
+            })
+            .unwrap_or(DUMMY_SP);
 
-            self.local_tys.push(Spanned {
-                node: lty,
-                span,
-            });
+            self.local_tys.push(Spanned { node: lty, span });
         }
 
         // Pick up any preset constraints for this variant.
@@ -206,14 +205,18 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             _ => None,
         };
 
-        let relabeled_locals = self.local_tys
+        let relabeled_locals = self
+            .local_tys
             .raw
             .iter()
             .filter_map(|spanned_ity| {
                 if spanned_ity.span == DUMMY_SP {
                     None
                 } else {
-                    Some((spanned_ity.span, self.cx.lcx.relabel(spanned_ity.node, &mut f)))
+                    Some((
+                        spanned_ity.span,
+                        self.cx.lcx.relabel(spanned_ity.node, &mut f),
+                    ))
                 }
             })
             .collect();
@@ -363,28 +366,26 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 (cast_ty, op_perm)
             }
             Rvalue::BinaryOp(op, box (ref a, ref _b))
-            | Rvalue::CheckedBinaryOp(op, box (ref a, ref _b)) => {
-                match op {
-                    BinOp::Add
-                    | BinOp::Sub
-                    | BinOp::Mul
-                    | BinOp::Div
-                    | BinOp::Rem
-                    | BinOp::BitXor
-                    | BinOp::BitAnd
-                    | BinOp::BitOr
-                    | BinOp::Shl
-                    | BinOp::Shr
-                    | BinOp::Eq
-                    | BinOp::Lt
-                    | BinOp::Le
-                    | BinOp::Ne
-                    | BinOp::Ge
-                    | BinOp::Gt => (self.local_ty(ty), Perm::move_()),
+            | Rvalue::CheckedBinaryOp(op, box (ref a, ref _b)) => match op {
+                BinOp::Add
+                | BinOp::Sub
+                | BinOp::Mul
+                | BinOp::Div
+                | BinOp::Rem
+                | BinOp::BitXor
+                | BinOp::BitAnd
+                | BinOp::BitOr
+                | BinOp::Shl
+                | BinOp::Shr
+                | BinOp::Eq
+                | BinOp::Lt
+                | BinOp::Le
+                | BinOp::Ne
+                | BinOp::Ge
+                | BinOp::Gt => (self.local_ty(ty), Perm::move_()),
 
-                    BinOp::Offset => self.operand_lty(a),
-                }
-            }
+                BinOp::Offset => self.operand_lty(a),
+            },
             Rvalue::NullaryOp(_op, _ty) => unimplemented!(),
             Rvalue::UnaryOp(op, ref _a) => match op {
                 UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
@@ -436,7 +437,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             Rvalue::CopyForDeref(ref lv) => self.place_lty(lv),
             // TODO: implement these; we shouldn't see them in transpiled
             // code for now, but we should handle them when we do
-            Rvalue::ThreadLocalRef(..) | Rvalue::ShallowInitBox(..) => unimplemented!()
+            Rvalue::ThreadLocalRef(..) | Rvalue::ShallowInitBox(..) => unimplemented!(),
         }
     }
 
@@ -578,28 +579,28 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         for (idx, s) in bb.statements.iter().enumerate() {
             self.enter_stmt(idx);
             match s.kind {
-                StatementKind::Assign(box(ref lv, ref rv)) => {
+                StatementKind::Assign(box (ref lv, ref rv)) => {
                     let (lv_ty, lv_perm) = self.place_lty(lv);
                     let (rv_ty, rv_perm) = self.rvalue_lty(rv);
                     self.propagate(lv_ty, rv_ty, rv_perm);
                     self.propagate_perm(Perm::write(), lv_perm);
                     debug!("    {:?}: {:?}", lv, lv_ty);
                     debug!("    ^-- {:?}: {:?}", rv, rv_ty);
-                },
+                }
                 StatementKind::Deinit(box ref pl) => {
                     let (_pl_ty, pl_perm) = self.place_lty(pl);
                     // TODO: is this needed?
                     self.propagate_perm(Perm::write(), pl_perm);
-                },
+                }
                 StatementKind::CopyNonOverlapping(..) => unimplemented!(),
-                StatementKind::FakeRead(..) |
-                StatementKind::SetDiscriminant { .. } |
-                StatementKind::StorageLive(_) |
-                StatementKind::StorageDead(_) |
-                StatementKind::Retag { .. } |
-                StatementKind::AscribeUserType(..) |
-                StatementKind::Coverage(..) |
-                StatementKind::Nop => {},
+                StatementKind::FakeRead(..)
+                | StatementKind::SetDiscriminant { .. }
+                | StatementKind::StorageLive(_)
+                | StatementKind::StorageDead(_)
+                | StatementKind::Retag { .. }
+                | StatementKind::AscribeUserType(..)
+                | StatementKind::Coverage(..)
+                | StatementKind::Nop => {}
             }
         }
 

@@ -7,12 +7,12 @@
 //!    bogus spans and reset them.
 
 use log::trace;
-use smallvec::SmallVec;
-use std::mem;
-use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::*;
 use rustc_span::source_map::{Span, DUMMY_SP};
+use smallvec::SmallVec;
+use std::mem;
 
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::MutVisit;
@@ -94,11 +94,11 @@ impl FixFormat {
 
         if let ExprKind::Call(callee, _) = &e.kind {
             if let ExprKind::Path(None, path) = &callee.kind {
-                let matches_fmt_args = path.segments.len() == 4 &&
-                    path.segments[1].ident.as_str() == "fmt" &&
-                    path.segments[2].ident.as_str() == "Arguments" &&
-                    (path.segments[3].ident.as_str() == "new_v1" ||
-                     path.segments[3].ident.as_str() == "new_v1_formatted");
+                let matches_fmt_args = path.segments.len() == 4
+                    && path.segments[1].ident.as_str() == "fmt"
+                    && path.segments[2].ident.as_str() == "Arguments"
+                    && (path.segments[3].ident.as_str() == "new_v1"
+                        || path.segments[3].ident.as_str() == "new_v1_formatted");
                 return matches_fmt_args;
             }
         }
@@ -123,10 +123,7 @@ impl MutVisitor for FixFormat {
                 mut_visit::noop_visit_expr(e, this);
                 e.span = mac_span;
             })
-        } else if !e.span.from_expansion()
-            && self.ctxt.in_format
-            && !self.ctxt.in_match
-        {
+        } else if !e.span.from_expansion() && self.ctxt.in_format && !self.ctxt.in_match {
             trace!("Fixing format! string at {:?}", e);
             let mac_span = self.ctxt.parent_span;
             let new_ctxt = self.ctxt.enter_span(mac_span);

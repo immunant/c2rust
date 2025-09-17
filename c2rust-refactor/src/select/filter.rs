@@ -1,8 +1,8 @@
-use std::str::FromStr;
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
 use rustc_span::source_map::Span;
 use rustc_span::symbol::Symbol;
-use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use std::str::FromStr;
 
 use crate::ast_manip::AstEquiv;
 use crate::command::CommandState;

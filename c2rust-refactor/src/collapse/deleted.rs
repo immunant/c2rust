@@ -1,13 +1,13 @@
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
 use smallvec::SmallVec;
 /// Special handling for nodes that were deleted by macro expansion.  This is mostly for `#[cfg]`
 /// and `#[test]` attrs.  We collect info on deleted nodes right after expansion, then use that
 /// info later to re-insert those nodes during macro collapsing.
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use rustc_ast::*;
-use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_ast::ptr::P;
-use rustc_ast::visit::{self, Visitor};
 
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::ast_manip::{GetNodeId, ListNodeIds, MutVisit, Visit};
@@ -80,8 +80,10 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
 impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, x: &'ast Expr) {
         match &x.kind {
-            ExprKind::Array(elements) | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements, _) | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements)
+            | ExprKind::Call(_, elements)
+            | ExprKind::MethodCall(_, elements, _)
+            | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
             }
             _ => {}
@@ -237,7 +239,9 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn flat_map_item(&mut self, mut x: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let id = x.id;
         match x.kind {
-            ItemKind::Mod(_, ModKind::Loaded(ref mut m_items, _, _)) => self.restore_seq(id, m_items),
+            ItemKind::Mod(_, ModKind::Loaded(ref mut m_items, _, _)) => {
+                self.restore_seq(id, m_items)
+            }
             ItemKind::ForeignMod(ref mut fm) => self.restore_seq(id, &mut fm.items),
 
             // Both of these contain vectors of P<AssocItem>,
@@ -253,8 +257,10 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, expr: &mut P<Expr>) {
         let id = expr.id;
         match &mut expr.kind {
-            ExprKind::Array(elements) | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements, _) | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements)
+            | ExprKind::Call(_, elements)
+            | ExprKind::MethodCall(_, elements, _)
+            | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
             }
             _ => {}

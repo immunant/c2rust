@@ -94,10 +94,14 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
         let label = f(ty);
         match ty.kind() {
             // Types with no arguments
-            IrTyKind::Bool | IrTyKind::Char | IrTyKind::Int(_) | IrTyKind::Uint(_)
-            | IrTyKind::Float(_) | IrTyKind::Str | IrTyKind::Foreign(_) | IrTyKind::Never => {
-                self.mk(ty, &[], label)
-            }
+            IrTyKind::Bool
+            | IrTyKind::Char
+            | IrTyKind::Int(_)
+            | IrTyKind::Uint(_)
+            | IrTyKind::Float(_)
+            | IrTyKind::Str
+            | IrTyKind::Foreign(_)
+            | IrTyKind::Never => self.mk(ty, &[], label),
 
             // Types with arguments
             IrTyKind::Adt(_, substs) => {
@@ -137,10 +141,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::Tuple(ref elems) => {
-                let args = elems
-                    .iter()
-                    .map(|ty| self.label(ty, f))
-                    .collect::<Vec<_>>();
+                let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
 

@@ -1,6 +1,6 @@
 //! Helper function for visiting only one type of AST node.
-use rustc_ast::*;
 use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
 
 use crate::ast_manip::Visit;
 

@@ -1,13 +1,13 @@
+use rustc_ast::*;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::ops::Index;
 use std::slice;
-use rustc_ast::*;
 // use rustc_ast::util::comments::Comment as LexComment;
+use rustc_ast::visit::*;
 use rustc_session::parse::ParseSess;
 use rustc_span::source_map::{SourceMap, Span};
-use rustc_ast::visit::*;
-use rustc_span::{BytePos, CharPos, Pos, FileName};
+use rustc_span::{BytePos, CharPos, FileName, Pos};
 
 use crate::ast_manip::Visit;
 
@@ -40,7 +40,8 @@ impl Index<&NodeId> for CommentMap {
 }
 
 pub fn collect_comments<T>(ast: &T, comments: &[Comment]) -> CommentMap
-    where T: Visit
+where
+    T: Visit,
 {
     let mut collector = CommentCollector {
         comment_map: CommentMap::default(),
@@ -109,7 +110,7 @@ macro_rules! check_comment {
             self.check_comment(x.id, x.span);
             $walk_fn(self, x);
         }
-    }
+    };
 }
 
 impl<'a> Visitor<'a> for CommentCollector<'a> {
@@ -141,16 +142,19 @@ fn all_whitespace(s: &str, col: CharPos) -> Option<usize> {
 fn trim_whitespace_prefix(s: &str, col: CharPos) -> &str {
     let len = s.len();
     match all_whitespace(&s, col) {
-        Some(col) => if col < len { &s[col..] } else { "" },
+        Some(col) => {
+            if col < len {
+                &s[col..]
+            } else {
+                ""
+            }
+        }
         None => s,
     }
 }
 
 // From librustc_ast::util::comments
-fn split_block_comment_into_lines(
-    text: &str,
-    col: CharPos,
-) -> Vec<String> {
+fn split_block_comment_into_lines(text: &str, col: CharPos) -> Vec<String> {
     let mut res: Vec<String> = vec![];
     let mut lines = text.lines();
     // just push the first line
@@ -220,7 +224,11 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
                     let col = CharPos(text[line_begin_pos..pos].chars().count());
 
                     let lines = split_block_comment_into_lines(token_text, col);
-                    comments.push(Comment { style, lines, pos: pos_in_file })
+                    comments.push(Comment {
+                        style,
+                        lines,
+                        pos: pos_in_file,
+                    })
                 }
             }
             rustc_lexer::TokenKind::LineComment { doc_style } => {

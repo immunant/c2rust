@@ -6,18 +6,18 @@
 //! for `SelectOp` for descriptions of the available commands.
 
 use regex::Regex;
-use std::collections::HashSet;
-use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_ast::*;
 use rustc_span::symbol::Symbol;
+use std::collections::HashSet;
 
+use crate::ast_builder::IntoSymbol;
 use crate::command::CommandState;
 use crate::command::{DriverCommand, Registry};
 use crate::driver::Phase;
 use crate::pick_node::NodeKind;
 use crate::resolve;
 use crate::RefactorCtxt;
-use crate::ast_builder::IntoSymbol;
 
 pub use self::filter::ItemLikeKind;
 

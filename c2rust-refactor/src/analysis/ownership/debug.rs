@@ -3,8 +3,8 @@
 use std::fmt;
 
 use rustc_ast::Mutability;
-use rustc_type_ir::sty::TyKind;
 use rustc_index::vec::Idx;
+use rustc_type_ir::sty::TyKind;
 
 use crate::analysis::labeled_ty::LabeledTy;
 

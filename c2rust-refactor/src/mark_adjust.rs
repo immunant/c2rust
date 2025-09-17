@@ -1,21 +1,21 @@
 //! This module implements commands for manipulating the current set of marked nodes.
 use log::info;
+use rustc_ast::ast;
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Res};
+use rustc_span::symbol::Symbol;
 use rustc_type_ir::sty::TyKind;
 use std::str::FromStr;
-use rustc_ast::ast;
-use rustc_ast::*;
-use rustc_span::symbol::Symbol;
-use rustc_ast::visit::{self, Visitor};
 
+use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::{visit_nodes, Visit};
 use crate::command::CommandState;
 use crate::command::{DriverCommand, FuncCommand, RefactorState, Registry};
 use crate::driver::Phase;
-use crate::{expect, match_or};
 use crate::RefactorCtxt;
-use crate::ast_builder::IntoSymbol;
+use crate::{expect, match_or};
 
 /// Find all nodes that refer to marked nodes.
 struct MarkUseVisitor<'a, 'tcx: 'a> {
@@ -47,7 +47,7 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                 }
             }
             &hir::QPath::TypeRelative(..) => {}
-            &hir::QPath::LangItem(..) => unimplemented!()
+            &hir::QPath::LangItem(..) => unimplemented!(),
         }
     }
 }

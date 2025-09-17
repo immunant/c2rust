@@ -3,7 +3,7 @@ use std::iter;
 use std::mem;
 use std::usize;
 
-use log::{debug, Level, log_enabled, warn};
+use log::{debug, log_enabled, warn, Level};
 
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;

@@ -1,19 +1,19 @@
 //! `TryMatch` impls, to support the `matcher` module.
+use rustc_ast::ptr::P;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{Span, Spanned};
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::convert::TryInto;
 use std::rc::Rc;
-use rustc_ast::*;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
-use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use rustc_ast::ptr::P;
-use rustc_span::source_map::{Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
-use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
-use rustc_data_structures::thin_vec::ThinVec;
 
-use crate::ast_manip::AstNode;
 use crate::ast_manip::util::{macro_name, PatternSymbol};
+use crate::ast_manip::AstNode;
 use crate::matcher::{self, MatchCtxt, TryMatch};
 
 impl TryMatch for AstNode {
@@ -144,11 +144,9 @@ impl TryMatch for Ty {
         if let TyKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
-                "marked" => mcx.do_marked(
-                    &mac.args,
-                    |p| p.parse_ty().map(|p| p.into_inner()),
-                    target,
-                ),
+                "marked" => {
+                    mcx.do_marked(&mac.args, |p| p.parse_ty().map(|p| p.into_inner()), target)
+                }
                 "def" => mcx.do_def_ty(&mac.args, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };

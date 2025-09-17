@@ -1,9 +1,9 @@
 //! Debug command for printing the span of every major AST node.
 use log::info;
+use rustc_ast::visit::Visitor;
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
-use rustc_ast::visit::Visitor;
 
 use crate::ast_manip::{visit_nodes, Visit};
 use crate::command::{DriverCommand, Registry};

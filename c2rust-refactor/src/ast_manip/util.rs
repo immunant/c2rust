@@ -1,12 +1,12 @@
 //! Miscellaneous utility functions.
-use rustc_hir::def::{self, Namespace, Res};
-use smallvec::SmallVec;
-use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_ast::*;
+use rustc_hir::def::{self, Namespace, Res};
 use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
-use rustc_span::symbol::{Ident, kw, Symbol};
 use rustc_span::sym;
+use rustc_span::symbol::{kw, Ident, Symbol};
 use smallvec::smallvec;
+use smallvec::SmallVec;
 
 use crate::expect;
 
@@ -28,7 +28,7 @@ impl PatternSymbol for Lit {
         match self.kind {
             // FIXME: can this conflict with regular Err literals???
             LitKind::Err(ref sym) => Some(*sym),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -226,19 +226,16 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
     use rustc_hir::def::DefKind::*;
     match res {
         Res::Def(kind, _) => match kind {
-            Mod | Struct | Union | Enum | Variant | Trait | TyAlias
-            | ForeignTy | TraitAlias | AssocTy | TyParam => {
-                Some(Namespace::TypeNS)
-            }
+            Mod | Struct | Union | Enum | Variant | Trait | TyAlias | ForeignTy | TraitAlias
+            | AssocTy | TyParam => Some(Namespace::TypeNS),
             Fn | Const | ConstParam | Static(_) | Ctor(..) | AssocFn | AssocConst => {
                 Some(Namespace::ValueNS)
             }
             Macro(..) => Some(Namespace::MacroNS),
 
-            ExternCrate | Use | ForeignMod | AnonConst | InlineConst | OpaqueTy
-            | Field | LifetimeParam | GlobalAsm | Impl | Closure
-            | Generator => None,
-        }
+            ExternCrate | Use | ForeignMod | AnonConst | InlineConst | OpaqueTy | Field
+            | LifetimeParam | GlobalAsm | Impl | Closure | Generator => None,
+        },
 
         Res::PrimTy(..) | Res::SelfTy { .. } | Res::ToolMod => Some(Namespace::TypeNS),
 
@@ -294,5 +291,9 @@ pub fn is_export_attr(attr: &Attribute) -> bool {
 /// Are the idents of the segments of `path` equivalent to the list of idents
 pub fn path_eq<T: AsRef<str>>(path: &Path, idents: &[T]) -> bool {
     path.segments.len() == idents.len()
-        && path.segments.iter().zip(idents).all(|(p, i)| p.ident.as_str() == i.as_ref())
+        && path
+            .segments
+            .iter()
+            .zip(idents)
+            .all(|(p, i)| p.ident.as_str() == i.as_ref())
 }

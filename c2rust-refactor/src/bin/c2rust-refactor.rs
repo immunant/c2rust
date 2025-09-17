@@ -1,4 +1,4 @@
-use clap::{App, ArgMatches, load_yaml};
+use clap::{load_yaml, App, ArgMatches};
 use log::info;
 use std::fs::File;
 use std::io::Read;
