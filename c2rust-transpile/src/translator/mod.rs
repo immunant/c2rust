@@ -4550,9 +4550,23 @@ impl<'c> Translation<'c> {
 
                 let is_const = pointee.qualifiers.is_const;
 
+                // Handle literals by looking at the next level of expr nesting. Avoid doing this
+                // for expressions that will be translated as const macros, because emitting the
+                // name of the const macro only occurs if we process the expr_id with a direct call
+                // to `convert_expr`.
                 let expr_kind = expr.map(|e| &self.ast_context.index(e).kind);
+                let translate_as_macro = expr
+                    .map(|e| {
+                        self.convert_const_macro_expansion(ctx, e, None)
+                            .ok()
+                            .flatten()
+                            .is_some()
+                    })
+                    .unwrap_or(false);
                 match expr_kind {
-                    Some(&CExprKind::Literal(_, CLiteral::String(ref bytes, 1))) if is_const => {
+                    Some(&CExprKind::Literal(_, CLiteral::String(ref bytes, 1)))
+                        if is_const && !translate_as_macro =>
+                    {
                         let target_ty = self.convert_type(target_cty.ctype)?;
 
                         let mut bytes = bytes.to_owned();
