@@ -40,7 +40,11 @@ fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res<!
     }
 }
 
-fn push_hir_foreign_mod_children(tcx: TyCtxt, items: &[ForeignItemRef], children: &mut Vec<(Symbol, Res<!>)>) {
+fn push_hir_foreign_mod_children(
+    tcx: TyCtxt,
+    items: &[ForeignItemRef],
+    children: &mut Vec<(Symbol, Res<!>)>,
+) {
     for fi in &items[..] {
         let did = tcx.hir().local_def_id(fi.id.hir_id()).to_def_id();
         let def = tcx.def_kind(did);
@@ -76,9 +80,7 @@ pub fn module_children(tcx: TyCtxt, did: DefId) -> Vec<(Symbol, Res<!>)> {
                 module_children(tcx, krate.as_def_id())
             }
 
-            Use(ref path, _kind) => {
-                module_children(tcx, path.res.def_id())
-            }
+            Use(ref path, _kind) => module_children(tcx, path.res.def_id()),
 
             Mod(ref m) => {
                 let mut children = Vec::with_capacity(m.item_ids.len());

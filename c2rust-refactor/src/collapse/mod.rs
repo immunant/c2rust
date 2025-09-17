@@ -14,10 +14,10 @@
 //! Though most of the code and comments talk about "macros", we really mean everything that gets
 //! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
-use std::collections::HashMap;
 use rustc_ast::*;
 use rustc_span::source_map::Span;
 use rustc_span::sym;
+use std::collections::HashMap;
 
 mod cfg_attr;
 mod deleted;

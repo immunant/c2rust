@@ -7,7 +7,7 @@
     drain_filter,
     label_break_value,
     let_else,
-    never_type,
+    never_type
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
@@ -34,8 +34,8 @@ extern crate rustc_privacy;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
-extern crate rustc_typeck;
 extern crate rustc_type_ir;
+extern crate rustc_typeck;
 extern crate smallvec;
 
 mod ast_builder;
@@ -80,13 +80,13 @@ mod context;
 use cargo::core::TargetKind;
 use cargo_util::paths;
 use log::{info, warn};
+use rustc_ast::NodeId;
 use rustc_interface::interface;
 use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
-use rustc_ast::NodeId;
 
 use crate::ast_builder::IntoSymbol;
 
@@ -234,13 +234,13 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
 #[cfg_attr(feature = "profile", flame)]
 fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
-    use cargo::core::{PackageId, Target, Workspace, Verbosity};
+    use cargo::core::{PackageId, Target, Verbosity, Workspace};
     use cargo::ops;
     use cargo::ops::CompileOptions;
-    use cargo::util::important_paths::find_root_manifest_for_wd;
     use cargo::util::errors::CargoResult;
-    use cargo_util::ProcessBuilder;
+    use cargo::util::important_paths::find_root_manifest_for_wd;
     use cargo::Config;
+    use cargo_util::ProcessBuilder;
     use std::sync::Mutex;
 
     let config = Config::default().unwrap();
@@ -289,7 +289,11 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             // we refactor dependencies before crates that depend on them, but
             // for now we don't support workspaces, so there can only be one
             // lib.
-            let args = RustcArgs { kind: Some(target.kind().clone()), args, cwd };
+            let args = RustcArgs {
+                kind: Some(target.kind().clone()),
+                args,
+                cwd,
+            };
             if let TargetKind::Lib(..) = target.kind() {
                 g.insert(0, args);
             } else {
@@ -315,7 +319,8 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             _on_stderr_line: &mut dyn FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
             self.maybe_record_cmd(&cmd, &id, target);
-            self.default.exec(cmd, id, target, mode, &mut |_| Ok(()), &mut |_| Ok(()))
+            self.default
+                .exec(cmd, id, target, mode, &mut |_| Ok(()), &mut |_| Ok(()))
         }
 
         fn force_rebuild(&self, unit: &Unit) -> bool {
@@ -349,7 +354,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 
 fn rebuild() {
     use cargo::core::compiler::CompileMode;
-    use cargo::core::{Workspace, Verbosity};
+    use cargo::core::{Verbosity, Workspace};
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::important_paths::find_root_manifest_for_wd;
@@ -399,8 +404,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         }
 
         if let Some(ref cwd) = rustc_args.cwd {
-            env::set_current_dir(cwd)
-                .expect("Error changing current directory");
+            env::set_current_dir(cwd).expect("Error changing current directory");
         }
 
         // TODO: interface::run_compiler() here and create a RefactorState with the
@@ -413,9 +417,10 @@ fn main_impl(opts: Options) -> interface::Result<()> {
                 compiler.enter(|queries| {
                     let expanded_crate = queries.expansion().unwrap().take().0;
                     for c in &opts.cursors {
-                        let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
-                            pick_node::NodeKind::from_str(&s)
-                        });
+                        let kind_result =
+                            c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
+                                pick_node::NodeKind::from_str(&s)
+                            });
                         let kind = match kind_result {
                             Ok(k) => k,
                             Err(_) => {

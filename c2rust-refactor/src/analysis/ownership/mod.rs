@@ -18,13 +18,13 @@ use std::collections::HashMap;
 use std::fmt;
 use std::u32;
 
+use log::{debug, log_enabled, Level};
 use rustc_arena::DroplessArena;
-use log::{debug, Level, log_enabled};
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_hir::{Mutability, Node};
-use rustc_middle::ty::{self, TyCtxt, TyKind, TypeAndMut, Ty};
 use rustc_index::vec::{Idx, IndexVec};
+use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeAndMut};
 use rustc_span::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -171,11 +171,7 @@ fn is_fn(hir_map: &HirMap, def_id: DefId) -> bool {
 
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_intra<'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'tcx>,
-    hir_map: &HirMap<'tcx>,
-    tcx: TyCtxt<'tcx>,
-) {
+fn analyze_intra<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>, tcx: TyCtxt<'tcx>) {
     for &def_id in tcx.mir_keys(()).iter() {
         let def_id = def_id.to_def_id();
 
@@ -217,10 +213,17 @@ fn analyze_externs<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>
             if let Some(p) = input.label {
                 match input.ty.kind() {
                     TyKind::Ref(_, _, Mutability::Mut) => {
-                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                        func_summ
+                            .sig_cset
+                            .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
-                    TyKind::RawPtr(TypeAndMut{mutbl: Mutability::Mut, ..}) => {
-                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                    TyKind::RawPtr(TypeAndMut {
+                        mutbl: Mutability::Mut,
+                        ..
+                    }) => {
+                        func_summ
+                            .sig_cset
+                            .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
                     _ => {}
                 }
@@ -254,10 +257,7 @@ fn is_mut_t(ty: &Ty) -> bool {
 /// so that ownership analysis can reason about them properly
 // TODO: When we want to add more constraints to functions here, we should make this
 // more generic
-fn register_std_constraints<'a, 'tcx, 'lty>(
-    ctxt: &mut Ctxt<'lty, 'tcx>,
-    tctxt: TyCtxt<'tcx>,
-) {
+fn register_std_constraints<'a, 'tcx, 'lty>(ctxt: &mut Ctxt<'lty, 'tcx>, tctxt: TyCtxt<'tcx>) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
         let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate_verbose();
 
@@ -265,11 +265,14 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
         if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
             let param0_is_mut_t = is_mut_t(&func_summ.sig.inputs[0].ty);
-            let param1_is_isize = TyKind::Int(ty::IntTy::Isize) == *func_summ.sig.inputs[1].ty.kind();
+            let param1_is_isize =
+                TyKind::Int(ty::IntTy::Isize) == *func_summ.sig.inputs[1].ty.kind();
             let ret_is_mut_t = is_mut_t(&func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
                 func_summ.cset_provided = true;
-                func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
+                func_summ
+                    .sig_cset
+                    .add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
             }
         }
     }
@@ -487,7 +490,8 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 }
             };
 
-            let locals = func.locals
+            let locals = func
+                .locals
                 .iter()
                 .map(|(&span, lty)| (span, var_lcx.relabel(&lty, &mut f)))
                 .collect();

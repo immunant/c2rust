@@ -1,9 +1,9 @@
-use json::{self, JsonValue, object};
-use std::collections::{HashMap, HashSet};
+use json::{self, object, JsonValue};
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
 use rustc_span::source_map::{SourceMap, Span};
 use rustc_span::symbol::{Ident, Symbol};
-use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use std::collections::{HashMap, HashSet};
 
 use crate::rewrite::{TextAdjust, TextRewrite};
 

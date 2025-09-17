@@ -1,25 +1,25 @@
 use log::trace;
 use std::collections::HashMap;
 
-use rustc_target::spec::abi::Abi;
-use rustc_ast::*;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
 use rustc_span::source_map::{Span, SyntaxContext};
 use rustc_span::symbol::Ident;
-use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
-use rustc_data_structures::thin_vec::ThinVec;
+use rustc_target::spec::abi::Abi;
 
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{AssocCtxt, Visitor};
+use rustc_span::source_map::Spanned;
+use rustc_span::Symbol;
 use std::fmt::Debug;
 use std::rc::Rc;
-use rustc_ast::ptr::P;
-use rustc_span::source_map::Spanned;
-use rustc_ast::visit::{AssocCtxt, Visitor};
-use rustc_span::Symbol;
 
+use crate::ast_manip::util::path_eq;
 use crate::ast_manip::Visit;
 use crate::ast_manip::{GetNodeId, GetSpan};
-use crate::ast_manip::util::path_eq;
 
 use super::root_callsite_span;
 
@@ -372,21 +372,22 @@ fn get_child_invoc<'a>(
     }
 }
 
-fn is_derived<'a>(
-    invoc: InvocKind<'a>,
-    new: MacNodeRef<'a>,
-) -> bool {
+fn is_derived<'a>(invoc: InvocKind<'a>, new: MacNodeRef<'a>) -> bool {
     match invoc {
         InvocKind::Attrs(..) => {
             let attrs = match new {
                 MacNodeRef::Item(i) => {
-                    if is_structural_derive(i) { return true; }
+                    if is_structural_derive(i) {
+                        return true;
+                    }
                     Some(&i.attrs[..])
                 }
                 MacNodeRef::Stmt(s) => match &s.kind {
                     StmtKind::Local(l) => Some(&l.attrs[..]),
                     StmtKind::Item(i) => {
-                        if is_structural_derive(i) { return true; }
+                        if is_structural_derive(i) {
+                            return true;
+                        }
                         Some(&i.attrs[..])
                     }
                     StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
@@ -414,7 +415,10 @@ fn is_structural_derive(i: &Item) -> bool {
     // automatically_derived attribute. TODO: remove this when
     // StructuralPartialEq is labeled with the right attribute.
     match &i.kind {
-        ItemKind::Impl(box Impl { of_trait: Some(traitref), .. }) => {
+        ItemKind::Impl(box Impl {
+            of_trait: Some(traitref),
+            ..
+        }) => {
             if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
                 || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
             {
@@ -456,14 +460,17 @@ impl<T: CollectMacros> CollectMacros for Spanned<T> {
     }
 }
 
-impl<T: CollectMacros+Debug> CollectMacros for Option<T> {
+impl<T: CollectMacros + Debug> CollectMacros for Option<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         match (old, new) {
             (&Some(ref old), &Some(ref new)) => {
                 <T as CollectMacros>::collect_macros(old, new, cx);
             }
             (&None, &None) => {}
-            (_, _) => panic!("mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}", old, new),
+            (_, _) => panic!(
+                "mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}",
+                old, new
+            ),
         }
     }
 }
@@ -526,9 +533,7 @@ impl MaybeInvoc for Expr {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
             ExprKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
-            _ if has_macro_attr(&self.attrs) => {
-                Some(InvocKind::Attrs(&self.attrs))
-            }
+            _ if has_macro_attr(&self.attrs) => Some(InvocKind::Attrs(&self.attrs)),
             _ => None,
         }
     }
@@ -595,12 +600,8 @@ impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
         match &self.kind {
             StmtKind::MacCall(mac) => Some(InvocKind::Mac(&mac.mac)),
-            StmtKind::Local(l) if has_macro_attr(&l.attrs) => {
-                Some(InvocKind::Attrs(&l.attrs))
-            }
-            StmtKind::Item(i) if has_macro_attr(&i.attrs) => {
-                Some(InvocKind::Attrs(&i.attrs))
-            }
+            StmtKind::Local(l) if has_macro_attr(&l.attrs) => Some(InvocKind::Attrs(&l.attrs)),
+            StmtKind::Item(i) if has_macro_attr(&i.attrs) => Some(InvocKind::Attrs(&i.attrs)),
             StmtKind::Expr(e) | StmtKind::Semi(e) if has_macro_attr(&e.attrs) => {
                 Some(InvocKind::Attrs(&e.attrs))
             }

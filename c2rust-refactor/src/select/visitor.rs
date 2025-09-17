@@ -1,10 +1,10 @@
 //! Visitors for implementing `ChildMatch`, `DescMatch`, and `Filter`, which need to walk the AST
 //! and inspect the currently selected nodes.
 
-use std::collections::HashSet;
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
 use rustc_span::source_map::Span;
-use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use std::collections::HashSet;
 
 use crate::command::CommandState;
 use crate::select::filter::{self, AnyNode};

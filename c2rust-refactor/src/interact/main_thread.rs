@@ -2,7 +2,13 @@
 //!
 //! The main thread runs a loop receiving and processing client requests.
 use log::info;
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use rustc_ast::*;
 use rustc_interface::interface::{self, Config};
+use rustc_span::source_map::Span;
+use rustc_span::source_map::{FileLoader, RealFileLoader};
+use rustc_span::symbol::Symbol;
+use rustc_span::FileName;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
@@ -12,13 +18,8 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use rustc_ast::*;
-use rustc_span::source_map::Span;
-use rustc_span::source_map::{FileLoader, RealFileLoader};
-use rustc_span::symbol::Symbol;
-use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
-use rustc_span::FileName;
 
+use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::{GetNodeId, GetSpan, Visit};
 use crate::command::{self, RefactorState};
 use crate::driver;
@@ -29,7 +30,6 @@ use crate::interact::{plain_backend, vim8_backend};
 use crate::interact::{ToClient, ToServer};
 use crate::pick_node;
 use crate::RefactorCtxt;
-use crate::ast_builder::IntoSymbol;
 
 use super::MarkInfo;
 

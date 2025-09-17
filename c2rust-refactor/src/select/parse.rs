@@ -1,16 +1,16 @@
 use log::debug;
 use regex::Regex;
+use rustc_ast::token::{Delimiter, Lit, LitKind, Token, TokenKind};
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::{ExprKind, Path};
+use rustc_parse::parser::{AttemptLocalParseRecovery, Parser};
+use rustc_session::parse::ParseSess;
 use rustc_session::Session;
+use rustc_span::symbol::Symbol;
+use rustc_span::FileName;
 use std::mem;
 use std::str::FromStr;
 use std::vec;
-use rustc_ast::{ExprKind, Path};
-use rustc_parse::parser::{AttemptLocalParseRecovery, Parser};
-use rustc_ast::token::{Delimiter, Lit, LitKind, Token, TokenKind};
-use rustc_session::parse::ParseSess;
-use rustc_span::symbol::Symbol;
-use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_span::FileName;
 
 use crate::ast_manip::remove_paren;
 use crate::pick_node::NodeKind;
@@ -133,11 +133,12 @@ impl<'a> Stream<'a> {
     fn path(&mut self) -> PResult<Path> {
         let ts = mem::replace(&mut self.toks, Vec::new().into_iter());
         let mut p = Parser::new(self.sess, ts.collect(), false, None);
-        let path_expr = p.parse_expr()
+        let path_expr = p
+            .parse_expr()
             .map_err(|e| format!("error parsing path as expr: {:?}", e.message))?;
         let path = match path_expr.into_inner().kind {
             ExprKind::Path(None, p) => p,
-            kind @ _ => return Err(format!("error converting expr to path: {:?}", kind))
+            kind @ _ => return Err(format!("error converting expr to path: {:?}", kind)),
         };
         self.toks = p
             .parse_all_token_trees()

@@ -1,7 +1,7 @@
 //! `remove_paren` function, for removing unnecessary `ExprKind::Paren` nodes.
-use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::*;
 
 use crate::ast_manip::MutVisit;
 

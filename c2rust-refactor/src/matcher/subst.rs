@@ -17,13 +17,13 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
-use smallvec::SmallVec;
-use rustc_ast::MacCall;
-use rustc_ast::{Expr, ExprKind, Item, Label, Pat, Path, Stmt, Ty};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::MacCall;
+use rustc_ast::{Expr, ExprKind, Item, Label, Pat, Path, Stmt, Ty};
 use rustc_span::symbol::Ident;
 use smallvec::smallvec;
+use smallvec::SmallVec;
 
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};
@@ -59,7 +59,6 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             }
         }
     }
-
 }
 
 impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
@@ -107,12 +106,12 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         // Some Expr nodes contain an optional label, which we need to handle here,
         // since `visit_label` takes the inner `Label` instead of `Option<Label>`
         match e.kind {
-            ExprKind::While(_, _, ref mut label) |
-            ExprKind::ForLoop(_, _, _, ref mut label) |
-            ExprKind::Loop(_, ref mut label) |
-            ExprKind::Block(_, ref mut label) |
-            ExprKind::Break(ref mut label, _) |
-            ExprKind::Continue(ref mut label) => {
+            ExprKind::While(_, _, ref mut label)
+            | ExprKind::ForLoop(_, _, _, ref mut label)
+            | ExprKind::Loop(_, ref mut label)
+            | ExprKind::Block(_, ref mut label)
+            | ExprKind::Break(ref mut label, _)
+            | ExprKind::Continue(ref mut label) => {
                 self.subst_opt_label(label);
             }
             _ => {}

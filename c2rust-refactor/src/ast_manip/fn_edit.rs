@@ -1,13 +1,13 @@
 //! Helpers for rewriting all `fn` itemlikes, regardless of item kind.
-use smallvec::SmallVec;
-use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
-use rustc_span::Span;
+use rustc_ast::*;
+use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_span::symbol::Ident;
+use rustc_span::Span;
 use smallvec::smallvec;
+use smallvec::SmallVec;
 
 use crate::ast_manip::{AstName, GetNodeId, GetSpan, MutVisit, Visit};
 use crate::expect;
@@ -43,7 +43,8 @@ impl AstName for FnKind {
             FnKind::ImplMethod => "ImplMethod",
             FnKind::TraitMethod => "TraitMethod",
             FnKind::Foreign => "Foreign",
-        }.into()
+        }
+        .into()
     }
 }
 
@@ -127,11 +128,23 @@ where
             _ => return mut_visit::noop_flat_map_assoc_item(i, self),
         }
 
-        let AssocItem { attrs, id, span, vis, ident, kind, tokens: _ } = i.into_inner();
+        let AssocItem {
+            attrs,
+            id,
+            span,
+            vis,
+            ident,
+            kind,
+            tokens: _,
+        } = i.into_inner();
         let (defaultness, generics, sig, body) = expect!([kind]
             AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
-        let FnSig { header, decl, span: sig_span } = sig;
+        let FnSig {
+            header,
+            decl,
+            span: sig_span,
+        } = sig;
 
         let fl = FnLike {
             kind: FnKind::ImplMethod,
@@ -176,11 +189,23 @@ where
             _ => return mut_visit::noop_flat_map_assoc_item(i, self),
         }
 
-        let AssocItem { attrs, id, span, vis, ident, kind, tokens: _ } = i.into_inner();
+        let AssocItem {
+            attrs,
+            id,
+            span,
+            vis,
+            ident,
+            kind,
+            tokens: _,
+        } = i.into_inner();
         let (defaultness, generics, sig, body) = expect!([kind]
             AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
-        let FnSig { header, decl, span: sig_span } = sig;
+        let FnSig {
+            header,
+            decl,
+            span: sig_span,
+        } = sig;
 
         let fl = FnLike {
             kind: FnKind::TraitMethod,
@@ -230,11 +255,23 @@ where
             _ => return mut_visit::noop_flat_map_foreign_item(i, self),
         }
 
-        let ForeignItem { attrs, id, span, vis, ident, kind, tokens: _ } = i.into_inner();
+        let ForeignItem {
+            attrs,
+            id,
+            span,
+            vis,
+            ident,
+            kind,
+            tokens: _,
+        } = i.into_inner();
         let (defaultness, generics, sig, body) = expect!([kind]
             ForeignItemKind::Fn(box Fn { defaultness, generics, sig, body })
             => (defaultness, generics, sig, body));
-        let FnSig { header, decl, span: sig_span } = sig;
+        let FnSig {
+            header,
+            decl,
+            span: sig_span,
+        } = sig;
 
         // TODO: do we need vis and tokens in here too?
         let fl = FnLike {
@@ -249,20 +286,26 @@ where
         let fls = (self.callback)(fl);
 
         fls.into_iter()
-            .map(|fl| P(ForeignItem {
-                id: fl.id,
-                ident: fl.ident,
-                span: fl.span,
-                kind: ForeignItemKind::Fn(Box::new(Fn {
-                    defaultness,
-                    generics: generics.clone(),
-                    sig: FnSig { header, decl: fl.decl, span: sig_span },
-                    body: fl.body,
-                })),
-                attrs: fl.attrs,
-                vis: vis.clone(),
-                tokens: None,
-            }))
+            .map(|fl| {
+                P(ForeignItem {
+                    id: fl.id,
+                    ident: fl.ident,
+                    span: fl.span,
+                    kind: ForeignItemKind::Fn(Box::new(Fn {
+                        defaultness,
+                        generics: generics.clone(),
+                        sig: FnSig {
+                            header,
+                            decl: fl.decl,
+                            span: sig_span,
+                        },
+                        body: fl.body,
+                    })),
+                    attrs: fl.attrs,
+                    vis: vis.clone(),
+                    tokens: None,
+                })
+            })
             .flat_map(|i| mut_visit::noop_flat_map_foreign_item(i, self))
             .collect()
     }

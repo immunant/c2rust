@@ -1,21 +1,17 @@
 use log::info;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::*;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
 use rustc_middle::ty::{self, ParamEnv, TyCtxt};
 use smallvec::SmallVec;
-use rustc_ast::*;
-use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_ast::ptr::P;
 
 use crate::ast_manip::MutVisit;
-use crate::{expect, match_or};
 use crate::RefactorCtxt;
+use crate::{expect, match_or};
 
-fn types_approx_equal<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    ty1: ty::Ty<'tcx>,
-    ty2: ty::Ty<'tcx>,
-) -> bool {
+fn types_approx_equal<'tcx>(tcx: TyCtxt<'tcx>, ty1: ty::Ty<'tcx>, ty2: ty::Ty<'tcx>) -> bool {
     // Normalizing and erasing regions fixes a few cases where `illtyped` would otherwise falsely
     // report a type error.  Specifically:
     //
@@ -265,13 +261,10 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: e1 & e2 should have the same type if both present
             }
             ExprKind::Struct(se) => {
-                handle_struct(self.cx, id, ty, se, |e, ty| {
-                    illtyped |= self.ensure(e, ty)
-                });
+                handle_struct(self.cx, id, ty, se, |e, ty| illtyped |= self.ensure(e, ty));
             }
 
             // TODO: handle ExprKind::Paren???
-
             _ => {}
         };
 

@@ -1,8 +1,8 @@
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::ops::{Deref, DerefMut};
-use rustc_ast::*;
-use rustc_ast::visit::{self, Visitor};
 
 use super::{AstNodeRef, Visit};
 
@@ -149,7 +149,8 @@ impl<'s> UnifiedAstMap<'s> {
     }
 
     pub fn get_ast<T>(&self, id: &NodeId) -> Option<&'s T>
-        where &'s T: TryFrom<AstNodeRef<'s>>
+    where
+        &'s T: TryFrom<AstNodeRef<'s>>,
     {
         self.0.get(id).and_then(|x| x.clone().try_into().ok())
     }

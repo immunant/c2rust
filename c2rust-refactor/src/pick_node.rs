@@ -2,14 +2,14 @@
 //!
 //! This is used in various parts of the frontend to set marks at specific locations.
 use log::info;
-use rustc_session::Session;
-use std::path::PathBuf;
-use std::str::FromStr;
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
+use rustc_session::Session;
 use rustc_span::hygiene::SyntaxContext;
 use rustc_span::source_map::{BytePos, Span};
-use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_span::FileName;
+use std::path::PathBuf;
+use std::str::FromStr;
 
 use crate::ast_manip::Visit;
 use crate::command::{DriverCommand, Registry};
@@ -66,10 +66,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         };
 
         visit::walk_assoc_item(self, x, ctxt);
-        if self.node_info.is_none()
-            && self.kind.contains(kind)
-            && x.span.contains(self.target)
-        {
+        if self.node_info.is_none() && self.kind.contains(kind) && x.span.contains(self.target) {
             self.node_info = Some(NodeInfo {
                 id: x.id,
                 span: x.span,
@@ -252,7 +249,7 @@ impl FromStr for NodeKind {
             "pat" => NodeKind::Pat,
             "ty" => NodeKind::Ty,
             "param" => NodeKind::Param,
-            "arg" => NodeKind::Param,  // arg is an alias for param
+            "arg" => NodeKind::Param, // arg is an alias for param
             "field" => NodeKind::Field,
 
             _ => return Err(()),

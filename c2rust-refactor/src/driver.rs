@@ -1,55 +1,55 @@
 //! Frontend logic for parsing and expanding ASTs.  This code largely mimics the behavior of
 //! `rustc_driver::run_compiler`.
 
-use rustc_middle::hir::map as hir_map;
-use rustc_lint::LintStore;
-use rustc_session::config::Options as SessionOptions;
-use rustc_session::config::Input;
-use rustc_session::{self, DiagnosticOutput, Session};
-use rustc_middle::ty;
-use rustc_codegen_ssa::traits::CodegenBackend;
-use rustc_data_structures::fx::FxHashMap;
-use rustc_data_structures::sync::Lrc;
-use rustc_driver;
-use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
-use rustc_index::vec::IndexVec;
-use rustc_interface::interface;
-use rustc_interface::util::{get_codegen_backend, run_in_thread_pool_with_globals};
-use rustc_interface::{util, Config};
-use std::collections::HashSet;
-use std::mem;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::sync::Arc;
 use rustc_ast::ast;
+use rustc_ast::ptr::P;
+use rustc_ast::token::{self, TokenKind};
+use rustc_ast::tokenstream::TokenTree;
 use rustc_ast::DUMMY_NODE_ID;
 use rustc_ast::{
     AssocItem, Block, BlockCheckMode, Expr, ForeignItem, Item, ItemKind, NodeId, Param, Pat, Stmt,
     Ty, UnsafeSource,
 };
-use rustc_span::SourceFileHashAlgorithm;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
-use rustc_parse::parser::attr::InnerAttrPolicy;
-use rustc_ast::token::{self, TokenKind};
+use rustc_codegen_ssa::traits::CodegenBackend;
+use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::sync::Lrc;
+use rustc_driver;
 use rustc_errors::PResult;
-use rustc_ast::ptr::P;
+use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
+use rustc_index::vec::IndexVec;
+use rustc_interface::interface;
+use rustc_interface::util::{get_codegen_backend, run_in_thread_pool_with_globals};
+use rustc_interface::{util, Config};
+use rustc_lint::LintStore;
+use rustc_middle::hir::map as hir_map;
+use rustc_middle::ty;
+use rustc_parse::parser::attr::InnerAttrPolicy;
+use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
+use rustc_session::config::Input;
+use rustc_session::config::Options as SessionOptions;
+use rustc_session::{self, DiagnosticOutput, Session};
+use rustc_span::def_id::LocalDefId;
+use rustc_span::edition::Edition;
+use rustc_span::hygiene::SyntaxContext;
 use rustc_span::source_map::SourceMap;
 use rustc_span::source_map::{FileLoader, RealFileLoader};
 use rustc_span::symbol::{kw, Symbol};
-use rustc_ast::tokenstream::TokenTree;
+use rustc_span::SourceFileHashAlgorithm;
 use rustc_span::{FileName, Span, DUMMY_SP};
-use rustc_span::edition::Edition;
-use rustc_span::def_id::LocalDefId;
+use std::collections::HashSet;
+use std::mem;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast_manip::remove_paren;
 use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
 use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
 // use crate::span_fix;
+use crate::context::HirMap;
 use crate::util::Lone;
 use crate::RefactorCtxt;
-use crate::context::HirMap;
 
 /// Compiler phase selection.  Later phases have more analysis results available, but are less
 /// robust against broken code.  (For example, phase 3 provides typechecking results, but can't be
@@ -77,7 +77,17 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
         tcx: GenerationalTyCtxt<'tcx>,
     ) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, None, Some(HirMap::new(max_node_id, map, node_id_to_def_id, def_id_to_node_id)), Some(tcx))
+        RefactorCtxt::new(
+            sess,
+            None,
+            Some(HirMap::new(
+                max_node_id,
+                map,
+                node_id_to_def_id,
+                def_id_to_node_id,
+            )),
+            Some(tcx),
+        )
     }
 }
 
@@ -299,13 +309,10 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    run_in_thread_pool_with_globals(
-        Edition::Edition2018,
-        1,
-        move || {
-            let state = RefactorState::new(config, cmd_reg, file_io, marks);
-            f(state)
-        })
+    run_in_thread_pool_with_globals(Edition::Edition2018, 1, move || {
+        let state = RefactorState::new(config, cmd_reg, file_io, marks);
+        f(state)
+    })
 }
 
 #[allow(dead_code)]
@@ -322,7 +329,10 @@ pub struct Compiler {
         Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::ExternProviders)>,
 }
 
-pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) -> interface::Compiler {
+pub fn make_compiler(
+    config: &Config,
+    file_io: Arc<dyn FileIO + Sync + Send>,
+) -> interface::Compiler {
     let mut config = clone_config(config);
     config.file_loader = Some(Box::new(ArcFileIO(file_io)));
     let (sess, codegen_backend) = util::create_session(
@@ -339,9 +349,15 @@ pub fn make_compiler(config: &Config, file_io: Arc<dyn FileIO + Sync + Send>) ->
 
     // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
-    sess.source_map().new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
+    sess.source_map()
+        .new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
 
-    let temps_dir = sess.opts.unstable_opts.temps_dir.as_ref().map(|o| PathBuf::from(&o));
+    let temps_dir = sess
+        .opts
+        .unstable_opts
+        .temps_dir
+        .as_ref()
+        .map(|o| PathBuf::from(&o));
 
     let compiler = Compiler {
         sess,
@@ -452,7 +468,11 @@ fn build_session(
 
     let codegen_backend = get_codegen_backend(
         &sopts.maybe_sysroot,
-        sopts.unstable_opts.codegen_backend.as_ref().map(|name| &name[..]),
+        sopts
+            .unstable_opts
+            .codegen_backend
+            .as_ref()
+            .map(|name| &name[..]),
     );
     let target_override = codegen_backend.target_override(&sopts);
     let sess = rustc_session::build_session(

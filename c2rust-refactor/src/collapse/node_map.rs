@@ -1,11 +1,11 @@
 //! `NodeMap` support for macro expansion/collapsing.
-use rustc_data_structures::sync::Lrc;
-use std::collections::HashMap;
-use rustc_ast::*;
 use rustc_ast::token::{Nonterminal, Token, TokenKind};
-use rustc_span::source_map::Span;
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
+use rustc_data_structures::sync::Lrc;
+use rustc_span::source_map::Span;
+use std::collections::HashMap;
 
 use crate::ast_manip::{AstEquiv, ListNodeIds, Visit};
 use crate::node_map::NodeMap;
@@ -61,7 +61,13 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
 fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonterminal>>) {
     for tt in ts.into_trees() {
         match tt {
-            TokenTree::Token(Token{kind: TokenKind::Interpolated(nt), ..}, _) => {
+            TokenTree::Token(
+                Token {
+                    kind: TokenKind::Interpolated(nt),
+                    ..
+                },
+                _,
+            ) => {
                 if let Some(span) = nt_span(&nt) {
                     span_map.insert(span, nt.clone());
                 }

@@ -3,10 +3,10 @@
 
 use std::fmt::Debug;
 
+use rustc_ast::visit::{self, AssocCtxt, Visitor};
+use rustc_ast::*;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
-use rustc_ast::*;
-use rustc_ast::visit::{self, AssocCtxt, Visitor};
 
 use crate::context::HirMap;
 
@@ -225,20 +225,28 @@ where
                 }
             }
 
-            ItemKind::Fn(box Fn { sig: ref ast_sig, .. }) => {
+            ItemKind::Fn(box Fn {
+                sig: ref ast_sig, ..
+            }) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &ast_sig.decl);
                 }
             }
 
-            ItemKind::TyAlias(box TyAlias { ty: Some(ref ast_ty), .. }) => {
+            ItemKind::TyAlias(box TyAlias {
+                ty: Some(ref ast_ty),
+                ..
+            }) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
             }
 
             // Enum/Struct/Union are handled by `visit_field_def`.
-            ItemKind::Impl(box Impl { self_ty: ref ast_ty, .. }) => {
+            ItemKind::Impl(box Impl {
+                self_ty: ref ast_ty,
+                ..
+            }) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
@@ -268,13 +276,19 @@ where
                 }
             }
 
-            AssocItemKind::Fn(box Fn { sig: ref method_sig, .. }) => {
+            AssocItemKind::Fn(box Fn {
+                sig: ref method_sig,
+                ..
+            }) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &method_sig.decl);
                 }
             }
 
-            AssocItemKind::TyAlias(box TyAlias { ty: Some(ref ast_ty), .. }) => {
+            AssocItemKind::TyAlias(box TyAlias {
+                ty: Some(ref ast_ty),
+                ..
+            }) => {
                 if let Some(ty) = self.source.def_type(def_id) {
                     self.record_ty(ty, ast_ty);
                 }
@@ -289,7 +303,9 @@ where
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
         let def_id = self.hir_map.local_def_id_from_node_id(i.id).to_def_id();
         match i.kind {
-            ForeignItemKind::Fn(box Fn { sig: ref ast_sig, .. }) => {
+            ForeignItemKind::Fn(box Fn {
+                sig: ref ast_sig, ..
+            }) => {
                 if let Some(sig) = self.source.fn_sig(def_id) {
                     self.record_fn_decl(sig, &ast_sig.decl);
                 }
@@ -311,12 +327,8 @@ where
 /// Try to match up `ast::Ty` nodes in the source with higher-level type representations provided
 /// by `source`.  The callback will be passed matching pairs of AST-level and higher-level type
 /// representations.
-pub fn map_types<'tcx, S, F>(
-    hir_map: &HirMap<'tcx>,
-    source: S,
-    krate: &Crate,
-    callback: F,
-) where
+pub fn map_types<'tcx, S, F>(hir_map: &HirMap<'tcx>, source: S, krate: &Crate, callback: F)
+where
     S: TypeSource,
     F: FnMut(&mut S, &Ty, S::Type),
 {

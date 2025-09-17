@@ -19,9 +19,12 @@ mod visit_node;
 
 pub use self::ast_deref::AstDeref;
 pub use self::ast_equiv::AstEquiv;
-pub use self::ast_map::{map_ast, map_ast_into, map_ast_unified, map_ast_into_unified, AstMap, NodeTable, UnifiedAstMap};
+pub use self::ast_map::{
+    map_ast, map_ast_into, map_ast_into_unified, map_ast_unified, AstMap, NodeTable, UnifiedAstMap,
+};
 pub use self::ast_names::AstName;
 pub use self::ast_node::{AstNode, AstNodeRef};
+pub use self::comments::{collect_comments, gather_comments, Comment, CommentMap, CommentStyle};
 pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes, WalkAst};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
@@ -31,7 +34,6 @@ pub use self::remove_paren::remove_paren;
 pub use self::seq_edit::{fold_blocks, fold_modules};
 pub use self::visit::Visit;
 pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
-pub use self::comments::{collect_comments, gather_comments, Comment, CommentMap, CommentStyle};
 
 // Modules with more complex APIs are left as `pub`.
 pub mod comments;

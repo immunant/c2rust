@@ -11,17 +11,17 @@
 //!
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use log::info;
-use rustc_ast::*;
 use rustc_ast::token::{Delimiter, Token, TokenKind};
-use rustc_span::DUMMY_SP;
-use rustc_span::source_map::{BytePos, Span};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_span::source_map::{BytePos, Span};
+use rustc_span::DUMMY_SP;
 
 use crate::ast_manip::AstEquiv;
+use crate::expect;
 use crate::rewrite::base::{describe, rewrite_seq_comma_sep};
 use crate::rewrite::strategy::print::PrintParse;
 use crate::rewrite::{Rewrite, RewriteCtxtRef, TextRewrite};
-use crate::expect;
 
 // struct FnHeaderSpans {
 //     vis: Span,
@@ -231,10 +231,12 @@ fn rewrite_arg_list_with_tokens(
                         // This token is just past the end of the current arg.
                         past_arg = true;
                     }
-                    if past_arg && crate::matches!([tt] TokenTree::Token(Token {
+                    if past_arg
+                        && crate::matches!([tt] TokenTree::Token(Token {
                         kind: TokenKind::Comma,
                         ..
-                    }, _)) {
+                    }, _))
+                    {
                         // Found the comma following the current arg.
                         comma_spans.push(tt.span());
                         break;
@@ -307,8 +309,18 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
 
     match (kind1, kind2) {
         (
-            &ItemKind::Fn(box Fn { sig: ref sig1, generics: ref generics1, body: ref block1, .. }),
-            &ItemKind::Fn(box Fn { sig: ref sig2, generics: ref generics2, body: ref block2, .. }),
+            &ItemKind::Fn(box Fn {
+                sig: ref sig1,
+                generics: ref generics1,
+                body: ref block1,
+                ..
+            }),
+            &ItemKind::Fn(box Fn {
+                sig: ref sig2,
+                generics: ref generics2,
+                body: ref block2,
+                ..
+            }),
         ) => {
             let tokens1_stream = tokens1
                 .as_ref()

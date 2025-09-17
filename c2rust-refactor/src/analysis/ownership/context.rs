@@ -22,11 +22,11 @@
 
 use std::collections::hash_map::{self, Entry, HashMap};
 
+use log::{debug, log_enabled, Level};
 use rustc_arena::DroplessArena;
-use log::{debug, Level, log_enabled};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use rustc_index::vec::IndexVec;
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use rustc_span::source_map::Span;
 
 use crate::analysis::labeled_ty::LabeledTyCtxt;
@@ -123,10 +123,7 @@ pub struct Ctxt<'lty, 'tcx> {
 }
 
 impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
-    pub fn new(
-        tcx: TyCtxt<'tcx>,
-        arena: &'lty DroplessArena,
-    ) -> Ctxt<'lty, 'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, arena: &'lty DroplessArena) -> Ctxt<'lty, 'tcx> {
         Ctxt {
             tcx,
             lcx: LabeledTyCtxt::new(&arena),

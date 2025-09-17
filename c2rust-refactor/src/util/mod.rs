@@ -42,5 +42,8 @@ pub fn find_by_name(attrs: &[Attribute], name: Symbol) -> Option<&Attribute> {
 }
 
 pub fn first_attr_value_str_by_name(attrs: &[Attribute], name: Symbol) -> Option<Symbol> {
-    attrs.iter().find(|at| at.has_name(name)).and_then(|at| at.value_str())
+    attrs
+        .iter()
+        .find(|at| at.has_name(name))
+        .and_then(|at| at.value_str())
 }

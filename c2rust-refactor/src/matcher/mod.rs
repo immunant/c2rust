@@ -36,21 +36,24 @@
 //!
 //!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::token::{self, TokenKind};
+use rustc_ast::tokenstream::TokenStream;
+use rustc_ast::{
+    Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, QSelf, Stmt, Ty, TyKind,
+};
+use rustc_errors::PResult;
 use rustc_hir::def_id::DefId;
+use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
 use rustc_session::Session;
+use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::FileName;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use rustc_ast::{Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, QSelf, Stmt, Ty, TyKind};
-use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
-use rustc_ast::token::{self, TokenKind};
-use rustc_errors::PResult;
-use rustc_ast::ptr::P;
-use rustc_span::symbol::{Ident, Symbol};
-use rustc_ast::tokenstream::TokenStream;
-use rustc_span::FileName;
 
+use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{remove_paren, GetNodeId, MutVisit};
 use crate::command::CommandState;
@@ -58,7 +61,6 @@ use crate::driver::{self, emit_and_panic};
 use crate::match_or;
 use crate::reflect;
 use crate::RefactorCtxt;
-use crate::ast_builder::IntoSymbol;
 
 mod bindings;
 mod impls;
@@ -532,8 +534,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                 path_pattern, def_path
             );
         }
-        self.try_match(&path_pattern, &def_path).or(Err(Error::DefMismatch))?;
-        self.try_match(&path_qself, &def_qself).or(Err(Error::DefMismatch))?;
+        self.try_match(&path_pattern, &def_path)
+            .or(Err(Error::DefMismatch))?;
+        self.try_match(&path_qself, &def_qself)
+            .or(Err(Error::DefMismatch))?;
 
         Ok(())
     }
@@ -544,7 +548,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.do_def_impl(args, opt_def_id, |p| {
             match p.parse_expr().unwrap().into_inner().kind {
                 ExprKind::Path(qself, path) => Some((qself, path)),
-                _ => None
+                _ => None,
             }
         })
     }
@@ -555,7 +559,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.do_def_impl(args, opt_def_id, |p| {
             match p.parse_ty().unwrap().into_inner().kind {
                 TyKind::Path(qself, path) => Some((qself, path)),
-                _ => None
+                _ => None,
             }
         })
     }
@@ -629,7 +633,10 @@ fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, Bindin
         None,
     );
     let (ts, bt) = parse_bindings(ts);
-    (rustc_parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
+    (
+        rustc_parse::stream_to_parser(&sess.parse_sess, ts, None),
+        bt,
+    )
 }
 
 pub trait TryMatch {
@@ -831,7 +838,8 @@ where
             } else {
                 // If the pattern starts with a glob, then trying to match it at `i + 1` will fail
                 // just the same as at `i`.
-                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
+                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0])
+                {
                     break;
                 } else {
                     i += 1;
