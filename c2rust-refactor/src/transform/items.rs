@@ -121,7 +121,6 @@ impl Transform for RenameUnnamed {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         #[derive(Debug, Default)]
         struct Renamer {
-            items_to_change: HashSet<NodeId>,
             new_idents: HashMap<HirId, Ident>,
             new_to_old: HashMap<Ident, Ident>,
         }
