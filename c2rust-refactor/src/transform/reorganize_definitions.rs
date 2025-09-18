@@ -284,7 +284,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         let mut declarations = HeaderDeclarations::new(self.cx);
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
-            if let Some((path, include_line)) = parse_source_header(&item.attrs) {
+            if let Some((path, _)) = parse_source_header(&item.attrs) {
                 let header_item = item.clone();
                 // TODO: handle use's at the top of the crate
                 if let ItemKind::Mod(_, ModKind::Loaded(ref mut mod_items, _, _)) = &mut item.kind {
@@ -320,7 +320,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         let header_info = HeaderInfo::new(
                             header_item.ident,
                             path.clone(),
-                            include_line,
                         );
                         let inserted = declarations.insert_item(item.clone(), header_info);
                         // Keep the item if we are not collapsing it
@@ -958,15 +957,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 struct HeaderInfo {
     ident: Ident,
     path: String,
-    include_line: usize,
 }
 
 impl HeaderInfo {
-    fn new(ident: Ident, path: String, include_line: usize) -> Self {
+    fn new(ident: Ident, path: String) -> Self {
         Self {
             ident,
             path,
-            include_line,
         }
     }
 
