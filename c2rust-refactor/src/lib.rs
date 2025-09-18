@@ -1,3 +1,8 @@
+// Silence warnings and errors from the use of specialization below
+// which is an incomplete feature that rustc warns about.
+// TODO: switch to min_specialization, but that isn't a suitable
+// replacement yet.
+#![allow(incomplete_features)]
 #![feature(
     rustc_private,
     trace_macros,
