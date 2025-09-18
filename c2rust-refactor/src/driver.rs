@@ -66,7 +66,7 @@ pub enum Phase {
 
 impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     pub fn new_phase_1(sess: &'a Session) -> RefactorCtxt<'a, 'tcx> {
-        RefactorCtxt::new(sess, None, None, None)
+        RefactorCtxt::new(sess, None, None)
     }
 
     pub fn new_phase_2_3(
@@ -79,7 +79,6 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
     ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(
             sess,
-            None,
             Some(HirMap::new(
                 max_node_id,
                 map,
