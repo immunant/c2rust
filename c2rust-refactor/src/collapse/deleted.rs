@@ -23,8 +23,6 @@ use super::mac_table::{AsMacNodeRef, MacNodeRef, MacTable};
 /// crates its IDs are relative to.
 #[derive(Clone, Debug)]
 pub struct DeletedNode<'ast> {
-    /// The ID of the deleted node.  This is always an unexpanded ID.
-    id: NodeId,
     /// The ID of the containing node.  This gets updated by `transfer`, progressing through
     /// unexpanded, expanded, and collapsed IDs.
     parent: NodeId,
@@ -60,7 +58,6 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
                     .map(|id| self.node_map.save_origin(id))
                     .collect();
                 self.deleted.push(DeletedNode {
-                    id,
                     parent,
                     preds: history.clone(),
                     node: n.as_mac_node_ref(),
