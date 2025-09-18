@@ -38,7 +38,7 @@ fn ty_bit_width(ty: SimpleTy, pw: PointerWidth) -> u32 {
         SimpleTy::Size(_) | SimpleTy::Pointer => pw.0.try_into().expect("failed to cast"),
         SimpleTy::Float32 => 32,
         SimpleTy::Float64 => 64,
-        SimpleTy::Other => unreachable!(), // FIXME
+        SimpleTy::Ref | SimpleTy::Array | SimpleTy::Other => unreachable!(), // FIXME
     }
 }
 
