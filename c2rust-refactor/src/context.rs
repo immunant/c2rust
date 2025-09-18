@@ -13,7 +13,6 @@ use rustc_hir::def::{DefKind, Namespace, Res};
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::{self as hir, BodyId, HirId, Node};
 use rustc_index::vec::IndexVec;
-use rustc_metadata::creader::CStore;
 use rustc_middle::hir::map as hir_map;
 use rustc_middle::ty::subst::InternalSubsts;
 use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
@@ -35,7 +34,6 @@ use crate::{expect, match_or};
 pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
 
-    cstore: Option<&'a CStore>,
     map: Option<HirMap<'tcx>>,
     tcx: Option<GenerationalTyCtxt<'tcx>>,
 }
@@ -43,16 +41,10 @@ pub struct RefactorCtxt<'a, 'tcx: 'a> {
 impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn new(
         sess: &'a Session,
-        cstore: Option<&'a CStore>,
         map: Option<HirMap<'tcx>>,
         tcx: Option<GenerationalTyCtxt<'tcx>>,
     ) -> Self {
-        Self {
-            sess,
-            cstore,
-            map,
-            tcx,
-        }
+        Self { sess, map, tcx }
     }
 }
 
@@ -90,12 +82,6 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     pub fn session(&self) -> &'a Session {
         self.sess
     }
-
-    // #[inline]
-    // pub fn cstore(&self) -> &'a CStore {
-    //     self.cstore
-    //         .expect("crate store is not available in this context (requires phase 2)")
-    // }
 
     #[inline]
     pub fn hir_map(&self) -> &HirMap<'tcx> {
