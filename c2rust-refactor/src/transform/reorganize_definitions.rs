@@ -85,9 +85,6 @@ struct ModuleInfo {
 
     path: Vec<PathSegment>,
 
-    /// Is this module a newly created module (or an existing module)?
-    new: bool,
-
     /// Does this module have a main function
     has_main: bool,
 
@@ -983,7 +980,6 @@ impl ModuleInfo {
             unique_ident,
             id,
             path: vec![mk().path_segment(kw::Crate), mk().path_segment(unique_ident.name)],
-            new: true,
             has_main: false,
             header_lines: HashMap::new(),
             headers: HashSet::new(),
@@ -1026,7 +1022,6 @@ impl ModuleInfo {
             unique_ident: item.ident,
             id: item.id,
             path: path.segments,
-            new: false,
             has_main,
             header_lines,
             headers,
