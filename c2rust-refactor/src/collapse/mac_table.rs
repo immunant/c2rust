@@ -1,4 +1,4 @@
-use log::trace;
+use log::{trace, warn};
 use std::collections::HashMap;
 
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
@@ -197,10 +197,26 @@ impl<'ast> MacTable<'ast> {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct MacroDiagnostics {
+    /// Number of times we accepted a synthetic token stream in place of a missing node.
+    pub synthetic_token_streams_created: usize,
+    /// Number of times we accepted the removal of a token stream.
+    pub synthetic_token_streams_removed: usize,
+    /// Unexpected mismatches that still forced us to panic.
+    pub unexpected_option_mismatches: usize,
+}
+
+impl MacroDiagnostics {
+    pub fn synthetic_count(&self) -> usize {
+        self.synthetic_token_streams_created + self.synthetic_token_streams_removed
+    }
+}
+
 pub fn collect_macro_invocations<'ast>(
     unexpanded: &'ast Crate,
     expanded: &'ast Crate,
-) -> (MacTable<'ast>, Vec<(NodeId, NodeId)>) {
+) -> (MacTable<'ast>, Vec<(NodeId, NodeId)>, MacroDiagnostics) {
     let mut ctxt = Ctxt::new();
     // Because `expanded` hasn't been transformed since it was macro expanded, we know that the
     // first `inj_count` items are the injected prelude and crate imports.
@@ -211,13 +227,14 @@ pub fn collect_macro_invocations<'ast>(
         &expanded.items[inj_count..],
         &mut ctxt,
     );
-    (ctxt.table, ctxt.matched_node_ids)
+    ctxt.into_parts()
 }
 
 struct Ctxt<'a> {
     table: MacTable<'a>,
     next_id: u32,
     matched_node_ids: Vec<(NodeId, NodeId)>,
+    diagnostics: MacroDiagnostics,
 }
 
 impl<'a> Ctxt<'a> {
@@ -230,7 +247,12 @@ impl<'a> Ctxt<'a> {
             },
             next_id: 0,
             matched_node_ids: Vec::new(),
+            diagnostics: MacroDiagnostics::default(),
         }
+    }
+
+    fn into_parts(self) -> (MacTable<'a>, Vec<(NodeId, NodeId)>, MacroDiagnostics) {
+        (self.table, self.matched_node_ids, self.diagnostics)
     }
 
     fn next_id(&mut self) -> InvocId {
@@ -261,6 +283,18 @@ impl<'a> Ctxt<'a> {
 
     fn record_node_id_match(&mut self, old: NodeId, new: NodeId) {
         self.matched_node_ids.push((old, new));
+    }
+
+    fn record_token_stream_created(&mut self) {
+        self.diagnostics.synthetic_token_streams_created += 1;
+    }
+
+    fn record_token_stream_removed(&mut self) {
+        self.diagnostics.synthetic_token_streams_removed += 1;
+    }
+
+    fn record_unexpected_mismatch(&mut self) {
+        self.diagnostics.unexpected_option_mismatches += 1;
     }
 
     fn record_one_macro(
@@ -467,12 +501,84 @@ impl<T: CollectMacros + Debug> CollectMacros for Option<T> {
                 <T as CollectMacros>::collect_macros(old, new, cx);
             }
             (&None, &None) => {}
-            (_, _) => panic!(
-                "mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}",
-                old, new
-            ),
+            (&None, &Some(ref new_val)) => {
+                if handle_option_mismatch(OptionMismatch::Created(new_val), cx) {
+                    return;
+                }
+
+                panic!(
+                    "mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}",
+                    old, new
+                );
+            }
+
+            (&Some(ref old_val), &None) => {
+                if handle_option_mismatch(OptionMismatch::Removed(old_val), cx) {
+                    return;
+                }
+
+                panic!(
+                    "mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}",
+                    old, new
+                );
+            }
         }
     }
+}
+
+enum OptionMismatch<'a, T> {
+    Created(&'a T),
+    Removed(&'a T),
+}
+
+fn handle_option_mismatch<T: CollectMacros + Debug>(
+    mismatch: OptionMismatch<'_, T>,
+    cx: &mut Ctxt<'_>,
+) -> bool {
+    let type_name = std::any::type_name::<T>();
+
+    if !is_token_stream_type_name(type_name) {
+        cx.record_unexpected_mismatch();
+        match mismatch {
+            OptionMismatch::Created(new_val) => {
+                warn!("Unexpected AST node creation during CollectMacros traversal");
+                warn!("  Type: {}", type_name);
+                warn!("  Value: {:?}", new_val);
+                warn!("  This may indicate a transformation bug - please investigate");
+            }
+            OptionMismatch::Removed(old_val) => {
+                warn!("AST node deletion during CollectMacros traversal");
+                warn!("  Type: {}", type_name);
+                warn!("  Old value: {:?}", old_val);
+                warn!("  This may cause loss of macro tracking information");
+            }
+        }
+        return false;
+    }
+
+    match mismatch {
+        OptionMismatch::Created(_) => {
+            cx.record_token_stream_created();
+            trace!(
+                "Token stream created during macro transformation (type: {})",
+                type_name
+            );
+        }
+        OptionMismatch::Removed(_) => {
+            cx.record_token_stream_removed();
+            trace!(
+                "Token stream removed during transformation (type: {})",
+                type_name
+            );
+        }
+    }
+
+    true
+}
+
+fn is_token_stream_type_name(type_name: &str) -> bool {
+    type_name.contains("tokenstream::TokenStream")
+        || type_name.contains("tokenstream::LazyTokenStream")
 }
 
 impl<A: CollectMacros, B: CollectMacros> CollectMacros for (A, B) {
