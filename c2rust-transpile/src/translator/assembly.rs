@@ -810,6 +810,9 @@ impl<'c> Translation<'c> {
             _ => false,
         };
 
+        // Sort positional args before named ones.
+        args.sort_by_key(|arg| !arg.is_positional());
+
         // Add workaround for reserved registers (e.g. rbx on x86_64)
         let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, arch, &mut args);
 
