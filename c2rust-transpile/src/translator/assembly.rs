@@ -812,7 +812,11 @@ impl<'c> Translation<'c> {
         let rewritten_asm = prolog + &rewritten_asm + &epilog;
 
         // Emit assembly template
-        push_expr(&mut tokens, mk().lit_expr(rewritten_asm));
+        for line in rewritten_asm.split("\n") {
+            push_expr(&mut tokens, mk().lit_expr(line.to_string() + "\n"));
+            tokens.push(TokenTree::Punct(Punct::new(',', Alone)));
+        }
+        tokens.pop();
 
         // Outputs and Inputs
         let mut operand_renames = HashMap::new();
