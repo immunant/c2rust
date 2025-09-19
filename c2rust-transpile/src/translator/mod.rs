@@ -699,7 +699,7 @@ pub fn translate(
             };
             if needs_export {
                 let decl_opt = t.ast_context.get_decl(top_id);
-                let decl = decl_opt.as_ref().unwrap();
+                let decl = decl_opt.unwrap();
                 let decl_file_id = t.ast_context.file_id(decl);
 
                 if t.tcfg.reorganize_definitions
