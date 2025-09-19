@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::char;
 use std::collections::HashMap;
 use std::mem;
@@ -276,7 +276,7 @@ pub struct Translation<'c> {
     // While expanding an item, store the current file id that item is
     // expanded from. This is needed in order to note imports in items when
     // encountering DeclRefs.
-    cur_file: RefCell<Option<FileId>>,
+    cur_file: Cell<Option<FileId>>,
 }
 
 fn cast_int(val: Box<Expr>, name: &str, need_lit_suffix: bool) -> Box<Expr> {
@@ -631,7 +631,7 @@ pub fn translate(
             let convert_type = |decl_id: CDeclId, decl: &CDecl| {
                 let decl_file_id = t.ast_context.file_id(decl);
                 if t.tcfg.reorganize_definitions {
-                    *t.cur_file.borrow_mut() = decl_file_id;
+                    t.cur_file.set(decl_file_id);
                 }
                 match t.convert_decl(ctx, decl_id) {
                     Err(e) => {
@@ -657,7 +657,7 @@ pub fn translate(
                         }
                     }
                 }
-                t.cur_file.borrow_mut().take();
+                t.cur_file.take();
 
                 if t.tcfg.reorganize_definitions
                     && decl_file_id.map_or(false, |id| id != t.main_file)
@@ -698,32 +698,25 @@ pub fn translate(
                 _ => false,
             };
             if needs_export {
-                let decl_opt = t.ast_context.get_decl(top_id);
-                let decl = decl_opt.as_ref().unwrap();
+                let decl = t.ast_context.get_decl(top_id).unwrap();
                 let decl_file_id = t.ast_context.file_id(decl);
 
                 if t.tcfg.reorganize_definitions
                     && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
-                    *t.cur_file.borrow_mut() = decl_file_id;
+                    t.cur_file.set(decl_file_id);
                 }
                 match t.convert_decl(ctx, *top_id) {
                     Err(e) => {
-                        let decl = &t.ast_context.get_decl(top_id);
-                        let msg = match decl {
-                            Some(decl) => {
-                                let decl_identifier = decl.kind.get_name().map_or_else(
-                                    || {
-                                        t.ast_context
-                                            .display_loc(&decl.loc)
-                                            .map_or("Unknown".to_string(), |l| format!("at {}", l))
-                                    },
-                                    |name| name.clone(),
-                                );
-                                format!("Failed to translate {}: {}", decl_identifier, e)
-                            }
-                            _ => format!("Failed to translate declaration: {}", e,),
-                        };
+                        let decl_identifier = decl.kind.get_name().map_or_else(
+                            || {
+                                t.ast_context
+                                    .display_loc(&decl.loc)
+                                    .map_or("Unknown".to_string(), |l| format!("at {}", l))
+                            },
+                            |name| name.clone(),
+                        );
+                        let msg = format!("Failed to translate {}: {}", decl_identifier, e);
                         translate_failure(t.tcfg, &msg);
                     }
                     Ok(converted_decl) => {
@@ -744,7 +737,7 @@ pub fn translate(
                         }
                     }
                 }
-                t.cur_file.borrow_mut().take();
+                t.cur_file.take();
 
                 if t.tcfg.reorganize_definitions
                     && decl_file_id.map_or(false, |id| id != t.main_file)
@@ -1196,7 +1189,7 @@ impl<'c> Translation<'c> {
             mod_names: RefCell::new(IndexMap::new()),
             main_file,
             extern_crates: RefCell::new(IndexSet::new()),
-            cur_file: RefCell::new(None),
+            cur_file: Default::default(),
         }
     }
 
@@ -1205,11 +1198,7 @@ impl<'c> Translation<'c> {
     }
 
     pub fn cur_file(&self) -> FileId {
-        if let Some(cur_file) = *self.cur_file.borrow() {
-            cur_file
-        } else {
-            self.main_file
-        }
+        self.cur_file.get().unwrap_or(self.main_file)
     }
 
     fn with_cur_file_item_store<F, T>(&self, f: F) -> T
@@ -1771,7 +1760,7 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(enum_id)
                     .expect("Enums should already be renamed");
-                if let Some(cur_file) = *self.cur_file.borrow() {
+                if let Some(cur_file) = self.cur_file.get() {
                     self.add_import(cur_file, enum_id, &enum_name);
                 }
                 let ty = mk().path_ty(mk().path(vec![enum_name]));
@@ -2031,7 +2020,7 @@ impl<'c> Translation<'c> {
 
                 let static_def = if is_externally_visible {
                     mk_linkage(false, new_name, ident).pub_().extern_("C")
-                } else if self.cur_file.borrow().is_some() {
+                } else if self.cur_file.get().is_some() {
                     mk().pub_()
                 } else {
                     mk()
@@ -2348,7 +2337,7 @@ impl<'c> Translation<'c> {
                     mk()
                 } else if (is_global && !is_inline) || is_extern_inline {
                     mk_linkage(false, new_name, name).extern_("C").pub_()
-                } else if self.cur_file.borrow().is_some() {
+                } else if self.cur_file.get().is_some() {
                     mk().extern_("C").pub_()
                 } else {
                     mk().extern_("C")
@@ -2919,7 +2908,7 @@ impl<'c> Translation<'c> {
     }
 
     fn convert_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {
-        if let Some(cur_file) = *self.cur_file.borrow() {
+        if let Some(cur_file) = self.cur_file.get() {
             self.import_type(type_id, cur_file);
         }
         self.type_converter
@@ -3333,8 +3322,8 @@ impl<'c> Translation<'c> {
 
                 // Import the referenced global decl into our submodule
                 if self.tcfg.reorganize_definitions {
-                    if let Some(cur_file) = self.cur_file.borrow().as_ref() {
-                        self.add_import(*cur_file, decl_id, &rustname);
+                    if let Some(cur_file) = self.cur_file.get() {
+                        self.add_import(cur_file, decl_id, &rustname);
                         // match decl {
                         //     CDeclKind::Variable { is_defn: false, .. } => {}
                         //     _ => self.add_import(cur_file, decl_id, &rustname),
@@ -3381,7 +3370,7 @@ impl<'c> Translation<'c> {
                         if let Some(actual_ty) = actual_ty {
                             // If we're casting a concrete function to
                             // a K&R function pointer type, use transmute
-                            if let Some(cur_file) = *self.cur_file.borrow() {
+                            if let Some(cur_file) = self.cur_file.get() {
                                 self.import_type(qual_ty.ctype, cur_file);
                             }
                             val = transmute_expr(actual_ty, ty, val);
@@ -4120,8 +4109,8 @@ impl<'c> Translation<'c> {
             .get(macro_id)
             .ok_or_else(|| format_err!("Macro name not declared"))?;
 
-        if let Some(cur_file) = self.cur_file.borrow().as_ref() {
-            self.add_import(*cur_file, *macro_id, &rust_name);
+        if let Some(cur_file) = self.cur_file.get() {
+            self.add_import(cur_file, *macro_id, &rust_name);
         }
 
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
@@ -4777,8 +4766,8 @@ impl<'c> Translation<'c> {
         type_id: CTypeId,
         is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if let Some(file_id) = self.cur_file.borrow().as_ref() {
-            self.import_type(type_id, *file_id);
+        if let Some(file_id) = self.cur_file.get() {
+            self.import_type(type_id, file_id);
         }
 
         // Look up the decl in the cache and return what we find (if we find anything)
