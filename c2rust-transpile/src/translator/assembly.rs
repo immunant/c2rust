@@ -333,6 +333,15 @@ impl BidirAsmOperand {
     fn is_positional(&self) -> bool {
         !self.constraints.contains('"') && self.name.is_none()
     }
+
+    /// Return the position of this operand in the original sequence of [outputs...inputs].
+    /// For tied operands, returns the position of the output.
+    fn orig_idx(&self) -> usize {
+        self.out_expr
+            .or(self.in_expr)
+            .expect("one of in_expr or out_expr must be Some")
+            .0
+    }
 }
 
 /// Return the register and corresponding template modifiers if the constraint
@@ -722,10 +731,19 @@ impl<'c> Translation<'c> {
             }
         };
 
+        // Find new idx by searching args for one with this original idx
+        let new_idx_for_orig = |orig_idx| {
+            args.iter()
+                .position(|operand| orig_idx == operand.orig_idx())
+                .expect("no operand had index {idx}")
+        };
+
         // Rewrite arg references in assembly template
         let rewritten_asm = rewrite_asm(
             asm,
-            |idx: usize| tied_output_operand_idx(idx, outputs.len(), &tied_operands),
+            |idx: usize| {
+                new_idx_for_orig(tied_output_operand_idx(idx, outputs.len(), &tied_operands))
+            },
             |ref_str: &str| {
                 if let Ok(idx) = ref_str.parse::<usize>() {
                     outputs
