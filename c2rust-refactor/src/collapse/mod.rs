@@ -14,6 +14,7 @@
 //! Though most of the code and comments talk about "macros", we really mean everything that gets
 //! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
+use log::{debug, warn};
 use rustc_ast::*;
 use rustc_span::source_map::Span;
 use rustc_span::sym;
@@ -28,7 +29,7 @@ mod nt_match;
 
 pub use self::cfg_attr::{collect_cfg_attrs, restore_cfg_attrs};
 pub use self::deleted::{collect_deleted_nodes, restore_deleted_nodes};
-pub use self::mac_table::{collect_macro_invocations, MacInfo, MacTable};
+pub use self::mac_table::{collect_macro_invocations, MacInfo, MacTable, MacroDiagnostics};
 pub use self::macros::collapse_macros;
 pub use self::node_map::match_nonterminal_ids;
 
@@ -40,6 +41,7 @@ pub struct CollapseInfo<'ast> {
     mac_table: MacTable<'ast>,
     cfg_attr_info: HashMap<NodeId, Vec<Attribute>>,
     deleted_info: Vec<DeletedNode<'ast>>,
+    macro_diagnostics: MacroDiagnostics,
 }
 
 impl<'ast> CollapseInfo<'ast> {
@@ -51,7 +53,20 @@ impl<'ast> CollapseInfo<'ast> {
         cs: &CommandState,
     ) -> Self {
         // Collect info + update node_map, then transfer and commit
-        let (mac_table, matched_ids) = collect_macro_invocations(unexpanded, expanded);
+        let (mac_table, matched_ids, macro_diagnostics) =
+            collect_macro_invocations(unexpanded, expanded);
+        if macro_diagnostics.synthetic_count() > 0 {
+            debug!(
+                "collect_macro_invocations accepted {} synthetic token streams",
+                macro_diagnostics.synthetic_count()
+            );
+        }
+        if macro_diagnostics.unexpected_option_mismatches > 0 {
+            warn!(
+                "collect_macro_invocations encountered {} unexpected Option mismatches",
+                macro_diagnostics.unexpected_option_mismatches
+            );
+        }
         node_map.add_edges(&matched_ids);
         node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
         let cfg_attr_info = collect_cfg_attrs(&unexpanded);
@@ -66,6 +81,7 @@ impl<'ast> CollapseInfo<'ast> {
             mac_table,
             cfg_attr_info,
             deleted_info,
+            macro_diagnostics,
         }
     }
 
@@ -90,6 +106,10 @@ impl<'ast> CollapseInfo<'ast> {
 
         node_map.transfer_marks(&mut cs.marks_mut());
         node_map.commit();
+    }
+
+    pub fn macro_diagnostics(&self) -> &MacroDiagnostics {
+        &self.macro_diagnostics
     }
 }
 
