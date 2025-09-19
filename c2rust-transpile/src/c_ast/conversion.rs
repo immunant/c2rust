@@ -504,6 +504,43 @@ impl ConversionContext {
             }
         }
 
+        // Adjust macro expansions to skip any implicit casts added at the expansion site. These
+        // casts should not be considered part of the macro when we re-fold const macros.
+
+        // We *do* need to consider implicit casts in case expressions to be part of the macro,
+        // because the type of the `match` scrutinee must match the type of the cases in Rust.
+        // If we translated switch-case labels to use const macros, those would need to prefer the
+        // type of the match scrutinee, to which the macro is implicitly cast in case expressions.
+        let is_case_expr = {
+            let case_exprs: HashSet<_> = self
+                .typed_context
+                .c_stmts
+                .values()
+                .filter_map(|c| {
+                    if let &CStmtKind::Case(expr, _, _) = &c.kind {
+                        Some(expr)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            move |e| case_exprs.contains(&e)
+        };
+
+        self.typed_context.macro_invocations = mem::take(&mut self.typed_context.macro_invocations)
+            .into_iter()
+            .map(|(expr_id, macro_ids)| {
+                (
+                    if is_case_expr(expr_id) {
+                        expr_id
+                    } else {
+                        self.typed_context.beneath_implicit_casts(expr_id)
+                    },
+                    macro_ids,
+                )
+            })
+            .collect();
+
         // Invert the macro invocations to get a list of macro expansion expressions
         for (expr_id, macro_ids) in &self.typed_context.macro_invocations {
             for mac_id in macro_ids {
