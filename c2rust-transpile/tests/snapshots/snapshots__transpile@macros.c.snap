@@ -30,7 +30,7 @@ pub struct fn_ptrs {
     pub fn2: Option<unsafe extern "C" fn(std::ffi::c_int) -> std::ffi::c_int>,
 }
 pub type zstd_platform_dependent_type = std::ffi::c_long;
-pub const UINTPTR_MAX: std::ffi::c_ulong = unsafe { 18446744073709551615 as std::ffi::c_ulong };
+pub const UINTPTR_MAX: uintptr_t = unsafe { 18446744073709551615 as uintptr_t };
 pub const true_0: std::ffi::c_int = unsafe { 1 as std::ffi::c_int };
 pub const LITERAL_INT: std::ffi::c_int = unsafe { 0xffff as std::ffi::c_int };
 pub const LITERAL_BOOL: std::ffi::c_int = unsafe { true_0 };
@@ -416,7 +416,7 @@ pub unsafe extern "C" fn use_local_value() -> std::ffi::c_int {
 }
 #[no_mangle]
 pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
-    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as uintptr_t);
+    return len <= UINTPTR_MAX.wrapping_div(2 as uintptr_t);
 }
 unsafe extern "C" fn run_static_initializers() {
     global_static_const_ptr_arithmetic = PTR_ARITHMETIC;
