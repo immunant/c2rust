@@ -365,7 +365,7 @@ fn reg_is_reserved(constraint: &str, arch: Arch) -> Option<(&str, &str)> {
 /// This also requires reordering the operands because we convert them to
 /// named operands, which must precede explicit register operands.
 ///
-/// Modifies operands and returns a pair of prefix and suffix strings that
+/// Modifies `operands` and returns a pair of prefix and suffix strings that
 /// should be appended to the assembly template.
 fn rewrite_reserved_reg_operands(
     att_syntax: bool,
@@ -503,7 +503,7 @@ fn asm_is_att_syntax(asm: &str) -> bool {
 /// followed by [input1, ..., inputN] where the indices for all
 /// input operands are indexed relative to the size of the
 /// output operand sequence.
-fn map_input_op_idx(
+fn tied_output_operand_idx(
     idx: usize,
     num_output_operands: usize,
     tied_operands: &HashMap<(usize, bool), usize>,
@@ -687,6 +687,7 @@ impl<'c> Translation<'c> {
         let mut post_stmts: Vec<Stmt> = vec![];
         let mut tokens: Vec<TokenTree> = vec![];
 
+        // Identify tied operands
         let mut tied_operands = HashMap::new();
         for (input_idx, AsmOperand { constraints, .. }) in inputs.iter().enumerate() {
             let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
@@ -712,7 +713,7 @@ impl<'c> Translation<'c> {
         // Rewrite arg references in assembly template
         let rewritten_asm = rewrite_asm(
             asm,
-            |idx: usize| map_input_op_idx(idx, outputs.len(), &tied_operands),
+            |idx: usize| tied_output_operand_idx(idx, outputs.len(), &tied_operands),
             |ref_str: &str| {
                 if let Ok(idx) = ref_str.parse::<usize>() {
                     outputs
