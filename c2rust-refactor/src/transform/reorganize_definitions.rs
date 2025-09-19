@@ -880,7 +880,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 });
 
                 // Mapping from ident to the module we are importing that ident from
-                let mut uses: PerNS<HashMap<Ident, NodeId>> = PerNS::default();
+                let mut uses: PerNS<HashMap<Ident, (NodeId, NodeId, DefId)>> = PerNS::default();
                 mod_items.retain(|item| {
                     if let ItemKind::Use(u) = &item.kind {
                         match u.kind {
@@ -913,7 +913,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             {
                                 if let Some(Replacement {parent, ..}) = self.path_mapping.get(&def_id) {
                                     for ns in &[Namespace::ValueNS, Namespace::TypeNS] {
-                                        if let Some(target_mod) = uses[*ns].get(&u.ident()) {
+                                        if let Some((target_mod, _, _)) = uses[*ns].get(&u.ident()) {
                                             if target_mod == parent {
                                                 return false;
                                             } else if *ns == namespace {
@@ -946,12 +946,68 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                             DUMMY_NODE_ID
                                         }
                                     };
-                                    uses[namespace].insert(u.ident(), mod_id);
+                                    uses[namespace].insert(u.ident(), (mod_id, item.id, def_id));
                                 }
                             }
                         }
                     }
                     true
+                });
+
+                // If any items are imported into the current module,
+                // use the short paths, e.g., bar instead of crate::foo::bar
+                //
+                // TODO: this could be a separate transform
+                fold_resolved_paths_with_id(&mut item, self.cx, |id, qself, mut path, defs| {
+                    debug!("Shortening {:?} (def: {:?})", path, defs);
+                    for def in defs {
+                        if let (Some(path_def_id), Some(ns)) = (def.opt_def_id(), def.ns()) {
+                            let item_hir_id = self.cx.hir_map().node_to_hir_id(id);
+                            let item_mod_ldid = self.cx.ty_ctxt().parent_module(item_hir_id);
+                            let item_mod_id = self.cx.hir_map().local_def_id_to_node_id(item_mod_ldid);
+
+                            // Check if the current path is defined in the same module
+                            // First check our remapped paths to see if we moved
+                            // the definition to another module; otherwise,
+                            // check the original definition.
+                            let path_def_mod_id = remapped_paths
+                                .get(&id)
+                                .map(|(mod_def_id, _)| *mod_def_id)
+                                .or_else(|| path_def_id.as_local().map(|ldid| {
+                                    let parent = self.cx.ty_ctxt().parent_module_from_def_id(ldid);
+                                    self.cx.hir_map().local_def_id_to_node_id(parent)
+                                }));
+                            if Some(item_mod_id) == path_def_mod_id {
+                                // Current path matches one of the definitions
+                                // in the current module, shorten it
+                                path.segments.drain(0..path.segments.len() - 1);
+                                break;
+                            }
+
+                            let last_seg = path.segments.last().expect("empty path");
+                            let (_, use_id, seg_def_id) = match uses[ns].get(&last_seg.ident) {
+                                Some(x) => x,
+                                None => continue
+                            };
+                            if id == *use_id {
+                                continue;
+                            }
+                            if path_def_id != *seg_def_id {
+                                continue;
+                            }
+
+                            // For now, only shorten paths to uses within the same module
+                            let use_hir_id = self.cx.hir_map().node_to_hir_id(*use_id);
+                            let use_mod_ldid = self.cx.ty_ctxt().parent_module(use_hir_id);
+                            if item_mod_ldid == use_mod_ldid {
+                                // Current path matches one of the uses
+                                // in the current module, shorten it
+                                path.segments.drain(0..path.segments.len() - 1);
+                                break;
+                            }
+                        }
+                    }
+                    (qself, path)
                 });
             }
             smallvec![item]
