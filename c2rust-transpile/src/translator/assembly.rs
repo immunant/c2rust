@@ -333,6 +333,16 @@ impl BidirAsmOperand {
     fn is_positional(&self) -> bool {
         !self.constraints.contains('"') && self.name.is_none()
     }
+
+    /// Return whether this operand occurs at the given position in the original sequence of
+    /// [outputs...inputs]. For tied operands, both input and output index is considered.
+    fn has_orig_idx(&self, orig_idx: usize) -> bool {
+        match (self.out_expr, self.in_expr) {
+            (Some((idx, _)), _) if idx == orig_idx => true,
+            (_, Some((idx, _))) if idx == orig_idx => true,
+            _ => false,
+        }
+    }
 }
 
 /// Return the register and corresponding template modifiers if the constraint
@@ -727,25 +737,6 @@ impl<'c> Translation<'c> {
             }
         };
 
-        // Rewrite arg references in assembly template
-        let rewritten_asm = rewrite_asm(
-            asm,
-            |idx: usize| tied_output_operand_idx(idx, outputs.len(), &tied_operands),
-            |ref_str: &str| {
-                if let Ok(idx) = ref_str.parse::<usize>() {
-                    outputs
-                        .iter()
-                        .chain(inputs.iter())
-                        .nth(idx)
-                        .map(operand_is_mem_only)
-                        .unwrap_or(false)
-                } else {
-                    false
-                }
-            },
-            arch,
-        )?;
-
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();
         let mut other_inputs = Vec::new();
@@ -827,6 +818,35 @@ impl<'c> Translation<'c> {
 
         // Add workaround for reserved registers (e.g. rbx on x86_64)
         let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, arch, &mut args);
+
+        // Find new idx by searching args for one with this original idx
+        let new_idx_for_orig = |orig_idx| {
+            args.iter()
+                .position(|operand| operand.has_orig_idx(orig_idx))
+                .unwrap_or_else(|| panic!("no operand had index {orig_idx} in asm str:\n{asm}"))
+        };
+
+        // Rewrite arg references in assembly template
+        let rewritten_asm = rewrite_asm(
+            asm,
+            |idx: usize| {
+                new_idx_for_orig(tied_output_operand_idx(idx, outputs.len(), &tied_operands))
+            },
+            |ref_str: &str| {
+                if let Ok(idx) = ref_str.parse::<usize>() {
+                    outputs
+                        .iter()
+                        .chain(inputs.iter())
+                        .nth(idx)
+                        .map(operand_is_mem_only)
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            },
+            arch,
+        )?;
+
         let rewritten_asm = prolog + &rewritten_asm + &epilog;
 
         // Emit assembly template
