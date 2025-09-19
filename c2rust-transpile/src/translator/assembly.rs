@@ -731,34 +731,6 @@ impl<'c> Translation<'c> {
             }
         };
 
-        // Find new idx by searching args for one with this original idx
-        let new_idx_for_orig = |orig_idx| {
-            args.iter()
-                .position(|operand| orig_idx == operand.orig_idx())
-                .expect("no operand had index {idx}")
-        };
-
-        // Rewrite arg references in assembly template
-        let rewritten_asm = rewrite_asm(
-            asm,
-            |idx: usize| {
-                new_idx_for_orig(tied_output_operand_idx(idx, outputs.len(), &tied_operands))
-            },
-            |ref_str: &str| {
-                if let Ok(idx) = ref_str.parse::<usize>() {
-                    outputs
-                        .iter()
-                        .chain(inputs.iter())
-                        .nth(idx)
-                        .map(operand_is_mem_only)
-                        .unwrap_or(false)
-                } else {
-                    false
-                }
-            },
-            arch,
-        )?;
-
         // Detect and pair inputs/outputs that constrain themselves to the same register
         let mut inputs_by_register = HashMap::new();
         let mut other_inputs = Vec::new();
@@ -834,12 +806,41 @@ impl<'c> Translation<'c> {
 
         // Determine whether the assembly is in AT&T syntax
         let att_syntax = match arch {
-            Arch::X86 | Arch::X86_64 => asm_is_att_syntax(&rewritten_asm),
+            Arch::X86 | Arch::X86_64 => asm_is_att_syntax(&asm), //TODO: does this need rewritten_asm?
             _ => false,
         };
 
         // Add workaround for reserved registers (e.g. rbx on x86_64)
         let (prolog, epilog) = rewrite_reserved_reg_operands(att_syntax, arch, &mut args);
+
+        // Find new idx by searching args for one with this original idx
+        let new_idx_for_orig = |orig_idx| {
+            args.iter()
+                .position(|operand| orig_idx == operand.orig_idx())
+                .expect("no operand had index {idx}")
+        };
+
+        // Rewrite arg references in assembly template
+        let rewritten_asm = rewrite_asm(
+            asm,
+            |idx: usize| {
+                new_idx_for_orig(tied_output_operand_idx(idx, outputs.len(), &tied_operands))
+            },
+            |ref_str: &str| {
+                if let Ok(idx) = ref_str.parse::<usize>() {
+                    outputs
+                        .iter()
+                        .chain(inputs.iter())
+                        .nth(idx)
+                        .map(operand_is_mem_only)
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            },
+            arch,
+        )?;
+
         let rewritten_asm = prolog + &rewritten_asm + &epilog;
 
         // Emit assembly template
