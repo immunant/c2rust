@@ -689,6 +689,8 @@ pub fn translate(
             }
         }
 
+        t.ast_context.sort_top_decls_for_converting();
+
         // Export top-level value declarations.
         // We do this in a conversion pass and then an insertion pass
         // so that the conversion order can differ from the order they're emitted in.
