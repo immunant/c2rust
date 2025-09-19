@@ -698,8 +698,7 @@ pub fn translate(
                 _ => false,
             };
             if needs_export {
-                let decl_opt = t.ast_context.get_decl(top_id);
-                let decl = decl_opt.unwrap();
+                let decl = t.ast_context.get_decl(top_id).unwrap();
                 let decl_file_id = t.ast_context.file_id(decl);
 
                 if t.tcfg.reorganize_definitions
@@ -709,21 +708,15 @@ pub fn translate(
                 }
                 match t.convert_decl(ctx, *top_id) {
                     Err(e) => {
-                        let decl = &t.ast_context.get_decl(top_id);
-                        let msg = match decl {
-                            Some(decl) => {
-                                let decl_identifier = decl.kind.get_name().map_or_else(
-                                    || {
-                                        t.ast_context
-                                            .display_loc(&decl.loc)
-                                            .map_or("Unknown".to_string(), |l| format!("at {}", l))
-                                    },
-                                    |name| name.clone(),
-                                );
-                                format!("Failed to translate {}: {}", decl_identifier, e)
-                            }
-                            _ => format!("Failed to translate declaration: {}", e,),
-                        };
+                        let decl_identifier = decl.kind.get_name().map_or_else(
+                            || {
+                                t.ast_context
+                                    .display_loc(&decl.loc)
+                                    .map_or("Unknown".to_string(), |l| format!("at {}", l))
+                            },
+                            |name| name.clone(),
+                        );
+                        let msg = format!("Failed to translate {}: {}", decl_identifier, e);
                         translate_failure(t.tcfg, &msg);
                     }
                     Ok(converted_decl) => {
