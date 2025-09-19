@@ -702,7 +702,10 @@ impl<'c> Translation<'c> {
             let constraints_digits = constraints.trim_matches(|c: char| !c.is_ascii_digit());
             if let Ok(output_idx) = constraints_digits.parse::<usize>() {
                 let output_key = (output_idx, true);
-                let input_key = (input_idx, false);
+                // Positional references in template count across outputs then inputs.
+                // Add output count so that our index is into the full sequence and can be used for
+                // positional template substitutions.
+                let input_key = (input_idx + outputs.len(), false);
                 tied_operands.insert(output_key, input_idx);
                 tied_operands.insert(input_key, output_idx);
             }
@@ -742,12 +745,13 @@ impl<'c> Translation<'c> {
         let mut inputs_by_register = HashMap::new();
         let mut other_inputs = Vec::new();
         for (i, input) in inputs.iter().enumerate() {
+            let combined_idx = i + outputs.len();
             let (_dir_spec, _mem_only, parsed) = parse_constraints(&input.constraints, arch)?;
             // Only pair operands with an explicit register or index
             if is_regname_or_int(&parsed) {
-                inputs_by_register.insert(parsed, (i, input.clone()));
+                inputs_by_register.insert(parsed, (combined_idx, input.clone()));
             } else {
-                other_inputs.push((parsed, (i, input.clone())));
+                other_inputs.push((parsed, (combined_idx, input.clone())));
             }
         }
 
@@ -758,7 +762,7 @@ impl<'c> Translation<'c> {
         let mut args = Vec::new();
 
         // Add outputs as inout if a matching input is found, else as outputs
-        for (i, output) in outputs.iter().enumerate() {
+        for (output_idx, output) in outputs.iter().enumerate() {
             match parse_constraints(&output.constraints, arch) {
                 Ok((mut dir_spec, mem_only, parsed)) => {
                     // Add to args list; if a matching in_expr is found, this is
@@ -766,7 +770,7 @@ impl<'c> Translation<'c> {
                     let mut in_expr = inputs_by_register.remove(&parsed);
                     if in_expr.is_none() {
                         // Also check for by-index references to this output
-                        in_expr = inputs_by_register.remove(&i.to_string());
+                        in_expr = inputs_by_register.remove(&output_idx.to_string());
                     }
                     // Extract expression
                     let in_expr = in_expr.map(|(i, operand)| (i, operand.expression));
@@ -781,7 +785,7 @@ impl<'c> Translation<'c> {
                         name: None,
                         constraints: parsed,
                         in_expr,
-                        out_expr: Some((i, output.expression)),
+                        out_expr: Some((output_idx, output.expression)),
                     });
                 }
                 // Constraint could not be parsed, drop it
@@ -789,7 +793,7 @@ impl<'c> Translation<'c> {
             }
         }
         // Add unmatched inputs
-        for (_, (i, input)) in inputs_by_register
+        for (_, (input_idx, input)) in inputs_by_register
             .into_iter()
             .chain(other_inputs.into_iter())
         {
@@ -805,7 +809,7 @@ impl<'c> Translation<'c> {
                 mem_only,
                 name: None,
                 constraints: parsed,
-                in_expr: Some((i, input.expression)),
+                in_expr: Some((input_idx, input.expression)),
                 out_expr: None,
             });
         }
