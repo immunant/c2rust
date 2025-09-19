@@ -11,9 +11,11 @@ mod fold;
 mod get_node_id;
 mod get_span;
 mod list_node_ids;
+mod load_modules;
 mod output_exprs;
 mod remove_paren;
 mod seq_edit;
+mod span_maps;
 mod visit;
 mod visit_node;
 
@@ -29,9 +31,11 @@ pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes, WalkAst};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
 pub use self::list_node_ids::ListNodeIds;
+pub use self::load_modules::load_modules;
 pub use self::output_exprs::fold_output_exprs;
 pub use self::remove_paren::remove_paren;
 pub use self::seq_edit::{fold_blocks, fold_modules};
+pub use self::span_maps::{AstSpanMaps, NodeSpan, SpanNodeKind};
 pub use self::visit::Visit;
 pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
 
