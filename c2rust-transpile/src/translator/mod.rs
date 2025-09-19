@@ -266,6 +266,15 @@ pub struct Translation<'c> {
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
     macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
 
+    /// For every call to [`Self::convert_expr`],
+    /// we record the `override_ty` that is used for that expression.
+    ///
+    /// This is needed [`Self::recreate_const_macro_from_expansions`]
+    /// when we call [`Self::convert_expr`] for each of the macro expansions,
+    /// as unlike normal [`Self::convert_expr`]s, there is no surrounding context
+    /// higher in the call stack calculating the `override_ty`.
+    expr_override_tys: RefCell<HashMap<CExprId, CQualTypeId>>,
+
     // Comment support
     pub comment_context: CommentContext,      // Incoming comments
     pub comment_store: RefCell<CommentStore>, // Outgoing comments
@@ -1217,6 +1226,7 @@ impl<'c> Translation<'c> {
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
             macro_expansions: RefCell::new(IndexMap::new()),
+            expr_override_tys: Default::default(),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             spans: HashMap::new(),
@@ -2197,7 +2207,9 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let expr = self.convert_expr(ctx, id, None)?;
+                let override_ty = self.expr_override_tys.borrow().get(&id).copied();
+                let expr = self.convert_expr(ctx, id, override_ty)?;
+                let ty = override_ty.map(|ty| ty.ctype).unwrap_or(ty);
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
@@ -3285,6 +3297,12 @@ impl<'c> Translation<'c> {
         expr_id: CExprId,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if let Some(override_ty) = override_ty {
+            self.expr_override_tys
+                .borrow_mut()
+                .insert(expr_id, override_ty);
+        }
+
         let Located {
             loc: src_loc,
             kind: expr_kind,
