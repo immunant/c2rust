@@ -688,18 +688,27 @@ pub fn translate(
             }
         }
 
-        // Export top-level value declarations
-        for top_id in &t.ast_context.c_decls_top {
-            use CDeclKind::*;
-            let needs_export = match t.ast_context[*top_id].kind {
-                Function { is_implicit, .. } => !is_implicit,
-                Variable { .. } => true,
-                MacroObject { .. } => true, // Depends on `tcfg.translate_const_macros`, but handled in `fn convert_const_macro_expansion`.
-                MacroFunction { .. } => true, // Depends on `tcfg.translate_fn_macros`, but handled in `fn convert_fn_macro_invocation`.
-                _ => false,
-            };
-            if needs_export {
-                let decl = t.ast_context.get_decl(top_id).unwrap();
+        // Export top-level value declarations.
+        // We do this in a conversion pass and then an insertion pass
+        // so that the conversion order can differ from the order they're emitted in.
+        let mut converted_decls = t
+            .ast_context
+            .c_decls_top
+            .iter()
+            .filter_map(|&top_id| {
+                use CDeclKind::*;
+                let needs_export = match t.ast_context[top_id].kind {
+                    Function { is_implicit, .. } => !is_implicit,
+                    Variable { .. } => true,
+                    MacroObject { .. } => true, // Depends on `tcfg.translate_const_macros`, but handled in `fn convert_const_macro_expansion`.
+                    MacroFunction { .. } => true, // Depends on `tcfg.translate_fn_macros`, but handled in `fn convert_fn_macro_invocation`.
+                    _ => false,
+                };
+                if !needs_export {
+                    return None;
+                }
+
+                let decl = t.ast_context.get_decl(&top_id).unwrap();
                 let decl_file_id = t.ast_context.file_id(decl);
 
                 if t.tcfg.reorganize_definitions
@@ -707,7 +716,9 @@ pub fn translate(
                 {
                     t.cur_file.set(decl_file_id);
                 }
-                match t.convert_decl(ctx, *top_id) {
+
+                // TODO use `.inspect_err` once stabilized in Rust 1.76.
+                let converted = match t.convert_decl(ctx, top_id) {
                     Err(e) => {
                         let decl_identifier = decl.kind.get_name().map_or_else(
                             || {
@@ -719,32 +730,45 @@ pub fn translate(
                         );
                         let msg = format!("Failed to translate {}: {}", decl_identifier, e);
                         translate_failure(t.tcfg, &msg);
+                        Err(e)
                     }
-                    Ok(converted_decl) => {
-                        use ConvertedDecl::*;
-                        match converted_decl {
-                            Item(item) => {
-                                t.insert_item(item, decl);
-                            }
-                            ForeignItem(item) => {
-                                t.insert_foreign_item(*item, decl);
-                            }
-                            Items(items) => {
-                                for item in items {
-                                    t.insert_item(item, decl);
-                                }
-                            }
-                            NoItem => {}
-                        }
-                    }
+                    Ok(converted) => Ok(converted),
                 }
+                .ok()?;
+
                 t.cur_file.take();
 
-                if t.tcfg.reorganize_definitions
-                    && decl_file_id.map_or(false, |id| id != t.main_file)
-                {
-                    t.generate_submodule_imports(*top_id, decl_file_id);
+                Some((top_id, converted))
+            })
+            .collect::<HashMap<_, _>>();
+
+        for top_id in &t.ast_context.c_decls_top {
+            let decl = t.ast_context.get_decl(top_id).unwrap();
+            let decl_file_id = t.ast_context.file_id(decl);
+            // TODO use `let else` when it stabilizes.
+            let converted_decl = match converted_decls.remove(top_id) {
+                Some(converted) => converted,
+                None => continue,
+            };
+
+            use ConvertedDecl::*;
+            match converted_decl {
+                Item(item) => {
+                    t.insert_item(item, decl);
                 }
+                ForeignItem(item) => {
+                    t.insert_foreign_item(*item, decl);
+                }
+                Items(items) => {
+                    for item in items {
+                        t.insert_item(item, decl);
+                    }
+                }
+                NoItem => {}
+            };
+
+            if t.tcfg.reorganize_definitions && decl_file_id.map_or(false, |id| id != t.main_file) {
+                t.generate_submodule_imports(*top_id, decl_file_id);
             }
         }
 
