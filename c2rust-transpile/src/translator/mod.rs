@@ -738,9 +738,7 @@ pub fn translate(
             })
             .collect::<HashMap<_, _>>();
 
-        // Sort the top-level declarations by file and source location so that we
-        // preserve the ordering of all declarations in each file.
-        t.ast_context.sort_top_decls();
+        t.ast_context.sort_top_decls_for_emitting();
 
         for top_id in &t.ast_context.c_decls_top {
             let decl = t.ast_context.get_decl(top_id).unwrap();
