@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::source_map::{Span, Spanned, SyntaxContext};
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::source_map::{Span, Spanned, SyntaxContext};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
+use rustc_ast::ptr::P;
 use std::rc::Rc;
-use syntax::ptr::P;
 
 use crate::ast_manip::{GetSpan, MaybeGetNodeId};
 
@@ -40,13 +41,19 @@ pub trait NtMatch {
 
 include!(concat!(env!("OUT_DIR"), "/nt_match_gen.inc.rs"));
 
-impl<T: NtMatch> NtMatch for P<T> {
+impl<T: NtMatch + ?Sized> NtMatch for P<T> {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
         <T as NtMatch>::nt_match(old, new, cx);
     }
 }
 
-impl<T: NtMatch> NtMatch for Rc<T> {
+impl<T: NtMatch + ?Sized> NtMatch for Box<T> {
+    fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
+        <T as NtMatch>::nt_match(old, new, cx);
+    }
+}
+
+impl<T: NtMatch + ?Sized> NtMatch for Rc<T> {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
         <T as NtMatch>::nt_match(old, new, cx);
     }
@@ -145,24 +152,16 @@ macro_rules! as_nonterminal_impl {
 
 as_nonterminal_impl!(Item, NtItem, P);
 as_nonterminal_impl!(Block, NtBlock, P);
-as_nonterminal_impl!(Stmt, NtStmt);
+as_nonterminal_impl!(Stmt, NtStmt, P);
 as_nonterminal_impl!(Pat, NtPat, P);
 as_nonterminal_impl!(Expr, NtExpr, P);
 as_nonterminal_impl!(Ty, NtTy, P);
 //as_nonterminal_impl!(Ident, NtIdent);
 //as_nonterminal_impl!(Lifetime, NtLifetime);
 //as_nonterminal_impl!(Expr??, NtLiteral, P);
-as_nonterminal_impl!(AttrItem, NtMeta);
-as_nonterminal_impl!(Path, NtPath);
-as_nonterminal_impl!(Visibility, NtVis);
-as_nonterminal_impl!(TokenTree, NtTT);
-// as_nonterminal_impl!(Arm, NtArm);
-as_nonterminal_impl!(ImplItem, NtImplItem);
-as_nonterminal_impl!(TraitItem, NtTraitItem);
-as_nonterminal_impl!(ForeignItem, NtForeignItem);
-// as_nonterminal_impl!(Generics, NtGenerics);
-// as_nonterminal_impl!(WhereClause, NtWhereClause);
-// as_nonterminal_impl!(Arg, NtArg);
+as_nonterminal_impl!(AttrItem, NtMeta, P);
+as_nonterminal_impl!(Path, NtPath, P);
+as_nonterminal_impl!(Visibility, NtVis, P);
 
 impl AsNonterminal for Ident {
     fn as_nonterminal(&self) -> Nonterminal {

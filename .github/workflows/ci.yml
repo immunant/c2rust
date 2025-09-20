@@ -92,7 +92,8 @@ jobs:
         run: |
           # `cmake` needed, but should be already installed.
           # `bash` needed b/c macOS ships with bash 3, which doesn't support arrays properly.
-          brew install -q ninja gpg llvm@${{ matrix.clang-version }} bash
+          brew install -q ninja gpg llvm@${{ matrix.clang-version }} bash z3
+          echo "Z3_SYS_Z3_HEADER=/opt/homebrew/include/z3.h" >> $GITHUB_ENV
 
       - name: cargo build --release
         run: |

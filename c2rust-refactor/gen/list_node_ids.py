@@ -19,7 +19,7 @@ def list_rec(se, target):
     for v, path in variants_paths(se):
         yield '  &%s => {' % struct_pattern(v, path)
         for f in v.fields:
-            yield '    ListNodeIds::add_node_ids(%s, node_id_list);' % (f.name,)
+            yield '    ListNodeIds::add_node_ids(r#%s, node_id_list);' % (f.name,)
         yield '  }'
     yield '}'
 

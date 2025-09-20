@@ -1,19 +1,21 @@
 //! This module implements commands for manipulating the current set of marked nodes.
-use rustc::hir;
-use rustc::hir::def::{DefKind, Res};
-use rustc::ty::TyKind;
+use log::info;
+use rustc_ast::ast;
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
+use rustc_hir as hir;
+use rustc_hir::def::{DefKind, Res};
+use rustc_span::symbol::Symbol;
+use rustc_type_ir::sty::TyKind;
 use std::str::FromStr;
-use syntax::ast;
-use syntax::ast::*;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor};
 
+use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::{visit_nodes, Visit};
 use crate::command::CommandState;
 use crate::command::{DriverCommand, FuncCommand, RefactorState, Registry};
 use crate::driver::Phase;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
+use crate::{expect, match_or};
 
 /// Find all nodes that refer to marked nodes.
 struct MarkUseVisitor<'a, 'tcx: 'a> {
@@ -33,10 +35,10 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                         }
 
                         // For struct and node constructors, also check the parent item
-                        if matches!([path.res] Res::Def(DefKind::Ctor(..), _)) {
+                        if crate::matches!([path.res] Res::Def(DefKind::Ctor(..), _)) {
                             let hir_id = self.cx.hir_map().node_to_hir_id(id);
                             let parent_id = self.cx.hir_map().get_parent_item(hir_id);
-                            let parent_id = self.cx.hir_map().hir_to_node_id(parent_id);
+                            let parent_id = self.cx.hir_map().local_def_id_to_node_id(parent_id);
                             if self.st.marked(parent_id, self.label) {
                                 self.st.add_mark(use_id, self.label);
                             }
@@ -45,6 +47,7 @@ impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
                 }
             }
             &hir::QPath::TypeRelative(..) => {}
+            &hir::QPath::LangItem(..) => unimplemented!(),
         }
     }
 }
@@ -68,7 +71,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
                 });
             }
 
-            ExprKind::Struct(_, _, _) => {
+            ExprKind::Struct(_) => {
                 expect!([hir.kind] hir::ExprKind::Struct(ref hp, _, _) => {
                     info!("looking at ExprKind::Struct {:?}", x);
                     self.handle_qpath(x.id, hp);
@@ -83,22 +86,21 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
 
     fn visit_pat(&mut self, x: &'s Pat) {
         let hir = if let Some(node) = self.cx.hir_map().find(x.id) {
-            expect!([node] hir::Node::Pat(y) => y,
-                           hir::Node::Binding(y) => y)
+            expect!([node] hir::Node::Pat(y) => y)
         } else {
             visit::walk_pat(self, x);
             return;
         };
 
         match x.kind {
-            PatKind::Struct(_, _, _) => {
+            PatKind::Struct(_, _, _, _) => {
                 expect!([hir.kind] hir::PatKind::Struct(ref hp, _, _) => {
                     info!("looking at PatStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });
             }
 
-            PatKind::TupleStruct(_, _) => {
+            PatKind::TupleStruct(_, _, _) => {
                 expect!([hir.kind] hir::PatKind::TupleStruct(ref hp, _, _) => {
                     info!("looking at PatTupleStruct {:?}", x);
                     self.handle_qpath(x.id, hp);
@@ -200,8 +202,8 @@ pub fn find_field_uses<T: Visit>(
 
                 // Use the adjusted type to catch field accesses through autoderef.
                 let ty = cx.adjusted_node_type(obj.id);
-                let def = match_or!([ty.kind] TyKind::Adt(def, _) => def; return);
-                if let Some(id) = cx.hir_map().as_local_node_id(def.did) {
+                let def = match_or!([ty.kind()] TyKind::Adt(def, _) => def; return);
+                if let Some(id) = cx.hir_map().as_local_node_id(def.did()) {
                     if st.marked(id, label) {
                         st.add_mark(e.id, label);
                     }
@@ -257,7 +259,7 @@ pub fn find_arg_uses<T: Visit>(
                 if st.marked(node_id, label) {
                     let args = match e.kind {
                         ExprKind::Call(_, ref args) => args,
-                        ExprKind::MethodCall(_, ref args) => args,
+                        ExprKind::MethodCall(_, ref args, _) => args,
                         _ => panic!("expected Call or MethodCall"),
                     };
                     st.add_mark(args[arg_idx].id, label);
@@ -380,8 +382,8 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
     // Use a preorder traversal.  This results in recursively marking public descendants of any
     // marked module or crate.
     if st.marked(CRATE_NODE_ID, label) {
-        for i in &st.krate().module.items {
-            if let VisibilityKind::Public = i.vis.node {
+        for i in &st.krate().items {
+            if let VisibilityKind::Public = i.vis.kind {
                 st.add_mark(i.id, label);
             }
         }
@@ -389,9 +391,9 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
 
     visit_nodes(&*st.krate(), |i: &Item| {
         if st.marked(i.id, label) {
-            if let ItemKind::Mod(ref m) = i.kind {
-                for i in &m.items {
-                    if let VisibilityKind::Public = i.vis.node {
+            if let ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _)) = i.kind {
+                for i in &m_items[..] {
+                    if let VisibilityKind::Public = i.vis.kind {
                         st.add_mark(i.id, label);
                     }
                 }

@@ -1,14 +1,15 @@
 //! Intraprocedural step of the analysis.
 
-use log::Level;
-use rustc::hir::def_id::DefId;
-use rustc::mir::*;
-use rustc::ty::{Ty, TyKind};
+use log::{debug, log_enabled, Level};
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
+use rustc_middle::mir::*;
+use rustc_middle::ty::{Ty, TyKind};
+use rustc_span::source_map::{Spanned, DUMMY_SP};
 use rustc_target::abi::VariantIdx;
-use syntax::source_map::{DUMMY_SP, Spanned};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
+use crate::expect;
 
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, Instantiation};
@@ -135,17 +136,16 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             };
 
             let span = match &decl.local_info {
-                LocalInfo::User(ClearCrossCrate::Set(binding)) => Some(binding),
+                Some(box LocalInfo::User(ClearCrossCrate::Set(binding))) => Some(binding),
                 _ => None,
-            }.map(|binding| match binding {
+            }
+            .map(|binding| match binding {
                 BindingForm::Var(var) => var.pat_span,
                 _ => DUMMY_SP,
-            }).unwrap_or(DUMMY_SP);
+            })
+            .unwrap_or(DUMMY_SP);
 
-            self.local_tys.push(Spanned {
-                node: lty,
-                span,
-            });
+            self.local_tys.push(Spanned { node: lty, span });
         }
 
         // Pick up any preset constraints for this variant.
@@ -205,14 +205,18 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             _ => None,
         };
 
-        let relabeled_locals = self.local_tys
+        let relabeled_locals = self
+            .local_tys
             .raw
             .iter()
             .filter_map(|spanned_ity| {
                 if spanned_ity.span == DUMMY_SP {
                     None
                 } else {
-                    Some((spanned_ity.span, self.cx.lcx.relabel(spanned_ity.node, &mut f)))
+                    Some((
+                        spanned_ity.span,
+                        self.cx.lcx.relabel(spanned_ity.node, &mut f),
+                    ))
                 }
             })
             .collect();
@@ -232,7 +236,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             ref mut insts,
             ..
         } = *self;
-        ilcx.label(ty, &mut |ty| match ty.kind {
+        ilcx.label(ty, &mut |ty| match ty.kind() {
             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                 let v = Var(*next_local_var);
                 *next_local_var += 1;
@@ -240,7 +244,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             }
 
             TyKind::FnDef(def_id, _) => {
-                let (func, var) = cx.variant_summ(def_id);
+                let (func, var) = cx.variant_summ(*def_id);
                 let num_vars = func.num_sig_vars;
 
                 let inst_idx = insts.len();
@@ -282,7 +286,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let mut projection = lv.projection.to_vec();
             let last_elem = projection.pop().unwrap();
             let parent = Place {
-                base: lv.base.clone(),
+                local: lv.local.clone(),
                 projection: self.cx.tcx.intern_place_elems(&projection),
             };
             let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&parent);
@@ -316,26 +320,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 ProjectionElem::Downcast(_, variant) => (base_ty, base_perm, Some(variant)),
             }
         } else {
-            match lv.base {
-                PlaceBase::Local(l) => (self.local_var_ty(l), Perm::move_(), None),
-
-                PlaceBase::Static(ref s) => match s.kind {
-                    StaticKind::Static => (self.static_ty(s.def_id), Perm::move_(), None),
-                    StaticKind::Promoted(ref _p, _) => {
-                        // TODO: test this
-                        let pty = lv.ty(self.mir, self.cx.tcx);
-                        let ty = pty.ty;
-                        (self.local_ty(ty), Perm::read(), None)
-                    }
-                },
-            }
+            (self.local_var_ty(lv.local), Perm::move_(), None)
         }
     }
 
     fn field_lty(&mut self, base_ty: ITy<'lty, 'tcx>, v: VariantIdx, f: Field) -> ITy<'lty, 'tcx> {
-        match base_ty.ty.kind {
+        match base_ty.ty.kind() {
             TyKind::Adt(adt, _substs) => {
-                let field_def = &adt.variants[v].fields[f.index()];
+                let field_def = &adt.variants()[v].fields[f.index()];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             }
@@ -358,7 +350,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
                 (arr_ty, Perm::move_())
             }
-            Rvalue::Ref(_, _, ref lv) => {
+            Rvalue::Ref(_, _, ref lv) | Rvalue::AddressOf(_, ref lv) => {
                 let (ty, perm) = self.place_lty(lv);
                 let args = self.ilcx.mk_slice(&[ty]);
                 let ref_ty = self
@@ -373,28 +365,27 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
             }
-            Rvalue::BinaryOp(op, ref a, ref _b) | Rvalue::CheckedBinaryOp(op, ref a, ref _b) => {
-                match op {
-                    BinOp::Add
-                    | BinOp::Sub
-                    | BinOp::Mul
-                    | BinOp::Div
-                    | BinOp::Rem
-                    | BinOp::BitXor
-                    | BinOp::BitAnd
-                    | BinOp::BitOr
-                    | BinOp::Shl
-                    | BinOp::Shr
-                    | BinOp::Eq
-                    | BinOp::Lt
-                    | BinOp::Le
-                    | BinOp::Ne
-                    | BinOp::Ge
-                    | BinOp::Gt => (self.local_ty(ty), Perm::move_()),
+            Rvalue::BinaryOp(op, box (ref a, ref _b))
+            | Rvalue::CheckedBinaryOp(op, box (ref a, ref _b)) => match op {
+                BinOp::Add
+                | BinOp::Sub
+                | BinOp::Mul
+                | BinOp::Div
+                | BinOp::Rem
+                | BinOp::BitXor
+                | BinOp::BitAnd
+                | BinOp::BitOr
+                | BinOp::Shl
+                | BinOp::Shr
+                | BinOp::Eq
+                | BinOp::Lt
+                | BinOp::Le
+                | BinOp::Ne
+                | BinOp::Ge
+                | BinOp::Gt => (self.local_ty(ty), Perm::move_()),
 
-                    BinOp::Offset => self.operand_lty(a),
-                }
-            }
+                BinOp::Offset => self.operand_lty(a),
+            },
             Rvalue::NullaryOp(_op, _ty) => unimplemented!(),
             Rvalue::UnaryOp(op, ref _a) => match op {
                 UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
@@ -417,7 +408,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     }
                     (tuple_ty, Perm::move_())
                 }
-                AggregateKind::Adt(adt, disr, _substs, _annot, union_variant) => {
+                AggregateKind::Adt(adt_did, disr, _substs, _annot, union_variant) => {
+                    let adt = self.cx.tcx.adt_def(adt_did);
                     let adt_ty = self.local_ty(ty);
 
                     if let Some(union_variant) = union_variant {
@@ -429,7 +421,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                         self.propagate(field_ty, op_ty, op_perm);
                     } else {
                         for (i, op) in ops.iter().enumerate() {
-                            let field_def_id = adt.variants[disr].fields[i].did;
+                            let field_def_id = adt.variant(disr).fields[i].did;
                             let poly_field_ty = self.static_ty(field_def_id);
                             let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
                             let (op_ty, op_perm) = self.operand_lty(op);
@@ -442,6 +434,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 AggregateKind::Closure(_, _) => unimplemented!(),
                 AggregateKind::Generator(_, _, _) => unimplemented!(),
             },
+            Rvalue::CopyForDeref(ref lv) => self.place_lty(lv),
+            // TODO: implement these; we shouldn't see them in transpiled
+            // code for now, but we should handle them when we do
+            Rvalue::ThreadLocalRef(..) | Rvalue::ShallowInitBox(..) => unimplemented!(),
         }
     }
 
@@ -450,8 +446,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             Operand::Copy(ref lv) => self.place_lty(lv),
             Operand::Move(ref lv) => self.place_lty(lv),
             Operand::Constant(ref c) => {
-                debug!("CONSTANT {:?}: type = {:?}", c, c.literal.ty);
-                let lty = self.local_ty(c.literal.ty);
+                debug!("CONSTANT {:?}: type = {:?}", c, c.literal.ty());
+                let lty = self.local_ty(c.literal.ty());
                 if let Label::FnDef(inst_idx) = lty.label {
                     self.insts[inst_idx].span = Some(c.span);
                 }
@@ -536,12 +532,12 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
     }
 
     fn ty_fn_sig(&mut self, ty: ITy<'lty, 'tcx>) -> IFnSig<'lty, 'tcx> {
-        match ty.ty.kind {
+        match ty.ty.kind() {
             TyKind::FnDef(did, _substs) => {
                 let idx = expect!([ty.label] Label::FnDef(idx) => idx);
                 let var_base = self.insts[idx].first_inst_var;
 
-                let sig = self.cx.variant_func_sig(did);
+                let sig = self.cx.variant_func_sig(*did);
 
                 // First apply the permission substs.  Replace all `SigVar`s with `InstVar`s.
                 let mut f = |p: &Option<_>| {
@@ -583,30 +579,34 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         for (idx, s) in bb.statements.iter().enumerate() {
             self.enter_stmt(idx);
             match s.kind {
-                StatementKind::Assign(box(ref lv, ref rv)) => {
+                StatementKind::Assign(box (ref lv, ref rv)) => {
                     let (lv_ty, lv_perm) = self.place_lty(lv);
                     let (rv_ty, rv_perm) = self.rvalue_lty(rv);
                     self.propagate(lv_ty, rv_ty, rv_perm);
                     self.propagate_perm(Perm::write(), lv_perm);
                     debug!("    {:?}: {:?}", lv, lv_ty);
                     debug!("    ^-- {:?}: {:?}", rv, rv_ty);
-                },
-                StatementKind::FakeRead(..) |
-                StatementKind::SetDiscriminant { .. } |
-                StatementKind::StorageLive(_) |
-                StatementKind::StorageDead(_) |
-                // InlineAsm has some Lvalues and Operands, but we can't do anything useful
-                // with them without analysing the actual asm code.
-                StatementKind::InlineAsm { .. } |
-                StatementKind::Retag { .. } |
-                StatementKind::AscribeUserType(..) |
-                StatementKind::Nop => {},
+                }
+                StatementKind::Deinit(box ref pl) => {
+                    let (_pl_ty, pl_perm) = self.place_lty(pl);
+                    // TODO: is this needed?
+                    self.propagate_perm(Perm::write(), pl_perm);
+                }
+                StatementKind::CopyNonOverlapping(..) => unimplemented!(),
+                StatementKind::FakeRead(..)
+                | StatementKind::SetDiscriminant { .. }
+                | StatementKind::StorageLive(_)
+                | StatementKind::StorageDead(_)
+                | StatementKind::Retag { .. }
+                | StatementKind::AscribeUserType(..)
+                | StatementKind::Coverage(..)
+                | StatementKind::Nop => {}
             }
         }
 
         match bb.terminator().kind {
             TerminatorKind::Goto { .. }
-            | TerminatorKind::FalseEdges { .. }
+            | TerminatorKind::FalseEdge { .. }
             | TerminatorKind::FalseUnwind { .. }
             | TerminatorKind::SwitchInt { .. }
             | TerminatorKind::Resume
@@ -616,18 +616,21 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             | TerminatorKind::Assert { .. }
             | TerminatorKind::Yield { .. }
             | TerminatorKind::GeneratorDrop
+            // InlineAsm has some Lvalues and Operands, but we can't do anything useful
+            // with them without analysing the actual asm code.
+            | TerminatorKind::InlineAsm { .. }
             | TerminatorKind::Abort => {}
 
             TerminatorKind::DropAndReplace {
-                ref location,
+                ref place,
                 ref value,
                 ..
             } => {
-                let (loc_ty, loc_perm) = self.place_lty(location);
+                let (loc_ty, loc_perm) = self.place_lty(place);
                 let (val_ty, val_perm) = self.operand_lty(value);
                 self.propagate(loc_ty, val_ty, val_perm);
                 self.propagate_perm(Perm::write(), loc_perm);
-                debug!("    {:?}: {:?}", location, loc_ty);
+                debug!("    {:?}: {:?}", place, loc_ty);
                 debug!("    ^-- {:?}: {:?}", value, val_ty);
             }
 
@@ -635,6 +638,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 ref func,
                 ref args,
                 ref destination,
+                ref target,
                 ..
             } => {
                 debug!("    call {:?}", func);
@@ -649,12 +653,12 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     debug!("    (arg): {:?}", sig_ty);
                     debug!("    ^-- {:?}: {:?}", arg, arg_ty);
                 }
-                if let Some((ref dest, _)) = *destination {
+                if target.is_some() {
                     let sig_ty = sig.output;
-                    let (dest_ty, dest_perm) = self.place_lty(dest);
+                    let (dest_ty, dest_perm) = self.place_lty(destination);
                     self.propagate(dest_ty, sig_ty, Perm::move_());
                     self.propagate_perm(Perm::write(), dest_perm);
-                    debug!("    {:?}: {:?}", dest, dest_ty);
+                    debug!("    {:?}: {:?}", destination, dest_ty);
                     debug!("    ^-- (return): {:?}", sig_ty);
                 }
             }

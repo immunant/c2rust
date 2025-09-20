@@ -1,11 +1,11 @@
 //! Helper for checking if a node or one of its descendants has a particular mark.
-use syntax::ast::*;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor};
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
+use rustc_span::symbol::Symbol;
 
+use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::Visit;
 use crate::command::CommandState;
-use c2rust_ast_builder::IntoSymbol;
 
 struct ContainsMarkVisitor<'a> {
     st: &'a CommandState,

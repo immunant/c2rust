@@ -1,7 +1,14 @@
 //! The main thread for interactive mode.
 //!
 //! The main thread runs a loop receiving and processing client requests.
+use log::info;
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use rustc_ast::*;
 use rustc_interface::interface::{self, Config};
+use rustc_span::source_map::Span;
+use rustc_span::source_map::{FileLoader, RealFileLoader};
+use rustc_span::symbol::Symbol;
+use rustc_span::FileName;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
@@ -11,13 +18,8 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use syntax::ast::*;
-use syntax::source_map::Span;
-use syntax::source_map::{FileLoader, RealFileLoader};
-use syntax::symbol::Symbol;
-use syntax::visit::{self, FnKind, Visitor};
-use syntax_pos::FileName;
 
+use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::{GetNodeId, GetSpan, Visit};
 use crate::command::{self, RefactorState};
 use crate::driver;
@@ -28,7 +30,6 @@ use crate::interact::{plain_backend, vim8_backend};
 use crate::interact::{ToClient, ToServer};
 use crate::pick_node;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
 
 use super::MarkInfo;
 
@@ -208,8 +209,10 @@ impl InteractState {
 
 fn filename_to_str(filename: &FileName) -> String {
     match filename {
-        &FileName::Real(ref pathbuf) => pathbuf.to_str().expect("Invalid path name").to_owned(),
-        &FileName::Macros(ref macros) => format!("<{}>", macros),
+        &FileName::Real(ref rfn) => rfn
+            .to_string_lossy(rustc_span::FileNameDisplayPreference::Local)
+            .into_owned(),
+        // TODO: FileName::Macros is gone, do we need an alternative?
         other => panic!("Need to implement name conversion for {:?}", other),
     }
 }
@@ -336,14 +339,9 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
         visit::walk_item(self, x)
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
         self.record(x);
-        visit::walk_trait_item(self, x)
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        self.record(x);
-        visit::walk_impl_item(self, x)
+        visit::walk_assoc_item(self, x, ctxt)
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
@@ -371,13 +369,13 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
         visit::walk_ty(self, x)
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
-        for arg in &fd.inputs {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+        for arg in &kind.decl().inputs {
             if self.ids.contains(&arg.id) {
                 self.spans.insert(arg.id, arg.pat.span.to(arg.ty.span));
             }
         }
-        visit::walk_fn(self, kind, fd, span);
+        visit::walk_fn(self, kind, span);
     }
 }
 

@@ -1,5 +1,6 @@
 //! JSON backend, for communication with Vim 8.
-use json::{self, JsonValue};
+use json::{self, object, JsonValue};
+use log::info;
 use std::io::{self, BufRead, Write};
 use std::sync::mpsc::{self, SyncSender};
 use std::thread;
@@ -118,7 +119,7 @@ fn decode_message(json: JsonValue) -> Result<ToServer, String> {
                 None => return Err(format!("missing key `{}`", $key)),
             }
         };
-    };
+    }
 
     macro_rules! get_conv_array {
         ($json:expr, $key:expr, $conv:ident) => {{
@@ -148,7 +149,7 @@ fn decode_message(json: JsonValue) -> Result<ToServer, String> {
 
             result
         }};
-    };
+    }
 
     let kind = get_conv!(obj, "msg", take_string);
 
