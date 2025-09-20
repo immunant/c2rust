@@ -12,6 +12,7 @@ input_file: c2rust-transpile/tests/snapshots/arrays.c
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct C2RustUnnamed {
@@ -79,11 +80,9 @@ pub unsafe extern "C" fn entry() {
         &[u8; 20],
         &mut [std::ffi::c_char; 20],
     >(b"abc\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
-    let mut past_end: *mut std::ffi::c_char = &mut *simple
-        .as_mut_ptr()
-        .offset(::core::mem::size_of::<[std::ffi::c_char; 9]>() as isize)
-        as *mut std::ffi::c_char;
-    past_end = &mut *foo.offset(8 as std::ffi::c_int as isize) as *mut std::ffi::c_char;
+    let mut past_end: *mut std::ffi::c_char = &raw mut *(&raw mut simple as *mut std::ffi::c_char)
+        .offset(::core::mem::size_of::<[std::ffi::c_char; 9]>() as isize);
+    past_end = &raw mut *foo.offset(8 as std::ffi::c_int as isize);
 }
 #[no_mangle]
 pub unsafe extern "C" fn short_initializer() {
