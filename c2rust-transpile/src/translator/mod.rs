@@ -492,8 +492,6 @@ pub fn translate(
     };
 
     {
-        t.use_crate(ExternCrate::Libc);
-
         // Sort the top-level declarations by file and source location so that we
         // preserve the ordering of all declarations in each file.
         t.ast_context.sort_top_decls();
@@ -767,9 +765,6 @@ pub fn translate(
             store.add_item(initializer_static);
         }
 
-        let pragmas = t.get_pragmas();
-        let crates = t.extern_crates.borrow().clone();
-
         let mut mod_items: Vec<Box<Item>> = Vec::new();
 
         // Keep track of new uses we need while building header submodules
@@ -869,6 +864,15 @@ pub fn translate(
                 items: all_items.into_iter().map(|x| *x).collect(),
             }
         });
+
+        let pragmas = t.get_pragmas();
+        let extern_crates = t.extern_crates.borrow();
+        let type_converter = t.type_converter.borrow();
+        let crates = extern_crates
+            .union(type_converter.extern_crates_used())
+            .copied()
+            .collect();
+
         (translation, pragmas, crates)
     }
 }
@@ -4392,6 +4396,7 @@ impl<'c> Translation<'c> {
             {
                 let target_ty = self.convert_type(target_cty.ctype)?;
                 val.and_then(|x| {
+                    self.use_crate(ExternCrate::Libc);
                     let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
                     let intptr = mk().cast_expr(x, intptr_t.clone());
                     Ok(WithStmts::new_unsafe_val(transmute_expr(
@@ -4444,6 +4449,7 @@ impl<'c> Translation<'c> {
                     })
                 } else if target_ty_kind.is_pointer() && source_ty_kind.is_bool() {
                     val.and_then(|x| {
+                        self.use_crate(ExternCrate::Libc);
                         Ok(WithStmts::new_val(mk().cast_expr(
                             mk().cast_expr(x, mk().path_ty(vec!["libc", "size_t"])),
                             target_ty,
@@ -4722,9 +4728,12 @@ impl<'c> Translation<'c> {
             ))
         } else if resolved_ty.is_floating_type() {
             match self.ast_context[ty_id].kind {
-                CTypeKind::LongDouble => Ok(WithStmts::new_val(
-                    mk().path_expr(vec!["f128", "f128", "ZERO"]),
-                )),
+                CTypeKind::LongDouble => {
+                    self.use_crate(ExternCrate::F128);
+                    Ok(WithStmts::new_val(
+                        mk().path_expr(vec!["f128", "f128", "ZERO"]),
+                    ))
+                }
                 _ => Ok(WithStmts::new_val(
                     mk().lit_expr(mk().float_unsuffixed_lit("0.")),
                 )),
