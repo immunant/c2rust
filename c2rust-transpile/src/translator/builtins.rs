@@ -308,6 +308,7 @@ impl<'c> Translation<'c> {
                             mk().block(vec![mk().expr_stmt(minus_one)]),
                             Some(mk().lit_expr(mk().int_lit(0, "isize"))),
                         );
+                        self.use_crate(ExternCrate::Libc);
                         let size_t = mk().path_ty(vec!["libc", "size_t"]);
                         mk().cast_expr(if_expr, size_t)
                     }))
@@ -752,6 +753,7 @@ impl<'c> Translation<'c> {
         arg_types: &[LibcFnArgType],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = &builtin_name[10..];
+        self.use_crate(ExternCrate::Libc);
         let mem = mk().path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args, None)?;
         args.and_then(|args| {
@@ -765,13 +767,13 @@ impl<'c> Translation<'c> {
                 ))
                 .context(TranslationErrorKind::Generic))?
             }
-            let size_t = || mk().path_ty(vec!["libc", "size_t"]);
             let args_casted = args
                 .into_iter()
                 .zip(arg_types)
                 .map(|(arg, &ty)| {
                     if ty == LibcFnArgType::Size {
-                        mk().cast_expr(arg, size_t())
+                        self.use_crate(ExternCrate::Libc);
+                        mk().cast_expr(arg, mk().path_ty(vec!["libc", "size_t"]))
                     } else {
                         arg
                     }
