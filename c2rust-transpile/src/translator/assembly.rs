@@ -461,7 +461,7 @@ fn remove_comments(mut asm: &str) -> String {
     without_comments
 }
 
-/// Detect whether an x86(_64) gcc inline asm string uses Intel or AT&T syntax.
+/// Detect whether an x86(_64) extended asm template string uses AT&T syntax (vs. Intel).
 /// For gcc, AT&T syntax is default... unless `-masm=intel` is passed. This
 /// means we can hope but not guarantee that x86 asm with no syntax directive
 /// uses AT&T syntax.
@@ -469,6 +469,11 @@ fn remove_comments(mut asm: &str) -> String {
 /// (assuming it's actually x86 asm in the first place...).
 /// As the rust x86 default is intel syntax, we need to emit the "att_syntax"
 /// option if we get a hint that this asm uses AT&T syntax.
+///
+/// Note that this function receives the asm template after Clang's translation
+/// from gcc syntax (with `%` for substitution/escapes) to LLVM syntax which
+/// uses `$` for substitution/escapes. See:
+/// <https://llvm.org/docs/LangRef.html#inline-assembler-expressions>
 fn asm_is_att_syntax(asm: &str) -> bool {
     // First, remove comments, so we can look at only the semantically
     // significant parts of the asm template.
@@ -490,9 +495,9 @@ fn asm_is_att_syntax(asm: &str) -> bool {
             #[allow(clippy::needless_bool)]
             if asm.contains("word ptr") {
                 false
-            } else if asm.contains('$') || asm.contains('%') || asm.contains('(') {
+            } else if asm.contains("$$") || asm.contains('%') || asm.contains('(') {
                 // Guess based on sigils used in AT&T assembly:
-                // $ for constants, % for registers, and ( for address calculations
+                // $ (escaped) for constants, % for registers, and ( for address calculations
                 true
             } else if asm.contains('[') {
                 // default to true, because AT&T is the default for gcc inline asm
@@ -816,7 +821,7 @@ impl<'c> Translation<'c> {
 
         // Determine whether the assembly is in AT&T syntax
         let att_syntax = match arch {
-            Arch::X86 | Arch::X86_64 => asm_is_att_syntax(&rewritten_asm),
+            Arch::X86 | Arch::X86_64 => asm_is_att_syntax(&asm),
             _ => false,
         };
 
