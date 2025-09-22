@@ -155,7 +155,9 @@ impl<'c> Translation<'c> {
                 let mut val = val.to_owned();
                 let num_elems = match self.ast_context.resolve_type(ty.ctype).kind {
                     CTypeKind::ConstantArray(_elem_ty, num_elems) => num_elems,
-                    _ => panic!("String literal with unknown size: {:?}", val),
+                    ref kind => {
+                        panic!("String literal with unknown size: {val:?}, kind = {kind:?}")
+                    }
                 };
 
                 // Match the literal size to the expected size padding with zeros as needed
