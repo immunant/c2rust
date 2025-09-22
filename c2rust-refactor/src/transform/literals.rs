@@ -576,22 +576,32 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let did = tables.type_dependent_def_id(hir_id).unwrap();
                 let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
 
-                // Hacky fix for the way rustc gives us method types:
-                // we don't get the parametric `Self` as the type of
-                // the `self` argument, instead we get the actual type,
-                // and we can't unify with that since it can break stuff
-                if let Some(ch) = callee_key_tree.get().children() {
-                    ch[0].set(LitTyKeyNode::Empty);
+                self.visit_path_segment(ex.span, segment);
+
+                // Visit receiver (self) WITHOUT constraint - this needs to keep its suffix to identify the method
+                if !args.is_empty() {
+                    self.visit_expr(&args[0]);
                 }
 
-                self.visit_path_segment(ex.span, segment);
+                // Handle the rest of the arguments with type constraints from the method signature
                 if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
-                    for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
-                        self.visit_expr_unify(arg_expr, arg_key_tree);
+                    // The signature structure is: [self, param1, param2, ..., return_type]
+                    // We want to match args[1..] with input_key_trees[1..input_key_trees.len()]
+                    if args.len() > 1 && input_key_trees.len() > 1 {
+                        let num_params = input_key_trees.len(); // includes self + actual params
+                        for (i, arg_expr) in args[1..].iter().enumerate() {
+                            let param_index = i + 1; // Skip self (index 0)
+                            if param_index < num_params {
+                                self.visit_expr_unify(arg_expr, input_key_trees[param_index]);
+                            } else {
+                                self.visit_expr(arg_expr);
+                            }
+                        }
                     }
                     self.unify_key_trees(kt, output_key_tree);
                 } else {
-                    for arg in args {
+                    // Fallback: visit remaining args without constraints
+                    for arg in &args[1..] {
                         self.visit_expr(arg);
                     }
                 }
