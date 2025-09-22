@@ -145,7 +145,7 @@ impl TranspilerConfig {
         self.output_dir
             .as_ref()
             .and_then(|dir| dir.file_name())
-            .map(|fname| str_to_ident_checked(fname.to_string_lossy(), true))
+            .map(|fname| str_to_ident_checked(fname.to_string_lossy().as_ref(), true))
             .unwrap_or_else(|| "c2rust_out".into())
     }
 }
@@ -200,14 +200,14 @@ fn char_to_ident(c: char) -> char {
     }
 }
 
-fn str_to_ident<S: AsRef<str>>(s: S) -> String {
-    s.as_ref().chars().map(char_to_ident).collect()
+fn str_to_ident(s: &str) -> String {
+    s.chars().map(char_to_ident).collect()
 }
 
 /// Make sure that name:
 /// - does not contain illegal characters,
 /// - does not clash with reserved keywords.
-fn str_to_ident_checked<S: AsRef<str>>(s: S, check_reserved: bool) -> String {
+fn str_to_ident_checked(s: &str, check_reserved: bool) -> String {
     let s = str_to_ident(s);
 
     // make sure the name does not clash with keywords
@@ -230,11 +230,8 @@ fn get_module_name(
     } else {
         file.file_name()
     };
-    let fname = &fname.unwrap().to_str().map(String::from);
-    let mut name = fname
-        .as_ref()
-        .map(|fname| str_to_ident_checked(fname, check_reserved))
-        .unwrap();
+    let fname = fname.unwrap().to_str().unwrap();
+    let mut name = str_to_ident_checked(fname, check_reserved);
     if keep_extension && is_rs {
         name.push_str(".rs");
     }
