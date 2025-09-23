@@ -1,5 +1,6 @@
 //! feature_core_intrinsics
 
+use crate::alloca::rust_alloca_hello;
 use crate::atomics::{rust_atomics_entry, rust_new_atomics};
 use crate::math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isinf_sign, rust_isnan};
 use crate::mem_x_fns::{rust_assume_aligned, rust_mem_x};
@@ -7,6 +8,7 @@ use std::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint};
 
 #[link(name = "test")]
 extern "C" {
+    fn alloca_hello() -> c_int;
     fn atomics_entry(_: c_uint, _: *mut c_int);
     fn new_atomics(_: c_uint, _: *mut c_int);
     fn mem_x(_: *const c_char, _: *mut c_char);
@@ -20,6 +22,14 @@ extern "C" {
 
 const BUFFER_SIZE: usize = 1024;
 const BUFFER_SIZE2: usize = 10;
+
+#[test]
+pub fn test_alloca() {
+    unsafe {
+        alloca_hello();
+        rust_alloca_hello();
+    }
+}
 
 #[test]
 pub fn test_atomics() {
