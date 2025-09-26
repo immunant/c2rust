@@ -1,4 +1,4 @@
-//! feature_core_intrinsics
+//! feature_core_intrinsics, feature_raw_ref_op
 
 use crate::alloca::rust_alloca_hello;
 use crate::atomics::{rust_atomics_entry, rust_new_atomics};

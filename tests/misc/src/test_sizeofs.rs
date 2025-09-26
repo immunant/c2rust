@@ -1,4 +1,4 @@
-//! feature_core_intrinsics, feature_label_break_value
+//! feature_core_intrinsics, feature_label_break_value, feature_raw_ref_op
 
 use crate::sizeofs::rust_sizeofs;
 use std::ffi::{c_int, c_uint};

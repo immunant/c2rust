@@ -937,54 +937,54 @@ impl<'c> Translation<'c> {
                 // In this translation, there are only pointers to functions and
                 // & becomes a no-op when applied to a function.
 
-                let arg = self.convert_expr(ctx.used().set_needs_address(true), arg, None)?;
+                let val = self.convert_expr(ctx.used().set_needs_address(true), arg, None)?;
 
                 if self.ast_context.is_function_pointer(ctype) {
-                    Ok(arg.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
-                } else {
-                    let pointee_ty =
-                        self.ast_context
-                            .get_pointee_qual_type(ctype)
-                            .ok_or_else(|| {
-                                TranslationError::generic("Address-of should return a pointer")
-                            })?;
-
-                    let mutbl = if pointee_ty.qualifiers.is_const {
-                        Mutability::Immutable
-                    } else {
-                        Mutability::Mutable
-                    };
-
-                    arg.result_map(|a| {
-                        let mut addr_of_arg: Box<Expr>;
-
-                        if ctx.is_static {
-                            // static variable initializers aren't able to use &mut,
-                            // so we work around that by using & and an extra cast
-                            // through & to *const to *mut
-                            addr_of_arg = mk().addr_of_expr(a);
-                            if let Mutability::Mutable = mutbl {
-                                let mut qtype = pointee_ty;
-                                qtype.qualifiers.is_const = true;
-                                let ty_ = self
-                                    .type_converter
-                                    .borrow_mut()
-                                    .convert_pointer(&self.ast_context, qtype)?;
-                                addr_of_arg = mk().cast_expr(addr_of_arg, ty_);
-                            }
-                        } else {
-                            // Normal case is allowed to use &mut if needed
-                            addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
-
-                            // Avoid unnecessary reference to pointer decay in fn call args:
-                            if ctx.decay_ref.is_no() {
-                                return Ok(addr_of_arg);
-                            }
-                        }
-
-                        Ok(mk().cast_expr(addr_of_arg, ty))
-                    })
+                    return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
                 }
+
+                let pointee_ty =
+                    self.ast_context
+                        .get_pointee_qual_type(ctype)
+                        .ok_or_else(|| {
+                            TranslationError::generic("Address-of should return a pointer")
+                        })?;
+
+                let mutbl = if pointee_ty.qualifiers.is_const {
+                    Mutability::Immutable
+                } else {
+                    Mutability::Mutable
+                };
+
+                Ok(val.map(|mut val| {
+                    if matches!(
+                        arg_kind,
+                        CExprKind::Literal(..) | CExprKind::CompoundLiteral(..)
+                    ) {
+                        // Rust does not extend the lifetime of temporaries with a raw borrow,
+                        // but will do so with a regular borrow.
+                        val = mk().set_mutbl(mutbl).borrow_expr(val);
+
+                        if ctx.decay_ref.is_yes() {
+                            val = mk().cast_expr(val, ty)
+                        }
+                    } else {
+                        self.use_feature("raw_ref_op");
+
+                        // TODO: The currently used nightly doesn't allow `&raw mut` in
+                        // static initialisers, but it's allowed since version 1.83.
+                        // So we take a `&raw const` and then cast.
+                        // Remove this exemption when the version is updated.
+                        if ctx.is_static && matches!(mutbl, Mutability::Mutable) {
+                            val = mk().raw_borrow_expr(val);
+                            val = mk().cast_expr(val, ty);
+                        } else {
+                            val = mk().set_mutbl(mutbl).raw_borrow_expr(val);
+                        }
+                    }
+
+                    val
+                }))
             }
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
             c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
