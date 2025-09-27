@@ -41,7 +41,7 @@ pub fn test_sectioned_used_static() {
         let pos = lines
             .iter()
             .position(|&x| {
-                x == "static mut rust_used_static4: std::ffi::c_int = 1 as std::ffi::c_int;"
+                x == "static mut rust_used_static4: core::ffi::c_int = 1 as core::ffi::c_int;"
             })
             .expect("Did not find expected static string in source");
         // The ordering of these attributes is not stable between LLVM versions
@@ -51,7 +51,7 @@ pub fn test_sectioned_used_static() {
         );
 
         // This static is pub, but we want to ensure it has attributes applied
-        assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: std::ffi::c_int = 1 as std::ffi::c_int;"));
-        assert!(src.contains("extern \"C\" {\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: std::ffi::c_int;"))
+        assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: core::ffi::c_int = 1 as core::ffi::c_int;"));
+        assert!(src.contains("extern \"C\" {\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: core::ffi::c_int;"))
     }
 }

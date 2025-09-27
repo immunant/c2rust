@@ -16,47 +16,47 @@ use core::arch::asm;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct vm_t {
-    pub programStack: std::ffi::c_int,
-    pub entryOfs: std::ffi::c_int,
-    pub dataBase: *mut std::ffi::c_void,
-    pub codeBase: *mut std::ffi::c_void,
-    pub instructionPointers: *mut std::ffi::c_ulong,
+    pub programStack: core::ffi::c_int,
+    pub entryOfs: core::ffi::c_int,
+    pub dataBase: *mut core::ffi::c_void,
+    pub codeBase: *mut core::ffi::c_void,
+    pub instructionPointers: *mut core::ffi::c_ulong,
 }
-pub type byte = std::ffi::c_uchar;
-pub const MAX_VMMAIN_ARGS: std::ffi::c_int = 50 as std::ffi::c_int;
+pub type byte = core::ffi::c_uchar;
+pub const MAX_VMMAIN_ARGS: core::ffi::c_int = 50 as core::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn VM_CallCompiled(
     mut vm: *mut vm_t,
-    mut args: *mut std::ffi::c_int,
-) -> std::ffi::c_int {
+    mut args: *mut core::ffi::c_int,
+) -> core::ffi::c_int {
     let mut stack: [byte; 271] = [0; 271];
-    let mut entryPoint: *mut std::ffi::c_void = 0 as *mut std::ffi::c_void;
-    let mut programStack: std::ffi::c_int = 0;
-    let mut stackOnEntry: std::ffi::c_int = 0;
+    let mut entryPoint: *mut core::ffi::c_void = 0 as *mut core::ffi::c_void;
+    let mut programStack: core::ffi::c_int = 0;
+    let mut stackOnEntry: core::ffi::c_int = 0;
     let mut image: *mut byte = 0 as *mut byte;
-    let mut opStack: *mut std::ffi::c_int = 0 as *mut std::ffi::c_int;
-    let mut opStackOfs: std::ffi::c_int = 0;
-    let mut arg: std::ffi::c_int = 0;
+    let mut opStack: *mut core::ffi::c_int = 0 as *mut core::ffi::c_int;
+    let mut opStackOfs: core::ffi::c_int = 0;
+    let mut arg: core::ffi::c_int = 0;
     let mut currentVM: *mut vm_t = vm;
     stackOnEntry = (*vm).programStack;
     programStack = stackOnEntry;
     image = (*vm).dataBase as *mut byte;
-    programStack -= 8 as std::ffi::c_int + 4 as std::ffi::c_int * MAX_VMMAIN_ARGS;
-    arg = 0 as std::ffi::c_int;
+    programStack -= 8 as core::ffi::c_int + 4 as core::ffi::c_int * MAX_VMMAIN_ARGS;
+    arg = 0 as core::ffi::c_int;
     while arg < MAX_VMMAIN_ARGS {
         *(&mut *image
-            .offset((programStack + 8 as std::ffi::c_int + arg * 4 as std::ffi::c_int) as isize)
-            as *mut byte as *mut std::ffi::c_int) = *args.offset(arg as isize);
+            .offset((programStack + 8 as core::ffi::c_int + arg * 4 as core::ffi::c_int) as isize)
+            as *mut byte as *mut core::ffi::c_int) = *args.offset(arg as isize);
         arg += 1;
     }
-    *(&mut *image.offset((programStack + 4 as std::ffi::c_int) as isize) as *mut byte
-        as *mut std::ffi::c_int) = 0 as std::ffi::c_int;
-    *(&mut *image.offset(programStack as isize) as *mut byte as *mut std::ffi::c_int) =
-        -(1 as std::ffi::c_int);
+    *(&mut *image.offset((programStack + 4 as core::ffi::c_int) as isize) as *mut byte
+        as *mut core::ffi::c_int) = 0 as core::ffi::c_int;
+    *(&mut *image.offset(programStack as isize) as *mut byte as *mut core::ffi::c_int) =
+        -(1 as core::ffi::c_int);
     entryPoint = ((*vm).codeBase).offset((*vm).entryOfs as isize);
-    opStack = (stack.as_mut_ptr() as *mut std::ffi::c_int).offset(16 as std::ffi::c_int as isize);
-    *opStack = 0 as std::ffi::c_int;
-    opStackOfs = 0 as std::ffi::c_int;
+    opStack = (stack.as_mut_ptr() as *mut core::ffi::c_int).offset(16 as core::ffi::c_int as isize);
+    *opStack = 0 as core::ffi::c_int;
+    opStackOfs = 0 as core::ffi::c_int;
     asm!(
         "movq [{2}], %rax\n", "movq [{0}], %r8\n", "movq [{1}], %r9\n", "push %r15\n",
         "push %r14\n", "push %r13\n", "push %r12\n", "callq *%rax\n", "pop %r12\n",
@@ -66,15 +66,15 @@ pub unsafe extern "C" fn VM_CallCompiled(
         inlateout("si") programStack, out("rax") _, out("rcx") _, out("rdx") _, out("r8")
         _, out("r9") _, out("r10") _, out("r11") _, options(att_syntax)
     );
-    if opStackOfs != 1 as std::ffi::c_int
-        || *opStack as std::ffi::c_uint != 0xdeadbeef as std::ffi::c_uint
+    if opStackOfs != 1 as core::ffi::c_int
+        || *opStack as core::ffi::c_uint != 0xdeadbeef as core::ffi::c_uint
     {
-        return 0 as std::ffi::c_int;
+        return 0 as core::ffi::c_int;
     }
     if programStack
-        != stackOnEntry - (8 as std::ffi::c_int + 4 as std::ffi::c_int * MAX_VMMAIN_ARGS)
+        != stackOnEntry - (8 as core::ffi::c_int + 4 as core::ffi::c_int * MAX_VMMAIN_ARGS)
     {
-        return 0 as std::ffi::c_int;
+        return 0 as core::ffi::c_int;
     }
     (*vm).programStack = stackOnEntry;
     return *opStack.offset(opStackOfs as isize);

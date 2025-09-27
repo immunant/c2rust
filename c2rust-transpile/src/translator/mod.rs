@@ -1074,7 +1074,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
 
 /// Convert a boolean expression to a c_int
 fn bool_to_int(val: Box<Expr>) -> Box<Expr> {
-    mk().cast_expr(val, mk().path_ty(vec!["std", "ffi", "c_int"]))
+    mk().cast_expr(val, mk().path_ty(vec!["core", "ffi", "c_int"]))
 }
 
 /// Add a src_loc = "line:col" attribute to an item/foreign_item
