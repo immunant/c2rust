@@ -1,14 +1,15 @@
 //! Helper functions for picking a node by source location.
 //!
 //! This is used in various parts of the frontend to set marks at specific locations.
-use rustc::session::Session;
+use log::info;
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use rustc_ast::*;
+use rustc_session::Session;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{BytePos, Span};
+use rustc_span::FileName;
 use std::path::PathBuf;
 use std::str::FromStr;
-use syntax::ast::*;
-use syntax_pos::hygiene::SyntaxContext;
-use syntax::source_map::{BytePos, Span};
-use syntax::visit::{self, FnKind, Visitor};
-use syntax_pos::FileName;
 
 use crate::ast_manip::Visit;
 use crate::command::{DriverCommand, Registry};
@@ -47,8 +48,8 @@ impl<'a> Visitor<'a> for PickVisitor {
         // (meaning inside the included file), then we mark the mod item itself.  This is because
         // `Mod` nodes don't have their own IDs.
         if self.node_info.is_none() {
-            if let ItemKind::Mod(ref m) = x.kind {
-                if m.inner.contains(self.target) {
+            if let ItemKind::Mod(_, ModKind::Loaded(_, _, ref m_spans)) = x.kind {
+                if m_spans.inner_span.contains(self.target) {
                     self.node_info = Some(NodeInfo {
                         id: x.id,
                         span: x.span,
@@ -58,25 +59,14 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
-    fn visit_trait_item(&mut self, x: &'a TraitItem) {
-        visit::walk_trait_item(self, x);
-        if self.node_info.is_none()
-            && self.kind.contains(NodeKind::TraitItem)
-            && x.span.contains(self.target)
-        {
-            self.node_info = Some(NodeInfo {
-                id: x.id,
-                span: x.span,
-            });
-        }
-    }
+    fn visit_assoc_item(&mut self, x: &'a AssocItem, ctxt: AssocCtxt) {
+        let kind = match ctxt {
+            AssocCtxt::Trait => NodeKind::TraitItem,
+            AssocCtxt::Impl => NodeKind::ImplItem,
+        };
 
-    fn visit_impl_item(&mut self, x: &'a ImplItem) {
-        visit::walk_impl_item(self, x);
-        if self.node_info.is_none()
-            && self.kind.contains(NodeKind::ImplItem)
-            && x.span.contains(self.target)
-        {
+        visit::walk_assoc_item(self, x, ctxt);
+        if self.node_info.is_none() && self.kind.contains(kind) && x.span.contains(self.target) {
             self.node_info = Some(NodeInfo {
                 id: x.id,
                 span: x.span,
@@ -150,11 +140,11 @@ impl<'a> Visitor<'a> for PickVisitor {
     }
 
     // There's no `visit_arg`, unfortunately, so we have to do this instead.
-    fn visit_fn(&mut self, fk: FnKind<'a>, fd: &'a FnDecl, s: Span, _id: NodeId) {
-        visit::walk_fn(self, fk, fd, s);
+    fn visit_fn(&mut self, fk: FnKind<'a>, s: Span, _id: NodeId) {
+        visit::walk_fn(self, fk, s);
 
         if self.node_info.is_none() && self.kind.contains(NodeKind::Param) {
-            for arg in &fd.inputs {
+            for arg in &fk.decl().inputs {
                 if arg.ty.span.contains(self.target)
                     || arg.pat.span.contains(self.target)
                     || (arg.ty.span.ctxt() == arg.pat.span.ctxt()
@@ -169,8 +159,8 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
-    fn visit_struct_field(&mut self, x: &'a StructField) {
-        visit::walk_struct_field(self, x);
+    fn visit_field_def(&mut self, x: &'a FieldDef) {
+        visit::walk_field_def(self, x);
         if self.node_info.is_none()
             && self.kind.contains(NodeKind::Field)
             && x.span.contains(self.target)
@@ -182,7 +172,7 @@ impl<'a> Visitor<'a> for PickVisitor {
         }
     }
 
-    fn visit_mac(&mut self, mac: &'a Mac) {
+    fn visit_mac_call(&mut self, mac: &'a MacCall) {
         visit::walk_mac(self, mac);
     }
 }
@@ -259,7 +249,7 @@ impl FromStr for NodeKind {
             "pat" => NodeKind::Pat,
             "ty" => NodeKind::Ty,
             "param" => NodeKind::Param,
-            "arg" => NodeKind::Param,  // arg is an alias for param
+            "arg" => NodeKind::Param, // arg is an alias for param
             "field" => NodeKind::Field,
 
             _ => return Err(()),
@@ -274,16 +264,16 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     let mut v = PickVisitor {
         node_info: None,
         kind,
-        target: Span::new(pos, pos, SyntaxContext::root()),
+        target: Span::new(pos, pos, SyntaxContext::root(), None),
     };
     krate.visit(&mut v);
 
     // If the cursor falls inside the crate's module, then mark the crate itself.
     if v.node_info.is_none() {
-        if krate.module.inner.contains(v.target) {
+        if krate.spans.inner_span.contains(v.target) {
             v.node_info = Some(NodeInfo {
                 id: CRATE_NODE_ID,
-                span: krate.span,
+                span: krate.spans.inner_span,
             });
         }
     }
@@ -302,7 +292,7 @@ pub fn pick_node_at_loc(
 ) -> Option<NodeInfo> {
     let fm = match session
         .source_map()
-        .get_source_file(&FileName::Real(PathBuf::from(file)))
+        .get_source_file(&FileName::from(PathBuf::from(file)))
     {
         Some(x) => x,
         None => {
@@ -310,12 +300,12 @@ pub fn pick_node_at_loc(
         }
     };
 
-    if line == 0 || line as usize - 1 >= fm.lines.len() {
+    if line == 0 || line as usize > fm.count_lines() {
         panic!("line {} is outside the bounds of {}", line, file);
     };
-    let (lo, hi) = fm.line_bounds(line as usize - 1);
+    let line_range = fm.line_bounds(line as usize - 1);
 
-    let line_len = hi.0 - lo.0;
+    let line_len = line_range.end.0 - line_range.start.0;
     if col >= line_len {
         panic!(
             "column {} is outside the bounds of {} line {}",
@@ -325,7 +315,7 @@ pub fn pick_node_at_loc(
 
     // TODO: This math is probably off when the line contains multibyte characters.  The
     // information to properly handle multibyte chars should be accessible through the `SourceFile`.
-    let pos = lo + BytePos(col);
+    let pos = line_range.start + BytePos(col);
 
     pick_node(krate, kind, pos)
 }

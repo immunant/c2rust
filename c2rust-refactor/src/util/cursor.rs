@@ -1,4 +1,5 @@
 //! Defines `Cursor`, a helper type for editing sequences.
+use log::info;
 
 /// A `Cursor` indicates a position within a sequence of `T`s.  The position can be anywhere within
 /// the sequence, including before the first item and after the last.
@@ -129,10 +130,7 @@ impl<T> Cursor<T> {
         let name = self.next_mark;
         self.next_mark += 1;
 
-        self.left_marks.push(MarkData {
-            name,
-            depth: 0,
-        });
+        self.left_marks.push(MarkData { name, depth: 0 });
         Mark(name)
     }
 

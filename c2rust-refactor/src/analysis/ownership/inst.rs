@@ -3,9 +3,9 @@ use std::iter;
 use std::mem;
 use std::usize;
 
-use log::Level;
+use log::{debug, log_enabled, warn, Level};
 
-use rustc::hir::def_id::DefId;
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 
 use super::constraint::ConstraintSet;

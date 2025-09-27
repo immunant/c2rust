@@ -14,11 +14,10 @@
 //! Though most of the code and comments talk about "macros", we really mean everything that gets
 //! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
+use rustc_ast::*;
+use rustc_span::source_map::Span;
+use rustc_span::sym;
 use std::collections::HashMap;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::source_map::Span;
-use syntax_pos::sym;
 
 mod cfg_attr;
 mod deleted;
@@ -98,10 +97,10 @@ impl<'ast> CollapseInfo<'ast> {
 /// also injected.
 fn injected_items(krate: &Crate) -> (&'static [&'static str], bool) {
     // Mirrors the logic in syntax::std_inject
-    if attr::contains_name(&krate.attrs, sym::no_core) {
+    if crate::util::contains_name(&krate.attrs, sym::no_core) {
         (&[], false)
-    } else if attr::contains_name(&krate.attrs, sym::no_std) {
-        if attr::contains_name(&krate.attrs, sym::compiler_builtins) {
+    } else if crate::util::contains_name(&krate.attrs, sym::no_std) {
+        if crate::util::contains_name(&krate.attrs, sym::compiler_builtins) {
             (&["core"], true)
         } else {
             (&["core", "compiler_builtins"], true)
@@ -116,7 +115,7 @@ pub fn collapse_injected(krate: &mut Crate) {
     let (crate_names, mut expect_prelude) = injected_items(krate);
     let mut crate_names = crate_names.to_vec();
 
-    krate.module.items.retain(|i| {
+    krate.items.retain(|i| {
         match i.kind {
             ItemKind::ExternCrate(_) => {
                 // Remove the first `extern crate` matching each entry in `crate_names`.
@@ -128,7 +127,7 @@ pub fn collapse_injected(krate: &mut Crate) {
                 }
             }
             ItemKind::Use(_) => {
-                if expect_prelude && attr::contains_name(&i.attrs, sym::prelude_import) {
+                if expect_prelude && crate::util::contains_name(&i.attrs, sym::prelude_import) {
                     expect_prelude = false;
                     false
                 } else {

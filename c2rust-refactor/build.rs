@@ -1,3 +1,4 @@
+use c2rust_build_paths::SysRoot;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -6,7 +7,7 @@ use std::process::Command;
 fn process_ast(mode: &str, dest: &Path) {
     let mut p = Command::new("python3")
         .arg("-B") // Don't write bytecode files (and thus pollute the source
-                   // directory)
+        // directory)
         .arg("gen/process_ast.py")
         .arg(mode)
         .arg(dest)
@@ -32,7 +33,6 @@ fn main() {
     process_ast("mac_table", &out_dir.join("mac_table_gen.inc.rs"));
     process_ast("nt_match", &out_dir.join("nt_match_gen.inc.rs"));
     process_ast("ast_names", &out_dir.join("ast_names_gen.inc.rs"));
-    process_ast("lua_ast_node", &out_dir.join("lua_ast_node_gen.inc.rs"));
 
     process_ast(
         "rewrite_rewrite",
@@ -63,4 +63,7 @@ fn main() {
         }
         println!("cargo:rerun-if-changed=gen/{}", name);
     }
+
+    let sysroot = SysRoot::resolve();
+    sysroot.link_rustc_private();
 }

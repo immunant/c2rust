@@ -80,7 +80,7 @@
 <li><a href="#Class_FnDecl">Class FnDecl </a></li>
 <li><a href="#Class_FnHeader">Class FnHeader </a></li>
 <li><a href="#Class_Param">Class Param </a></li>
-<li><a href="#Class_FunctionRetTy">Class FunctionRetTy </a></li>
+<li><a href="#Class_FnRetTy">Class FnRetTy </a></li>
 <li><a href="#Class_Stmt">Class Stmt </a></li>
 <li><a href="#Class_StmtKind">Class StmtKind </a></li>
 <li><a href="#Class_Local">Class Local </a></li>
@@ -127,7 +127,7 @@
 <li><a href="#Class_QSelf">Class QSelf </a></li>
 <li><a href="#Class_AssocTyConstraint">Class AssocTyConstraint </a></li>
 <li><a href="#Class_AssocTyConstraintKind">Class AssocTyConstraintKind </a></li>
-<li><a href="#Class_Mac">Class Mac </a></li>
+<li><a href="#Class_MacCall">Class MacCall </a></li>
 <li><a href="#Class_MacStmtStyle">Class MacStmtStyle </a></li>
 <li><a href="#Class_MacroDef">Class MacroDef </a></li>
 <li><a href="#Class_InlineAsm">Class InlineAsm </a></li>
@@ -1668,22 +1668,22 @@
 	<td class="summary">Set the "is_placeholder" field of the current node to a new value</td>
 	</tr>
 </table>
-<h2><a href="#Class_FunctionRetTy">Class FunctionRetTy </a></h2>
+<h2><a href="#Class_FnRetTy">Class FnRetTy </a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:kind_name">FunctionRetTy:kind_name ()</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:kind_name">FnRetTy:kind_name ()</a></td>
 	<td class="summary">Return the kind of the current node as a string</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:children">FunctionRetTy:children ()</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:children">FnRetTy:children ()</a></td>
 	<td class="summary">Return the children of the current node</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:child">FunctionRetTy:child (idx)</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:child">FnRetTy:child (idx)</a></td>
 	<td class="summary">Return a copy of the given child</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#FunctionRetTy:replace_child">FunctionRetTy:replace_child (idx, value)</a></td>
+	<td class="name" nowrap><a href="#FnRetTy:replace_child">FnRetTy:replace_child (idx, value)</a></td>
 	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
@@ -2929,46 +2929,46 @@
 	<td class="summary">Replace a child of the current node with a new value</td>
 	</tr>
 </table>
-<h2><a href="#Class_Mac">Class Mac </a></h2>
+<h2><a href="#Class_MacCall">Class MacCall </a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#Mac:get_path">Mac:get_path ()</a></td>
+	<td class="name" nowrap><a href="#MacCall:get_path">MacCall:get_path ()</a></td>
 	<td class="summary">Return the "path" field of the current node</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:set_path">Mac:set_path (value)</a></td>
+	<td class="name" nowrap><a href="#MacCall:set_path">MacCall:set_path (value)</a></td>
 	<td class="summary">Set the "path" field of the current node to a new value</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:get_delim">Mac:get_delim ()</a></td>
+	<td class="name" nowrap><a href="#MacCall:get_delim">MacCall:get_delim ()</a></td>
 	<td class="summary">Return the "delim" field of the current node</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:set_delim">Mac:set_delim (value)</a></td>
+	<td class="name" nowrap><a href="#MacCall:set_delim">MacCall:set_delim (value)</a></td>
 	<td class="summary">Set the "delim" field of the current node to a new value</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:get_tts">Mac:get_tts ()</a></td>
+	<td class="name" nowrap><a href="#MacCall:get_tts">MacCall:get_tts ()</a></td>
 	<td class="summary">Return the "tts" field of the current node</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:set_tts">Mac:set_tts (value)</a></td>
+	<td class="name" nowrap><a href="#MacCall:set_tts">MacCall:set_tts (value)</a></td>
 	<td class="summary">Set the "tts" field of the current node to a new value</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:get_span">Mac:get_span ()</a></td>
+	<td class="name" nowrap><a href="#MacCall:get_span">MacCall:get_span ()</a></td>
 	<td class="summary">Return the "span" field of the current node</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:set_span">Mac:set_span (value)</a></td>
+	<td class="name" nowrap><a href="#MacCall:set_span">MacCall:set_span (value)</a></td>
 	<td class="summary">Set the "span" field of the current node to a new value</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:get_prior_type_ascription">Mac:get_prior_type_ascription ()</a></td>
+	<td class="name" nowrap><a href="#MacCall:get_prior_type_ascription">MacCall:get_prior_type_ascription ()</a></td>
 	<td class="summary">Return the "prior<em>type</em>ascription" field of the current node</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#Mac:set_prior_type_ascription">Mac:set_prior_type_ascription (value)</a></td>
+	<td class="name" nowrap><a href="#MacCall:set_prior_type_ascription">MacCall:set_prior_type_ascription (value)</a></td>
 	<td class="summary">Set the "prior<em>type</em>ascription" field of the current node to a new value</td>
 	</tr>
 </table>
@@ -10995,17 +10995,17 @@
 
 </dd>
 </dl>
-    <h2 class="section-header has-description"><a name="Class_FunctionRetTy"></a>Class FunctionRetTy </h2>
+    <h2 class="section-header has-description"><a name="Class_FnRetTy"></a>Class FnRetTy </h2>
 
           <div class="section-description">
-          FunctionRetTy AST node handle
+          FnRetTy AST node handle
  This object is NOT thread-safe.  Do not use an object of this class from a
  thread that did not acquire it.
           </div>
     <dl class="function">
     <dt>
-    <a name = "FunctionRetTy:kind_name"></a>
-    <strong>FunctionRetTy:kind_name ()</strong>
+    <a name = "FnRetTy:kind_name"></a>
+    <strong>FnRetTy:kind_name ()</strong>
     </dt>
     <dd>
     Return the kind of the current node as a string
@@ -11024,8 +11024,8 @@
 
 </dd>
     <dt>
-    <a name = "FunctionRetTy:children"></a>
-    <strong>FunctionRetTy:children ()</strong>
+    <a name = "FnRetTy:children"></a>
+    <strong>FnRetTy:children ()</strong>
     </dt>
     <dd>
     Return the children of the current node
@@ -11044,8 +11044,8 @@
 
 </dd>
     <dt>
-    <a name = "FunctionRetTy:child"></a>
-    <strong>FunctionRetTy:child (idx)</strong>
+    <a name = "FnRetTy:child"></a>
+    <strong>FnRetTy:child (idx)</strong>
     </dt>
     <dd>
     Return a copy of the given child
@@ -11070,8 +11070,8 @@
 
 </dd>
     <dt>
-    <a name = "FunctionRetTy:replace_child"></a>
-    <strong>FunctionRetTy:replace_child (idx, value)</strong>
+    <a name = "FnRetTy:replace_child"></a>
+    <strong>FnRetTy:replace_child (idx, value)</strong>
     </dt>
     <dd>
     Replace a child of the current node with a new value
@@ -17324,17 +17324,17 @@
 
 </dd>
 </dl>
-    <h2 class="section-header has-description"><a name="Class_Mac"></a>Class Mac </h2>
+    <h2 class="section-header has-description"><a name="Class_Mac"></a>Class MacCall </h2>
 
           <div class="section-description">
-          Mac AST node handle
+          MacCall AST node handle
  This object is NOT thread-safe.  Do not use an object of this class from a
  thread that did not acquire it.
           </div>
     <dl class="function">
     <dt>
-    <a name = "Mac:get_path"></a>
-    <strong>Mac:get_path ()</strong>
+    <a name = "MacCall:get_path"></a>
+    <strong>MacCall:get_path ()</strong>
     </dt>
     <dd>
     Return the "path" field of the current node
@@ -17353,8 +17353,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:set_path"></a>
-    <strong>Mac:set_path (value)</strong>
+    <a name = "MacCall:set_path"></a>
+    <strong>MacCall:set_path (value)</strong>
     </dt>
     <dd>
     Set the "path" field of the current node to a new value
@@ -17373,8 +17373,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:get_delim"></a>
-    <strong>Mac:get_delim ()</strong>
+    <a name = "MacCall:get_delim"></a>
+    <strong>MacCall:get_delim ()</strong>
     </dt>
     <dd>
     Return the "delim" field of the current node
@@ -17393,8 +17393,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:set_delim"></a>
-    <strong>Mac:set_delim (value)</strong>
+    <a name = "MacCall:set_delim"></a>
+    <strong>MacCall:set_delim (value)</strong>
     </dt>
     <dd>
     Set the "delim" field of the current node to a new value
@@ -17413,8 +17413,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:get_tts"></a>
-    <strong>Mac:get_tts ()</strong>
+    <a name = "MacCall:get_tts"></a>
+    <strong>MacCall:get_tts ()</strong>
     </dt>
     <dd>
     Return the "tts" field of the current node
@@ -17433,8 +17433,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:set_tts"></a>
-    <strong>Mac:set_tts (value)</strong>
+    <a name = "MacCall:set_tts"></a>
+    <strong>MacCall:set_tts (value)</strong>
     </dt>
     <dd>
     Set the "tts" field of the current node to a new value
@@ -17453,8 +17453,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:get_span"></a>
-    <strong>Mac:get_span ()</strong>
+    <a name = "MacCall:get_span"></a>
+    <strong>MacCall:get_span ()</strong>
     </dt>
     <dd>
     Return the "span" field of the current node
@@ -17473,8 +17473,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:set_span"></a>
-    <strong>Mac:set_span (value)</strong>
+    <a name = "MacCall:set_span"></a>
+    <strong>MacCall:set_span (value)</strong>
     </dt>
     <dd>
     Set the "span" field of the current node to a new value
@@ -17493,8 +17493,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:get_prior_type_ascription"></a>
-    <strong>Mac:get_prior_type_ascription ()</strong>
+    <a name = "MacCall:get_prior_type_ascription"></a>
+    <strong>MacCall:get_prior_type_ascription ()</strong>
     </dt>
     <dd>
     Return the "prior<em>type</em>ascription" field of the current node
@@ -17513,8 +17513,8 @@
 
 </dd>
     <dt>
-    <a name = "Mac:set_prior_type_ascription"></a>
-    <strong>Mac:set_prior_type_ascription (value)</strong>
+    <a name = "MacCall:set_prior_type_ascription"></a>
+    <strong>MacCall:set_prior_type_ascription (value)</strong>
     </dt>
     <dd>
     Set the "prior<em>type</em>ascription" field of the current node to a new value

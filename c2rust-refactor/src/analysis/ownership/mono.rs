@@ -244,11 +244,12 @@ fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>>
 
     // summ.locals doesn't include unspanned vars, so by finding the largest spanned var
     // we often save some space at the end of the IndexVec
-    let max_spanned_local_var = summ.locals
+    let max_spanned_local_var = summ
+        .locals
         .values()
         .filter_map(|ty| match ty.label {
             Some(PermVar::Local(l)) => Some(l),
-            _ => None
+            _ => None,
         })
         .max()
         .unwrap_or(Var(0));
@@ -268,7 +269,12 @@ fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>>
 }
 
 /// Determines permissions to be assigned to param, return, and local variables.
-pub fn get_mono_sigs(summ: &FuncSumm) -> (Vec<IndexVec<Var, ConcretePerm>>, IndexVec<Var, ConcretePerm>) {
+pub fn get_mono_sigs(
+    summ: &FuncSumm,
+) -> (
+    Vec<IndexVec<Var, ConcretePerm>>,
+    IndexVec<Var, ConcretePerm>,
+) {
     let is_out = infer_outputs(&summ);
     let is_bounded = upper_bounded_vars(&summ);
 

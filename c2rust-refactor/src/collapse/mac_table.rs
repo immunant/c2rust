@@ -1,24 +1,25 @@
+use log::trace;
 use std::collections::HashMap;
 
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::source_map::{Span, SyntaxContext};
+use rustc_span::symbol::Ident;
 use rustc_target::spec::abi::Abi;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::source_map::{Span, SyntaxContext};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
 
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{AssocCtxt, Visitor};
+use rustc_span::source_map::Spanned;
+use rustc_span::Symbol;
 use std::fmt::Debug;
 use std::rc::Rc;
-use syntax::attr;
-use syntax::ptr::P;
-use syntax::source_map::Spanned;
-use syntax::visit::Visitor;
-use syntax_pos::Symbol;
 
+use crate::ast_manip::util::path_eq;
 use crate::ast_manip::Visit;
 use crate::ast_manip::{GetNodeId, GetSpan};
-use crate::ast_manip::util::path_eq;
 
 use super::root_callsite_span;
 
@@ -29,8 +30,7 @@ pub enum MacNodeRef<'a> {
     Ty(&'a Ty),
 
     Item(&'a Item),
-    ImplItem(&'a ImplItem),
-    TraitItem(&'a TraitItem),
+    AssocItem(&'a AssocItem),
     ForeignItem(&'a ForeignItem),
 
     Stmt(&'a Stmt),
@@ -43,8 +43,7 @@ impl<'a> MacNodeRef<'a> {
             MacNodeRef::Pat(x) => x.id,
             MacNodeRef::Ty(x) => x.id,
             MacNodeRef::Item(x) => x.id,
-            MacNodeRef::ImplItem(x) => x.id,
-            MacNodeRef::TraitItem(x) => x.id,
+            MacNodeRef::AssocItem(x) => x.id,
             MacNodeRef::ForeignItem(x) => x.id,
             MacNodeRef::Stmt(x) => x.id,
         }
@@ -71,8 +70,7 @@ mac_node_ref_getters! {
     as_pat(Pat),
     as_ty(Ty),
     as_item(Item),
-    as_impl_item(ImplItem),
-    as_trait_item(TraitItem),
+    as_assoc_item(AssocItem),
     as_foreign_item(ForeignItem),
     as_stmt(Stmt),
 }
@@ -107,11 +105,11 @@ macro_rules! as_mac_node_ref_impls {
 
 as_mac_node_ref_impls! {
     Expr, Pat, Ty,
-    Item, ImplItem, TraitItem, ForeignItem,
+    Item, AssocItem, ForeignItem,
     Stmt,
 }
 
-impl<T: AsMacNodeRef + 'static> AsMacNodeRef for P<T> {
+impl<T: AsMacNodeRef + ?Sized + 'static> AsMacNodeRef for P<T> {
     fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
         <T as AsMacNodeRef>::as_mac_node_ref(self)
     }
@@ -132,8 +130,8 @@ impl<'a> Visit for MacNodeRef<'a> {
             MacNodeRef::Pat(x) => v.visit_pat(x),
             MacNodeRef::Ty(x) => v.visit_ty(x),
             MacNodeRef::Item(x) => v.visit_item(x),
-            MacNodeRef::ImplItem(x) => v.visit_impl_item(x),
-            MacNodeRef::TraitItem(x) => v.visit_trait_item(x),
+            // TODO: do callees care if this is actually an AssocCtxt::Trait?
+            MacNodeRef::AssocItem(x) => v.visit_assoc_item(x, AssocCtxt::Impl),
             MacNodeRef::ForeignItem(x) => v.visit_foreign_item(x),
             MacNodeRef::Stmt(x) => v.visit_stmt(x),
         }
@@ -146,7 +144,7 @@ pub struct InvocId(pub u32);
 
 #[derive(Clone, Copy, Debug)]
 pub enum InvocKind<'ast> {
-    Mac(&'ast Mac),
+    Mac(&'ast MacCall),
     Attrs(&'ast [Attribute]),
     /// This is the generated item part of a `#[derive]`'s output.  The `InvocId` points to the
     /// originating `Attrs`.
@@ -209,8 +207,8 @@ pub fn collect_macro_invocations<'ast>(
     let (crate_names, has_prelude) = super::injected_items(unexpanded);
     let inj_count = crate_names.len() + if has_prelude { 1 } else { 0 };
     collect_macros_seq(
-        &unexpanded.module.items[..],
-        &expanded.module.items[inj_count..],
+        &unexpanded.items[..],
+        &expanded.items[inj_count..],
         &mut ctxt,
     );
     (ctxt.table, ctxt.matched_node_ids)
@@ -374,33 +372,34 @@ fn get_child_invoc<'a>(
     }
 }
 
-fn is_derived<'a>(
-    invoc: InvocKind<'a>,
-    new: MacNodeRef<'a>,
-) -> bool {
+fn is_derived<'a>(invoc: InvocKind<'a>, new: MacNodeRef<'a>) -> bool {
     match invoc {
         InvocKind::Attrs(..) => {
             let attrs = match new {
                 MacNodeRef::Item(i) => {
-                    if is_structural_derive(i) { return true; }
+                    if is_structural_derive(i) {
+                        return true;
+                    }
                     Some(&i.attrs[..])
                 }
                 MacNodeRef::Stmt(s) => match &s.kind {
                     StmtKind::Local(l) => Some(&l.attrs[..]),
                     StmtKind::Item(i) => {
-                        if is_structural_derive(i) { return true; }
+                        if is_structural_derive(i) {
+                            return true;
+                        }
                         Some(&i.attrs[..])
                     }
                     StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
-                    StmtKind::Mac(..) => None,
+                    StmtKind::MacCall(..) => None,
+                    StmtKind::Empty => None,
                 },
                 MacNodeRef::Expr(e) => Some(&e.attrs[..]),
-                MacNodeRef::ImplItem(i) => Some(&i.attrs[..]),
-                MacNodeRef::TraitItem(i) => Some(&i.attrs[..]),
+                MacNodeRef::AssocItem(i) => Some(&i.attrs[..]),
                 _ => None,
             };
             if let Some(attrs) = attrs {
-                if attr::contains_name(attrs, Symbol::intern("automatically_derived")) {
+                if crate::util::contains_name(attrs, Symbol::intern("automatically_derived")) {
                     return true;
                 }
             }
@@ -416,7 +415,10 @@ fn is_structural_derive(i: &Item) -> bool {
     // automatically_derived attribute. TODO: remove this when
     // StructuralPartialEq is labeled with the right attribute.
     match &i.kind {
-        ItemKind::Impl(_, _, _, _, Some(traitref), _, _) => {
+        ItemKind::Impl(box Impl {
+            of_trait: Some(traitref),
+            ..
+        }) => {
             if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
                 || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
             {
@@ -434,13 +436,19 @@ trait CollectMacros {
 
 include!(concat!(env!("OUT_DIR"), "/mac_table_gen.inc.rs"));
 
-impl<T: CollectMacros> CollectMacros for Rc<T> {
+impl<T: CollectMacros + ?Sized> CollectMacros for Rc<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         <T as CollectMacros>::collect_macros(old, new, cx);
     }
 }
 
-impl<T: CollectMacros> CollectMacros for P<T> {
+impl<T: CollectMacros + ?Sized> CollectMacros for P<T> {
+    fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
+        <T as CollectMacros>::collect_macros(old, new, cx);
+    }
+}
+
+impl<T: CollectMacros + ?Sized> CollectMacros for Box<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         <T as CollectMacros>::collect_macros(old, new, cx);
     }
@@ -452,14 +460,17 @@ impl<T: CollectMacros> CollectMacros for Spanned<T> {
     }
 }
 
-impl<T: CollectMacros+Debug> CollectMacros for Option<T> {
+impl<T: CollectMacros + Debug> CollectMacros for Option<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         match (old, new) {
             (&Some(ref old), &Some(ref new)) => {
                 <T as CollectMacros>::collect_macros(old, new, cx);
             }
             (&None, &None) => {}
-            (_, _) => panic!("mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}", old, new),
+            (_, _) => panic!(
+                "mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}",
+                old, new
+            ),
         }
     }
 }
@@ -509,9 +520,9 @@ impl CollectMacros for NodeId {
 }
 
 fn has_macro_attr(attrs: &[Attribute]) -> bool {
-    attr::contains_name(attrs, Symbol::intern("derive"))
-        || attr::contains_name(attrs, Symbol::intern("cfg"))
-        || attr::contains_name(attrs, Symbol::intern("test"))
+    crate::util::contains_name(attrs, Symbol::intern("derive"))
+        || crate::util::contains_name(attrs, Symbol::intern("cfg"))
+        || crate::util::contains_name(attrs, Symbol::intern("test"))
 }
 
 trait MaybeInvoc {
@@ -521,10 +532,8 @@ trait MaybeInvoc {
 impl MaybeInvoc for Expr {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ExprKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
-            _ if has_macro_attr(&self.attrs) => {
-                Some(InvocKind::Attrs(&self.attrs))
-            }
+            ExprKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
+            _ if has_macro_attr(&self.attrs) => Some(InvocKind::Attrs(&self.attrs)),
             _ => None,
         }
     }
@@ -533,7 +542,7 @@ impl MaybeInvoc for Expr {
 impl MaybeInvoc for Pat {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            PatKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            PatKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
@@ -542,7 +551,7 @@ impl MaybeInvoc for Pat {
 impl MaybeInvoc for Ty {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            TyKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            TyKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
@@ -551,7 +560,7 @@ impl MaybeInvoc for Ty {
 impl MaybeInvoc for Item {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ItemKind::Mac(ref mac) => Some(InvocKind::Mac(mac)),
+            ItemKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
                 if has_macro_attr(&self.attrs) {
                     Some(InvocKind::Attrs(&self.attrs))
@@ -563,10 +572,10 @@ impl MaybeInvoc for Item {
     }
 }
 
-impl MaybeInvoc for ImplItem {
+impl MaybeInvoc for AssocItem {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ImplItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
+            AssocItemKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => {
                 if has_macro_attr(&self.attrs) {
                     Some(InvocKind::Attrs(&self.attrs))
@@ -574,15 +583,6 @@ impl MaybeInvoc for ImplItem {
                     None
                 }
             }
-        }
-    }
-}
-
-impl MaybeInvoc for TraitItem {
-    fn as_invoc(&self) -> Option<InvocKind> {
-        match self.kind {
-            TraitItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
-            _ => None,
         }
     }
 }
@@ -590,7 +590,7 @@ impl MaybeInvoc for TraitItem {
 impl MaybeInvoc for ForeignItem {
     fn as_invoc(&self) -> Option<InvocKind> {
         match self.kind {
-            ForeignItemKind::Macro(ref mac) => Some(InvocKind::Mac(mac)),
+            ForeignItemKind::MacCall(ref mac) => Some(InvocKind::Mac(mac)),
             _ => None,
         }
     }
@@ -599,13 +599,9 @@ impl MaybeInvoc for ForeignItem {
 impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
         match &self.kind {
-            StmtKind::Mac(mac) => Some(InvocKind::Mac(&mac.0)),
-            StmtKind::Local(l) if has_macro_attr(&l.attrs) => {
-                Some(InvocKind::Attrs(&l.attrs))
-            }
-            StmtKind::Item(i) if has_macro_attr(&i.attrs) => {
-                Some(InvocKind::Attrs(&i.attrs))
-            }
+            StmtKind::MacCall(mac) => Some(InvocKind::Mac(&mac.mac)),
+            StmtKind::Local(l) if has_macro_attr(&l.attrs) => Some(InvocKind::Attrs(&l.attrs)),
+            StmtKind::Item(i) if has_macro_attr(&i.attrs) => Some(InvocKind::Attrs(&i.attrs)),
             StmtKind::Expr(e) | StmtKind::Semi(e) if has_macro_attr(&e.attrs) => {
                 Some(InvocKind::Attrs(&e.attrs))
             }
@@ -614,7 +610,7 @@ impl MaybeInvoc for Stmt {
     }
 }
 
-impl<T: MaybeInvoc> MaybeInvoc for P<T> {
+impl<T: MaybeInvoc + ?Sized> MaybeInvoc for P<T> {
     fn as_invoc(&self) -> Option<InvocKind> {
         <T as MaybeInvoc>::as_invoc(self)
     }

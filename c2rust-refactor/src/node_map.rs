@@ -1,13 +1,14 @@
 //! Mappings between old and new `NodeId`s.  Also has some support for `AttrId`s.
+use log::{trace, warn};
+use rustc_ast::{AttrId, NodeId, DUMMY_NODE_ID};
+use rustc_span::source_map::symbol::Symbol;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::mem;
 use std::ops::Bound::Included;
 use std::ops::Deref;
-use syntax::ast::{AttrId, NodeId, DUMMY_NODE_ID};
-use syntax::source_map::symbol::Symbol;
 
-pub const DUMMY_ATTR_ID: AttrId = AttrId(!0);
+pub const DUMMY_ATTR_ID: AttrId = AttrId::MAX;
 
 #[derive(Clone, Debug)]
 pub struct NodeMap {

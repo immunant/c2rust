@@ -18,15 +18,14 @@ use std::collections::HashMap;
 use std::fmt;
 use std::u32;
 
-use arena::SyncDroplessArena;
-use log::Level;
-use rustc::hir;
-use rustc::hir::def_id::{DefId, LOCAL_CRATE};
-use rustc::hir::{Mutability, Node};
-use rustc::ty::{TyCtxt, TyKind, TypeAndMut, TyS};
+use log::{debug, log_enabled, Level};
+use rustc_arena::DroplessArena;
+use rustc_hir as hir;
+use rustc_hir::def_id::DefId;
+use rustc_hir::{Mutability, Node};
 use rustc_index::vec::{Idx, IndexVec};
-use syntax::ast::IntTy;
-use syntax::source_map::Span;
+use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_span::source_map::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::command::CommandState;
@@ -143,7 +142,7 @@ impl<'lty, 'tcx, L: fmt::Debug> type_map::Signature<LabeledTy<'lty, 'tcx, L>>
 
 /// Check if a definition is a `fn` item of some sort.  Note that this does not return true on
 /// closures.
-fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
+fn is_fn(hir_map: &HirMap, def_id: DefId) -> bool {
     let n = match hir_map.get_if_local(def_id) {
         None => return false,
         Some(n) => n,
@@ -159,11 +158,11 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
             _ => false,
         },
         Node::TraitItem(i) => match i.kind {
-            hir::TraitItemKind::Method(..) => true,
+            hir::TraitItemKind::Fn(..) => true,
             _ => false,
         },
         Node::ImplItem(i) => match i.kind {
-            hir::ImplItemKind::Method(..) => true,
+            hir::ImplItemKind::Fn(..) => true,
             _ => false,
         },
         _ => false,
@@ -172,12 +171,10 @@ fn is_fn(hir_map: &hir::map::Map, def_id: DefId) -> bool {
 
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_intra<'a, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'tcx>,
-    hir_map: &HirMap<'a, 'tcx>,
-    tcx: TyCtxt<'tcx>,
-) {
-    for &def_id in tcx.mir_keys(LOCAL_CRATE).iter() {
+fn analyze_intra<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>, tcx: TyCtxt<'tcx>) {
+    for &def_id in tcx.mir_keys(()).iter() {
+        let def_id = def_id.to_def_id();
+
         // We currently don't process `static` bodies, even though they do have MIR.
         if !is_fn(hir_map, def_id) {
             continue;
@@ -199,7 +196,7 @@ fn analyze_intra<'a, 'tcx, 'lty>(
 /// Add conservative assignments for extern functions that we can't
 /// analyze. Results are written back into the first variant for each external
 /// function in the `Ctxt`.
-fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'a, 'tcx>) {
+fn analyze_externs<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>) {
     for (def_id, func_summ) in cx.funcs_mut() {
         if func_summ.cset_provided {
             continue;
@@ -214,12 +211,19 @@ fn analyze_externs<'a, 'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'
         }
         for &input in func_summ.sig.inputs {
             if let Some(p) = input.label {
-                match input.ty.kind {
-                    TyKind::Ref(_, _, Mutability::Mutable) => {
-                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                match input.ty.kind() {
+                    TyKind::Ref(_, _, Mutability::Mut) => {
+                        func_summ
+                            .sig_cset
+                            .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
-                    TyKind::RawPtr(TypeAndMut{mutbl: Mutability::Mutable, ..}) => {
-                        func_summ.sig_cset.add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
+                    TyKind::RawPtr(TypeAndMut {
+                        mutbl: Mutability::Mut,
+                        ..
+                    }) => {
+                        func_summ
+                            .sig_cset
+                            .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
                     _ => {}
                 }
@@ -237,10 +241,10 @@ fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
     inter_cx.finish();
 }
 
-fn is_mut_t(ty: &TyS) -> bool {
-    if let TyKind::RawPtr(mut_ty) = ty.kind {
-        if mut_ty.mutbl == Mutability::Mutable {
-            if let TyKind::Param(param_ty) = mut_ty.ty.kind {
+fn is_mut_t(ty: &Ty) -> bool {
+    if let TyKind::RawPtr(mut_ty) = ty.kind() {
+        if mut_ty.mutbl == Mutability::Mut {
+            if let TyKind::Param(param_ty) = mut_ty.ty.kind() {
                 return param_ty.name.as_str() == "T";
             }
         }
@@ -253,26 +257,22 @@ fn is_mut_t(ty: &TyS) -> bool {
 /// so that ownership analysis can reason about them properly
 // TODO: When we want to add more constraints to functions here, we should make this
 // more generic
-fn register_std_constraints<'a, 'tcx, 'lty>(
-    ctxt: &mut Ctxt<'lty, 'tcx>,
-    tctxt: TyCtxt<'tcx>,
-) {
+fn register_std_constraints<'a, 'tcx, 'lty>(ctxt: &mut Ctxt<'lty, 'tcx>, tctxt: TyCtxt<'tcx>) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
-        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate();
+        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate_verbose();
 
         // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
         if func_summ.sig.inputs.len() == 2 && fn_name_path == "::ptr[0]::{{impl}}[1]::offset[0]" {
-            let param0_is_mut_t = is_mut_t(func_summ.sig.inputs[0].ty);
-            let param1_is_isize = if let TyKind::Int(int_ty) = func_summ.sig.inputs[1].ty.kind {
-                int_ty == IntTy::Isize
-            } else {
-                false
-            };
-            let ret_is_mut_t = is_mut_t(func_summ.sig.output.ty);
+            let param0_is_mut_t = is_mut_t(&func_summ.sig.inputs[0].ty);
+            let param1_is_isize =
+                TyKind::Int(ty::IntTy::Isize) == *func_summ.sig.inputs[1].ty.kind();
+            let ret_is_mut_t = is_mut_t(&func_summ.sig.output.ty);
             if param0_is_mut_t && param1_is_isize && ret_is_mut_t {
                 func_summ.cset_provided = true;
-                func_summ.sig_cset.add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
+                func_summ
+                    .sig_cset
+                    .add(Perm::SigVar(Var(1)), Perm::SigVar(Var(0)));
             }
         }
     }
@@ -282,7 +282,7 @@ fn register_std_constraints<'a, 'tcx, 'lty>(
 pub fn analyze<'lty, 'a: 'lty, 'tcx: 'a>(
     st: &CommandState,
     dcx: &RefactorCtxt<'a, 'tcx>,
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 ) -> AnalysisResult<'lty, 'tcx> {
     let mut cx = Ctxt::new(dcx.ty_ctxt(), arena);
 
@@ -336,7 +336,7 @@ pub struct AnalysisResult<'lty, 'tcx> {
     pub monos: HashMap<(DefId, usize), MonoResult>,
 
     /// Arena used to allocate all type wrappers
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 }
 
 /// Results specific to an analysis-level function.
@@ -427,7 +427,7 @@ impl<'lty, 'tcx> AnalysisResult<'lty, 'tcx> {
         (fr, vr)
     }
 
-    pub fn arena(&self) -> &'lty SyncDroplessArena {
+    pub fn arena(&self) -> &'lty DroplessArena {
         self.arena
     }
 }
@@ -490,7 +490,8 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 }
             };
 
-            let locals = func.locals
+            let locals = func
+                .locals
                 .iter()
                 .map(|(&span, lty)| (span, var_lcx.relabel(&lty, &mut f)))
                 .collect();
@@ -608,7 +609,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
 pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
     debug!("\n === summary ===");
 
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let new_lcx = LabeledTyCtxt::new(&arena);
     let format_sig = |sig: VFnSig, assign: &IndexVec<Var, ConcretePerm>| {
         let mut func = |p: &Option<_>| p.as_ref().map(|&v| assign[v]);
@@ -618,7 +619,7 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
         format!("{:?} -> {:?}", pretty_slice(inputs), Pretty(output))
     };
 
-    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string_no_crate();
+    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string_no_crate_verbose();
 
     let mut ids = results.statics.keys().cloned().collect::<Vec<_>>();
     ids.sort();

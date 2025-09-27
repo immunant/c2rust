@@ -11,20 +11,19 @@ macro_rules! match_or {
 #[macro_export]
 macro_rules! expect {
     ([$e:expr] $arm_pat:pat => $arm_body:expr) => {
-        match_or!([$e] $arm_pat => $arm_body;
-            panic!(concat!("expected ", stringify!($arm_pat))))
+        $crate::match_or!([$e] $arm_pat => $arm_body;
+            panic!("expected {}", stringify!($arm_pat)))
     };
     ([$e:expr] $($arm_pat:pat => $arm_body:expr),*) => {
-        match_or!([$e] $($arm_pat => $arm_body),*;
-            panic!(concat!("expected one of: ",
-                           stringify!($($arm_pat),*))))
+        $crate::match_or!([$e] $($arm_pat => $arm_body),*;
+            panic!("expected one of: {}", stringify!($($arm_pat),*)))
     };
 }
 
 #[macro_export]
 macro_rules! unpack {
     ([$e:expr] $enum_:ident :: $variant:ident ( $($arg:ident),* )) => {
-        let ($($arg,)*) = expect!([$e] $enum_::$variant($($arg),*) => ($($arg,)*));
+        let ($($arg,)*) = $crate::expect!([$e] $enum_::$variant($($arg),*) => ($($arg,)*));
     };
 }
 
@@ -43,13 +42,13 @@ macro_rules! matches {
 macro_rules! profile_start {
     ($msg:expr) => {
         flame::start($msg)
-    }
+    };
 }
 
 #[macro_export]
 #[cfg(not(feature = "profile"))]
 macro_rules! profile_start {
-    ($msg:expr) => {}
+    ($msg:expr) => {};
 }
 
 #[macro_export]
@@ -57,11 +56,11 @@ macro_rules! profile_start {
 macro_rules! profile_end {
     ($msg:expr) => {
         flame::end($msg)
-    }
+    };
 }
 
 #[macro_export]
 #[cfg(not(feature = "profile"))]
 macro_rules! profile_end {
-    ($msg:expr) => {}
+    ($msg:expr) => {};
 }

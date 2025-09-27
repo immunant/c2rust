@@ -1,3 +1,8 @@
+// Silence warnings and errors from the use of specialization below
+// which is an incomplete feature that rustc warns about.
+// TODO: switch to min_specialization, but that isn't a suitable
+// replacement yet.
+#![allow(incomplete_features)]
 #![feature(
     rustc_private,
     trace_macros,
@@ -6,9 +11,39 @@
     generator_trait,
     drain_filter,
     label_break_value,
+    let_else,
+    never_type
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
+extern crate rustc_arena;
+extern crate rustc_ast;
+extern crate rustc_ast_pretty;
+extern crate rustc_codegen_ssa;
+extern crate rustc_const_eval;
+extern crate rustc_data_structures;
+extern crate rustc_driver;
+extern crate rustc_errors;
+extern crate rustc_hash;
+extern crate rustc_hir;
+extern crate rustc_incremental;
+extern crate rustc_index;
+extern crate rustc_infer;
+extern crate rustc_interface;
+extern crate rustc_lexer;
+extern crate rustc_lint;
+extern crate rustc_metadata;
+extern crate rustc_middle;
+extern crate rustc_parse;
+extern crate rustc_privacy;
+extern crate rustc_session;
+extern crate rustc_span;
+extern crate rustc_target;
+extern crate rustc_type_ir;
+extern crate rustc_typeck;
+extern crate smallvec;
+
+mod ast_builder;
 mod macros;
 
 pub mod ast_manip;
@@ -46,19 +81,19 @@ pub mod select;
 pub mod transform;
 
 mod context;
-mod scripting;
 
-use cargo::core::manifest::TargetKind;
-use cargo::util::paths;
+use cargo::core::TargetKind;
+use cargo_util::paths;
+use log::{info, warn};
+use rustc_ast::NodeId;
 use rustc_interface::interface;
 use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
-use syntax::ast::NodeId;
 
-use c2rust_ast_builder::IntoSymbol;
+use crate::ast_builder::IntoSymbol;
 
 pub use crate::context::RefactorCtxt;
 
@@ -204,17 +239,14 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
 #[cfg_attr(feature = "profile", flame)]
 fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
-    use cargo::core::{maybe_allow_nightly_features, PackageId, Target, Workspace, Verbosity};
+    use cargo::core::{PackageId, Target, Verbosity, Workspace};
     use cargo::ops;
     use cargo::ops::CompileOptions;
+    use cargo::util::errors::CargoResult;
     use cargo::util::important_paths::find_root_manifest_for_wd;
-    use cargo::util::{CargoResult, ProcessBuilder};
     use cargo::Config;
+    use cargo_util::ProcessBuilder;
     use std::sync::Mutex;
-
-    // `cargo`-built `libcargo` is always on the `dev` channel, so `maybe_allow_nightly_features`
-    // really does allow nightly features.
-    maybe_allow_nightly_features();
 
     let config = Config::default().unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
@@ -262,7 +294,11 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             // we refactor dependencies before crates that depend on them, but
             // for now we don't support workspaces, so there can only be one
             // lib.
-            let args = RustcArgs { kind: Some(target.kind().clone()), args, cwd };
+            let args = RustcArgs {
+                kind: Some(target.kind().clone()),
+                args,
+                cwd,
+            };
             if let TargetKind::Lib(..) = target.kind() {
                 g.insert(0, args);
             } else {
@@ -274,13 +310,13 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     }
 
     impl Executor for LoggingExecutor {
-        fn init<'a, 'cfg>(&self, cx: &Context<'a, 'cfg>, unit: &Unit<'a>) {
+        fn init<'a, 'cfg>(&self, cx: &Context<'a, 'cfg>, unit: &Unit) {
             self.default.init(cx, unit);
         }
 
         fn exec(
             &self,
-            cmd: ProcessBuilder,
+            cmd: &ProcessBuilder,
             id: PackageId,
             target: &Target,
             mode: CompileMode,
@@ -288,7 +324,8 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             _on_stderr_line: &mut dyn FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
             self.maybe_record_cmd(&cmd, &id, target);
-            self.default.exec(cmd, id, target, mode, &mut |_| Ok(()), &mut |_| Ok(()))
+            self.default
+                .exec(cmd, id, target, mode, &mut |_| Ok(()), &mut |_| Ok(()))
         }
 
         fn force_rebuild(&self, unit: &Unit) -> bool {
@@ -322,7 +359,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 
 fn rebuild() {
     use cargo::core::compiler::CompileMode;
-    use cargo::core::{Workspace, Verbosity};
+    use cargo::core::{Verbosity, Workspace};
     use cargo::ops;
     use cargo::ops::CompileOptions;
     use cargo::util::important_paths::find_root_manifest_for_wd;
@@ -359,14 +396,6 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
 }
 
 fn main_impl(opts: Options) -> interface::Result<()> {
-    if opts.commands.len() == 1 && opts.commands[0].name == "script" {
-        // Validate script command ASAP to avoid running the compiler if the
-        // script path is invalid.
-        if !scripting::validate_command(&opts.commands[0]) {
-            return Err(rustc_errors::ErrorReported);
-        }
-    }
-
     let target_args = get_rustc_arg_strings(opts.rustc_args.clone());
     if target_args.is_empty() {
         warn!("Could not derive any rustc invocations for refactoring");
@@ -380,8 +409,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         }
 
         if let Some(ref cwd) = rustc_args.cwd {
-            env::set_current_dir(cwd)
-                .expect("Error changing current directory");
+            env::set_current_dir(cwd).expect("Error changing current directory");
         }
 
         // TODO: interface::run_compiler() here and create a RefactorState with the
@@ -394,9 +422,10 @@ fn main_impl(opts: Options) -> interface::Result<()> {
                 compiler.enter(|queries| {
                     let expanded_crate = queries.expansion().unwrap().take().0;
                     for c in &opts.cursors {
-                        let kind_result = c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
-                            pick_node::NodeKind::from_str(&s)
-                        });
+                        let kind_result =
+                            c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
+                                pick_node::NodeKind::from_str(&s)
+                            });
                         let kind = match kind_result {
                             Ok(k) => k,
                             Err(_) => {
@@ -449,13 +478,6 @@ fn main_impl(opts: Options) -> interface::Result<()> {
 
         if opts.commands.len() == 1 && opts.commands[0].name == "interact" {
             interact::interact_command(&opts.commands[0].args, config, cmd_reg);
-        } else if opts.commands.len() == 1 && opts.commands[0].name == "script" {
-            scripting::run_lua_file(
-                Path::new(&opts.commands[0].args[0]),
-                config,
-                cmd_reg,
-                opts.rewrite_modes.clone(),
-            ).expect("Error loading user script");
         } else {
             let file_io = Arc::new(file_io::RealFileIO::new(opts.rewrite_modes.clone()));
             driver::run_refactoring(config, cmd_reg, file_io, marks, |mut state| {
