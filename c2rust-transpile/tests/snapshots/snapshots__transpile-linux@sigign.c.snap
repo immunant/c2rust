@@ -1,7 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/sigign.rs
-input_file: c2rust-transpile/tests/snapshots/sigign.c
+expression: cat tests/snapshots/os-specific/sigign.linux.rs
+input_file: c2rust-transpile/tests/snapshots/os-specific/sigign.c
 ---
 #![allow(
     dead_code,
@@ -11,13 +11,12 @@ input_file: c2rust-transpile/tests/snapshots/sigign.c
     unused_assignments,
     unused_mut
 )]
-pub type __sighandler_t = Option<unsafe extern "C" fn(std::ffi::c_int) -> ()>;
+pub type __sighandler_t = Option<unsafe extern "C" fn(core::ffi::c_int) -> ()>;
 #[no_mangle]
 pub unsafe extern "C" fn foo() {
-    let mut handler: Option<unsafe extern "C" fn(std::ffi::c_int) -> ()> = ::core::mem::transmute::<
-        libc::intptr_t,
-        Option<unsafe extern "C" fn(std::ffi::c_int) -> ()>,
-    >(
-        1 as std::ffi::c_int as libc::intptr_t,
-    );
+    let mut handler: Option<unsafe extern "C" fn(core::ffi::c_int) -> ()> =
+        ::core::mem::transmute::<
+            libc::intptr_t,
+            Option<unsafe extern "C" fn(core::ffi::c_int) -> ()>,
+        >(1 as core::ffi::c_int as libc::intptr_t);
 }
