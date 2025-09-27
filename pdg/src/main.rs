@@ -203,6 +203,7 @@ mod tests {
         fmt::Display,
         path::{Path, PathBuf},
         process::Command,
+        sync::Mutex,
     };
 
     use c2rust_analysis_rt::runtime::backend::BackendKind;
@@ -316,6 +317,14 @@ mod tests {
         let metadata_path = exe_dir.join("metadata.bc");
         let event_log_path = exe_dir.join("event.log.bc");
 
+        /// There can be a race condition in the `cargo run` calls.
+        /// The `cargo build`s synchronize already, but after building,
+        /// a second `cargo build` can temporarily move/delete the binary
+        /// while the first `cargo run` tries to run it.
+        /// So just use a `Mutex` around the whole thing.
+        static CARGO_RUN_C2RUST_INSTRUMENT: Mutex<()> = Mutex::new(());
+
+        let guard = CARGO_RUN_C2RUST_INSTRUMENT.lock().unwrap();
         let mut cmd = Command::new("cargo");
         cmd.current_dir(repo_dir()?)
             .args(&[
@@ -344,6 +353,7 @@ mod tests {
             .env("INSTRUMENT_OUTPUT_APPEND", "false");
         let status = cmd.status()?;
         ensure!(status.success(), eyre!("{cmd:?} failed: {status}"));
+        drop(guard);
 
         let pdg = Pdg::new(&metadata_path, &event_log_path)?;
         pdg.graphs.assert_all_tests();
