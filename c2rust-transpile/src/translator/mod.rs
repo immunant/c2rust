@@ -1008,7 +1008,7 @@ fn make_submodule(
         items.push(mk().extern_("C").foreign_items(foreign_items));
     }
 
-    let module_builder = mk().vis("pub");
+    let module_builder = mk().pub_();
     let module_builder = if reorganize_definitions {
         let file_path_str = file_path.map_or(mod_name.as_str(), |path| {
             path.to_str().expect("Found invalid unicode")
@@ -1929,16 +1929,15 @@ impl<'c> Translation<'c> {
                     .expect("Variables should already be renamed");
                 let ConvertedVariable { ty, mutbl, init: _ } =
                     self.convert_variable(ctx.static_(), None, typ)?;
-                // When putting extern statics into submodules, they need to be public to be accessible
-                let visibility = if self.tcfg.reorganize_definitions {
-                    "pub"
-                } else {
-                    ""
-                };
                 let mut extern_item = mk_linkage(true, &new_name, ident)
                     .span(span)
-                    .set_mutbl(mutbl)
-                    .vis(visibility);
+                    .set_mutbl(mutbl);
+
+                // When putting extern statics into submodules, they need to be public to be accessible
+                if self.tcfg.reorganize_definitions {
+                    extern_item = extern_item.pub_();
+                };
+
                 if has_thread_duration {
                     extern_item = extern_item.single_attr("thread_local");
                 }
@@ -2407,15 +2406,12 @@ impl<'c> Translation<'c> {
                 ))
             } else {
                 // Translating an extern function declaration
+                let mut mk_ = mk_linkage(true, new_name, name).span(span);
 
                 // When putting extern fns into submodules, they need to be public to be accessible
-                let visibility = if self.tcfg.reorganize_definitions {
-                    "pub"
-                } else {
-                    ""
+                if self.tcfg.reorganize_definitions {
+                    mk_ = mk_.pub_();
                 };
-
-                let mut mk_ = mk_linkage(true, new_name, name).span(span).vis(visibility);
 
                 for attr in attrs {
                     mk_ = match attr {
@@ -2703,7 +2699,7 @@ impl<'c> Translation<'c> {
 
                 if self.ast_context.is_va_list(typ.ctype) {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
-                    let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name);
+                    let pat_mut = mk().mutbl().ident_pat(rust_name);
                     let ty = {
                         let path = vec!["core", "ffi", "VaListImpl"];
                         mk().path_ty(mk().abs_path(path))
@@ -2747,7 +2743,7 @@ impl<'c> Translation<'c> {
                     zeroed.to_pure_expr()
                 }
                 .expect("Expected decl initializer to not have any statements");
-                let pat_mut = mk().set_mutbl("mut").ident_pat(rust_name.clone());
+                let pat_mut = mk().mutbl().ident_pat(rust_name.clone());
                 let local_mut = mk().local(pat_mut, Some(ty.clone()), Some(zeroed));
                 if has_self_reference {
                     let assign = mk().assign_expr(mk().ident_expr(rust_name), init);

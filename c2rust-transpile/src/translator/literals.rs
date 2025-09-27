@@ -108,7 +108,7 @@ impl<'c> Translation<'c> {
                         // Fallback for characters outside of the valid Unicode range
                         if (val as i32) < 0 {
                             mk().unary_expr(
-                                "-",
+                                UnOp::Neg(Default::default()),
                                 mk().lit_expr(
                                     mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
                                 ),
