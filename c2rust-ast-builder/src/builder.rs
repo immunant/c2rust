@@ -2,6 +2,7 @@
 
 use std::str;
 
+use itertools::intersperse;
 use proc_macro2::{Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 use std::default::Default;
 use std::iter::FromIterator;
@@ -161,6 +162,16 @@ fn punct_box<T, P: Default>(x: Vec<Box<T>>) -> Punctuated<T, P> {
     Punctuated::from_iter(x.into_iter().map(|x| *x))
 }
 
+fn comma_separated<I, T>(items: I) -> TokenStream
+where
+    I: Iterator<Item = T>,
+    T: ToTokens + Clone,
+{
+    let items = items.map(|items| items.to_token_stream());
+    let comma = TokenTree::Punct(Punct::new(',', Spacing::Alone)).into_token_stream();
+    intersperse(items, comma).collect()
+}
+
 pub trait Make<T> {
     fn make(self, mk: &Builder) -> T;
 }
@@ -208,28 +219,6 @@ impl<'a> Make<Path> for &'a str {
     }
 }
 
-impl<'a> Make<Visibility> for &'a str {
-    fn make(self, mk_: &Builder) -> Visibility {
-        match self {
-            "pub" => Visibility::Public(Token![pub](mk_.span)),
-            "priv" | "" | "inherit" => Visibility::Inherited,
-            "pub(crate)" => Visibility::Restricted(VisRestricted {
-                pub_token: Token![pub](mk_.span),
-                paren_token: token::Paren(mk_.span),
-                in_token: None,
-                path: Box::new(mk().path("crate")),
-            }),
-            "pub(super)" => Visibility::Restricted(VisRestricted {
-                pub_token: Token![pub](mk_.span),
-                paren_token: token::Paren(mk_.span),
-                in_token: None,
-                path: Box::new(mk().path("super")),
-            }),
-            _ => panic!("unrecognized string for Visibility: {:?}", self),
-        }
-    }
-}
-
 impl<'a> Make<Abi> for &'a str {
     fn make(self, mk: &Builder) -> Abi {
         Abi {
@@ -249,47 +238,6 @@ impl<'a> Make<Extern> for &'a str {
 impl Make<Extern> for Abi {
     fn make(self, _mk: &Builder) -> Extern {
         Extern::Explicit(self.name.to_token_stream().to_string())
-    }
-}
-
-impl<'a> Make<Mutability> for &'a str {
-    fn make(self, _mk: &Builder) -> Mutability {
-        match self {
-            "" | "imm" | "immut" | "immutable" => Mutability::Immutable,
-            "mut" | "mutable" => Mutability::Mutable,
-            _ => panic!("unrecognized string for Mutability: {:?}", self),
-        }
-    }
-}
-
-impl<'a> Make<Unsafety> for &'a str {
-    fn make(self, _mk: &Builder) -> Unsafety {
-        match self {
-            "" | "safe" | "normal" => Unsafety::Normal,
-            "unsafe" => Unsafety::Unsafe,
-            _ => panic!("unrecognized string for Unsafety: {:?}", self),
-        }
-    }
-}
-
-impl<'a> Make<Constness> for &'a str {
-    fn make(self, _mk: &Builder) -> Constness {
-        match self {
-            "" | "normal" | "not-const" => Constness::NotConst,
-            "const" => Constness::Const,
-            _ => panic!("unrecognized string for Constness: {:?}", self),
-        }
-    }
-}
-
-impl<'a> Make<UnOp> for &'a str {
-    fn make(self, _mk: &Builder) -> UnOp {
-        match self {
-            "deref" | "*" => UnOp::Deref(Default::default()),
-            "not" | "!" => UnOp::Not(Default::default()),
-            "neg" | "-" => UnOp::Neg(Default::default()),
-            _ => panic!("unrecognized string for UnOp: {:?}", self),
-        }
     }
 }
 
@@ -330,94 +278,27 @@ impl Make<TokenStream> for Vec<TokenTree> {
     }
 }
 
-impl Make<TokenStream> for Vec<String> {
-    fn make(self, _mk: &Builder) -> TokenStream {
-        let mut tokens = vec![];
-        let mut first = true;
-
-        for s in self {
-            if !first {
-                tokens.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
-            } else {
-                first = false;
-            }
-
-            tokens.push(TokenTree::Ident(Ident::new(&s, Span::call_site())));
-        }
-
-        tokens.into_iter().collect::<TokenStream>()
-    }
-}
-
 impl Make<TokenStream> for Vec<&str> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        let mut tokens = vec![];
-        let mut first = true;
-
-        for s in self {
-            if !first {
-                tokens.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
-            } else {
-                first = false;
-            }
-
-            tokens.push(TokenTree::Ident(Ident::new(s, Span::call_site())));
-        }
-
-        tokens.into_iter().collect::<TokenStream>()
+        comma_separated(self.iter().map(|&s| Ident::new(s, Span::call_site())))
     }
 }
 
 impl Make<TokenStream> for Vec<u64> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        let mut tokens = vec![];
-        let mut first = true;
-
-        for s in self {
-            if !first {
-                tokens.push(TokenTree::Punct(Punct::new(',', Spacing::Alone)));
-            } else {
-                first = false;
-            }
-
-            tokens.push(TokenTree::Literal(Literal::u64_unsuffixed(s)));
-        }
-
-        tokens.into_iter().collect::<TokenStream>()
+        comma_separated(self.iter().map(|&s| Literal::u64_unsuffixed(s)))
     }
 }
 
 impl Make<TokenStream> for Vec<Meta> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        let mut tokens = TokenStream::new();
-
-        let mut first = true;
-
-        for meta in self {
-            if !first {
-                let tt = TokenTree::Punct(Punct::new(',', Spacing::Alone));
-
-                tokens.extend(vec![tt]);
-            } else {
-                first = false;
-            }
-
-            meta.to_tokens(&mut tokens);
-        }
-
-        tokens
+        comma_separated(self.iter())
     }
 }
 
 impl Make<PathArguments> for AngleBracketedGenericArguments {
     fn make(self, _mk: &Builder) -> PathArguments {
         PathArguments::AngleBracketed(self)
-    }
-}
-
-impl Make<PathArguments> for ParenthesizedGenericArguments {
-    fn make(self, _mk: &Builder) -> PathArguments {
-        PathArguments::Parenthesized(self)
     }
 }
 
@@ -658,14 +539,6 @@ impl Builder {
         PathSegment {
             ident: identifier,
             arguments: args,
-        }
-    }
-
-    pub fn parenthesized_args(self, tys: Vec<Box<Type>>) -> ParenthesizedGenericArguments {
-        ParenthesizedGenericArguments {
-            paren_token: token::Paren(self.span),
-            inputs: punct_box(tys),
-            output: ReturnType::Default,
         }
     }
 

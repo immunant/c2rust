@@ -108,7 +108,7 @@ impl<'c> Translation<'c> {
                         // Fallback for characters outside of the valid Unicode range
                         if (val as i32) < 0 {
                             mk().unary_expr(
-                                "-",
+                                UnOp::Neg(Default::default()),
                                 mk().lit_expr(
                                     mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
                                 ),
@@ -170,7 +170,7 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_unsafe_val(transmute_expr(
                     mk().array_ty(u8_ty, width_lit),
                     self.convert_type(ty.ctype)?,
-                    mk().unary_expr("*", mk().lit_expr(val)),
+                    mk().unary_expr(UnOp::Deref(Default::default()), mk().lit_expr(val)),
                 )))
             }
         }
