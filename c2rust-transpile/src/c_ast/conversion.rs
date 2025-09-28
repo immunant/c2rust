@@ -556,6 +556,33 @@ impl ConversionContext {
         self.typed_context.target = untyped_context.target.clone();
     }
 
+    /// Visit child nodes of a `RecordDecl` (`struct` or `union`) and collect `FieldDecl` node IDs.
+    fn visit_record_children<'a>(
+        &'a mut self,
+        untyped_context: &'a AstContext,
+        node: &'a AstNode,
+        new_id: ImporterId,
+    ) -> impl Iterator<Item = CDeclId> + 'a {
+        use self::node_types::*;
+
+        node.children.iter().filter_map(move |id| {
+            let decl = id.expect("Record decl not found");
+            let decl_node = untyped_context
+                .ast_nodes
+                .get(&decl)
+                .expect("child node not found");
+
+            let id = CDeclId(self.visit_node_type(decl, FIELD_DECL | ENUM_DECL | RECORD_DECL));
+            self.typed_context.parents.insert(id, CDeclId(new_id));
+
+            if decl_node.tag == ASTEntryTag::TagFieldDecl {
+                Some(id)
+            } else {
+                None
+            }
+        })
+    }
+
     /// Visit one node.
     fn visit_node(
         &mut self,
@@ -2246,14 +2273,7 @@ impl ConversionContext {
 
                     let fields: Option<Vec<CDeclId>> = if has_def {
                         Some(
-                            node.children
-                                .iter()
-                                .map(|id| {
-                                    let field = id.expect("Record field decl not found");
-                                    let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
-                                    self.typed_context.parents.insert(id, CDeclId(new_id));
-                                    id
-                                })
+                            self.visit_record_children(untyped_context, node, new_id)
                                 .collect(),
                         )
                     } else {
@@ -2284,14 +2304,7 @@ impl ConversionContext {
                         .expect("Expected attribute array on record");
                     let fields: Option<Vec<CDeclId>> = if has_def {
                         Some(
-                            node.children
-                                .iter()
-                                .map(|id| {
-                                    let field = id.expect("Record field decl not found");
-                                    let id = CDeclId(self.visit_node_type(field, FIELD_DECL));
-                                    self.typed_context.parents.insert(id, CDeclId(new_id));
-                                    id
-                                })
+                            self.visit_record_children(untyped_context, node, new_id)
                                 .collect(),
                         )
                     } else {

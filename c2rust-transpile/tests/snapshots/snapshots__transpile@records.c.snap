@@ -1,0 +1,88 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/records.rs
+input_file: c2rust-transpile/tests/snapshots/records.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct AnonEnumInStruct {}
+pub type C2RustUnnamed = std::ffi::c_uint;
+pub const VALUE2: C2RustUnnamed = 1;
+pub const VALUE1: C2RustUnnamed = 0;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct AnonStructInStruct {
+    pub c2rust_unnamed: C2RustUnnamed_0,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2RustUnnamed_0 {
+    pub some_number: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct NestedStructInStruct {}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct InsideStruct {
+    pub yup: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub union AnonEnumInUnion {
+    pub a: std::ffi::c_int,
+}
+pub type C2RustUnnamed_1 = std::ffi::c_uint;
+pub const VALUE4: C2RustUnnamed_1 = 1;
+pub const VALUE3: C2RustUnnamed_1 = 0;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub union AnonStructInUnion {
+    pub c2rust_unnamed: C2RustUnnamed_2,
+    pub a: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct C2RustUnnamed_2 {
+    pub some_number: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub union NestedStructInUnion {
+    pub a: std::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct InsideUnion {
+    pub yup: std::ffi::c_int,
+}
+#[no_mangle]
+pub unsafe extern "C" fn struct_declaration() {
+    let mut value: std::ffi::c_int = VALUE2 as std::ffi::c_int;
+    let mut a: AnonEnumInStruct = AnonEnumInStruct {};
+    let mut b: AnonStructInStruct = AnonStructInStruct {
+        c2rust_unnamed: C2RustUnnamed_0 { some_number: 0 },
+    };
+    b.c2rust_unnamed.some_number = 7 as std::ffi::c_int;
+    let mut c: NestedStructInStruct = NestedStructInStruct {};
+    let mut d: InsideStruct = InsideStruct { yup: 0 };
+}
+#[no_mangle]
+pub unsafe extern "C" fn union_declaration() {
+    let mut value: std::ffi::c_int = VALUE4 as std::ffi::c_int;
+    let mut a: AnonEnumInUnion = AnonEnumInUnion { a: 0 };
+    let mut b: AnonStructInUnion = AnonStructInUnion {
+        c2rust_unnamed: C2RustUnnamed_2 { some_number: 0 },
+    };
+    b.c2rust_unnamed.some_number = 99 as std::ffi::c_int;
+    let mut c: NestedStructInUnion = NestedStructInUnion { a: 0 };
+    let mut d: InsideUnion = InsideUnion { yup: 0 };
+}
