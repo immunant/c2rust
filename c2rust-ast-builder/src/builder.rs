@@ -2,6 +2,7 @@
 
 use std::str;
 
+use itertools::intersperse;
 use proc_macro2::{Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 use std::default::Default;
 use std::iter::FromIterator;
@@ -161,21 +162,14 @@ fn punct_box<T, P: Default>(x: Vec<Box<T>>) -> Punctuated<T, P> {
     Punctuated::from_iter(x.into_iter().map(|x| *x))
 }
 
-fn comma_separated<T, F>(items: Vec<T>, f: F) -> TokenStream
+fn comma_separated<I, T>(items: I) -> TokenStream
 where
-    F: Fn(&mut TokenStream, T),
+    I: Iterator<Item = T>,
+    T: ToTokens + Clone,
 {
-    let mut tokens = TokenStream::new();
-    let mut first = true;
-    for item in items {
-        if !first {
-            TokenTree::Punct(Punct::new(',', Spacing::Alone)).to_tokens(&mut tokens);
-        } else {
-            first = false;
-        }
-        f(&mut tokens, item);
-    }
-    tokens
+    let items = items.map(|items| items.to_token_stream());
+    let comma = TokenTree::Punct(Punct::new(',', Spacing::Alone)).into_token_stream();
+    intersperse(items, comma).collect()
 }
 
 pub trait Make<T> {
@@ -286,27 +280,19 @@ impl Make<TokenStream> for Vec<TokenTree> {
 
 impl Make<TokenStream> for Vec<&str> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        comma_separated(self, |tokens, s| {
-            let tt = TokenTree::Ident(Ident::new(s, Span::call_site()));
-            tt.to_tokens(tokens);
-        })
+        comma_separated(self.iter().map(|&s| Ident::new(s, Span::call_site())))
     }
 }
 
 impl Make<TokenStream> for Vec<u64> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        comma_separated(self, |tokens, s| {
-            let tt = TokenTree::Literal(Literal::u64_unsuffixed(s));
-            tt.to_tokens(tokens);
-        })
+        comma_separated(self.iter().map(|&s| Literal::u64_unsuffixed(s)))
     }
 }
 
 impl Make<TokenStream> for Vec<Meta> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        comma_separated(self, |tokens, s| {
-            s.to_tokens(tokens);
-        })
+        comma_separated(self.iter())
     }
 }
 
