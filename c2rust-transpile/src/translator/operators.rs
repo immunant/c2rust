@@ -1036,7 +1036,7 @@ impl<'c> Translation<'c> {
 
             c_ast::UnOp::Not => {
                 let val = self.convert_condition(ctx, false, arg)?;
-                Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["std", "ffi", "c_int"]))))
+                Ok(val.map(|x| mk().cast_expr(x, mk().path_ty(vec!["core", "ffi", "c_int"]))))
             }
             c_ast::UnOp::Extension => {
                 let arg = self.convert_expr(ctx, arg, Some(cqual_type))?;
