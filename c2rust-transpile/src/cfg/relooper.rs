@@ -126,19 +126,22 @@ impl RelooperState {
     }
 }
 
+/// A set of basic blocks, keyed by their label.
+type StructuredBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
+
 impl RelooperState {
     /// Recursive helper for `reloop`.
     ///
     /// TODO: perhaps manually perform TCO?
     fn relooper(
         &mut self,
-        entries: IndexSet<Label>, // current entry points into the CFG
-        mut blocks: IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>, // the blocks in the sub-CFG considered
+        entries: IndexSet<Label>,     // current entry points into the CFG
+        mut blocks: StructuredBlocks, // the blocks in the sub-CFG considered
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
         disable_heuristics: bool,
     ) {
-        // Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo`
-        // is not considered here - only `GoTo`.
+        /// Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo`
+        /// is not considered here - only `GoTo`.
         fn out_edges<T>(
             blocks: &IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, T>>,
         ) -> IndexSet<Label> {
@@ -149,7 +152,7 @@ impl RelooperState {
                 .collect()
         }
 
-        // Transforms `{1: {'a', 'b'}, 2: {'b'}}` into `{'a': {1}, 'b': {1,2}}`.
+        /// Transforms `{1: {'a', 'b'}, 2: {'b'}}` into `{'a': {1}, 'b': {1,2}}`.
         fn flip_edges(map: IndexMap<Label, IndexSet<Label>>) -> IndexMap<Label, IndexSet<Label>> {
             let mut flipped_map: IndexMap<Label, IndexSet<Label>> = IndexMap::new();
             for (lbl, vals) in map {
@@ -160,9 +163,7 @@ impl RelooperState {
             flipped_map
         }
 
-        type StructuredBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
-
-        // Find all labels reachable via a `GoTo` from the current set of blocks
+        // Find all labels reachable via a `GoTo` from the current set of blocks.
         let reachable_labels: IndexSet<Label> =
             blocks.iter().flat_map(|(_, bb)| bb.successors()).collect();
 
@@ -183,10 +184,11 @@ impl RelooperState {
         // Simple blocks
         if none_branch_to.len() == 1 && some_branch_to.is_empty() {
             let entry = none_branch_to
-                .iter()
-                .next()
+                .first()
                 .expect("Should find exactly one entry");
 
+            // legaren: What does the else case here mean? When would we have an entry
+            // that isn't in the current set of blocks?
             if let Some(bb) = blocks.swap_remove(entry) {
                 let new_entries = bb.successors();
                 let BasicBlock {
@@ -196,6 +198,8 @@ impl RelooperState {
                     defined,
                     span,
                 } = bb;
+
+                // legaren: What is this live/defined business?
 
                 // Flag declarations for everything that is live going in but not already in scope.
                 //
@@ -294,7 +298,7 @@ impl RelooperState {
 
         // This information is necessary for both the `Loop` and `Multiple` cases
         let (predecessor_map, strict_reachable_from) = {
-            let successor_map: IndexMap<Label, IndexSet<Label>> = blocks
+            let successor_map = blocks
                 .iter()
                 .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
                 .collect();
@@ -338,6 +342,7 @@ impl RelooperState {
                     visited.swap_remove(join);
                     if visited.difference(content).next().is_some() {
                         recognized_c_multiple = false;
+                        break;
                     }
                 }
             }
@@ -345,9 +350,10 @@ impl RelooperState {
         recognized_c_multiple = recognized_c_multiple && !disable_heuristics;
 
         if none_branch_to.is_empty() && !recognized_c_multiple {
+            // The set of nodes that can reach one of our current entries.
             let new_returns: IndexSet<Label> = strict_reachable_from
                 .iter()
-                .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
+                .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl)) // Is the blocks check redundant? If it's an entry doesn't it also have to be in `blocks`? If not, when?
                 .flat_map(|(_, reachable)| reachable.iter())
                 .cloned()
                 .collect();
@@ -401,6 +407,7 @@ impl RelooperState {
             }
 
             // Rename some `GoTo`s in the loop body to `ExitTo`s
+            // Why? Why is `ExitTo` here different than `GoTo`?
             for (_, bb) in body_blocks.iter_mut() {
                 for lbl in bb.terminator.get_labels_mut() {
                     if let StructureLabel::GoTo(label) = lbl.clone() {
@@ -434,7 +441,10 @@ impl RelooperState {
                 .insert(entry.clone());
         }
 
-        // Blocks that are reached by only one label
+        // Blocks that are reached by only one entry(?) I think this will also
+        // include the entries, since they were just added to `reachable_from`.
+        // Keys will be entries, values will be the blocks that are only
+        // reachable from that entry.
         let singly_reached: IndexMap<Label, IndexSet<Label>> = flip_edges(
             reachable_from
                 .into_iter()
@@ -443,6 +453,8 @@ impl RelooperState {
                 .collect(),
         );
 
+        // `singly_reached` but with the value labels replaced by the
+        // corresponding basic blocks from `blocks`.
         let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
             .into_iter()
             .map(|(lbl, within)| {
@@ -455,12 +467,14 @@ impl RelooperState {
             })
             .collect();
 
+        // Entries that don't have any blocks that are only reachable from themselves.
         let unhandled_entries: IndexSet<Label> = entries
             .iter()
             .filter(|&e| !handled_entries.contains_key(e))
             .cloned()
             .collect();
 
+        // Gather the set of all blocks that are handled by one entry.
         let mut handled_blocks: StructuredBlocks = IndexMap::new();
         for (_, map) in &handled_entries {
             for (k, v) in map {
@@ -469,13 +483,19 @@ impl RelooperState {
         }
         let handled_blocks = handled_blocks;
 
+        // Gather the set of blocks that are not handled by any entry (or maybe
+        // are handled by multiple entries? unclear when that would come up or
+        // how that'd be handled).
         let follow_blocks: StructuredBlocks = blocks
             .into_iter()
             .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
             .collect();
 
+        // Unhandled entries (?) and any successors of handled blocks that are
+        // not themselves handled blocks.
         let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
+        // Reloop each of the handled blocks into their own structured control flow.
         let mut all_handlers: IndexMap<Label, Vec<Structure<StmtOrDecl>>> = handled_entries
             .into_iter()
             .map(|(lbl, blocks)| {
@@ -490,6 +510,12 @@ impl RelooperState {
             })
             .collect();
 
+        // If the set of handlers matches the set of entries, pull out the first
+        // handler (specifically the first handler added to `all_handles`, since
+        // we're using `IndexMap`) to use as the `then` block in the `Multiple`.
+        // Otherwise, our `then` block is empty.
+        //
+        // When would we fall into either case?
         let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
         let (then, branches) = if handler_keys == entries {
             let a_key = all_handlers
@@ -503,7 +529,7 @@ impl RelooperState {
             (vec![], all_handlers)
         };
 
-        let disable_heuristics = follow_entries == entries;
+        let disable_heuristics = follow_entries == entries; // Why?
         result.push(Structure::Multiple {
             entries,
             branches,
