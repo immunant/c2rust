@@ -176,12 +176,14 @@ impl RelooperState {
 
         // --------------------------------------
         // Base case
+
         if none_branch_to.is_empty() && some_branch_to.is_empty() {
             return;
         }
 
         // --------------------------------------
         // Simple blocks
+
         if none_branch_to.len() == 1 && some_branch_to.is_empty() {
             let entry = none_branch_to
                 .first()
@@ -270,7 +272,13 @@ impl RelooperState {
         // --------------------------------------
         // Loops
 
-        // DFS transitive closure
+        /// Calculates the transitive closure of a directed graph via
+        /// depth-first search.
+        ///
+        /// Given an adjacency list, represented as a map from each label to its
+        /// immediate successors, calculate which labels are reachable from each
+        /// starting label. A label does not count as reachable from itself
+        /// unless there is a back edge from one of its successors.
         fn transitive_closure<V: Clone + Hash + Eq>(
             adjacency_list: &IndexMap<V, IndexSet<V>>,
         ) -> IndexMap<V, IndexSet<V>> {
@@ -296,14 +304,31 @@ impl RelooperState {
             closure
         }
 
-        // This information is necessary for both the `Loop` and `Multiple` cases
+        // Calculate predecessor and reachability information:
+        //
+        // * `predecessor_map` maps from each label to its immediate predecessors in the
+        //   current set of blocks.
+        // * `strict_reachable_from` maps each label to the set of labels it can reach
+        //   (not including itself).
+        //
+        // For both of these, some keys may not correspond to any blocks in the current
+        // set, since blocks may have successors that are outside the current set. For
+        // both of these, labels in the values set will always correspond to blocks in
+        // the current set.
         let (predecessor_map, strict_reachable_from) = {
+            // Map each of our current blocks to its immediate successors.
             let successor_map = blocks
                 .iter()
                 .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
                 .collect();
 
+            // Calculate the transitive closure of the successor map, i.e. the full set of
+            // labels reachable from each block, not including itself. Then flip the edges
+            // to get a map of labels that can reach each block.
             let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
+
+            // Flip the edges of the successor map to get a map of immediate predecessors
+            // for each block.
             let predecessor_map = flip_edges(successor_map);
 
             (predecessor_map, strict_reachable_from)
