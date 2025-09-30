@@ -47,7 +47,7 @@ pub fn match_loop_body(
             let bb = if let Some(bb) = follow_blocks.swap_remove(&following) {
                 bb
             } else {
-                continue;
+                continue; // Why would we have a follow entry with no corresponding block?
             };
             something_happened = true;
 
@@ -191,7 +191,7 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
                         };
                     }
 
-                    None => return None,
+                    None => return None, // When would this happen? If we have a loop ID, why wouldn't it correspond to a loop?
                 }
             }
         }
