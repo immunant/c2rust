@@ -534,12 +534,12 @@ impl RelooperState {
         let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
         // Reloop each of the handled blocks into their own structured control flow.
-        let mut all_handlers: IndexMap<Label, Vec<Structure<StmtOrDecl>>> = handled_entries
+        let mut all_handlers: IndexMap<_, _> = handled_entries
             .into_iter()
             .map(|(lbl, blocks)| {
                 let entries = indexset![lbl.clone()];
 
-                let mut structs: Vec<Structure<StmtOrDecl>> = vec![];
+                let mut structs = vec![];
                 self.open_scope();
                 self.relooper(entries, blocks, &mut structs, false);
                 self.close_scope();
@@ -548,14 +548,16 @@ impl RelooperState {
             })
             .collect();
 
-        // If the set of handlers matches the set of entries, pull out the first
-        // handler (specifically the first handler added to `all_handles`, since
-        // we're using `IndexMap`) to use as the `then` block in the `Multiple`.
-        // Otherwise, our `then` block is empty.
+        // If all entries are handled, we grab the first one to be the "then"
+        // branch, otherwise the "then" branch is empty.
         //
-        // When would we fall into either case?
+        // legaren: Why? What's the "then" branch for? The original relooper
+        // paper doesn't have an equivalent for this.
         let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
         let (then, branches) = if handler_keys == entries {
+            // TODO: We can probably just `swap_remove_index(0)` here instead of
+            // getting the first key, I think that should be equivalent to what
+            // we're doing.
             let a_key = all_handlers
                 .keys()
                 .next()
