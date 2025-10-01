@@ -3,11 +3,11 @@
 //!
 //! # Terminology
 //!
-//! The terms "label" and "block" are sometimes used interchangeably. A label is
-//! the unique identifier for a block. In some cases we're working directly with
-//! the basic blocks, but in many places when working with the control-flow
-//! graph we're dealing only with labels, and the blocks themselves are
-//! secondary.
+//! The terms "label", "block", and "node" are sometimes used interchangeably.
+//! A label is the unique identifier for a block, and a block is a node in the
+//! control-flow graph. In some cases we're working directly with the basic
+//! blocks, but in many places when working with the control-flow graph we're
+//! dealing only with labels, and the blocks themselves are secondary.
 
 use super::*;
 
@@ -318,8 +318,8 @@ impl RelooperState {
         //   current set of blocks.
         // * `strict_reachable_from` maps each label to the set of labels that can reach
         //   it, i.e. its direct and indirect predecessors. Entries do not count as
-        //   reaching themselves, and so will only appear as keys if they are reachable
-        //   from some other block.
+        //   reaching themselves (unless they explicitly branch to themselves), and so
+        //   will only appear as keys if they are the predecessor of some block.
         //
         // For both of these, some keys may not correspond to any blocks in the current
         // set, since blocks may have successors that are outside the current set. For
@@ -385,10 +385,10 @@ impl RelooperState {
         recognized_c_multiple = recognized_c_multiple && !disable_heuristics;
 
         if none_branch_to.is_empty() && !recognized_c_multiple {
-            // The set of nodes that can reach one of our current entries.
+            // Gather the set of current blocks that can reach one of our entries.
             let new_returns: IndexSet<Label> = strict_reachable_from
                 .iter()
-                .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl)) // Is the blocks check redundant? If it's an entry doesn't it also have to be in `blocks`? If not, when?
+                .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
                 .flat_map(|(_, reachable)| reachable.iter())
                 .cloned()
                 .collect();
@@ -397,9 +397,14 @@ impl RelooperState {
             let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
                 .into_iter()
                 .partition(|(lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
+
+            // Any block that follows a body block but is not itself a body block
+            // becomes an entry for the follow blocks.
             let mut follow_entries = out_edges(&body_blocks);
 
             // Try to match an existing loop (from the initial C)
+            //
+            // legaren: Figure out how this part works.
             let mut matched_existing_loop = false;
             if let Some(ref loop_info) = self.loop_info {
                 let must_be_in_loop = entries.iter().chain(new_returns.iter()).cloned();
@@ -443,7 +448,7 @@ impl RelooperState {
 
             // Rename some `GoTo`s in the loop body to `ExitTo`s
             // Why? Why is `ExitTo` here different than `GoTo`?
-            for (_, bb) in body_blocks.iter_mut() {
+            for bb in body_blocks.values_mut() {
                 for lbl in bb.terminator.get_labels_mut() {
                     if let StructureLabel::GoTo(label) = lbl.clone() {
                         if entries.contains(&label) || follow_entries.contains(&label) {
@@ -468,7 +473,7 @@ impl RelooperState {
         // Multiple
 
         // Like `strict_reachable_from`, but entries also reach themselves.
-        let mut reachable_from: IndexMap<Label, IndexSet<Label>> = strict_reachable_from;
+        let mut reachable_from = strict_reachable_from;
         for entry in &entries {
             reachable_from
                 .entry(entry.clone())
