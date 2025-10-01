@@ -1,5 +1,13 @@
-//! This modules handles converting a a control-flow graph `Cfg` into `Vec<Structure>`, optionally
-//! simplifying the latter.
+//! This modules handles converting a a control-flow graph `Cfg` into
+//! `Vec<Structure>`, optionally simplifying the latter.
+//!
+//! # Terminology
+//!
+//! The terms "label" and "block" are sometimes used interchangeably. A label is
+//! the unique identifier for a block. In some cases we're working directly with
+//! the basic blocks, but in many places when working with the control-flow
+//! graph we're dealing only with labels, and the blocks themselves are
+//! secondary.
 
 use super::*;
 
@@ -272,13 +280,13 @@ impl RelooperState {
         // --------------------------------------
         // Loops
 
-        /// Calculates the transitive closure of a directed graph via
-        /// depth-first search.
+        /// Calculates the transitive closure of a directed graph via depth-first
+        /// search.
         ///
         /// Given an adjacency list, represented as a map from each label to its
         /// immediate successors, calculate which labels are reachable from each
-        /// starting label. A label does not count as reachable from itself
-        /// unless there is a back edge from one of its successors.
+        /// starting label. A label does not count as reachable from itself unless there
+        /// is a back edge from one of its successors.
         fn transitive_closure<V: Clone + Hash + Eq>(
             adjacency_list: &IndexMap<V, IndexSet<V>>,
         ) -> IndexMap<V, IndexSet<V>> {
@@ -308,8 +316,10 @@ impl RelooperState {
         //
         // * `predecessor_map` maps from each label to its immediate predecessors in the
         //   current set of blocks.
-        // * `strict_reachable_from` maps each label to the set of labels it can reach
-        //   (not including itself).
+        // * `strict_reachable_from` maps each label to the set of labels that can reach
+        //   it, i.e. its direct and indirect predecessors. Entries do not count as
+        //   reaching themselves, and so will only appear as keys if they are reachable
+        //   from some other block.
         //
         // For both of these, some keys may not correspond to any blocks in the current
         // set, since blocks may have successors that are outside the current set. For
@@ -324,7 +334,7 @@ impl RelooperState {
 
             // Calculate the transitive closure of the successor map, i.e. the full set of
             // labels reachable from each block, not including itself. Then flip the edges
-            // to get a map of labels that can reach each block.
+            // to get a map from a label to the set of labels that can reach it.
             let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
 
             // Flip the edges of the successor map to get a map of immediate predecessors
@@ -457,7 +467,7 @@ impl RelooperState {
         // --------------------------------------
         // Multiple
 
-        // Like `strict_reachable_from`, but entries also reach themselves
+        // Like `strict_reachable_from`, but entries also reach themselves.
         let mut reachable_from: IndexMap<Label, IndexSet<Label>> = strict_reachable_from;
         for entry in &entries {
             reachable_from
@@ -466,20 +476,24 @@ impl RelooperState {
                 .insert(entry.clone());
         }
 
-        // Blocks that are reached by only one entry(?) I think this will also
-        // include the entries, since they were just added to `reachable_from`.
-        // Keys will be entries, values will be the blocks that are only
-        // reachable from that entry.
+        // Calculate which blocks are reached by only one entry (including the entries
+        // themselves).
+        //
+        // For each label in `reachable_from`, filter its predecessor set to only our
+        // entries, then filter down to only the labels reachable from exactly one
+        // entry. Then flip edges to give us a map from entries to the set of labels
+        // that are only reached from that entry.
         let singly_reached: IndexMap<Label, IndexSet<Label>> = flip_edges(
             reachable_from
                 .into_iter()
-                .map(|(lbl, reachable)| (lbl, &reachable & &entries.clone()))
+                .map(|(lbl, reachable)| (lbl, &reachable & &entries))
                 .filter(|(_, reachable)| reachable.len() == 1)
                 .collect(),
         );
 
-        // `singly_reached` but with the value labels replaced by the
-        // corresponding basic blocks from `blocks`.
+        // Map from entry labels to the set of blocks only reachable from that entry,
+        // i.e. `singly_reached` but with the set of reachable labels replaced by the
+        // corresponding blocks.
         let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
             .into_iter()
             .map(|(lbl, within)| {
@@ -499,25 +513,24 @@ impl RelooperState {
             .cloned()
             .collect();
 
-        // Gather the set of all blocks that are handled by one entry.
-        let mut handled_blocks: StructuredBlocks = IndexMap::new();
-        for (_, map) in &handled_entries {
-            for (k, v) in map {
-                handled_blocks.entry(k.clone()).or_insert(v.clone());
-            }
-        }
-        let handled_blocks = handled_blocks;
+        // Gather the set of all blocks that are only reachable from one entry
+        // (including the entries if they are only reachable from themselves).
+        let handled_blocks: StructuredBlocks = handled_entries
+            .values()
+            .flatten()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        // Gather the set of blocks that are not handled by any entry (or maybe
-        // are handled by multiple entries? unclear when that would come up or
-        // how that'd be handled).
+        // Gather the unhandled blocks, i.e. any blocks that are reachable from more
+        // than one entry. These become our "follow" blocks, i.e. the blocks that come
+        // after the `Multiple`.
         let follow_blocks: StructuredBlocks = blocks
             .into_iter()
             .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
             .collect();
 
-        // Unhandled entries (?) and any successors of handled blocks that are
-        // not themselves handled blocks.
+        // The entries for the follow blocks are our unhandled entries and any successors
+        // of handled blocks that are not themselves handled blocks.
         let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
         // Reloop each of the handled blocks into their own structured control flow.
