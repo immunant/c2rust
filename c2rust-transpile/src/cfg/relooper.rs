@@ -286,7 +286,8 @@ impl RelooperState {
         /// Given an adjacency list, represented as a map from each label to its
         /// immediate successors, calculate which labels are reachable from each
         /// starting label. A label does not count as reachable from itself unless there
-        /// is a back edge from one of its successors.
+        /// is a back edge from one of its successors (including if the block is a
+        /// successor of itself).
         fn transitive_closure<V: Clone + Hash + Eq>(
             adjacency_list: &IndexMap<V, IndexSet<V>>,
         ) -> IndexMap<V, IndexSet<V>> {
@@ -384,6 +385,10 @@ impl RelooperState {
         }
         recognized_c_multiple = recognized_c_multiple && !disable_heuristics;
 
+        // If we have entries that are branched to (which is true at this point) and
+        // there are no entries outside the loop (i.e. all of our entries are branched
+        // back to at some point), and we didn't find an existing C multiple that
+        // applies, produce a loop.
         if none_branch_to.is_empty() && !recognized_c_multiple {
             // Gather the set of current blocks that can reach one of our entries.
             let new_returns: IndexSet<Label> = strict_reachable_from
@@ -446,8 +451,19 @@ impl RelooperState {
                 );
             }
 
-            // Rename some `GoTo`s in the loop body to `ExitTo`s
-            // Why? Why is `ExitTo` here different than `GoTo`?
+            // Rewrite `GoTo`s that exit the loop body to `ExitTo`s.
+            //
+            // For our body blocks, rewrite terminator `GoTo` labels to `ExitTo` if they
+            // target an entry or a follow entry. These are exits from the loop body, i.e.
+            // if they branch back to an entry then it's a `continue`, and if they branch to
+            // a follow entry then it's a `break`.
+            //
+            // This is necessary so that when we reloop the body blocks it doesn't get
+            // tripped up by the back/out edges. Without this, the reloop pass for the loop
+            // body would see the back edges and decide to produce a loop structure, even
+            // though we've already done that. Changing from `GoTo` to `ExitTo` means that
+            // the back/out edges don't show up in the list of successors when calculating
+            // predecessor and reachability information.
             for bb in body_blocks.values_mut() {
                 for lbl in bb.terminator.get_labels_mut() {
                     if let StructureLabel::GoTo(label) = lbl.clone() {
