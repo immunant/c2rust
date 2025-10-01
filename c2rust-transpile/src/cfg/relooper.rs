@@ -260,6 +260,7 @@ impl RelooperState {
             .cloned()
             .partition(|entry| blocks.contains_key(entry));
 
+        // legaren: When does this happen and what does it do?
         if !absent.is_empty() {
             if !present.is_empty() {
                 let branches = absent.into_iter().map(|lbl| (lbl, vec![])).collect();
@@ -353,10 +354,23 @@ impl RelooperState {
             if let Some((join, arms)) = multiple_info.get_multiple(&entries_key) {
                 recognized_c_multiple = true;
 
-                for (entry, content) in arms {
+                // Search through the arms of the C multiple to verify that our current CFG matches
+                // the structure of the C multiple.
+                'search: for (entry, content) in arms {
                     let mut to_visit: Vec<Label> = vec![entry.clone()];
                     let mut visited: IndexSet<Label> = IndexSet::new();
 
+                    // Walk the graph forwards from the entry, making sure we only see blocks that
+                    // are part of the current multiple. If we find any nodes that aren't in
+                    // `content` then the CFG differs from the C multiple.
+                    //
+                    // NOTE: We can't reuse the previous reachability analysis here because it
+                    // includes nodes past the join node, which isn't what we want here.
+                    //
+                    // legaren: Actually I'm not 100% sure about that last part, if we restructure
+                    // the logic here a bit we may be able to reuse `strict_reachable_from` or
+                    // `transitive_closure`, but I haven't thought through it enough yet and I'd
+                    // want to have tests before playing with this logic anyway.
                     while let Some(lbl) = to_visit.pop() {
                         // Stop at things you've already seen or the join block
                         if !visited.insert(lbl.clone()) || lbl == *join {
@@ -364,21 +378,22 @@ impl RelooperState {
                         }
 
                         if let Some(bb) = blocks.get(&lbl) {
-                            // If this isn't something we are supposed to encounter, break and fail.
                             if !content.contains(&lbl) {
                                 recognized_c_multiple = false;
-                                break;
+                                break 'search;
                             }
 
                             to_visit.extend(bb.successors())
                         }
                     }
 
-                    // Check we've actually visited all of the expected content
+                    // Check that we've only visited the expected nodes. If we've visited any nodes
+                    // not in `content`, then the CFG differs from the C multiple and the search
+                    // fails.
                     visited.swap_remove(join);
                     if visited.difference(content).next().is_some() {
                         recognized_c_multiple = false;
-                        break;
+                        break 'search;
                     }
                 }
             }
