@@ -91,26 +91,27 @@ jobs:
       run:  rustup component add rustfmt-preview rustc-dev
 
     - name: Provision Debian Packages
-      run: |
-        sudo apt-get -qq update
-        sudo apt-get -qq install    \
-            build-essential         \
-            libbrotli-dev           \
-            libclang-${{ matrix.clang-version }}-dev \
-            libgcrypt20             \
-            libreadline-dev         \
-            libidn2-dev             \
-            libldap2-dev            \
-            libnghttp2-dev          \
-            libpcre3-dev            \
-            libpsl-dev              \
-            librtmp-dev             \
-            libtool                 \
-            libzstd-dev             \
-            python3-setuptools      \
-            python3-wheel           \
-            rcs                     \
-            zlib1g-dev
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: |
+          build-essential
+          libbrotli-dev
+          libclang-${{ matrix.clang-version }}-dev
+          libgcrypt20
+          libreadline-dev
+          libidn2-dev
+          libldap2-dev
+          liblzma-dev
+          libnghttp2-dev
+          libpcre3-dev
+          libpsl-dev
+          librtmp-dev
+          libtool
+          libzstd-dev
+          python3-setuptools
+          python3-wheel
+          rcs
+          zlib1g-dev
 
     # installs intercept-build to $HOME/.local/bin
     - name: Provision Python Packages
@@ -129,7 +130,7 @@ jobs:
         find testsuite -type f -name compile_commands.json -delete
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
-        python3 testsuite/test.py curl json-c lua nginx zstd
+        python3 testsuite/test.py curl json-c lua nginx zstd libxml2
 
     - uses: actions/upload-artifact@v4
       with:
