@@ -386,3 +386,22 @@ int local_fn(void) { return 1234; }
 int use_local_value(void) { return LOCAL_VALUE; }
 
 bool use_portable_type(uintptr_t len) { return len <= UINTPTR_MAX / 2; }
+
+// From `curl`'s `curl_ntlm_core.c`.
+
+struct ntlmdata {
+  unsigned int target_info_len;
+};
+
+// Should not translate since it references an out-of-scope `ntlm` variable.
+#define NTLMv2_BLOB_LEN (44 - 16 + ntlm->target_info_len + 4)
+
+unsigned int ntlm_v2_blob_len(struct ntlmdata *ntlm) { return NTLMv2_BLOB_LEN; }
+
+// The variable `i` lacks an initializer, but is still declared within the macro,
+// so it should be translated like `STMT_EXPR` is.
+#define LATE_INIT_VAR ({ int i; i = 1; i; })
+
+int late_init_var() {
+  return LATE_INIT_VAR;
+}
