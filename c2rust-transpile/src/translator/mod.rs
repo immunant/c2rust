@@ -2173,6 +2173,14 @@ impl<'c> Translation<'c> {
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
                 let ty_kind = self.ast_context.resolve_type(ty).kind.clone();
+                if matches!(ty_kind, CTypeKind::Function(..)) {
+                    // TODO This is a temporary workaround for #1321 (portable types in const macros).
+                    // The workaround for most types is to create a const macro with non-portable type
+                    // and insert casts at use sites, but this doesn't work the same for fn ptr types.
+                    // So don't translate fn ptr const macros yet until #1321 is fixed.
+                    return Err(format_err!("fn ptr const macros not yet supported due to non-portable types; see #1321"));
+                }
+
                 if let Some((canon_val, canon_ty)) = canonical {
                     let canon_ty_kind = self.ast_context.resolve_type(canon_ty).kind.clone();
                     if let Some(smaller_ty) =
