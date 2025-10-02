@@ -101,6 +101,7 @@ jobs:
             libreadline-dev         \
             libidn2-dev             \
             libldap2-dev            \
+            liblzma-dev             \
             libnghttp2-dev          \
             libpcre3-dev            \
             libpsl-dev              \
@@ -129,7 +130,7 @@ jobs:
         find testsuite -type f -name compile_commands.json -delete
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
-        python3 testsuite/test.py curl json-c lua nginx zstd
+        python3 testsuite/test.py curl json-c lua nginx zstd libxml2
 
     - uses: actions/upload-artifact@v4
       with:
