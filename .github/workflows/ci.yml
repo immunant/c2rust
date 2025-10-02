@@ -106,6 +106,12 @@ jobs:
       - name: cargo test --release --workspace
         run: |
           export RUSTFLAGS="-D warnings"
+          # add homebrew library path for z3; z3-sys 0.9.4 supports the
+          # Z3_LIBRARY_PATH_OVERRIDE environment variable that would let
+          # us override the library path, but that crate version is too new
+          # for nightly-2022-08-08 (requires 2024 edition). On our nightly rustc
+          # on Mac OS, we have to pass in the exact library path directly to RUSTFLAGS.
+          export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib"
           export RUSTDOCFLAGS="-D warnings"
           cargo test --release --workspace
       - name: Test translator
