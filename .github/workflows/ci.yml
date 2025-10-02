@@ -106,6 +106,8 @@ jobs:
       - name: cargo test --release --workspace
         run: |
           export RUSTFLAGS="-D warnings"
+          # add homebrew library path for z3
+          export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib"
           export RUSTDOCFLAGS="-D warnings"
           cargo test --release --workspace
       - name: Test translator
