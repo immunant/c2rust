@@ -45,3 +45,8 @@ pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut core::ffi::c_char) {
             .wrapping_mul(::core::mem::size_of::<core::ffi::c_char>() as size_t),
     );
 }
+#[no_mangle]
+pub unsafe extern "C" fn f(mut x: *mut core::ffi::c_void) {
+    let mut len: size_t = 0 as size_t;
+    memcpy(x, x, len);
+}

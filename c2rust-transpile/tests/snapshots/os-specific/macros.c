@@ -19,7 +19,7 @@ int size_of_dynamic(int n) {
 }
 #endif
 
-// From Lua's `lobject.c`.
+// From `lua`'s `lobject.c`.
 
 #define POS "\"]"
 /* number of chars of a literal string without the ending \0 */
@@ -27,4 +27,13 @@ int size_of_dynamic(int n) {
 
 void memcpy_str_literal(char *out) {
   memcpy(out, POS, (LL(POS) + 1) * sizeof(char));
+}
+
+// From `python2`'s `bytes_methods.c`.
+
+#define Py_MEMCPY memcpy
+
+void f(void *x) {
+  size_t len = 0;
+  Py_MEMCPY(x, x, len);
 }
