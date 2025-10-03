@@ -60,7 +60,11 @@ fn cast_tys<'bv>(bv: BV<'bv>, tys: &[SimpleTy], pw: PointerWidth) -> BV<'bv> {
     tys.windows(2).fold(bv, |y, w| cast_bv(y, w[0], w[1], pw))
 }
 
-thread_local!(static Z3_CONFIG: Config = Config::new());
+thread_local!(static Z3_CONFIG: Config = {
+    let mut c = Config::new();
+    c.set_model_generation(true);
+    c
+});
 thread_local!(static Z3_CONTEXT: Context = Z3_CONFIG.with(|cfg| Context::new(cfg)));
 
 // Verify `check_double_cast` using Z3
@@ -98,12 +102,23 @@ fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
 
         let x = BV::new_const(&ctx, "x", ty_bit_width(tys[0], pw));
         let y = cast_tys(x.clone(), &tys[..], pw);
-        let z = cast_tys(x, &min_tys[..], pw);
+        let z = cast_tys(x.clone(), &min_tys[..], pw);
 
         // Check the full type list against the minimized one
         let solver = Solver::new(&ctx);
         solver.assert(&z._eq(&y).not());
-        solver.check() == SatResult::Unsat
+        if solver.check() == SatResult::Unsat {
+            true
+        } else {
+            let model = solver.get_model().unwrap();
+            panic!(
+                "{}b counterexample:\n{:?} =>\n {:?} via tys {tys:?} vs.\n {:?} via min_tys {min_tys:?}",
+                pw.0,
+                model.eval(&x, true).unwrap(),
+                model.eval(&y, true).unwrap(),
+                model.eval(&z, true).unwrap()
+            )
+        }
     })
 }
 
