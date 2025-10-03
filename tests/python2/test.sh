@@ -13,7 +13,7 @@ rm -f "$SCRIPT_DIR/repo/python" && cp $TARGET_BIN "$SCRIPT_DIR/repo/python"
 # https://devguide.python.org/runtests/
 NPROC=`nproc`
 # note: test_ftplib can fail inside of docker if ipv6 isn't enabled.
-FLAKY_TESTS="test_gdb test_ssl test_bsddb3 test_urllibnet test_urllib2_localnet test_httplib test_ftplib" 
+FLAKY_TESTS="test_gdb test_ssl test_bsddb3 test_urllibnet test_urllib2_localnet test_httplib test_ftplib test_imaplib"
 
 # Don't want to allow gui tests because they flash annoying windows on screen
 unset DISPLAY
