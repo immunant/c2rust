@@ -260,7 +260,18 @@ impl RelooperState {
             .cloned()
             .partition(|entry| blocks.contains_key(entry));
 
-        // legaren: When does this happen and what does it do?
+        // Handle the case where we have entries that are not in the current set of
+        // blocks.
+        //
+        // This happens when we create a multiple where a block reachable from multiple
+        // entries gets put in the follow blocks. This means that the branches within
+        // the multiple that reach the follow block have to do nothing, since they need
+        // to exit the multiple to get to that next block. To handle this we create a
+        // multiple with no-op branches that correspond to the absent entries, and a
+        // then branch with result of relooping the present entries.
+        //
+        // If we only have absent entries, then there's no other blocks to structure and
+        // we can just exit.
         if !absent.is_empty() {
             if !present.is_empty() {
                 let branches = absent.into_iter().map(|lbl| (lbl, vec![])).collect();
@@ -272,8 +283,8 @@ impl RelooperState {
                     entries,
                     branches,
                     then,
-                })
-            };
+                });
+            }
 
             return;
         }
@@ -355,7 +366,7 @@ impl RelooperState {
                 recognized_c_multiple = true;
 
                 // Search through the arms of the C multiple to verify that our current CFG matches
-                // the structure of the C multiple.
+                // its structure.
                 'search: for (entry, content) in arms {
                     let mut to_visit: Vec<Label> = vec![entry.clone()];
                     let mut visited: IndexSet<Label> = IndexSet::new();
@@ -404,6 +415,15 @@ impl RelooperState {
         // there are no entries outside the loop (i.e. all of our entries are branched
         // back to at some point), and we didn't find an existing C multiple that
         // applies, produce a loop.
+        //
+        // legaren: This loop analysis is a bit simple, in that if `none_branch_to` is
+        // empty it assumes there's only one loop. If we have multiple disjoint loops
+        // it'll still only generate a single loop structure, which then has a multiple
+        // inside of it that handles both loop bodies as an awkward state machine. It
+        // may be better to instead generate the multiple first, which will then give us
+        // separate loops. I'm not 100% sure that'd be better in all cases, and the
+        // above logic for trying to reconstruct C multiples may already solve this
+        // issue in practice.
         if none_branch_to.is_empty() && !recognized_c_multiple {
             // Gather the set of current blocks that can reach one of our entries.
             let new_returns: IndexSet<Label> = strict_reachable_from
@@ -569,7 +589,7 @@ impl RelooperState {
         // of handled blocks that are not themselves handled blocks.
         let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
-        // Reloop each of the handled blocks into their own structured control flow.
+        // Reloop each set of handled blocks into their own structured control flow.
         let mut all_handlers: IndexMap<_, _> = handled_entries
             .into_iter()
             .map(|(lbl, blocks)| {
@@ -605,7 +625,7 @@ impl RelooperState {
             (vec![], all_handlers)
         };
 
-        let disable_heuristics = follow_entries == entries; // Why?
+        let disable_heuristics = follow_entries == entries; // legaren: Why?
         result.push(Structure::Multiple {
             entries,
             branches,
