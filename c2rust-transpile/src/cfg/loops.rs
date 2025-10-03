@@ -170,28 +170,27 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         self.loops.extend(other.loops);
     }
 
-    /// Find the smallest possible loop that contains all of the items
+    /// Finds the smallest possible loop that contains all of the entries.
     pub fn tightest_common_loop<E: Iterator<Item = Lbl>>(&self, mut entries: E) -> Option<LoopId> {
+        // Start with the loop containing the first entry.
         let first = entries.next()?;
-
         let mut loop_id = *self.node_loops.get(&first)?;
 
+        // Widen the loop until it contains the all of our entries, or it can no longer
+        // be widened.
         for entry in entries {
-            // Widen the loop until it contains the `entry`, or it can no longer be widened.
             loop {
-                match self.loops.get(&loop_id) {
-                    Some((ref in_loop, parent_id)) => {
-                        if in_loop.contains(&entry) {
-                            break;
-                        }
-                        loop_id = if let Some(i) = parent_id {
-                            *i
-                        } else {
-                            return None;
-                        };
-                    }
+                // legaren: Can we ever get `None` out of `get` here? That would mean we have a
+                // loop ID with no corresponding entry in `loops`, which seems invalid. If this
+                // isn't a valid case we should unwrap/expect here instead of using `?`.
+                let (in_loop, parent_id) = self.loops.get(&loop_id)?;
 
-                    None => return None, // legaren: When would this happen? If we have a loop ID, why wouldn't it correspond to a loop?
+                // If our current loop contains the entry, move on to the next entry. Otherwise
+                // move on to the next wider loop if there is one.
+                if in_loop.contains(&entry) {
+                    break;
+                } else {
+                    loop_id = parent_id.clone()?;
                 }
             }
         }
