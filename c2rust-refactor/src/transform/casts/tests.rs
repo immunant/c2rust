@@ -67,6 +67,18 @@ thread_local!(static Z3_CONFIG: Config = {
 });
 thread_local!(static Z3_CONTEXT: Context = Z3_CONFIG.with(|cfg| Context::new(cfg)));
 
+#[test]
+fn test_cast_i32_u32_ssize() {
+    verify_double_cast(
+        PointerWidth(64),
+        vec![
+            SimpleTy::Int(32, true),
+            SimpleTy::Int(32, false),
+            SimpleTy::Size(true),
+        ],
+    );
+}
+
 // Verify `check_double_cast` using Z3
 fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
     if tys.len() <= 1 {
