@@ -518,7 +518,7 @@ pub fn translate(
             None,
         }
 
-        fn some_type_name(s: Option<&str>) -> Name {
+        fn some_type_name(s: Option<&str>) -> Name<'_> {
             match s {
                 None => Name::Anonymous,
                 Some(r) => Name::Type(r),
