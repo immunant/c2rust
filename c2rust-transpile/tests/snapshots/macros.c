@@ -405,3 +405,7 @@ unsigned int ntlm_v2_blob_len(struct ntlmdata *ntlm) { return NTLMv2_BLOB_LEN; }
 int late_init_var() {
   return LATE_INIT_VAR;
 }
+
+enum foo { Variant1, };
+#define VARIANT1 Variant1
+enum foo fooval = VARIANT1;
