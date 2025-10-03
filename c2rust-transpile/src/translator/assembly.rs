@@ -559,6 +559,7 @@ fn tied_output_operand_idx(
 /// {0:y} (and wrapping mem-only references in square brackets).
 fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
     asm: &str,
+    att_syntax: bool,
     input_op_mapper: M,
     is_mem_only: F,
     arch: Arch,
@@ -647,7 +648,10 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
             }
             let mem_only = is_mem_only(index_str);
             // Push the reference wrapped in {}, or in [{}] if mem-only
-            out.push_str(if mem_only { "[{" } else { "{" });
+            if mem_only {
+                out.push(if att_syntax { '(' } else { '[' });
+            };
+            out.push('{');
             let idx: usize = index_str
                 .parse()
                 .map_err(|_| TranslationError::generic("could not parse operand idx"))?;
@@ -656,7 +660,10 @@ fn rewrite_asm<F: Fn(&str) -> bool, M: Fn(usize) -> usize>(
                 out.push(':');
                 out.push_str(&new_modifiers);
             }
-            out.push_str(if mem_only { "}]" } else { "}" });
+            out.push('}');
+            if mem_only {
+                out.push(if att_syntax { ')' } else { ']' });
+            };
             // Push the rest of the chunk
             out.push_str(&chunk[end_idx..]);
             continue;
@@ -832,6 +839,7 @@ impl<'c> Translation<'c> {
         // Rewrite arg references in assembly template
         let rewritten_asm = rewrite_asm(
             asm,
+            att_syntax,
             |idx: usize| {
                 new_idx_for_orig(tied_output_operand_idx(idx, outputs.len(), &tied_operands))
             },

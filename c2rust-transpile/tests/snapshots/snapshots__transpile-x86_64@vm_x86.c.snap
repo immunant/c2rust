@@ -58,7 +58,7 @@ pub unsafe extern "C" fn VM_CallCompiled(
     *opStack = 0 as core::ffi::c_int;
     opStackOfs = 0 as core::ffi::c_int;
     asm!(
-        "movq [{2}], %rax\n", "movq [{0}], %r8\n", "movq [{1}], %r9\n", "push %r15\n",
+        "movq ({2}), %rax\n", "movq ({0}), %r8\n", "movq ({1}), %r9\n", "push %r15\n",
         "push %r14\n", "push %r13\n", "push %r12\n", "callq *%rax\n", "pop %r12\n",
         "pop %r13\n", "pop %r14\n", "pop %r15\n", "\n", "mov {restmp0:x}, %bx\n", in
         (reg) & (* vm).instructionPointers, in (reg) & (* vm).dataBase, in (reg) &

@@ -96,8 +96,11 @@ jobs:
         sudo apt-get -qq install    \
             build-essential         \
             libbrotli-dev           \
+            libbz2-dev              \
             libclang-${{ matrix.clang-version }}-dev \
+            libdb-dev               \
             libgcrypt20             \
+            libgdbm-dev             \
             libreadline-dev         \
             libidn2-dev             \
             libldap2-dev            \
@@ -111,6 +114,8 @@ jobs:
             python3-setuptools      \
             python3-wheel           \
             rcs                     \
+            tcl-dev                 \
+            tk-dev                  \
             zlib1g-dev
 
     # installs intercept-build to $HOME/.local/bin
@@ -130,7 +135,7 @@ jobs:
         find testsuite -type f -name compile_commands.json -delete
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
-        python3 testsuite/test.py curl json-c lua nginx zstd libxml2
+        python3 testsuite/test.py curl json-c lua nginx zstd libxml2 python2
 
     - uses: actions/upload-artifact@v4
       with:
