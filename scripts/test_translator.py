@@ -46,6 +46,9 @@ intermediate_files = [
     'cc_db', 'c_obj', 'c_lib', 'rust_src',
 ]
 
+# Whether or not to use nix for c2rust dependencies. This adds paths to
+# nix libraries in the generated compile_commands.json files.
+C2RUST_USE_NIX = False
 
 class TestOutcome(Enum):
     Success = "successes"
@@ -244,11 +247,22 @@ class TestDirectory:
         # are broken without it on macOS 12.
         # limit this to macOS because if we do happen to have multiple versions of Clang around, we
         # don't know which to use here, and using the wrong can one break things badly
-        if sys.platform == "darwin":
+        if sys.platform == "darwin" or C2RUST_USE_NIX:
             _, stdout, _ = clang["-print-resource-dir"].run(retcode=None)
-            self.clang_resource_dir = " \"-I{}/include\",".format(stdout.strip())
+            clang_resource_dir = " \"-I{}/include\",".format(stdout.strip())
         else:
-            self.clang_resource_dir = ""
+            clang_resource_dir = ""
+
+        self.clang_extra_flags = clang_resource_dir
+
+        # The compile_commands.json needs to have extra flags to tell
+        # it where to find libraries when using nix.
+        if C2RUST_USE_NIX:
+            nix_compile_flags = os.environ.get("BINDGEN_EXTRA_CLANG_ARGS", "") + os.environ.get("NIX_CFLAGS_COMPILE", "")
+            nix_compile_flags = nix_compile_flags.replace("-isystem ", "-I").replace("-idirafter ", "-I")
+            nix_compile_flags = ['"{}"'.format(flag) for flag in nix_compile_flags.split() if flag.startswith("-I")]
+            nix_compile_flags = ", ".join(nix_compile_flags) + ","
+            self.clang_extra_flags += nix_compile_flags
 
         # parse target arch from directory name if it includes a dot
         split_by_dots = self.name.split('.')
@@ -340,7 +354,7 @@ class TestDirectory:
             "file": "{0}"
           }}
         ]
-        """.format(cfile, directory, target_args, self.clang_resource_dir)
+        """.format(cfile, directory, target_args, self.clang_extra_flags)
 
         cc_db = os.path.join(directory, "compile_commands.json")
 
@@ -598,6 +612,7 @@ def get_testdirectories(
 
 
 def main() -> None:
+    global C2RUST_USE_NIX
     desc = 'run regression / unit / feature tests.'
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
@@ -619,6 +634,11 @@ def main() -> None:
         choices=intermediate_files + ['all'], default=[],
         help="Which intermediate files to not clear"
     )
+    parser.add_argument(
+        '--use-nix', dest='use_nix', action='store_true',
+        default=os.environ.get('C2RUST_USE_NIX') == '1',
+        help="Use nix dependencies for c2rust. By default this is set if the C2RUST_USE_NIX environment variable is set to 1."
+    )
     c.add_args(parser)
 
     args = parser.parse_args()
@@ -630,6 +650,9 @@ def main() -> None:
     setup_logging(args.log_level)
 
     logging.debug("args: %s", " ".join(sys.argv))
+
+    # Set whether we are using nix.
+    C2RUST_USE_NIX=args.use_nix
 
     # check that the binaries have been built first
     bins = [c.TRANSPILER]
