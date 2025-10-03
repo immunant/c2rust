@@ -63,48 +63,53 @@ fn cast_tys<'bv>(bv: BV<'bv>, tys: &[SimpleTy], pw: PointerWidth) -> BV<'bv> {
 thread_local!(static Z3_CONFIG: Config = Config::new());
 thread_local!(static Z3_CONTEXT: Context = Z3_CONFIG.with(|cfg| Context::new(cfg)));
 
-quickcheck! {
-    // Verify `check_double_cast` using QuickCheck and Z3
-    fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
-        if tys.len() <= 1 {
-            return true;
-        }
+// Verify `check_double_cast` using Z3
+fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
+    if tys.len() <= 1 {
+        return true;
+    }
 
-        Z3_CONTEXT.with(|ctx| {
-            // Build a minimized list of types with double casts removed
-            let mut min_tys = vec![tys[0].clone()];
-            for ty in &tys[1..] {
-                assert!(!min_tys.is_empty());
-                if *ty == min_tys[min_tys.len() - 1] {
-                    // Cast to the same type, ignore it
-                    continue;
+    Z3_CONTEXT.with(|ctx| {
+        // Build a minimized list of types with double casts removed
+        let mut min_tys = vec![tys[0].clone()];
+        for ty in &tys[1..] {
+            assert!(!min_tys.is_empty());
+            if *ty == min_tys[min_tys.len() - 1] {
+                // Cast to the same type, ignore it
+                continue;
+            }
+            if min_tys.len() < 2 {
+                min_tys.push(ty.clone());
+                continue;
+            }
+            let last2 = &min_tys[min_tys.len() - 2..];
+            match check_double_cast(last2[0], last2[1], *ty) {
+                DoubleCastAction::RemoveBoth => {
+                    min_tys.pop();
                 }
-                if min_tys.len() < 2 {
+                DoubleCastAction::RemoveInner => {
+                    *min_tys.last_mut().unwrap() = ty.clone();
+                }
+                DoubleCastAction::KeepBoth => {
                     min_tys.push(ty.clone());
-                    continue;
-                }
-                let last2 = &min_tys[min_tys.len() - 2..];
-                match check_double_cast(last2[0], last2[1], *ty) {
-                    DoubleCastAction::RemoveBoth => {
-                        min_tys.pop();
-                    }
-                    DoubleCastAction::RemoveInner => {
-                        *min_tys.last_mut().unwrap() = ty.clone();
-                    }
-                    DoubleCastAction::KeepBoth => {
-                        min_tys.push(ty.clone());
-                    }
                 }
             }
+        }
 
-            let x = BV::new_const(&ctx, "x", ty_bit_width(tys[0], pw));
-            let y = cast_tys(x.clone(), &tys[..], pw);
-            let z = cast_tys(x, &min_tys[..], pw);
+        let x = BV::new_const(&ctx, "x", ty_bit_width(tys[0], pw));
+        let y = cast_tys(x.clone(), &tys[..], pw);
+        let z = cast_tys(x, &min_tys[..], pw);
 
-            // Check the full type list against the minimized one
-            let solver = Solver::new(&ctx);
-            solver.assert(&z._eq(&y).not());
-            solver.check() == SatResult::Unsat
-        })
+        // Check the full type list against the minimized one
+        let solver = Solver::new(&ctx);
+        solver.assert(&z._eq(&y).not());
+        solver.check() == SatResult::Unsat
+    })
+}
+
+quickcheck! {
+    // Apply `verify_double_cast` to a sample of possible cast sequences using QuickCheck
+    fn quickcheck_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
+        verify_double_cast(pw, tys)
     }
 }
