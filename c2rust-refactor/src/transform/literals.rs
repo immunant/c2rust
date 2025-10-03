@@ -1,14 +1,16 @@
-use arena::SyncDroplessArena;
+use rustc_arena::DroplessArena;
 use ena::unify as ut;
-use rustc::{hir, ty};
-use rustc::hir::def::Res;
+use rustc_hir as hir;
+use rustc_hir::def::Res;
 use rustc_data_structures::sync::Lrc;
-use syntax::ast::*;
-use syntax::token;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor};
-use syntax_pos::Span;
+use rustc_ast::*;
+use rustc_ast::token;
+use rustc_ast::ptr::P;
+use rustc_middle::ty;
+use rustc_span::symbol::Symbol;
+use rustc_ast::visit::{self, Visitor};
+use rustc_span::Span;
+use rustc_type_ir::sty;
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -17,6 +19,7 @@ use std::marker::PhantomData;
 use crate::ast_manip::MutVisitNodes;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
+use crate::match_or;
 use crate::transform::Transform;
 use crate::transform::casts::sym_token_kind;
 use crate::RefactorCtxt;
@@ -46,7 +49,7 @@ impl Transform for ByteStrToStr {
                 ExprKind::Lit(l) => {
                     match l.kind {
                         LitKind::ByteStr(ref bs) => {
-                            let s = String::from_utf8((**bs).clone()).unwrap();
+                            let s = String::from_utf8(bs.to_vec()).unwrap();
                             l.kind = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
                             l.token.kind = token::LitKind::Str;
                         }
@@ -90,9 +93,12 @@ impl Transform for RemoveNullTerminator {
                 ExprKind::Lit(l) => {
                     match &mut l.kind {
                         LitKind::ByteStr(bs) => {
-                            if bs.last() == Some(&0) {
-                                Lrc::get_mut(bs).unwrap().pop();
-                                strip_null(&mut l.token.symbol);
+                            let ms = &mut Lrc::get_mut(bs).unwrap();
+                            if let Some((last, rest)) = ms.split_last_mut() {
+                                if *last == 0 {
+                                    *ms = rest;
+                                    strip_null(&mut l.token.symbol);
+                                }
                             }
                         }
                         LitKind::Str(ref mut s, _style) => {
@@ -148,7 +154,7 @@ fn remove_suffix(lit: &Lit) -> Option<Lit> {
 
 impl Transform for RemoveLiteralSuffixes {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        let arena = SyncDroplessArena::default();
+        let arena = DroplessArena::default();
         let mut uv = UnifyVisitor {
             cx,
             arena: &arena,
@@ -188,9 +194,9 @@ impl Transform for RemoveLiteralSuffixes {
                             // Special case: if `ty` is `i32` or `f64`,
                             // then we can remove the suffix, since those
                             // are the default inference types
-                            match (needs_suffix, &ty.kind) {
-                                (false, ty::TyKind::Int(IntTy::I32)) |
-                                (false, ty::TyKind::Float(FloatTy::F64)) => {
+                            match (needs_suffix, &ty.kind()) {
+                                (false, sty::TyKind::Int(ty::IntTy::I32)) |
+                                (false, sty::TyKind::Float(ty::FloatTy::F64)) => {
                                     if let Some(new_lit) = remove_suffix(&lit) {
                                         *lit = new_lit;
                                     }
@@ -217,7 +223,7 @@ impl Transform for RemoveLiteralSuffixes {
 
 struct UnifyVisitor<'a, 'kt, 'tcx: 'a + 'kt> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
-    arena: &'kt SyncDroplessArena,
+    arena: &'kt DroplessArena,
     unif: ut::UnificationTable<ut::InPlace<LitTyKey<'tcx>>>,
     lit_nodes: HashMap<NodeId, LitTyKey<'tcx>>,
 }
@@ -357,21 +363,21 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             Res::PrimTy(prim_ty) => {
                 let source = match prim_ty {
                     // TODO: check generics
-                    hir::Int(it) => LitTySource::Actual(tcx.mk_mach_int(it)),
-                    hir::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(uit)),
-                    hir::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ft)),
+                    hir::PrimTy::Int(it) => LitTySource::Actual(tcx.mk_mach_int(ty::int_ty(it))),
+                    hir::PrimTy::Uint(uit) => LitTySource::Actual(tcx.mk_mach_uint(ty::uint_ty(uit))),
+                    hir::PrimTy::Float(ft) => LitTySource::Actual(tcx.mk_mach_float(ty::float_ty(ft))),
                     _ => LitTySource::Unknown(false)
                 };
                 self.new_leaf(source)
             }
 
             // We don't want to unify with `Self`
-            Res::SelfTy(..) => self.new_empty_node(),
+            Res::SelfTy { .. } => self.new_empty_node(),
 
             Res::Local(id) => {
                 // This is a local variable that may have a type,
                 // try to get that type and unify it
-                let pid = tcx.hir().get_parent_node(id);
+                let pid = self.cx.hir_map().get_parent_node(id);
                 let node = match_or!([tcx.hir().find(pid)]
                                      Some(x) => x;
                                      return self.new_empty_node());
@@ -425,10 +431,10 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             self.replace_with_node(new_node, &ch);
         };
 
-        match ty.kind {
-            ty::TyKind::Int(_) |
-            ty::TyKind::Uint(_) |
-            ty::TyKind::Float(_) => {
+        match ty.kind() {
+            sty::TyKind::Int(_) |
+            sty::TyKind::Uint(_) |
+            sty::TyKind::Float(_) => {
                 let source = if mach_actual {
                     LitTySource::Actual(ty)
                 } else {
@@ -437,8 +443,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.replace_with_leaf(new_node, source);
             }
 
-            ty::TyKind::Adt(ref adt_ref, ref substs)
-            if adt_ref.is_box() || adt_ref.is_rc() || adt_ref.is_arc() => {
+            // TODO: we used to be able to handle Rc/Arc as well
+            sty::TyKind::Adt(ref adt_ref, ref substs) if adt_ref.is_box() =>{
                 // Ignore the actual structure for these types, and just
                 // use the inner type as the single child
                 let inner_ty = substs.type_at(0);
@@ -446,41 +452,41 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
-            ty::TyKind::Adt(ref adt_def, ref substs) => {
+            sty::TyKind::Adt(ref adt_def, ref substs) => {
                 let ch = adt_def.all_fields()
                     .map(|field| self.ty_to_key_tree_internal(field.ty(tcx, substs), mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
             }
 
-            ty::TyKind::Str => {
-                let u8_ty = tcx.mk_mach_uint(UintTy::U8);
+            sty::TyKind::Str => {
+                let u8_ty = tcx.types.u8;
                 let u8_kt = self.ty_to_key_tree_internal(u8_ty, true, seen);
                 self.replace_with_node(new_node, &[u8_kt]);
             }
 
-            ty::TyKind::Array(ty, _) |
-            ty::TyKind::Slice(ty) |
-            ty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
-            ty::TyKind::Ref(_, ty, _) => {
-                let ty_kt = self.ty_to_key_tree_internal(ty, mach_actual, seen);
+            sty::TyKind::Array(ty, _) |
+            sty::TyKind::Slice(ty) |
+            sty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) |
+            sty::TyKind::Ref(_, ty, _) => {
+                let ty_kt = self.ty_to_key_tree_internal(*ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
-            ty::TyKind::FnDef(def_id, _) => {
+            sty::TyKind::FnDef(def_id, _) => {
                 // Since we're using the original signature
                 // and not performing any substitutions,
                 // it's safe to include the machine types
                 fn_sig_to_key_tree(tcx.fn_sig(def_id), true);
             }
-            ty::TyKind::FnPtr(fn_sig) => {
-                fn_sig_to_key_tree(fn_sig, mach_actual);
+            sty::TyKind::FnPtr(fn_sig) => {
+                fn_sig_to_key_tree(*fn_sig, mach_actual);
             }
 
             // TODO: Closure
 
-            ty::TyKind::Tuple(ref elems) => {
-                let ch = elems.types()
+            sty::TyKind::Tuple(ref elems) => {
+                let ch = elems.iter()
                     .map(|ty| self.ty_to_key_tree_internal(ty, mach_actual, seen))
                     .collect::<Vec<_>>();
                 self.replace_with_node(new_node, &ch);
@@ -492,7 +498,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             // could cause compilation errors (especially for `self`), e.g.,
             // `1u32.wrapping_add(2)` can't ever be rewritten to
             // `1.wrapping_add(2)` since the latter fails to compile
-            ty::TyKind::Param(_) => {}
+            sty::TyKind::Param(_) => {}
 
             // All the others are irrelevant
             _ => {}
@@ -562,11 +568,11 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 }
             }
 
-            ExprKind::MethodCall(ref segment, ref args) => {
-                let hir_id = tcx.hir().node_to_hir_id(ex.id);
-                let parent = tcx.hir().get_parent_item(hir_id);
-                let body = tcx.hir().body_owned_by(parent);
-                let tables = tcx.body_tables(body);
+            ExprKind::MethodCall(ref segment, ref args, ref _span) => {
+                let hir_id = self.cx.hir_map().node_to_hir_id(ex.id);
+                let parent = self.cx.hir_map().get_parent_item(hir_id);
+                let body = self.cx.hir_map().body_owned_by(parent);
+                let tables = tcx.typeck_body(body);
                 let did = tables.type_dependent_def_id(hir_id).unwrap();
                 let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
 
@@ -723,7 +729,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             // TODO: handle `Async`/`Await`
 
-            ExprKind::Assign(ref lhs, ref rhs) => {
+            ExprKind::Assign(ref lhs, ref rhs, ref _span) => {
                 let inner_key_tree = self.expr_ty_to_key_tree(lhs);
                 self.visit_expr_unify(lhs, inner_key_tree);
                 self.visit_expr_unify(rhs, inner_key_tree);
@@ -752,15 +758,15 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
                     let ch = inner_key_tree.get().children();
-                    match (ch, &struct_ty.kind) {
+                    match (ch, &struct_ty.kind()) {
                         (None, _) => {}
-                        (Some(ch), ty::TyKind::Adt(def, _)) => {
+                        (Some(ch), sty::TyKind::Adt(def, _)) => {
                             let v = &def.non_enum_variant();
                             assert!(ch.len() == v.fields.len());
                             let idx = tcx.find_field_index(ident, v).unwrap();
                             self.unify_key_trees(kt, ch[idx]);
                         }
-                        (Some(ch), ty::TyKind::Tuple(ref tys)) => {
+                        (Some(ch), sty::TyKind::Tuple(ref tys)) => {
                             assert!(ch.len() == tys.len());
                             if let Ok(idx) = ident.as_str().parse::<usize>() {
                                 self.unify_key_trees(kt, ch[idx]);
@@ -778,8 +784,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // If the lhs type is array/slice/`str`, we can unify the result
                 // of the `ExprKind::Index` with the inner type of the base
                 if let Some(e_ty) = self.cx.opt_node_type(e.id) {
-                    use ty::TyKind::*;
-                    if let Array(..) | Slice(_) | Str = e_ty.kind {
+                    use sty::TyKind::*;
+                    if let Array(..) | Slice(_) | Str = e_ty.kind() {
                         if let Some(ch) = e_key_tree.get().children() {
                             assert!(ch.len() == 1);
                             self.unify_key_trees(kt, ch[0]);
@@ -980,9 +986,15 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             PatKind::Range(ref start, ref end, _) => {
                 // TODO: approximate???
-                let inner_key_tree = self.expr_ty_to_key_tree(start);
-                self.visit_expr_unify(start, inner_key_tree);
-                self.visit_expr_unify(end, inner_key_tree);
+                match (start, end) {
+                    (Some(start), Some(end)) => {
+                        let inner_key_tree = self.expr_ty_to_key_tree(start);
+                        self.visit_expr_unify(start, inner_key_tree);
+                        self.visit_expr_unify(end, inner_key_tree);
+                    }
+                    (Some(e), None) | (None, Some(e)) => self.visit_expr(e),
+                    (None, None) => {}
+                }
             }
 
             PatKind::Slice(ref pats) => {
@@ -1005,7 +1017,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             PatKind::Paren(ref pat) => return self.visit_pat_unify(pat, kt),
 
-            // TODO: handle `Mac`? Do we need to?
+            // TODO: handle `MacCall`? Do we need to?
 
             _ => visit::walk_pat(self, p)
         };
@@ -1031,7 +1043,7 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
         if let Some(ref ty) = l.ty {
             self.visit_ty(ty);
         }
-        if let Some(ref init) = l.init {
+        if let Some(ref init) = l.kind.init() {
             let key_tree = if let Some(ref ty) = l.ty {
                 self.ast_ty_to_key_tree(ty)
             } else {
@@ -1043,8 +1055,8 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
 
     fn visit_item(&mut self, i: &'ast Item) {
         match i.kind {
-            ItemKind::Static(ref ty, _, ref init) |
-            ItemKind::Const(ref ty, ref init) => {
+            ItemKind::Static(ref ty, _, Some(ref init)) |
+            ItemKind::Const(_, ref ty, Some(ref init)) => {
                 let key_tree = self.ast_ty_to_key_tree(ty);
                 self.visit_ty(ty);
                 self.visit_expr_unify(init, key_tree);
@@ -1142,13 +1154,13 @@ impl<'tcx> LitTySource<'tcx> {
         };
         match lit.kind {
             LitKind::Int(_, LitIntType::Signed(int_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_int(int_ty), false),
+                LitTySource::Suffix(tcx.mk_mach_int(ty::int_ty(int_ty)), false),
 
             LitKind::Int(_, LitIntType::Unsigned(uint_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_uint(uint_ty), false),
+                LitTySource::Suffix(tcx.mk_mach_uint(ty::uint_ty(uint_ty)), false),
 
             LitKind::Float(_, LitFloatType::Suffixed(float_ty)) =>
-                LitTySource::Suffix(tcx.mk_mach_float(float_ty), false),
+                LitTySource::Suffix(tcx.mk_mach_float(ty::float_ty(float_ty)), false),
 
             _ => LitTySource::Unknown(false)
         }
@@ -1165,13 +1177,13 @@ impl<'tcx> ut::UnifyValue for LitTySource<'tcx> {
             (Actual(ty1), Actual(ty2)) |
             (Actual(ty1), Suffix(ty2, _)) |
             (Suffix(ty1, _), Actual(ty2)) |
-            (Suffix(ty1, _), Suffix(ty2, _)) if ty1 != ty2 => Err((ty1, ty2)),
+            (Suffix(ty1, _), Suffix(ty2, _)) if ty1 != ty2 => Err((*ty1, *ty2)),
 
             (Suffix(ty, n1), Suffix(_, n2)) |
             (Suffix(ty, n1), Unknown(n2)) |
-            (Unknown(n1), Suffix(ty, n2)) => Ok(Suffix(ty, *n1 || *n2)),
+            (Unknown(n1), Suffix(ty, n2)) => Ok(Suffix(*ty, *n1 || *n2)),
 
-            (Actual(ty), _) | (_, Actual(ty)) => Ok(Actual(ty)),
+            (Actual(ty), _) | (_, Actual(ty)) => Ok(Actual(*ty)),
             (Unknown(n1), Unknown(n2)) => Ok(Unknown(*n1 || *n2)),
         }
     }

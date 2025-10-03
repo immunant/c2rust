@@ -1,11 +1,11 @@
 //! `NodeMap` support for macro expansion/collapsing.
+use rustc_ast::token::{Nonterminal, Token, TokenKind};
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
 use rustc_data_structures::sync::Lrc;
+use rustc_span::source_map::Span;
 use std::collections::HashMap;
-use syntax::ast::*;
-use syntax::token::{Nonterminal, Token, TokenKind};
-use syntax::source_map::Span;
-use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax::visit::{self, Visitor};
 
 use crate::ast_manip::{AstEquiv, ListNodeIds, Visit};
 use crate::node_map::NodeMap;
@@ -46,7 +46,7 @@ pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
 /// Get the span of the inner node of a nonterminal token.  Note we only need to handle nonterminal
 /// kinds that have both spans and NodeIds.
 fn nt_span(nt: &Nonterminal) -> Option<Span> {
-    use syntax::token::Nonterminal::*;
+    use rustc_ast::token::Nonterminal::*;
     Some(match nt {
         NtItem(ref i) => i.span,
         NtBlock(ref b) => b.span,
@@ -54,9 +54,6 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
         NtPat(ref p) => p.span,
         NtExpr(ref e) => e.span,
         NtTy(ref t) => t.span,
-        NtImplItem(ref ii) => ii.span,
-        NtTraitItem(ref ti) => ti.span,
-        NtForeignItem(ref fi) => fi.span,
         _ => return None,
     })
 }
@@ -64,7 +61,13 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
 fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonterminal>>) {
     for tt in ts.into_trees() {
         match tt {
-            TokenTree::Token(Token{kind: TokenKind::Interpolated(nt), ..}) => {
+            TokenTree::Token(
+                Token {
+                    kind: TokenKind::Interpolated(nt),
+                    ..
+                },
+                _,
+            ) => {
                 if let Some(span) = nt_span(&nt) {
                     span_map.insert(span, nt.clone());
                 }
@@ -113,7 +116,4 @@ define_nt_use_visitor! {
     visit_pat, walk_pat, NtPat, Pat;
     visit_expr, walk_expr, NtExpr, Expr;
     visit_ty, walk_ty, NtTy, Ty;
-    visit_impl_item, walk_impl_item, NtImplItem, ImplItem;
-    visit_trait_item, walk_trait_item, NtTraitItem, TraitItem;
-    visit_foreign_item, walk_foreign_item, NtForeignItem, ForeignItem;
 }

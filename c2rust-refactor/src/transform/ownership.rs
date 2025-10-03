@@ -1,16 +1,17 @@
+use log::debug;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use arena::SyncDroplessArena;
-use rustc::hir::def_id::DefId;
+use rustc_arena::DroplessArena;
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
-use syntax::ast::*;
-use syntax::source_map::DUMMY_SP;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::token::{self, Token, TokenKind, DelimToken};
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenTree, TokenStream, DelimSpan};
+use rustc_ast::*;
+use rustc_span::source_map::DUMMY_SP;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::token::{self, Delimiter, Token, TokenKind};
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
+use rustc_ast::tokenstream::{Spacing, TokenTree, TokenStream, DelimSpan};
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_manip::{MutVisitNodes, MutVisit};
@@ -21,9 +22,10 @@ use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
 use crate::command::{CommandState, Registry, DriverCommand};
 use crate::context::HirMap;
 use crate::driver::{Phase};
+use crate::match_or;
 use crate::RefactorCtxt;
 use crate::type_map;
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 
 pub fn register_commands(reg: &mut Registry) {
     reg.register("ownership_annotate", |args| {
@@ -62,43 +64,43 @@ pub fn register_commands(reg: &mut Registry) {
 fn do_annotate(st: &CommandState,
                cx: &RefactorCtxt,
                label: Symbol) {
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let analysis = ownership::analyze(&st, &cx, &arena);
 
     struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
-        ana: ownership::AnalysisResult<'tcx, 'tcx>,
-        hir_map: HirMap<'a, 'tcx>,
+        ana: ownership::AnalysisResult<'a, 'tcx>,
+        hir_map: &'a HirMap<'tcx>,
         st: &'a CommandState,
     }
 
     impl<'lty, 'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map.opt_local_def_id_from_node_id(id)
-                .and_then(|def_id| self.ana.statics.get(&def_id))
+                .and_then(|def_id| self.ana.statics.get(&def_id.to_def_id()))
                 .and_then(|&ty| build_static_attr(ty))
         }
 
         fn constraints_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map.opt_local_def_id_from_node_id(id)
-                .and_then(|def_id| self.ana.funcs.get(&def_id))
+                .and_then(|def_id| self.ana.funcs.get(&def_id.to_def_id()))
                 .map(|fr| build_constraints_attr(&fr.cset))
         }
 
         fn push_mono_attrs_for(&self, id: NodeId, dest: &mut Vec<Attribute>) {
             if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id_from_node_id(id)
-                    .map(|def_id| (def_id, self.ana.fn_results(def_id))) {
+                    .map(|def_id| (def_id, self.ana.fn_results(def_id.to_def_id()))) {
                 if fr.num_sig_vars == 0 {
                     return;
                 }
 
                 if fr.variants.is_none() {
                     for idx in 0 .. fr.num_monos {
-                        let mr = &self.ana.monos[&(def_id, idx)];
+                        let mr = &self.ana.monos[&(def_id.to_def_id(), idx)];
                         dest.push(build_mono_attr(&mr.suffix, &mr.assign));
                     }
                 } else {
-                    let mr = &self.ana.monos[&(def_id, vr.index)];
+                    let mr = &self.ana.monos[&(def_id.to_def_id(), vr.index)];
                     dest.push(build_mono_attr(&mr.suffix, &mr.assign));
                 }
             }
@@ -146,25 +148,28 @@ fn do_annotate(st: &CommandState,
             }), self)
         }
 
-        fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+        fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
             if !self.st.marked(i.id, self.label) {
-                return mut_visit::noop_flat_map_impl_item(i, self);
+                return mut_visit::noop_flat_map_assoc_item(i, self);
             }
 
-            mut_visit::noop_flat_map_impl_item(i, self)
+            mut_visit::noop_flat_map_assoc_item(i, self)
         }
 
-        fn flat_map_struct_field(&mut self, mut sf: StructField) -> SmallVec<[StructField; 1]> {
-            if !self.st.marked(sf.id, self.label) {
-                return mut_visit::noop_flat_map_struct_field(sf, self);
+        fn flat_map_field_def(&mut self, mut fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
+            if !self.st.marked(fd.id, self.label) {
+                return mut_visit::noop_flat_map_field_def(fd, self);
             }
 
-            self.clean_attrs(&mut sf.attrs);
-            if let Some(attr) = self.static_attr_for(sf.id) {
-                sf.attrs.push(attr);
+            // fd.attrs is a ThinVec<Attribute> so we need to convert it to a Vec
+            let mut attrs = std::mem::take(&mut fd.attrs).into();
+            self.clean_attrs(&mut attrs);
+            if let Some(attr) = self.static_attr_for(fd.id) {
+                attrs.push(attr);
             }
+            fd.attrs = attrs.into();
 
-            mut_visit::noop_flat_map_struct_field(sf, self)
+            mut_visit::noop_flat_map_field_def(fd, self)
         }
     }
 
@@ -262,13 +267,13 @@ fn str_token(s: &str) -> TokenTree {
 }
 
 fn token(kind: TokenKind) -> TokenTree {
-    TokenTree::Token(Token{kind, span: DUMMY_SP})
+    TokenTree::Token(Token{kind, span: DUMMY_SP}, Spacing::Alone)
 }
 
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
     TokenTree::Delimited(
         DelimSpan::dummy(),
-        DelimToken::Paren,
+        Delimiter::Parenthesis,
         ts.into_iter().collect::<TokenStream>(),
     )
 }
@@ -283,12 +288,13 @@ fn delimited(ts: Vec<TokenTree>) -> MacArgs {
 
 fn make_attr(name: &str, args: MacArgs) -> Attribute {
     Attribute {
-        id: AttrId(0),
+        id: AttrId::from_u32(0),
         style: AttrStyle::Outer,
         kind: AttrKind::Normal(AttrItem {
             path: mk().path(vec![name]),
             args: args,
-        }),
+            tokens: None,
+        }, None),
         span: DUMMY_SP,
     }
 }
@@ -312,7 +318,7 @@ fn build_variant_attr(group: &str) -> Attribute {
 fn do_split_variants(st: &CommandState,
                      cx: &RefactorCtxt,
                      label: Symbol) {
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let ana = ownership::analyze(&st, &cx, &arena);
 
     // Map from ExprPath/ExprMethodCall span to function ref idx within the caller.
@@ -338,7 +344,7 @@ fn do_split_variants(st: &CommandState,
             debug!("looking at {:?}", fl.ident);
 
             let def_id = match_or!([cx.hir_map().opt_local_def_id_from_node_id(fl.id)]
-                                   Some(x) => x; return smallvec![fl]);
+                                   Some(x) => x.to_def_id(); return smallvec![fl]);
             if !ana.variants.contains_key(&def_id) {
                 return smallvec![fl];
             }
@@ -349,7 +355,7 @@ fn do_split_variants(st: &CommandState,
                 return smallvec![fl];
             }
 
-            let path_str = cx.ty_ctxt().def_path(def_id).to_string_no_crate();
+            let path_str = cx.ty_ctxt().def_path(def_id).to_string_no_crate_verbose();
 
 
             // For consistency, we run the split logic even for funcs with only one mono.  This way
@@ -368,18 +374,18 @@ fn do_split_variants(st: &CommandState,
                 fl.attrs.retain(|a| {
                     // If a `variant_of` annotation was present, then this fn should be part of a
                     // variant set, and we should have bailed out of the split logic already.
-                    assert!(!a.check_name("ownership_variant_of".into_symbol()));
+                    assert!(!a.has_name("ownership_variant_of".into_symbol()));
 
                     // Remove all `ownership_mono` (we add a new one below) and also remove
                     // `ownership_constraints` from all but the first split fn.
-                    !a.check_name("ownership_mono".into_symbol()) &&
-                    (!a.check_name("ownership_constraints".into_symbol()) || mono_idx == 0)
+                    !a.has_name("ownership_mono".into_symbol()) &&
+                    (!a.has_name("ownership_constraints".into_symbol()) || mono_idx == 0)
                 });
 
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.block.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
+                fl.body.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                     let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                              Some(&x) => x; return);
                     handled_spans.insert(e.span);
@@ -421,7 +427,7 @@ fn do_split_variants(st: &CommandState,
             // Figure out where we are.
             let hir_id = cx.hir_map().node_to_hir_id(e.id);
             let src = cx.hir_map().get_parent_item(hir_id);
-            let src = cx.hir_map().hir_to_node_id(src);
+            let src = cx.hir_map().local_def_id_to_node_id(src);
             let src_def_id = cx.node_def_id(src);
             let (src_fr, src_vr) = ana.fn_results(src_def_id);
 
@@ -461,7 +467,7 @@ fn rename_callee(e: &mut P<Expr>, new_name: &str) {
             seg.ident = mk().ident(new_name);
         },
 
-        ExprKind::MethodCall(ref mut seg, _) => {
+        ExprKind::MethodCall(ref mut seg, _, _) => {
             seg.ident = mk().ident(new_name);
         },
 
@@ -506,12 +512,12 @@ fn callee_new_name(cx: &RefactorCtxt,
 /// of the ownership analysis.
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
-    let arena = SyncDroplessArena::default();
+    let arena = DroplessArena::default();
     let ana = ownership::analyze(&st, &cx, &arena);
 
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
         ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
-        hir_map: HirMap<'lty, 'tcx>,
+        hir_map: &'lty HirMap<'tcx>,
     }
 
     impl<'lty, 'tcx> type_map::TypeSource for AnalysisTypeSource<'lty, 'tcx> {
@@ -559,8 +565,8 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
         fn pat_type(&mut self, p: &Pat) -> Option<Self::Type> {
             let hir_id = self.hir_map.opt_node_to_hir_id(p.id)?;
-            let fn_def_id = self.hir_map.get_parent_did(hir_id);
-            let f = self.ana.funcs.get(&fn_def_id)?;
+            let fn_def_id = self.hir_map.get_parent_item(hir_id);
+            let f = self.ana.funcs.get(&fn_def_id.to_def_id())?;
             let local_var = f.locals.get(&p.span)?;
 
             // VTy -> PTy

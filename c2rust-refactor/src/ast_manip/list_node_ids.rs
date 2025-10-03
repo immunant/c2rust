@@ -1,14 +1,15 @@
+use rustc_ast::ptr::P;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{Span, Spanned};
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use smallvec::SmallVec;
 use std::rc::Rc;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::ptr::P;
-use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
-use syntax_pos::hygiene::SyntaxContext;
 
 pub trait ListNodeIds {
     fn list_node_ids(&self) -> Vec<NodeId> {
@@ -26,13 +27,19 @@ impl ListNodeIds for NodeId {
     }
 }
 
-impl<T: ListNodeIds> ListNodeIds for P<T> {
+impl<T: ListNodeIds + ?Sized> ListNodeIds for P<T> {
     fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
         <T as ListNodeIds>::add_node_ids(self, ids)
     }
 }
 
-impl<T: ListNodeIds> ListNodeIds for Rc<T> {
+impl<T: ListNodeIds + ?Sized> ListNodeIds for Box<T> {
+    fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
+        <T as ListNodeIds>::add_node_ids(self, ids)
+    }
+}
+
+impl<T: ListNodeIds + ?Sized> ListNodeIds for Rc<T> {
     fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
         <T as ListNodeIds>::add_node_ids(self, ids)
     }

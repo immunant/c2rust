@@ -1,15 +1,18 @@
 use std::collections::{HashMap, HashSet};
-use log::Level;
-use rustc::hir::def::DefKind;
-use rustc::hir::def_id::{DefId};
-use rustc::ty::{Instance, TyCtxt, TyKind, Ty};
-use syntax::ast::*;
-use syntax::ptr::P;
+use log::{Level, info, log_enabled, warn};
+use rustc_hir::def::DefKind;
+use rustc_hir::def_id::{DefId};
+use rustc_middle::ty::{Instance, TyCtxt, TyKind, Ty};
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Ident;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase};
+use crate::expect;
+use crate::match_or;
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::reflect::Reflector;
 use crate::resolve;
@@ -48,7 +51,7 @@ pub fn fix_users(
         let old_ty = cx.def_type(old_did);
         let new_ty = cx.def_type(new_did);
 
-        if !matches!([old_ty.kind] TyKind::FnDef(..)) {
+        if !crate::matches!([old_ty.kind()] TyKind::FnDef(..)) {
             // Non-fn items are easy to handle.
             if !ty_compare.structural_eq_tys(old_ty, new_ty) {
                 ty_replace_map.insert((old_did, TyLoc::Whole), (old_ty, new_ty));
@@ -217,7 +220,7 @@ pub struct CanonicalizeExterns {
 
 fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
     tcx.is_foreign_item(did) &&
-    matches!([tcx.def_kind(did)] Some(DefKind::Fn), Some(DefKind::Static))
+    crate::matches!([tcx.def_kind(did)] DefKind::Fn, DefKind::Static(_))
 }
 
 impl Transform for CanonicalizeExterns {

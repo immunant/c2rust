@@ -1,15 +1,16 @@
+use log::debug;
 use regex::Regex;
-use rustc::session::Session;
+use rustc_ast::token::{Delimiter, Lit, LitKind, Token, TokenKind};
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::{ExprKind, Path};
+use rustc_parse::parser::{AttemptLocalParseRecovery, Parser};
+use rustc_session::parse::ParseSess;
+use rustc_session::Session;
+use rustc_span::symbol::Symbol;
+use rustc_span::FileName;
 use std::mem;
 use std::str::FromStr;
 use std::vec;
-use syntax::ast::Path;
-use rustc_parse::parser::{Parser, PathStyle};
-use syntax::token::{DelimToken, Lit, LitKind, Token, TokenKind};
-use syntax::sess::ParseSess;
-use syntax::symbol::Symbol;
-use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax_pos::FileName;
 
 use crate::ast_manip::remove_paren;
 use crate::pick_node::NodeKind;
@@ -61,7 +62,7 @@ impl<'a> Stream<'a> {
 
     fn token(&mut self) -> PResult<Token> {
         match self.take()? {
-            TokenTree::Token(tok) => Ok(tok),
+            TokenTree::Token(tok, _) => Ok(tok),
             TokenTree::Delimited(..) => fail!("expected token, but got delimited"),
         }
     }
@@ -76,7 +77,7 @@ impl<'a> Stream<'a> {
 
     fn maybe_expect(&mut self, expect: &TokenKind) -> bool {
         let found = match self.peek() {
-            Some(&TokenTree::Token(ref tok)) => &tok.kind == expect,
+            Some(&TokenTree::Token(ref tok, _)) => &tok.kind == expect,
             _ => false,
         };
         if found {
@@ -95,12 +96,12 @@ impl<'a> Stream<'a> {
     fn parens_raw(&mut self) -> PResult<TokenStream> {
         match self.take()? {
             TokenTree::Delimited(_, delim, tts) => {
-                if delim != DelimToken::Paren {
+                if delim != Delimiter::Parenthesis {
                     fail!("expected parens, but got {:?}", delim);
                 }
                 Ok(tts)
             }
-            TokenTree::Token(tok) => fail!("expected parens, but got {:?}", tok),
+            TokenTree::Token(tok, _) => fail!("expected parens, but got {:?}", tok),
         }
     }
 
@@ -111,7 +112,7 @@ impl<'a> Stream<'a> {
 
     fn maybe_parens(&mut self) -> Option<Stream<'a>> {
         let has_parens = match self.peek() {
-            Some(&TokenTree::Delimited(_, delim, _)) => delim == DelimToken::Paren,
+            Some(&TokenTree::Delimited(_, Delimiter::Parenthesis, _)) => true,
             _ => false,
         };
 
@@ -131,13 +132,17 @@ impl<'a> Stream<'a> {
 
     fn path(&mut self) -> PResult<Path> {
         let ts = mem::replace(&mut self.toks, Vec::new().into_iter());
-        let mut p = Parser::new(self.sess, ts.collect(), None, false, false, None);
-        let path = p
-            .parse_path(PathStyle::Mod)
-            .map_err(|e| format!("error parsing path: {}", e.message()))?;
+        let mut p = Parser::new(self.sess, ts.collect(), false, None);
+        let path_expr = p
+            .parse_expr()
+            .map_err(|e| format!("error parsing path as expr: {:?}", e.message))?;
+        let path = match path_expr.into_inner().kind {
+            ExprKind::Path(None, p) => p,
+            kind @ _ => return Err(format!("error converting expr to path: {:?}", kind)),
+        };
         self.toks = p
             .parse_all_token_trees()
-            .map_err(|e| format!("error parsing path: {}", e.message()))?
+            .map_err(|e| format!("error parsing path: {:?}", e.message))?
             .into_iter();
         Ok(path)
     }
@@ -264,12 +269,12 @@ impl<'a> Stream<'a> {
                 "match_expr" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
+                    let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_expr()
-                        .map_err(|e| format!("error parsing expr: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing expr: {:?}", e.message))?;
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing expr: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing expr: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Expr(x)))
@@ -278,12 +283,12 @@ impl<'a> Stream<'a> {
                 "match_pat" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
+                    let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
-                        .parse_pat(None)
-                        .map_err(|e| format!("error parsing pat: {}", e.message()))?;
+                        .parse_pat_no_top_alt(None)
+                        .map_err(|e| format!("error parsing pat: {:?}", e.message))?;
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing pat: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing pat: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Pat(x)))
@@ -292,12 +297,12 @@ impl<'a> Stream<'a> {
                 "match_ty" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
+                    let mut p = Parser::new(self.sess, ts, false, None);
                     let mut x = p
                         .parse_ty()
-                        .map_err(|e| format!("error parsing ty: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing ty: {:?}", e.message))?;
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing ty: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing ty: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Ty(x)))
@@ -306,17 +311,17 @@ impl<'a> Stream<'a> {
                 "match_stmt" => {
                     let ts = self.parens_raw()?;
 
-                    let mut p = Parser::new(self.sess, ts, None, false, false, None);
-                    let mut x = match p.parse_stmt() {
+                    let mut p = Parser::new(self.sess, ts, false, None);
+                    let mut x = match p.parse_full_stmt(AttemptLocalParseRecovery::Yes) {
                         Ok(Some(x)) => x,
                         Ok(None) => fail!("expected stmt"),
-                        Err(e) => fail!("error parsing stmt: {}", e.message()),
+                        Err(e) => fail!("error parsing stmt: {:?}", e.message),
                     };
                     if let TokenKind::Semi = p.token.kind {
                         p.bump();
                     }
                     p.expect(&TokenKind::Eof)
-                        .map_err(|e| format!("error parsing stmt: {}", e.message()))?;
+                        .map_err(|e| format!("error parsing stmt: {:?}", e.message))?;
 
                     remove_paren(&mut x);
                     Ok(Filter::Matches(AnyPattern::Stmt(x)))

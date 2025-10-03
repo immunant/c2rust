@@ -1,18 +1,20 @@
 //! Transformation passes used for testing parts of the system.
 
+use log::info;
 use std::collections::{HashSet, HashMap};
 use std::str::FromStr;
-use syntax::ast::*;
-use syntax::ptr::P;
-use rustc::hir;
-use rustc::ty::{self, TyCtxt, ParamEnv};
-use rustc::ty::subst::InternalSubsts;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_hir as hir;
+use rustc_middle::ty::{self, TyCtxt, ParamEnv};
+use rustc_middle::ty::subst::InternalSubsts;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{visit_nodes};
 use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
 use crate::driver::{Phase};
+use crate::match_or;
 use crate::matcher::{replace_expr, replace_stmts};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
@@ -167,7 +169,7 @@ impl Transform for TestDebugCallees {
             let parent = hir_map.get_parent_item(hir_map.node_to_hir_id(e.id));
             let parent_body = match_or!([hir_map.maybe_body_owned_by(parent)]
                                         Some(x) => x; return);
-            let tables = tcx.body_tables(parent_body);
+            let tables = tcx.typeck_body(parent_body);
             let tdds = tables.type_dependent_defs();
 
             fn maybe_info<T: ::std::fmt::Debug>(desc: &str, x: Option<T>) {
@@ -184,24 +186,24 @@ impl Transform for TestDebugCallees {
                 if let Some(substs) = substs {
                     info!("      subst: {:?}",
                           tcx.subst_and_normalize_erasing_regions(
-                              substs, ParamEnv::empty(), &ty));
+                              substs, ParamEnv::empty(), ty));
                 }
                 if ty.is_fn() {
                     let sig = ty.fn_sig(tcx);
                     info!("      fn sig: {:?}", sig);
                     info!("      input tys: {:?}", sig.inputs());
                     info!("      input tys (skip): {:?}", sig.skip_binder().inputs());
-                    info!("      anonymized: {:?}", tcx.anonymize_late_bound_regions(&sig));
-                    info!("      erased: {:?}", tcx.erase_late_bound_regions(&sig));
+                    info!("      anonymized: {:?}", tcx.anonymize_late_bound_regions(sig));
+                    info!("      erased: {:?}", tcx.erase_late_bound_regions(sig));
                     if let Some(substs) = substs {
                         let sig2 = tcx.subst_and_normalize_erasing_regions(
                             substs, ParamEnv::empty(),
-                            &tcx.erase_late_bound_regions(&sig));
+                            tcx.erase_late_bound_regions(sig));
                         info!("      sig + erase + subst: {:?}", sig2);
                         info!("      input tys: {:?}", sig2.inputs());
                     }
                 }
-            };
+            }
 
             let describe = |e: &Expr| {
                 info!("    expr: {:?}", e);
@@ -240,7 +242,7 @@ impl Transform for TestDebugCallees {
                     describe(func);
                 },
 
-                ExprKind::MethodCall(_, _) => {
+                ExprKind::MethodCall(_, _, _) => {
                     info!("at method call {:?}", e);
                     info!("  call info:");
                     describe(e);

@@ -22,12 +22,12 @@
 
 use std::collections::hash_map::{self, Entry, HashMap};
 
-use arena::SyncDroplessArena;
-use log::Level;
-use rustc::hir::def_id::DefId;
-use rustc::ty::{Ty, TyCtxt, TyKind};
+use log::{debug, log_enabled, Level};
+use rustc_arena::DroplessArena;
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
-use syntax::source_map::Span;
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use rustc_span::source_map::Span;
 
 use crate::analysis::labeled_ty::LabeledTyCtxt;
 
@@ -108,7 +108,7 @@ pub struct Instantiation {
 pub struct Ctxt<'lty, 'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub lcx: LabeledTyCtxt<'lty, Option<PermVar>>,
-    pub arena: &'lty SyncDroplessArena,
+    pub arena: &'lty DroplessArena,
 
     /// Types of non-`fn` definitions.  This includes `static`s and also `struct` fields.
     pub static_summ: HashMap<DefId, LTy<'lty, 'tcx>>,
@@ -123,10 +123,7 @@ pub struct Ctxt<'lty, 'tcx> {
 }
 
 impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
-    pub fn new(
-        tcx: TyCtxt<'tcx>,
-        arena: &'lty SyncDroplessArena,
-    ) -> Ctxt<'lty, 'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, arena: &'lty DroplessArena) -> Ctxt<'lty, 'tcx> {
         Ctxt {
             tcx,
             lcx: LabeledTyCtxt::new(&arena),
@@ -147,7 +144,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
             Entry::Vacant(e) => {
                 *e.insert(
                     self.lcx
-                        .label(self.tcx.type_of(did), &mut |ty| match ty.kind {
+                        .label(self.tcx.type_of(did), &mut |ty| match ty.kind() {
                             TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                                 let v = assign.push(ConcretePerm::Move);
                                 Some(PermVar::Static(v))
@@ -172,13 +169,14 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
             Entry::Vacant(e) => {
                 assert!(
                     !variants.contains_key(&did),
-                    "tried to create func summ for {:?}, which is already a variant"
+                    "tried to create func summ for {:?}, which is already a variant",
+                    did
                 );
                 let sig = tcx.fn_sig(did);
                 let mut counter = 0;
 
                 let l_sig = {
-                    let mut f = |ty: Ty<'tcx>| match ty.kind {
+                    let mut f = |ty: Ty<'tcx>| match ty.kind() {
                         TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
                             let v = Var(counter);
                             counter += 1;

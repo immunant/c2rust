@@ -1,3 +1,4 @@
+use log::{debug, warn};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
@@ -7,16 +8,16 @@ use std::ops::{Bound, Deref, DerefMut};
 use std::path::Path;
 use std::u32;
 
-use rustc::hir::{self, HirId, DUMMY_HIR_ID};
+use rustc_hir::{self, HirId, DUMMY_HIR_ID};
 use rustc_errors::Level;
 use smallvec::SmallVec;
-use syntax::{ast, entry};
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::symbol::{kw, Ident, Symbol};
-use rustc::ty;
-use syntax_pos::{Span, FileName, BytePos, Pos, DUMMY_SP};
-use syntax_pos::hygiene::SyntaxContext;
+use rustc_ast::{ast, entry};
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_span::symbol::{kw, Ident, Symbol};
+use rustc_middle::ty;
+use rustc_span::{Span, FileName, BytePos, Pos, DUMMY_SP};
+use rustc_span::hygiene::SyntaxContext;
 
 use indexmap::IndexSet;
 use failure::{Error, ResultExt};
@@ -26,13 +27,14 @@ use petgraph::visit::{IntoNodeIdentifiers};
 
 use c2rust_analysis_rt::{SourceSpan, SourcePos, SpanId};
 use c2rust_analysis_rt::events::{Pointer, Event, EventKind};
-use c2rust_ast_builder::{mk, Make};
+use crate::ast_builder::{mk, Make};
 
 use crate::ast_manip::{lr_expr, map_ast_unified, visit_nodes, AstEquiv, AstNodeRef, UnifiedAstMap};
 use crate::ast_manip::fn_edit::{visit_fns, FnLike};
 use crate::context::RefactorCtxt;
 use crate::command::{Command, CommandState, RefactorState, Registry};
 use crate::driver::{parse_ty, Phase};
+use crate::expect;
 use crate::reflect;
 use crate::transform::Transform;
 use crate::util::Lone;
@@ -389,10 +391,10 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
-    // fn flat_map_foreign_item(&mut self, item: ast::ForeignItem) -> SmallVec<[ast::ForeignItem; 1]> {
-    //     if let ast::ForeignItemKind::Fn(decl, _) = &item.node {
+    // fn flat_map_foreign_item(&mut self, item: P<ast::ForeignItem>) -> SmallVec<[P<ast::ForeignItem>; 1]> {
+    //     if let ast::ForeignItemKind::Fn(box Fn { sig, .. }) = &item.node {
     //         if HOOK_FUNCTIONS.contains(&&*item.ident.name.as_str()) {
-    //             self.hooked_functions.insert(item.ident.name, decl.clone());
+    //             self.hooked_functions.insert(item.ident.name, sig.decl.clone());
     //         }
     //     }
     //     self.depth += 1;
@@ -435,7 +437,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                     args.push({
                         let ret_expr = mk().path_expr(vec!["ret"]);
                         match &decl.output {
-                            ast::FunctionRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
+                            ast::FnRetTy::Ty(ty) => self.add_ptr_cast(&ret_expr, ty),
                             _ => ret_expr,
                         }
                     });
@@ -569,7 +571,7 @@ impl Command for AnalysisCmd {
             // spans
             c2rust_analysis_rt::span::set_file(&self.span_filename);
 
-            // let arena = SyncDroplessArena::default();
+            // let arena = DroplessArena::default();
             // let ownership_analysis = ownership::analyze(&st, &cx, &arena);
 
             let mut analyzer = LifetimeAnalyzer::new(
@@ -747,6 +749,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                 source_file.start_pos + BytePos::from_u32(s.lo.to_u32()),
                 source_file.start_pos + BytePos::from_u32(s.hi.to_u32()),
                 SyntaxContext::root(),
+                None,
             )
         }).collect();
 

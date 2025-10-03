@@ -1,11 +1,10 @@
 //! `MutVisit` trait for AST types that can be modified.
-use syntax::ast::*;
-use syntax::mut_visit::*;
-use syntax::token::{self, Token};
-use syntax::ptr::P;
-use syntax::source_map::Span;
-use syntax::tokenstream::{TokenStream, TokenTree};
-use syntax::util::map_in_place::MapInPlace;
+use rustc_ast::mut_visit::*;
+use rustc_ast::ptr::P;
+use rustc_ast::*;
+use rustc_data_structures::map_in_place::MapInPlace;
+use rustc_span::source_map::Span;
+use rustc_span::symbol::Ident;
 
 use smallvec::{smallvec, SmallVec};
 
@@ -123,7 +122,7 @@ pub trait MutVisitor: Sized {
         noop_visit_use_tree(use_tree, self);
     }
 
-    fn flat_map_foreign_item(&mut self, ni: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, ni: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         noop_flat_map_foreign_item(ni, self)
     }
 
@@ -135,28 +134,24 @@ pub trait MutVisitor: Sized {
         noop_visit_fn_header(header, self);
     }
 
-    fn flat_map_struct_field(&mut self, sf: StructField) -> SmallVec<[StructField; 1]> {
-        noop_flat_map_struct_field(sf, self)
+    fn flat_map_field_def(&mut self, fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
+        noop_flat_map_field_def(fd, self)
     }
 
     fn visit_item_kind(&mut self, i: &mut ItemKind) {
         noop_visit_item_kind(i, self);
     }
 
-    fn flat_map_trait_item(&mut self, i: TraitItem) -> SmallVec<[TraitItem; 1]> {
-        noop_flat_map_trait_item(i, self)
-    }
-
-    fn flat_map_impl_item(&mut self, i: ImplItem) -> SmallVec<[ImplItem; 1]> {
-        noop_flat_map_impl_item(i, self)
-    }
-
     fn visit_fn_decl(&mut self, d: &mut P<FnDecl>) {
         noop_visit_fn_decl(d, self);
     }
 
-    fn visit_asyncness(&mut self, a: &mut IsAsync) {
+    fn visit_asyncness(&mut self, a: &mut Async) {
         noop_visit_asyncness(a, self);
+    }
+
+    fn visit_closure_binder(&mut self, b: &mut ClosureBinder) {
+        noop_visit_closure_binder(b, self);
     }
 
     fn visit_block(&mut self, b: &mut P<Block>) {
@@ -200,12 +195,8 @@ pub trait MutVisitor: Sized {
     //     noop_visit_lifetime(l, self);
     // }
 
-    fn visit_ty_constraint(&mut self, t: &mut AssocTyConstraint) {
-        noop_visit_ty_constraint(t, self);
-    }
-
-    fn visit_mod(&mut self, m: &mut Mod) {
-        noop_visit_mod(m, self);
+    fn visit_constraint(&mut self, t: &mut AssocConstraint) {
+        noop_visit_constraint(t, self);
     }
 
     fn visit_foreign_mod(&mut self, nm: &mut ForeignMod) {
@@ -244,7 +235,7 @@ pub trait MutVisitor: Sized {
         noop_visit_local(l, self);
     }
 
-    // fn visit_mac(&mut self, _mac: &mut Mac) {
+    // fn visit_mac_call(&mut self, _mac: &mut MacCall) {
     //     panic!("visit_mac disabled by default");
     //     // N.B., see note about macros above. If you really want a visitor that
     //     // works on macros, use this definition in your trait impl:
@@ -287,22 +278,6 @@ pub trait MutVisitor: Sized {
         noop_flat_map_generic_param(param, self)
     }
 
-    fn visit_tt(&mut self, tt: &mut TokenTree) {
-        noop_visit_tt(tt, self);
-    }
-
-    fn visit_tts(&mut self, tts: &mut TokenStream) {
-        noop_visit_tts(tts, self);
-    }
-
-    fn visit_token(&mut self, t: &mut Token) {
-        noop_visit_token(t, self);
-    }
-
-    fn visit_interpolated(&mut self, nt: &mut token::Nonterminal) {
-        noop_visit_interpolated(nt, self);
-    }
-
     fn visit_param_bound(&mut self, tpb: &mut GenericBound) {
         noop_visit_param_bound(tpb, self);
     }
@@ -311,8 +286,8 @@ pub trait MutVisitor: Sized {
         noop_visit_mt(mt, self);
     }
 
-    fn flat_map_field(&mut self, f: Field) -> SmallVec<[Field; 1]> {
-        noop_flat_map_field(f, self)
+    fn flat_map_expr_field(&mut self, f: ExprField) -> SmallVec<[ExprField; 1]> {
+        noop_flat_map_expr_field(f, self)
     }
 
     fn visit_where_clause(&mut self, where_clause: &mut WhereClause) {
@@ -335,8 +310,8 @@ pub trait MutVisitor: Sized {
         // Do nothing.
     }
 
-    fn flat_map_field_pattern(&mut self, fp: FieldPat) -> SmallVec<[FieldPat; 1]> {
-        noop_flat_map_field_pattern(fp, self)
+    fn flat_map_pat_field(&mut self, pf: PatField) -> SmallVec<[PatField; 1]> {
+        noop_flat_map_pat_field(pf, self)
     }
 }
 }
