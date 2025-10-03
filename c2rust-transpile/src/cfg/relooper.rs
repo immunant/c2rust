@@ -197,8 +197,12 @@ impl RelooperState {
                 .first()
                 .expect("Should find exactly one entry");
 
-            // legaren: What does the else case here mean? When would we have an entry
-            // that isn't in the current set of blocks?
+            // If our entry is in our current blocks, emit it as a simple block and then
+            // recurse into the rest of the blocks.
+            //
+            // If our entry is not in our current blocks, then it was previously selected as
+            // the follow blocks of a multiple and we are at the end of that branch. In this
+            // case we emit an empty simple block that jumps to the entry.
             if let Some(bb) = blocks.swap_remove(entry) {
                 let new_entries = bb.successors();
                 let BasicBlock {
@@ -208,8 +212,6 @@ impl RelooperState {
                     defined,
                     span,
                 } = bb;
-
-                // legaren: What is this live/defined business?
 
                 // Flag declarations for everything that is live going in but not already in scope.
                 //
