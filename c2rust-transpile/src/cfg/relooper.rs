@@ -333,8 +333,9 @@ impl RelooperState {
         //   current set of blocks.
         // * `strict_reachable_from` maps each label to the set of labels that can reach
         //   it, i.e. its direct and indirect predecessors. Entries do not count as
-        //   reaching themselves (unless they explicitly branch to themselves), and so
-        //   will only appear as keys if they are the predecessor of some block.
+        //   reaching themselves, and so an entry will only appear as a key if it is the
+        //   successor of some block (including itself, if the entry branches directly
+        //   to itself).
         //
         // For both of these, some keys may not correspond to any blocks in the current
         // set, since blocks may have successors that are outside the current set. For
@@ -427,7 +428,12 @@ impl RelooperState {
         // above logic for trying to reconstruct C multiples may already solve this
         // issue in practice.
         if none_branch_to.is_empty() && !recognized_c_multiple {
-            // Gather the set of current blocks that can reach one of our entries.
+            // Gather the set of current blocks that can reach one of our entries, not
+            // including the entries themselves unless they are the successor of some
+            // block (including itself, if the entry explicitly branches to itself).
+            //
+            // NOTE: At least one entry will be present here since at this point we know
+            // that there is an entry that is branched to.
             let new_returns: IndexSet<Label> = strict_reachable_from
                 .iter()
                 .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
@@ -445,8 +451,6 @@ impl RelooperState {
             let mut follow_entries = out_edges(&body_blocks);
 
             // Try to match an existing loop (from the initial C)
-            //
-            // legaren: Figure out how this part works.
             let mut matched_existing_loop = false;
             if let Some(ref loop_info) = self.loop_info {
                 let must_be_in_loop = entries.iter().chain(new_returns.iter()).cloned();
