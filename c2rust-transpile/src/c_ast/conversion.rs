@@ -583,6 +583,374 @@ impl ConversionContext {
         })
     }
 
+    fn convert_node_as_type(
+        &mut self,
+        untyped_context: &AstContext,
+        node_id: ClangId,      // Clang ID of node to visit
+        new_id: ImporterId,    // New ID of node to visit
+        expected_ty: NodeType, // Expected type of node to visit
+    ) {
+        use self::node_types::*;
+
+        // Convert the node
+        let ty_node: &TypeNode = match untyped_context.type_nodes.get(&node_id) {
+            Some(x) => x,
+            None => return,
+        };
+
+        match ty_node.tag {
+            TypeTag::TagBool if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Bool));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagVoid if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Void));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagChar if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Char));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagInt if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Int));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagShort if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Short));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagLong if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Long));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagLongLong if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::LongLong));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagUInt if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::UInt));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagUChar if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::UChar));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagSChar if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::SChar));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagUShort if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::UShort));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagULong if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::ULong));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagULongLong if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::ULongLong));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagDouble if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Double));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagLongDouble if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::LongDouble));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagFloat if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Float));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagHalf if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Half));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagBFloat16 if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::BFloat16));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagInt128 if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::Int128));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagUInt128 if expected_ty & OTHER_TYPE != 0 => {
+                self.add_type(new_id, not_located(CTypeKind::UInt128));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagPointer if expected_ty & OTHER_TYPE != 0 => {
+                let pointed =
+                    from_value(ty_node.extras[0].clone()).expect("Pointer child not found");
+                let pointed_new = self.visit_qualified_type(pointed);
+
+                let pointer_ty = CTypeKind::Pointer(pointed_new);
+                self.add_type(new_id, not_located(pointer_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagReference if expected_ty & OTHER_TYPE != 0 => {
+                let referenced =
+                    from_value(ty_node.extras[0].clone()).expect("Reference child not found");
+                let referenced_new = self.visit_qualified_type(referenced);
+
+                let reference_ty = CTypeKind::Reference(referenced_new);
+                self.add_type(new_id, not_located(reference_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagBlockPointer if expected_ty & OTHER_TYPE != 0 => {
+                let pointed =
+                    from_value(ty_node.extras[0].clone()).expect("Block pointer child not found");
+                let pointed_new = self.visit_qualified_type(pointed);
+
+                let pointer_ty = CTypeKind::BlockPointer(pointed_new);
+                self.add_type(new_id, not_located(pointer_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagComplexType if expected_ty & OTHER_TYPE != 0 => {
+                let subelt =
+                    from_value(ty_node.extras[0].clone()).expect("Complex child not found");
+                let subelt_new = self.visit_type(subelt);
+
+                let complex_ty = CTypeKind::Complex(subelt_new);
+                self.add_type(new_id, not_located(complex_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagStructType if expected_ty & OTHER_TYPE != 0 => {
+                let decl = from_value(ty_node.extras[0].clone()).expect("Struct decl not found");
+                let decl_new = CDeclId(self.visit_node_type(decl, RECORD_DECL));
+
+                let record_ty = CTypeKind::Struct(decl_new);
+                self.add_type(new_id, not_located(record_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagUnionType if expected_ty & OTHER_TYPE != 0 => {
+                let decl = from_value(ty_node.extras[0].clone()).expect("Union decl not found");
+                let decl_new = CDeclId(self.visit_node_type(decl, RECORD_DECL));
+
+                let record_ty = CTypeKind::Union(decl_new);
+                self.add_type(new_id, not_located(record_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagFunctionType if expected_ty & FUNC_TYPE != 0 => {
+                let mut arguments: Vec<CQualTypeId> =
+                    from_value::<Vec<Value>>(ty_node.extras[0].clone())
+                        .expect("Function type expects array argument")
+                        .iter()
+                        .map(|cbor| {
+                            let arg = from_value(cbor.clone()).expect("Bad function type child id");
+
+                            self.visit_qualified_type(arg)
+                        })
+                        .collect();
+                let ret = arguments.remove(0);
+                let is_variadic = from_value(ty_node.extras[1].clone())
+                    .expect("Variadicity of function type not found");
+                let is_noreturn = from_value(ty_node.extras[2].clone())
+                    .expect("NoReturn of function type not found");
+                let has_proto = from_value(ty_node.extras[3].clone())
+                    .expect("HasProto of function type not found");
+                let function_ty =
+                    CTypeKind::Function(ret, arguments, is_variadic, is_noreturn, has_proto);
+                self.add_type(new_id, not_located(function_ty));
+                self.processed_nodes.insert(new_id, FUNC_TYPE);
+
+                // In addition to creating the function type for this node, ensure that a
+                // corresponding function pointer type is created. We may need to reference this
+                // type depending on how uses of functions of this type are translated.
+                let pointer_ty = CTypeKind::Pointer(CQualTypeId::new(CTypeId(new_id)));
+                let new_id = self.id_mapper.fresh_id();
+                self.add_type(new_id, not_located(pointer_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagTypeOfType if expected_ty & TYPE != 0 => {
+                let type_of_old =
+                    from_value(ty_node.extras[0].clone()).expect("Type of (type) child not found");
+                let type_of = self.visit_type(type_of_old);
+
+                let type_of_ty = CTypeKind::TypeOf(type_of);
+                self.add_type(new_id, not_located(type_of_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagTypedefType => {
+                let decl = from_value(ty_node.extras[0].clone()).expect("Typedef decl not found");
+                let decl_new = CDeclId(self.visit_node_type(decl, TYPDEF_DECL));
+
+                let typedef_ty = CTypeKind::Typedef(decl_new);
+                self.add_type(new_id, not_located(typedef_ty));
+                self.processed_nodes.insert(new_id, expected_ty);
+            }
+
+            TypeTag::TagEnumType if expected_ty & OTHER_TYPE != 0 => {
+                let decl = from_value(ty_node.extras[0].clone()).expect("Enum decl not found");
+                let decl_new = CDeclId(self.visit_node_type(decl, ENUM_DECL));
+
+                let enum_ty = CTypeKind::Enum(decl_new);
+                self.add_type(new_id, not_located(enum_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagDecayedType if expected_ty & OTHER_TYPE != 0 => {
+                let decayed_id =
+                    from_value(ty_node.extras[0].clone()).expect("Decayed type child not found");
+                let decayed = self.visit_type(decayed_id);
+
+                let decayed_ty = CTypeKind::Decayed(decayed);
+                self.add_type(new_id, not_located(decayed_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagElaboratedType if expected_ty & OTHER_TYPE != 0 => {
+                let elaborated_id =
+                    from_value(ty_node.extras[0].clone()).expect("Elaborated type child not found");
+                let elaborated = self.visit_type(elaborated_id);
+
+                let elaborated_ty = CTypeKind::Elaborated(elaborated);
+                self.add_type(new_id, not_located(elaborated_ty));
+                self.processed_nodes.insert(new_id, TYPE);
+            }
+
+            TypeTag::TagParenType => {
+                let paren_id =
+                    from_value(ty_node.extras[0].clone()).expect("Paren type child not found");
+                let paren = self.visit_type(paren_id);
+
+                let paren_ty = CTypeKind::Paren(paren);
+                self.add_type(new_id, not_located(paren_ty));
+                self.processed_nodes.insert(new_id, TYPE);
+            }
+
+            TypeTag::TagAttributedType => {
+                let ty_id =
+                    from_value(ty_node.extras[0].clone()).expect("Attributed type child not found");
+                let ty = self.visit_qualified_type(ty_id);
+
+                let kind = match expect_opt_str(&ty_node.extras[1])
+                    .expect("Attributed type kind not found")
+                {
+                    None => None,
+                    Some("noreturn") => Some(Attribute::NoReturn),
+                    Some("nullable") => Some(Attribute::Nullable),
+                    Some("notnull") => Some(Attribute::NotNull),
+                    Some(other) => panic!("Unknown type attribute: {}", other),
+                };
+
+                let ty = CTypeKind::Attributed(ty, kind);
+                self.add_type(new_id, not_located(ty));
+                self.processed_nodes.insert(new_id, TYPE);
+            }
+
+            TypeTag::TagConstantArrayType => {
+                let element_id = from_value(ty_node.extras[0].clone()).expect("element id");
+                let element = self.visit_type(element_id);
+
+                let count: usize = from_value(ty_node.extras[1].clone()).expect("count");
+
+                let element_ty = CTypeKind::ConstantArray(element, count);
+                self.add_type(new_id, not_located(element_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagIncompleteArrayType => {
+                let element_id = from_value(ty_node.extras[0].clone()).expect("element id");
+                let element = self.visit_type(element_id);
+
+                let element_ty = CTypeKind::IncompleteArray(element);
+                self.add_type(new_id, not_located(element_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagVariableArrayType => {
+                let element_id = from_value(ty_node.extras[0].clone()).expect("element id");
+                let element = self.visit_type(element_id);
+
+                let count_id = expect_opt_u64(&ty_node.extras[1]).expect("count id");
+                let count = count_id.map(|x| self.visit_expr(x));
+
+                let element_ty = CTypeKind::VariableArray(element, count);
+                self.add_type(new_id, not_located(element_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagBuiltinFn => {
+                let ty = CTypeKind::BuiltinFn;
+                self.add_type(new_id, not_located(ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagBFloat16 => {
+                let ty = CTypeKind::BFloat16;
+                self.add_type(new_id, not_located(ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagSveCount
+            | TypeTag::TagSveBool
+            | TypeTag::TagSveBoolx2
+            | TypeTag::TagSveBoolx4 => {
+                let ty = CTypeKind::UnhandledSveType;
+                self.add_type(new_id, not_located(ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagFloat128 => {
+                let ty = CTypeKind::Float128;
+                self.add_type(new_id, not_located(ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagVectorType => {
+                let elt = from_value(ty_node.extras[0].clone()).expect("Vector child not found");
+                let elt_new = self.visit_qualified_type(elt);
+                let count: usize = from_value(ty_node.extras[1].clone()).expect("count");
+
+                let vector_ty = CTypeKind::Vector(elt_new, count);
+                self.add_type(new_id, not_located(vector_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            TypeTag::TagAtomicType => {
+                let qty = from_value(ty_node.extras[0].clone()).expect("Inner type not found");
+                let qty_new = self.visit_qualified_type(qty);
+                let atomic_ty = CTypeKind::Atomic(qty_new);
+                self.add_type(new_id, not_located(atomic_ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
+            t => panic!(
+                "Type conversion not implemented for {:?} expecting {:?}",
+                t, expected_ty
+            ),
+        }
+    }
+
     /// Visit one node.
     fn visit_node(
         &mut self,
@@ -594,367 +962,7 @@ impl ConversionContext {
         use self::node_types::*;
 
         if expected_ty & TYPE != 0 {
-            // Convert the node
-            let ty_node: &TypeNode = match untyped_context.type_nodes.get(&node_id) {
-                Some(x) => x,
-                None => return,
-            };
-
-            match ty_node.tag {
-                TypeTag::TagBool if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Bool));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagVoid if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Void));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagChar if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Char));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagInt if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Int));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagShort if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Short));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagLong if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Long));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagLongLong if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::LongLong));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagUInt if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::UInt));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagUChar if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::UChar));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagSChar if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::SChar));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagUShort if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::UShort));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagULong if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::ULong));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagULongLong if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::ULongLong));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagDouble if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Double));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagLongDouble if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::LongDouble));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagFloat if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Float));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagHalf if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Half));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagBFloat16 if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::BFloat16));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagInt128 if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::Int128));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagUInt128 if expected_ty & OTHER_TYPE != 0 => {
-                    self.add_type(new_id, not_located(CTypeKind::UInt128));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagPointer if expected_ty & OTHER_TYPE != 0 => {
-                    let pointed =
-                        from_value(ty_node.extras[0].clone()).expect("Pointer child not found");
-                    let pointed_new = self.visit_qualified_type(pointed);
-
-                    let pointer_ty = CTypeKind::Pointer(pointed_new);
-                    self.add_type(new_id, not_located(pointer_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagReference if expected_ty & OTHER_TYPE != 0 => {
-                    let referenced =
-                        from_value(ty_node.extras[0].clone()).expect("Reference child not found");
-                    let referenced_new = self.visit_qualified_type(referenced);
-
-                    let reference_ty = CTypeKind::Reference(referenced_new);
-                    self.add_type(new_id, not_located(reference_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagBlockPointer if expected_ty & OTHER_TYPE != 0 => {
-                    let pointed = from_value(ty_node.extras[0].clone())
-                        .expect("Block pointer child not found");
-                    let pointed_new = self.visit_qualified_type(pointed);
-
-                    let pointer_ty = CTypeKind::BlockPointer(pointed_new);
-                    self.add_type(new_id, not_located(pointer_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagComplexType if expected_ty & OTHER_TYPE != 0 => {
-                    let subelt =
-                        from_value(ty_node.extras[0].clone()).expect("Complex child not found");
-                    let subelt_new = self.visit_type(subelt);
-
-                    let complex_ty = CTypeKind::Complex(subelt_new);
-                    self.add_type(new_id, not_located(complex_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagStructType if expected_ty & OTHER_TYPE != 0 => {
-                    let decl =
-                        from_value(ty_node.extras[0].clone()).expect("Struct decl not found");
-                    let decl_new = CDeclId(self.visit_node_type(decl, RECORD_DECL));
-
-                    let record_ty = CTypeKind::Struct(decl_new);
-                    self.add_type(new_id, not_located(record_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagUnionType if expected_ty & OTHER_TYPE != 0 => {
-                    let decl = from_value(ty_node.extras[0].clone()).expect("Union decl not found");
-                    let decl_new = CDeclId(self.visit_node_type(decl, RECORD_DECL));
-
-                    let record_ty = CTypeKind::Union(decl_new);
-                    self.add_type(new_id, not_located(record_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagFunctionType if expected_ty & FUNC_TYPE != 0 => {
-                    let mut arguments: Vec<CQualTypeId> =
-                        from_value::<Vec<Value>>(ty_node.extras[0].clone())
-                            .expect("Function type expects array argument")
-                            .iter()
-                            .map(|cbor| {
-                                let arg =
-                                    from_value(cbor.clone()).expect("Bad function type child id");
-
-                                self.visit_qualified_type(arg)
-                            })
-                            .collect();
-                    let ret = arguments.remove(0);
-                    let is_variadic = from_value(ty_node.extras[1].clone())
-                        .expect("Variadicity of function type not found");
-                    let is_noreturn = from_value(ty_node.extras[2].clone())
-                        .expect("NoReturn of function type not found");
-                    let has_proto = from_value(ty_node.extras[3].clone())
-                        .expect("HasProto of function type not found");
-                    let function_ty =
-                        CTypeKind::Function(ret, arguments, is_variadic, is_noreturn, has_proto);
-                    self.add_type(new_id, not_located(function_ty));
-                    self.processed_nodes.insert(new_id, FUNC_TYPE);
-
-                    // In addition to creating the function type for this node, ensure that a
-                    // corresponding function pointer type is created. We may need to reference this
-                    // type depending on how uses of functions of this type are translated.
-                    let pointer_ty = CTypeKind::Pointer(CQualTypeId::new(CTypeId(new_id)));
-                    let new_id = self.id_mapper.fresh_id();
-                    self.add_type(new_id, not_located(pointer_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagTypeOfType if expected_ty & TYPE != 0 => {
-                    let type_of_old = from_value(ty_node.extras[0].clone())
-                        .expect("Type of (type) child not found");
-                    let type_of = self.visit_type(type_of_old);
-
-                    let type_of_ty = CTypeKind::TypeOf(type_of);
-                    self.add_type(new_id, not_located(type_of_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagTypedefType => {
-                    let decl =
-                        from_value(ty_node.extras[0].clone()).expect("Typedef decl not found");
-                    let decl_new = CDeclId(self.visit_node_type(decl, TYPDEF_DECL));
-
-                    let typedef_ty = CTypeKind::Typedef(decl_new);
-                    self.add_type(new_id, not_located(typedef_ty));
-                    self.processed_nodes.insert(new_id, expected_ty);
-                }
-
-                TypeTag::TagEnumType if expected_ty & OTHER_TYPE != 0 => {
-                    let decl = from_value(ty_node.extras[0].clone()).expect("Enum decl not found");
-                    let decl_new = CDeclId(self.visit_node_type(decl, ENUM_DECL));
-
-                    let enum_ty = CTypeKind::Enum(decl_new);
-                    self.add_type(new_id, not_located(enum_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagDecayedType if expected_ty & OTHER_TYPE != 0 => {
-                    let decayed_id = from_value(ty_node.extras[0].clone())
-                        .expect("Decayed type child not found");
-                    let decayed = self.visit_type(decayed_id);
-
-                    let decayed_ty = CTypeKind::Decayed(decayed);
-                    self.add_type(new_id, not_located(decayed_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagElaboratedType if expected_ty & OTHER_TYPE != 0 => {
-                    let elaborated_id = from_value(ty_node.extras[0].clone())
-                        .expect("Elaborated type child not found");
-                    let elaborated = self.visit_type(elaborated_id);
-
-                    let elaborated_ty = CTypeKind::Elaborated(elaborated);
-                    self.add_type(new_id, not_located(elaborated_ty));
-                    self.processed_nodes.insert(new_id, TYPE);
-                }
-
-                TypeTag::TagParenType => {
-                    let paren_id =
-                        from_value(ty_node.extras[0].clone()).expect("Paren type child not found");
-                    let paren = self.visit_type(paren_id);
-
-                    let paren_ty = CTypeKind::Paren(paren);
-                    self.add_type(new_id, not_located(paren_ty));
-                    self.processed_nodes.insert(new_id, TYPE);
-                }
-
-                TypeTag::TagAttributedType => {
-                    let ty_id = from_value(ty_node.extras[0].clone())
-                        .expect("Attributed type child not found");
-                    let ty = self.visit_qualified_type(ty_id);
-
-                    let kind = match expect_opt_str(&ty_node.extras[1])
-                        .expect("Attributed type kind not found")
-                    {
-                        None => None,
-                        Some("noreturn") => Some(Attribute::NoReturn),
-                        Some("nullable") => Some(Attribute::Nullable),
-                        Some("notnull") => Some(Attribute::NotNull),
-                        Some(other) => panic!("Unknown type attribute: {}", other),
-                    };
-
-                    let ty = CTypeKind::Attributed(ty, kind);
-                    self.add_type(new_id, not_located(ty));
-                    self.processed_nodes.insert(new_id, TYPE);
-                }
-
-                TypeTag::TagConstantArrayType => {
-                    let element_id = from_value(ty_node.extras[0].clone()).expect("element id");
-                    let element = self.visit_type(element_id);
-
-                    let count: usize = from_value(ty_node.extras[1].clone()).expect("count");
-
-                    let element_ty = CTypeKind::ConstantArray(element, count);
-                    self.add_type(new_id, not_located(element_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagIncompleteArrayType => {
-                    let element_id = from_value(ty_node.extras[0].clone()).expect("element id");
-                    let element = self.visit_type(element_id);
-
-                    let element_ty = CTypeKind::IncompleteArray(element);
-                    self.add_type(new_id, not_located(element_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagVariableArrayType => {
-                    let element_id = from_value(ty_node.extras[0].clone()).expect("element id");
-                    let element = self.visit_type(element_id);
-
-                    let count_id = expect_opt_u64(&ty_node.extras[1]).expect("count id");
-                    let count = count_id.map(|x| self.visit_expr(x));
-
-                    let element_ty = CTypeKind::VariableArray(element, count);
-                    self.add_type(new_id, not_located(element_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagBuiltinFn => {
-                    let ty = CTypeKind::BuiltinFn;
-                    self.add_type(new_id, not_located(ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagBFloat16 => {
-                    let ty = CTypeKind::BFloat16;
-                    self.add_type(new_id, not_located(ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagSveCount
-                | TypeTag::TagSveBool
-                | TypeTag::TagSveBoolx2
-                | TypeTag::TagSveBoolx4 => {
-                    let ty = CTypeKind::UnhandledSveType;
-                    self.add_type(new_id, not_located(ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagFloat128 => {
-                    let ty = CTypeKind::Float128;
-                    self.add_type(new_id, not_located(ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagVectorType => {
-                    let elt =
-                        from_value(ty_node.extras[0].clone()).expect("Vector child not found");
-                    let elt_new = self.visit_qualified_type(elt);
-                    let count: usize = from_value(ty_node.extras[1].clone()).expect("count");
-
-                    let vector_ty = CTypeKind::Vector(elt_new, count);
-                    self.add_type(new_id, not_located(vector_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                TypeTag::TagAtomicType => {
-                    let qty = from_value(ty_node.extras[0].clone()).expect("Inner type not found");
-                    let qty_new = self.visit_qualified_type(qty);
-                    let atomic_ty = CTypeKind::Atomic(qty_new);
-                    self.add_type(new_id, not_located(atomic_ty));
-                    self.processed_nodes.insert(new_id, OTHER_TYPE);
-                }
-
-                t => panic!(
-                    "Type conversion not implemented for {:?} expecting {:?}",
-                    t, expected_ty
-                ),
-            }
+            self.convert_node_as_type(untyped_context, node_id, new_id, expected_ty);
         } else {
             // Convert the node
             let node: &AstNode = match untyped_context.ast_nodes.get(&node_id) {
