@@ -944,6 +944,29 @@ impl ConversionContext {
                 self.processed_nodes.insert(new_id, OTHER_TYPE);
             }
 
+            TypeTag::TagCountAttributedType => {
+                let ty_id = from_value(ty_node.extras[0].clone())
+                    .expect("CountAttributed type child not found");
+                let ty = self.visit_qualified_type(ty_id);
+
+                let kind = from_value::<String>(ty_node.extras[1].clone())
+                    .expect("CountAttributed type kind not found");
+                let kind = match kind.as_str() {
+                    "counted_by" => CountAttribute::CountedBy,
+                    "sized_by" => CountAttribute::SizedBy,
+                    "counted_by_or_null" => CountAttribute::CountedByOrNull,
+                    "sized_by_or_null" => CountAttribute::SizedByOrNull,
+                    other => panic!("Unknown type attribute: {other}"),
+                };
+
+                let count_id = from_value::<u64>(ty_node.extras[2].clone()).expect("count id");
+                let count = self.visit_expr(count_id);
+
+                let ty = CTypeKind::CountAttributed(ty, kind, count);
+                self.add_type(new_id, not_located(ty));
+                self.processed_nodes.insert(new_id, OTHER_TYPE);
+            }
+
             t => panic!(
                 "Type conversion not implemented for {:?} expecting {:?}",
                 t, expected_ty

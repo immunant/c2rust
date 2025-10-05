@@ -41,6 +41,27 @@ union NestedStructInUnion {
     int a;
 };
 
+
+struct IntArray {
+    int len;
+    int data[] __attribute__((counted_by(len)));
+};
+
+struct IntArray2 {
+    int len;
+    int *data __attribute__((counted_by_or_null(len)));
+};
+
+struct RawBuffer {
+    int size;
+    void *ptr __attribute__((sized_by(size)));
+};
+
+struct RawBuffer2 {
+    int size;
+    void *ptr __attribute__((sized_by_or_null(size)));
+};
+
 void struct_declaration() {
     int value = VALUE2;
     struct AnonEnumInStruct a;
@@ -48,6 +69,11 @@ void struct_declaration() {
     b.some_number = 7;
     struct NestedStructInStruct c;
     struct InsideStruct d;
+
+    struct IntArray arr;
+    struct IntArray2 arr2;
+    struct RawBuffer buf;
+    struct RawBuffer2 buf2;
 }
 
 void union_declaration() {

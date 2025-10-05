@@ -256,6 +256,10 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
         VisitQualType(t);
     }
 
+#if CLANG_VERSION_MAJOR >= 19
+    void VisitCountAttributedType(const CountAttributedType *T);
+#endif
+
     void VisitParenType(const ParenType *T) {
         auto t = T->getInnerType();
         auto qt = encodeQualType(t);
@@ -2613,6 +2617,51 @@ void TypeEncoder::VisitAtomicType(const AtomicType *AT) {
 
   VisitQualType(t);
 }
+
+#if CLANG_VERSION_MAJOR >= 19
+void TypeEncoder::VisitCountAttributedType(const CountAttributedType *T) {
+    auto t = T->desugar();
+    auto qt = encodeQualType(t);
+    auto k = T->getKind();
+    auto c = T->getCountExpr();
+    astEncoder->TraverseStmt(c);
+
+    encodeType(T, TagCountAttributedType, [qt, k, c](CborEncoder *local) {
+        cbor_encode_uint(local, qt);
+
+        const char *tag;
+        switch (k) {
+        default: tag = nullptr; break;
+
+        case CountAttributedType::DynamicCountPointerKind::CountedBy:
+            tag = "counted_by";
+            break;
+
+        case CountAttributedType::DynamicCountPointerKind::SizedBy:
+            tag = "sized_by";
+            break;
+
+        case CountAttributedType::DynamicCountPointerKind::CountedByOrNull:
+            tag = "counted_by_or_null";
+            break;
+
+        case CountAttributedType::DynamicCountPointerKind::SizedByOrNull:
+            tag = "sized_by_or_null";
+            break;
+        }
+
+        if (tag) {
+            cbor_encode_text_stringz(local, tag);
+        } else {
+            cbor_encode_null(local);
+        }
+
+        cbor_encode_uint(local, uintptr_t(c));
+    });
+
+    VisitQualType(t);
+}
+#endif
 
 class TranslateConsumer : public clang::ASTConsumer {
     Outputs *outputs;

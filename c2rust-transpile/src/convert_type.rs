@@ -421,6 +421,7 @@ impl TypeConverter {
             }
 
             CTypeKind::Attributed(ty, _) => self.convert(ctxt, ty.ctype),
+            CTypeKind::CountAttributed(ty, _, _) => self.convert(ctxt, ty.ctype),
             CTypeKind::Atomic(ty) => self.convert(ctxt, ty.ctype),
 
             // ANSI/ISO C-style function
