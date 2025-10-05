@@ -62,7 +62,13 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
 
     let (_temp_dir, temp_path) =
         c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
-    c2rust_transpile::transpile(config(), &temp_path, &[]);
+    c2rust_transpile::transpile(
+        config(),
+        &temp_path,
+        &[
+            "-w", // Disable warnings.
+        ],
+    );
     let cwd = current_dir().unwrap();
     let c_path = c_path.strip_prefix(&cwd).unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
