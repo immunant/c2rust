@@ -2,14 +2,15 @@ use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
 use crate::iterators::{DFNodes, SomeId};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display};
-use std::mem;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::{iter, mem};
 
 pub use self::conversion::*;
 pub use self::print::Printer;
@@ -194,6 +195,27 @@ impl TypedAstContext {
 
     pub fn include_path(&self, loc: SrcLoc) -> &[SrcLoc] {
         &self.include_map[self.file_map[loc.fileid as usize]]
+    }
+
+    pub fn loc_to_string(&self, loc: SrcLoc) -> String {
+        let SrcLoc {
+            fileid,
+            line,
+            column,
+        } = loc;
+        let file_id = self.file_map[fileid as usize];
+        let path = self
+            .get_file_path(file_id)
+            .unwrap_or_else(|| Path::new("?"));
+        let path = path.display();
+        format!("(fileid {fileid}) {path}:{line}:{column}")
+    }
+
+    pub fn loc_to_string_with_include_path(&self, loc: SrcLoc) -> String {
+        iter::once(&loc)
+            .chain(self.include_path(loc))
+            .map(|&loc| self.loc_to_string(loc))
+            .join("\n    included from ")
     }
 
     /// Compare two [`SrcLoc`]s based on their import path.
