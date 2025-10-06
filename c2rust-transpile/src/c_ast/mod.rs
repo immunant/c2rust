@@ -2346,6 +2346,44 @@ impl CTypeKind {
 mod tests {
     use super::*;
 
+    #[track_caller]
+    fn check_transitivity<T, F, G>(elements: &[T], mut compare: F, fmt: G)
+    where
+        F: FnMut(&T, &T) -> Ordering,
+        G: Fn(&T) -> String,
+    {
+        fn ord_to_str(ord: Ordering) -> &'static str {
+            match ord {
+                Ordering::Less => "<",
+                Ordering::Equal => "==",
+                Ordering::Greater => ">",
+            }
+        }
+
+        let n = elements.len();
+        for i in 0..n {
+            let a = &elements[i];
+            for j in 0..n {
+                let b = &elements[j];
+                for c in elements.iter().take(n) {
+                    let ab = compare(a, b);
+                    let bc = compare(b, c);
+                    let ac = compare(a, c);
+                    if ab == bc {
+                        let [ab, bc, ac] = [ab, bc, ac].map(ord_to_str);
+                        let [a, b, c] =
+                            [a, b, c].map(|e| if ab == ac { String::new() } else { fmt(e) });
+                        assert_eq!(ab, ac, "Total order (transitivity) has been violated: a {ab} b and b {bc} c, but a {ac} c
+a = {a}
+b = {b}
+c = {c}
+");
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_compare_src_locs_ord() {
         let ctx = TypedAstContext {
@@ -2546,28 +2584,13 @@ mod tests {
             },
         ];
 
-        let n = locs.len();
-        for i in 0..n {
-            let a = locs[i];
-            for j in 0..n {
-                let b = locs[j];
-                for c in locs.iter().take(n) {
-                    let ab = ctx.compare_src_locs(&a, &b);
-                    let bc = ctx.compare_src_locs(&b, c);
-                    let ac = ctx.compare_src_locs(&a, c);
-                    if ab == bc {
-                        let [ab, bc, ac] = [ab, bc, ac].map(|ord| match ord {
-                            Ordering::Less => "<",
-                            Ordering::Equal => "==",
-                            Ordering::Greater => ">",
-                        });
-                        assert_eq!(ab, ac, "Total order (transitivity) has been violated: {a} {ab} {b} and {b} {bc} {c}, but {a} {ac} {c}");
-                    }
-                }
-            }
-        }
+        check_transitivity(
+            locs,
+            |a, b| ctx.compare_src_locs(a, b),
+            |loc| format!("{loc}"),
+        );
 
-        // This should not panic
+        // This should not panic.
         locs.sort_unstable_by(|a, b| ctx.compare_src_locs(a, b));
     }
 }
