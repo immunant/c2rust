@@ -180,10 +180,9 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         // be widened.
         for entry in entries {
             loop {
-                // legaren: Can we ever get `None` out of `get` here? That would mean we have a
-                // loop ID with no corresponding entry in `loops`, which seems invalid. If this
-                // isn't a valid case we should unwrap/expect here instead of using `?`.
-                let (in_loop, parent_id) = self.loops.get(&loop_id)?;
+                let (in_loop, parent_id) = self.loops.get(&loop_id).unwrap_or_else(|| {
+                    panic!("Found loop ID {:?} with no corresponding loop info", loop_id)
+                });
 
                 // If our current loop contains the entry, move on to the next entry. Otherwise
                 // move on to the next wider loop if there is one.
