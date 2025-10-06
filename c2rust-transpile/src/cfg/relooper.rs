@@ -1,5 +1,5 @@
-//! This modules handles converting a a control-flow graph `Cfg` into
-//! `Vec<Structure>`, optionally simplifying the latter.
+//! This modules handles converting a a control-flow graph `Cfg` into `Vec<Structure>`, optionally
+//! simplifying the latter.
 //!
 //! # Terminology
 //!
@@ -610,33 +610,47 @@ impl RelooperState {
             })
             .collect();
 
-        // If all entries are handled, we grab the first one to be the "then"
-        // branch, otherwise the "then" branch is empty.
+        // If all entries are handled, we grab the first one to be the "then" branch,
+        // otherwise the "then" branch is empty.
         //
-        // legaren: Why? What's the "then" branch for? The original relooper
-        // paper doesn't have an equivalent for this.
+        // This is done because of how we generate `match` statements from `Multiple`.
+        // If all entries are handled, then we pull one case to be the `_ => { ... }`
+        // default case in the generated `match`. This works because every entry will
+        // have its own `match` arm, so it's safe to have the `_` arm cover one of them.
+        //
+        // If we have unhandled entries, then we'll have entries not covered by the
+        // `match`. In this case we want an empty `_ => {}` case, that way when we hit
+        // the `match` from one of the unhandled entries we just fall through the
+        // `match` and continue on to the correct entry.
         let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
         let (then, branches) = if handler_keys == entries {
-            // TODO: We can probably just `swap_remove_index(0)` here instead of
-            // getting the first key, I think that should be equivalent to what
-            // we're doing.
-            let a_key = all_handlers
-                .keys()
-                .next()
-                .expect("no handlers found")
-                .clone();
-            let last_handler = all_handlers.swap_remove(&a_key).expect("just got this key");
+            let last_handler = all_handlers
+                .swap_remove_index(0)
+                .expect("There has to be at least one handler")
+                .1;
             (last_handler, all_handlers)
         } else {
             (vec![], all_handlers)
         };
 
-        let disable_heuristics = follow_entries == entries; // legaren: Why?
+        // Disable heuristics when relooping the follow blocks if all of our entries are
+        // follow entries.
+        //
+        // This situation happens when there are back edges to all of our entries, i.e.
+        // when all of our entries are part of one or more loops. If we leave heuristics
+        // enabled in this case, we risk infinite recursion because we're relooping the
+        // same set of blocks with the same set of entries. If there are loops and we
+        // ended up here, it means that we skipped creating a loop because we matched a
+        // C multiple. Disabling heuristics means we won't try to match a C multiple,
+        // meaning we will generate a loop-match instead.
+        let disable_heuristics = follow_entries == entries;
+
         result.push(Structure::Multiple {
             entries,
             branches,
             then,
         });
+
         self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
     }
 }
