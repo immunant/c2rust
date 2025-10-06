@@ -47,7 +47,7 @@ pub fn match_loop_body(
             let bb = if let Some(bb) = follow_blocks.swap_remove(&following) {
                 bb
             } else {
-                continue; // legaren: Why would we have a follow entry with no corresponding block?
+                continue;
             };
             something_happened = true;
 
