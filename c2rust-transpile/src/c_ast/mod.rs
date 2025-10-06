@@ -48,41 +48,44 @@ pub struct TypedAstContext {
     c_exprs: HashMap<CExprId, CExpr>,
     c_stmts: HashMap<CStmtId, CStmt>,
 
-    // Decls require a stable iteration order as this map will be
-    // iterated over export all defined types during translation.
+    /// Decls require a stable iteration order as this map will be
+    /// iterated over export all defined types during translation.
     c_decls: IndexMap<CDeclId, CDecl>,
 
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
-    pub parents: HashMap<CDeclId, CDeclId>, // record fields and enum constants
 
-    // Mapping from FileId to SrcFile. Deduplicated by file path.
+    /// record fields and enum constants
+    pub parents: HashMap<CDeclId, CDeclId>,
+
+    /// Mapping from FileId to SrcFile. Deduplicated by file path.
     files: Vec<SrcFile>,
-    // Mapping from clang file id to translator FileId
+
+    /// Mapping from clang file id to translator FileId
     file_map: Vec<FileId>,
 
-    // Vector of include paths, indexed by FileId. Each include path is the
-    // sequence of #include statement locations and the file being included at
-    // that location.
+    /// Vector of include paths, indexed by FileId. Each include path is the
+    /// sequence of #include statement locations and the file being included at
+    /// that location.
     include_map: Vec<Vec<SrcLoc>>,
 
-    // Names of the labels defined in the C source code.
+    /// Names of the labels defined in the C source code.
     pub label_names: IndexMap<CLabelId, Rc<str>>,
 
-    // map expressions to the stack of macros they were expanded from
+    /// map expressions to the stack of macros they were expanded from
     pub macro_invocations: IndexMap<CExprId, Vec<CDeclId>>,
 
-    // map macro decls to the expressions they expand to
+    /// map macro decls to the expressions they expand to
     pub macro_expansions: IndexMap<CDeclId, Vec<CExprId>>,
 
-    // map expressions to the text of the macro invocation they expanded from,
-    // if any
+    /// map expressions to the text of the macro invocation they expanded from,
+    /// if any
     pub macro_expansion_text: IndexMap<CExprId, String>,
 
     pub comments: Vec<Located<String>>,
 
-    // The key is the typedef decl being squashed away,
-    // and the value is the decl id to the corresponding structure
+    /// The key is the typedef decl being squashed away,
+    /// and the value is the decl id to the corresponding structure
     pub prenamed_decls: IndexMap<CDeclId, CDeclId>,
 
     pub va_list_kind: BuiltinVaListKind,
