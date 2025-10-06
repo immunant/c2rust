@@ -1,13 +1,104 @@
-//! This modules handles converting a a control-flow graph `Cfg` into `Vec<Structure>`, optionally
-//! simplifying the latter.
+//! This module contains the relooper algorithm for creating structured control
+//! flow from a CFG.
+//!
+//! Relooper is an algorithm for converting an arbitrary, unstructured
+//! control-flow graph (CFG) into the structured control-flow constructs
+//! available in Rust. The original relooper algorithm was described in the
+//! [Emscripten paper][emscripten], which describes converting a CFG into
+//! JavaScript's structured control-flow constructs. The implementation of
+//! relooper used here is based on the original algorithm, with the addition of
+//! some heuristics and Rust-specific control-flow constructs.
+//!
+//! [emscripten]: https://dl.acm.org/doi/10.1145/2048147.2048224
 //!
 //! # Terminology
 //!
-//! The terms "label", "block", and "node" are sometimes used interchangeably.
-//! A label is the unique identifier for a block, and a block is a node in the
-//! control-flow graph. In some cases we're working directly with the basic
-//! blocks, but in many places when working with the control-flow graph we're
-//! dealing only with labels, and the blocks themselves are secondary.
+//! The terms "label", "block", and "node" are sometimes used interchangeably in
+//! this file. A label is the unique identifier for a block, and a block is a
+//! node in the control-flow graph. In some cases we're working directly with
+//! the basic blocks, but in many places when working with the CFG we're dealing
+//! only with labels, and the blocks themselves are secondary.
+//!
+//! # Relooper Algorithm
+//!
+//! The relooper algorithm works by recursively breaking down sections of the
+//! CFG into structured control-flow constructs, partitioning blocks into either
+//! `Simple` structures, `Loop` structures, or `Multiple` structures. At each
+//! step, we start with a set of basic blocks and information about which of
+//! those blocks act as entry points to this portion of the CFG. We then look
+//! for ways to break down the CFG into smaller sections that can be represented
+//! using structured control-flow constructs.
+//!
+//! If we have a single entry point, and there are no back edges to that entry,
+//! then we can generate a simple structure. `Simple` structures contain a
+//! single basic block, and represent a straight-line sequence of instructions.
+//! All remaining blocks are then recursively relooped, with the immediate
+//! successors of the entry becoming the new entries for the rest of that
+//! portion of the CFG.
+//!
+//! If we have entries with back edges to them, then we can generate a `Loop`
+//! structure. Any nodes that can reach the entry become part of the loop body,
+//! with any remaining nodes becoming the follow blocks for the loop. The loop's
+//! contents are then relooped into the loops's body, and the follow blocks get
+//! relooped to be the logic that follows the loop.
+//!
+//! If we have more than one entry, then we can generate a `Multiple` structure.
+//! These are effectively `match` statements, with each entry becoming an arm of
+//! the `match`. Blocks that are only reachable by one of the entries (including
+//! the entry itself) become the body blocks for that arm of the multiple, and
+//! any blocks reachable from more than one entry become the follow blocks. We
+//! then recursively reloop each of the branches of the multiple, and then
+//! reloop the follow blocks.
+//!
+//! Note that there are a lot of subtleties to how we choose to partition blocks
+//! into these structures. The logic in the relooper implementation contains
+//! thorough comments describing what we're doing at each step and why we are
+//! making the choices that we do. This module documentation covers some of
+//! them, but you'll need to read through the full algorithm to get all of the
+//! nuances.
+//!
+//! # Heuristics
+//!
+//! When reconstructing structured control flow from a CFG, there are often
+//! multiple valid ways to structure the graph. In order to produce Rust code
+//! that is as similar to the original C as possible, we have a couple of
+//! heuristics that use information from the original C code to guide the
+//! restructuring process.
+//!
+//! Before creating a loop, we first try to match a `Multiple` from the original
+//! C. During transpilation we preserve information about where there are
+//! branches in the C code along with which CFG nodes are part of those
+//! branches, which we can then look up based on the current set of entries. If
+//! we find that there is a `Multiple` in the original C that matches our
+//! current entries, and the structure of the CFG allows it, we can reproduce
+//! the control-flow from the original C. Doing this before creating a loop
+//! helps in cases where we have branches with multiple disjoint loops, since
+//! the loop analysis does not recognize disjoint loops and will always produce
+//! a single loop with a `Multiple` inside of it handling the bodies of what
+//! should be separate loops.
+//!
+//! When creating loops, we also make use of a similar heuristic that tries to
+//! recreate the loops that we see in the original C. When partitioning blocks
+//! into the loop's body, we first attempt to match an existing loop from the
+//! original C. Failing that, we fall back on a heuristic that tries to keep as
+//! many blocks as possible in the loop's body, even if they don't strictly
+//! belong there according to the original C structure.
+//! 
+//! # Simplification
+//! 
+//! After the relooper algorithm runs, we have an optional simplification pass
+//! that attempts to reduce the complexity of the generated control flow
+//! structures. This pass can help to eliminate unnecessary nesting and make the
+//! final output more readable. It applies two main simplifications:
+//! 
+//! - Merge cases in [`Switch`] terminators if they target the same label. That
+//!   means instead of having `1 => goto A, 2 => goto A, 3 => goto B`, we
+//!   instead get `1 | 2 => goto A, 3 => goto B`.
+//! - Inline `Multiple` structures into preceding `Simple` structures. When a
+//!   `Simple` structure with a `Switch` terminator is immediately followed by a
+//!   `Multiple`, the branches from the `Multiple` are inlined directly into the
+//!   `Switch` cases as `Nested` structures, eliminating the intermediate
+//!   `Multiple` and reducing nesting depth.
 
 use super::*;
 
@@ -360,8 +451,17 @@ impl RelooperState {
             (predecessor_map, strict_reachable_from)
         };
 
-        // Try to match an existing branch point (from the initial C). See `MultipleInfo` for more
-        // information on this.
+        // Try to match an existing branch point (from the initial C).
+        //
+        // We do this before creating a loop to better handle the cases where we have
+        // multiple entries that are part of disjoint loops. The loop analysis that
+        // comes next doesn't recognize disjoint loops and will always produce a single
+        // loop structure if there is at least one loop back to an entry. If we have
+        // multiple branches with disjoint loops, this means we might generate a single
+        // loop with a state machine inside it, merging all loop bodies together and
+        // resulting in suboptimal control flow. If the original C had multiple
+        // branches, this logic will recreate them, avoiding the problem of merging
+        // loops accidentally.
         let mut recognized_c_multiple = false;
         if let Some(ref multiple_info) = self.multiple_info {
             let entries_key = entries.iter().cloned().collect();
@@ -616,7 +716,8 @@ impl RelooperState {
         // This is done because of how we generate `match` statements from `Multiple`.
         // If all entries are handled, then we pull one case to be the `_ => { ... }`
         // default case in the generated `match`. This works because every entry will
-        // have its own `match` arm, so it's safe to have the `_` arm cover one of them.
+        // have its own `match` arm, so it's safe to have the `_` arm cover one of them,
+        // and avoids having a dead `_` case just to satisfy exhaustiveness.
         //
         // If we have unhandled entries, then we'll have entries not covered by the
         // `match`. In this case we want an empty `_ => {}` case, that way when we hit
