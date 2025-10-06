@@ -14,6 +14,7 @@
 //!   - simplify that sequence of `Structure<Stmt>`s into another such sequence
 //!   - convert the `Vec<Structure<Stmt>>` back into a `Vec<Stmt>`
 //!
+//! See the [`relooper`] module for more details about the Relooper algorithm.
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
