@@ -42,7 +42,7 @@ pub type CEnumId = CDeclId; // Enum types need to point to 'DeclKind::Enum'
 pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::EnumConstant's
 
 /// AST context containing all of the nodes in the Clang AST
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TypedAstContext {
     c_types: HashMap<CTypeId, CType>,
     c_exprs: HashMap<CExprId, CExpr>,
@@ -169,26 +169,10 @@ impl TypedAstContext {
         }
 
         TypedAstContext {
-            c_types: HashMap::new(),
-            c_exprs: HashMap::new(),
-            c_decls: IndexMap::new(),
-            c_stmts: HashMap::new(),
-
-            c_decls_top: Vec::new(),
-            c_main: None,
             files,
             file_map,
             include_map,
-            parents: HashMap::new(),
-            macro_invocations: Default::default(),
-            macro_expansions: Default::default(),
-            macro_expansion_text: Default::default(),
-            label_names: Default::default(),
-
-            comments: Vec::new(),
-            prenamed_decls: IndexMap::new(),
-            va_list_kind: BuiltinVaListKind::CharPtrBuiltinVaList,
-            target: String::new(),
+            ..Default::default()
         }
     }
 
@@ -2365,14 +2349,6 @@ mod tests {
     #[test]
     fn test_compare_src_locs_ord() {
         let ctx = TypedAstContext {
-            c_types: Default::default(),
-            c_exprs: Default::default(),
-            c_stmts: Default::default(),
-            c_decls: Default::default(),
-            c_decls_top: vec![],
-            c_main: None,
-            parents: Default::default(),
-            files: vec![],
             file_map: vec![0, 1, 2, 3, 4, 5, 4, 5],
             include_map: vec![
                 vec![],
@@ -2390,14 +2366,7 @@ mod tests {
                     column: 10,
                 }],
             ],
-            label_names: Default::default(),
-            macro_invocations: Default::default(),
-            macro_expansions: Default::default(),
-            macro_expansion_text: Default::default(),
-            comments: vec![],
-            prenamed_decls: Default::default(),
-            va_list_kind: BuiltinVaListKind::CharPtrBuiltinVaList,
-            target: "".to_string(),
+            ..Default::default()
         };
         let locs = &mut [
             SrcLoc {
