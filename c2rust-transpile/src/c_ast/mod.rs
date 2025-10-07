@@ -143,20 +143,8 @@ impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
     pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
-        // Deduplicate paths, converting clang `fileid`s to our `FileId`s.
-        let mut files: Vec<SrcFile> = vec![];
-        let mut file_map: Vec<FileId> = vec![];
-        for file in clang_files {
-            if let Some(existing) = files.iter().position(|f| f.path == file.path) {
-                file_map.push(existing);
-            } else {
-                file_map.push(files.len());
-                files.push(file.clone());
-            }
-        }
-
         let mut include_map = vec![];
-        for (mut fileid, mut cur) in files.iter().enumerate() {
+        for (mut fileid, mut cur) in clang_files.iter().enumerate() {
             let mut include_path = vec![];
             while let Some(include_loc) = &cur.include_loc {
                 include_path.push(SrcLoc {
@@ -169,6 +157,18 @@ impl TypedAstContext {
             }
             include_path.reverse();
             include_map.push(include_path);
+        }
+
+        // Deduplicate paths, converting clang `fileid`s to our `FileId`s.
+        let mut files: Vec<SrcFile> = vec![];
+        let mut file_map: Vec<FileId> = vec![];
+        for file in clang_files {
+            if let Some(existing) = files.iter().position(|f| f.path == file.path) {
+                file_map.push(existing);
+            } else {
+                file_map.push(files.len());
+                files.push(file.clone());
+            }
         }
 
         TypedAstContext {
