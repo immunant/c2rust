@@ -3,19 +3,23 @@ use std::char;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::Index;
-use std::path::Path; // To override `syn::Path` from glob import.
-use std::path::{self, PathBuf};
-use std::result::Result; // To override `syn::Result` from glob import.
+use std::path::{Path, PathBuf};
 
 use dtoa;
-
 use failure::{err_msg, format_err, Fail};
 use indexmap::indexmap;
 use indexmap::{IndexMap, IndexSet};
 use log::{error, info, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
-use syn::*;
+use syn::{
+    AttrStyle, BareVariadic, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast, ExprField,
+    ExprIndex, ExprParen, ExprUnary, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
+    ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
+    ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
+    ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
+    Stmt, Type, TypeTuple, Visibility,
+};
 use syn::{BinOp, UnOp}; // To override `c_ast::{BinOp,UnOp}` from glob import.
 
 use crate::diagnostics::TranslationResult;
@@ -25,7 +29,7 @@ use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::translator::named_references::NamedReference;
 use c2rust_ast_builder::{mk, properties::*, Builder};
-use c2rust_ast_printer::pprust::{self};
+use c2rust_ast_printer::pprust;
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::cfg;
@@ -433,8 +437,8 @@ fn prefix_names(translation: &mut Translation, prefix: &str) {
 // on whether there is a collision or not prepend the prior directory name to the path name.
 // To check for collisions, a IndexMap with the path name(key) and the path(value) associated with
 // the name. If the path name is in use, but the paths differ there is a collision.
-fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path::Path>) -> String {
-    fn path_to_str(path: &path::Path) -> String {
+fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&Path>) -> String {
+    fn path_to_str(path: &Path) -> String {
         path.file_name()
             .unwrap()
             .to_str()
@@ -443,7 +447,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&path
     }
 
     let mut file_path: String = path.map_or("internal".to_string(), path_to_str);
-    let path = path.unwrap_or_else(|| path::Path::new(""));
+    let path = path.unwrap_or_else(|| Path::new(""));
     let mut mod_names = mod_names.borrow_mut();
     if !mod_names.contains_key(&file_path.clone()) {
         mod_names.insert(file_path.clone(), path.to_path_buf());
@@ -1155,7 +1159,7 @@ impl<'c> Translation<'c> {
     pub fn new(
         mut ast_context: TypedAstContext,
         tcfg: &'c TranspilerConfig,
-        main_file: &path::Path,
+        main_file: &Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
         let mut type_converter = TypeConverter::new();
