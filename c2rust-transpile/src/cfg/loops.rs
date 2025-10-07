@@ -181,7 +181,10 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         for entry in entries {
             loop {
                 let (in_loop, parent_id) = self.loops.get(&loop_id).unwrap_or_else(|| {
-                    panic!("Found loop ID {:?} with no corresponding loop info", loop_id)
+                    panic!(
+                        "Found loop ID {:?} with no corresponding loop info",
+                        loop_id,
+                    )
                 });
 
                 // If our current loop contains the entry, move on to the next entry. Otherwise
