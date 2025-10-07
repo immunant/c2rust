@@ -142,7 +142,7 @@ impl<T> Located<T> {
 impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
-    pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
+    pub fn new(input_path: &Path, clang_files: &[SrcFile]) -> TypedAstContext {
         let mut include_map = vec![];
         for (mut fileid, mut cur) in clang_files.iter().enumerate() {
             let mut include_path = vec![];
@@ -156,6 +156,11 @@ impl TypedAstContext {
                 cur = &clang_files[fileid];
             }
             include_path.reverse();
+            // The first include should be from the input file.
+            // If this is false, then we haven't found the full, correct include path.
+            if let Some(root_include_path) = cur.path.as_deref() {
+                assert_eq!(root_include_path, input_path);
+            }
             include_map.push(include_path);
         }
 
@@ -195,6 +200,8 @@ impl TypedAstContext {
         self.files[id].path.as_deref()
     }
 
+    /// Lookup the include path for `loc`.
+    /// The first [`SrcLoc`] returned should have been included from the input/main file.
     pub fn include_path(&self, loc: SrcLoc) -> &[SrcLoc] {
         &self.include_map[self.file_map[loc.fileid as usize]]
     }
@@ -220,7 +227,7 @@ impl TypedAstContext {
             .join("\n    included from ")
     }
 
-    /// Compare two [`SrcLoc`]s based on their import path.
+    /// Compare two [`SrcLoc`]s based on their include path.
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
         /// Compare without regard to `fileid`.
         fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {

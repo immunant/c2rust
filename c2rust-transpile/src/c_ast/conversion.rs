@@ -257,7 +257,7 @@ fn has_packed_attribute(attrs: Vec<Value>) -> bool {
 
 impl ConversionContext {
     /// Create a new 'ConversionContext' seeded with top-level nodes from an 'AstContext'.
-    pub fn new(untyped_context: &AstContext) -> ConversionContext {
+    pub fn new(input_path: &Path, untyped_context: &AstContext) -> ConversionContext {
         let mut invalid_clang_ast = false;
 
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
@@ -323,7 +323,7 @@ impl ConversionContext {
             id_mapper: IdMapper::new(),
             processed_nodes: HashMap::new(),
             visit_as,
-            typed_context: TypedAstContext::new(&untyped_context.files),
+            typed_context: TypedAstContext::new(input_path, &untyped_context.files),
             invalid_clang_ast,
         };
 
