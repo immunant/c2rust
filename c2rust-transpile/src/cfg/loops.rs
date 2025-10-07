@@ -180,12 +180,13 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         // be widened.
         for entry in entries {
             loop {
-                let (in_loop, parent_id) = self.loops.get(&loop_id).unwrap_or_else(|| {
-                    panic!(
-                        "Found loop ID {:?} with no corresponding loop info",
-                        loop_id,
-                    )
-                });
+                // NOTE: We currently bail out in the case where there is no loop data
+                // corresponding to the current loop ID, but it's unclear if that's the right
+                // thing to do. In theory we should always have loop data corresponding to a
+                // loop ID, but the `nested_goto.c` test definitely ends up with a loop ID that
+                // doesn't have corresponding info. We should investigate why that happens and
+                // determine if it's valid or not.
+                let (in_loop, parent_id) = self.loops.get(&loop_id)?;
 
                 // If our current loop contains the entry, move on to the next entry. Otherwise
                 // move on to the next wider loop if there is one.
