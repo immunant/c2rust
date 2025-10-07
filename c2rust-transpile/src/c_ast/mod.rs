@@ -58,14 +58,14 @@ pub struct TypedAstContext {
     /// record fields and enum constants
     pub parents: HashMap<CDeclId, CDeclId>,
 
-    /// Mapping from FileId to SrcFile. Deduplicated by file path.
+    /// Mapping from [`FileId`] to [`SrcFile`]. Deduplicated by file path.
     files: Vec<SrcFile>,
 
-    /// Mapping from clang file id to translator FileId
+    /// Mapping from clang `fileid` to translator [`FileId`].
     file_map: Vec<FileId>,
 
-    /// Vector of include paths, indexed by FileId. Each include path is the
-    /// sequence of #include statement locations and the file being included at
+    /// Vector of include paths, indexed by [`FileId`]. Each include path is the
+    /// sequence of `#include` statement locations and the file being included at
     /// that location.
     include_map: Vec<Vec<SrcLoc>>,
 
