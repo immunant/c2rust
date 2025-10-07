@@ -83,14 +83,14 @@
 //! original C. Failing that, we fall back on a heuristic that tries to keep as
 //! many blocks as possible in the loop's body, even if they don't strictly
 //! belong there according to the original C structure.
-//! 
+//!
 //! # Simplification
-//! 
+//!
 //! After the relooper algorithm runs, we have an optional simplification pass
 //! that attempts to reduce the complexity of the generated control flow
 //! structures. This pass can help to eliminate unnecessary nesting and make the
 //! final output more readable. It applies two main simplifications:
-//! 
+//!
 //! - Merge cases in [`Switch`] terminators if they target the same label. That
 //!   means instead of having `1 => goto A, 2 => goto A, 3 => goto B`, we
 //!   instead get `1 | 2 => goto A, 3 => goto B`.
