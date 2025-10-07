@@ -192,7 +192,11 @@ impl TypedAstContext {
         self.files[id].path.as_deref()
     }
 
-    /// Compare two [`SrcLoc`]s based on their import path
+    pub fn include_path(&self, loc: SrcLoc) -> &[SrcLoc] {
+        &self.include_map[self.file_map[loc.fileid as usize]]
+    }
+
+    /// Compare two [`SrcLoc`]s based on their import path.
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
         /// Compare without regard to `fileid`.
         fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
@@ -200,8 +204,8 @@ impl TypedAstContext {
         }
 
         use Ordering::*;
-        let path_a = &self.include_map[self.file_map[a.fileid as usize]][..];
-        let path_b = &self.include_map[self.file_map[b.fileid as usize]][..];
+        let path_a = self.include_path(*a);
+        let path_b = self.include_path(*b);
 
         // Find the first include that does not match between the two
         let common_len = path_a.len().min(path_b.len());
