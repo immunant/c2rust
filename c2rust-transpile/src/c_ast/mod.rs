@@ -155,7 +155,7 @@ impl TypedAstContext {
         }
 
         let mut include_map = vec![];
-        for (fileid, mut cur) in files.iter().enumerate() {
+        for (mut fileid, mut cur) in files.iter().enumerate() {
             let mut include_path = vec![];
             while let Some(include_loc) = &cur.include_loc {
                 include_path.push(SrcLoc {
@@ -163,7 +163,8 @@ impl TypedAstContext {
                     line: include_loc.line,
                     column: include_loc.column,
                 });
-                cur = &clang_files[include_loc.fileid as usize];
+                fileid = include_loc.fileid as usize;
+                cur = &clang_files[fileid];
             }
             include_path.reverse();
             include_map.push(include_path);
