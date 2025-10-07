@@ -143,6 +143,7 @@ impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
     pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
+        // Deduplicate paths, converting clang `fileid`s to our `FileId`s.
         let mut files: Vec<SrcFile> = vec![];
         let mut file_map: Vec<FileId> = vec![];
         for file in clang_files {
