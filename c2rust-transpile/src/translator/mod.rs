@@ -3,8 +3,9 @@ use std::char;
 use std::collections::HashMap;
 use std::mem;
 use std::ops::Index;
+use std::path::Path; // To override `syn::Path` from glob import.
 use std::path::{self, PathBuf};
-use std::result::Result; // To override syn::Result from glob import
+use std::result::Result; // To override `syn::Result` from glob import.
 
 use dtoa;
 
@@ -15,7 +16,7 @@ use log::{error, info, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::*;
-use syn::{BinOp, UnOp}; // To override c_ast::{BinOp,UnOp} from glob import
+use syn::{BinOp, UnOp}; // To override `c_ast::{BinOp,UnOp}` from glob import.
 
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::comment_store::CommentStore;
@@ -479,9 +480,9 @@ pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
 pub fn translate(
     ast_context: TypedAstContext,
     tcfg: &TranspilerConfig,
-    main_file: PathBuf,
+    main_file: &Path,
 ) -> (String, PragmaVec, CrateSet) {
-    let mut t = Translation::new(ast_context, tcfg, main_file.as_path());
+    let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
         is_static: false,
@@ -839,7 +840,7 @@ pub fn translate(
 
         // pass all converted items to the Rust pretty printer
         let translation = pprust::to_string(|| {
-            let (attrs, mut all_items) = arrange_header(&t, t.tcfg.is_binary(main_file.as_path()));
+            let (attrs, mut all_items) = arrange_header(&t, t.tcfg.is_binary(main_file));
 
             all_items.extend(mod_items);
 
