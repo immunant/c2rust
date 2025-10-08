@@ -353,7 +353,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             .map(|cmd| {
                 transpile_single(
                     &tcfg,
-                    cmd.abs_file(),
+                    &cmd.abs_file(),
                     &ancestor_path,
                     &build_dir,
                     cc_db,
@@ -488,13 +488,13 @@ fn reorganize_definitions(
 
 fn transpile_single(
     tcfg: &TranspilerConfig,
-    input_path: PathBuf,
+    input_path: &Path,
     ancestor_path: &Path,
     build_dir: &Path,
     cc_db: &Path,
     extra_clang_args: &[&str],
 ) -> TranspileResult {
-    let output_path = get_output_path(tcfg, input_path.clone(), ancestor_path, build_dir);
+    let output_path = get_output_path(tcfg, input_path, ancestor_path, build_dir);
     if output_path.exists() && !tcfg.overwrite_existing {
         warn!("Skipping existing file {}", output_path.display());
         return Err(());
@@ -515,7 +515,7 @@ fn transpile_single(
 
     // Extract the untyped AST from the CBOR file
     let untyped_context = match ast_exporter::get_untyped_ast(
-        input_path.as_path(),
+        input_path,
         cc_db,
         extra_clang_args,
         tcfg.debug_ast_exporter,
@@ -584,7 +584,7 @@ fn transpile_single(
 
 fn get_output_path(
     tcfg: &TranspilerConfig,
-    mut input_path: PathBuf,
+    input_path: &Path,
     ancestor_path: &Path,
     build_dir: &Path,
 ) -> PathBuf {
@@ -597,7 +597,7 @@ fn get_output_path(
         .unwrap()
         .replace('-', "_");
 
-    input_path.set_file_name(file_name);
+    let mut input_path = input_path.with_file_name(file_name);
     input_path.set_extension("rs");
 
     if tcfg.output_dir.is_some() {

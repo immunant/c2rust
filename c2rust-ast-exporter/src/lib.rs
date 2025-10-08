@@ -5,7 +5,15 @@ use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::slice;
 
+use crate::clang_ast::BuiltinVaListKind;
+
 pub mod clang_ast;
+
+impl Default for BuiltinVaListKind {
+    fn default() -> Self {
+        Self::CharPtrBuiltinVaList
+    }
+}
 
 pub fn get_clang_major_version() -> Option<u32> {
     let s = unsafe { CStr::from_ptr(clang_version()) };
