@@ -18,7 +18,7 @@ libc = "0.2"
 regex = "1.1"
 ena = "0.13"
 indexmap = { version = "1.0.1", features = ["serde-1"] }
-cargo = "0.62"
+cargo = "0.69"
 clap = {version = "2.33", features = ["yaml"]}
 c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.21.0" }
 env_logger = "0.10"
