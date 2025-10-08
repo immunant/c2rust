@@ -299,11 +299,11 @@ impl TypedAstContext {
         }
     }
 
-    pub fn iter_decls(&self) -> indexmap::map::Iter<CDeclId, CDecl> {
+    pub fn iter_decls(&self) -> indexmap::map::Iter<'_, CDeclId, CDecl> {
         self.c_decls.iter()
     }
 
-    pub fn iter_mut_decls(&mut self) -> indexmap::map::IterMut<CDeclId, CDecl> {
+    pub fn iter_mut_decls(&mut self) -> indexmap::map::IterMut<'_, CDeclId, CDecl> {
         self.c_decls.iter_mut()
     }
 

@@ -212,14 +212,14 @@ impl<L: Make<Ident>> Make<Label> for L {
     }
 }
 
-impl<'a> Make<Path> for &'a str {
+impl Make<Path> for &str {
     fn make(self, mk: &Builder) -> Path {
         let v = vec![self];
         Make::<Path>::make(v, mk)
     }
 }
 
-impl<'a> Make<Abi> for &'a str {
+impl Make<Abi> for &str {
     fn make(self, mk: &Builder) -> Abi {
         Abi {
             extern_token: Token![extern](mk.span),
@@ -229,7 +229,7 @@ impl<'a> Make<Abi> for &'a str {
     }
 }
 
-impl<'a> Make<Extern> for &'a str {
+impl Make<Extern> for &str {
     fn make(self, _mk: &Builder) -> Extern {
         Extern::Explicit(self.to_owned())
     }

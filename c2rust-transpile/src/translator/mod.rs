@@ -519,7 +519,7 @@ pub fn translate(
             None,
         }
 
-        fn some_type_name(s: Option<&str>) -> Name {
+        fn some_type_name(s: Option<&str>) -> Name<'_> {
             match s {
                 None => Name::Anonymous,
                 Some(r) => Name::Type(r),
@@ -5152,9 +5152,7 @@ impl<'c> Translation<'c> {
         // If the definition lives in the same header, there is no need to import it
         // in fact, this would be a hard rust error.
         // We should never import into the main module here, as that happens in make_submodule
-        if import_file_id.map_or(false, |path| path == decl_file_id)
-            || decl_file_id == self.main_file
-        {
+        if import_file_id == Some(decl_file_id) || decl_file_id == self.main_file {
             return;
         }
 
