@@ -9,7 +9,7 @@ name = "robotfindskitten"
 path = "src/robotfindskitten.rs"
 
 [dependencies]
-c2rust_runtime = { path = "../../../../c2rust-refactor/runtime", version = "0.20.0" }
+c2rust_runtime = { path = "../../../../c2rust-refactor/runtime", version = "0.21.0" }
 rand = "0.5.5"
 pancurses = "0.16.0"
 libc = "0.2"

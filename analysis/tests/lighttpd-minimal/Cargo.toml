@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2"
-c2rust-analysis-rt = { path = "../../runtime", optional = true, version = "0.20.0" }
+c2rust-analysis-rt = { path = "../../runtime", optional = true, version = "0.21.0" }
 
 [features]
 miri = []

@@ -12,10 +12,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-c2rust-ast-builder = { version = "0.20.0", path = "../c2rust-ast-builder" }
-c2rust-ast-exporter = { version = "0.20.0", path = "../c2rust-ast-exporter" }
-c2rust-ast-printer = { version = "0.20.0", path = "../c2rust-ast-printer" }
-c2rust-bitfields = { version = "0.20.0", path = "../c2rust-bitfields" }
+c2rust-ast-builder = { version = "0.21.0", path = "../c2rust-ast-builder" }
+c2rust-ast-exporter = { version = "0.21.0", path = "../c2rust-ast-exporter" }
+c2rust-ast-printer = { version = "0.21.0", path = "../c2rust-ast-printer" }
+c2rust-bitfields = { version = "0.21.0", path = "../c2rust-bitfields" }
 colored = "2.0"
 dtoa = "1.0"
 failure = "0.1.5"
