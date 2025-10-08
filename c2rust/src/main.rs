@@ -60,7 +60,7 @@ impl SubCommand {
     /// Get all known [`SubCommand`]s.  These have no [`SubCommand::path`].
     /// Even if the subcommand executables aren't there, we can still suggest them.
     pub fn known() -> impl Iterator<Item = Self> {
-        ["transpile", "instrument", "pdg", "analyze"]
+        ["transpile", "refactor", "instrument", "pdg", "analyze"]
             .into_iter()
             .map(|name| Self {
                 path: None,

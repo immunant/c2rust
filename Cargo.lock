@@ -275,6 +275,7 @@ version = "0.21.0"
 dependencies = [
  "anyhow",
  "c2rust-build-paths",
+ "c2rust-refactor",
  "c2rust-transpile",
  "clap 3.2.25",
  "env_logger 0.10.0",
