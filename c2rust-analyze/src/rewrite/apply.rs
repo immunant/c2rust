@@ -59,6 +59,7 @@ impl SpanLike for Span {
 }
 
 impl<S: SpanLike> RewriteTree<S> {
+    #[allow(clippy::type_complexity)]
     pub fn build(
         mut rws: Vec<(S, Rewrite<S>)>,
     ) -> (Vec<RewriteTree<S>>, Vec<(S, Rewrite<S>, RewriteError<S>)>) {

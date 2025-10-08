@@ -2990,7 +2990,7 @@ impl<'c> Translation<'c> {
         let pointee = self
             .ast_context
             .get_pointee_qual_type(type_id)
-            .ok_or(TranslationError::generic("null_ptr requires a pointer"))?;
+            .ok_or_else(|| TranslationError::generic("null_ptr requires a pointer"))?;
         let ty = self.convert_type(type_id)?;
         let mut zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
         if is_static && !pointee.qualifiers.is_const {

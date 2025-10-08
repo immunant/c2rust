@@ -531,12 +531,10 @@ fn fn_origin_args_params<'tcx>(
         let mut origin_params = vec![];
         if let TyKind::FnDef(_, substs) = fn_ty.kind() {
             for sub in substs.iter() {
-                match sub.unpack() {
-                    GenericArgKind::Lifetime(re) => match re.kind() {
-                        RegionKind::ReEarlyBound(eb) => origin_params.push(OriginParam::Actual(eb)),
-                        _ => (),
-                    },
-                    _ => (),
+                if let GenericArgKind::Lifetime(re) = sub.unpack() {
+                    if let RegionKind::ReEarlyBound(eb) = re.kind() {
+                        origin_params.push(OriginParam::Actual(eb))
+                    }
                 }
             }
         }
