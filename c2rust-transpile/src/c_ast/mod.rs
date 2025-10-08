@@ -144,16 +144,11 @@ impl TypedAstContext {
     // building an empty one and filling it later.
     pub fn new(input_path: &Path, clang_files: &[SrcFile]) -> TypedAstContext {
         let mut include_map = vec![];
-        for (mut fileid, mut cur) in clang_files.iter().enumerate() {
+        for mut cur in clang_files {
             let mut include_path = vec![];
             while let Some(include_loc) = &cur.include_loc {
-                include_path.push(SrcLoc {
-                    fileid: fileid as u64,
-                    line: include_loc.line,
-                    column: include_loc.column,
-                });
-                fileid = include_loc.fileid as usize;
-                cur = &clang_files[fileid];
+                include_path.push(*include_loc);
+                cur = &clang_files[include_loc.fileid as usize];
             }
             include_path.reverse();
             // The first include should be from the input file.
