@@ -499,6 +499,7 @@ impl<'c> Translation<'c> {
                                 val.map(|val| mk().cast_expr(val, write_type))
                             };
 
+                            #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
                             let write = if is_volatile {
                                 val.and_then(|val| {
                                     TranslationResult::Ok(WithStmts::new_unsafe_val(

@@ -15,7 +15,7 @@ publish = false
 [dependencies]
 anyhow = "1.0"
 bincode = "1.0.1"
-c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.20.0" }
+c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.21.0" }
 indexmap = "1.9"
 itertools = "0.10"
 once_cell = "1.13"
@@ -31,7 +31,7 @@ tempfile = "3.3"
 rand = "0.8.5"
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.20.0" }
+c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.21.0" }
 
 [package.metadata.rust-analyzer] 
 rustc_private = true

@@ -66,16 +66,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         trace!("visit_place_ref({pl:?})");
         let mut lty = self.acx.type_of(pl.local);
         for proj in pl.projection {
-            match proj {
-                ProjectionElem::Deref => {
-                    debug_assert!(matches!(
-                        lty.ty.kind(),
-                        TyKind::RawPtr(..) | TyKind::Ref(..)
-                    ));
-                    debug_assert_eq!(lty.args.len(), 1);
-                    self.use_pointer_at_type(lty.label, lty.args[0]);
-                }
-                _ => {}
+            if let ProjectionElem::Deref = proj {
+                debug_assert!(matches!(
+                    lty.ty.kind(),
+                    TyKind::RawPtr(..) | TyKind::Ref(..)
+                ));
+                debug_assert_eq!(lty.args.len(), 1);
+                self.use_pointer_at_type(lty.label, lty.args[0]);
             }
             lty = self.acx.projection_lty(lty, proj);
         }
@@ -177,17 +174,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         );
         let _g = panic_detail::set_current_span(stmt.source_info.span);
 
-        match stmt.kind {
-            StatementKind::Assign(ref x) => {
-                let (pl, ref rv) = **x;
-                let pl_lty = self.visit_place(pl);
+        if let StatementKind::Assign(ref x) = stmt.kind {
+            let (pl, ref rv) = **x;
+            let pl_lty = self.visit_place(pl);
 
-                let rv_lty = self.acx.type_of_rvalue(rv, loc);
-                self.visit_rvalue(rv, rv_lty);
+            let rv_lty = self.acx.type_of_rvalue(rv, loc);
+            self.visit_rvalue(rv, rv_lty);
 
-                self.assign(pl_lty.label, rv_lty.label);
-            }
-            _ => (),
+            self.assign(pl_lty.label, rv_lty.label);
         }
     }
 
@@ -200,23 +194,21 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let _g = panic_detail::set_current_span(term.source_info.span);
         let tcx = self.acx.tcx();
 
-        match term.kind {
-            TerminatorKind::Call {
-                ref func,
-                ref args,
-                destination,
-                target: _,
-                ..
-            } => {
-                for op in args {
-                    self.visit_operand(op);
-                }
-                let dest_lty = self.visit_place(destination);
-
-                let func = func.ty(self.mir, tcx);
-                self.visit_call(func, args, dest_lty);
+        if let TerminatorKind::Call {
+            ref func,
+            ref args,
+            destination,
+            target: _,
+            ..
+        } = term.kind
+        {
+            for op in args {
+                self.visit_operand(op);
             }
-            _ => (),
+            let dest_lty = self.visit_place(destination);
+
+            let func = func.ty(self.mir, tcx);
+            self.visit_call(func, args, dest_lty);
         }
     }
 

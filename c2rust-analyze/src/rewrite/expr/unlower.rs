@@ -1053,13 +1053,10 @@ fn get_operand_place<'tcx>(op: &mir::Operand<'tcx>) -> Option<mir::Place<'tcx>> 
 
 /// Indicate whether a given MIR statement should be considered when building the unlowering map.
 fn filter_stmt(stmt: &mir::Statement) -> bool {
-    match stmt.kind {
-        // Ignore `AscribeUserType` annotations.  These appear in the middle of some expressions.
-        // It's easier to ignore them all at this level rather than try to handle them in all the
-        // places they might appear.
-        mir::StatementKind::AscribeUserType(..) => false,
-        _ => true,
-    }
+    // Ignore `AscribeUserType` annotations.  These appear in the middle of some expressions.
+    // It's easier to ignore them all at this level rather than try to handle them in all the
+    // places they might appear.
+    !matches!(stmt.kind, mir::StatementKind::AscribeUserType(..))
 }
 
 /// Indicate whether a given MIR terminator should be considered when building the unlowering map.
