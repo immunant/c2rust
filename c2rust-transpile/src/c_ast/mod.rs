@@ -45,6 +45,8 @@ pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone, Default)]
 pub struct TypedAstContext {
+    main_file: PathBuf,
+
     c_types: HashMap<CTypeId, CType>,
     c_exprs: HashMap<CExprId, CExpr>,
     c_stmts: HashMap<CStmtId, CStmt>,
@@ -143,6 +145,8 @@ impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
     pub fn new(input_path: &Path, clang_files: &[SrcFile]) -> TypedAstContext {
+        let main_file = input_path.to_owned();
+
         let mut include_map = vec![];
         for mut cur in clang_files {
             let mut include_path = vec![];
@@ -172,6 +176,7 @@ impl TypedAstContext {
         }
 
         TypedAstContext {
+            main_file,
             files,
             file_map,
             include_map,
@@ -198,7 +203,15 @@ impl TypedAstContext {
     /// Lookup the include path for `loc`.
     /// The first [`SrcLoc`] returned should have been included from the input/main file.
     pub fn include_path(&self, loc: SrcLoc) -> &[SrcLoc] {
-        &self.include_map[self.file_map[loc.fileid as usize]]
+        let includes = &self.include_map[self.file_map[loc.fileid as usize]][..];
+        if cfg!(debug_assertions) {
+            if let Some(root_include) = includes.first() {
+                let file_id = self.file_map[root_include.fileid as usize];
+                let file = &self.files[file_id];
+                assert_eq!(file.path.as_deref(), Some(self.main_file.as_path()));
+            }
+        }
+        includes
     }
 
     pub fn loc_to_string(&self, loc: SrcLoc) -> String {
@@ -2433,6 +2446,13 @@ c = {c}
                     line: 6,
                     column: 10,
                 }],
+            ],
+            files: vec![
+                SrcFile {
+                    path: Some(PathBuf::new()),
+                    include_loc: None,
+                };
+                6
             ],
             ..Default::default()
         };
