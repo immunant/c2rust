@@ -34,8 +34,8 @@ pub type zstd_platform_dependent_type = core::ffi::c_long;
 pub struct ntlmdata {
     pub target_info_len: core::ffi::c_uint,
 }
-pub const UINTPTR_MAX: core::ffi::c_ulong = 18446744073709551615 as core::ffi::c_ulong;
 pub const true_0: core::ffi::c_int = 1 as core::ffi::c_int;
+pub const UINTPTR_MAX: core::ffi::c_ulong = 18446744073709551615 as core::ffi::c_ulong;
 pub const LITERAL_INT: core::ffi::c_int = 0xffff as core::ffi::c_int;
 pub const LITERAL_BOOL: core::ffi::c_int = true_0;
 pub const LITERAL_FLOAT: core::ffi::c_double = 3.14f64;

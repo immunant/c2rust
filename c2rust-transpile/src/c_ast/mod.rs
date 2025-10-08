@@ -45,6 +45,8 @@ pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::
 /// AST context containing all of the nodes in the Clang AST
 #[derive(Debug, Clone, Default)]
 pub struct TypedAstContext {
+    main_file: PathBuf,
+
     c_types: HashMap<CTypeId, CType>,
     c_exprs: HashMap<CExprId, CExpr>,
     c_stmts: HashMap<CStmtId, CStmt>,
@@ -142,7 +144,26 @@ impl<T> Located<T> {
 impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
-    pub fn new(clang_files: &[SrcFile]) -> TypedAstContext {
+    pub fn new(input_path: &Path, clang_files: &[SrcFile]) -> TypedAstContext {
+        let main_file = input_path.to_owned();
+
+        let mut include_map = vec![];
+        for mut cur in clang_files {
+            let mut include_path = vec![];
+            while let Some(include_loc) = &cur.include_loc {
+                include_path.push(*include_loc);
+                cur = &clang_files[include_loc.fileid as usize];
+            }
+            include_path.reverse();
+            // The first include should be from the input file.
+            // If this is false, then we haven't found the full, correct include path.
+            if let Some(root_include_path) = cur.path.as_deref() {
+                assert_eq!(root_include_path, input_path);
+            }
+            include_map.push(include_path);
+        }
+
+        // Deduplicate paths, converting clang `fileid`s to our `FileId`s.
         let mut files: Vec<SrcFile> = vec![];
         let mut file_map: Vec<FileId> = vec![];
         for file in clang_files {
@@ -154,22 +175,8 @@ impl TypedAstContext {
             }
         }
 
-        let mut include_map = vec![];
-        for (fileid, mut cur) in files.iter().enumerate() {
-            let mut include_path = vec![];
-            while let Some(include_loc) = &cur.include_loc {
-                include_path.push(SrcLoc {
-                    fileid: fileid as u64,
-                    line: include_loc.line,
-                    column: include_loc.column,
-                });
-                cur = &clang_files[include_loc.fileid as usize];
-            }
-            include_path.reverse();
-            include_map.push(include_path);
-        }
-
         TypedAstContext {
+            main_file,
             files,
             file_map,
             include_map,
@@ -193,8 +200,18 @@ impl TypedAstContext {
         self.files[id].path.as_deref()
     }
 
+    /// Lookup the include path for `loc`.
+    /// The first [`SrcLoc`] returned should have been included from the input/main file.
     pub fn include_path(&self, loc: SrcLoc) -> &[SrcLoc] {
-        &self.include_map[self.file_map[loc.fileid as usize]]
+        let includes = &self.include_map[self.file_map[loc.fileid as usize]][..];
+        if cfg!(debug_assertions) {
+            if let Some(root_include) = includes.first() {
+                let file_id = self.file_map[root_include.fileid as usize];
+                let file = &self.files[file_id];
+                assert_eq!(file.path.as_deref(), Some(self.main_file.as_path()));
+            }
+        }
+        includes
     }
 
     pub fn loc_to_string(&self, loc: SrcLoc) -> String {
@@ -218,7 +235,7 @@ impl TypedAstContext {
             .join("\n    included from ")
     }
 
-    /// Compare two [`SrcLoc`]s based on their import path.
+    /// Compare two [`SrcLoc`]s based on their include path.
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
         /// Compare without regard to `fileid`.
         fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
@@ -2431,6 +2448,13 @@ c = {c}
                     line: 6,
                     column: 10,
                 }],
+            ],
+            files: vec![
+                SrcFile {
+                    path: Some(PathBuf::new()),
+                    include_loc: None,
+                };
+                6
             ],
             ..Default::default()
         };
