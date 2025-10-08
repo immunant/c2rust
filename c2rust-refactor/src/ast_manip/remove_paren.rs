@@ -1,7 +1,7 @@
 //! `remove_paren` function, for removing unnecessary `ExprKind::Paren` nodes.
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::*;
 
 use crate::ast_manip::MutVisit;
 
@@ -26,7 +26,7 @@ impl MutVisitor for RemoveParen {
     }
 
     // Need a no-op implementation to avoid "fold_mac disabled by default" error.
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 }

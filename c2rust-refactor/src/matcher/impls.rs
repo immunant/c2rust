@@ -1,18 +1,19 @@
 //! `TryMatch` impls, to support the `matcher` module.
+use rustc_ast::ptr::P;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{Span, Spanned};
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::convert::TryInto;
 use std::rc::Rc;
-use syntax::ast::*;
-use syntax_pos::hygiene::SyntaxContext;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::ptr::P;
-use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
 
-use crate::ast_manip::AstNode;
 use crate::ast_manip::util::{macro_name, PatternSymbol};
+use crate::ast_manip::AstNode;
 use crate::matcher::{self, MatchCtxt, TryMatch};
 
 impl TryMatch for AstNode {
@@ -83,7 +84,7 @@ impl TryMatch for Expr {
             return Ok(());
         }
 
-        if let ExprKind::Mac(ref mac) = self.kind {
+        if let ExprKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
@@ -112,17 +113,18 @@ impl TryMatch for Pat {
             return Ok(());
         }
 
-        if let PatKind::Mac(ref mac) = self.kind {
+        // TODO: do we want to allow top-level or-patterns here?
+        if let PatKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
                     &mac.args,
-                    |p| p.parse_pat(None).map(|p| p.into_inner()),
+                    |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
                     target,
                 ),
                 "typed" => mcx.do_typed(
                     &mac.args,
-                    |p| p.parse_pat(None).map(|p| p.into_inner()),
+                    |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
                     target,
                 ),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
@@ -139,14 +141,12 @@ impl TryMatch for Ty {
             return Ok(());
         }
 
-        if let TyKind::Mac(ref mac) = self.kind {
+        if let TyKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
             return match &name.as_str() as &str {
-                "marked" => mcx.do_marked(
-                    &mac.args,
-                    |p| p.parse_ty().map(|p| p.into_inner()),
-                    target,
-                ),
+                "marked" => {
+                    mcx.do_marked(&mac.args, |p| p.parse_ty().map(|p| p.into_inner()), target)
+                }
                 "def" => mcx.do_def_ty(&mac.args, target),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
             };
@@ -205,15 +205,21 @@ impl<T: TryMatch> TryMatch for ThinVec<T> {
     }
 }
 
-impl<T: TryMatch> TryMatch for P<T> {
+impl<T: TryMatch + ?Sized> TryMatch for P<T> {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
-        mcx.try_match(&**self, &**target)
+        <T as TryMatch>::try_match(self, target, mcx)
     }
 }
 
-impl<T: TryMatch> TryMatch for Rc<T> {
+impl<T: TryMatch + ?Sized> TryMatch for Box<T> {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
-        mcx.try_match(&**self, &**target)
+        <T as TryMatch>::try_match(self, target, mcx)
+    }
+}
+
+impl<T: TryMatch + ?Sized> TryMatch for Rc<T> {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        <T as TryMatch>::try_match(self, target, mcx)
     }
 }
 

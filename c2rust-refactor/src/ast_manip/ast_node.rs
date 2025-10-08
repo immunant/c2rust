@@ -1,8 +1,8 @@
-use std::convert::TryFrom;
 use derive_more::{From, TryInto};
+use std::convert::TryFrom;
 
-use syntax::ast;
-use syntax::ptr::P;
+use rustc_ast::ast;
+use rustc_ast::ptr::P;
 
 #[derive(Copy, Clone, Debug, From, TryInto)]
 pub enum AstNodeRef<'a> {
@@ -15,7 +15,7 @@ pub enum AstNodeRef<'a> {
     ForeignItem(&'a ast::ForeignItem),
     Block(&'a ast::Block),
 }
- 
+
 #[derive(Clone, Debug, From, TryInto)]
 pub enum AstNode {
     Crate(ast::Crate),

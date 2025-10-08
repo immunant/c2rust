@@ -1,13 +1,14 @@
-use rustc::hir::def_id::DefId;
-use rustc::ty::TyKind;
+use rustc_hir::def_id::DefId;
+use rustc_type_ir::sty::TyKind;
 use std::collections::HashSet;
 use std::fmt::Display;
-use syntax::ast::*;
-use syntax::mut_visit::MutVisitor;
-use syntax::ptr::P;
+use rustc_ast::*;
+use rustc_ast::mut_visit::MutVisitor;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Ident;
 use smallvec::smallvec;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisit, visit_nodes};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context};
 use crate::command::{CommandState, Registry};
@@ -56,7 +57,7 @@ fn mut_accessor_name<T: Display>(fieldname: T) -> Ident {
     mk().ident(format!("as_{}_mut", fieldname))
 }
 
-fn generate_enum_accessors(cx: &RefactorCtxt) -> Vec<ImplItem> {
+fn generate_enum_accessors(cx: &RefactorCtxt) -> Vec<P<AssocItem>> {
     parse_impl_items(cx.session(), r#"
 
     fn __as_variant(&self) -> &__type {
@@ -92,7 +93,7 @@ impl Transform for Ionize {
             if st.marked(i.id, "target") {
                 if let ItemKind::Union(VariantData::Struct(ref _fields, _), _) = i.kind {
                     if let Some(def_id) = cx.hir_map().opt_local_def_id_from_node_id(i.id) {
-                        targets.insert(def_id);
+                        targets.insert(def_id.to_def_id());
                     } else {
                         panic!("Bad target, no def id")
                     }
@@ -115,10 +116,10 @@ impl Transform for Ionize {
 
 
             let ty0 = cx.adjusted_node_type(val.id);
-            match ty0.kind {
-                TyKind::Adt(ref adt, _) if targets.contains(&adt.did) => {
+            match ty0.kind() {
+                TyKind::Adt(ref adt, _) if targets.contains(&adt.did()) => {
 
-                    let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did);
+                    let (_qself, mut path) = reflect_def_path(cx.ty_ctxt(), adt.did());
                     path.segments.push(mk().path_segment(field));
                     let mut bnd1 = mcx.bindings.clone();
                     bnd1.add("__con", mk().path_expr(path));
@@ -154,7 +155,7 @@ impl Transform for Ionize {
         // Replace union with enum
         FlatMapNodes::visit(krate, |i: P<Item>| {
             match cx.hir_map().opt_local_def_id_from_node_id(i.id) {
-                Some(ref def_id) if targets.contains(def_id) => {}
+                Some(ref def_id) if targets.contains(&def_id.to_def_id()) => {}
                 _ => return smallvec![i]
             }
 

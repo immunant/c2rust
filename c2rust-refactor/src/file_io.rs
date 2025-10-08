@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use json::{self, JsonValue};
-use syntax::ast::*;
-use syntax::source_map::{FileLoader, SourceFile, SourceMap};
-use syntax::source_map::{Span, DUMMY_SP};
-use syntax::symbol::Symbol;
-use syntax_pos::hygiene::SyntaxContext;
+use log::info;
+use rustc_ast::*;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{FileLoader, SourceFile, SourceMap};
+use rustc_span::source_map::{Span, DUMMY_SP};
+use rustc_span::symbol::Symbol;
 
 use crate::rewrite::{self, TextRewrite};
 
@@ -221,7 +222,7 @@ impl FileIO for RealFileIO {
         // the json instead.
         let rw = rewrite::TextRewrite {
             old_span: DUMMY_SP,
-            new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root()),
+            new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root(), None),
             rewrites: rws.to_owned(),
             nodes: nodes.to_owned(),
             adjust: rewrite::TextAdjust::None,
@@ -261,10 +262,6 @@ pub struct ArcFileIO(pub Arc<dyn FileIO + Sync + Send>);
 impl FileLoader for ArcFileIO {
     fn file_exists(&self, path: &Path) -> bool {
         self.0.file_exists(path)
-    }
-
-    fn abs_path(&self, path: &Path) -> Option<PathBuf> {
-        self.0.abs_path(path).ok()
     }
 
     fn read_file(&self, path: &Path) -> io::Result<String> {

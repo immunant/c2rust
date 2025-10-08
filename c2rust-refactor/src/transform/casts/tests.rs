@@ -33,14 +33,13 @@ impl Arbitrary for SimpleTy {
 }
 
 fn ty_bit_width(ty: SimpleTy, pw: PointerWidth) -> u32 {
-    let bw = match ty {
-        SimpleTy::Int(w, _) => w,
-        SimpleTy::Size(_) | SimpleTy::Pointer => pw.0,
+    match ty {
+        SimpleTy::Int(w, _) => w.try_into().expect("failed to cast"),
+        SimpleTy::Size(_) | SimpleTy::Pointer => pw.0.try_into().expect("failed to cast"),
         SimpleTy::Float32 => 32,
         SimpleTy::Float64 => 64,
-        SimpleTy::Other => unreachable!(), // FIXME
-    };
-    bw as u32
+        SimpleTy::Ref | SimpleTy::Array | SimpleTy::Other => unreachable!(), // FIXME
+    }
 }
 
 fn cast_bv<'bv>(bv: BV<'bv>, from_ty: SimpleTy, to_ty: SimpleTy, pw: PointerWidth) -> BV<'bv> {

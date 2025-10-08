@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use rustc::hir::def_id::DefId;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax_pos::sym;
+use rustc_hir::def_id::DefId;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Symbol;
+use rustc_span::sym;
 use smallvec::smallvec;
 
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
@@ -73,9 +72,9 @@ impl Transform for LinkFuncs {
         visit_fns(krate, |fl| {
             let def_id = cx.node_def_id(fl.id);
             if fl.kind != FnKind::Foreign {
-                if let Some(name) = attr::first_attr_value_str_by_name(&fl.attrs, sym::export_name) {
+                if let Some(name) = crate::util::first_attr_value_str_by_name(&fl.attrs, sym::export_name) {
                     symbol_to_def.insert(name, def_id);
-                } else if attr::contains_name(&fl.attrs, sym::no_mangle) {
+                } else if crate::util::contains_name(&fl.attrs, sym::no_mangle) {
                     symbol_to_def.insert(fl.ident.name, def_id);
                 }
             } else {
@@ -180,7 +179,7 @@ impl Transform for LinkIncompleteTypes {
         // (2) Find incomplete type definitions (extern types), and index them by name.
         visit_nodes(krate, |i: &ForeignItem| {
             let incomplete = match i.kind {
-                ForeignItemKind::Ty => true,
+                ForeignItemKind::TyAlias(_) => true,
                 _ => false,
             };
 
@@ -299,8 +298,8 @@ impl Transform for CanonicalizeStructs {
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
             let should_remove = match i.kind {
-                ItemKind::Impl(_, _, _, _, _, ref ty, _) => {
-                    if let Some(ty_def_id) = cx.try_resolve_ty(ty) {
+                ItemKind::Impl(box Impl { ref self_ty, .. }) => {
+                    if let Some(ty_def_id) = cx.try_resolve_ty(self_ty) {
                         removed_id_map.contains_key(&ty_def_id)
                     } else {
                         false

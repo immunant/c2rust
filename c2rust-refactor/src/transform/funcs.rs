@@ -1,18 +1,20 @@
+use log::{info, warn};
 use std::collections::{HashMap, HashSet};
-use rustc::hir::def_id::DefId;
-use rustc::ty::TyKind;
-use syntax::ast;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax_pos::sym;
+use rustc_hir::def_id::DefId;
+use rustc_type_ir::sty::TyKind;
+use rustc_ast::ast;
+use rustc_ast::*;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_span::{sym, DUMMY_SP};
+use rustc_span::symbol::Ident;
 use smallvec::{smallvec, SmallVec};
 
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules, visit_nodes, MutVisit};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
+use crate::{expect, match_or, unpack};
 use crate::matcher::{BindingType, MatchCtxt, Subst, mut_visit_match_with};
 use crate::path_edit::{fold_resolved_paths, fold_resolved_paths_with_id};
 use crate::transform::Transform;
@@ -46,7 +48,7 @@ impl Transform for ToMethod {
         FlatMapNodes::visit(krate, |i: P<Item>| {
             // We're looking for an inherent impl (no `TraitRef`) marked with a cursor.
             if !st.marked(i.id, "dest") ||
-               !matches!([i.kind] ItemKind::Impl(_, _, _, _, None, _, _)) {
+               !matches!(i.kind, ItemKind::Impl(box Impl { of_trait: None, .. })) {
                 return smallvec![i];
             }
 
@@ -71,7 +73,7 @@ impl Transform for ToMethod {
 
             sig: FnSig,
             generics: Generics,
-            block: P<Block>,
+            body: Option<P<Block>>,
 
             /// Index of the argument that will be replaced with `self`, or `None` if this function
             /// is being turned into a static method.
@@ -82,7 +84,7 @@ impl Transform for ToMethod {
         fold_modules(krate, |curs| {
             while let Some(arg_idx) = curs.advance_until_match(|i| {
                 // Find the argument under the cursor.
-                let sig = match_or!([i.kind] ItemKind::Fn(ref sig, ..) => sig; return None);
+                let sig = match_or!([i.kind] ItemKind::Fn(box Fn { ref sig, .. }) => sig; return None);
                 for (idx, arg) in sig.decl.inputs.iter().enumerate() {
                     if st.marked(arg.id, "target") {
                         return Some(Some(idx));
@@ -94,11 +96,11 @@ impl Transform for ToMethod {
                 None
             }) {
                 let i = curs.remove();
-                unpack!([i.kind.clone()]
-                        ItemKind::Fn(sig, generics, block));
+                let (sig, generics, body) = expect!([i.kind.clone()]
+                    ItemKind::Fn(box Fn { sig, generics, body, .. }) => (sig, generics, body));
                 fns.push(FnInfo {
                     item: i,
-                    sig, generics, block,
+                    sig, generics, body,
                     arg_idx,
                 });
             }
@@ -144,8 +146,8 @@ impl Transform for ToMethod {
                         BindingMode::ByRef(mutbl) => Some(SelfKind::Region(None, mutbl)),
                     }
                 } else {
-                    match pat_ty.kind {
-                        TyKind::Ref(_, ty, _) if ty == self_ty => {
+                    match pat_ty.kind() {
+                        TyKind::Ref(_, ty, _) if *ty == self_ty => {
                             match arg.ty.kind {
                                 ast::TyKind::Rptr(ref lt, ref mty) =>
                                     Some(SelfKind::Region(*lt, mty.mutbl)),
@@ -172,7 +174,7 @@ impl Transform for ToMethod {
             // FIXME: rustc changed how locals args are represented, and we
             // don't have a Def for locals any more, and thus no def_id. We need
             // to fix this in path_edit.rs
-            fold_resolved_paths(&mut f.block, cx, |qself, path, def| {
+            fold_resolved_paths(&mut f.body, cx, |qself, path, def| {
                 match cx.res_to_hir_id(&def[0]) {
                     Some(hir_id) =>
                         if hir_id == arg_hir_id {
@@ -197,26 +199,35 @@ impl Transform for ToMethod {
             }
 
             smallvec![i.map(|i| {
-                unpack!([i.kind] ItemKind::Impl(
-                        unsafety, polarity, generics, defaultness, trait_ref, ty, items));
-                let mut items = items;
+                let ItemKind::Impl(box Impl {
+                    unsafety, polarity, generics, constness,
+                    defaultness, of_trait, self_ty, mut items
+                }) = i.kind else {
+                    panic!("expected ItemKind::Impl, got {:?}", i.kind);
+                };
+
                 let fns = fns.take().unwrap();
                 items.extend(fns.into_iter().map(|f| {
-                    ImplItem {
+                    P(AssocItem {
                         id: DUMMY_NODE_ID,
                         ident: f.item.ident,
                         vis: f.item.vis.clone(),
-                        defaultness: Defaultness::Final,
                         attrs: f.item.attrs.clone(),
-                        generics: f.generics,
-                        kind: ImplItemKind::Method(f.sig, f.block),
+                        kind: AssocItemKind::Fn(Box::new(Fn {
+                            defaultness,
+                            generics: f.generics,
+                            sig: f.sig,
+                            body: f.body,
+                        })),
                         span: f.item.span,
                         tokens: None,
-                    }
+                    })
                 }));
                 Item {
-                    kind: ItemKind::Impl(
-                              unsafety, polarity, generics, defaultness, trait_ref, ty, items),
+                    kind: ItemKind::Impl(Box::new(Impl {
+                          unsafety, polarity, generics, constness,
+                          defaultness, of_trait, self_ty, items,
+                    })),
                     .. i
                 }
             })]
@@ -226,7 +237,7 @@ impl Transform for ToMethod {
         // (5) Find all uses of marked functions, and rewrite them into method calls.
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            if !matches!([e.kind] ExprKind::Call(..)) {
+            if !crate::matches!([e.kind] ExprKind::Call(..)) {
                 return;
             }
 
@@ -245,7 +256,8 @@ impl Transform for ToMethod {
 
                 e.kind = ExprKind::MethodCall(
                     mk().path_segment(&info.ident),
-                    args
+                    args,
+                    DUMMY_SP,
                 );
             } else {
                 // There is no `self` argument, but change the function reference to the new path.
@@ -275,11 +287,17 @@ impl Transform for FixUnusedUnsafe {
         MutVisitNodes::visit(krate, |b: &mut P<Block>| {
             if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
                 let hir_id = cx.hir_map().node_to_hir_id(b.id);
-                let parent = cx.hir_map().get_parent_did(hir_id);
+                let parent = cx.hir_map().get_parent_item(hir_id);
                 let result = cx.ty_ctxt().unsafety_check_result(parent);
-                let unused = result.unsafe_blocks.iter().any(|&(id, used)| {
-                    id == cx.hir_map().node_to_hir_id(b.id) && !used
-                });
+                let unused = result
+                    .unused_unsafes
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|&(id, _)| {
+                        // TODO: do we need to check the UnusedUnsafe argument?
+                        id == cx.hir_map().node_to_hir_id(b.id)
+                    });
                 if unused {
                     b.rules = BlockCheckMode::Default;
                 }
@@ -313,8 +331,8 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
                 match i.kind {
-                    ItemKind::Fn(ref mut sig, _, ref mut block) => {
-                        sink_unsafe(&mut sig.header.unsafety, block);
+                    ItemKind::Fn(box Fn { ref mut sig, body: Some(ref mut body), .. }) => {
+                        sink_unsafe(&mut sig.header.unsafety, body);
                     },
                     _ => {},
                 }
@@ -328,23 +346,23 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
         mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if self.st.marked(i.id, "target") {
             match i.kind {
-                ImplItemKind::Method(FnSig { ref mut header, .. }, ref mut block) => {
-                    sink_unsafe(&mut header.unsafety, block);
+                AssocItemKind::Fn(box Fn { sig: FnSig { ref mut header, .. }, body: Some(ref mut body), .. }) => {
+                    sink_unsafe(&mut header.unsafety, body);
                 },
                 _ => {},
             }
         }
 
-        mut_visit::noop_flat_map_impl_item(i, self)
+        mut_visit::noop_flat_map_assoc_item(i, self)
     }
 }
 
-fn sink_unsafe(unsafety: &mut Unsafety, block: &mut P<Block>) {
-    if *unsafety == Unsafety::Unsafe {
-        *unsafety = Unsafety::Normal;
+fn sink_unsafe(unsafety: &mut Unsafe, block: &mut P<Block>) {
+    if let Unsafe::Yes(_) = *unsafety {
+        *unsafety = Unsafe::No;
         *block = mk().block(vec![
             mk().expr_stmt(mk().block_expr(mk().unsafe_().block(
                         block.stmts.clone())))]);
@@ -427,12 +445,12 @@ impl Transform for WrapExtern {
             }
 
             match fi.kind {
-                ForeignItemKind::Fn(ref decl, _) => {
+                ForeignItemKind::Fn(box Fn { ref sig, .. }) => {
                     fns.push(FuncInfo {
                         id: fi.id,
                         def_id: cx.node_def_id(fi.id),
                         ident: fi.ident,
-                        decl: decl.clone(),
+                        decl: sig.decl.clone(),
                     });
                 },
 
@@ -459,15 +477,16 @@ impl Transform for WrapExtern {
             dest_path = Some(cx.def_path(cx.node_def_id(i.id)));
 
             smallvec![i.map(|i| {
-                unpack!([i.kind] ItemKind::Mod(m));
-                let mut m = m;
+                unpack!([i.kind] ItemKind::Mod(unsafety, m_kind));
+                unpack!([m_kind] ModKind::Loaded(m_items, m_inline, m_spans));
+                let mut m_items = m_items;
 
                 for f in &fns {
                     let func_path = cx.def_path(cx.node_def_id(f.id));
                     let arg_names = f.decl.inputs.iter().enumerate().map(|(idx, arg)| {
                         // TODO: match_arg("__i: __t", arg).ident("__i")
                         match arg.pat.kind {
-                            PatKind::Ident(BindingMode::ByValue(Mutability::Immutable),
+                            PatKind::Ident(BindingMode::ByValue(Mutability::Not),
                                            ident,
                                            None) => {
                                 ident
@@ -496,12 +515,13 @@ impl Transform for WrapExtern {
                             mk().expr_stmt(mk().call_expr(
                                     mk().path_expr(func_path),
                                     arg_exprs))]);
-                    m.items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, body));
+                    m_items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, Some(body)));
 
                 }
 
+                let m_kind = ModKind::Loaded(m_items, m_inline, m_spans);
                 Item {
-                    kind: ItemKind::Mod(m),
+                    kind: ItemKind::Mod(unsafety, m_kind),
                     .. i
                 }
             })]
@@ -563,18 +583,18 @@ impl Transform for WrapApi {
                 return smallvec![i];
             }
 
-            if !matches!([i.kind] ItemKind::Fn(..)) {
+            if !crate::matches!([i.kind] ItemKind::Fn(..)) {
                 return smallvec![i];
             }
 
             let (decl, old_ext) = expect!([i.kind]
-                ItemKind::Fn(ref sig, _, _) => (sig.decl.clone(), sig.header.ext));
+                ItemKind::Fn(box Fn { ref sig, .. }) => (sig.decl.clone(), sig.header.ext));
 
             // Get the exported symbol name of the function
             let symbol =
-                if let Some(sym) = attr::first_attr_value_str_by_name(&i.attrs, sym::export_name) {
+                if let Some(sym) = crate::util::first_attr_value_str_by_name(&i.attrs, sym::export_name) {
                     sym
-                } else if attr::contains_name(&i.attrs, sym::no_mangle) {
+                } else if crate::util::contains_name(&i.attrs, sym::no_mangle) {
                     i.ident.name
                 } else {
                     warn!("marked function `{:?}` does not have a stable symbol", i.ident.name);
@@ -589,7 +609,7 @@ impl Transform for WrapApi {
                 });
 
                 match i.kind {
-                    ItemKind::Fn(ref mut sig, _, _) => sig.header.ext = Extern::None,
+                    ItemKind::Fn(box Fn { ref mut sig, .. }) => sig.header.ext = Extern::None,
                     _ => unreachable!(),
                 }
 
@@ -646,12 +666,12 @@ impl Transform for WrapApi {
                         .str_attr(vec![sym::export_name], symbol).fn_item(
                     &wrapper_name,
                     wrapper_decl,
-                    mk().block(vec![
+                    Some(mk().block(vec![
                         mk().expr_stmt(mk().call_expr(
                                 mk().path_expr(vec![i.ident.name]),
                                 wrapper_args,
                         ))
-                    ])
+                    ]))
                 );
 
 
@@ -748,7 +768,7 @@ impl Transform for Abstract {
         let mut type_args = Vec::new();
         {
             let (decl, generics) = expect!([func.kind]
-                    ItemKind::Fn(ref sig, ref gen, _) => (&sig.decl, gen));
+                    ItemKind::Fn(box Fn { ref sig, ref generics, .. }) => (&sig.decl, generics));
             for arg in &decl.inputs {
                 let name = expect!([arg.pat.kind] PatKind::Ident(_, ident, _) => ident);
                 value_args.push(name);
@@ -788,7 +808,7 @@ impl Transform for Abstract {
 
         // Add the function definition to the crate
 
-        krate.module.items.push(func);
+        krate.items.push(func);
     }
 
     fn min_phase(&self) -> Phase {

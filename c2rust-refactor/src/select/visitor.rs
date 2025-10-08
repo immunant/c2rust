@@ -1,10 +1,10 @@
 //! Visitors for implementing `ChildMatch`, `DescMatch`, and `Filter`, which need to walk the AST
 //! and inspect the currently selected nodes.
 
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use rustc_ast::*;
+use rustc_span::source_map::Span;
 use std::collections::HashSet;
-use syntax::ast::*;
-use syntax::source_map::Span;
-use syntax::visit::{self, FnKind, Visitor};
 
 use crate::command::CommandState;
 use crate::select::filter::{self, AnyNode};
@@ -56,34 +56,22 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ItemKind::Fn(ref sig, ..) = x.kind {
+            if let ItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
             visit::walk_item(v, x)
         });
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        if self.in_old && self.matches(AnyNode::TraitItem(x)) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        if self.in_old && self.matches(AnyNode::from_assoc_item(x, ctxt)) {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let TraitItemKind::Method(ref sig, ..) = x.kind {
+            if let AssocItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
-            visit::walk_trait_item(v, x)
-        });
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        if self.in_old && self.matches(AnyNode::ImplItem(x)) {
-            self.new.insert(x.id);
-        }
-        self.maybe_enter_old(x.id, |v| {
-            if let ImplItemKind::Method(ref sig, ..) = x.kind {
-                v.walk_args(&sig.decl.inputs);
-            }
-            visit::walk_impl_item(v, x)
+            visit::walk_assoc_item(v, x, ctxt)
         });
     }
 
@@ -93,8 +81,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
         }
         self.maybe_enter_old(x.id, |v| {
             // walk_foreign_item doesn't call visit_fn
-            if let ForeignItemKind::Fn(ref decl, _) = x.kind {
-                v.walk_args(&decl.inputs);
+            if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+                v.walk_args(&sig.decl.inputs);
             }
             visit::walk_foreign_item(v, x)
         });
@@ -128,11 +116,11 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
         self.maybe_enter_old(x.id, |v| visit::walk_ty(v, x));
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         if self.in_old && self.matches(AnyNode::Field(x)) {
             self.new.insert(x.id);
         }
-        self.maybe_enter_old(x.id, |v| visit::walk_struct_field(v, x));
+        self.maybe_enter_old(x.id, |v| visit::walk_field_def(v, x));
     }
 }
 
@@ -206,34 +194,22 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ItemKind::Fn(ref sig, ..) = x.kind {
+            if let ItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
             visit::walk_item(v, x)
         });
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        if self.in_old && self.matches(AnyNode::TraitItem(x)) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        if self.in_old && self.matches(AnyNode::from_assoc_item(x, ctxt)) {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let TraitItemKind::Method(ref sig, ..) = x.kind {
+            if let AssocItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
-            visit::walk_trait_item(v, x)
-        });
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        if self.in_old && self.matches(AnyNode::ImplItem(x)) {
-            self.new.insert(x.id);
-        }
-        self.maybe_enter_old(x.id, |v| {
-            if let ImplItemKind::Method(ref sig, ..) = x.kind {
-                v.walk_args(&sig.decl.inputs);
-            }
-            visit::walk_impl_item(v, x)
+            visit::walk_assoc_item(v, x, ctxt)
         });
     }
 
@@ -242,8 +218,8 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             self.new.insert(x.id);
         }
         self.maybe_enter_old(x.id, |v| {
-            if let ForeignItemKind::Fn(ref decl, ..) = x.kind {
-                v.walk_args(&decl.inputs);
+            if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+                v.walk_args(&sig.decl.inputs);
             }
             visit::walk_foreign_item(v, x)
         });
@@ -277,11 +253,11 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
         self.maybe_enter_old(x.id, |v| visit::walk_ty(v, x));
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         if self.in_old && self.matches(AnyNode::Field(x)) {
             self.new.insert(x.id);
         }
-        self.maybe_enter_old(x.id, |v| visit::walk_struct_field(v, x));
+        self.maybe_enter_old(x.id, |v| visit::walk_field_def(v, x));
     }
 }
 
@@ -332,38 +308,28 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         if self.old.contains(&x.id) && self.matches(AnyNode::Item(x)) {
             self.new.insert(x.id);
         }
-        if let ItemKind::Fn(ref sig, ..) = x.kind {
+        if let ItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
             self.walk_args(&sig.decl.inputs);
         }
         visit::walk_item(self, x);
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        if self.old.contains(&x.id) && self.matches(AnyNode::TraitItem(x)) {
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        if self.old.contains(&x.id) && self.matches(AnyNode::from_assoc_item(x, ctxt)) {
             self.new.insert(x.id);
         }
-        if let TraitItemKind::Method(ref sig, ..) = x.kind {
+        if let AssocItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
             self.walk_args(&sig.decl.inputs);
         }
-        visit::walk_trait_item(self, x);
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        if self.old.contains(&x.id) && self.matches(AnyNode::ImplItem(x)) {
-            self.new.insert(x.id);
-        }
-        if let ImplItemKind::Method(ref sig, ..) = x.kind {
-            self.walk_args(&sig.decl.inputs);
-        }
-        visit::walk_impl_item(self, x);
+        visit::walk_assoc_item(self, x, ctxt);
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
         if self.old.contains(&x.id) && self.matches(AnyNode::ForeignItem(x)) {
             self.new.insert(x.id);
         }
-        if let ForeignItemKind::Fn(ref decl, ..) = x.kind {
-            self.walk_args(&decl.inputs);
+        if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+            self.walk_args(&sig.decl.inputs);
         }
         visit::walk_foreign_item(self, x);
     }
@@ -396,21 +362,21 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
-        for arg in &fd.inputs {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+        for arg in &kind.decl().inputs {
             if self.old.contains(&arg.id) && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
         }
 
-        visit::walk_fn(self, kind, fd, span);
+        visit::walk_fn(self, kind, span);
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         if self.old.contains(&x.id) && self.matches(AnyNode::Field(x)) {
             self.new.insert(x.id);
         }
-        visit::walk_struct_field(self, x);
+        visit::walk_field_def(self, x);
     }
 }
 

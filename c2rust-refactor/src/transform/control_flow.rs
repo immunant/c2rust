@@ -1,16 +1,21 @@
-use rustc::hir::{self, HirId};
-use rustc::ty::{self, ParamEnv};
+use log::debug;
+use rustc_hir::HirId;
+use rustc_infer::infer::TyCtxtInferExt;
+use rustc_middle::hir::place::PlaceWithHirId;
+use rustc_middle::mir::FakeReadCause;
+use rustc_middle::ty::{self, ParamEnv};
 use rustc_typeck::expr_use_visitor::*;
-use syntax::ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
-use syntax::ptr::P;
+use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
+use rustc_ast::ptr::P;
 
 use crate::command::{CommandState, Registry};
 use crate::context::HirMap;
 use crate::driver::Phase;
+use crate::match_or;
 use crate::matcher::{MatchCtxt, Subst, replace_expr, mut_visit_match_with, find_first};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 
 
 /// # `reconstruct_while` Command
@@ -100,11 +105,11 @@ impl Transform for ReconstructForRange {
 
             let hir_map = cx.hir_map();
 			let while_hir_id = hir_map.node_to_hir_id(orig[1].id);
-			let parent_hir_id = hir_map.get_parent_item(while_hir_id);
+			let parent_hir_id = hir_map.get_parent_node(while_hir_id);
             let var_expr = mcx.bindings.get::<_, P<Expr>>("$i")
                 .unwrap().clone();
             let var_hir_id = match_or!([cx.try_resolve_expr_hir(&var_expr)]
-                                       Some(hir::def::Res::Local(x)) => x; return);
+                                       Some(rustc_hir::def::Res::Local(x)) => x; return);
             let mut delegate = ForRangeDelegate {
                 hir_map,
                 while_hir_id,
@@ -118,10 +123,10 @@ impl Transform for ReconstructForRange {
             let tcx = cx.ty_ctxt();
             let parent_did = match_or!([hir_map.opt_local_def_id(parent_hir_id)]
                                        Some(x) => x; return);
-			let parent_body_id = match_or!([hir_map.maybe_body_owned_by(parent_hir_id)]
+            let parent_body_id = match_or!([hir_map.maybe_body_owned_by(parent_did)]
                                            Some(x) => x; return);
             let parent_body = hir_map.body(parent_body_id);
-			let tables = tcx.body_tables(parent_body_id);
+            let tables = tcx.typeck_body(parent_body_id);
             tcx.infer_ctxt().enter(|infcx| {
                 ExprUseVisitor::new(&mut delegate, &infcx, parent_did,
                                     ParamEnv::empty(), tables)
@@ -186,8 +191,8 @@ fn is_one_lit(l: &Lit) -> bool {
     }
 }
 
-struct ForRangeDelegate<'a, 'hir: 'a> {
-    hir_map: HirMap<'a, 'hir>,
+struct ForRangeDelegate<'a, 'hir> {
+    hir_map: &'a HirMap<'hir>,
     while_hir_id: HirId,
     parent_hir_id: HirId,
     var_hir_id: HirId,
@@ -196,7 +201,7 @@ struct ForRangeDelegate<'a, 'hir: 'a> {
     reads_outside_loop: usize,
 }
 
-impl<'a, 'hir: 'a> ForRangeDelegate<'a, 'hir> {
+impl<'a, 'hir> ForRangeDelegate<'a, 'hir> {
     fn node_inside_loop(&self, id: HirId) -> bool {
         let mut cur_id = id;
         loop {
@@ -217,9 +222,9 @@ impl<'a, 'hir: 'a> ForRangeDelegate<'a, 'hir> {
     }
 }
 
-impl<'a, 'hir: 'a, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
-    fn consume(&mut self, cmt: &Place<'tcx>, _: ConsumeMode) {
-        match cmt.base {
+impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
+    fn consume(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
+        match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
             _ => return
         }
@@ -229,8 +234,8 @@ impl<'a, 'hir: 'a, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
         }
     }
 
-    fn borrow(&mut self, cmt: &Place<'tcx>, bk: ty::BorrowKind) {
-        match cmt.base {
+    fn borrow(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId, bk: ty::BorrowKind) {
+        match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
             _ => return
         }
@@ -250,8 +255,8 @@ impl<'a, 'hir: 'a, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
         }
     }
 
-    fn mutate(&mut self, cmt: &Place<'tcx>) {
-        match cmt.base {
+    fn mutate(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
+        match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
             _ => return
         }
@@ -260,6 +265,13 @@ impl<'a, 'hir: 'a, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
             self.writes_inside_loop += 1;
         }
     }
+
+    fn fake_read(
+        &mut self,
+        _cmt: &PlaceWithHirId<'tcx>,
+        _cause: FakeReadCause,
+        _diag_expr_id: HirId,
+    ) {}
 }
 
 /// # `remove_unused_labels` Command

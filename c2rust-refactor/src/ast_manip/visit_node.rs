@@ -1,6 +1,6 @@
 //! Helper function for visiting only one type of AST node.
-use syntax::ast::*;
-use syntax::visit::{self, Visitor};
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
 
 use crate::ast_manip::Visit;
 
@@ -40,7 +40,7 @@ macro_rules! gen_visit_node_impl {
                 $walk;
             }
 
-            fn visit_mac(&mut self, mac: &'ast Mac) {
+            fn visit_mac_call(&mut self, mac: &'ast MacCall) {
                 visit::walk_mac(self, mac);
             }
         }
@@ -57,7 +57,7 @@ macro_rules! gen_visit_node_impl {
                 ($slf.callback)($arg);
             }
 
-            fn visit_mac(&mut self, mac: &'ast Mac) {
+            fn visit_mac_call(&mut self, mac: &'ast MacCall) {
                 visit::walk_mac(self, mac);
             }
         }

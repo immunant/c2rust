@@ -1,17 +1,18 @@
 //! `fold_expr_with_context` function, for rewriting exprs with knowledge of their contexts (rvalue
 //! / lvalue / mut lvalue).
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{Span, Spanned};
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use smallvec::SmallVec;
 use std::rc::Rc;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::ptr::P;
-use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
-use syntax_pos::hygiene::SyntaxContext;
 
 use crate::ast_manip::MutVisit;
 
@@ -72,13 +73,13 @@ impl<T: LRExpr> LRExpr for ThinVec<T> {
     });
 }
 
-impl<T: LRExpr + 'static> LRExpr for P<T> {
+impl<T: LRExpr + ?Sized + 'static> LRExpr for P<T> {
     lr_expr_fn!((self, next(T)) => {
         next(self);
     });
 }
 
-impl<T: LRExpr + Clone> LRExpr for Rc<T> {
+impl<T: LRExpr + ?Sized + Clone> LRExpr for Rc<T> {
     lr_expr_fn!((self, next(T)) => {
         next(Rc::make_mut(self));
     });

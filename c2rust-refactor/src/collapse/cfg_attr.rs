@@ -1,12 +1,11 @@
-use std::collections::HashMap;
-use syntax::ast::*;
-use syntax::attr::HasAttrs;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::visit::{self, Visitor};
-use syntax_pos::sym;
-
+use log::info;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{self, AssocCtxt, Visitor};
+use rustc_ast::*;
+use rustc_span::sym;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 
 use crate::ast_manip::{GetNodeId, MutVisit, Visit};
 
@@ -19,7 +18,7 @@ impl CollectCfgAttrs {
         let attrs = x
             .attrs()
             .iter()
-            .filter(|attr| attr.check_name(sym::cfg_attr))
+            .filter(|attr| attr.has_name(sym::cfg_attr))
             .cloned()
             .collect::<Vec<_>>();
         if !attrs.is_empty() {
@@ -38,7 +37,12 @@ macro_rules! collect_cfg_attrs {
                 }
             )*
 
-            fn visit_mac(&mut self, mac: &'ast Mac) {
+            fn visit_assoc_item(&mut self, i: &'ast AssocItem, ctxt: AssocCtxt) {
+                self.collect(i);
+                visit::walk_assoc_item(self, i, ctxt);
+            }
+
+            fn visit_mac_call(&mut self, mac: &'ast MacCall) {
                 visit::walk_mac(self, mac)
             }
         }
@@ -47,8 +51,6 @@ macro_rules! collect_cfg_attrs {
 
 collect_cfg_attrs! {
     visit_item(Item), walk_item;
-    visit_impl_item(ImplItem), walk_impl_item;
-    visit_trait_item(TraitItem), walk_trait_item;
     visit_foreign_item(ForeignItem), walk_foreign_item;
     visit_stmt(Stmt), walk_stmt;
     visit_expr(Expr), walk_expr;
@@ -74,11 +76,11 @@ impl RestoreCfgAttrs {
                 "RESTORE ATTRS {:?} onto {:?}",
                 cfg_attrs
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
+                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>(),
                 x.attrs()
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
+                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>()
             );
             x.visit_attrs(|attrs| {
@@ -91,7 +93,7 @@ impl RestoreCfgAttrs {
                 "  attrs changed to {:?}",
                 x.attrs()
                     .iter()
-                    .map(|a| ::syntax::print::pprust::attribute_to_string(a))
+                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
                     .collect::<Vec<_>>()
             );
         }
@@ -104,17 +106,17 @@ impl MutVisitor for RestoreCfgAttrs {
         mut_visit::noop_flat_map_item(i, self)
     }
 
-    fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+    fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         self.restore(&mut i);
-        mut_visit::noop_flat_map_impl_item(i, self)
+        mut_visit::noop_flat_map_assoc_item(i, self)
     }
 
-    fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+    fn flat_map_trait_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         self.restore(&mut i);
-        mut_visit::noop_flat_map_trait_item(i, self)
+        mut_visit::noop_flat_map_assoc_item(i, self)
     }
 
-    fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+    fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         self.restore(&mut i);
         mut_visit::noop_flat_map_foreign_item(i, self)
     }
@@ -129,7 +131,7 @@ impl MutVisitor for RestoreCfgAttrs {
         mut_visit::noop_visit_expr(e, self)
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 

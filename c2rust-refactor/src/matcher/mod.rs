@@ -36,28 +36,31 @@
 //!
 //!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
-use rustc::hir::def_id::DefId;
-use rustc::session::Session;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::token::{self, TokenKind};
+use rustc_ast::tokenstream::TokenStream;
+use rustc_ast::{
+    Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, QSelf, Stmt, Ty, TyKind,
+};
+use rustc_errors::PResult;
+use rustc_hir::def_id::DefId;
+use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
+use rustc_session::Session;
+use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::FileName;
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
-use syntax::ast::{Block, Expr, ExprKind, Ident, Item, Label, Lit, MacArgs, Pat, Path, Stmt, Ty};
-use syntax::mut_visit::{self, MutVisitor};
-use rustc_parse::parser::{Parser, PathStyle};
-use syntax::token::{TokenKind};
-use rustc_errors::PResult;
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
-use syntax::tokenstream::TokenStream;
-use syntax_pos::FileName;
 
+use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{remove_paren, GetNodeId, MutVisit};
 use crate::command::CommandState;
 use crate::driver::{self, emit_and_panic};
+use crate::match_or;
 use crate::reflect;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::IntoSymbol;
 
 mod bindings;
 mod impls;
@@ -134,7 +137,8 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
     pub fn parse_pat(&mut self, src: &str) -> P<Pat> {
         let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
-        match p.parse_pat(None) {
+        // TODO: do we want to allow top-level or-patterns here?
+        match p.parse_pat_no_top_alt(None) {
             Ok(mut pat) => {
                 self.types.merge(bt);
                 remove_paren(&mut pat);
@@ -157,27 +161,27 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     pub fn parse_stmts(&mut self, src: &str) -> Vec<Stmt> {
-        // TODO: rustc no longer exposes `parse_full_stmt`. `parse_block` is a hacky
-        // workaround that may cause suboptimal error messages.
-        let (mut p, bt) = make_bindings_parser(self.cx.session(), &format!("{{ {} }}", src));
-        match p.parse_block() {
-            Ok(blk) => {
-                self.types.merge(bt);
-                let mut stmts = blk.into_inner().stmts;
-                for s in stmts.iter_mut() {
-                    remove_paren(s);
+        let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
+        let mut stmts = Vec::new();
+        while p.token != token::Eof {
+            match p.parse_full_stmt(AttemptLocalParseRecovery::Yes) {
+                Ok(Some(mut stmt)) => {
+                    remove_paren(&mut stmt);
+                    stmts.push(stmt);
                 }
-                stmts
+                Ok(None) => break,
+                Err(db) => emit_and_panic(db, "stmts"),
             }
-            Err(db) => emit_and_panic(db, "stmts"),
         }
+        self.types.merge(bt);
+        stmts
     }
 
     pub fn parse_items(&mut self, src: &str) -> Vec<P<Item>> {
         let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
         let mut items = Vec::new();
         loop {
-            match p.parse_item() {
+            match p.parse_item(ForceCollect::No) {
                 Ok(Some(mut item)) => {
                     remove_paren(&mut item);
                     items.push(item);
@@ -484,8 +488,6 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
             args.inner_tokens().clone(),
-            None,
-            false,
             false,
             None,
         );
@@ -511,24 +513,20 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     fn do_def_impl(
         &mut self,
         args: &MacArgs,
-        style: PathStyle,
         opt_def_id: Option<DefId>,
+        parse_path: impl FnOnce(&mut Parser) -> Option<(Option<QSelf>, Path)>,
     ) -> Result<()> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
             args.inner_tokens(),
-            None,
-            false,
             false,
             None,
         );
-        let path_pattern = p.parse_path(style).unwrap();
+        let (path_qself, path_pattern) = parse_path(&mut p).ok_or(Error::DefMismatch)?;
 
         let def_id = match_or!([opt_def_id] Some(x) => x;
                                return Err(Error::DefMismatch));
-        // TODO: We currently ignore the QSelf.  This means `<S as T>::f` gets matched as just
-        // `T::f`.  This would be a little annoying to fix, since `parse_qpath` is private.
-        let (_qself, def_path) = reflect::reflect_def_path(self.cx.ty_ctxt(), def_id);
+        let (def_qself, def_path) = reflect::reflect_def_path(self.cx.ty_ctxt(), def_id);
 
         if self.debug {
             eprintln!(
@@ -536,9 +534,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                 path_pattern, def_path
             );
         }
-        if self.try_match(&path_pattern, &def_path).is_err() {
-            return Err(Error::DefMismatch);
-        }
+        self.try_match(&path_pattern, &def_path)
+            .or(Err(Error::DefMismatch))?;
+        self.try_match(&path_qself, &def_qself)
+            .or(Err(Error::DefMismatch))?;
 
         Ok(())
     }
@@ -546,13 +545,23 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_expr(&mut self, args: &MacArgs, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
-        self.do_def_impl(args, PathStyle::Expr, opt_def_id)
+        self.do_def_impl(args, opt_def_id, |p| {
+            match p.parse_expr().unwrap().into_inner().kind {
+                ExprKind::Path(qself, path) => Some((qself, path)),
+                _ => None,
+            }
+        })
     }
 
     /// Handle the `def!(...)` matching form for exprs.
     pub fn do_def_ty(&mut self, args: &MacArgs, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
-        self.do_def_impl(args, PathStyle::Type, opt_def_id)
+        self.do_def_impl(args, opt_def_id, |p| {
+            match p.parse_ty().unwrap().into_inner().kind {
+                TyKind::Path(qself, path) => Some((qself, path)),
+                _ => None,
+            }
+        })
     }
 
     /// Handle the `typed!(...)` matching form.
@@ -564,8 +573,6 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
             args.inner_tokens(),
-            None,
-            false,
             false,
             None,
         );
@@ -626,7 +633,10 @@ fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, Bindin
         None,
     );
     let (ts, bt) = parse_bindings(ts);
-    (rustc_parse::stream_to_parser(&sess.parse_sess, ts, None), bt)
+    (
+        rustc_parse::stream_to_parser(&sess.parse_sess, ts, None),
+        bt,
+    )
 }
 
 pub trait TryMatch {
@@ -828,7 +838,8 @@ where
             } else {
                 // If the pattern starts with a glob, then trying to match it at `i + 1` will fail
                 // just the same as at `i`.
-                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0]) {
+                if !self.pattern.is_empty() && is_multi_stmt_glob(&self.init_mcx, &self.pattern[0])
+                {
                     break;
                 } else {
                     i += 1;

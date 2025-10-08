@@ -5,16 +5,17 @@ use std::cmp;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use arena::SyncDroplessArena;
-use log::Level;
-use rustc::hir::def_id::DefId;
+use log::{debug, log_enabled, Level};
+use rustc_arena::DroplessArena;
+use rustc_ast::ast;
+use rustc_ast::visit::{self, AssocCtxt, Visitor};
+use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
-use syntax::ast;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, Visitor};
+use rustc_span::symbol::Symbol;
 
 use crate::ast_manip::Visit;
 use crate::command::CommandState;
+use crate::match_or;
 use crate::type_map::{self, TypeSource};
 use crate::RefactorCtxt;
 
@@ -75,26 +76,31 @@ pub fn handle_marks<'a, 'tcx, 'lty>(
             last_sig_did: None,
         };
 
-        type_map::map_types(&dcx.hir_map(), source, &st.krate(), |source, ast_ty, lty| {
-            debug!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
-            if st.marked(ast_ty.id, "box") {
-                if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Move));
+        type_map::map_types(
+            &dcx.hir_map(),
+            source,
+            &st.krate(),
+            |source, ast_ty, lty| {
+                debug!("match {:?} ({:?}) with {:?}", ast_ty, ast_ty.id, lty);
+                if st.marked(ast_ty.id, "box") {
+                    if let Some(p) = lty.label {
+                        fixed_vars.push((p, source.last_sig_did, ConcretePerm::Move));
+                    }
                 }
-            }
 
-            if st.marked(ast_ty.id, "mut") {
-                if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Write));
+                if st.marked(ast_ty.id, "mut") {
+                    if let Some(p) = lty.label {
+                        fixed_vars.push((p, source.last_sig_did, ConcretePerm::Write));
+                    }
                 }
-            }
 
-            if st.marked(ast_ty.id, "ref") {
-                if let Some(p) = lty.label {
-                    fixed_vars.push((p, source.last_sig_did, ConcretePerm::Read));
+                if st.marked(ast_ty.id, "ref") {
+                    if let Some(p) = lty.label {
+                        fixed_vars.push((p, source.last_sig_did, ConcretePerm::Read));
+                    }
                 }
-            }
-        });
+            },
+        );
     }
 
     // For any marked types that are in signatures, add constraints to the parent function's cset.
@@ -135,9 +141,9 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
         visit::walk_item(self, i);
     }
 
-    fn visit_impl_item(&mut self, i: &'ast ast::ImplItem) {
+    fn visit_assoc_item(&mut self, i: &'ast ast::AssocItem, ctxt: AssocCtxt) {
         match i.kind {
-            ast::ImplItemKind::Method(..) | ast::ImplItemKind::Const(..) => {
+            ast::AssocItemKind::Fn(..) | ast::AssocItemKind::Const(..) => {
                 if !i.attrs.is_empty() {
                     self.def_attrs.push((i.id, &i.attrs));
                 }
@@ -145,7 +151,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
             _ => {}
         }
 
-        visit::walk_impl_item(self, i);
+        visit::walk_assoc_item(self, i, ctxt);
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {
@@ -162,12 +168,12 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
         visit::walk_foreign_item(self, i);
     }
 
-    fn visit_struct_field(&mut self, sf: &'ast ast::StructField) {
-        if !sf.attrs.is_empty() {
-            self.def_attrs.push((sf.id, &sf.attrs));
+    fn visit_field_def(&mut self, fd: &'ast ast::FieldDef) {
+        if !fd.attrs.is_empty() {
+            self.def_attrs.push((fd.id, &fd.attrs));
         }
 
-        visit::walk_struct_field(self, sf);
+        visit::walk_field_def(self, fd);
     }
 }
 
@@ -188,13 +194,13 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
     let mut variant_group_primary = HashMap::new();
 
     for (node_id, attrs) in v.def_attrs {
-        let def_id = match_or!([dcx.hir_map().opt_local_def_id_from_node_id(node_id)] Some(x) => x; continue);
+        let def_id = match_or!([dcx.hir_map().opt_local_def_id_from_node_id(node_id)] Some(x) => x.to_def_id(); continue);
 
         // Handle `ownership_variant_of` first.
         let mut is_variant = false;
         if let Some(attr) = attrs
             .iter()
-            .filter(|a| a.check_name(Symbol::intern("ownership_variant_of")))
+            .filter(|a| a.has_name(Symbol::intern("ownership_variant_of")))
             .next()
         {
             let meta = match_or!([attr.meta()] Some(x) => x;
@@ -206,7 +212,7 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
 
             let num_mono = attrs
                 .iter()
-                .filter(|a| a.check_name(Symbol::intern("ownership_mono")))
+                .filter(|a| a.has_name(Symbol::intern("ownership_mono")))
                 .count();
             assert!(
                 num_mono == 1,
@@ -221,7 +227,8 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
 
         for attr in attrs {
             let meta = match_or!([attr.meta()] Some(x) => x; continue);
-            match &*attr.name_or_empty().as_str() {
+            let meta_name = meta.name_or_empty();
+            match meta_name.as_str() {
                 "ownership_constraints" => {
                     let cset = parse_ownership_constraints(&meta, cx.arena).unwrap_or_else(|e| {
                         panic!("bad #[ownership_constraints] for {:?}: {}", def_id, e)
@@ -320,14 +327,14 @@ fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
 
 fn parse_ownership_constraints<'lty>(
     meta: &ast::MetaItem,
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 ) -> Result<ConstraintSet<'lty>, &'static str> {
     let args = meta_item_list(meta)?;
 
     let mut cset = ConstraintSet::new();
     for arg in args {
         let arg = nested_meta_item(arg)?;
-        if !arg.check_name(Symbol::intern("le")) {
+        if !arg.has_name(Symbol::intern("le")) {
             return Err("expected `le(a, b)` in `ownership_constraints`");
         }
 
@@ -346,9 +353,9 @@ fn parse_ownership_constraints<'lty>(
 
 fn parse_perm<'lty>(
     meta: &ast::MetaItem,
-    arena: &'lty SyncDroplessArena,
+    arena: &'lty DroplessArena,
 ) -> Result<Perm<'lty>, &'static str> {
-    if meta.check_name(Symbol::intern("min")) {
+    if meta.has_name(Symbol::intern("min")) {
         let args = meta_item_list(meta)?;
         if args.is_empty() {
             return Err("`min` requires at least one argument");
@@ -366,18 +373,19 @@ fn parse_perm<'lty>(
     } else {
         meta_item_word(meta)?;
 
-        let name = meta.name_or_empty().as_str();
-        match &*name {
+        let meta_name = meta.name_or_empty();
+        let meta_str = meta_name.as_str();
+        match meta_str {
             "READ" => return Ok(Perm::read()),
             "WRITE" => return Ok(Perm::write()),
             "MOVE" => return Ok(Perm::move_()),
             _ => {}
         }
 
-        if !name.starts_with('_') {
+        if !meta_str.starts_with('_') {
             return Err("invalid permission variable");
         }
-        let idx = FromStr::from_str(&name[1..]).map_err(|_| "invalid permission variable")?;
+        let idx = FromStr::from_str(&meta_str[1..]).map_err(|_| "invalid permission variable")?;
         Ok(Perm::SigVar(Var(idx)))
     }
 }
@@ -385,7 +393,8 @@ fn parse_perm<'lty>(
 fn parse_concrete(meta: &ast::MetaItem) -> Result<ConcretePerm, &'static str> {
     meta_item_word(meta)?;
 
-    match &*meta.name_or_empty().as_str() {
+    let meta_name = meta.name_or_empty();
+    match meta_name.as_str() {
         "READ" => Ok(ConcretePerm::Read),
         "WRITE" => Ok(ConcretePerm::Write),
         "MOVE" => Ok(ConcretePerm::Move),

@@ -1,9 +1,8 @@
+use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
+use rustc_ast::*;
+use rustc_span::source_map::Span;
+use rustc_span::symbol::Symbol;
 use std::str::FromStr;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::source_map::Span;
-use syntax::symbol::Symbol;
-use syntax::visit::{self, FnKind, Visitor};
 
 use crate::ast_manip::AstEquiv;
 use crate::command::CommandState;
@@ -16,15 +15,15 @@ use crate::RefactorCtxt;
 #[derive(Clone, Copy, Debug)]
 pub enum AnyNode<'ast> {
     Item(&'ast Item),
-    TraitItem(&'ast TraitItem),
-    ImplItem(&'ast ImplItem),
+    TraitItem(&'ast AssocItem),
+    ImplItem(&'ast AssocItem),
     ForeignItem(&'ast ForeignItem),
     Stmt(&'ast Stmt),
     Expr(&'ast Expr),
     Pat(&'ast Pat),
     Ty(&'ast Ty),
     Param(&'ast Param),
-    Field(&'ast StructField),
+    Field(&'ast FieldDef),
 }
 
 impl<'ast> AnyNode<'ast> {
@@ -61,6 +60,7 @@ impl<'ast> AnyNode<'ast> {
     pub fn vis(&self) -> Option<&'ast Visibility> {
         match *self {
             AnyNode::Item(i) => Some(&i.vis),
+            AnyNode::TraitItem(i) => Some(&i.vis),
             AnyNode::ImplItem(i) => Some(&i.vis),
             AnyNode::ForeignItem(i) => Some(&i.vis),
             _ => None,
@@ -74,7 +74,7 @@ impl<'ast> AnyNode<'ast> {
                 _ => None,
             },
             AnyNode::ForeignItem(fi) => match fi.kind {
-                ForeignItemKind::Static(_, mutability) => Some(mutability),
+                ForeignItemKind::Static(_, mutability, _) => Some(mutability),
                 _ => None,
             },
             AnyNode::Pat(p) => match p.kind {
@@ -118,10 +118,17 @@ impl<'ast> AnyNode<'ast> {
     pub fn itemlike_kind(&self) -> Option<ItemLikeKind> {
         match *self {
             AnyNode::Item(i) => Some(ItemLikeKind::from_item(i)),
-            AnyNode::TraitItem(i) => Some(ItemLikeKind::from_trait_item(i)),
-            AnyNode::ImplItem(i) => Some(ItemLikeKind::from_impl_item(i)),
+            AnyNode::TraitItem(i) => Some(ItemLikeKind::from_assoc_item(i)),
+            AnyNode::ImplItem(i) => Some(ItemLikeKind::from_assoc_item(i)),
             AnyNode::ForeignItem(i) => Some(ItemLikeKind::from_foreign_item(i)),
             _ => None,
+        }
+    }
+
+    pub fn from_assoc_item(i: &'ast AssocItem, ctxt: AssocCtxt) -> Self {
+        match ctxt {
+            AssocCtxt::Trait => AnyNode::TraitItem(i),
+            AssocCtxt::Impl => AnyNode::ImplItem(i),
         }
     }
 }
@@ -135,7 +142,7 @@ pub enum ItemLikeKind {
     Fn,
     Mod,
     ForeignMod,
-    GlobalAsm,
+    InlineAsm,
     Ty,
     OpaqueTy,
     Enum,
@@ -160,7 +167,7 @@ impl FromStr for ItemLikeKind {
             "fn" => Ok(ItemLikeKind::Fn),
             "mod" => Ok(ItemLikeKind::Mod),
             "foreign_mod" => Ok(ItemLikeKind::ForeignMod),
-            "global_asm" => Ok(ItemLikeKind::GlobalAsm),
+            "inline_asm" => Ok(ItemLikeKind::InlineAsm),
             "ty" => Ok(ItemLikeKind::Ty),
             "opaquety" => Ok(ItemLikeKind::OpaqueTy),
             "enum" => Ok(ItemLikeKind::Enum),
@@ -187,7 +194,7 @@ impl ItemLikeKind {
             ItemKind::Fn(..) => ItemLikeKind::Fn,
             ItemKind::Mod(..) => ItemLikeKind::Mod,
             ItemKind::ForeignMod(..) => ItemLikeKind::ForeignMod,
-            ItemKind::GlobalAsm(..) => ItemLikeKind::GlobalAsm,
+            ItemKind::GlobalAsm(..) => ItemLikeKind::InlineAsm,
             ItemKind::TyAlias(..) => ItemLikeKind::Ty,
             ItemKind::Enum(..) => ItemLikeKind::Enum,
             ItemKind::Struct(..) => ItemLikeKind::Struct,
@@ -195,26 +202,17 @@ impl ItemLikeKind {
             ItemKind::Trait(..) => ItemLikeKind::Trait,
             ItemKind::TraitAlias(..) => ItemLikeKind::TraitAlias,
             ItemKind::Impl(..) => ItemLikeKind::Impl,
-            ItemKind::Mac(..) => ItemLikeKind::Mac,
+            ItemKind::MacCall(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
         }
     }
 
-    pub fn from_trait_item(i: &TraitItem) -> ItemLikeKind {
+    pub fn from_assoc_item(i: &AssocItem) -> ItemLikeKind {
         match i.kind {
-            TraitItemKind::Const(..) => ItemLikeKind::Const,
-            TraitItemKind::Method(..) => ItemLikeKind::Fn,
-            TraitItemKind::Type(..) => ItemLikeKind::Ty,
-            TraitItemKind::Macro(..) => ItemLikeKind::Mac,
-        }
-    }
-
-    pub fn from_impl_item(i: &ImplItem) -> ItemLikeKind {
-        match i.kind {
-            ImplItemKind::Const(..) => ItemLikeKind::Const,
-            ImplItemKind::Method(..) => ItemLikeKind::Fn,
-            ImplItemKind::TyAlias(..) => ItemLikeKind::Ty,
-            ImplItemKind::Macro(..) => ItemLikeKind::Mac,
+            AssocItemKind::Const(..) => ItemLikeKind::Const,
+            AssocItemKind::Fn(..) => ItemLikeKind::Fn,
+            AssocItemKind::TyAlias(..) => ItemLikeKind::Ty,
+            AssocItemKind::MacCall(..) => ItemLikeKind::Mac,
         }
     }
 
@@ -222,8 +220,8 @@ impl ItemLikeKind {
         match i.kind {
             ForeignItemKind::Fn(..) => ItemLikeKind::Fn,
             ForeignItemKind::Static(..) => ItemLikeKind::Static,
-            ForeignItemKind::Ty => ItemLikeKind::Ty,
-            ForeignItemKind::Macro(..) => ItemLikeKind::Mac,
+            ForeignItemKind::TyAlias(..) => ItemLikeKind::Ty,
+            ForeignItemKind::MacCall(..) => ItemLikeKind::Mac,
         }
     }
 }
@@ -239,15 +237,15 @@ pub fn matches_filter(
         Filter::ItemKind(k) => node.itemlike_kind().map_or(false, |nk| nk == k),
         Filter::Public => node
             .vis()
-            .map_or(false, |v| matches!([v.node] VisibilityKind::Public)),
-        Filter::Mutable => node.mutbl().map_or(false, |m| m == Mutability::Mutable),
+            .map_or(false, |v| crate::matches!([v.kind] VisibilityKind::Public)),
+        Filter::Mutable => node.mutbl().map_or(false, |m| m == Mutability::Mut),
         Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
         Filter::PathPrefix(drop_segs, ref expect_path) => {
             if !reflect::can_reflect_path(cx, node.id()) {
                 return false;
             }
             let def_id = match cx.hir_map().opt_local_def_id_from_node_id(node.id()) {
-                Some(id) => id,
+                Some(ldid) => ldid.to_def_id(),
                 None => return false,
             };
             let path = reflect::reflect_def_path(cx.ty_ctxt(), def_id).1; // TODO: handle qself
@@ -261,7 +259,7 @@ pub fn matches_filter(
         }
         Filter::HasAttr(name) => node
             .attrs()
-            .map_or(false, |attrs| attr::contains_name(attrs, name)),
+            .map_or(false, |attrs| crate::util::contains_name(attrs, name)),
         Filter::Matches(ref pat) => match (node, pat) {
             (AnyNode::Expr(target), &AnyPattern::Expr(ref pattern)) => {
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok()
@@ -346,12 +344,12 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for ChildVisitor<F> {
         (self.func)(AnyNode::Item(x));
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        (self.func)(AnyNode::TraitItem(x));
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        (self.func)(AnyNode::ImplItem(x));
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        let node = match ctxt {
+            AssocCtxt::Trait => AnyNode::TraitItem(x),
+            AssocCtxt::Impl => AnyNode::ImplItem(x),
+        };
+        (self.func)(node);
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
@@ -374,19 +372,19 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for ChildVisitor<F> {
         (self.func)(AnyNode::Ty(x));
     }
 
-    fn visit_fn(&mut self, _: FnKind<'ast>, fd: &'ast FnDecl, _: Span, _: NodeId) {
-        for arg in &fd.inputs {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, _: Span, _: NodeId) {
+        for arg in &kind.decl().inputs {
             (self.func)(AnyNode::Param(arg));
         }
-        match fd.output {
-            FunctionRetTy::Default(_) => {}
-            FunctionRetTy::Ty(ref t) => {
+        match kind.decl().output {
+            FnRetTy::Default(_) => {}
+            FnRetTy::Ty(ref t) => {
                 (self.func)(AnyNode::Ty(t));
             }
         }
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         (self.func)(AnyNode::Field(x));
     }
 }
@@ -395,8 +393,8 @@ pub fn iter_children<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
     let mut v = ChildVisitor { func };
     match node {
         AnyNode::Item(x) => visit::walk_item(&mut v, x),
-        AnyNode::TraitItem(x) => visit::walk_trait_item(&mut v, x),
-        AnyNode::ImplItem(x) => visit::walk_impl_item(&mut v, x),
+        AnyNode::TraitItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Trait),
+        AnyNode::ImplItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Impl),
         AnyNode::ForeignItem(x) => visit::walk_foreign_item(&mut v, x),
         AnyNode::Stmt(x) => visit::walk_stmt(&mut v, x),
         AnyNode::Expr(x) => visit::walk_expr(&mut v, x),
@@ -406,7 +404,7 @@ pub fn iter_children<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
             v.visit_pat(&x.pat);
             v.visit_ty(&x.ty);
         }
-        AnyNode::Field(x) => visit::walk_struct_field(&mut v, x),
+        AnyNode::Field(x) => visit::walk_field_def(&mut v, x),
     }
 }
 
@@ -420,20 +418,19 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
         visit::walk_item(self, x);
     }
 
-    fn visit_trait_item(&mut self, x: &'ast TraitItem) {
-        (self.func)(AnyNode::TraitItem(x));
-        visit::walk_trait_item(self, x);
-    }
-
-    fn visit_impl_item(&mut self, x: &'ast ImplItem) {
-        (self.func)(AnyNode::ImplItem(x));
-        visit::walk_impl_item(self, x);
+    fn visit_assoc_item(&mut self, x: &'ast AssocItem, ctxt: AssocCtxt) {
+        let node = match ctxt {
+            AssocCtxt::Trait => AnyNode::TraitItem(x),
+            AssocCtxt::Impl => AnyNode::ImplItem(x),
+        };
+        (self.func)(node);
+        visit::walk_assoc_item(self, x, ctxt);
     }
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
         // Make sure we visit foreign function args as Param
-        if let ForeignItemKind::Fn(ref decl, _) = x.kind {
-            for arg in &decl.inputs {
+        if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
+            for arg in &sig.decl.inputs {
                 (self.func)(AnyNode::Param(arg));
             }
         }
@@ -461,17 +458,17 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, fd: &'ast FnDecl, span: Span, _id: NodeId) {
-        for arg in &fd.inputs {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+        for arg in &kind.decl().inputs {
             (self.func)(AnyNode::Param(arg));
         }
         // `walk` call handles the return type.
-        visit::walk_fn(self, kind, fd, span);
+        visit::walk_fn(self, kind, span);
     }
 
-    fn visit_struct_field(&mut self, x: &'ast StructField) {
+    fn visit_field_def(&mut self, x: &'ast FieldDef) {
         (self.func)(AnyNode::Field(x));
-        visit::walk_struct_field(self, x);
+        visit::walk_field_def(self, x);
     }
 }
 
@@ -479,8 +476,8 @@ pub fn iter_descendants<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
     let mut v = DescendantVisitor { func };
     match node {
         AnyNode::Item(x) => visit::walk_item(&mut v, x),
-        AnyNode::TraitItem(x) => visit::walk_trait_item(&mut v, x),
-        AnyNode::ImplItem(x) => visit::walk_impl_item(&mut v, x),
+        AnyNode::TraitItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Trait),
+        AnyNode::ImplItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Impl),
         AnyNode::ForeignItem(x) => visit::walk_foreign_item(&mut v, x),
         AnyNode::Stmt(x) => visit::walk_stmt(&mut v, x),
         AnyNode::Expr(x) => visit::walk_expr(&mut v, x),
@@ -490,6 +487,6 @@ pub fn iter_descendants<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
             v.visit_pat(&x.pat);
             v.visit_ty(&x.ty);
         }
-        AnyNode::Field(x) => visit::walk_struct_field(&mut v, x),
+        AnyNode::Field(x) => visit::walk_field_def(&mut v, x),
     }
 }

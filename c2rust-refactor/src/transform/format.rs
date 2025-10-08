@@ -1,20 +1,21 @@
+use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 use std::str;
 use std::str::FromStr;
 use rustc_data_structures::sync::Lrc;
-use rustc::hir::def_id::DefId;
-use syntax::ast::*;
-use syntax::attr;
-use syntax::source_map::DUMMY_SP;
-use syntax::ptr::P;
-use syntax::token::{Token, TokenKind, Nonterminal};
-use syntax::tokenstream::TokenTree;
-use syntax_pos::{sym, Span};
+use rustc_hir::def_id::DefId;
+use rustc_ast::*;
+use rustc_span::source_map::DUMMY_SP;
+use rustc_ast::ptr::P;
+use rustc_ast::token::{Token, TokenKind, Nonterminal};
+use rustc_ast::tokenstream::{Spacing, TokenTree};
+use rustc_span::{sym, Span};
 use smallvec::smallvec;
 
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::command::{CommandState, Registry};
+use crate::expect;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
 
@@ -99,7 +100,7 @@ fn build_format_macro(
     old_fmt_str_expr: Option<P<Expr>>,
     fmt_args: &[P<Expr>],
     span: Option<Span>,
-) -> Mac {
+) -> MacCall {
     let old_fmt_str_expr = old_fmt_str_expr.unwrap_or_else(|| fmt_args[0].clone());
 
     info!("  found fmt str {:?}", old_fmt_str_expr);
@@ -112,7 +113,7 @@ fn build_format_macro(
             ExprKind::Cast(ref e, _) |
             ExprKind::Type(ref e, _) => ep = &*e,
             // `e.as_ptr()` or `e.as_mut_ptr()` => e
-            ExprKind::MethodCall(ref ps, ref args) if args.len() == 1 &&
+            ExprKind::MethodCall(ref ps, ref args, _) if args.len() == 1 &&
                 (ps.ident.as_str() == "as_ptr" ||
                  ps.ident.as_str() == "as_mut_ptr") => ep = &args[0],
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
@@ -177,13 +178,13 @@ fn build_format_macro(
         TokenTree::Token(Token {
             kind: TokenKind::Interpolated(Lrc::new(Nonterminal::NtExpr(e))),
             span,
-        })
+        }, Spacing::Alone)
     };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
         if let Some(cast) = casts.get(&i) {
             let tt = expr_tt(cast.apply(arg.clone()));
-            macro_tts.push(TokenTree::Token(Token {kind: TokenKind::Comma, span: DUMMY_SP}));
+            macro_tts.push(TokenTree::Token(Token {kind: TokenKind::Comma, span: DUMMY_SP}, Spacing::Alone));
             macro_tts.push(tt);
         }
     }
@@ -227,15 +228,15 @@ impl Transform for ConvertPrintfs {
         let mut fprintf_defs = HashSet::<DefId>::new();
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
-            if attr::contains_name(&fi.attrs, sym::no_mangle) {
+            if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
                 match (&*fi.ident.as_str(), &fi.kind) {
-                    ("printf", ForeignItemKind::Fn(_, _)) => {
+                    ("printf", ForeignItemKind::Fn(_)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
                     }
-                    ("fprintf", ForeignItemKind::Fn(_, _)) => {
+                    ("fprintf", ForeignItemKind::Fn(_)) => {
                         fprintf_defs.insert(cx.node_def_id(fi.id));
                     }
-                    ("stderr", ForeignItemKind::Static(_, _)) => {
+                    ("stderr", ForeignItemKind::Static(_, _, _)) => {
                         stderr_defs.insert(cx.node_def_id(fi.id));
                     }
                     _ => {}
@@ -305,8 +306,8 @@ impl CastType {
                     // TODO(kkysen) change `"std"` to `"core"` after `#![feature(core_c_str)]` is stabilized in `1.63.0`
                     mk().path_expr(vec!["std", "ffi", "CStr", "from_ptr"]),
                     vec![e]);
-                let s = mk().method_call_expr(cs, "to_str", Vec::new());
-                let call = mk().method_call_expr(s, "unwrap", Vec::new());
+                let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
+                let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
                 let b = mk().unsafe_().block(vec![mk().expr_stmt(call)]);
                 mk().span(span).block_expr(b)
             },

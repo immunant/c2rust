@@ -117,7 +117,7 @@ These affect the behavior of generated `Recursive` impls.
 These affect the behavior of generated `Recursive` and `RecoverChildren` impls.
 
 - `#[prec_contains_expr]`: When entering a child of this node type, by default
-  set expr precedence to `RESET` (don't parenthesize).  The expr precedence can
+  set expr precedence to `i8::MIN` (don't parenthesize).  The expr precedence can
   be overridden using other `prec` attributes on specific fields.
 
 - `#[prec=name]`: When entering this child node, set expr precedence to
@@ -157,7 +157,7 @@ def prec_name_to_expr(name, inc):
     inc_str = '' if not inc else ' + 1'
     if name.isupper():
         # If all letters are uppercase, it's a precedence constant from
-        # syntax::util::parser
+        # rustc_ast::util::parser
         return 'parser::PREC_%s%s' % (name, inc_str)
     else:
         # If some letters are lowercase, it's an AssocOp variant name.
@@ -165,7 +165,7 @@ def prec_name_to_expr(name, inc):
 
 def field_prec_expr(f, first, suffix='1'):
     # First, figure out the "normal" precedence expression.
-    prec_val = 'parser::PREC_RESET'
+    prec_val = 'i8::MIN'
 
     prec = f.attrs.get('prec')
     if prec:
@@ -307,24 +307,24 @@ def do_rewrite_impl(d):
     yield 'impl Rewrite for %s {' % d.name
     yield '  fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
     if has_field(d, 'id'):
-        yield '    trace!("{:?}: rewrite: begin (%s)", new.id);' % d.name
+        yield '    log::trace!("{:?}: rewrite: begin (%s)", new.id);' % d.name
     for strategy in get_rewrite_strategies(d):
         yield '    let mark = rcx.mark();'
         if has_field(d, 'id'):
-            yield '    trace!("{:?}: rewrite: try %s", new.id);' % strategy
+            yield '    log::trace!("{:?}: rewrite: try %s", new.id);' % strategy
         yield '    let ok = strategy::%s::rewrite(old, new, rcx.borrow());' % strategy
         yield '    if ok {'
         if has_field(d, 'id'):
-            yield '      trace!("{:?}: rewrite: %s succeeded", new.id);' % strategy
+            yield '      log::trace!("{:?}: rewrite: %s succeeded", new.id);' % strategy
         yield '      return true;'
         yield '    } else {'
         if has_field(d, 'id'):
-            yield '      trace!("{:?}: rewrite: %s FAILED", new.id);' % strategy
+            yield '      log::trace!("{:?}: rewrite: %s FAILED", new.id);' % strategy
         yield '      rcx.rewind(mark);'
         yield '    }'
         yield ''
     if has_field(d, 'id'):
-        yield '    trace!("{:?}: rewrite: ran out of strategies!", new.id);'
+        yield '    log::trace!("{:?}: rewrite: ran out of strategies!", new.id);'
     yield '    false'
     yield '  }'
     yield '}'
@@ -551,7 +551,7 @@ def do_maybe_rewrite_seq_impl(d):
             yield '                       new: &[Self],'
             yield '                       outer_span: Span,'
             yield '                       rcx: RewriteCtxtRef) -> bool {'
-            yield '    trace!("try sequence rewriting for %s");' % d.name
+            yield '    log::trace!("try sequence rewriting for %s");' % d.name
             yield '    rewrite_seq(old, new, outer_span, rcx)'
             yield '  }'
         yield '}'

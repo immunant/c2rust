@@ -1,16 +1,18 @@
-use rustc::ty;
-use syntax::ast::*;
-use syntax::ptr::P;
+use rustc_middle::ty;
+use rustc_ast::*;
+use rustc_ast::ptr::P;
+use rustc_span::symbol::Ident;
 
 use smallvec::smallvec;
 
 use crate::ast_manip::{fold_blocks, FlatMapNodes, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
+use crate::{expect, match_or};
 use crate::matcher::{mut_visit_match, Subst};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
-use c2rust_ast_builder::{mk, IntoSymbol};
+use crate::ast_builder::{mk, IntoSymbol};
 use crate::RefactorCtxt;
 
 
@@ -45,8 +47,8 @@ impl Transform for AssignToUpdate {
         mut_visit_match(st, cx, pat, krate, |orig, mut mcx| {
             let x = mcx.bindings.get::<_, P<Expr>>("__x").unwrap().clone();
 
-            let struct_def_id = match cx.node_type(x.id).kind {
-                ty::TyKind::Adt(ref def, _) => def.did,
+            let struct_def_id = match cx.node_type(x.id).kind() {
+                ty::TyKind::Adt(ref def, _) => def.did(),
                 _ => return,
             };
             let struct_path = cx.def_path(struct_def_id);
@@ -110,28 +112,38 @@ impl Transform for MergeUpdates {
 
 fn is_struct_update(s: &Stmt) -> bool {
     let e = match_or!([s.kind] StmtKind::Semi(ref e) => e; return false);
-    let (lhs, rhs) = match_or!([e.kind] ExprKind::Assign(ref lhs, ref rhs) => (lhs, rhs);
+    let (lhs, rhs) = match_or!([e.kind] ExprKind::Assign(ref lhs, ref rhs, _) => (lhs, rhs);
                                return false);
-    match_or!([rhs.kind] ExprKind::Struct(_, _, Some(ref base)) => lhs.ast_equiv(base);
-              return false)
+    if let ExprKind::Struct(se) = &rhs.kind {
+        if let StructRest::Base(ref base) = se.rest {
+            return lhs.ast_equiv(base);
+        }
+    }
+    false
 }
 
 fn is_struct_update_for(s: &Stmt, base1: &Expr) -> bool {
     let e = match_or!([s.kind] StmtKind::Semi(ref e) => e; return false);
-    let rhs = match_or!([e.kind] ExprKind::Assign(_, ref rhs) => rhs;
+    let rhs = match_or!([e.kind] ExprKind::Assign(_, ref rhs, _) => rhs;
                         return false);
-    match_or!([rhs.kind] ExprKind::Struct(_, _, Some(ref base)) => base1.ast_equiv(base);
-              return false)
+    if let ExprKind::Struct(se) = &rhs.kind {
+        if let StructRest::Base(ref base) = se.rest {
+            return base1.ast_equiv(base);
+        }
+    }
+    false
 }
 
-fn unpack_struct_update(s: Stmt) -> (Path, Vec<Field>, P<Expr>) {
+fn unpack_struct_update(s: Stmt) -> (Path, Vec<ExprField>, P<Expr>) {
     let e = expect!([s.kind] StmtKind::Semi(e) => e);
-    let rhs = expect!([e.into_inner().kind] ExprKind::Assign(_, rhs) => rhs);
-    expect!([rhs.into_inner().kind]
-            ExprKind::Struct(path, fields, Some(base)) => (path, fields, base))
+    let rhs = expect!([e.into_inner().kind] ExprKind::Assign(_, rhs, _) => rhs);
+    let se = expect!([rhs.into_inner().kind] ExprKind::Struct(se) => se);
+    let StructExpr { path, fields, rest, .. } = se.into_inner();
+    let base = expect!([rest] StructRest::Base(base) => base);
+    (path, fields, base)
 }
 
-fn build_struct_update(path: Path, fields: Vec<Field>, base: P<Expr>) -> Stmt {
+fn build_struct_update(path: Path, fields: Vec<ExprField>, base: P<Expr>) -> Stmt {
     mk().semi_stmt(
         mk().assign_expr(
             &base,

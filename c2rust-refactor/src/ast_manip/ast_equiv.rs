@@ -1,14 +1,15 @@
 //! `AstEquiv` trait for checking equivalence of two ASTs.
+use rustc_ast::ptr::P;
+use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::thin_vec::ThinVec;
+use rustc_span::hygiene::SyntaxContext;
+use rustc_span::source_map::{Span, Spanned};
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
-use syntax::ast::*;
-use syntax::token::{BinOpToken, DelimToken, Nonterminal, Token, TokenKind};
-use syntax::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use syntax::ptr::P;
-use syntax::source_map::{Span, Spanned};
-use syntax::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use syntax::ThinVec;
-use syntax_pos::hygiene::SyntaxContext;
 
 /// Trait for checking equivalence of AST nodes.  This is similar to `PartialEq`, but less strict,
 /// as it ignores some fields that have no bearing on the semantics of the AST (particularly
@@ -30,7 +31,7 @@ impl<'a, T: AstEquiv> AstEquiv for &'a T {
     }
 }
 
-impl<T: AstEquiv> AstEquiv for P<T> {
+impl<T: AstEquiv + ?Sized> AstEquiv for P<T> {
     fn ast_equiv(&self, other: &P<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)
     }
@@ -39,7 +40,16 @@ impl<T: AstEquiv> AstEquiv for P<T> {
     }
 }
 
-impl<T: AstEquiv> AstEquiv for Rc<T> {
+impl<T: AstEquiv + ?Sized> AstEquiv for Box<T> {
+    fn ast_equiv(&self, other: &Box<T>) -> bool {
+        <T as AstEquiv>::ast_equiv(self, other)
+    }
+    fn unnamed_equiv(&self, other: &Box<T>) -> bool {
+        <T as AstEquiv>::unnamed_equiv(self, other)
+    }
+}
+
+impl<T: AstEquiv + ?Sized> AstEquiv for Rc<T> {
     fn ast_equiv(&self, other: &Rc<T>) -> bool {
         <T as AstEquiv>::ast_equiv(self, other)
     }
@@ -131,7 +141,9 @@ impl<A: AstEquiv, B: AstEquiv, C: AstEquiv> AstEquiv for (A, B, C) {
         self.0.ast_equiv(&other.0) && self.1.ast_equiv(&other.1) && self.2.ast_equiv(&other.2)
     }
     fn unnamed_equiv(&self, other: &Self) -> bool {
-        self.0.unnamed_equiv(&other.0) && self.1.unnamed_equiv(&other.1) && self.2.unnamed_equiv(&other.2)
+        self.0.unnamed_equiv(&other.0)
+            && self.1.unnamed_equiv(&other.1)
+            && self.2.unnamed_equiv(&other.2)
     }
 }
 
@@ -142,23 +154,29 @@ impl AstEquiv for Ident {
     fn ast_equiv(&self, other: &Self) -> bool {
         // Exhaustiveness check
         match self {
-            &Ident { name: ref _name, span: ref _span } => {},
+            &Ident {
+                name: ref _name,
+                span: ref _span,
+            } => {}
         }
 
         // Comparison
         match (self, other) {
-            (&Ident { name: ref name1, span: ref span1 },
-             &Ident { name: ref name2, span: ref span2 }) => {
-                AstEquiv::ast_equiv(name1, name2) &&
-                    AstEquiv::ast_equiv(span1, span2) &&
-                    true
-            }
+            (
+                &Ident {
+                    name: ref name1,
+                    span: ref span1,
+                },
+                &Ident {
+                    name: ref name2,
+                    span: ref span2,
+                },
+            ) => AstEquiv::ast_equiv(name1, name2) && AstEquiv::ast_equiv(span1, span2) && true,
         }
     }
 
     fn unnamed_equiv(&self, other: &Self) -> bool {
-        (self.as_str().contains("C2RustUnnamed")
-         && other.as_str().contains("C2RustUnnamed"))
+        (self.as_str().contains("C2RustUnnamed") && other.as_str().contains("C2RustUnnamed"))
             || self.ast_equiv(other)
     }
 }

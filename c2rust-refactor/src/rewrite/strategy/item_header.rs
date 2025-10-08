@@ -10,12 +10,15 @@
 //! are absent from the original `Item`.
 //!
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
-use syntax::ast::*;
-use syntax::token::{DelimToken, Token, TokenKind};
-use syntax::source_map::{BytePos, Span};
-use syntax::tokenstream::{TokenStream, TokenTree};
+use log::info;
+use rustc_ast::token::{Delimiter, Token, TokenKind};
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::*;
+use rustc_span::source_map::{BytePos, Span};
+use rustc_span::DUMMY_SP;
 
 use crate::ast_manip::AstEquiv;
+use crate::expect;
 use crate::rewrite::base::{describe, rewrite_seq_comma_sep};
 use crate::rewrite::strategy::print::PrintParse;
 use crate::rewrite::{Rewrite, RewriteCtxtRef, TextRewrite};
@@ -39,9 +42,9 @@ fn span_empty(sp: Span) -> bool {
 // fn find_fn_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, FnHeaderSpans> {
 //     // Skip over any attributes that were included in the token stream.
 //     loop {
-//         if matches!([p.token.kind] TokenKind::DocComment(..)) {
+//         if crate::matches!([p.token.kind] TokenKind::DocComment(..)) {
 //             p.bump();
-//         } else if matches!([p.token.kind] TokenKind::Pound) {
+//         } else if crate::matches!([p.token.kind] TokenKind::Pound) {
 //             // I don't think we should ever see inner attributes inside `item.tokens`, but allow
 //             // them just in case.
 //             p.parse_attribute(true)?;
@@ -51,7 +54,7 @@ fn span_empty(sp: Span) -> bool {
 //     }
 
 //     let spanned_vis = p.parse_visibility(FollowedByType::No)?;
-//     let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
+//     let vis = if !spanned_vis.kind.ast_equiv(&VisibilityKind::Inherited) {
 //         spanned_vis.span
 //     } else {
 //         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
@@ -73,7 +76,7 @@ fn span_empty(sp: Span) -> bool {
 
 //     let abi = if p.eat(&TokenKind::Ident(kw::Extern, false)) {
 //         let extern_span = p.prev_span;
-//         if matches!([p.token.kind] TokenKind::Literal(..)) {
+//         if crate::matches!([p.token.kind] TokenKind::Literal(..)) {
 //             // Just assume it's a valid abi string token.  If it wasn't, these tokens wouldn't have
 //             // parsed as an item to begin with.
 //             p.bump();
@@ -109,9 +112,9 @@ fn span_empty(sp: Span) -> bool {
 // fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans> {
 //     // Skip over any attributes that were included in the token stream.
 //     loop {
-//         if matches!([p.token.kind] TokenKind::DocComment(..)) {
+//         if crate::matches!([p.token.kind] TokenKind::DocComment(..)) {
 //             p.bump();
-//         } else if matches!([p.token.kind] TokenKind::Pound) {
+//         } else if crate::matches!([p.token.kind] TokenKind::Pound) {
 //             // I don't think we should ever see inner attributes inside `item.tokens`, but allow
 //             // them just in case.
 //             p.parse_attribute(true)?;
@@ -121,7 +124,7 @@ fn span_empty(sp: Span) -> bool {
 //     }
 
 //     let spanned_vis = p.parse_visibility(false)?;
-//     let vis = if !spanned_vis.node.ast_equiv(&VisibilityKind::Inherited) {
+//     let vis = if !spanned_vis.kind.ast_equiv(&VisibilityKind::Inherited) {
 //         spanned_vis.span
 //     } else {
 //         // `Inherited` visibility is implicit - there are no actual tokens.  Insert visibility just
@@ -161,10 +164,10 @@ fn span_empty(sp: Span) -> bool {
 
 fn find_fn_header_arg_list(ts: TokenStream, generics_span: Span) -> Option<(TokenStream, Span)> {
     // Take the body of the first paren-delimited subtree that's strictly after `generics_span`.
-    ts.trees()
+    ts.into_trees()
         .filter_map(|tt| match tt {
             TokenTree::Delimited(sp, delim, tts) => {
-                if delim == DelimToken::Paren && sp.open.lo() >= generics_span.hi() {
+                if delim == Delimiter::Parenthesis && sp.open.lo() >= generics_span.hi() {
                     Some((tts, sp.open.between(sp.close)))
                 } else {
                     None
@@ -228,10 +231,12 @@ fn rewrite_arg_list_with_tokens(
                         // This token is just past the end of the current arg.
                         past_arg = true;
                     }
-                    if past_arg && matches!([tt] TokenTree::Token(Token {
+                    if past_arg
+                        && crate::matches!([tt] TokenTree::Token(Token {
                         kind: TokenKind::Comma,
                         ..
-                    })) {
+                    }, _))
+                    {
                         // Found the comma following the current arg.
                         comma_spans.push(tt.span());
                         break;
@@ -304,11 +309,26 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
 
     match (kind1, kind2) {
         (
-            &ItemKind::Fn(ref sig1, ref generics1, ref block1),
-            &ItemKind::Fn(ref sig2, ref generics2, ref block2),
+            &ItemKind::Fn(box Fn {
+                sig: ref sig1,
+                generics: ref generics1,
+                body: ref block1,
+                ..
+            }),
+            &ItemKind::Fn(box Fn {
+                sig: ref sig2,
+                generics: ref generics2,
+                body: ref block2,
+                ..
+            }),
         ) => {
+            let tokens1_stream = tokens1
+                .as_ref()
+                .unwrap()
+                .create_token_stream()
+                .to_tokenstream();
             let (old_args_tokens, old_args_span) =
-                find_fn_header_arg_list(tokens1.as_ref().unwrap().clone(), generics1.span)
+                find_fn_header_arg_list(tokens1_stream, generics1.span)
                     .expect("failed to find arg list in item tokens");
 
             // First, try rewriting all the things we don't have special handling for.  If any of
@@ -335,18 +355,27 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // Now try to splice changes to vis, constness, unsafety, abi, and ident.  We use the
             // parser to find spans for all the old stuff.
             let src2: String = <Item as PrintParse>::to_string(new);
-            let reparsed = Item::parse(rcx.session(), &src2);
-            unpack!([&reparsed.kind] ItemKind::Fn(reparsed_sig, _generics, _block));
+            let reparsed = Item::<ItemKind>::parse(rcx.session(), &src2);
+            let reparsed_sig = expect!([&reparsed.kind]
+                ItemKind::Fn(box Fn { ref sig, .. }) => sig);
 
             // The first two go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
 
-            if !vis1.node.ast_equiv(&vis2.node) {
+            if !vis1.kind.ast_equiv(&vis2.kind) {
                 record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
             }
 
-            if sig1.header.constness.node != sig2.header.constness.node {
-                record_qualifier_rewrite(sig1.header.constness.span, reparsed_sig.header.constness.span, rcx.borrow());
+            if sig1.header.constness != sig2.header.constness {
+                let sig1_const_span = match sig1.header.constness {
+                    Const::Yes(sp) => sp,
+                    Const::No => DUMMY_SP,
+                };
+                let reparsed_sig_const_span = match reparsed_sig.header.constness {
+                    Const::Yes(sp) => sp,
+                    Const::No => DUMMY_SP,
+                };
+                record_qualifier_rewrite(sig1_const_span, reparsed_sig_const_span, rcx.borrow());
             }
 
             if ident1 != ident2 {
@@ -368,9 +397,9 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             }
 
             let src2: String = <Item as PrintParse>::to_string(new);
-            let reparsed = Item::parse(rcx.session(), &src2);
+            let reparsed = Item::<ItemKind>::parse(rcx.session(), &src2);
 
-            if !vis1.node.ast_equiv(&vis2.node) {
+            if !vis1.kind.ast_equiv(&vis2.kind) {
                 record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
             }
 

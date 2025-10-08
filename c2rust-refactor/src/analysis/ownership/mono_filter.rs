@@ -2,11 +2,12 @@
 //! generating code for them if they aren't used.  This module examines the monomorphizations and
 //! their call sites, and generates the list of monomorphizations to skip.
 
+use log::debug;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
-use rustc::hir::def_id::DefId;
+use rustc_hir::def_id::DefId;
 use rustc_data_structures::indexed_vec::IndexVec;
 
 use super::{Var, ConcretePerm, Perm};

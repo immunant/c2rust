@@ -1,11 +1,12 @@
 //! Analysis passes used to drive various transformations.
 
+use log::info;
 use std::collections::HashSet;
 
+use crate::ast_builder::IntoSymbol;
 use crate::command::{DriverCommand, Registry};
 use crate::driver::Phase;
-use arena::SyncDroplessArena;
-use c2rust_ast_builder::IntoSymbol;
+use rustc_arena::DroplessArena;
 
 pub mod labeled_ty;
 pub mod ownership;
@@ -37,7 +38,7 @@ fn register_test_analysis_type_eq(reg: &mut Registry) {
 fn register_test_analysis_ownership(reg: &mut Registry) {
     reg.register("test_analysis_ownership", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
-            let arena = SyncDroplessArena::default();
+            let arena = DroplessArena::default();
             let results = ownership::analyze(&st, &cx, &arena);
             ownership::dump_results(&cx, &results);
         }))

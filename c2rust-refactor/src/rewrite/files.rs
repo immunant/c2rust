@@ -1,9 +1,10 @@
 //! Code for applying `TextRewrite`s to the actual source files.
 use diff;
+use log::{info, warn};
+use rustc_span::source_map::{SourceFile, SourceMap};
+use rustc_span::{BytePos, FileName};
 use std::collections::{HashMap, VecDeque};
 use std::io;
-use syntax::source_map::{SourceFile, SourceMap};
-use syntax_pos::{BytePos, FileName};
 
 use crate::file_io::FileIO;
 use crate::rewrite::cleanup::cleanup_rewrites;
@@ -41,6 +42,10 @@ pub fn rewrite_files_with(cm: &SourceMap, rw: &TextRewrite, io: &dyn FileIO) -> 
                 warn!("can't rewrite virtual file {:?}", sf.name);
                 continue;
             }
+        };
+        let path = match path.local_path() {
+            Some(path) => path,
+            None => continue,
         };
 
         // TODO: do something with nodes
@@ -139,7 +144,7 @@ fn emit_chunk<F: FnMut(&str)>(cm: &SourceMap, lo: BytePos, hi: BytePos, mut call
         .sf
         .src
         .as_ref()
-        .unwrap_or_else(|| panic!("source of file {} is not available", lo.sf.name));
+        .unwrap_or_else(|| panic!("source of file {:?} is not available", lo.sf.name));
     callback(&src[lo.pos.0 as usize..hi.pos.0 as usize]);
 }
 

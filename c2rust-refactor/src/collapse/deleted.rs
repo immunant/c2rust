@@ -1,16 +1,17 @@
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
 use smallvec::SmallVec;
 /// Special handling for nodes that were deleted by macro expansion.  This is mostly for `#[cfg]`
 /// and `#[test]` attrs.  We collect info on deleted nodes right after expansion, then use that
 /// info later to re-insert those nodes during macro collapsing.
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use syntax::ast::*;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::visit::{self, Visitor};
 
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::ast_manip::{GetNodeId, ListNodeIds, MutVisit, Visit};
+use crate::match_or;
 use crate::node_map::NodeMap;
 
 use super::mac_table::{AsMacNodeRef, MacNodeRef, MacTable};
@@ -22,8 +23,6 @@ use super::mac_table::{AsMacNodeRef, MacNodeRef, MacTable};
 /// crates its IDs are relative to.
 #[derive(Clone, Debug)]
 pub struct DeletedNode<'ast> {
-    /// The ID of the deleted node.  This is always an unexpanded ID.
-    id: NodeId,
     /// The ID of the containing node.  This gets updated by `transfer`, progressing through
     /// unexpanded, expanded, and collapsed IDs.
     parent: NodeId,
@@ -59,7 +58,6 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
                     .map(|id| self.node_map.save_origin(id))
                     .collect();
                 self.deleted.push(DeletedNode {
-                    id,
                     parent,
                     preds: history.clone(),
                     node: n.as_mac_node_ref(),
@@ -72,15 +70,17 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
     }
 
     fn handle_crate(&mut self, x: &'ast Crate) {
-        self.handle_seq(CRATE_NODE_ID, &x.module.items);
+        self.handle_seq(CRATE_NODE_ID, &x.items);
     }
 }
 
 impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, x: &'ast Expr) {
         match &x.kind {
-            ExprKind::Array(elements) | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements) | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements)
+            | ExprKind::Call(_, elements)
+            | ExprKind::MethodCall(_, elements, _)
+            | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
             }
             _ => {}
@@ -90,10 +90,10 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
 
     fn visit_item(&mut self, x: &'ast Item) {
         match x.kind {
-            ItemKind::Mod(ref m) => self.handle_seq(x.id, &m.items),
+            ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _)) => self.handle_seq(x.id, m_items),
             ItemKind::ForeignMod(ref fm) => self.handle_seq(x.id, &fm.items),
-            ItemKind::Trait(_, _, _, _, ref items) => self.handle_seq(x.id, items),
-            ItemKind::Impl(_, _, _, _, _, _, ref items) => self.handle_seq(x.id, items),
+            ItemKind::Trait(box Trait { ref items, .. }) => self.handle_seq(x.id, items),
+            ItemKind::Impl(box Impl { ref items, .. }) => self.handle_seq(x.id, items),
             _ => {}
         }
         visit::walk_item(self, x);
@@ -104,7 +104,7 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
         visit::walk_block(self, block);
     }
 
-    fn visit_mac(&mut self, mac: &'ast Mac) {
+    fn visit_mac_call(&mut self, mac: &'ast MacCall) {
         visit::walk_mac(self, mac)
     }
 }
@@ -229,17 +229,23 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
 
 impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn visit_crate(&mut self, x: &mut Crate) {
-        self.restore_seq(CRATE_NODE_ID, &mut x.module.items);
+        self.restore_seq(CRATE_NODE_ID, &mut x.items);
         mut_visit::noop_visit_crate(x, self)
     }
 
     fn flat_map_item(&mut self, mut x: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let id = x.id;
         match x.kind {
-            ItemKind::Mod(ref mut m) => self.restore_seq(id, &mut m.items),
+            ItemKind::Mod(_, ModKind::Loaded(ref mut m_items, _, _)) => {
+                self.restore_seq(id, m_items)
+            }
             ItemKind::ForeignMod(ref mut fm) => self.restore_seq(id, &mut fm.items),
-            ItemKind::Trait(_, _, _, _, ref mut items) => self.restore_seq(id, items),
-            ItemKind::Impl(_, _, _, _, _, _, ref mut items) => self.restore_seq(id, items),
+
+            // Both of these contain vectors of P<AssocItem>,
+            // and MutVisit has no way to distinguish between them.
+            // TODO: when we figure out a way to do so, re-enable them.
+            //ItemKind::Trait(box Trait { ref mut items, .. }) => self.restore_seq(id, items),
+            //ItemKind::Impl(box Impl { ref mut items, .. }) => self.restore_seq(id, items),
             _ => {}
         }
         mut_visit::noop_flat_map_item(x, self)
@@ -248,8 +254,10 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, expr: &mut P<Expr>) {
         let id = expr.id;
         match &mut expr.kind {
-            ExprKind::Array(elements) | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements) | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements)
+            | ExprKind::Call(_, elements)
+            | ExprKind::MethodCall(_, elements, _)
+            | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
             }
             _ => {}
@@ -262,7 +270,7 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
         mut_visit::noop_visit_block(block, self)
     }
 
-    fn visit_mac(&mut self, mac: &mut Mac) {
+    fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::noop_visit_mac(mac, self)
     }
 }

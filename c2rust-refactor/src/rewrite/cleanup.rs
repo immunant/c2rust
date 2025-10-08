@@ -1,4 +1,4 @@
-use syntax::source_map::{SourceMap, Span, DUMMY_SP};
+use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
 
 use crate::rewrite::TextRewrite;
 
@@ -17,7 +17,7 @@ fn equal_span_text(cm: &SourceMap, sp1: Span, sp2: Span) -> bool {
         .sf
         .src
         .as_ref()
-        .unwrap_or_else(|| panic!("source of file {} is not available", lo1.sf.name));
+        .unwrap_or_else(|| panic!("source of file {:?} is not available", lo1.sf.name));
 
     let lo2 = cm.lookup_byte_offset(sp2.lo());
     let hi2 = cm.lookup_byte_offset(sp2.hi());
@@ -25,7 +25,7 @@ fn equal_span_text(cm: &SourceMap, sp1: Span, sp2: Span) -> bool {
         .sf
         .src
         .as_ref()
-        .unwrap_or_else(|| panic!("source of file {} is not available", lo2.sf.name));
+        .unwrap_or_else(|| panic!("source of file {:?} is not available", lo2.sf.name));
 
     src1[lo1.pos.0 as usize..hi1.pos.0 as usize] == src2[lo2.pos.0 as usize..hi2.pos.0 as usize]
 }

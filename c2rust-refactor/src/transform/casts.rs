@@ -1,15 +1,16 @@
-use rustc::ty::{self, ParamEnv, TyKind};
-use syntax::ast::*;
-use syntax::token;
-use syntax::ptr::P;
-use syntax_pos::Symbol;
+use log::debug;
+use rustc_middle::ty::{self, ParamEnv, TyKind};
+use rustc_ast::*;
+use rustc_ast::token;
+use rustc_ast::ptr::P;
+use rustc_span::Symbol;
 
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::matcher::{mut_visit_match_with, replace_expr, MatchCtxt};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use c2rust_ast_builder::mk;
+use crate::ast_builder::mk;
 
 #[cfg(test)]
 mod tests;
@@ -233,7 +234,7 @@ fn cast_kind(from_ty: SimpleTy, to_ty: SimpleTy) -> CastKind {
 // because the unit tests have no way of creating new `TyS` values
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum SimpleTy {
-    Int(usize, bool),
+    Int(u64, bool),
     Size(bool),
     Float32,
     Float64,
@@ -300,17 +301,17 @@ impl SimpleTy {
 impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
     fn from(ty: ty::Ty<'tcx>) -> Self {
         use SimpleTy::*;
-        match ty.kind {
-            TyKind::Int(IntTy::Isize) => Size(true),
-            TyKind::Uint(UintTy::Usize) => Size(false),
+        match ty.kind() {
+            TyKind::Int(ty::IntTy::Isize) => Size(true),
+            TyKind::Uint(ty::UintTy::Usize) => Size(false),
 
             TyKind::Int(int_ty) => Int(int_ty.bit_width().unwrap(), true),
             TyKind::Uint(uint_ty) => Int(uint_ty.bit_width().unwrap(), false),
 
-            TyKind::Float(FloatTy::F32) => Float32,
-            TyKind::Float(FloatTy::F64) => Float64,
+            TyKind::Float(ty::FloatTy::F32) => Float32,
+            TyKind::Float(ty::FloatTy::F64) => Float64,
 
-            TyKind::Ref(_, ty, _mutbl) => match ty.kind {
+            TyKind::Ref(_, ty, _mutbl) => match ty.kind() {
                 TyKind::Array(..) => Array,
                 _ => Ref,
             }
@@ -443,7 +444,7 @@ impl ConstantValue {
                     _ => panic!("Unexpected SimpleTy: {:?}", ty)
                 }
             }
-        };
+        }
         match_ty! {
             SimpleTy::Int(8, false) => Uint[u8, u128],
             SimpleTy::Int(16, false) => Uint[u16, u128],
@@ -459,7 +460,7 @@ impl ConstantValue {
             SimpleTy::Size(true) => Int[isize, i128],
             SimpleTy::Float32 => Float32[f32],
             SimpleTy::Float64 => Float64[f64]
-        };
+        }
     }
 }
 

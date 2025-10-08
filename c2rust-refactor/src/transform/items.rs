@@ -1,16 +1,16 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
-use rustc::hir::HirId;
+use rustc_hir::HirId;
 use rustc_parse::parser::FollowedByType;
-use syntax::ast::*;
-use syntax::source_map::DUMMY_SP;
-use syntax::mut_visit::{self, MutVisitor};
-use syntax::ptr::P;
-use syntax::symbol::Symbol;
+use rustc_ast::*;
+use rustc_span::source_map::DUMMY_SP;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_span::symbol::{Ident, Symbol};
 use smallvec::{smallvec, SmallVec};
 
-use c2rust_ast_builder::{mk, Make, IntoSymbol};
+use crate::ast_builder::{mk, Make, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisit, AstEquiv};
 use crate::command::{CommandState, Registry};
 use crate::driver::{self, Phase};
@@ -121,7 +121,6 @@ impl Transform for RenameUnnamed {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         #[derive(Debug, Default)]
         struct Renamer {
-            items_to_change: HashSet<NodeId>,
             new_idents: HashMap<HirId, Ident>,
             new_to_old: HashMap<Ident, Ident>,
         }
@@ -210,22 +209,23 @@ impl Transform for ReplaceItems {
 
         // (1b) Impl items
         // TODO: Only inherent impls are supported for now.  May not work on trait impls.
-        FlatMapNodes::visit(krate, |i: ImplItem| {
-            if st.marked(i.id, "repl") {
-                if repl_id.is_none() {
-                    repl_id = Some(cx.node_def_id(i.id));
-                } else {
-                    panic!("found multiple `repl` items");
-                }
-            }
+        // TODO: Re-enable this once MutVisit can distinguish between ItemImpl and TraitImpl.
+        //FlatMapNodes::visit(krate, |i: AssocItem| {
+        //    if st.marked(i.id, "repl") {
+        //        if repl_id.is_none() {
+        //            repl_id = Some(cx.node_def_id(i.id));
+        //        } else {
+        //            panic!("found multiple `repl` items");
+        //        }
+        //    }
 
-            if st.marked(i.id, "target") {
-                target_ids.insert(cx.node_def_id(i.id));
-                smallvec![]
-            } else {
-                smallvec![i]
-            }
-        });
+        //    if st.marked(i.id, "target") {
+        //        target_ids.insert(cx.node_def_id(i.id));
+        //        smallvec![]
+        //    } else {
+        //        smallvec![i]
+        //    }
+        //});
 
         let repl_id = repl_id.expect("found no `repl` item");
 
@@ -244,7 +244,7 @@ impl Transform for ReplaceItems {
 
         FlatMapNodes::visit(krate, |i: P<Item>| {
             let opt_def_id = match i.kind {
-                ItemKind::Impl(_, _, _, _, _, ref ty, _) => cx.try_resolve_ty(ty),
+                ItemKind::Impl(box Impl { ref self_ty, .. }) => cx.try_resolve_ty(self_ty),
                 _ => None,
             };
 
@@ -287,7 +287,7 @@ impl Transform for SetVisibility {
             vis: Visibility,
 
             /// `true` when the closest enclosing item is a trait impl (not an inherent impl).
-            /// This matters for the ImplItem case because trait impl items don't have visibility.
+            /// This matters for the AssocItem case because trait impl items don't have visibility.
             in_trait_impl: bool,
         }
 
@@ -301,26 +301,26 @@ impl Transform for SetVisibility {
                 }
 
                 let was_in_trait_impl = self.in_trait_impl;
-                self.in_trait_impl = matches!([i.kind]
-                        ItemKind::Impl(_, _, _, _, Some(_), _, _));
+                self.in_trait_impl = crate::matches!([i.kind]
+                        ItemKind::Impl(box Impl { of_trait: Some(_), .. }));
                 let r = mut_visit::noop_flat_map_item(i, self);
                 self.in_trait_impl = was_in_trait_impl;
 
                 r
             }
 
-            fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
+            fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
                 if self.in_trait_impl {
-                    return mut_visit::noop_flat_map_impl_item(i, self);
+                    return mut_visit::noop_flat_map_assoc_item(i, self);
                 }
 
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
-                mut_visit::noop_flat_map_impl_item(i, self)
+                mut_visit::noop_flat_map_assoc_item(i, self)
             }
 
-            fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+            fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
@@ -370,10 +370,10 @@ impl Transform for SetMutability {
                 mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn flat_map_foreign_item(&mut self, mut i: ForeignItem) -> SmallVec<[ForeignItem; 1]> {
+            fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.kind {
-                        ForeignItemKind::Static(_, ref mut is_mutbl) =>
+                        ForeignItemKind::Static(_, ref mut is_mutbl, _) =>
                             *is_mutbl = self.mutbl,
                         _ => {},
                     }
@@ -394,11 +394,11 @@ pub struct SetUnsafety {
 
 impl Transform for SetUnsafety {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
-        let unsafety = <&str as Make<Unsafety>>::make(&self.unsafe_str, &mk());
+        let unsafety = <&str as Make<Unsafe>>::make(&self.unsafe_str, &mk());
 
         struct SetUnsafetyFolder<'a> {
             st: &'a CommandState,
-            unsafety: Unsafety,
+            unsafety: Unsafe,
         }
 
         impl<'a> MutVisitor for SetUnsafetyFolder<'a> {
@@ -406,11 +406,11 @@ impl Transform for SetUnsafety {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
                         match i.kind {
-                            ItemKind::Fn(ref mut sig, _, _) =>
+                            ItemKind::Fn(box Fn { ref mut sig, .. }) =>
                                 sig.header.unsafety = self.unsafety,
-                            ItemKind::Trait(_, ref mut unsafety, _, _, _) =>
+                            ItemKind::Trait(box Trait { ref mut unsafety, .. }) =>
                                 *unsafety = self.unsafety,
-                            ItemKind::Impl(ref mut unsafety, _, _, _, _, _, _) =>
+                            ItemKind::Impl(box Impl { ref mut unsafety, .. }) =>
                                 *unsafety = self.unsafety,
                             _ => {},
                         }
@@ -420,26 +420,15 @@ impl Transform for SetUnsafety {
                 mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn flat_map_trait_item(&mut self, mut i: TraitItem) -> SmallVec<[TraitItem; 1]> {
+            fn flat_map_trait_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.kind {
-                        TraitItemKind::Method(ref mut sig, _) =>
+                        AssocItemKind::Fn(box Fn { ref mut sig, .. }) =>
                             sig.header.unsafety = self.unsafety,
                         _ => {},
                     }
                 }
-                mut_visit::noop_flat_map_trait_item(i, self)
-            }
-
-            fn flat_map_impl_item(&mut self, mut i: ImplItem) -> SmallVec<[ImplItem; 1]> {
-                if self.st.marked(i.id, "target") {
-                    match i.kind {
-                        ImplItemKind::Method(ref mut sig, _) =>
-                            sig.header.unsafety = self.unsafety,
-                        _ => {},
-                    }
-                }
-                mut_visit::noop_flat_map_impl_item(i, self)
+                mut_visit::noop_flat_map_assoc_item(i, self)
             }
         }
 
@@ -490,13 +479,13 @@ impl Transform for CreateItem {
         }
 
         impl<'a> CreateFolder<'a> {
-            fn handle_mod(&mut self, parent_id: NodeId, m: &mut Mod, skip_dummy: bool) {
-                let mut items = Vec::with_capacity(m.items.len());
+            fn handle_mod(&mut self, parent_id: NodeId, m_items: &mut Vec<P<Item>>, skip_dummy: bool) {
+                let mut items = Vec::with_capacity(m_items.len());
 
                 // When true, insert before the next item that satisfies `skip_dummy`
                 let mut insert_inside = self.inside && self.st.marked(parent_id, self.mark);
 
-                for i in &m.items {
+                for i in &m_items[..] {
                     if insert_inside {
                         // Special case for `inside` mode with the Crate marked.  We want to insert
                         // after the injected std and prelude items, because inserting before an
@@ -519,26 +508,20 @@ impl Transform for CreateItem {
                     items.extend(self.items.iter().cloned());
                 }
 
-                m.items = items;
+                *m_items = items;
             }
         }
 
         impl<'a> MutVisitor for CreateFolder<'a> {
             fn visit_crate(&mut self, c: &mut Crate) {
-                self.handle_mod(CRATE_NODE_ID, &mut c.module, true);
-
-                // We do this instead of noop_visit_crate, because
-                // noop_visit_crate makes up a dummy Item for the crate, causing
-                // us to try and insert into c.module a second time.  (We don't
-                // just omit fold_crate and rely on this dummy item because the
-                // dummy item has DUMMY_NODE_ID instead of CRATE_NODE_ID.)
-                mut_visit::noop_visit_mod(&mut c.module, self);
+                self.handle_mod(CRATE_NODE_ID, &mut c.items, true);
+                mut_visit::noop_visit_crate(c, self);
             }
 
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 let id = i.id;
-                if let ItemKind::Mod(m) = &mut i.kind {
-                    self.handle_mod(id, m, false);
+                if let ItemKind::Mod(_, ModKind::Loaded(items, ..)) = &mut i.kind {
+                    self.handle_mod(id, items, false);
                 }
                 mut_visit::noop_flat_map_item(i, self)
             }
@@ -562,7 +545,7 @@ impl Transform for CreateItem {
                 mut_visit::noop_visit_block(b, self)
             }
 
-            fn visit_mac(&mut self, mac: &mut Mac) {
+            fn visit_mac_call(&mut self, mac: &mut MacCall) {
                 mut_visit::noop_visit_mac(mac, self)
             }
         }
@@ -592,9 +575,16 @@ impl Transform for DeleteItems {
         }
 
         impl<'a> MutVisitor for DeleteFolder<'a> {
-            fn visit_mod(&mut self, m: &mut Mod) {
-                m.items.retain(|i| !self.st.marked(i.id, self.mark));
-                mut_visit::noop_visit_mod(m, self)
+            fn visit_crate(&mut self, c: &mut Crate) {
+                c.items.retain(|i| !self.st.marked(i.id, self.mark));
+                mut_visit::noop_visit_crate(c, self);
+            }
+
+            fn visit_item_kind(&mut self, i: &mut ItemKind) {
+                if let ItemKind::Mod(_, ModKind::Loaded(items, ..)) = i {
+                    items.retain(|i| !self.st.marked(i.id, self.mark));
+                }
+                mut_visit::noop_visit_item_kind(i, self)
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {

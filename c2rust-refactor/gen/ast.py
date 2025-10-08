@@ -3,7 +3,7 @@ from collections import namedtuple
 Enum = namedtuple('Enum', ('name', 'variants', 'attrs'))
 Struct = namedtuple('Struct', ('name', 'fields', 'is_tuple', 'attrs'))
 Flag = namedtuple('Flag', ('name', 'attrs'))
-Field = namedtuple('Field', ('name', 'attrs'))
+Field = namedtuple('Field', ('name', 'dot_name', 'attrs'))
 
 
 def variants_paths(se):

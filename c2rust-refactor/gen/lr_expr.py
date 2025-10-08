@@ -26,20 +26,20 @@ def expr_kind_match(d, mode):
         yield '  %s => {' % struct_pattern(v, path, bind_mode='')
         for f in v.fields:
             if 'lvalue_mut' in f.attrs:
-                yield '    %s.fold_lvalue_mut(lr);' % f.name
+                yield '    r#%s.fold_lvalue_mut(lr);' % f.name
             elif 'lvalue_imm' in f.attrs:
-                yield '    %s.fold_lvalue(lr);' % f.name
+                yield '    r#%s.fold_lvalue(lr);' % f.name
             elif 'lr_propagate' in f.attrs:
-                yield '    %s.fold_%s(lr);' % (f.name, mode)
+                yield '    r#%s.fold_%s(lr);' % (f.name, mode)
             elif 'lvalue_kind' in f.attrs:
                 yield '    match %s {' % f.attrs['lvalue_kind']
-                yield '      Mutability::Mutable =>'
-                yield '        %s.fold_lvalue_mut(lr),' % f.name
-                yield '      Mutability::Immutable =>'
-                yield '        %s.fold_lvalue(lr),' % f.name
+                yield '      Mutability::Mut =>'
+                yield '        r#%s.fold_lvalue_mut(lr),' % f.name
+                yield '      Mutability::Not =>'
+                yield '        r#%s.fold_lvalue(lr),' % f.name
                 yield '    }'
             else:
-                yield '    %s.fold_rvalue(lr);' % f.name
+                yield '    r#%s.fold_rvalue(lr);' % f.name
         yield '  }'
     yield '}'
 
