@@ -986,8 +986,10 @@ impl TypedAstContext {
         }
     }
 
-    pub fn sort_top_decls(&mut self) {
-        // Group and sort declarations by file and by position
+    /// Sort the top-level declarations by file and source location
+    /// so that we preserve the ordering of all declarations in each file.
+    /// This preserves the order when we emit the converted declarations.
+    pub fn sort_top_decls_for_emitting(&mut self) {
         let mut decls_top = mem::take(&mut self.c_decls_top);
         decls_top.sort_unstable_by(|a, b| {
             let a = self.index(*a);
