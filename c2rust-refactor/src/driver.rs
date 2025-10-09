@@ -42,7 +42,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::ast_manip::remove_paren;
+use crate::ast_manip::{remove_paren, AstSpanMaps};
 use crate::command::{GenerationalTyCtxt, RefactorState, Registry};
 use crate::file_io::{ArcFileIO, FileIO};
 // TODO: don't forget to call span_fix after parsing
@@ -76,6 +76,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
         tcx: GenerationalTyCtxt<'tcx>,
+        span_maps: AstSpanMaps,
     ) -> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(
             sess,
@@ -84,6 +85,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                 map,
                 node_id_to_def_id,
                 def_id_to_node_id,
+                span_maps,
             )),
             Some(tcx),
         )
@@ -288,7 +290,7 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
     config.file_loader = file_loader;
-    config.opts.edition = Edition::Edition2018;
+    config.opts.edition = Edition::Edition2021;
 
     interface::run_compiler(config, f)
 }
@@ -308,7 +310,7 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    run_in_thread_pool_with_globals(Edition::Edition2018, 1, move || {
+    run_in_thread_pool_with_globals(Edition::Edition2021, 1, move || {
         let state = RefactorState::new(config, cmd_reg, file_io, marks);
         f(state)
     })
