@@ -32,7 +32,7 @@ struct Crate {
 
 #[rewrite_print_recover] #[rewrite_seq_item] #[rewrite_extra_strategies=item_header]
 #[nonterminal] #[extend_span]
-struct Item { ident, #[match=ignore] attrs, id, kind, vis, span, tokens }
+struct Item { ident, #[match=ignore] attrs, id, kind, vis, span, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum ItemKind {
     ExternCrate(name),
     Use(vp),
@@ -98,7 +98,7 @@ enum UseTreeKind {
 struct UseTree { kind, prefix, span }
 
 #[extend_span]
-struct AssocItem { id, ident, #[match=ignore] attrs, vis, kind, span, tokens }
+struct AssocItem { id, ident, #[match=ignore] attrs, vis, kind, span, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum AssocItemKind {
     Const(defaultness, ty, init),
     Fn(fn),
@@ -122,7 +122,7 @@ struct FieldDef { #[match=ignore] attrs, id, span, vis, ident, ty, is_placeholde
 
 struct ForeignMod { unsafety, abi, #[mac_table_seq] items }
 #[rewrite_print_recover] #[rewrite_seq_item] #[extend_span]
-struct ForeignItem { ident, #[match=ignore] attrs, kind, id, span, vis, tokens }
+struct ForeignItem { ident, #[match=ignore] attrs, kind, id, span, vis, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum ForeignItemKind {
     Fn(fn),
     Static(ty, mutbl, init),
@@ -158,7 +158,7 @@ enum TraitBoundModifier {
 }
 
 #[match=ignore]
-struct Visibility { kind, span, tokens }
+struct Visibility { kind, span, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 
 #[match=ignore]
 enum VisibilityKind {
@@ -168,7 +168,7 @@ enum VisibilityKind {
 }
 
 #[match=custom] #[rewrite_print_recover] #[mac_table_record] #[nonterminal]
-struct Ty { id, kind, span, tokens }
+struct Ty { id, kind, span, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 struct MutTy { ty, mutbl }
 enum TyKind {
     Slice(ty),
@@ -276,7 +276,7 @@ enum StmtKind {
 }
 
 #[extend_span]
-struct Local { id, pat, ty, kind, span, #[match=ignore] attrs, tokens }
+struct Local { id, pat, ty, kind, span, #[match=ignore] attrs, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum LocalKind {
     Decl,
     Init(expr),
@@ -285,7 +285,7 @@ enum LocalKind {
 
 
 #[match=custom] #[rewrite_print_recover] #[extend_span] #[mac_table_record] #[nonterminal]
-struct Expr { id, kind, span, #[match=ignore] attrs, tokens }
+struct Expr { id, kind, span, #[match=ignore] attrs, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 #[prec_contains_expr]
 enum ExprKind {
     Box(#[prec=PREFIX] expr),
@@ -397,13 +397,13 @@ struct Block {
     id,
     rules,
     span,
-    tokens,
+    #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens,
     could_be_bare_literal,
 }
 
 
 #[match=custom] #[mac_table_record] #[nonterminal]
-struct Pat { id, kind, span, tokens }
+struct Pat { id, kind, span, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum PatKind {
     Wild,
     Ident(mode, id, pat),
@@ -536,10 +536,10 @@ enum RangeLimits {
 #[no_node_id] #[rewrite_print] #[rewrite_custom=SeqItem]
 struct Attribute { kind, id, style, span }
 enum AttrKind {
-    Normal(item, tokens),
+    Normal(item, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens),
     DocComment(kind, symbol),
 }
-struct AttrItem { path, args, tokens }
+struct AttrItem { path, args, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum AttrStyle {
     Outer,
     Inner,
@@ -551,7 +551,7 @@ enum CommentKind {
 }
 
 #[match=custom] #[nonterminal]
-struct Path { span, segments, tokens }
+struct Path { span, segments, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 struct PathSegment { ident, id, args }
 
 enum GenericArgs {
@@ -576,7 +576,7 @@ struct MacCallStmt {
     mac,
     style,
     #[match=ignore] attrs,
-    tokens,
+    #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens,
 }
 struct MacCall { path, args, prior_type_ascription }
 enum MacStmtStyle {
@@ -592,7 +592,7 @@ struct MacroDef { body, macro_rules }
 
 enum MacArgs {
     Empty,
-    Delimited(span, delim, tokens),
+    Delimited(span, delim, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens),
     Eq(span, value),
 }
 
