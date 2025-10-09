@@ -43,10 +43,6 @@ z3 = "0.12.0"
 quickcheck = "0.9.0"
 rand = "0.7"
 
-[lib]
-name = "c2rust_refactor"
-path = "src/lib.rs"
-
 [features]
 default = []
 profile = ["flame", "flamer"]
