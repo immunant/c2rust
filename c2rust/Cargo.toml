@@ -12,10 +12,6 @@ keywords.workspace = true
 categories.workspace = true
 default-run = "c2rust"
 
-[badges]
-travis-ci = { repository = "immunant/c2rust" }
-azure-devops = { project = "immunant/c2rust", pipeline = "immunant.c2rust", build="1" }
-
 [dependencies]
 anyhow = "1.0"
 clap = { version = "3.2.22", features = ["yaml", "cargo", "derive"] }
