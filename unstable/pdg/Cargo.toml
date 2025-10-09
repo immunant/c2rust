@@ -1,9 +1,9 @@
 [package]
-name = "c2rust-instrument"
+name = "c2rust-pdg"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
-description = "C2Rust instrumentation of Rust code for dynamic analysis"
+description = "Pointer Derivation Graph used for dynamic analysis by C2Rust"
 readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
@@ -13,25 +13,24 @@ categories.workspace = true
 publish = false
 
 [dependencies]
-anyhow = "1.0"
-bincode = "1.0.1"
+bincode = "1.0"
 c2rust-analysis-rt = { path = "../analysis/runtime", version = "0.21.0" }
-indexmap = "1.9"
-itertools = "0.10"
-once_cell = "1.13"
+indexed_vec = "1.2"
+indexmap = "1.8"
+serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-fs-err = "2"
-clap = { version = "3.2", features = ["derive"] }
-# Used for parsing `rust-toolchain.toml`.
-# We don't need to edit at all, but `cargo` uses `toml-edit`, so we want to match it.
-toml_edit = "0.19"
-fs2 = "0.4"
 env_logger = "0.10"
-tempfile = "3.3"
-rand = "0.8.5"
+color-eyre = "0.6"
+fs-err = "2"
+itertools = "0.10"
+linked_hash_set = "0.1"
+clap = { version = "3.2", features = ["derive"] }
 
 [build-dependencies]
-c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.21.0" }
+c2rust-build-paths = { path = "../../c2rust-build-paths", version = "0.21.0" }
+
+[dev-dependencies]
+insta = "1.43.2"
 
 [package.metadata.rust-analyzer] 
 rustc_private = true

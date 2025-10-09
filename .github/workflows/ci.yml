@@ -35,22 +35,13 @@ jobs:
           uv venv
           uv pip install -r ./scripts/requirements.txt
 
-      # rust-cache very carefully caches toolchains and target directories,
-      # based on the job and toolchain and other factors. See
-      # https://github.com/Swatinem/rust-cache#cache-details for what gets
-      # cached, what gets used as part of the key, and what additional handling
-      # happens to make the cache reliable and smaller.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-workspace-crates: true
-
-      # Run after `rust-cache` so that this is cached.
-      - run: rustup component add rustfmt rustc-dev
+      # `rust-cache` says to run this before it.
+      - name: rustup toolchain install
+        run: |
+          rustup toolchain install
 
       - name: cargo fmt --check
         run: |
-          export RUSTFLAGS="-D warnings"
-          export RUSTDOCFLAGS="-D warnings"
           cargo fmt --check
 
       - name: Install packages (Ubuntu)
@@ -96,24 +87,35 @@ jobs:
           brew install -q ninja gpg llvm@${{ matrix.clang-version }} bash z3
           echo "Z3_SYS_Z3_HEADER=/opt/homebrew/include/z3.h" >> $GITHUB_ENV
 
-      - name: cargo build --release
+      # rust-cache very carefully caches toolchains and target directories,
+      # based on the job and toolchain and other factors. See
+      # https://github.com/Swatinem/rust-cache#cache-details for what gets
+      # cached, what gets used as part of the key, and what additional handling
+      # happens to make the cache reliable and smaller.
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
+
+      - name: cargo build
         run: |
           export RUSTFLAGS="-D warnings"
           export RUSTDOCFLAGS="-D warnings"
           # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
           # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
           cargo build --release
-      - name: cargo test --release --workspace
+
+      - name: rustup toolchain install (nightly for tests)
+        working-directory: tests
+        run: |
+          rustup toolchain install
+
+      - name: cargo test
         run: |
           export RUSTFLAGS="-D warnings"
-          # add homebrew library path for z3; z3-sys 0.9.4 supports the
-          # Z3_LIBRARY_PATH_OVERRIDE environment variable that would let
-          # us override the library path, but that crate version is too new
-          # for nightly-2022-08-08 (requires 2024 edition). On our nightly rustc
-          # on Mac OS, we have to pass in the exact library path directly to RUSTFLAGS.
-          export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib"
           export RUSTDOCFLAGS="-D warnings"
           cargo test --release --workspace
+
       - name: Test translator
         run: |
           # `test_translator.py` compiles translated code,
@@ -123,3 +125,45 @@ jobs:
           # `test_translator.py` does not rebuild,
           # so changing `RUSTFLAGS` will not trigger a full rebuild.
           uv run ./scripts/test_translator.py tests/
+
+  test-unstable:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./unstable
+    steps:
+      - uses: actions/checkout@v4
+
+      # `rust-cache` says to run this before it.
+      - name: rustup toolchain install
+        run: |
+          rustup toolchain install
+
+      - name: cargo fmt --check
+        run: |
+          cargo fmt --check
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
+
+      - name: cargo build
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          # add homebrew library path for z3; z3-sys 0.9.4 supports the
+          # Z3_LIBRARY_PATH_OVERRIDE environment variable that would let
+          # us override the library path, but that crate version is too new
+          # for nightly-2022-08-08 (requires 2024 edition). On our nightly rustc
+          # on Mac OS, we have to pass in the exact library path directly to RUSTFLAGS.
+          export RUSTFLAGS="$RUSTFLAGS -Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib"
+          # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
+          # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
+          cargo build --release
+
+      - name: cargo test
+        run: |
+          export RUSTFLAGS="-D warnings"
+          export RUSTDOCFLAGS="-D warnings"
+          cargo test --release --workspace

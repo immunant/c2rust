@@ -1,20 +1,14 @@
 [workspace]
-resolver = "2"
 members = [
-    "c2rust",
-    "c2rust-asm-casts",
-    "c2rust-ast-builder",
-    "c2rust-ast-exporter",
-    "c2rust-ast-printer",
-    "c2rust-bitfields",
-    "c2rust-bitfields-derive",
-    "c2rust-build-paths",
-    "c2rust-transpile",
+    "analysis/runtime",
+    "c2rust-analyze",
+    "c2rust-macros",
+    "c2rust-refactor",
+    "dynamic_instrumentation",
+    "pdg",
 ]
 exclude = [
-    "examples",
-    "tests",
-    "unstable",
+    "analysis/tests",
 ]
 
 [workspace.package]

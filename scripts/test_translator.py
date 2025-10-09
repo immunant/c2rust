@@ -13,7 +13,6 @@ from common import (
     pb,
     Colors,
     get_cmd_or_die,
-    get_rust_toolchain_libpath,
     NonZeroReturn,
     regex,
     setup_logging,
@@ -73,7 +72,7 @@ class CFile:
         self.reorganize_definitions = "reorganize_definitions" in flags
         self.emit_build_files = "emit_build_files" in flags
 
-    def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
+    def translate(self, cc_db: str, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
 
         # run the transpiler
@@ -107,10 +106,9 @@ class CFile:
         args.append("--")
         args.extend(extra_args)
 
-        with pb.local.env(RUST_BACKTRACE='1', LD_LIBRARY_PATH=ld_lib_path):
+        with pb.local.env(RUST_BACKTRACE='1'):
             # log the command in a format that's easy to re-run
-            translation_cmd = "LD_LIBRARY_PATH=" + ld_lib_path + " \\\n"
-            translation_cmd += str(transpiler[args])
+            translation_cmd = str(transpiler[args])
             logging.debug("translation command:\n %s", translation_cmd)
             retcode, stdout, stderr = (transpiler[args]).run(
                 retcode=None)
@@ -412,11 +410,6 @@ class TestDirectory:
         ])
         rust_file_builder.add_pragma("register_tool", ["c2rust"])
 
-        # Ensure that path to rustc's lib dir is in`LD_LIBRARY_PATH`
-        ld_lib_path = get_rust_toolchain_libpath()
-        if 'LD_LIBRARY_PATH' in pb.local.env:
-            ld_lib_path += ':' + pb.local.env['LD_LIBRARY_PATH']
-
         # .c -> .rs
         for c_file in self.c_files:
             _, c_file_short = os.path.split(c_file.path)
@@ -431,7 +424,6 @@ class TestDirectory:
             try:
                 logging.debug("translating %s", c_file_short)
                 translated_rust_file = c_file.translate(self.generated_files["cc_db"][0],
-                                                        ld_lib_path,
                                                         extra_args=target_args(self.target))
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
