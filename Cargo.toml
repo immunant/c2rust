@@ -11,6 +11,7 @@ members = [
     "c2rust-bitfields",
     "c2rust-bitfields-derive",
     "c2rust-build-paths",
+    "c2rust-macros",
     "c2rust-refactor",
     "c2rust-transpile",
     "dynamic_instrumentation",
@@ -18,7 +19,6 @@ members = [
 ]
 exclude = [
     "analysis/tests",
-    "c2rust-macros",
     "examples",
     "tests",
 ]
