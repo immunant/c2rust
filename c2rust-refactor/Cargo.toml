@@ -46,3 +46,6 @@ rand = "0.7"
 [features]
 default = []
 profile = ["flame", "flamer"]
+
+[package.metadata.rust-analyzer]
+rustc_private = true
