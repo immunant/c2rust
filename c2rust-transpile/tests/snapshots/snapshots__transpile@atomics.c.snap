@@ -13,27 +13,27 @@ input_file: c2rust-transpile/tests/snapshots/atomics.c
 )]
 #![feature(core_intrinsics)]
 #[no_mangle]
-pub unsafe extern "C" fn c11_atomics(mut x: core::ffi::c_int) -> core::ffi::c_int {
-    *&mut x = 0 as core::ffi::c_int;
-    ::core::intrinsics::atomic_store_seqcst(&mut x, 1 as core::ffi::c_int);
+pub unsafe extern "C" fn c11_atomics(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    *&mut x = 0 as ::core::ffi::c_int;
+    ::core::intrinsics::atomic_store_seqcst(&mut x, 1 as ::core::ffi::c_int);
     ::core::intrinsics::atomic_load_seqcst(&mut x);
-    ::core::intrinsics::atomic_xadd_seqcst(&mut x, 2 as core::ffi::c_int);
-    ::core::intrinsics::atomic_xsub_seqcst(&mut x, 1 as core::ffi::c_int);
-    ::core::intrinsics::atomic_and_seqcst(&mut x, 0xf as core::ffi::c_int);
-    ::core::intrinsics::atomic_or_seqcst(&mut x, 0x10 as core::ffi::c_int);
-    ::core::intrinsics::atomic_nand_seqcst(&mut x, 0xff as core::ffi::c_int);
-    ::core::intrinsics::atomic_xchg_seqcst(&mut x, 42 as core::ffi::c_int);
-    let mut expected: core::ffi::c_int = 42 as core::ffi::c_int;
-    let mut desired: core::ffi::c_int = 100 as core::ffi::c_int;
+    ::core::intrinsics::atomic_xadd_seqcst(&mut x, 2 as ::core::ffi::c_int);
+    ::core::intrinsics::atomic_xsub_seqcst(&mut x, 1 as ::core::ffi::c_int);
+    ::core::intrinsics::atomic_and_seqcst(&mut x, 0xf as ::core::ffi::c_int);
+    ::core::intrinsics::atomic_or_seqcst(&mut x, 0x10 as ::core::ffi::c_int);
+    ::core::intrinsics::atomic_nand_seqcst(&mut x, 0xff as ::core::ffi::c_int);
+    ::core::intrinsics::atomic_xchg_seqcst(&mut x, 42 as ::core::ffi::c_int);
+    let mut expected: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut desired: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
     let fresh0 = ::core::intrinsics::atomic_cxchg_seqcst_seqcst(&mut x, *&mut expected, desired);
     *&mut expected = fresh0.0;
     fresh0.1;
-    expected = 100 as core::ffi::c_int;
-    desired = 200 as core::ffi::c_int;
+    expected = 100 as ::core::ffi::c_int;
+    desired = 200 as ::core::ffi::c_int;
     let fresh1 =
         ::core::intrinsics::atomic_cxchgweak_seqcst_seqcst(&mut x, *&mut expected, desired);
     *&mut expected = fresh1.0;
     fresh1.1;
     return x;
 }
-pub const __ATOMIC_SEQ_CST: core::ffi::c_int = 5 as core::ffi::c_int;
+pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;

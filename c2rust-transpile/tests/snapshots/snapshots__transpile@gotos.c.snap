@@ -12,9 +12,9 @@ input_file: c2rust-transpile/tests/snapshots/gotos.c
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn sum(mut count: core::ffi::c_int) -> core::ffi::c_int {
-    let mut x: core::ffi::c_int = 0 as core::ffi::c_int;
-    while !(count <= 0 as core::ffi::c_int) {
+pub unsafe extern "C" fn sum(mut count: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut x: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while !(count <= 0 as ::core::ffi::c_int) {
         x += count;
         count -= 1;
     }
