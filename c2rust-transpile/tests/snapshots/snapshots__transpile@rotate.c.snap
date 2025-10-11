@@ -12,26 +12,26 @@ input_file: c2rust-transpile/tests/snapshots/rotate.c
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn rotate_left_8(mut x: core::ffi::c_uchar) -> core::ffi::c_uchar {
-    return x.rotate_left(1 as core::ffi::c_int as core::ffi::c_uchar as u32);
+pub unsafe extern "C" fn rotate_left_8(mut x: ::core::ffi::c_uchar) -> ::core::ffi::c_uchar {
+    return x.rotate_left(1 as ::core::ffi::c_int as ::core::ffi::c_uchar as u32);
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_left_16(mut x: core::ffi::c_ushort) -> core::ffi::c_ushort {
-    return x.rotate_left(2 as core::ffi::c_int as core::ffi::c_ushort as u32);
+pub unsafe extern "C" fn rotate_left_16(mut x: ::core::ffi::c_ushort) -> ::core::ffi::c_ushort {
+    return x.rotate_left(2 as ::core::ffi::c_int as ::core::ffi::c_ushort as u32);
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_left_32(mut x: core::ffi::c_uint) -> core::ffi::c_uint {
-    return x.rotate_left(3 as core::ffi::c_int as core::ffi::c_uint as u32);
+pub unsafe extern "C" fn rotate_left_32(mut x: ::core::ffi::c_uint) -> ::core::ffi::c_uint {
+    return x.rotate_left(3 as ::core::ffi::c_int as ::core::ffi::c_uint as u32);
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_right_8(mut x: core::ffi::c_uchar) -> core::ffi::c_uchar {
-    return x.rotate_right(1 as core::ffi::c_int as core::ffi::c_uchar as u32);
+pub unsafe extern "C" fn rotate_right_8(mut x: ::core::ffi::c_uchar) -> ::core::ffi::c_uchar {
+    return x.rotate_right(1 as ::core::ffi::c_int as ::core::ffi::c_uchar as u32);
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_right_16(mut x: core::ffi::c_ushort) -> core::ffi::c_ushort {
-    return x.rotate_right(2 as core::ffi::c_int as core::ffi::c_ushort as u32);
+pub unsafe extern "C" fn rotate_right_16(mut x: ::core::ffi::c_ushort) -> ::core::ffi::c_ushort {
+    return x.rotate_right(2 as ::core::ffi::c_int as ::core::ffi::c_ushort as u32);
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_right_32(mut x: core::ffi::c_uint) -> core::ffi::c_uint {
-    return x.rotate_right(3 as core::ffi::c_int as core::ffi::c_uint as u32);
+pub unsafe extern "C" fn rotate_right_32(mut x: ::core::ffi::c_uint) -> ::core::ffi::c_uint {
+    return x.rotate_right(3 as ::core::ffi::c_int as ::core::ffi::c_uint as u32);
 }
