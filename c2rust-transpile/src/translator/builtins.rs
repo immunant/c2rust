@@ -97,7 +97,7 @@ impl<'c> Translation<'c> {
                 // Long doubles require the Float trait from num_traits to call this method
                 if builtin_name == "__builtin_signbitl" {
                     self.with_cur_file_item_store(|item_store| {
-                        item_store.add_use(vec!["num_traits".into()], "Float");
+                        item_store.add_use(true, vec!["num_traits".into()], "Float");
                     });
                 }
 
