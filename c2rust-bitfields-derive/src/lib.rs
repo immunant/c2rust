@@ -112,14 +112,11 @@ fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
 }
 
 fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
-    let leading_colon = if field.ty.starts_with("::") {
-        Some(Token![::]([Span::call_site(), Span::call_site()]))
-    } else {
-        None
-    };
-
     let mut segments = Punctuated::new();
     let mut segment_strings = field.ty.split("::").peekable();
+    let leading_colon = segment_strings
+        .next_if_eq(&"")
+        .map(|_| Token![::]([Span::call_site(), Span::call_site()]));
 
     while let Some(segment_string) = segment_strings.next() {
         segments.push_value(PathSegment {
@@ -141,10 +138,7 @@ fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
 #[cfg(test)]
 #[test]
 fn test_parse_bitfield_ty_path_non_empty_idents() {
-    let tys = [
-        // "::core::ffi::c_int",
-        "core::ffi::c_int",
-    ];
+    let tys = ["::core::ffi::c_int", "core::ffi::c_int"];
     for ty in tys {
         let field = BFFieldAttr {
             field_name: Ident::new("field", Span::call_site()),
