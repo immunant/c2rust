@@ -1243,6 +1243,14 @@ impl Builder {
         }))
     }
 
+    pub fn abs_path_ty<Pa>(self, path: Pa) -> Box<Type>
+    where
+        Pa: Make<Path>,
+    {
+        let path = mk().abs_path(path);
+        self.path_ty(path)
+    }
+
     pub fn path_ty<Pa>(self, path: Pa) -> Box<Type>
     where
         Pa: Make<Path>,
