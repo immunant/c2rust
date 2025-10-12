@@ -104,7 +104,7 @@ impl<'a> Translation<'a> {
                             mk().angle_bracketed_args(vec![mk().lifetime("a")]),
                         ),
                     ];
-                    mk().path_ty(mk().abs_path(path))
+                    mk().abs_path_ty(path)
                 } else {
                     self.convert_type(ctype)?
                 };
@@ -146,7 +146,7 @@ impl<'a> Translation<'a> {
                                 .unwrap();
 
                             let inner_name = self.resolve_decl_inner_name(decl_id);
-                            ty = mk().path_ty(mk().path(vec![inner_name]));
+                            ty = mk().path_ty(vec![inner_name]);
 
                             use_inner_type = true;
 

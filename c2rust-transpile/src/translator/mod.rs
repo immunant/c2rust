@@ -1796,7 +1796,7 @@ impl<'c> Translation<'c> {
                 if let Some(cur_file) = self.cur_file.get() {
                     self.add_import(cur_file, enum_id, &enum_name);
                 }
-                let ty = mk().path_ty(mk().path(vec![enum_name]));
+                let ty = mk().path_ty(vec![enum_name]);
                 let val = match value {
                     ConstIntExpr::I(value) => signed_int_expr(value),
                     ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
@@ -2727,10 +2727,7 @@ impl<'c> Translation<'c> {
                 if self.ast_context.is_va_list(typ.ctype) {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().mutbl().ident_pat(rust_name);
-                    let ty = {
-                        let path = vec!["core", "ffi", "VaListImpl"];
-                        mk().path_ty(mk().abs_path(path))
-                    };
+                    let ty = mk().abs_path_ty(vec!["core", "ffi", "VaListImpl"]);
                     let local_mut = mk().local(pat_mut, Some(ty), None);
 
                     return Ok(cfg::DeclStmtInfo::new(
