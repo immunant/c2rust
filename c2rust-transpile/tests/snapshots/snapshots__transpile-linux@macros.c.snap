@@ -12,35 +12,35 @@ input_file: c2rust-transpile/tests/snapshots/os-specific/macros.c
     unused_mut
 )]
 extern "C" {
-    fn __errno_location() -> *mut core::ffi::c_int;
+    fn __errno_location() -> *mut ::core::ffi::c_int;
     fn memcpy(
-        __dest: *mut core::ffi::c_void,
-        __src: *const core::ffi::c_void,
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
         __n: size_t,
-    ) -> *mut core::ffi::c_void;
+    ) -> *mut ::core::ffi::c_void;
 }
 pub type size_t = usize;
 #[no_mangle]
 pub unsafe extern "C" fn errno_is_error() -> bool {
-    return *__errno_location() != 0 as core::ffi::c_int;
+    return *__errno_location() != 0 as ::core::ffi::c_int;
 }
 #[no_mangle]
-pub unsafe extern "C" fn size_of_const() -> core::ffi::c_int {
-    let mut a: [core::ffi::c_int; 10] = [0; 10];
-    return SIZE as core::ffi::c_int;
+pub unsafe extern "C" fn size_of_const() -> ::core::ffi::c_int {
+    let mut a: [::core::ffi::c_int; 10] = [0; 10];
+    return SIZE as ::core::ffi::c_int;
 }
-pub const SIZE: usize = ::core::mem::size_of::<[core::ffi::c_int; 10]>();
-pub const POS: [core::ffi::c_char; 3] =
-    unsafe { ::core::mem::transmute::<[u8; 3], [core::ffi::c_char; 3]>(*b"\"]\0") };
+pub const SIZE: usize = ::core::mem::size_of::<[::core::ffi::c_int; 10]>();
+pub const POS: [::core::ffi::c_char; 3] =
+    unsafe { ::core::mem::transmute::<[u8; 3], [::core::ffi::c_char; 3]>(*b"\"]\0") };
 #[no_mangle]
-pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut core::ffi::c_char) {
+pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut ::core::ffi::c_char) {
     memcpy(
-        out as *mut core::ffi::c_void,
-        POS.as_ptr() as *const core::ffi::c_void,
-        (::core::mem::size_of::<[core::ffi::c_char; 3]>() as size_t)
-            .wrapping_div(::core::mem::size_of::<core::ffi::c_char>() as size_t)
+        out as *mut ::core::ffi::c_void,
+        POS.as_ptr() as *const ::core::ffi::c_void,
+        (::core::mem::size_of::<[::core::ffi::c_char; 3]>() as size_t)
+            .wrapping_div(::core::mem::size_of::<::core::ffi::c_char>() as size_t)
             .wrapping_sub(1 as size_t)
             .wrapping_add(1 as size_t)
-            .wrapping_mul(::core::mem::size_of::<core::ffi::c_char>() as size_t),
+            .wrapping_mul(::core::mem::size_of::<::core::ffi::c_char>() as size_t),
     );
 }
