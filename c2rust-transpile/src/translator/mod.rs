@@ -1014,7 +1014,7 @@ fn make_submodule(
             None => continue,
         };
 
-        use_item_store.add_use_with_attr(use_path, &ident_name, vis);
+        use_item_store.add_use_with_attr(false, use_path, &ident_name, vis);
     }
 
     for foreign_item in foreign_items.iter() {
@@ -1024,7 +1024,7 @@ fn make_submodule(
         };
         let use_path = vec!["self".into(), mod_name.clone()];
 
-        use_item_store.add_use(use_path, &ident_name);
+        use_item_store.add_use(false, use_path, &ident_name);
     }
 
     for item in uses.into_items() {
@@ -4711,7 +4711,7 @@ impl<'c> Translation<'c> {
         self.use_crate(ExternCrate::NumTraits);
 
         self.with_cur_file_item_store(|item_store| {
-            item_store.add_use(vec!["num_traits".into()], "ToPrimitive");
+            item_store.add_use(true, vec!["num_traits".into()], "ToPrimitive");
         });
         let to_method_name = match target_ty_ctype {
             CTypeKind::Float => "to_f32",
@@ -5167,7 +5167,7 @@ impl<'c> Translation<'c> {
             .borrow_mut()
             .entry(decl_file_id)
             .or_default()
-            .add_use(module_path, ident_name);
+            .add_use(false, module_path, ident_name);
     }
 
     fn import_type(&self, ctype: CTypeId, decl_file_id: FileId) {
