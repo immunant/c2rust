@@ -12,29 +12,29 @@ input_file: c2rust-transpile/tests/snapshots/alloca.c
     unused_mut
 )]
 #[no_mangle]
-pub static mut TRUE: core::ffi::c_int = 1 as core::ffi::c_int;
+pub static mut TRUE: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn alloca_sum(
-    mut val1: core::ffi::c_int,
-    mut val2: core::ffi::c_int,
-) -> core::ffi::c_int {
+    mut val1: ::core::ffi::c_int,
+    mut val2: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
     let mut alloca_allocations: Vec<Vec<u8>> = Vec::new();
-    let mut alloca1: *mut core::ffi::c_int = 0 as *mut core::ffi::c_int;
-    let mut alloca2: *mut core::ffi::c_int = 0 as *mut core::ffi::c_int;
+    let mut alloca1: *mut ::core::ffi::c_int = 0 as *mut ::core::ffi::c_int;
+    let mut alloca2: *mut ::core::ffi::c_int = 0 as *mut ::core::ffi::c_int;
     if TRUE != 0 {
         alloca_allocations.push(::std::vec::from_elem(
             0,
-            ::core::mem::size_of::<core::ffi::c_int>() as usize,
+            ::core::mem::size_of::<::core::ffi::c_int>() as usize,
         ));
-        alloca1 = alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut core::ffi::c_int;
+        alloca1 = alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_int;
         *alloca1 = val1;
     }
     if TRUE != 0 {
         alloca_allocations.push(::std::vec::from_elem(
             0,
-            ::core::mem::size_of::<core::ffi::c_int>() as usize,
+            ::core::mem::size_of::<::core::ffi::c_int>() as usize,
         ));
-        alloca2 = alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut core::ffi::c_int;
+        alloca2 = alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_int;
         *alloca2 = val2;
     }
     return *alloca1 + *alloca2;

@@ -55,8 +55,10 @@ impl PathedMultiImports {
             if leaves.len() == 1 {
                 path.push(leaves.pop().unwrap());
 
+                let path = mk().abs_path(path);
                 attrs.use_simple_item(path, None as Option<Ident>)
             } else {
+                let path = mk().abs_path(path);
                 attrs.use_multiple_item(path, leaves.into_iter())
             }
         }

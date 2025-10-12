@@ -1101,7 +1101,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
 
 /// Convert a boolean expression to a c_int
 fn bool_to_int(val: Box<Expr>) -> Box<Expr> {
-    mk().cast_expr(val, mk().path_ty(vec!["core", "ffi", "c_int"]))
+    mk().cast_expr(val, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))
 }
 
 /// Add a src_loc = "line:col" attribute to an item/foreign_item
@@ -4467,7 +4467,7 @@ impl<'c> Translation<'c> {
                 let target_ty = self.convert_type(target_cty.ctype)?;
                 val.and_then(|x| {
                     self.use_crate(ExternCrate::Libc);
-                    let intptr_t = mk().path_ty(vec!["libc", "intptr_t"]);
+                    let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
                     let intptr = mk().cast_expr(x, intptr_t.clone());
                     if ctx.is_const {
                         return Err(format_translation_err!(
@@ -4507,7 +4507,7 @@ impl<'c> Translation<'c> {
 
                     self.use_crate(ExternCrate::F128);
 
-                    let fn_path = mk().path_expr(vec!["f128", "f128", "new"]);
+                    let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
                     Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
                 } else if let CTypeKind::LongDouble = self.ast_context[source_cty.ctype].kind {
                     self.f128_cast_to(val, target_ty_kind)
@@ -4534,7 +4534,7 @@ impl<'c> Translation<'c> {
                     val.and_then(|x| {
                         self.use_crate(ExternCrate::Libc);
                         Ok(WithStmts::new_val(mk().cast_expr(
-                            mk().cast_expr(x, mk().path_ty(vec!["libc", "size_t"])),
+                            mk().cast_expr(x, mk().abs_path_ty(vec!["libc", "size_t"])),
                             target_ty,
                         )))
                     })
@@ -4829,7 +4829,7 @@ impl<'c> Translation<'c> {
                 CTypeKind::LongDouble => {
                     self.use_crate(ExternCrate::F128);
                     Ok(WithStmts::new_val(
-                        mk().path_expr(vec!["f128", "f128", "ZERO"]),
+                        mk().abs_path_expr(vec!["f128", "f128", "ZERO"]),
                     ))
                 }
                 _ => Ok(WithStmts::new_val(
