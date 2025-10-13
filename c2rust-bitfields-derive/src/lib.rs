@@ -1,6 +1,7 @@
 #![recursion_limit = "512"]
 
-use proc_macro::{Span, TokenStream};
+use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
 use syn::parse::Error;
 use syn::punctuated::Punctuated;
@@ -20,7 +21,7 @@ struct BFFieldAttr {
     field_name: Ident,
     name: String,
     ty: String,
-    bits: (String, proc_macro2::Span),
+    bits: (String, Span),
 }
 
 fn parse_bitfield_attr(
@@ -112,10 +113,7 @@ fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
 
 fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
     let leading_colon = if field.ty.starts_with("::") {
-        Some(Token![::]([
-            Span::call_site().into(),
-            Span::call_site().into(),
-        ]))
+        Some(Token![::]([Span::call_site(), Span::call_site()]))
     } else {
         None
     };
@@ -125,15 +123,12 @@ fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
 
     while let Some(segment_string) = segment_strings.next() {
         segments.push_value(PathSegment {
-            ident: Ident::new(segment_string, Span::call_site().into()),
+            ident: Ident::new(segment_string, Span::call_site()),
             arguments: PathArguments::None,
         });
 
         if segment_strings.peek().is_some() {
-            segments.push_punct(Token![::]([
-                Span::call_site().into(),
-                Span::call_site().into(),
-            ]));
+            segments.push_punct(Token![::]([Span::call_site(), Span::call_site()]));
         }
     }
 
@@ -181,7 +176,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     let field_types_setter_arg = &field_types;
     let method_names: Vec<_> = bitfields
         .iter()
-        .map(|field| Ident::new(&field.name, Span::call_site().into()))
+        .map(|field| Ident::new(&field.name, Span::call_site()))
         .collect();
     let field_names: Vec<_> = bitfields.iter().map(|field| &field.field_name).collect();
     let field_names_setters = &field_names;
@@ -189,7 +184,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     let method_name_setters: Vec<_> = method_names
         .iter()
         .map(|field_ident| {
-            let span = Span::call_site().into();
+            let span = Span::call_site();
             let setter_name = &format!("set_{}", field_ident);
 
             Ident::new(setter_name, span)
