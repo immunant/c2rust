@@ -114,9 +114,8 @@ fn filter_and_parse_fields(field: &Field) -> Vec<Result<BFFieldAttr, Error>> {
 fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
     let mut segments = Punctuated::new();
     let mut segment_strings = field.ty.split("::").peekable();
-    let leading_colon = segment_strings
-        .next_if_eq(&"")
-        .map(|_| Token![::]([Span::call_site(), Span::call_site()]));
+    let colon = Token![::]([Span::call_site(), Span::call_site()]);
+    let leading_colon = segment_strings.next_if_eq(&"").map(|_| colon);
 
     while let Some(segment_string) = segment_strings.next() {
         segments.push_value(PathSegment {
@@ -125,7 +124,7 @@ fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
         });
 
         if segment_strings.peek().is_some() {
-            segments.push_punct(Token![::]([Span::call_site(), Span::call_site()]));
+            segments.push_punct(colon);
         }
     }
 
