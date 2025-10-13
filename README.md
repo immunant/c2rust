@@ -325,10 +325,12 @@ This material is available under the BSD-3 style license as found in the
 The C2Rust translator is inspired by Jamey Sharp's [Corrode](https://github.com/jameysharp/corrode) translator.
 We rely on [Emscripten](https://github.com/kripken/emscripten)'s
 Relooper algorithm to translate arbitrary C control flows.
+Many individuals have contributed bug fixes and improvements to C2Rust; thank you so much!
 
 This material is based upon work supported by the United States Air Force and
-DARPA under Contract No. FA8750-15-C-0124.  Any opinions, findings and
-conclusions or recommendations  expressed in this material are those of the
-author(s) and do not necessarily reflect the views of the United States Air
-Force and DARPA.  Distribution Statement A, "Approved for Public Release,
-Distribution Unlimited."
+DARPA under Contracts No. FA8750-15-C-0124, HR0011-22-C-0020, and HR00112590133.
+Any opinions, findings and conclusions or recommendations expressed in this
+material are those of the author(s) and do not necessarily reflect the views
+of the United States Air Force or DARPA.
+
+Distribution Statement A, "Approved for Public Release, Distribution Unlimited."
