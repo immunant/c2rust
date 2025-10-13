@@ -138,6 +138,24 @@ fn parse_bitfield_ty_path(field: &BFFieldAttr) -> Path {
     }
 }
 
+#[cfg(test)]
+#[test]
+fn test_parse_bitfield_ty_path_non_empty_idents() {
+    let tys = [
+        // "::core::ffi::c_int",
+        "core::ffi::c_int",
+    ];
+    for ty in tys {
+        let field = BFFieldAttr {
+            field_name: Ident::new("field", Span::call_site()),
+            name: Default::default(),
+            ty: ty.into(),
+            bits: (Default::default(), Span::call_site()),
+        };
+        let _path = parse_bitfield_ty_path(&field);
+    }
+}
+
 #[proc_macro_derive(BitfieldStruct, attributes(bitfield))]
 pub fn bitfield_struct(input: TokenStream) -> TokenStream {
     let struct_item = parse_macro_input!(input as ItemStruct);
