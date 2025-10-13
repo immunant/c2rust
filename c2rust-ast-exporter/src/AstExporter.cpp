@@ -590,6 +590,7 @@ class TranslateASTVisitor final
     }
 
     bool evaluateConstantInt(Expr *E, APSInt &constant) {
+        assert(E != nullptr);
         auto value = getIntegerConstantExpr(*E, *Context);
 
         if (value) {
@@ -605,7 +606,9 @@ class TranslateASTVisitor final
 #if CLANG_VERSION_MAJOR < 8
             constant = eval_result;
 #else
-            constant = eval_result.Val.getInt();
+            if (hasValue) {
+                constant = eval_result.Val.getInt();
+            }
 #endif // CLANG_VERSION_MAJOR
             return hasValue;
         }
