@@ -883,7 +883,7 @@ impl<'c> Translation<'c> {
                     // c2rust-ast-exporter added it (there's no gcc equivalent);
                     // in this case, we need to do what clang does and pass in
                     // the operand by-address instead of by-value
-                    out_expr = mk().mutbl().addr_of_expr(out_expr);
+                    out_expr = mk().mutbl().borrow_expr(out_expr);
                 }
 
                 if let Some(_tied_operand) = tied_operands.get(&(output_idx, true)) {
@@ -900,7 +900,7 @@ impl<'c> Translation<'c> {
                     let output_local = mk().local(
                         mk().ident_pat(&output_name),
                         None,
-                        Some(mk().mutbl().addr_of_expr(out_expr)),
+                        Some(mk().mutbl().borrow_expr(out_expr)),
                     );
                     stmts.push(mk().local_stmt(Box::new(output_local)));
 
@@ -924,7 +924,7 @@ impl<'c> Translation<'c> {
                 let mut in_expr = in_expr.into_value();
 
                 if operand.mem_only {
-                    in_expr = mk().addr_of_expr(in_expr);
+                    in_expr = mk().borrow_expr(in_expr);
                 }
                 if let Some(tied_operand) = tied_operands.get(&(input_idx, false)) {
                     self.use_crate(ExternCrate::C2RustAsmCasts);

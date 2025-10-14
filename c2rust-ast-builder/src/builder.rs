@@ -10,7 +10,7 @@ use syn::{__private::ToTokens, punctuated::Punctuated, *};
 
 pub mod properties {
     use proc_macro2::Span;
-    use syn::{StaticMutability, Token};
+    use syn::{PointerMutability, StaticMutability, Token};
 
     pub trait ToToken {
         type Token;
@@ -34,6 +34,13 @@ pub mod properties {
     }
 
     impl Mutability {
+        pub fn to_pointer_mutability(&self, span: Span) -> PointerMutability {
+            match self {
+                Mutability::Mutable => PointerMutability::Mut(Token![mut](span)),
+                Mutability::Immutable => PointerMutability::Const(Token![const](span)),
+            }
+        }
+
         pub fn to_static_mutability(&self, span: Span) -> StaticMutability {
             match self {
                 Mutability::Mutable => StaticMutability::Mut(Token![mut](span)),
@@ -837,11 +844,21 @@ impl Builder {
         self.path_expr(vec![name])
     }
 
-    pub fn addr_of_expr(self, e: Box<Expr>) -> Box<Expr> {
+    pub fn borrow_expr(self, e: Box<Expr>) -> Box<Expr> {
         Box::new(parenthesize_if_necessary(Expr::Reference(ExprReference {
             attrs: self.attrs,
             and_token: Token![&](self.span),
             mutability: self.mutbl.to_token(),
+            expr: e,
+        })))
+    }
+
+    pub fn raw_borrow_expr(self, e: Box<Expr>) -> Box<Expr> {
+        Box::new(parenthesize_if_necessary(Expr::RawAddr(ExprRawAddr {
+            attrs: self.attrs,
+            and_token: Token![&](self.span),
+            raw: Token![raw](self.span),
+            mutability: self.mutbl.to_pointer_mutability(self.span),
             expr: e,
         })))
     }
