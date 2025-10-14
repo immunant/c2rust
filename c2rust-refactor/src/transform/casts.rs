@@ -166,7 +166,7 @@ fn check_double_cast<'tcx>(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> 
         | (SameWidth, Extend(s))
         | (SameWidth, FromPointer(s))
         | (SameWidth, ToPointer(s))
-            if s == e_ty.is_signed() =>
+            if s == e_ty.is_signed() && s == t1_ty.is_signed() =>
         {
             DoubleCastAction::RemoveInner
         }
