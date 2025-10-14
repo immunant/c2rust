@@ -124,9 +124,17 @@ struct Args {
     #[clap(long)]
     reduce_type_annotations: bool,
 
-    /// Output file in such a way that the refactoring tool can deduplicate code
-    #[clap(short = 'r', long)]
-    reorganize_definitions: bool,
+    /// Disable `--reorganize-definitions`
+    #[clap(long = "no-reorganize-definitions", hidden = true, action = clap::ArgAction::SetFalse)]
+    reorganize_definitions: bool, // NB, this *is* the right field; this flag sets it to *false*.
+
+    /// Output file in such a way that the refactoring tool can deduplicate code (enabled by default; disable with `--no-reorganize-definitions`)
+    #[clap(
+        short = 'r',
+        long = "reorganize-definitions",
+        conflicts_with = "reorganize-definitions"
+    )]
+    _no_reorganize_definitions: bool, // Field is unused, but flag mutually excludes the negative sense above.
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
     #[clap(multiple = true, last(true))]
