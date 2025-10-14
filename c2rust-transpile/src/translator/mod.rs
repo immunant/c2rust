@@ -3126,7 +3126,7 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
-                let addr_lhs = mk().set_mutbl(mutbl).addr_of_expr(lhs);
+                let addr_lhs = mk().set_mutbl(mutbl).borrow_expr(lhs);
 
                 let lhs_type = self.convert_type(lhs_type.ctype)?;
                 let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
@@ -4945,7 +4945,7 @@ impl<'c> Translation<'c> {
                     needs_cast = true;
                 }
             } else {
-                val = val.map(|val| mk().set_mutbl(mutbl).addr_of_expr(val));
+                val = val.map(|val| mk().set_mutbl(mutbl).borrow_expr(val));
 
                 // Add an intermediate reference-to-pointer cast if the context needs
                 // reference-to-pointer decay, or if another cast follows.
