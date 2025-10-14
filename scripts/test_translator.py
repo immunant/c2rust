@@ -88,6 +88,8 @@ class CFile:
 
         # return nonzero if translation fails
         args.append("--fail-on-error")
+        args.append("--ignore-c-multiple-info")
+        args.append("--ignore-c-loop-info")
 
         if self.disable_incremental_relooper:
             args.append("--no-incremental-relooper")
@@ -548,7 +550,7 @@ class TestDirectory:
                 args += ["--target", self.target]
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
-        
+
         if retcode != 0:
             _, lib_file_path_short = os.path.split(lib_file.path)
 
@@ -561,7 +563,7 @@ class TestDirectory:
                 if "... ok" in line:
                     self.print_status(Colors.OKGREEN, "OK", "{}".format(line))
                     sys.stdout.write('\n')
-        
+
         # Don't distinguish between expected and unexpected failures.
         # `#[should_panic]` is used for that instead of `// xfail` now.
         # Also, `cargo test -- --format json` is unstable, so it's easier to just parse very simply.
