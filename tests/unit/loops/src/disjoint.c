@@ -42,8 +42,8 @@ C:
 
 D:
     // D
+    COND;
 }
-
 
 void goto_into_loops() {
     int COND = 0;
@@ -58,17 +58,20 @@ void goto_into_loops() {
     do {
 B:
         // B
-    } while (COND);
+        COND;
+} while (COND);
     goto D;
 
     do {
 C:
         // C
-    } while (COND);
+        COND;
+} while (COND);
     goto D;
 
 D:
     // D
+    COND;
 }
 
 void goto_separate_loops() {
@@ -95,4 +98,5 @@ C:
 
 D:
     // D
+    COND;
 }
