@@ -963,7 +963,7 @@ impl<'c> Translation<'c> {
                             // static variable initializers aren't able to use &mut,
                             // so we work around that by using & and an extra cast
                             // through & to *const to *mut
-                            addr_of_arg = mk().addr_of_expr(a);
+                            addr_of_arg = mk().borrow_expr(a);
                             if let Mutability::Mutable = mutbl {
                                 let mut qtype = pointee_ty;
                                 qtype.qualifiers.is_const = true;
@@ -975,7 +975,7 @@ impl<'c> Translation<'c> {
                             }
                         } else {
                             // Normal case is allowed to use &mut if needed
-                            addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
+                            addr_of_arg = mk().set_mutbl(mutbl).borrow_expr(a);
 
                             // Avoid unnecessary reference to pointer decay in fn call args:
                             if ctx.decay_ref.is_no() {
