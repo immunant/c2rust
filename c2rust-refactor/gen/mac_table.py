@@ -47,6 +47,8 @@ def do_collect_macros_body(se, target1, target2):
         yield '   &%s) => {' % struct_pattern(v, path, '2')
 
         for f in v.fields:
+            if f.attrs.get('match') == 'ignore':
+                continue
             if 'mac_table_seq' in f.attrs:
                 yield '    collect_macros_seq(%s1, %s2, cx);' % (f.name, f.name)
             else:
