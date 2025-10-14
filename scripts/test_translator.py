@@ -631,11 +631,24 @@ def main() -> None:
 
     logging.debug("args: %s", " ".join(sys.argv))
 
+    # Build the project to ensure binaries are up-to-date
+    logging.info("Building project with cargo build --release...")
+    build_args = ["build", "--release"]
+    retcode, stdout, stderr = cargo[build_args].run(retcode=None)
+
+    if retcode != 0:
+        logging.error("Build failed with return code %d", retcode)
+        logging.error("stdout: %s", stdout)
+        logging.error("stderr: %s", stderr)
+        die("cargo build --release failed", retcode)
+
+    logging.info("Build completed successfully")
+
     # check that the binaries have been built first
     bins = [c.TRANSPILER]
     for b in bins:
         if not os.path.isfile(b):
-            msg = b + " not found; run cargo build --release first?"
+            msg = b + " not found; build may have failed"
             die(msg, errno.ENOENT)
 
     # NOTE: it seems safe to disable this check since we now
