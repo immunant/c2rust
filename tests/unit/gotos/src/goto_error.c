@@ -22,6 +22,7 @@ void goto_error() {
     return;
 
 error:
+    COND;
     // X
 }
 
@@ -51,8 +52,10 @@ error_a:
     goto error_common;
 error_b:
     // Y
+    COND;
 error_common:
     // Z
+    COND;
 }
 
 // This has the same control-flow as `goto_errors`, but reorganized to have a
@@ -80,4 +83,5 @@ void goto_success() {
 success:
     // D
     // E
+    COND;
 }
