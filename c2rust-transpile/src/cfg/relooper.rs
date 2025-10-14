@@ -228,6 +228,9 @@ impl RelooperState {
 /// A set of basic blocks, keyed by their label.
 type StructuredBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
 
+/// An adjacency list mapping from each label to the set of labels it can reach.
+type AdjacencyList = IndexMap<Label, IndexSet<Label>>;
+
 impl RelooperState {
     /// Recursive helper for `reloop`.
     ///
@@ -237,29 +240,13 @@ impl RelooperState {
         entries: IndexSet<Label>,     // current entry points into the CFG
         mut blocks: StructuredBlocks, // the blocks in the sub-CFG considered
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
-        disable_heuristics: bool,
+        _disable_heuristics: bool,
     ) {
-        /// Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo`
-        /// is not considered here - only `GoTo`.
-        fn out_edges<T>(
-            blocks: &IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, T>>,
-        ) -> IndexSet<Label> {
-            blocks
-                .iter()
-                .flat_map(|(_, bb)| bb.successors())
-                .filter(|lbl| !blocks.contains_key(lbl))
-                .collect()
-        }
+        // --------------------------------------
+        // Base case
 
-        /// Transforms `{1: {'a', 'b'}, 2: {'b'}}` into `{'a': {1}, 'b': {1,2}}`.
-        fn flip_edges(map: IndexMap<Label, IndexSet<Label>>) -> IndexMap<Label, IndexSet<Label>> {
-            let mut flipped_map: IndexMap<Label, IndexSet<Label>> = IndexMap::new();
-            for (lbl, vals) in map {
-                for val in vals {
-                    flipped_map.entry(val).or_default().insert(lbl.clone());
-                }
-            }
-            flipped_map
+        if entries.is_empty() {
+            return;
         }
 
         // Find all labels reachable via a `GoTo` from the current set of blocks.
@@ -273,74 +260,112 @@ impl RelooperState {
             .cloned()
             .partition(|entry| reachable_labels.contains(entry));
 
+        // Calculate predecessor and reachability information:
+        //
+        // * `predecessor_map` maps from each label to its immediate predecessors in the
+        //   current set of blocks.
+        // * `strict_reachable_from` maps each label to the set of labels that can reach
+        //   it, i.e. its direct and indirect predecessors. Entries do not count as
+        //   reaching themselves, and so an entry will only appear as a key if it is the
+        //   successor of some block (including itself, if the entry branches directly
+        //   to itself).
+        //
+        // For both of these, some keys may not correspond to any blocks in the current
+        // set, since blocks may have successors that are outside the current set. For
+        // both of these, labels in the values set will always correspond to blocks in
+        // the current set.
+        let (predecessor_map, strict_reachable_from) = {
+            // Map each of our current blocks to its immediate successors.
+            let successor_map = blocks
+                .iter()
+                .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
+                .collect();
+
+            // Calculate the transitive closure of the successor map, i.e. the full set of
+            // labels reachable from each block, not including itself. Then flip the edges
+            // to get a map from a label to the set of labels that can reach it.
+            let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
+
+            // Flip the edges of the successor map to get a map of immediate predecessors
+            // for each block.
+            let predecessor_map = flip_edges(successor_map);
+
+            (predecessor_map, strict_reachable_from)
+        };
+
         // --------------------------------------
-        // Base case
+        // Simple cases
 
-        if none_branch_to.is_empty() && some_branch_to.is_empty() {
-            return;
-        }
+        // Handle our simple case of only 1 entry. If there's no back edge to the entry
+        // we generate a simple structure, otherwise we make a loop.
+        if entries.len() == 1 {
+            if some_branch_to.is_empty() {
+                let entry = none_branch_to
+                    .first()
+                    .expect("Should find exactly one entry");
 
-        // --------------------------------------
-        // Simple blocks
-
-        if none_branch_to.len() == 1 && some_branch_to.is_empty() {
-            let entry = none_branch_to
-                .first()
-                .expect("Should find exactly one entry");
-
-            // If our entry is in our current blocks, emit it as a simple block and then
-            // recurse into the rest of the blocks.
-            //
-            // If our entry is not in our current blocks, then it was previously selected as
-            // the follow blocks of a multiple and we are at the end of that branch. In this
-            // case we emit an empty simple block that jumps to the entry.
-            if let Some(bb) = blocks.swap_remove(entry) {
-                let new_entries = bb.successors();
-                let BasicBlock {
-                    body,
-                    terminator,
-                    live,
-                    defined,
-                    span,
-                } = bb;
-
-                // Flag declarations for everything that is live going in but not already in scope.
+                // If our entry is in our current blocks, emit it as a simple block and then
+                // recurse into the rest of the blocks.
                 //
-                // It is tempting to just place the declarations here, but it isn't that simple:
-                // they may end up also being live but not in scope elsewhere and we should _not_
-                // make a second declaration.
-                for l in live {
-                    if !self.in_scope(l) {
-                        self.add_to_top_scope(l);
-                        self.lifted.insert(l);
+                // If our entry is not in our current blocks, then it was previously selected as
+                // the follow blocks of a multiple and we are at the end of that branch. In this
+                // case we emit an empty simple block that jumps to the entry.
+                if let Some(bb) = blocks.swap_remove(entry) {
+                    let new_entries = bb.successors();
+                    let BasicBlock {
+                        body,
+                        terminator,
+                        live,
+                        defined,
+                        span,
+                    } = bb;
+
+                    // Flag declarations for everything that is live going in but not already in scope.
+                    //
+                    // It is tempting to just place the declarations here, but it isn't that simple:
+                    // they may end up also being live but not in scope elsewhere and we should _not_
+                    // make a second declaration.
+                    for l in live {
+                        if !self.in_scope(l) {
+                            self.add_to_top_scope(l);
+                            self.lifted.insert(l);
+                        }
                     }
-                }
 
-                // Being into scope things that are defined here
-                for d in defined {
-                    self.add_to_scope(d);
-                }
+                    // Being into scope things that are defined here
+                    for d in defined {
+                        self.add_to_scope(d);
+                    }
 
-                result.push(Structure::Simple {
-                    entries,
-                    body,
-                    span,
-                    terminator,
-                });
+                    result.push(Structure::Simple {
+                        entries,
+                        body,
+                        span,
+                        terminator,
+                    });
 
-                self.relooper(new_entries, blocks, result, false);
+                    self.relooper(new_entries, blocks, result, false);
+                } else {
+                    let body = vec![];
+                    let terminator = Jump(StructureLabel::GoTo(entry.clone()));
+
+                    result.push(Structure::Simple {
+                        entries,
+                        body,
+                        span: Span::call_site(),
+                        terminator,
+                    });
+                };
             } else {
-                let body = vec![];
-                let terminator = Jump(StructureLabel::GoTo(entry.clone()));
-
-                result.push(Structure::Simple {
+                // Our only entry is branched back to, make a loop.
+                self.make_loop(
+                    &strict_reachable_from,
+                    blocks,
                     entries,
-                    body,
-                    span: Span::call_site(),
-                    terminator,
-                });
-            };
-
+                    &predecessor_map,
+                    result,
+                );
+            }
             return;
         }
 
@@ -385,72 +410,7 @@ impl RelooperState {
         // --------------------------------------
         // Loops
 
-        /// Calculates the transitive closure of a directed graph via depth-first
-        /// search.
-        ///
-        /// Given an adjacency list, represented as a map from each label to its
-        /// immediate successors, calculate which labels are reachable from each
-        /// starting label. A label does not count as reachable from itself unless there
-        /// is a back edge from one of its successors (including if the block is a
-        /// successor of itself).
-        fn transitive_closure<V: Clone + Hash + Eq>(
-            adjacency_list: &IndexMap<V, IndexSet<V>>,
-        ) -> IndexMap<V, IndexSet<V>> {
-            let mut edges: IndexSet<(V, V)> = IndexSet::new();
-            let mut to_visit: Vec<(V, V)> = adjacency_list
-                .keys()
-                .map(|v| (v.clone(), v.clone()))
-                .collect();
-
-            while let Some((s, v)) = to_visit.pop() {
-                for i in adjacency_list.get(&v).unwrap_or(&IndexSet::new()) {
-                    if edges.insert((s.clone(), i.clone())) {
-                        to_visit.push((s.clone(), i.clone()));
-                    }
-                }
-            }
-
-            let mut closure: IndexMap<V, IndexSet<V>> = IndexMap::new();
-            for (f, t) in edges {
-                closure.entry(f).or_default().insert(t);
-            }
-
-            closure
-        }
-
-        // Calculate predecessor and reachability information:
-        //
-        // * `predecessor_map` maps from each label to its immediate predecessors in the
-        //   current set of blocks.
-        // * `strict_reachable_from` maps each label to the set of labels that can reach
-        //   it, i.e. its direct and indirect predecessors. Entries do not count as
-        //   reaching themselves, and so an entry will only appear as a key if it is the
-        //   successor of some block (including itself, if the entry branches directly
-        //   to itself).
-        //
-        // For both of these, some keys may not correspond to any blocks in the current
-        // set, since blocks may have successors that are outside the current set. For
-        // both of these, labels in the values set will always correspond to blocks in
-        // the current set.
-        let (predecessor_map, strict_reachable_from) = {
-            // Map each of our current blocks to its immediate successors.
-            let successor_map = blocks
-                .iter()
-                .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
-                .collect();
-
-            // Calculate the transitive closure of the successor map, i.e. the full set of
-            // labels reachable from each block, not including itself. Then flip the edges
-            // to get a map from a label to the set of labels that can reach it.
-            let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
-
-            // Flip the edges of the successor map to get a map of immediate predecessors
-            // for each block.
-            let predecessor_map = flip_edges(successor_map);
-
-            (predecessor_map, strict_reachable_from)
-        };
-
+        /*
         // Try to match an existing branch point (from the initial C).
         //
         // We do this before creating a loop to better handle the cases where we have
@@ -513,124 +473,13 @@ impl RelooperState {
             }
         }
         recognized_c_multiple = recognized_c_multiple && !disable_heuristics;
-
-        // If we have entries that are branched to (which is true at this point) and
-        // there are no entries outside the loop (i.e. all of our entries are branched
-        // back to at some point), and we didn't find an existing C multiple that
-        // applies, produce a loop.
-        //
-        // legaren: This loop analysis is a bit simple, in that if `none_branch_to` is
-        // empty it assumes there's only one loop. If we have multiple disjoint loops
-        // it'll still only generate a single loop structure, which then has a multiple
-        // inside of it that handles both loop bodies as an awkward state machine. It
-        // may be better to instead generate the multiple first, which will then give us
-        // separate loops. I'm not 100% sure that'd be better in all cases, and the
-        // above logic for trying to reconstruct C multiples may already solve this
-        // issue in practice.
-        if none_branch_to.is_empty() && !recognized_c_multiple {
-            // Gather the set of current blocks that can reach one of our entries, not
-            // including the entries themselves unless they are the successor of some
-            // block (including itself, if the entry explicitly branches to itself).
-            //
-            // NOTE: At least one entry will be present here since at this point we know
-            // that there is an entry that is branched to.
-            let new_returns: IndexSet<Label> = strict_reachable_from
-                .iter()
-                .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
-                .flat_map(|(_, reachable)| reachable.iter())
-                .cloned()
-                .collect();
-
-            // Partition blocks into those belonging in or after the loop
-            let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
-                .into_iter()
-                .partition(|(lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
-
-            // Any block that follows a body block but is not itself a body block
-            // becomes an entry for the follow blocks.
-            let mut follow_entries = out_edges(&body_blocks);
-
-            // Try to match an existing loop (from the initial C)
-            let mut matched_existing_loop = false;
-            if let Some(ref loop_info) = self.loop_info {
-                let must_be_in_loop = entries.iter().chain(new_returns.iter()).cloned();
-                if let Some(loop_id) = loop_info.tightest_common_loop(must_be_in_loop) {
-                    // Construct the target group of labels
-                    let mut desired_body: IndexSet<Label> =
-                        loop_info.get_loop_contents(loop_id).clone();
-                    desired_body.retain(|l| !entries.contains(l));
-                    desired_body.retain(|l| !new_returns.contains(l));
-
-                    // Make copies that we can trash
-                    let mut body_blocks_copy = body_blocks.clone();
-                    let mut follow_blocks_copy = follow_blocks.clone();
-                    let mut follow_entries_copy = follow_entries.clone();
-
-                    if loops::match_loop_body(
-                        desired_body,
-                        &strict_reachable_from,
-                        &mut body_blocks_copy,
-                        &mut follow_blocks_copy,
-                        &mut follow_entries_copy,
-                    ) {
-                        matched_existing_loop = true;
-
-                        body_blocks = body_blocks_copy;
-                        follow_blocks = follow_blocks_copy;
-                        follow_entries = follow_entries_copy;
-                    }
-                }
-            }
-
-            // If matching an existing loop didn't work, fall back on a heuristic
-            if !matched_existing_loop {
-                loops::heuristic_loop_body(
-                    &predecessor_map,
-                    &mut body_blocks,
-                    &mut follow_blocks,
-                    &mut follow_entries,
-                );
-            }
-
-            // Rewrite `GoTo`s that exit the loop body to `ExitTo`s.
-            //
-            // For our body blocks, rewrite terminator `GoTo` labels to `ExitTo` if they
-            // target an entry or a follow entry. These are exits from the loop body, i.e.
-            // if they branch back to an entry then it's a `continue`, and if they branch to
-            // a follow entry then it's a `break`.
-            //
-            // This is necessary so that when we reloop the body blocks it doesn't get
-            // tripped up by the back/out edges. Without this, the reloop pass for the loop
-            // body would see the back edges and decide to produce a loop structure, even
-            // though we've already done that. Changing from `GoTo` to `ExitTo` means that
-            // the back/out edges don't show up in the list of successors when calculating
-            // predecessor and reachability information.
-            for bb in body_blocks.values_mut() {
-                for lbl in bb.terminator.get_labels_mut() {
-                    if let StructureLabel::GoTo(label) = lbl.clone() {
-                        if entries.contains(&label) || follow_entries.contains(&label) {
-                            *lbl = StructureLabel::ExitTo(label.clone())
-                        }
-                    }
-                }
-            }
-
-            let mut body = vec![];
-            self.open_scope();
-            self.relooper(entries.clone(), body_blocks, &mut body, false);
-            self.close_scope();
-
-            result.push(Structure::Loop { entries, body });
-            self.relooper(follow_entries, follow_blocks, result, false);
-
-            return;
-        }
+        */
 
         // --------------------------------------
         // Multiple
 
         // Like `strict_reachable_from`, but entries also reach themselves.
-        let mut reachable_from = strict_reachable_from;
+        let mut reachable_from = strict_reachable_from.clone();
         for entry in &entries {
             reachable_from
                 .entry(entry.clone())
@@ -653,106 +502,198 @@ impl RelooperState {
                 .collect(),
         );
 
-        // Map from entry labels to the set of blocks only reachable from that entry,
-        // i.e. `singly_reached` but with the set of reachable labels replaced by the
-        // corresponding blocks.
-        let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
-            .into_iter()
-            .map(|(lbl, within)| {
-                let val = blocks
-                    .iter()
-                    .filter(|(k, _)| within.contains(*k))
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                (lbl, val)
-            })
-            .collect();
+        // If we have any blocks that are only reachable from one entry, then we can
+        // create a `Multiple` structure.
+        if !singly_reached.is_empty() {
+            // Map from entry labels to the set of blocks only reachable from that entry,
+            // i.e. `singly_reached` but with the set of reachable labels replaced by the
+            // corresponding blocks.
+            let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
+                .into_iter()
+                .map(|(lbl, within)| {
+                    let val = blocks
+                        .iter()
+                        .filter(|(k, _)| within.contains(*k))
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    (lbl, val)
+                })
+                .collect();
 
-        // Entries that don't have any blocks that are only reachable from themselves.
-        let unhandled_entries: IndexSet<Label> = entries
+            // Entries that don't have any blocks that are only reachable from themselves.
+            let unhandled_entries: IndexSet<Label> = entries
+                .iter()
+                .filter(|&e| !handled_entries.contains_key(e))
+                .cloned()
+                .collect();
+
+            // Gather the set of all blocks that are only reachable from one entry
+            // (including the entries if they are only reachable from themselves).
+            let handled_blocks: StructuredBlocks = handled_entries
+                .values()
+                .flatten()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            // Gather the unhandled blocks, i.e. any blocks that are reachable from more
+            // than one entry. These become our "follow" blocks, i.e. the blocks that come
+            // after the `Multiple`.
+            let follow_blocks: StructuredBlocks = blocks
+                .into_iter()
+                .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
+                .collect();
+
+            // The entries for the follow blocks are our unhandled entries and any successors
+            // of handled blocks that are not themselves handled blocks.
+            let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
+
+            // Reloop each set of handled blocks into their own structured control flow.
+            let mut all_handlers: IndexMap<_, _> = handled_entries
+                .into_iter()
+                .map(|(lbl, blocks)| {
+                    let entries = indexset![lbl.clone()];
+
+                    let mut structs = vec![];
+                    self.open_scope();
+                    self.relooper(entries, blocks, &mut structs, false);
+                    self.close_scope();
+
+                    (lbl, structs)
+                })
+                .collect();
+
+            // If all entries are handled, we grab the first one to be the "then" branch,
+            // otherwise the "then" branch is empty.
+            //
+            // This is done because of how we generate `match` statements from `Multiple`.
+            // If all entries are handled, then we pull one case to be the `_ => { ... }`
+            // default case in the generated `match`. This works because every entry will
+            // have its own `match` arm, so it's safe to have the `_` arm cover one of them,
+            // and avoids having a dead `_` case just to satisfy exhaustiveness.
+            //
+            // If we have unhandled entries, then we'll have entries not covered by the
+            // `match`. In this case we want an empty `_ => {}` case, that way when we hit
+            // the `match` from one of the unhandled entries we just fall through the
+            // `match` and continue on to the correct entry.
+            let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
+            let (then, branches) = if handler_keys == entries {
+                let last_handler = all_handlers
+                    .swap_remove_index(0)
+                    .expect("There has to be at least one handler")
+                    .1;
+                (last_handler, all_handlers)
+            } else {
+                (vec![], all_handlers)
+            };
+
+            // Disable heuristics when relooping the follow blocks if all of our entries are
+            // follow entries.
+            //
+            // This situation happens when there are back edges to all of our entries, i.e.
+            // when all of our entries are part of one or more loops. If we leave heuristics
+            // enabled in this case, we risk infinite recursion because we're relooping the
+            // same set of blocks with the same set of entries. If there are loops and we
+            // ended up here, it means that we skipped creating a loop because we matched a
+            // C multiple. Disabling heuristics means we won't try to match a C multiple,
+            // meaning we will generate a loop-match instead.
+            let disable_heuristics = follow_entries == entries;
+
+            result.push(Structure::Multiple {
+                entries,
+                branches,
+                then,
+            });
+
+            self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
+            return;
+        }
+
+        assert!(
+            none_branch_to.is_empty(),
+            "I think by now all entries have to be branched back to, right?"
+        );
+
+        // --------------------------------------
+        // Loop fallback
+
+        // We couldn't create a multiple, so create a loop.
+        self.make_loop(
+            &strict_reachable_from,
+            blocks,
+            entries,
+            &predecessor_map,
+            result,
+        );
+    }
+
+    fn make_loop(
+        &mut self,
+        strict_reachable_from: &AdjacencyList,
+        blocks: StructuredBlocks,
+        entries: IndexSet<Label>,
+        predecessor_map: &AdjacencyList,
+        result: &mut Vec<Structure<StmtOrDecl>>,
+    ) {
+        // Gather the set of current blocks that can reach one of our entries, not
+        // including the entries themselves unless they are the successor of some
+        // block (including itself, if the entry explicitly branches to itself).
+        //
+        // NOTE: At least one entry will be present here since at this point we know
+        // that there is an entry that is branched to.
+        let new_returns: IndexSet<Label> = strict_reachable_from
             .iter()
-            .filter(|&e| !handled_entries.contains_key(e))
+            .filter(|&(lbl, _)| blocks.contains_key(lbl) && entries.contains(lbl))
+            .flat_map(|(_, reachable)| reachable.iter())
             .cloned()
             .collect();
 
-        // Gather the set of all blocks that are only reachable from one entry
-        // (including the entries if they are only reachable from themselves).
-        let handled_blocks: StructuredBlocks = handled_entries
-            .values()
-            .flatten()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        // Gather the unhandled blocks, i.e. any blocks that are reachable from more
-        // than one entry. These become our "follow" blocks, i.e. the blocks that come
-        // after the `Multiple`.
-        let follow_blocks: StructuredBlocks = blocks
+        // Partition blocks into those belonging in or after the loop
+        let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
             .into_iter()
-            .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
-            .collect();
+            .partition(|(lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
 
-        // The entries for the follow blocks are our unhandled entries and any successors
-        // of handled blocks that are not themselves handled blocks.
-        let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
+        // Any block that follows a body block but is not itself a body block
+        // becomes an entry for the follow blocks.
+        let mut follow_entries = out_edges(&body_blocks);
 
-        // Reloop each set of handled blocks into their own structured control flow.
-        let mut all_handlers: IndexMap<_, _> = handled_entries
-            .into_iter()
-            .map(|(lbl, blocks)| {
-                let entries = indexset![lbl.clone()];
+        // If matching an existing loop didn't work, fall back on a heuristic
+        loops::heuristic_loop_body(
+            &predecessor_map,
+            &mut body_blocks,
+            &mut follow_blocks,
+            &mut follow_entries,
+        );
 
-                let mut structs = vec![];
-                self.open_scope();
-                self.relooper(entries, blocks, &mut structs, false);
-                self.close_scope();
-
-                (lbl, structs)
-            })
-            .collect();
-
-        // If all entries are handled, we grab the first one to be the "then" branch,
-        // otherwise the "then" branch is empty.
+        // Rewrite `GoTo`s that exit the loop body to `ExitTo`s.
         //
-        // This is done because of how we generate `match` statements from `Multiple`.
-        // If all entries are handled, then we pull one case to be the `_ => { ... }`
-        // default case in the generated `match`. This works because every entry will
-        // have its own `match` arm, so it's safe to have the `_` arm cover one of them,
-        // and avoids having a dead `_` case just to satisfy exhaustiveness.
+        // For our body blocks, rewrite terminator `GoTo` labels to `ExitTo` if they
+        // target an entry or a follow entry. These are exits from the loop body, i.e.
+        // if they branch back to an entry then it's a `continue`, and if they branch to
+        // a follow entry then it's a `break`.
         //
-        // If we have unhandled entries, then we'll have entries not covered by the
-        // `match`. In this case we want an empty `_ => {}` case, that way when we hit
-        // the `match` from one of the unhandled entries we just fall through the
-        // `match` and continue on to the correct entry.
-        let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
-        let (then, branches) = if handler_keys == entries {
-            let last_handler = all_handlers
-                .swap_remove_index(0)
-                .expect("There has to be at least one handler")
-                .1;
-            (last_handler, all_handlers)
-        } else {
-            (vec![], all_handlers)
-        };
+        // This is necessary so that when we reloop the body blocks it doesn't get
+        // tripped up by the back/out edges. Without this, the reloop pass for the loop
+        // body would see the back edges and decide to produce a loop structure, even
+        // though we've already done that. Changing from `GoTo` to `ExitTo` means that
+        // the back/out edges don't show up in the list of successors when calculating
+        // predecessor and reachability information.
+        for bb in body_blocks.values_mut() {
+            for lbl in bb.terminator.get_labels_mut() {
+                if let StructureLabel::GoTo(label) = lbl.clone() {
+                    if entries.contains(&label) || follow_entries.contains(&label) {
+                        *lbl = StructureLabel::ExitTo(label.clone())
+                    }
+                }
+            }
+        }
 
-        // Disable heuristics when relooping the follow blocks if all of our entries are
-        // follow entries.
-        //
-        // This situation happens when there are back edges to all of our entries, i.e.
-        // when all of our entries are part of one or more loops. If we leave heuristics
-        // enabled in this case, we risk infinite recursion because we're relooping the
-        // same set of blocks with the same set of entries. If there are loops and we
-        // ended up here, it means that we skipped creating a loop because we matched a
-        // C multiple. Disabling heuristics means we won't try to match a C multiple,
-        // meaning we will generate a loop-match instead.
-        let disable_heuristics = follow_entries == entries;
+        let mut body = vec![];
+        self.open_scope();
+        self.relooper(entries.clone(), body_blocks, &mut body, false);
+        self.close_scope();
 
-        result.push(Structure::Multiple {
-            entries,
-            branches,
-            then,
-        });
-
-        self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
+        result.push(Structure::Loop { entries, body });
+        self.relooper(follow_entries, follow_blocks, result, false);
     }
 }
 
@@ -926,4 +867,58 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
 
     acc_structures.reverse();
     acc_structures
+}
+
+/// Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo`
+/// is not considered here - only `GoTo`.
+fn out_edges(blocks: &StructuredBlocks) -> IndexSet<Label> {
+    blocks
+        .iter()
+        .flat_map(|(_, bb)| bb.successors())
+        .filter(|lbl| !blocks.contains_key(lbl))
+        .collect()
+}
+
+/// Transforms `{1: {'a', 'b'}, 2: {'b'}}` into `{'a': {1}, 'b': {1,2}}`.
+fn flip_edges(map: IndexMap<Label, IndexSet<Label>>) -> IndexMap<Label, IndexSet<Label>> {
+    let mut flipped_map: IndexMap<Label, IndexSet<Label>> = IndexMap::new();
+    for (lbl, vals) in map {
+        for val in vals {
+            flipped_map.entry(val).or_default().insert(lbl.clone());
+        }
+    }
+    flipped_map
+}
+
+/// Calculates the transitive closure of a directed graph via depth-first
+/// search.
+///
+/// Given an adjacency list, represented as a map from each label to its
+/// immediate successors, calculate which labels are reachable from each
+/// starting label. A label does not count as reachable from itself unless there
+/// is a back edge from one of its successors (including if the block is a
+/// successor of itself).
+fn transitive_closure<V: Clone + Hash + Eq>(
+    adjacency_list: &IndexMap<V, IndexSet<V>>,
+) -> IndexMap<V, IndexSet<V>> {
+    let mut edges: IndexSet<(V, V)> = IndexSet::new();
+    let mut to_visit: Vec<(V, V)> = adjacency_list
+        .keys()
+        .map(|v| (v.clone(), v.clone()))
+        .collect();
+
+    while let Some((s, v)) = to_visit.pop() {
+        for i in adjacency_list.get(&v).unwrap_or(&IndexSet::new()) {
+            if edges.insert((s.clone(), i.clone())) {
+                to_visit.push((s.clone(), i.clone()));
+            }
+        }
+    }
+
+    let mut closure: IndexMap<V, IndexSet<V>> = IndexMap::new();
+    for (f, t) in edges {
+        closure.entry(f).or_default().insert(t);
+    }
+
+    closure
 }
