@@ -11,7 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/arch-specific/vm_x86.c
     unused_assignments,
     unused_mut
 )]
-#![feature(asm)]
+#![feature(asm, raw_ref_op)]
 use core::arch::asm;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -44,17 +44,18 @@ pub unsafe extern "C" fn VM_CallCompiled(
     programStack -= 8 as core::ffi::c_int + 4 as core::ffi::c_int * MAX_VMMAIN_ARGS;
     arg = 0 as core::ffi::c_int;
     while arg < MAX_VMMAIN_ARGS {
-        *(&mut *image
+        *(&raw mut *image
             .offset((programStack + 8 as core::ffi::c_int + arg * 4 as core::ffi::c_int) as isize)
-            as *mut byte as *mut core::ffi::c_int) = *args.offset(arg as isize);
+            as *mut core::ffi::c_int) = *args.offset(arg as isize);
         arg += 1;
     }
-    *(&mut *image.offset((programStack + 4 as core::ffi::c_int) as isize) as *mut byte
+    *(&raw mut *image.offset((programStack + 4 as core::ffi::c_int) as isize)
         as *mut core::ffi::c_int) = 0 as core::ffi::c_int;
-    *(&mut *image.offset(programStack as isize) as *mut byte as *mut core::ffi::c_int) =
+    *(&raw mut *image.offset(programStack as isize) as *mut core::ffi::c_int) =
         -(1 as core::ffi::c_int);
     entryPoint = ((*vm).codeBase).offset((*vm).entryOfs as isize);
-    opStack = (stack.as_mut_ptr() as *mut core::ffi::c_int).offset(16 as core::ffi::c_int as isize);
+    opStack = (&raw mut stack as *mut byte as *mut core::ffi::c_int)
+        .offset(16 as core::ffi::c_int as isize);
     *opStack = 0 as core::ffi::c_int;
     opStackOfs = 0 as core::ffi::c_int;
     asm!(
