@@ -11,6 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/exprs.c
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 extern "C" {
     fn puts(str: *const core::ffi::c_char) -> core::ffi::c_int;
 }
@@ -29,7 +30,7 @@ pub unsafe extern "C" fn unary_without_side_effect() {
     i;
     !i;
     (i == 0) as core::ffi::c_int;
-    &mut i;
+    &raw mut i;
     i;
     i += 1;
     i -= 1;
@@ -43,10 +44,11 @@ pub unsafe extern "C" fn unary_with_side_effect() {
     side_effect();
     !side_effect();
     (side_effect() == 0) as core::ffi::c_int;
-    &*(b"\0" as *const u8 as *const core::ffi::c_char).offset(::core::mem::transmute::<
+    &raw const *(b"\0" as *const u8 as *const core::ffi::c_char).offset(::core::mem::transmute::<
         unsafe extern "C" fn() -> core::ffi::c_int,
         unsafe extern "C" fn() -> core::ffi::c_int,
-    >(side_effect)() as isize) as *const core::ffi::c_char;
+    >(side_effect)()
+        as isize);
     *arr[side_effect() as usize];
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(1);
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);

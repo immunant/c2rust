@@ -3032,7 +3032,7 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
-                let addr_lhs = mk().set_mutbl(mutbl).addr_of_expr(lhs);
+                let addr_lhs = mk().set_mutbl(mutbl).borrow_expr(lhs);
 
                 let lhs_type = self.convert_type(lhs_type.ctype)?;
                 let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
@@ -4595,60 +4595,67 @@ impl<'c> Translation<'c> {
                             .is_some()
                     })
                     .unwrap_or(false);
-                match expr_kind {
-                    Some(&CExprKind::Literal(_, CLiteral::String(ref bytes, 1)))
-                        if is_const && !translate_as_macro =>
-                    {
-                        let target_ty = self.convert_type(target_cty.ctype)?;
 
-                        let mut bytes = bytes.to_owned();
-                        bytes.push(0);
-                        let byte_literal = mk().lit_expr(bytes);
-                        let val =
-                            mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
-                        let val = mk().cast_expr(val, target_ty);
-                        Ok(WithStmts::new_val(val))
-                    }
-                    _ => {
-                        // Variable length arrays are already represented as pointers.
-                        if let CTypeKind::VariableArray(..) = source_ty_kind {
-                            Ok(val)
-                        } else {
-                            let method = if is_const || ctx.is_static {
-                                "as_ptr"
-                            } else {
-                                "as_mut_ptr"
-                            };
+                if let (Some(&CExprKind::Literal(_, CLiteral::String(ref bytes, 1))), true, false) =
+                    (expr_kind, is_const, translate_as_macro)
+                {
+                    let target_ty = self.convert_type(target_cty.ctype)?;
 
-                            let call = val.map(|x| mk().method_call_expr(x, method, vec![]));
-
-                            // If the target pointee type is different from the source element type,
-                            // then we need to cast the ptr type as well.
-                            let call = match source_ty_kind.element_ty() {
-                                None => call,
-                                Some(source_element_ty) if source_element_ty == pointee.ctype => {
-                                    call
-                                }
-                                Some(_) => {
-                                    let target_ty = self.convert_type(target_cty.ctype)?;
-                                    call.map(|ptr| mk().cast_expr(ptr, target_ty))
-                                }
-                            };
-
-                            // Static arrays can now use as_ptr. Can also cast that const ptr to a
-                            // mutable pointer as we do here:
-                            if ctx.is_static && !is_const {
-                                return Ok(call.map(|val| {
-                                    let inferred_type = mk().infer_ty();
-                                    let ptr_type = mk().mutbl().ptr_ty(inferred_type);
-                                    mk().cast_expr(val, ptr_type)
-                                }));
-                            }
-
-                            Ok(call)
-                        }
-                    }
+                    let mut bytes = bytes.to_owned();
+                    bytes.push(0);
+                    let byte_literal = mk().lit_expr(bytes);
+                    let val = mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
+                    let val = mk().cast_expr(val, target_ty);
+                    return Ok(WithStmts::new_val(val));
                 }
+
+                // Variable length arrays are already represented as pointers.
+                if let CTypeKind::VariableArray(..) = source_ty_kind {
+                    return Ok(val);
+                }
+
+                let (mutbl, must_cast_mut) = if is_const {
+                    (Mutability::Immutable, false)
+                } else if ctx.is_static {
+                    // TODO: The currently used nightly doesn't allow `&raw mut` in
+                    // static initialisers, but it's allowed since version 1.83.
+                    // So we take a `&raw const` and then cast.
+                    // Remove `must_cast_mut` variable when the version is updated.
+                    (Mutability::Immutable, true)
+                } else {
+                    (Mutability::Mutable, false)
+                };
+
+                val.result_map(|mut val| {
+                    if translate_as_macro {
+                        // Values that translate into temporaries can't be raw-borrowed in Rust,
+                        // and must be regular-borrowed first.
+                        // Borrowing in a static/const context will extend the lifetime to static.
+                        let method = match mutbl {
+                            Mutability::Mutable => "as_mut_ptr",
+                            Mutability::Immutable => "as_ptr",
+                        };
+                        val = mk().method_call_expr(val, method, vec![]);
+                    } else {
+                        self.use_feature("raw_ref_op");
+                        val = mk().set_mutbl(mutbl).raw_borrow_expr(val);
+                        // TODO: Add call to `ptr::as_[mut]_ptr` once that is available
+                        // (`array_ptr_get` feature added to nightly in January 2024)
+                    }
+
+                    // If the target pointee type is different from the source element type,
+                    // then we need to cast the ptr type as well.
+                    // TODO: Remove `!translate_as_macro` when `ptr::as_[mut]_ptr` is added above.
+                    if source_ty_kind.element_ty() != Some(pointee.ctype)
+                        || must_cast_mut
+                        || !translate_as_macro
+                    {
+                        let target_element_ty = self.convert_type(target_cty.ctype)?;
+                        val = mk().cast_expr(val, target_element_ty);
+                    }
+
+                    Ok(val)
+                })
             }
 
             CastKind::NullToPointer => {
