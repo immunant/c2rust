@@ -147,10 +147,7 @@ enum TypeTag {
     TagHalf,
     TagBFloat16,
 
-    TagSveCount,
-    TagSveBool,
-    TagSveBoolx2,
-    TagSveBoolx4,
+    TagSve,
 
     TagFloat128,
     TagAtomicType,
