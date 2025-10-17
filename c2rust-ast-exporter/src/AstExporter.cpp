@@ -129,21 +129,32 @@ void printDiag(ASTContext *Context,
         CharSourceRange::getCharRange(R));
 }
 
+SourceLocation getSourceLocation(Decl *D) {
+    return D->getLocation();
+}
+
+SourceLocation getSourceLocation(Expr *E) {
+    return E->getExprLoc();
+}
+
+SourceLocation getSourceLocation(Stmt *S) {
+#if CLANG_VERSION_MAJOR < 8
+    return S->getLocStart();
+#else
+    return S->getBeginLoc();
+#endif
+}
+
 void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, Decl *D) {
-    printDiag(Context, Lvl, Message, D->getLocation(), D->getSourceRange());
+    printDiag(Context, Lvl, Message, getSourceLocation(D), D->getSourceRange());
 }
 
 void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, Expr *E) {
-    printDiag(Context, Lvl, Message, E->getExprLoc(), E->getSourceRange());
+    printDiag(Context, Lvl, Message, getSourceLocation(E), E->getSourceRange());
 }
 
 void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, Stmt *S) {
-#if CLANG_VERSION_MAJOR < 8
-    SourceLocation loc = S->getLocStart();
-#else
-    SourceLocation loc = S->getBeginLoc();
-#endif // CLANG_VERSION_MAJOR
-    printDiag(Context, Lvl, Message, loc, S->getSourceRange());
+    printDiag(Context, Lvl, Message, getSourceLocation(S), S->getSourceRange());
 }
 
 class TranslateASTVisitor;
