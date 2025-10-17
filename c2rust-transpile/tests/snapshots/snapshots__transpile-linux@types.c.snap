@@ -32,11 +32,11 @@ pub type uint32_t = __uint32_t;
 pub type uint64_t = __uint64_t;
 pub type intptr_t = isize;
 pub type uintptr_t = usize;
-pub type intmax_t = libc::intmax_t;
-pub type uintmax_t = libc::uintmax_t;
+pub type intmax_t = ::libc::intmax_t;
+pub type uintmax_t = ::libc::uintmax_t;
 pub type ptrdiff_t = isize;
 #[no_mangle]
-pub static mut intvar: core::ffi::c_int = 0 as core::ffi::c_int;
+pub static mut intvar: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 #[no_mangle]
 pub static mut sizevar: size_t = 0 as size_t;
 #[no_mangle]

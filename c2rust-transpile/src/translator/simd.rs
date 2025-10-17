@@ -69,6 +69,7 @@ static SIMD_X86_64_ONLY: &[&str] = &[
 
 fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
     store.add_use_with_attr(
+        true,
         vec!["core".into(), "arch".into(), arch_name.into()],
         item_name,
         mk().call_attr("cfg", vec![mk().meta_namevalue("target_arch", arch_name)])

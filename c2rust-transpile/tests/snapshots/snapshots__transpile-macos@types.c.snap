@@ -26,12 +26,12 @@ pub type uint8_t = u8;
 pub type uint16_t = u16;
 pub type uint32_t = u32;
 pub type uint64_t = u64;
-pub type intmax_t = libc::intmax_t;
-pub type uintmax_t = libc::uintmax_t;
+pub type intmax_t = ::libc::intmax_t;
+pub type uintmax_t = ::libc::uintmax_t;
 pub type ptrdiff_t = __darwin_ptrdiff_t;
 pub type ssize_t = __darwin_ssize_t;
 #[no_mangle]
-pub static mut intvar: core::ffi::c_int = 0 as core::ffi::c_int;
+pub static mut intvar: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 #[no_mangle]
 pub static mut sizevar: size_t = 0 as size_t;
 #[no_mangle]
