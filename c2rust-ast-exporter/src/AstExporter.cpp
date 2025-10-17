@@ -145,16 +145,9 @@ SourceLocation getSourceLocation(const Stmt *S) {
 #endif
 }
 
-void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const Decl *D) {
-    printDiag(Context, Lvl, Message, getSourceLocation(D), D->getSourceRange());
-}
-
-void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const Expr *E) {
-    printDiag(Context, Lvl, Message, getSourceLocation(E), E->getSourceRange());
-}
-
-void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const Stmt *S) {
-    printDiag(Context, Lvl, Message, getSourceLocation(S), S->getSourceRange());
+template <class T> // Usually `Decl`, `Expr`, or `Stmt`.
+void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const T *t) {
+    printDiag(Context, Lvl, Message, getSourceLocation(t), t->getSourceRange());
 }
 
 class TranslateASTVisitor;
