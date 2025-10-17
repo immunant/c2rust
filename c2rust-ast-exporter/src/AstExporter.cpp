@@ -167,6 +167,12 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
 
     std::unordered_set<const clang::Type *> exports;
 
+public:
+    /// Set before `TypeEncoder::VisitQualType(ty)` in `TypeEncoder::VisitQualTypeOf`.
+    SourceLocation src_loc;
+    SourceRange src_range;
+
+private:
     bool markExported(const clang::Type *ptr) {
         return exports.emplace(ptr).second;
     }
@@ -224,6 +230,13 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                          TranslateASTVisitor *ast)
         : Context(Context), encoder(encoder), sugared(sugared),
           astEncoder(ast) {}
+
+    template <class T> // Usually `Decl`, `Expr`, or `Stmt`.
+    void VisitQualTypeOf(const QualType &QT, const T *t) {
+        src_loc = getSourceLocation(t);
+        src_range = t->getSourceRange();
+        VisitQualType(QT);
+    }
 
     void VisitQualType(const QualType &QT) {
         if (!QT.isNull()) {
@@ -461,7 +474,7 @@ class TypeEncoder final : public TypeVisitor<TypeEncoder> {
                 auto warning = std::string("Encountered unsupported BuiltinType kind ") +
                                std::to_string((int)kind) + " for type " +
                                T->getName(pol).str();
-                printDiag(Context, DiagnosticsEngine::Warning, warning, clang::FullSourceLoc());
+                printDiag(Context, DiagnosticsEngine::Warning, warning, src_loc, src_range);
                 return TagTypeUnknown;
             }
         }();
@@ -735,7 +748,7 @@ class TranslateASTVisitor final
 #endif
         encode_entry_raw(ast, tag, ast->getSourceRange(), ty, isRValue, isVaList,
                          encodeMacroExpansions, childIds, extra);
-        typeEncoder.VisitQualType(ty);
+        typeEncoder.VisitQualTypeOf(ty, ast);
     }
 
     void encode_entry(
@@ -821,7 +834,7 @@ class TranslateASTVisitor final
         else if (info.Name != name)
             return false;
 
-        typeEncoder.VisitQualType(E->getType());
+        typeEncoder.VisitQualTypeOf(E->getType(), E);
         return true;
     }
 
@@ -1398,7 +1411,7 @@ class TranslateASTVisitor final
                 }
                 cbor_encode_uint(extras, qt);
             });
-        typeEncoder.VisitQualType(t);
+        typeEncoder.VisitQualTypeOf(t, E);
         return true;
     }
 
@@ -1449,7 +1462,7 @@ class TranslateASTVisitor final
         // gets visited.
         if (!value) {
             auto ty = E->getTypeSourceInfo()->getType();
-            typeEncoder.VisitQualType(ty);
+            typeEncoder.VisitQualTypeOf(ty, E);
         }
 
         return true;
@@ -1700,8 +1713,8 @@ class TranslateASTVisitor final
         if (auto cao = dyn_cast_or_null<CompoundAssignOperator>(BO)) {
             computationLHSType = cao->getComputationLHSType();
             computationResultType = cao->getComputationResultType();
-            typeEncoder.VisitQualType(computationLHSType);
-            typeEncoder.VisitQualType(computationResultType);
+            typeEncoder.VisitQualTypeOf(computationLHSType, cao);
+            typeEncoder.VisitQualTypeOf(computationResultType, cao);
         }
 
         encode_entry(BO, TagBinaryOperator, childIds,
@@ -1886,7 +1899,7 @@ class TranslateASTVisitor final
             if (FD->doesThisDeclarationHaveABody())
                 span = FD->getCanonicalDecl()->getSourceRange();
             encode_entry(FD, TagNonCanonicalDecl, span, childIds, FD->getType());
-            typeEncoder.VisitQualType(FD->getType());
+            typeEncoder.VisitQualTypeOf(FD->getType(), FD);
             return true;
         }
 
@@ -1981,7 +1994,7 @@ class TranslateASTVisitor final
 
                 cbor_encoder_close_container(array, &attr_info);
             });
-        typeEncoder.VisitQualType(functionType);
+        typeEncoder.VisitQualTypeOf(functionType, paramsFD);
 
         return true;
     }
@@ -2008,7 +2021,7 @@ class TranslateASTVisitor final
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {VD->getCanonicalDecl()};
             encode_entry(VD, TagNonCanonicalDecl, VD->getLocation(), childIds, VD->getType());
-            typeEncoder.VisitQualType(VD->getType());
+            typeEncoder.VisitQualTypeOf(VD->getType(), VD);
             return true;
         }
 
@@ -2088,7 +2101,7 @@ class TranslateASTVisitor final
                 cbor_encoder_close_container(array, &attr_info);
             });
 
-        typeEncoder.VisitQualType(T);
+        typeEncoder.VisitQualTypeOf(T, def);
 
         return true;
     }
@@ -2213,7 +2226,7 @@ class TranslateASTVisitor final
         }
 
         auto underlying_type = D->getIntegerType();
-        typeEncoder.VisitQualType(underlying_type);
+        typeEncoder.VisitQualTypeOf(underlying_type, D);
 
         encode_entry(D, TagEnumDecl, childIds, underlying_type,
                      [D](CborEncoder *local) {
@@ -2259,7 +2272,7 @@ class TranslateASTVisitor final
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
             encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getType());
-            typeEncoder.VisitQualType(D->getType());
+            typeEncoder.VisitQualTypeOf(D->getType(), D);
             return true;
         }
 
@@ -2299,7 +2312,7 @@ class TranslateASTVisitor final
                      });
 
         // This might be the only occurrence of this type in the translation unit
-        typeEncoder.VisitQualType(t);
+        typeEncoder.VisitQualTypeOf(t, D);
 
         return true;
     }
@@ -2342,7 +2355,7 @@ class TranslateASTVisitor final
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
             encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, typeForDecl);
-            typeEncoder.VisitQualType(typeForDecl);
+            typeEncoder.VisitQualTypeOf(typeForDecl, D);
             return true;
         }
 
@@ -2361,7 +2374,7 @@ class TranslateASTVisitor final
                          }
                      });
 
-        typeEncoder.VisitQualType(typeForDecl);
+        typeEncoder.VisitQualTypeOf(typeForDecl, D);
 
         return true;
     }
