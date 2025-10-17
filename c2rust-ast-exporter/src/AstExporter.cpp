@@ -129,15 +129,15 @@ void printDiag(ASTContext *Context,
         CharSourceRange::getCharRange(R));
 }
 
-SourceLocation getSourceLocation(Decl *D) {
+SourceLocation getSourceLocation(const Decl *D) {
     return D->getLocation();
 }
 
-SourceLocation getSourceLocation(Expr *E) {
+SourceLocation getSourceLocation(const Expr *E) {
     return E->getExprLoc();
 }
 
-SourceLocation getSourceLocation(Stmt *S) {
+SourceLocation getSourceLocation(const Stmt *S) {
 #if CLANG_VERSION_MAJOR < 8
     return S->getLocStart();
 #else
@@ -145,15 +145,15 @@ SourceLocation getSourceLocation(Stmt *S) {
 #endif
 }
 
-void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, Decl *D) {
+void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const Decl *D) {
     printDiag(Context, Lvl, Message, getSourceLocation(D), D->getSourceRange());
 }
 
-void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, Expr *E) {
+void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const Expr *E) {
     printDiag(Context, Lvl, Message, getSourceLocation(E), E->getSourceRange());
 }
 
-void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, Stmt *S) {
+void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const Stmt *S) {
     printDiag(Context, Lvl, Message, getSourceLocation(S), S->getSourceRange());
 }
 
