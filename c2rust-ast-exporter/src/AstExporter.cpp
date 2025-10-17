@@ -147,7 +147,11 @@ SourceLocation getSourceLocation(const Stmt *S) {
 
 template <class T> // Usually `Decl`, `Expr`, or `Stmt`.
 void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Message, const T *t) {
-    printDiag(Context, Lvl, Message, getSourceLocation(t), t->getSourceRange());
+    const SourceLocation loc = getSourceLocation(t);
+    if (loc.isInvalid()) {
+        t->dump();
+    }
+    printDiag(Context, Lvl, Message, loc, t->getSourceRange());
 }
 
 class TranslateASTVisitor;
