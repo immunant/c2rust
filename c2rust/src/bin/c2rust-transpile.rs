@@ -125,7 +125,7 @@ struct Args {
     reduce_type_annotations: bool,
 
     /// Output file in such a way that the refactoring tool can deduplicate code
-    #[clap(short = 'r', long)]
+    #[clap(short = 'r', long, default_value_t = true)]
     reorganize_definitions: bool,
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
