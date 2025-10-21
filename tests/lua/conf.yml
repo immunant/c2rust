@@ -10,5 +10,10 @@ transpile:
   tflags: --reorganize-definitions
   binary: lua
 
+refactor:
+  autogen: true
+  transforms:
+    - remove_unused_labels
+
 cargo:
   autogen: true
