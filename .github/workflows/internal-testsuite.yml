@@ -36,15 +36,30 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Checkout c2rust
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: immunant/c2rust
 
+    - name: Determine testsuite revision
+      id: testsuite-ref
+      run: |
+        default_ref=master
+        if [ -f .github/workflows/testsuite-ref.txt ]; then
+          ref=$(tr -d '[:space:]' < .github/workflows/testsuite-ref.txt)
+          if [ -z "$ref" ]; then
+            ref=$default_ref
+          fi
+        else
+          ref=$default_ref
+        fi
+        echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
     # Working dir is /home/runner/work/c2rust/c2rust/testsuite
     - name: Checkout c2rust-testsuite
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: immunant/c2rust-testsuite
+        ref: ${{ steps.testsuite-ref.outputs.ref }}
         path: testsuite
         submodules: true
 
