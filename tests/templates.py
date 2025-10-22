@@ -75,13 +75,13 @@ while IFS= read -r transform; do
         > >(tee "$DIFF_FILE" | tee -a "$LOG_FILE") \
         2> >(tee -a "$LOG_FILE" >&2)
 
-    echo "Saved diff for ${transform} at ${DIFF_FILE}" | tee -a "$LOG_FILE"
-
-    c2rust-refactor \
-        ${transform} \
-        --cargo --lib \
-        --rewrite-mode inplace \
-        2>&1 | tee -a "$LOG_FILE"
+    if [[ -s "$DIFF_FILE" ]] && grep -q '^@@' "$DIFF_FILE"; then
+        echo "Saved diff for ${transform} at ${DIFF_FILE}" | tee -a "$LOG_FILE"
+        patch -p1 --batch < "$DIFF_FILE" 2>&1 | tee -a "$LOG_FILE"
+    else
+        echo "No changes produced by ${transform}; removing empty diff ${DIFF_FILE}" | tee -a "$LOG_FILE"
+        rm -f "$DIFF_FILE"
+    fi
 done <<'C2RUST_TRANSFORMS'
 {{transform_lines}}
 C2RUST_TRANSFORMS
