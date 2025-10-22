@@ -3,6 +3,16 @@ transpile:
   binary: runtest
   tflags: --reorganize-definitions
 
+refactor:
+  autogen: true
+  transforms:
+  - remove_unused_labels
+  - remove_null_terminator
+  - bytestr_to_str
+  - convert_format_args
+  - convert_printfs
+  - fix_unused_unsafe
+  - remove_redundant_casts
+  - noop
 cargo:
   autogen: true
-

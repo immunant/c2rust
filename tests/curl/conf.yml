@@ -15,5 +15,10 @@ transpile:
     # tflags: --reorganize-definitions
     binary: tool_main
 
+refactor:
+    autogen: true
+    transforms:
+        - remove_unused_labels
+
 cargo:
     autogen: true

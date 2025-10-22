@@ -9,5 +9,10 @@ transpile:
   autogen: true
   tflags: --reorganize-definitions
 
+refactor:
+  autogen: true
+  transforms:
+    - remove_unused_labels
+
 cargo:
   autogen: true

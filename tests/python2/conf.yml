@@ -18,7 +18,12 @@ requirements:
 transpile:
   autogen: true
   binary: python
-    
+
+refactor:
+  autogen: true
+  transforms:
+    - remove_unused_labels
+
 cargo:
   autogen: true
   rustflags: "-C link-args=-Wl,-export-dynamic"
