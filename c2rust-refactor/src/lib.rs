@@ -487,7 +487,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
                         match state.run(&cmd.name, &cmd.args) {
                             Ok(_) => {}
                             Err(e) => {
-                                eprintln!("{:?}", e);
+                                eprintln!("{e}");
                                 std::process::exit(1);
                             }
                         }

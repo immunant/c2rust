@@ -194,7 +194,7 @@ impl InteractState {
                 match self.state.run(&name, &args) {
                     Ok(_) => {}
                     Err(e) => {
-                        eprintln!("{:?}", e);
+                        eprintln!("{e}");
                         panic!("Invalid command.");
                     }
                 }
