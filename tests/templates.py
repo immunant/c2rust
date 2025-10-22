@@ -56,9 +56,27 @@ cd "$SCRIPT_DIR/repo"
 
 LOG_FILE="../`basename "$0"`".log
 rm -f "$LOG_FILE"
+ARTIFACT_ROOT="../../refactor-diffs"
+mkdir -p "$ARTIFACT_ROOT"
+PROJECT_NAME="$(basename "$SCRIPT_DIR")"
+ARTIFACT_DIR="${ARTIFACT_ROOT}/${PROJECT_NAME}"
+rm -rf "$ARTIFACT_DIR"
+mkdir -p "$ARTIFACT_DIR"
 
 while IFS= read -r transform; do
     [[ -z "$transform" ]] && continue
+    SAFE_NAME="$(echo "$transform" | tr '[:space:]/' '__')"
+    DIFF_FILE="$ARTIFACT_DIR/${SAFE_NAME}.diff"
+
+    c2rust-refactor \
+        ${transform} \
+        --cargo --lib \
+        --rewrite-mode diff \
+        > >(tee "$DIFF_FILE" | tee -a "$LOG_FILE") \
+        2> >(tee -a "$LOG_FILE" >&2)
+
+    echo "Saved diff for ${transform} at ${DIFF_FILE}" | tee -a "$LOG_FILE"
+
     c2rust-refactor \
         ${transform} \
         --cargo --lib \
