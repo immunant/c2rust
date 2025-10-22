@@ -5,7 +5,10 @@ requirements:
         - libgcrypt20
         - libpcre3-dev
         - zlib1g-dev
-cargo:
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
   autogen: true
 
 transpile:

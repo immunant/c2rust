@@ -14,5 +14,8 @@ refactor:
   - fix_unused_unsafe
   - remove_redundant_casts
   - noop
-cargo:
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
   autogen: true

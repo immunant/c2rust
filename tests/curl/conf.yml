@@ -20,5 +20,8 @@ refactor:
     transforms:
         - remove_unused_labels
 
-cargo:
+cargo.transpile:
+    autogen: true
+
+cargo.refactor:
     autogen: true

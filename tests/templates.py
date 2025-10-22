@@ -97,26 +97,49 @@ def render_script(template: str, out_path: str, params: Dict):
 
 
 def autogen_cargo(conf_file, yaml: Dict):
-    cargo = yaml.get("cargo")
-    if cargo and isinstance(cargo, Dict):
-        ag = cargo.get("autogen")
-        if ag and isinstance(ag, bool):
-            params = {}
-            rustflags = cargo.get("rustflags")
-            if rustflags and isinstance(rustflags, str):
-                params['extra_rustflags'] = rustflags
+    def render_stage(stage_conf: Dict, filename: str) -> bool:
+        if not stage_conf or not isinstance(stage_conf, Dict):
+            return False
 
-            out_path = os.path.join(
-                os.path.dirname(conf_file),
-                "cargo.gen.sh"
-            )
-            render_script(CARGO_SH, out_path, params)
+        ag = stage_conf.get("autogen")
+        if not (ag and isinstance(ag, bool)):
+            return False
 
-            pre_out_path = os.path.join(
-                os.path.dirname(conf_file),
-                "cargo-pre.gen.sh"
-            )
-            render_script(CARGO_SH, pre_out_path, params)
+        params: Dict[str, str] = {}
+        rustflags = stage_conf.get("rustflags")
+        if rustflags and isinstance(rustflags, str):
+            params["extra_rustflags"] = rustflags
+
+        out_path = os.path.join(
+            os.path.dirname(conf_file),
+            filename
+        )
+        render_script(CARGO_SH, out_path, params)
+        return True
+
+    rendered = False
+
+    for key, fname in (
+        ("cargo.transpile", "cargo.transpile.gen.sh"),
+        ("cargo.refactor", "cargo.refactor.gen.sh"),
+    ):
+        rendered = render_stage(yaml.get(key), fname) or rendered
+
+    if not rendered:
+        cargo = yaml.get("cargo")
+        if render_stage(cargo, "cargo.transpile.gen.sh"):
+            rendered = True
+        if render_stage(cargo, "cargo.refactor.gen.sh"):
+            rendered = True
+
+    legacy_scripts = ("cargo.gen.sh", "cargo-pre.gen.sh")
+    for legacy in legacy_scripts:
+        legacy_path = os.path.join(os.path.dirname(conf_file), legacy)
+        if os.path.exists(legacy_path):
+            try:
+                os.remove(legacy_path)
+            except OSError:
+                pass
 
 
 def autogen_refactor(conf_file, yaml: Dict):

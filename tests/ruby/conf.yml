@@ -13,6 +13,10 @@ transpile:
   binary: ruby
 #  cflags: "-O0"
 
-cargo:
+cargo.transpile:
+  autogen: true
+  xfail: true
+
+cargo.refactor:
   autogen: true
   xfail: true
