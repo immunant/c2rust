@@ -572,7 +572,14 @@ impl RefactorState {
                 s
             }));
 
-        let mut cmd = self.cmd_reg.get_command(cmd_name, &args)?;
+        let mut cmd = self.cmd_reg.get_command(cmd_name, &args).map_err(|mut e| {
+            e.push_str("\nValid commands:");
+            for c in self.cmd_reg.commands.keys() {
+                e.push_str("\n\t");
+                e.push_str(c);
+            }
+            e
+        })?;
         profile_start!(format!("Command {}", cmd_name));
         cmd.run(self);
         profile_end!(format!("Command {}", cmd_name));
