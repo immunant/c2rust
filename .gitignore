@@ -12,8 +12,6 @@
 *.pyc
 .vagrant
 **/compile_commands.json
-**/Cargo.lock
-!/Cargo.lock
 .python-version
 .clangd
 # ignore Clion build dirs
