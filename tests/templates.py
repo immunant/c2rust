@@ -1,7 +1,8 @@
 import os
 import stat
+from collections.abc import Mapping
+from typing import Any, Dict, List
 
-from typing import Dict, List
 from tests.util import *
 from jinja2 import Template
 
@@ -65,22 +66,20 @@ mkdir -p "$ARTIFACT_DIR"
 
 while IFS= read -r transform; do
     [[ -z "$transform" ]] && continue
-    SAFE_NAME="$(echo "$transform" | tr '[:space:]/' '__')"
-    DIFF_FILE="$ARTIFACT_DIR/${SAFE_NAME}.diff"
+    DIFF_FILE="$ARTIFACT_DIR/${transform}.diff"
 
     c2rust-refactor \
         ${transform} \
         --cargo --lib \
         --rewrite-mode diff \
-        > >(tee "$DIFF_FILE" | tee -a "$LOG_FILE") \
-        2> >(tee -a "$LOG_FILE" >&2)
+        >"$DIFF_FILE" \
+        2>>"$LOG_FILE"
 
     if [[ -s "$DIFF_FILE" ]] && grep -q '^@@' "$DIFF_FILE"; then
-        echo "Saved diff for ${transform} at ${DIFF_FILE}" | tee -a "$LOG_FILE"
-        patch -p1 --batch < "$DIFF_FILE" 2>&1 | tee -a "$LOG_FILE"
+        echo "Saved diff for ${transform} at ${DIFF_FILE}" >>"$LOG_FILE"
+        patch -p1 --batch <"$DIFF_FILE" >>"$LOG_FILE" 2>&1
     else
-        echo "No changes produced by ${transform}; removing empty diff ${DIFF_FILE}" | tee -a "$LOG_FILE"
-        rm -f "$DIFF_FILE"
+        echo "No changes produced by ${transform}; leaving empty diff ${DIFF_FILE}" >>"$LOG_FILE"
     fi
 done <<'C2RUST_TRANSFORMS'
 {{transform_lines}}
@@ -97,8 +96,10 @@ def render_script(template: str, out_path: str, params: Dict):
 
 
 def autogen_cargo(conf_file, yaml: Dict):
-    def render_stage(stage_conf: Dict, filename: str) -> bool:
-        if not stage_conf or not isinstance(stage_conf, Dict):
+    def render_stage(stage_conf: Mapping[str, Any] | None, filename: str) -> bool:
+        if not isinstance(stage_conf, Mapping):
+            return False
+        if not stage_conf:
             return False
 
         ag = stage_conf.get("autogen")
@@ -117,29 +118,11 @@ def autogen_cargo(conf_file, yaml: Dict):
         render_script(CARGO_SH, out_path, params)
         return True
 
-    rendered = False
-
     for key, fname in (
         ("cargo.transpile", "cargo.transpile.gen.sh"),
         ("cargo.refactor", "cargo.refactor.gen.sh"),
     ):
-        rendered = render_stage(yaml.get(key), fname) or rendered
-
-    if not rendered:
-        cargo = yaml.get("cargo")
-        if render_stage(cargo, "cargo.transpile.gen.sh"):
-            rendered = True
-        if render_stage(cargo, "cargo.refactor.gen.sh"):
-            rendered = True
-
-    legacy_scripts = ("cargo.gen.sh", "cargo-pre.gen.sh")
-    for legacy in legacy_scripts:
-        legacy_path = os.path.join(os.path.dirname(conf_file), legacy)
-        if os.path.exists(legacy_path):
-            try:
-                os.remove(legacy_path)
-            except OSError:
-                pass
+        render_stage(yaml.get(key), fname)
 
 
 def autogen_refactor(conf_file, yaml: Dict):
