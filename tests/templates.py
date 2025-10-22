@@ -112,6 +112,12 @@ def autogen_cargo(conf_file, yaml: Dict):
             )
             render_script(CARGO_SH, out_path, params)
 
+            pre_out_path = os.path.join(
+                os.path.dirname(conf_file),
+                "cargo-pre.gen.sh"
+            )
+            render_script(CARGO_SH, pre_out_path, params)
+
 
 def autogen_refactor(conf_file, yaml: Dict):
     refactor = yaml.get("refactor")

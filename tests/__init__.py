@@ -15,6 +15,7 @@ class Test(object):
         "configure": ["configure.sh"],
         "make": ["make.sh", "cmake.sh"],
         "transpile": ["transpile.gen.sh", "transpile.sh"],
+        "cargo-pre": ["cargo-pre.gen.sh", "cargo-pre.sh"],
         "refactor": ["refactor.gen.sh", "refactor.sh"],
         "cargo": ["cargo.gen.sh", "cargo.sh"],
         "check": ["check.sh", "test.sh"]
