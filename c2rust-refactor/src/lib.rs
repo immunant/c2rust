@@ -283,7 +283,6 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 
             let args = cmd
                 .get_args()
-                .iter()
                 .map(|os| os.to_str().unwrap().to_owned())
                 .collect();
             let mut g = self.pkg_args.lock().unwrap();
