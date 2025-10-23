@@ -24,6 +24,10 @@ refactor:
   transforms:
     - remove_unused_labels
 
-cargo:
+cargo.transpile:
+  autogen: true
+  rustflags: "-C link-args=-Wl,-export-dynamic"
+
+cargo.refactor:
   autogen: true
   rustflags: "-C link-args=-Wl,-export-dynamic"

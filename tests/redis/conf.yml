@@ -5,5 +5,8 @@ transpile:
   # needs support for __atomic_*
   xfail: true
 
-cargo:
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
   autogen: true

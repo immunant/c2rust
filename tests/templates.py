@@ -1,7 +1,8 @@
 import os
 import stat
+from collections.abc import Mapping
+from typing import Any, Dict, List
 
-from typing import Dict, List
 from tests.util import *
 from jinja2 import Template
 
@@ -56,14 +57,29 @@ cd "$SCRIPT_DIR/repo"
 
 LOG_FILE="../`basename "$0"`".log
 rm -f "$LOG_FILE"
+ARTIFACT_ROOT="../../refactor-diffs"
+PROJECT_NAME="$(basename "$SCRIPT_DIR")"
+ARTIFACT_DIR="${ARTIFACT_ROOT}/${PROJECT_NAME}"
+rm -rf "$ARTIFACT_DIR"
+mkdir -p "$ARTIFACT_DIR"
 
 while IFS= read -r transform; do
     [[ -z "$transform" ]] && continue
+    DIFF_FILE="$ARTIFACT_DIR/${transform}.diff"
+
     c2rust-refactor \
         ${transform} \
         --cargo --lib \
-        --rewrite-mode inplace \
-        2>&1 | tee -a "$LOG_FILE"
+        --rewrite-mode diff \
+        >"$DIFF_FILE" \
+        2>>"$LOG_FILE"
+
+    if [[ -s "$DIFF_FILE" ]] && grep -q '^@@' "$DIFF_FILE"; then
+        echo "Saved diff for ${transform} at ${DIFF_FILE}" >>"$LOG_FILE"
+        patch -p1 --batch <"$DIFF_FILE" >>"$LOG_FILE" 2>&1
+    else
+        echo "No changes produced by ${transform}; leaving empty diff ${DIFF_FILE}" >>"$LOG_FILE"
+    fi
 done <<'C2RUST_TRANSFORMS'
 {{transform_lines}}
 C2RUST_TRANSFORMS
@@ -79,20 +95,33 @@ def render_script(template: str, out_path: str, params: Dict):
 
 
 def autogen_cargo(conf_file, yaml: Dict):
-    cargo = yaml.get("cargo")
-    if cargo and isinstance(cargo, Dict):
-        ag = cargo.get("autogen")
-        if ag and isinstance(ag, bool):
-            params = {}
-            rustflags = cargo.get("rustflags")
-            if rustflags and isinstance(rustflags, str):
-                params['extra_rustflags'] = rustflags
+    def render_stage(stage_conf: Mapping[str, Any] | None, filename: str) -> bool:
+        if not isinstance(stage_conf, Mapping):
+            return False
+        if not stage_conf:
+            return False
 
-            out_path = os.path.join(
-                os.path.dirname(conf_file),
-                "cargo.gen.sh"
-            )
-            render_script(CARGO_SH, out_path, params)
+        ag = stage_conf.get("autogen")
+        if not (ag and isinstance(ag, bool)):
+            return False
+
+        params: Dict[str, str] = {}
+        rustflags = stage_conf.get("rustflags")
+        if rustflags and isinstance(rustflags, str):
+            params["extra_rustflags"] = rustflags
+
+        out_path = os.path.join(
+            os.path.dirname(conf_file),
+            filename
+        )
+        render_script(CARGO_SH, out_path, params)
+        return True
+
+    for key, fname in (
+        ("cargo.transpile", "cargo.transpile.gen.sh"),
+        ("cargo.refactor", "cargo.refactor.gen.sh"),
+    ):
+        render_stage(yaml.get(key), fname)
 
 
 def autogen_refactor(conf_file, yaml: Dict):

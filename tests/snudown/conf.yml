@@ -9,5 +9,8 @@ transpile:
   autogen: true
   tflags: --reorganize-definitions
 
-cargo:
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
   autogen: true
