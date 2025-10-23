@@ -77,11 +77,10 @@ while IFS= read -r transform; do
 
     if [[ -s "$DIFF_FILE" ]] && grep -q '^@@' "$DIFF_FILE"; then
         echo "Saved diff for ${transform} at ${DIFF_FILE}" >>"$LOG_FILE"
+        patch -p1 --batch <"$DIFF_FILE" >>"$LOG_FILE" 2>&1
     else
         echo "No changes produced by ${transform}; leaving empty diff ${DIFF_FILE}" >>"$LOG_FILE"
     fi
-
-    patch -p1 --batch <"$DIFF_FILE" >>"$LOG_FILE" 2>&1
 done <<'C2RUST_TRANSFORMS'
 {{transform_lines}}
 C2RUST_TRANSFORMS
