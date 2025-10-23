@@ -143,4 +143,5 @@ jobs:
         path: |
           ${{ github.workspace }}/testsuite/**/*.log
           ${{ github.workspace }}/testsuite/**/compile_commands.json
+          ${{ github.workspace }}/testsuite/tests/refactor-diffs/**
       if: always()
