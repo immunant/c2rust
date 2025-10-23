@@ -1,7 +1,7 @@
 import os
 import stat
 from collections.abc import Mapping
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from tests.util import *
 from jinja2 import Template
@@ -58,7 +58,6 @@ cd "$SCRIPT_DIR/repo"
 LOG_FILE="../`basename "$0"`".log
 rm -f "$LOG_FILE"
 ARTIFACT_ROOT="../../refactor-diffs"
-mkdir -p "$ARTIFACT_ROOT"
 PROJECT_NAME="$(basename "$SCRIPT_DIR")"
 ARTIFACT_DIR="${ARTIFACT_ROOT}/${PROJECT_NAME}"
 rm -rf "$ARTIFACT_DIR"
@@ -96,7 +95,7 @@ def render_script(template: str, out_path: str, params: Dict):
 
 
 def autogen_cargo(conf_file, yaml: Dict):
-    def render_stage(stage_conf: Optional[Mapping[str, Any]], filename: str) -> bool:
+    def render_stage(stage_conf: Mapping[str, Any] | None, filename: str) -> bool:
         if not isinstance(stage_conf, Mapping):
             return False
         if not stage_conf:
