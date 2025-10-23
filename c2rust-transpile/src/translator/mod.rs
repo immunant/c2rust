@@ -4335,10 +4335,7 @@ impl<'c> Translation<'c> {
 
                             return Ok(WithStmts::new(stmts, val));
                         }
-                        _ => {
-                            self.use_feature("label_break_value");
-                            stmts.push(stmt)
-                        }
+                        _ => stmts.push(stmt),
                     }
                 }
 
