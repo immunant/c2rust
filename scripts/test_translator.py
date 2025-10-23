@@ -497,7 +497,7 @@ class TestDirectory:
         # We `c2rust-transpile` `*.c` files individually, so `--emit-build-files` doesn't work
         # (if it's generated, it's in the wrong directory and may be different for each transpiled file).
         # We could also change things to transpile all `*.c` files at once, but that's more involved.
-        generated_rust_toolchain = Path(__file__).parent / "../c2rust-transpile/src/build_files/generated-rust-toolchain.toml"
+        generated_rust_toolchain = Path(c.TRANSPILE_CRATE_DIR) / "src/build_files/generated-rust-toolchain.toml"
         rust_toolchain = Path(self.full_path) / "rust-toolchain.toml"
         rust_toolchain.unlink(missing_ok=True)
         rust_toolchain.symlink_to(generated_rust_toolchain)
