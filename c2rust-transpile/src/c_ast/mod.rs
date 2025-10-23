@@ -1018,7 +1018,7 @@ impl TypedAstContext {
     /// we can look up the [`Translation::expr_override_tys`],
     /// which are set when the macro expansion expressions are converted.
     pub fn sort_top_decls_for_converting(&mut self) {
-        self.c_decls_top.sort_unstable_by_key(|decl_id| {
+        self.c_decls_top.sort_by_key(|decl_id| {
             let reverse_order = match self.c_decls.get(decl_id).unwrap().kind {
                 CDeclKind::MacroFunction { .. } => 0,
                 CDeclKind::MacroObject { .. } => 1,
@@ -1033,7 +1033,7 @@ impl TypedAstContext {
     /// This preserves the order when we emit the converted declarations.
     pub fn sort_top_decls_for_emitting(&mut self) {
         let mut decls_top = mem::take(&mut self.c_decls_top);
-        decls_top.sort_unstable_by(|a, b| {
+        decls_top.sort_by(|a, b| {
             let a = self.index(*a);
             let b = self.index(*b);
             use Ordering::*;
