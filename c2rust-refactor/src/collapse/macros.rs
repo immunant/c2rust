@@ -338,18 +338,20 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
 /// with known effects (such as `#[cfg]`, which removes itself when the condition is met) and tries
 /// to reverse those specific effects on `new.attrs`.
 fn restore_attrs(new_attrs: &mut Vec<Attribute>, old_attrs: &[Attribute]) {
-    // If the original item had a `#[derive]` attr, transfer it to the new one.
-    // TODO: handle multiple instances of `#[derive]`
-    // TODO: try to keep attrs in the same order
-    if let Some(attr) = crate::util::find_by_name(old_attrs, sym::derive) {
-        if !crate::util::contains_name(&new_attrs, sym::derive) {
-            new_attrs.push(attr.clone());
-        }
+    fn same_attr(a: &Attribute, b: &Attribute) -> bool {
+        Iterator::eq(
+            a.tokens().to_tokenstream().into_trees(),
+            b.tokens().to_tokenstream().into_trees(),
+        )
     }
 
-    if let Some(attr) = crate::util::find_by_name(old_attrs, sym::cfg) {
-        if !crate::util::contains_name(&new_attrs, sym::cfg) {
-            new_attrs.push(attr.clone());
+    // If the original item had `#[derive]` or `#[cfg]` attrs, transfer them to the new one.
+    for old_attr in old_attrs.iter().rev() {
+        if old_attr.has_name(sym::derive) || old_attr.has_name(sym::cfg) {
+            // Only copy the attr if an identical one is not already present.
+            if !new_attrs.iter().any(|a| same_attr(a, old_attr)) {
+                new_attrs.push(old_attr.clone());
+            }
         }
     }
 
@@ -358,6 +360,9 @@ fn restore_attrs(new_attrs: &mut Vec<Attribute>, old_attrs: &[Attribute]) {
         // (It can be written explicitly, but is also inserted by #[derive(Eq)].)
         !attr.has_name(sym::structural_match)
     });
+
+    // Sort the attributes by their original source position to avoid reordering.
+    new_attrs.sort_by_key(|attr| attr.span.lo());
 }
 
 fn spans_overlap(sp1: Span, sp2: Span) -> bool {
