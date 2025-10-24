@@ -109,6 +109,11 @@ fn test_rename_unnamed() {
     test_refactor("rename_unnamed");
 }
 
+#[test]
+fn test_reorder_derives() {
+    test_refactor_named("noop", "reorder_derives.rs");
+}
+
 #[cfg(target_os = "linux")] // `statvfs` and `statfs64` are Linux only.
 #[test]
 fn test_reorganize_definitions() {
