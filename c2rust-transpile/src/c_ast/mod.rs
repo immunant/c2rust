@@ -513,6 +513,7 @@ impl TypedAstContext {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
             Attributed(ty, _) => ty.ctype,
+            CountAttributed(ty, ..) => ty.ctype,
             Elaborated(ty) => ty,
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
@@ -2095,6 +2096,9 @@ pub enum CTypeKind {
 
     Attributed(CQualTypeId, Option<Attribute>),
 
+    /// A `counted_by` or `sized_by` attributed type.
+    CountAttributed(CQualTypeId, CountAttribute, CExprId),
+
     BlockPointer(CQualTypeId),
 
     Vector(CQualTypeId, usize),
@@ -2127,6 +2131,19 @@ pub enum CTypeKind {
     SSize,
     PtrDiff,
     WChar,
+}
+
+/// An enumeration of supported `counted_by` and `sized_by` attributes.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum CountAttribute {
+    /// `__attribute__((counted_by(field)))`
+    CountedBy,
+    /// `__attribute__((sized_by(field)))`
+    SizedBy,
+    /// `__attribute__((counted_by_or_null(field)))`
+    CountedByOrNull,
+    /// `__attribute__((sized_by_or_null(field)))`
+    SizedByOrNull,
 }
 
 impl CTypeKind {
