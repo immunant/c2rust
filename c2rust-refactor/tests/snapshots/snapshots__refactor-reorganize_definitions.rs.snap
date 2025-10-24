@@ -78,9 +78,9 @@ pub mod bar {
     //test1
     type OtherInt = i32;
     // Comment on bar_t
-
-    #[repr(C)]
     #[derive(Copy, Clone)]
+    #[repr(C)]
+
     pub struct bar_t {
         //test1
         pub alloc: *mut libc::c_char,
@@ -106,9 +106,8 @@ pub mod foo {
     use crate::compat_h::conflicting_1;
 
     // Comment on foo_t
-
-    #[repr(C)]
     #[derive(Copy, Clone)]
+    #[repr(C)]
     pub struct foo_t {
         pub alloc: *mut libc::c_char,
         pub data: *mut libc::c_char,

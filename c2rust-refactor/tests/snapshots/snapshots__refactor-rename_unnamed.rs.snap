@@ -14,22 +14,21 @@ expression: c2rust-refactor rename_unnamed --rewrite-mode alongside -- tests/sna
 pub mod bar {
     #[header_src = "/home/user/some/workspace/foobar/bar.h"]
     pub mod bar_h {
-
-        #[repr(C)]
         #[derive(Copy, Clone)]
+        #[repr(C)]
         pub struct C2RustUnnamed_0 {
             a: usize,
         }
 
-        #[repr(C)]
         #[derive(Copy, Clone)]
+        #[repr(C)]
         pub struct C2RustUnnamed_1 {
             x: i32,
             y: i32,
         }
 
-        #[repr(C)]
         #[derive(Copy, Clone)]
+        #[repr(C)]
         pub struct bar_t {
             u: C2RustUnnamed_0,
         }
@@ -40,21 +39,20 @@ pub mod bar {
 pub mod foo {
     #[header_src = "/home/user/some/workspace/foobar/foo.h"]
     pub mod foo_h {
-
-        #[repr(C)]
         #[derive(Copy, Clone)]
+        #[repr(C)]
         pub struct C2RustUnnamed_2 {
             b: usize,
         }
 
-        #[repr(C)]
         #[derive(Copy, Clone)]
+        #[repr(C)]
         pub struct C2RustUnnamed_3 {
             c: usize,
         }
 
-        #[repr(C)]
         #[derive(Copy, Clone)]
+        #[repr(C)]
         pub struct foo_t {
             u: C2RustUnnamed_2,
         }
@@ -63,9 +61,8 @@ pub mod foo {
     use self::foo_h::foo_t;
     use self::foo_h::C2RustUnnamed_2;
     use self::foo_h::C2RustUnnamed_3;
-
-    #[repr(C)]
     #[derive(Copy, Clone)]
+    #[repr(C)]
     pub struct foo_bar {
         u: C2RustUnnamed_2,
         u2: C2RustUnnamed_3,
