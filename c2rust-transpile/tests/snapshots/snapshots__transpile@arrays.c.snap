@@ -40,45 +40,47 @@ static mut foo: *mut ::core::ffi::c_char =
     b"mystring\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
 #[no_mangle]
 pub unsafe extern "C" fn entry() {
-    let mut arr: [[::core::ffi::c_int; 1]; 1] = [[1 as ::core::ffi::c_int]];
-    arr[0 as ::core::ffi::c_int as usize][0 as ::core::ffi::c_int as usize] +=
+    let mut int_2d: [[::core::ffi::c_int; 1]; 1] = [[1 as ::core::ffi::c_int]];
+    int_2d[0 as ::core::ffi::c_int as usize][0 as ::core::ffi::c_int as usize] +=
         9 as ::core::ffi::c_int;
-    let mut arr2: [::core::ffi::c_int; 16] = [0; 16];
-    arr2[15 as ::core::ffi::c_int as usize] += 9 as ::core::ffi::c_int;
-    let mut arr3: [C2RustUnnamed_0; 1] = [C2RustUnnamed_0 {
+    let mut int_empty_init: [::core::ffi::c_int; 16] = [0; 16];
+    int_empty_init[15 as ::core::ffi::c_int as usize] += 9 as ::core::ffi::c_int;
+    let mut int_too_long: [::core::ffi::c_int; 2] =
+        [1 as ::core::ffi::c_int, 2 as ::core::ffi::c_int];
+    let mut int_zero: [::core::ffi::c_int; 0] = [0; 0];
+    let mut int_too_short: [::core::ffi::c_int; 16] = [0 as ::core::ffi::c_int; 16];
+    int_too_short[15 as ::core::ffi::c_int as usize] += 9 as ::core::ffi::c_int;
+    let mut struct_init_too_short: [C2RustUnnamed_0; 1] = [C2RustUnnamed_0 {
         x: 0 as *mut ::core::ffi::c_char,
         y: 0,
     }; 1];
-    arr3[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
-    let mut arr4: [::core::ffi::c_int; 16] = [0 as ::core::ffi::c_int; 16];
-    arr4[15 as ::core::ffi::c_int as usize] += 9 as ::core::ffi::c_int;
-    let mut arr5: [C2RustUnnamed; 1] = [{
+    struct_init_too_short[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
+    let mut struct_init_too_long: [C2RustUnnamed; 1] = [{
         let mut init = C2RustUnnamed {
             y: 1 as ::core::ffi::c_int,
         };
         init
     }];
-    arr5[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
-    let mut arr6: [::core::ffi::c_int; 2] = [1 as ::core::ffi::c_int, 2 as ::core::ffi::c_int];
-    let mut arr7: [::core::ffi::c_int; 0] = [0; 0];
-    let mut abc: [::core::ffi::c_char; 4] =
+    struct_init_too_long[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
+    let mut char_with_string: [::core::ffi::c_char; 4] =
         ::core::mem::transmute::<[u8; 4], [::core::ffi::c_char; 4]>(*b"abc\0");
-    let mut def: [::core::ffi::c_char; 3] = [
+    let mut char_with_chars: [::core::ffi::c_char; 3] = [
         'd' as i32 as ::core::ffi::c_char,
         'e' as i32 as ::core::ffi::c_char,
         'f' as i32 as ::core::ffi::c_char,
     ];
-    let mut part: [::core::ffi::c_char; 2] = [1 as ::core::ffi::c_int as ::core::ffi::c_char, 0];
-    let mut abcptr: *mut ::core::ffi::c_char =
-        b"abc\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
-    let mut init: [::core::ffi::c_char; 5] =
+    let mut char_with_ints: [::core::ffi::c_char; 2] =
+        [1 as ::core::ffi::c_int as ::core::ffi::c_char, 0];
+    let mut char_with_init: [::core::ffi::c_char; 5] =
         ::core::mem::transmute::<[u8; 5], [::core::ffi::c_char; 5]>(*b"abcd\0");
-    let mut too_long: [::core::ffi::c_char; 3] =
+    let mut char_too_long: [::core::ffi::c_char; 3] =
         ::core::mem::transmute::<[u8; 3], [::core::ffi::c_char; 3]>(*b"abc");
-    let mut too_short: [::core::ffi::c_char; 20] = ::core::mem::transmute::<
-        [u8; 20],
-        [::core::ffi::c_char; 20],
-    >(*b"abc\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+    let mut char_too_short: [::core::ffi::c_char; 20] =
+        ::core::mem::transmute::<[u8; 20], [::core::ffi::c_char; 20]>(
+            *b"abc\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+        );
+    let mut char_ptr: *mut ::core::ffi::c_char =
+        b"abc\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
     let mut past_end: *mut ::core::ffi::c_char = &mut *simple
         .as_mut_ptr()
         .offset(::core::mem::size_of::<[::core::ffi::c_char; 9]>() as isize)
