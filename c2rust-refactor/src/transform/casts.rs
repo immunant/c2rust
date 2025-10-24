@@ -166,7 +166,7 @@ fn check_double_cast<'tcx>(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> 
         | (SameWidth, Extend(s))
         | (SameWidth, FromPointer(s))
         | (SameWidth, ToPointer(s))
-            if s == e_ty.is_signed() =>
+            if s == e_ty.is_signed() && s == t1_ty.is_signed() =>
         {
             DoubleCastAction::RemoveInner
         }
@@ -178,12 +178,19 @@ fn check_double_cast<'tcx>(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> 
 }
 
 enum CastKind {
+    /// Sign-extend (true) or zero-extend (false).
     Extend(bool),
+    /// Simply truncate high-order bits.
     Truncate,
+    /// Bits are unchanged but value interpretation (e.g. when high bit is set) may change
     SameWidth,
+    /// Cast from pointer width, truncating or extending (e.g. to 128-bit ints, sext if payload true, else zext).
     FromPointer(bool),
+    /// Cast to pointer (signed if payload is true), sext or zext depending on input signedness, truncating if input wider than pointers.
     ToPointer(bool),
+    /// Cast has semantics not captured by bit-vector changes (provenance or decay).
     Required,
+    /// Presently, integer-float casts are not modelled precisely.
     Unknown,
 }
 
