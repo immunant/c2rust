@@ -25,7 +25,14 @@ void entry(void) {
     char char_too_long[3] = "abcde";
     char char_too_short[20] = "abc";
 
-    char *char_ptr = "abc";
+    int *int_var_ptr = int_empty_init;
+    int (*int_var_array_ptr)[16] = &int_empty_init;
+    char *char_var_ptr_var = char_with_string;
+    char (*char_var_array_ptr)[4] = &char_with_string;
+    const char *const_char_lit_ptr = "abc";
+    const char (*const_char_lit_array_ptr)[4] = &"abc";
+    char *char_lit_ptr = "abc";
+    char (*char_lit_array_ptr)[4] = &"abc";
 
 // TODO re-enable after #1266 adds portable support for translating `wchar_t`.
 #if 0
