@@ -97,7 +97,7 @@ class CFile:
             args.append("--translate-const-macros")
             args.append("experimental")
         if self.reorganize_definitions:
-            args.append("--reorganize-definitions")
+            args.append("--reorganize-definitions=true")
         if self.emit_build_files:
             args.append("--emit-build-files")
 
