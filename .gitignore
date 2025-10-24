@@ -10,6 +10,7 @@
 **/tests/
 /build
 *.pyc
+/scripts/venv
 .vagrant
 **/compile_commands.json
 **/Cargo.lock
