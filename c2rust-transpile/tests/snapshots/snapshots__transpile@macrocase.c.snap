@@ -11,20 +11,20 @@ input_file: c2rust-transpile/tests/snapshots/macrocase.c
     unused_assignments,
     unused_mut
 )]
-pub type ZSTD_dParameter = core::ffi::c_uint;
+pub type ZSTD_dParameter = ::core::ffi::c_uint;
 pub const ZSTD_d_experimentalParam1: ZSTD_dParameter = 1000;
 pub const ZSTD_d_windowLogMax: ZSTD_dParameter = 100;
-pub const ZSTD_d_format: core::ffi::c_uint = 1000 as core::ffi::c_uint;
+pub const ZSTD_d_format: ::core::ffi::c_uint = 1000 as ::core::ffi::c_uint;
 #[no_mangle]
-pub unsafe extern "C" fn ZSTD_dParam_getBounds(mut dParam: ZSTD_dParameter) -> core::ffi::c_int {
-    let mut bounds: core::ffi::c_int = 0 as core::ffi::c_int;
-    match dParam as core::ffi::c_uint {
+pub unsafe extern "C" fn ZSTD_dParam_getBounds(mut dParam: ZSTD_dParameter) -> ::core::ffi::c_int {
+    let mut bounds: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    match dParam as ::core::ffi::c_uint {
         100 => {
-            bounds = 1 as core::ffi::c_int;
+            bounds = 1 as ::core::ffi::c_int;
             return bounds;
         }
         1000 => {
-            bounds = 5 as core::ffi::c_int;
+            bounds = 5 as ::core::ffi::c_int;
             return bounds;
         }
         _ => {}

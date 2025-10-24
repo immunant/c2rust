@@ -13,9 +13,9 @@ input_file: c2rust-transpile/tests/snapshots/arch-specific/spin.c
 )]
 #![feature(stdsimd)]
 #[cfg(target_arch = "aarch64")]
-pub use core::arch::aarch64::__yield;
+pub use ::core::arch::aarch64::__yield;
 #[cfg(target_arch = "arm")]
-pub use core::arch::arm::__yield;
+pub use ::core::arch::arm::__yield;
 #[no_mangle]
 pub unsafe extern "C" fn spin() {
     __yield();

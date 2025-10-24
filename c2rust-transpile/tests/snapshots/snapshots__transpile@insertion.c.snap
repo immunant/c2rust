@@ -12,13 +12,14 @@ input_file: c2rust-transpile/tests/snapshots/insertion.c
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn insertion_sort(n: core::ffi::c_int, p: *mut core::ffi::c_int) {
-    let mut i: core::ffi::c_int = 1 as core::ffi::c_int;
+pub unsafe extern "C" fn insertion_sort(n: ::core::ffi::c_int, p: *mut ::core::ffi::c_int) {
+    let mut i: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
     while i < n {
-        let tmp: core::ffi::c_int = *p.offset(i as isize);
-        let mut j: core::ffi::c_int = i;
-        while j > 0 as core::ffi::c_int && *p.offset((j - 1 as core::ffi::c_int) as isize) > tmp {
-            *p.offset(j as isize) = *p.offset((j - 1 as core::ffi::c_int) as isize);
+        let tmp: ::core::ffi::c_int = *p.offset(i as isize);
+        let mut j: ::core::ffi::c_int = i;
+        while j > 0 as ::core::ffi::c_int && *p.offset((j - 1 as ::core::ffi::c_int) as isize) > tmp
+        {
+            *p.offset(j as isize) = *p.offset((j - 1 as ::core::ffi::c_int) as isize);
             j -= 1;
         }
         *p.offset(j as isize) = tmp;

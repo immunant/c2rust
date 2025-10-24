@@ -12,13 +12,18 @@ input_file: c2rust-transpile/tests/snapshots/os-specific/rotate.c
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn rotate_left_64(mut x: core::ffi::c_ulonglong) -> core::ffi::c_ulonglong {
-    return (x as core::ffi::c_ulong).rotate_left(4 as core::ffi::c_int as core::ffi::c_ulong as u32)
-        as core::ffi::c_ulonglong;
+pub unsafe extern "C" fn rotate_left_64(
+    mut x: ::core::ffi::c_ulonglong,
+) -> ::core::ffi::c_ulonglong {
+    return (x as ::core::ffi::c_ulong)
+        .rotate_left(4 as ::core::ffi::c_int as ::core::ffi::c_ulong as u32)
+        as ::core::ffi::c_ulonglong;
 }
 #[no_mangle]
-pub unsafe extern "C" fn rotate_right_64(mut x: core::ffi::c_ulonglong) -> core::ffi::c_ulonglong {
-    return (x as core::ffi::c_ulong)
-        .rotate_right(4 as core::ffi::c_int as core::ffi::c_ulong as u32)
-        as core::ffi::c_ulonglong;
+pub unsafe extern "C" fn rotate_right_64(
+    mut x: ::core::ffi::c_ulonglong,
+) -> ::core::ffi::c_ulonglong {
+    return (x as ::core::ffi::c_ulong)
+        .rotate_right(4 as ::core::ffi::c_int as ::core::ffi::c_ulong as u32)
+        as ::core::ffi::c_ulonglong;
 }

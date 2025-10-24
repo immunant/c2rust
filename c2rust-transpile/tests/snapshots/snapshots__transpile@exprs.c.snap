@@ -12,23 +12,23 @@ input_file: c2rust-transpile/tests/snapshots/exprs.c
     unused_mut
 )]
 extern "C" {
-    fn puts(str: *const core::ffi::c_char) -> core::ffi::c_int;
+    fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }
-pub type C2RustUnnamed = core::ffi::c_uint;
+pub type C2RustUnnamed = ::core::ffi::c_uint;
 pub const C: C2RustUnnamed = 2;
 pub const B: C2RustUnnamed = 1;
 pub const A: C2RustUnnamed = 0;
-unsafe extern "C" fn side_effect() -> core::ffi::c_int {
-    puts(b"the return of side effect\0" as *const u8 as *const core::ffi::c_char);
-    return 10 as core::ffi::c_int;
+unsafe extern "C" fn side_effect() -> ::core::ffi::c_int {
+    puts(b"the return of side effect\0" as *const u8 as *const ::core::ffi::c_char);
+    return 10 as ::core::ffi::c_int;
 }
 #[no_mangle]
 pub unsafe extern "C" fn unary_without_side_effect() {
-    let mut i: core::ffi::c_int = 5 as core::ffi::c_int;
+    let mut i: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
     -i;
     i;
     !i;
-    (i == 0) as core::ffi::c_int;
+    (i == 0) as ::core::ffi::c_int;
     &mut i;
     i;
     i += 1;
@@ -38,15 +38,15 @@ pub unsafe extern "C" fn unary_without_side_effect() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn unary_with_side_effect() {
-    let mut arr: [*mut core::ffi::c_char; 1] = [0 as *mut core::ffi::c_char];
+    let mut arr: [*mut ::core::ffi::c_char; 1] = [0 as *mut ::core::ffi::c_char];
     -side_effect();
     side_effect();
     !side_effect();
-    (side_effect() == 0) as core::ffi::c_int;
-    &*(b"\0" as *const u8 as *const core::ffi::c_char).offset(::core::mem::transmute::<
-        unsafe extern "C" fn() -> core::ffi::c_int,
-        unsafe extern "C" fn() -> core::ffi::c_int,
-    >(side_effect)() as isize) as *const core::ffi::c_char;
+    (side_effect() == 0) as ::core::ffi::c_int;
+    &*(b"\0" as *const u8 as *const ::core::ffi::c_char).offset(::core::mem::transmute::<
+        unsafe extern "C" fn() -> ::core::ffi::c_int,
+        unsafe extern "C" fn() -> ::core::ffi::c_int,
+    >(side_effect)() as isize) as *const ::core::ffi::c_char;
     *arr[side_effect() as usize];
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(1);
     arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);
@@ -55,5 +55,5 @@ pub unsafe extern "C" fn unary_with_side_effect() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn compound_literal() {
-    let mut i: core::ffi::c_int = B as core::ffi::c_int;
+    let mut i: ::core::ffi::c_int = B as ::core::ffi::c_int;
 }

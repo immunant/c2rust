@@ -12,7 +12,7 @@ input_file: c2rust-transpile/tests/snapshots/os-specific/rnd.c
     unused_mut
 )]
 extern "C" {
-    fn abs(__x: core::ffi::c_int) -> core::ffi::c_int;
+    fn abs(__x: ::core::ffi::c_int) -> ::core::ffi::c_int;
 }
 pub type __int32_t = i32;
 pub type __uint32_t = u32;
@@ -31,6 +31,6 @@ pub unsafe extern "C" fn get_rand_seed() -> uint32_t {
     cur_rand_seed = MULTIPLIER
         .wrapping_mul(cur_rand_seed)
         .wrapping_add(INCREMENT);
-    let mut ret: uint32_t = abs(cur_rand_seed as core::ffi::c_int) as uint32_t;
+    let mut ret: uint32_t = abs(cur_rand_seed as ::core::ffi::c_int) as uint32_t;
     return ret;
 }

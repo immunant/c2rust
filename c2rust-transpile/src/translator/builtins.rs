@@ -90,14 +90,14 @@ impl<'c> Translation<'c> {
                 self.use_crate(ExternCrate::F128);
 
                 Ok(WithStmts::new_val(
-                    mk().path_expr(vec!["f128", "f128", "NAN"]),
+                    mk().abs_path_expr(vec!["f128", "f128", "NAN"]),
                 ))
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 // Long doubles require the Float trait from num_traits to call this method
                 if builtin_name == "__builtin_signbitl" {
                     self.with_cur_file_item_store(|item_store| {
-                        item_store.add_use(vec!["num_traits".into()], "Float");
+                        item_store.add_use(true, vec!["num_traits".into()], "Float");
                     });
                 }
 
@@ -106,7 +106,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
-                    mk().cast_expr(val, mk().path_ty(vec!["core", "ffi", "c_int"]))
+                    mk().cast_expr(val, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))
                 }))
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
@@ -309,7 +309,7 @@ impl<'c> Translation<'c> {
                             Some(mk().lit_expr(mk().int_lit(0, "isize"))),
                         );
                         self.use_crate(ExternCrate::Libc);
-                        let size_t = mk().path_ty(vec!["libc", "size_t"]);
+                        let size_t = mk().abs_path_ty(vec!["libc", "size_t"]);
                         mk().cast_expr(if_expr, size_t)
                     }))
                 })
@@ -772,7 +772,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = &builtin_name[10..];
         self.use_crate(ExternCrate::Libc);
-        let mem = mk().path_expr(vec!["libc", name]);
+        let mem = mk().abs_path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args, None)?;
         args.and_then(|args| {
             if args.len() != arg_types.len() {
@@ -791,7 +791,7 @@ impl<'c> Translation<'c> {
                 .map(|(arg, &ty)| {
                     if ty == LibcFnArgType::Size {
                         self.use_crate(ExternCrate::Libc);
-                        mk().cast_expr(arg, mk().path_ty(vec!["libc", "size_t"]))
+                        mk().cast_expr(arg, mk().abs_path_ty(vec!["libc", "size_t"]))
                     } else {
                         arg
                     }

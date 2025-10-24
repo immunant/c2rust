@@ -11,12 +11,12 @@ input_file: c2rust-transpile/tests/snapshots/os-specific/sigign.c
     unused_assignments,
     unused_mut
 )]
-pub type __sighandler_t = Option<unsafe extern "C" fn(core::ffi::c_int) -> ()>;
+pub type __sighandler_t = Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>;
 #[no_mangle]
 pub unsafe extern "C" fn foo() {
-    let mut handler: Option<unsafe extern "C" fn(core::ffi::c_int) -> ()> =
+    let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
         ::core::mem::transmute::<
-            libc::intptr_t,
-            Option<unsafe extern "C" fn(core::ffi::c_int) -> ()>,
-        >(1 as core::ffi::c_int as libc::intptr_t);
+            ::libc::intptr_t,
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>,
+        >(1 as ::core::ffi::c_int as ::libc::intptr_t);
 }

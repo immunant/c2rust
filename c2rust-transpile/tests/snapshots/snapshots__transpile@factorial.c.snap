@@ -12,11 +12,11 @@ input_file: c2rust-transpile/tests/snapshots/factorial.c
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn factorial(mut n: core::ffi::c_ushort) -> core::ffi::c_ushort {
-    let mut result: core::ffi::c_ushort = 1 as core::ffi::c_ushort;
-    let mut i: core::ffi::c_ushort = 1 as core::ffi::c_ushort;
-    while (i as core::ffi::c_int) < n as core::ffi::c_int {
-        result = (result as core::ffi::c_int * i as core::ffi::c_int) as core::ffi::c_ushort;
+pub unsafe extern "C" fn factorial(mut n: ::core::ffi::c_ushort) -> ::core::ffi::c_ushort {
+    let mut result: ::core::ffi::c_ushort = 1 as ::core::ffi::c_ushort;
+    let mut i: ::core::ffi::c_ushort = 1 as ::core::ffi::c_ushort;
+    while (i as ::core::ffi::c_int) < n as ::core::ffi::c_int {
+        result = (result as ::core::ffi::c_int * i as ::core::ffi::c_int) as ::core::ffi::c_ushort;
         i = i.wrapping_add(1);
     }
     return result;

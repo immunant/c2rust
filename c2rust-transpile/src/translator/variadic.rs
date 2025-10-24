@@ -195,7 +195,7 @@ impl<'c> Translation<'c> {
                 real_arg_ty = Some(arg_ty.clone());
                 arg_ty = mk()
                     .mutbl()
-                    .ptr_ty(mk().path_ty(vec!["core", "ffi", "c_void"]));
+                    .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"]));
             }
 
             val.and_then(|val| {
