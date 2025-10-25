@@ -151,29 +151,40 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(val))
             }
 
-            CLiteral::String(ref val, width) => {
-                let mut val = val.to_owned();
-                let num_elems = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::ConstantArray(_elem_ty, num_elems) => num_elems,
-                    ref kind => {
-                        panic!("String literal with unknown size: {val:?}, kind = {kind:?}")
-                    }
-                };
-
-                // Match the literal size to the expected size padding with zeros as needed
-                let size = num_elems * (width as usize);
-                val.resize(size, 0);
+            CLiteral::String(ref bytes, element_size) => {
+                let bytes_padded = self.string_literal_bytes(ty.ctype, bytes, element_size);
 
                 // std::mem::transmute::<[u8; size], ctype>(*b"xxxx")
-                let u8_ty = mk().path_ty(vec!["u8"]);
-                let width_lit = mk().lit_expr(mk().int_unsuffixed_lit(val.len() as u128));
-                Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    mk().array_ty(u8_ty, width_lit),
+                let array_ty = mk().array_ty(
+                    mk().ident_ty("u8"),
+                    mk().lit_expr(bytes_padded.len() as u128),
+                );
+                let val = transmute_expr(
+                    array_ty,
                     self.convert_type(ty.ctype)?,
-                    mk().unary_expr(UnOp::Deref(Default::default()), mk().lit_expr(val)),
-                )))
+                    mk().unary_expr(UnOp::Deref(Default::default()), mk().lit_expr(bytes_padded)),
+                );
+                Ok(WithStmts::new_unsafe_val(val))
             }
         }
+    }
+
+    /// Returns the bytes of a string literal, including any additional zero bytes to pad the
+    /// literal to the expected size.
+    pub fn string_literal_bytes(&self, ctype: CTypeId, bytes: &[u8], element_size: u8) -> Vec<u8> {
+        let num_elems = match self.ast_context.resolve_type(ctype).kind {
+            CTypeKind::ConstantArray(_, num_elems) => num_elems,
+            ref kind => {
+                panic!("String literal with unknown size: {bytes:?}, kind = {kind:?}")
+            }
+        };
+
+        let size = num_elems * (element_size as usize);
+        let mut bytes_padded = Vec::with_capacity(size);
+        bytes_padded.extend(bytes);
+        bytes_padded.resize(size, 0);
+
+        bytes_padded
     }
 
     /// Convert an initialization list into an expression. These initialization lists can be

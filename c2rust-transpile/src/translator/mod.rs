@@ -4729,16 +4729,20 @@ impl<'c> Translation<'c> {
                     })
                     .unwrap_or(false);
                 match expr_kind {
-                    Some(&CExprKind::Literal(_, CLiteral::String(ref bytes, 1)))
-                        if is_const && !translate_as_macro =>
-                    {
+                    Some(&CExprKind::Literal(
+                        literal_cqual_type,
+                        CLiteral::String(ref bytes, element_size @ 1),
+                    )) if is_const && !translate_as_macro => {
                         let target_ty = self.convert_type(target_cty.ctype)?;
 
-                        let mut bytes = bytes.to_owned();
-                        bytes.push(0);
-                        let byte_literal = mk().lit_expr(bytes);
-                        let val =
-                            mk().cast_expr(byte_literal, mk().ptr_ty(mk().path_ty(vec!["u8"])));
+                        let bytes_padded = self.string_literal_bytes(
+                            literal_cqual_type.ctype,
+                            bytes,
+                            element_size,
+                        );
+                        let element_ty = mk().ident_ty("u8");
+                        let bytes_literal = mk().lit_expr(bytes_padded);
+                        let val = mk().cast_expr(bytes_literal, mk().ptr_ty(element_ty));
                         let val = mk().cast_expr(val, target_ty);
                         Ok(WithStmts::new_val(val))
                     }
