@@ -3559,7 +3559,9 @@ impl<'c> Translation<'c> {
                     CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
                         ctx.decay_ref = DecayRef::Yes
                     }
-                    CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
+                    CastKind::ArrayToPointerDecay
+                    | CastKind::FunctionToPointerDecay
+                    | CastKind::BuiltinFnToFnPtr => {
                         ctx.needs_address = true;
                     }
                     _ => {}
@@ -4067,7 +4069,41 @@ impl<'c> Translation<'c> {
 
             Paren(_, val) => self.convert_expr(ctx, val, override_ty),
 
-            CompoundLiteral(_, val) => self.convert_expr(ctx, val, override_ty),
+            CompoundLiteral(qty, val) => {
+                let val = self.convert_expr(ctx, val, override_ty)?;
+
+                if !ctx.needs_address() || ctx.is_static || ctx.is_const {
+                    // Statics and consts have their intermediates' lifetimes extended.
+                    return Ok(val);
+                }
+
+                // C compound literals are lvalues, but equivalent Rust expressions generally are not.
+                // So if an address is needed, store it in an intermediate variable first.
+                let fresh_name = self.renamer.borrow_mut().fresh();
+                let fresh_ty = self.convert_type(override_ty.unwrap_or(qty).ctype)?;
+
+                val.and_then(|val| {
+                    let fresh_stmt = {
+                        let mutbl = if qty.qualifiers.is_const {
+                            Mutability::Immutable
+                        } else {
+                            Mutability::Mutable
+                        };
+
+                        let local = mk().local(
+                            mk().set_mutbl(mutbl).ident_pat(&fresh_name),
+                            Some(fresh_ty),
+                            Some(val),
+                        );
+                        mk().local_stmt(Box::new(local))
+                    };
+
+                    Ok(WithStmts::new(
+                        vec![fresh_stmt],
+                        mk().ident_expr(fresh_name),
+                    ))
+                })
+            }
 
             InitList(ty, ref ids, opt_union_field_id, _) => {
                 self.convert_init_list(ctx, ty, ids, opt_union_field_id)
