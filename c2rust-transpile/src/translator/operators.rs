@@ -968,21 +968,11 @@ impl<'c> Translation<'c> {
                         false,
                     ) = (expr_kind, translate_as_macro)
                     {
-                        let num_elems =
-                            match self.ast_context.resolve_type(literal_cqual_type.ctype).kind {
-                                CTypeKind::ConstantArray(_, num_elems) => num_elems,
-                                ref kind => {
-                                    panic!(
-                                    "String literal with unknown size: {bytes:?}, kind = {kind:?}"
-                                )
-                                }
-                            };
-
-                        // Match the literal size to the expected size padding with zeros as needed
-                        let size = num_elems * (element_size as usize);
-                        let mut bytes_padded = Vec::with_capacity(size);
-                        bytes_padded.extend(bytes);
-                        bytes_padded.resize(size, 0);
+                        let bytes_padded = self.string_literal_bytes(
+                            literal_cqual_type.ctype,
+                            bytes,
+                            element_size,
+                        );
 
                         let array_ty = mk().array_ty(
                             mk().ident_ty("u8"),
