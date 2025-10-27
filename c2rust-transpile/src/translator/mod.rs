@@ -2551,7 +2551,7 @@ impl<'c> Translation<'c> {
         if self.tcfg.dump_structures {
             eprintln!("Relooped structures:");
             for s in &relooped {
-                eprintln!("  {:#?}", s);
+                eprintln!("{:#?}", s);
             }
         }
 
