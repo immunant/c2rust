@@ -2175,7 +2175,7 @@ impl Cfg<Label, StmtOrDecl> {
         let cfg_mapped = self.map_stmts(|sd: &StmtOrDecl| -> Vec<String> { sd.to_string(store) });
 
         let file = File::create(file_path)?;
-        serde_json::to_writer(file, &cfg_mapped)?;
+        serde_json::to_writer_pretty(file, &cfg_mapped)?;
 
         Ok(())
     }
