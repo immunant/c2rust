@@ -2523,10 +2523,19 @@ impl<'c> Translation<'c> {
         );
 
         if self.tcfg.dump_structures {
-            eprintln!("Relooped structures for {name}:");
+            use std::fmt::Write;
+
+            let mut dump = String::new();
             for s in &relooped {
-                eprintln!("{:#?}", s);
+                writeln!(&mut dump, "{:#?}", s).unwrap();
             }
+
+            std::fs::create_dir_all("dumps").unwrap();
+
+            let file_name = format!("dumps/{name}_structures.rs");
+            std::fs::write(&file_name, dump).unwrap();
+
+            eprintln!("Wrote relooped structures for {name} to {file_name}");
         }
 
         let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
