@@ -106,7 +106,7 @@ use super::*;
 pub fn reloop(
     cfg: Cfg<Label, StmtOrDecl>, // the control flow graph to reloop
     mut store: DeclStmtStore,    // store of what to do with declarations
-    simplify_structures: bool,   // simplify the output structure
+    _simplify_structures: bool,   // simplify the output structure
     use_c_loop_info: bool,       // use the loop information in the CFG (slower, but better)
     use_c_multiple_info: bool,   // use the multiple information in the CFG (slower, but better)
     live_in: IndexSet<CDeclId>,  // declarations we assume are live going into this graph
@@ -156,14 +156,14 @@ pub fn reloop(
         .collect();
 
     // We map over the existing structure and flatten everything to `Stmt`
-    let mut relooped: Vec<Structure<Stmt>> = relooped_with_decls
+    let relooped: Vec<Structure<Stmt>> = relooped_with_decls
         .into_iter()
         .map(|s| s.place_decls(&lift_me, &mut store))
         .collect();
 
-    if simplify_structures {
-        relooped = simplify_structure(relooped)
-    }
+    // if simplify_structures {
+    //     relooped = simplify_structure(relooped)
+    // }
 
     (lifted_stmts, relooped)
 }
@@ -314,7 +314,7 @@ impl RelooperState {
                     let new_entries = bb.successors();
                     let BasicBlock {
                         body,
-                        terminator,
+                        mut terminator,
                         live,
                         defined,
                         span,
@@ -335,6 +335,15 @@ impl RelooperState {
                     // Being into scope things that are defined here
                     for d in defined {
                         self.add_to_scope(d);
+                    }
+
+                    // Normalize terminator labels to `ExitTo`. All forward jumps can be be
+                    // `ExitTo`s, i.e. a block break, and we know this simple doesn't have a back
+                    // edge or we'd have generated a loop.
+                    for lbl in terminator.get_labels_mut() {
+                        if let StructureLabel::GoTo(label) = lbl.clone() {
+                            *lbl = StructureLabel::ExitTo(label.clone())
+                        }
                     }
 
                     result.push(Structure::Simple {
