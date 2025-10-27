@@ -1,0 +1,57 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/compound_literals.rs
+input_file: c2rust-transpile/tests/snapshots/compound_literals.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#[no_mangle]
+pub static mut static_single_int: ::core::ffi::c_int = 42;
+#[no_mangle]
+pub static mut static_single_int_ptr: *mut ::core::ffi::c_int =
+    &42 as *const ::core::ffi::c_int as *mut ::core::ffi::c_int;
+#[no_mangle]
+pub static mut static_int_ptr_to_array: *mut ::core::ffi::c_int = [42, 9001].as_ptr() as *mut _;
+#[no_mangle]
+pub static mut static_int_array_ptr: *mut [::core::ffi::c_int; 2] =
+    &[42, 9001] as *const [::core::ffi::c_int; 2] as *mut [::core::ffi::c_int; 2];
+pub const SINGLE_INT: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+pub const INT_ARRAY: [::core::ffi::c_int; 2] =
+    [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
+pub const CHAR_ARRAY: [::core::ffi::c_char; 6] =
+    unsafe { ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0") };
+#[no_mangle]
+pub unsafe extern "C" fn local_compound_literals() {
+    let mut single_int: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut fresh0: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut single_int_ptr: *mut ::core::ffi::c_int = &mut fresh0 as *mut ::core::ffi::c_int;
+    let mut fresh1: [::core::ffi::c_int; 2] =
+        [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
+    let mut int_ptr_to_array: *mut ::core::ffi::c_int = fresh1.as_mut_ptr();
+    let mut fresh2: [::core::ffi::c_char; 6] =
+        ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
+    let mut char_ptr_to_array: *mut ::core::ffi::c_char = fresh2.as_mut_ptr();
+    let mut fresh3: [::core::ffi::c_int; 2] =
+        [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
+    let mut int_array_ptr: *mut [::core::ffi::c_int; 2] =
+        &mut fresh3 as *mut [::core::ffi::c_int; 2];
+    let mut fresh4: [::core::ffi::c_char; 6] =
+        ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
+    let mut char_array_ptr: *mut [::core::ffi::c_char; 6] =
+        &mut fresh4 as *mut [::core::ffi::c_char; 6];
+    let mut macro_single_int: ::core::ffi::c_int = SINGLE_INT;
+    let mut macro_single_int_ptr: *mut ::core::ffi::c_int =
+        &mut SINGLE_INT as *mut ::core::ffi::c_int;
+    let mut macro_int_ptr_to_array: *mut ::core::ffi::c_int = INT_ARRAY.as_mut_ptr();
+    let mut macro_char_ptr_to_array: *mut ::core::ffi::c_char = CHAR_ARRAY.as_mut_ptr();
+    let mut macro_int_array_ptr: *mut [::core::ffi::c_int; 2] =
+        &mut INT_ARRAY as *mut [::core::ffi::c_int; 2];
+    let mut macro_char_array_ptr: *mut [::core::ffi::c_char; 6] =
+        &mut CHAR_ARRAY as *mut [::core::ffi::c_char; 6];
+}
