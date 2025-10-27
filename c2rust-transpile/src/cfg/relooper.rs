@@ -337,12 +337,12 @@ impl RelooperState {
                         self.add_to_scope(d);
                     }
 
-                    // Normalize terminator labels to `ExitTo`. All forward jumps can be be
-                    // `ExitTo`s, i.e. a block break, and we know this simple doesn't have a back
+                    // Normalize terminator labels to `BreakTo`. All forward jumps can be be
+                    // `BreakTo`s, i.e. a block break, and we know this simple doesn't have a back
                     // edge or we'd have generated a loop.
                     for lbl in terminator.get_labels_mut() {
                         if let StructureLabel::GoTo(label) = lbl.clone() {
-                            *lbl = StructureLabel::ExitTo(label.clone())
+                            *lbl = StructureLabel::BreakTo(label.clone())
                         }
                     }
 
@@ -689,8 +689,11 @@ impl RelooperState {
         for bb in body_blocks.values_mut() {
             for lbl in bb.terminator.get_labels_mut() {
                 if let StructureLabel::GoTo(label) = lbl.clone() {
-                    if entries.contains(&label) || follow_entries.contains(&label) {
-                        *lbl = StructureLabel::ExitTo(label.clone())
+                    // Branches back to our entries become `continue`s, branches anywhere else become `break`s.
+                    if entries.contains(&label) {
+                        *lbl = StructureLabel::ContinueTo(label.clone())
+                    } else if follow_entries.contains(&label) {
+                        *lbl = StructureLabel::BreakTo(label.clone())
                     }
                 }
             }
@@ -707,6 +710,7 @@ impl RelooperState {
 }
 
 /// Nested precondition: `structures` will contain no `StructureLabel::Nested` terminators.
+#[cfg(none)]
 fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Structure<Stmt>> {
     // Recursive calls come first
     let structures: Vec<Structure<Stmt>> = structures
