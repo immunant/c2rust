@@ -15,7 +15,8 @@ pub fn structured_cfg(
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
     let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
-        structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
+        // structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
+        forward_cfg_help(root)?;
 
     let s = StructureState {
         debug_labels,
@@ -192,6 +193,114 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 }
 
 type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
+
+fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
+    root: &[Structure<Stmt>],
+) -> TranslationResult<S> {
+    let mut ast = S::empty();
+    let mut i = 0;
+    loop {
+        if i >= root.len() {
+            break;
+        }
+
+        let structure = &root[i];
+
+        let structure_ast = match structure {
+            Structure::Simple {
+                body,
+                span,
+                terminator,
+                ..
+            } => {
+                let mut body_ast: S = S::empty();
+                for s in body.clone() {
+                    body_ast = S::mk_append(body_ast, S::mk_singleton(s));
+                }
+                body_ast.extend_span(*span);
+
+                let insert_goto = |to: Label, target: &IndexSet<Label>| -> S {
+                    if target.len() == 1 {
+                        S::empty()
+                    } else {
+                        S::mk_goto(to)
+                    }
+                };
+
+                let branch = |slbl: &StructureLabel<Stmt>| -> TranslationResult<S> {
+                    use StructureLabel::*;
+
+                    let empty = IndexSet::new();
+                    let next = if i < root.len() - 1 {
+                        root[i + 1].get_entries()
+                    } else {
+                        &empty
+                    };
+
+                    match slbl {
+                        Nested(ref nested) => {
+                            todo!("Handle nested terminators")
+                        }
+
+                        GoTo(to) if next.contains(to) => {
+                            Ok(insert_goto(to.clone(), next))
+                        }
+
+                        ExitTo(to) => {
+                            // TODO: Handle immediate exits, i.e. exits that don't need a target label.
+                            // TODO: We need to give each break a label.
+                            let exit_style = if next.contains(to) {
+                                ExitStyle::Break
+                            } else {
+                                ExitStyle::Continue
+                            };
+                            let mut new_cfg = S::mk_exit(exit_style, Some(to.clone()));
+                            new_cfg.extend_span(*span);
+                            Ok(new_cfg)
+                        }
+
+                        GoTo(to) => Err(format_err!(
+                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                            to,
+                            next
+                        )
+                        .into()),
+                    }
+                };
+
+                S::mk_append(
+                    body_ast,
+                    match terminator {
+                        End => S::empty(),
+                        Jump(to) => branch(to)?,
+                        Branch(c, t, f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
+                        Switch { expr, cases } => {
+                            let branched_cases = cases
+                                .iter()
+                                .map(|(pat, slbl)| Ok((pat.clone(), branch(slbl)?)))
+                                .collect::<TranslationResult<_>>()?;
+
+                            S::mk_match(expr.clone(), branched_cases)
+                        }
+                    },
+                )
+            }
+
+            Structure::Loop { entries, body } => todo!(),
+            Structure::Multiple {
+                entries,
+                branches,
+                then,
+            } => S::empty(), // TODO: Okay but actually handle this.
+        };
+
+        ast = S::mk_append(ast, structure_ast);
+
+        i += 1;
+    }
+
+    Ok(ast)
+}
 
 /// Recursive helper for `structured_cfg`
 ///
