@@ -240,7 +240,8 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             todo!("Handle nested terminators")
                         }
 
-                        GoTo(to) if next_entries.contains(to) => {
+                        // TODO: Should we also cover `ContinueTo` here?
+                        GoTo(to) | BreakTo(to) if next_entries.len() == 1 && next_entries.contains(to) => {
                             Ok(insert_goto(to.clone(), next_entries))
                         }
 
