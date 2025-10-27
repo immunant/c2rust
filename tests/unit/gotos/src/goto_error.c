@@ -1,4 +1,5 @@
 // Tests the common `goto error` pattern with a single error label.
+/*
 void goto_error() {
     int COND = 0;
 
@@ -25,7 +26,39 @@ error:
     COND;
     // X
 }
+*/
 
+void goto_error_but_its_all_gotos() {
+    int COND = 0;
+
+    if (COND) {
+        goto B;
+    } else {
+        goto C;
+    }
+
+B:
+    if (COND) {
+        goto X;
+    } else {
+        goto D;
+    }
+
+C:
+    if (COND) {
+        goto X;
+    } else {
+        goto D;
+    }
+
+D:
+    return;
+
+X:
+    return;
+}
+
+/*
 // `goto_error` with multiple error cases that then flow into a common
 // termination case.
 void goto_errors() {
@@ -85,3 +118,4 @@ success:
     // E
     COND;
 }
+*/
