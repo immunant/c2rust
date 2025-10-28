@@ -356,7 +356,7 @@ impl RelooperState {
                     self.relooper(new_entries, blocks, result, false);
                 } else {
                     let body = vec![];
-                    let terminator = Jump(StructureLabel::GoTo(entry.clone()));
+                    let terminator = Jump(StructureLabel::BreakTo(entry.clone()));
 
                     result.push(Structure::Simple {
                         entries,
