@@ -554,6 +554,8 @@ class TestDirectory:
             self.print_status(Colors.FAIL, "FAILED", "test {}".format(lib_file_path_short))
             sys.stdout.write('\n')
             sys.stdout.write(stdout)
+            sys.stdout.write('\n')
+            sys.stdout.write(stderr)
         else:
             for line in stdout.split("\n"):
                 if "... ok" in line:
