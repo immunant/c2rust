@@ -1,32 +1,37 @@
 // Tests the common `goto error` pattern with a single error label.
-/*
-void goto_error() {
-    int COND = 0;
-
-    // A
-    if (COND) {
-        // B
-        if (COND) {
-            // C
+int goto_error(int x) {
+    if (x >= 10) {
+        if (x == 20) {
+            x += 1;
             goto error;
         }
-        // D
+        x += 2;
     } else {
-        // E
-        if (COND) {
-            // F
+        if (x == 0) {
+            x -= 1;
             goto error;
         }
-        // G
+        x -= 2;
     }
-    // H
-    return;
+    return x + 3;
 
 error:
-    COND;
-    // X
+    return x - 3;
 }
-*/
+
+/*
+int simple_test(int x) {
+    if (x) {
+        if (x == 10) {
+            return 1;
+        }
+        return 2;
+    }
+    else
+    {
+        return 3;
+    }
+}
 
 void goto_error_but_its_all_gotos() {
     int COND = 0;
@@ -58,7 +63,6 @@ X:
     return;
 }
 
-/*
 // `goto_error` with multiple error cases that then flow into a common
 // termination case.
 void goto_errors() {
