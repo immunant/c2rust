@@ -289,7 +289,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             }
 
             Structure::Loop { .. } => todo!(),
-            Structure::Multiple { .. } => S::empty(), // TODO: Okay but actually handle this.
+            Structure::Multiple { .. } => todo!(),
         };
 
         i += 1;
@@ -301,16 +301,39 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             then,
         }) = root.get(i)
         {
+            eprintln!("Structure {:?}: handling followup multiple with entries {entries:?}", structure.get_entries());
             for entry in entries {
-                // TODO: This would be nicer if `then` carried its own entry like the other branches do.
+                eprintln!(
+                    "Structure {:?}: wrapping structure in loop for entry {entry:?}",
+                    structure.get_entries()
+                );
+
                 let branch = branches.get(entry).unwrap_or(then);
+
+                // Don't generate an extra block if the branch is empty.
+                //
+                // TODO: Okay but why is this the right thing to do??? Do we
+                // still want to generate these empty terminating branches? I
+                // think we could remove these empty branches at the relooper
+                // level.
+                if branch.is_empty() {
+                    eprintln!(
+                        "Structure {:?}: skipping empty branch for entry {entry:?}",
+                        structure.get_entries()
+                    );
+                    continue;
+                }
+
                 let branch_ast = forward_cfg_help::<S>(branch)?;
 
-                structure_ast = S::mk_loop(Some(entry.clone()), structure_ast);
+                // Put the code in a loop ending in a break so we can fall out the bottom of the loop.
+                // TODO: What if we just made a labeled block instead of a loop????
+                structure_ast = S::mk_loop(
+                    Some(entry.clone()),
+                    structure_ast,
+                    // S::mk_append(structure_ast, S::mk_exit(ExitStyle::Break, None)
+                );
                 structure_ast = S::mk_append(structure_ast, branch_ast);
-
-                // TODO: Put a break at the end of the loop so that we can fall out the bottom?
-                // structure_ast = S::mk_append(structure_ast, S::mk_exit(ExitStyle::Break, None));
             }
 
             i += 1;
