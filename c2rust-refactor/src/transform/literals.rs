@@ -11,6 +11,7 @@ use rustc_span::symbol::Symbol;
 use rustc_ast::visit::{self, Visitor};
 use rustc_span::Span;
 use rustc_type_ir::sty;
+use log::debug;
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -519,11 +520,12 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
+    /// Unify a child expression when the parent key tree wraps a single element.
     fn unify_expr_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
-        if let Some(ch_kt) = kt.get().children() {
-            assert!(ch_kt.len() == 1);
-            self.visit_expr_unify(e, ch_kt[0]);
+        if let Some(&[child_kt]) = kt.get().children() {
+            self.visit_expr_unify(e, child_kt);
         } else {
+            // Not a single-child wrapper: visit without unification
             self.visit_expr(e);
         }
     }
@@ -537,15 +539,15 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // We really want the subexpressions to at least unify with
                 // each other, so we need to either get the key tree
                 // from the caller, or create a new common one for all subexpressions
-                let elem_kt = if let Some(ch) = kt.get().children() {
-                    assert!(ch.len() == 1);
-                    ch[0]
-                } else {
-                    exprs.first()
-                        .and_then(|e| self.cx.opt_node_type(e.id))
-                        .map(|ty| self.ty_to_key_tree(ty, false))
-                        .unwrap_or_else(|| self.new_empty_node())
-
+                let elem_kt = match kt.get().children() {
+                    Some(&[elem_kt]) => elem_kt,
+                    _ => {
+                        // Best effort: reuse the first element type when present.
+                        exprs.first()
+                            .and_then(|e| self.cx.opt_node_type(e.id))
+                            .map(|ty| self.ty_to_key_tree(ty, false))
+                            .unwrap_or_else(|| self.new_empty_node())
+                    }
                 };
                 for e in exprs {
                     self.visit_expr_unify(e, elem_kt);
@@ -556,7 +558,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let callee_key_tree = self.expr_ty_to_key_tree(callee);
                 self.visit_expr_unify(callee, callee_key_tree);
                 // TODO: check if generic
-                if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
+                if let LitTyKeyNode::Node(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get() {
                     for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
                         self.visit_expr_unify(arg_expr, arg_key_tree);
                     }
@@ -573,24 +575,35 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let parent = self.cx.hir_map().get_parent_item(hir_id);
                 let body = self.cx.hir_map().body_owned_by(parent);
                 let tables = tcx.typeck_body(body);
-                let did = tables.type_dependent_def_id(hir_id).unwrap();
-                let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
-
-                // Hacky fix for the way rustc gives us method types:
-                // we don't get the parametric `Self` as the type of
-                // the `self` argument, instead we get the actual type,
-                // and we can't unify with that since it can break stuff
-                if let Some(ch) = callee_key_tree.get().children() {
-                    ch[0].set(LitTyKeyNode::Empty);
-                }
 
                 self.visit_path_segment(ex.span, segment);
-                if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
-                    for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
-                        self.visit_expr_unify(arg_expr, arg_key_tree);
+
+                // type_dependent_def_id returns None when method lookup fails (e.g., unresolved
+                // receiver type, trait method ambiguity, or during error recovery).
+                // In libxml2, this occurs for bitfield setter methods like `set_field()`.
+                if let Some(did) = tables.type_dependent_def_id(hir_id) {
+                    let callee_key_tree = self.def_id_to_key_tree(did, ex.span);
+
+                    // Hacky fix for the way rustc gives us method types:
+                    // we don't get the parametric `Self` as the type of
+                    // the `self` argument, instead we get the actual type,
+                    // and we can't unify with that since it can break stuff
+                    if let Some(ch) = callee_key_tree.get().children() {
+                        ch[0].set(LitTyKeyNode::Empty);
                     }
-                    self.unify_key_trees(kt, output_key_tree);
+
+                    if let LitTyKeyNode::Node(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get() {
+                        for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
+                            self.visit_expr_unify(arg_expr, arg_key_tree);
+                        }
+                        self.unify_key_trees(kt, output_key_tree);
+                    } else {
+                        for arg in args {
+                            self.visit_expr(arg);
+                        }
+                    }
                 } else {
+                    debug!("No def_id for method call at {:?}: {}", ex.span, segment.ident);
                     for arg in args {
                         self.visit_expr(arg);
                     }
@@ -648,9 +661,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     self.visit_expr_unify(e, ptr_key_tree);
                     if let Some(e_ty) = self.cx.opt_node_type(e.id) {
                         if e_ty.builtin_deref(true).is_some() {
-                            if let Some(ch) = ptr_key_tree.get().children() {
-                                assert!(ch.len() == 1);
-                                self.unify_key_trees(kt, ch[0]);
+                            if let Some(&[child_kt]) = ptr_key_tree.get().children() {
+                                self.unify_key_trees(kt, child_kt);
                             }
                         } else {
                             // TODO: handle other types that implement `Deref`
@@ -757,22 +769,22 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_expr_unify(e, inner_key_tree);
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
-                    let ch = inner_key_tree.get().children();
-                    match (ch, &struct_ty.kind()) {
-                        (None, _) => {}
-                        (Some(ch), sty::TyKind::Adt(def, _)) => {
-                            let v = &def.non_enum_variant();
-                            assert!(ch.len() == v.fields.len());
-                            let idx = tcx.find_field_index(ident, v).unwrap();
-                            self.unify_key_trees(kt, ch[idx]);
-                        }
-                        (Some(ch), sty::TyKind::Tuple(ref tys)) => {
-                            assert!(ch.len() == tys.len());
-                            if let Ok(idx) = ident.as_str().parse::<usize>() {
+                    if let Some(ch) = inner_key_tree.get().children() {
+                        match &struct_ty.kind() {
+                            sty::TyKind::Adt(def, _) => {
+                                let v = &def.non_enum_variant();
+                                assert!(ch.len() == v.fields.len());
+                                let idx = tcx.find_field_index(ident, v).unwrap();
                                 self.unify_key_trees(kt, ch[idx]);
                             }
+                            sty::TyKind::Tuple(ref tys) => {
+                                assert!(ch.len() == tys.len());
+                                if let Ok(idx) = ident.as_str().parse::<usize>() {
+                                    self.unify_key_trees(kt, ch[idx]);
+                                }
+                            }
+                            _ => panic!("expected Adt/Tuple, got {:?}", struct_ty)
                         }
-                        _ => panic!("expected Adt/Tuple, got {:?}", struct_ty)
                     }
                 }
             }
@@ -786,9 +798,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 if let Some(e_ty) = self.cx.opt_node_type(e.id) {
                     use sty::TyKind::*;
                     if let Array(..) | Slice(_) | Str = e_ty.kind() {
-                        if let Some(ch) = e_key_tree.get().children() {
-                            assert!(ch.len() == 1);
-                            self.unify_key_trees(kt, ch[0]);
+                        if let Some(&[child_kt]) = e_key_tree.get().children() {
+                            self.unify_key_trees(kt, child_kt);
                         }
                     } else {
                         // TODO: check for `Index`/`IndexMut`
@@ -970,13 +981,12 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     for pat in pats {
                         self.visit_pat(pat);
                     }
-                };
+                }
             }
 
             PatKind::Box(ref inner) | PatKind::Ref(ref inner, _) => {
-                if let Some(ch) = kt.get().children() {
-                    assert!(ch.len() == 1);
-                    self.visit_pat_unify(inner, ch[0]);
+                if let Some(&[child_kt]) = kt.get().children() {
+                    self.visit_pat_unify(inner, child_kt);
                 } else {
                     self.visit_pat(inner);
                 }
@@ -999,14 +1009,15 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             PatKind::Slice(ref pats) => {
                 // See comment for `ExprKind::Array`
-                let elem_kt = if let Some(ch) = kt.get().children() {
-                    assert!(ch.len() == 1);
-                    ch[0]
-                } else {
-                    pats.first()
-                        .and_then(|pat| self.cx.opt_node_type(pat.id))
-                        .map(|ty| self.ty_to_key_tree(ty, false))
-                        .unwrap_or_else(|| self.new_empty_node())
+                let elem_kt = match kt.get().children() {
+                    Some(&[elem_kt]) => elem_kt,
+                    _ => {
+                        // Best effort: reuse the first element type when present.
+                        pats.first()
+                            .and_then(|pat| self.cx.opt_node_type(pat.id))
+                            .map(|ty| self.ty_to_key_tree(ty, false))
+                            .unwrap_or_else(|| self.new_empty_node())
+                    }
                 };
                 for pat in pats {
                     self.visit_pat_unify(pat, elem_kt);
@@ -1110,8 +1121,7 @@ impl<'kt, 'tcx: 'kt> LitTyKeyNode<'kt, 'tcx> {
     fn children(&self) -> Option<&'kt [LitTyKeyTree<'kt, 'tcx>]> {
         match self {
             Self::Node(ch) => Some(ch),
-            Self::Empty => None,
-            _ => panic!("expected node, found: {:?}", self)
+            Self::Empty | Self::Leaf(_) => None,
         }
     }
 }
@@ -1195,4 +1205,3 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("remove_null_terminator", |_args| mk(RemoveNullTerminator));
     reg.register("remove_literal_suffixes", |_| mk(RemoveLiteralSuffixes));
 }
-
