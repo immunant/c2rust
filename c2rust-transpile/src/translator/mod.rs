@@ -2512,6 +2512,8 @@ impl<'c> Translation<'c> {
             graph
                 .dump_json_graph(&store, format!("dumps/{name}_cfg.json"))
                 .expect("Failed to write CFG .json file");
+
+            eprintln!("Wrote CFG json for {name} to dumps/{name}_cfg.json");
         }
 
         let (lifted_stmts, relooped) = cfg::relooper::reloop(
@@ -2526,6 +2528,7 @@ impl<'c> Translation<'c> {
         if self.tcfg.dump_structures {
             use std::fmt::Write;
 
+            // TODO: Do this more efficiently lol
             let mut dump = String::new();
             for s in &relooped {
                 writeln!(&mut dump, "{:#?}", s).unwrap();
