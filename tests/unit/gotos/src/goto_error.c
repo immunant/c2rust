@@ -42,7 +42,8 @@ error:
 }
 
 // The same control flow as `goto_error_b`, but using only gotos. This verifies
-// that we can still reconstruct CFGs made of only gotos.
+// that we can still reconstruct CFGs even when there is no structured control
+// flow in the original C.
 int goto_error_but_its_all_gotos(int x) {
     if (x >= 10) {
         goto B;
