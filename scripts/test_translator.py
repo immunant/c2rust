@@ -569,6 +569,8 @@ class TestDirectory:
             sys.stdout.write('\n')
             sys.stdout.write(stderr)
             sys.stdout.write(stdout)
+            sys.stdout.write('\n')
+            sys.stdout.write(stderr)
         else:
             for line in stdout.split("\n"):
                 if "... ok" in line:
