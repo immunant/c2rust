@@ -42,6 +42,8 @@ error:
     return x - 3;
 }
 
+// The same control flow as `goto_error_b`, but using only gotos. This verifies
+// that we can still reconstruct CFGs made of only gotos.
 int goto_error_but_its_all_gotos(int x) {
     if (x >= 10) {
         goto B;
@@ -74,39 +76,36 @@ error:
     return x - 3;
 }
 
-/*
 // `goto_error` with multiple error cases that then flow into a common
 // termination case.
-void goto_errors() {
-    int COND = 0;
-
-    // A
-    if (COND) {
-        // B
-        if (COND) {
+int goto_errors(int x) {
+    if (x >= 10) {
+        x += 1;
+        if (x == 20)
+        {
+            x += 2;
             goto error_a;
         }
     } else {
-        // C
-        if (COND) {
+        x -= 1;
+        if (x == 0)
+        {
+            x -= 2;
             goto error_b;
         }
     }
-    // D
-    // E
-    return;
+    return x + 4;
 
 error_a:
-    // X
+    x += 3;
     goto error_common;
 error_b:
-    // Y
-    COND;
+    x -= 3;
 error_common:
-    // Z
-    COND;
+    return x - 4;
 }
 
+/*
 // This has the same control-flow as `goto_errors`, but reorganized to have a
 // single `goto` jumping to the success case.
 void goto_success() {
