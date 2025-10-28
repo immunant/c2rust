@@ -32,4 +32,15 @@ pub fn goto_error_but_its_all_gotos() {
 }
 
 #[test]
+pub fn test_goto_errors() {
+    use crate::goto_error::rust_goto_errors;
+    unsafe {
+        assert_eq!(rust_goto_errors(10), 15);
+        assert_eq!(rust_goto_errors(19), 21);
+        assert_eq!(rust_goto_errors(2), 5);
+        assert_eq!(rust_goto_errors(1), -9);
+    }
+}
+
+#[test]
 pub fn dummy_test() {}
