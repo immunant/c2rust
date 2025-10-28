@@ -19,9 +19,8 @@ error:
     return x - 3;
 }
 
-// Should have the same behavior as `goto_error_a`, but at one point this one
-// failed when the one above passed, so we want to keep both as a regression
-// test.
+// Similar behavior to `goto_error_a`, but at one point this one failed when the
+// one above passed, so we want to keep both as a regression test.
 int goto_error_b(int x) {
     if (x >= 10) {
         x += 2;
@@ -81,15 +80,13 @@ error:
 int goto_errors(int x) {
     if (x >= 10) {
         x += 1;
-        if (x == 20)
-        {
+        if (x == 20) {
             x += 2;
             goto error_a;
         }
     } else {
         x -= 1;
-        if (x == 0)
-        {
+        if (x == 0) {
             x -= 2;
             goto error_b;
         }
@@ -105,32 +102,24 @@ error_common:
     return x - 4;
 }
 
-/*
 // This has the same control-flow as `goto_errors`, but reorganized to have a
 // single `goto` jumping to the success case.
-void goto_success() {
-    int COND = 0;
-
-    // A
-    if (COND) {
-        // B
-        if (COND) {
+int goto_success(int x) {
+    if (x >= 10) {
+        x += 1;
+        if (x != 20) {
             goto success;
         }
-        // X
+        x += 2;
     } else {
-        // C
-        if (COND) {
+        x -= 1;
+        if (x != 0) {
             goto success;
         }
-        // Y
+        x -= 2;
     }
-    // Z
-    return;
+    return x - 4;
 
 success:
-    // D
-    // E
-    COND;
+    return x + 4;
 }
-*/

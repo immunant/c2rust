@@ -43,4 +43,12 @@ pub fn test_goto_errors() {
 }
 
 #[test]
-pub fn dummy_test() {}
+pub fn test_goto_success() {
+    use crate::goto_error::rust_goto_success;
+    unsafe {
+        assert_eq!(rust_goto_success(10), 15);
+        assert_eq!(rust_goto_success(19), 18);
+        assert_eq!(rust_goto_success(2), 5);
+        assert_eq!(rust_goto_success(1), -6);
+    }
+}
