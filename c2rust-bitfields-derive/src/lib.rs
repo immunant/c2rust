@@ -2,7 +2,7 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::parse::Error;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -228,6 +228,9 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     let field_bit_info_getters = &field_bit_info;
 
     // TODO: Method visibility determined by struct field visibility?
+    let lhs_bit = Ident::new("lhs_bit", Span::call_site());
+    let rhs_bit = Ident::new("rhs_bit", Span::call_site());
+
     let q = quote! {
         #[automatically_derived]
         impl #struct_ident {
@@ -237,8 +240,8 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                     use c2rust_bitfields::FieldType;
 
                     let field = &mut self.#field_names_setters;
-                    let (lhs_bit, rhs_bit) = #field_bit_info_setters;
-                    int.set_field(field, (lhs_bit, rhs_bit));
+                    let (#lhs_bit, #rhs_bit) = #field_bit_info_setters;
+                    int.set_field(field, (#lhs_bit, #rhs_bit));
                 }
 
                 /// This method allows you to read from a bitfield to a value
@@ -248,8 +251,8 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
                     type IntType = #field_types_typedef;
 
                     let field = &self.#field_names_getters;
-                    let (lhs_bit, rhs_bit) = #field_bit_info_getters;
-                    <IntType as FieldType>::get_field(field, (lhs_bit, rhs_bit))
+                    let (#lhs_bit, #rhs_bit) = #field_bit_info_getters;
+                    <IntType as FieldType>::get_field(field, (#lhs_bit, #rhs_bit))
                 }
             )*
         }

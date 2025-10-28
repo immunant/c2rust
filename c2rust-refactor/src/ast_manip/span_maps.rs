@@ -1,7 +1,7 @@
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::*;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_span::Span;
+use rustc_span::{Span, Symbol};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SpanNodeKind {
@@ -34,11 +34,16 @@ pub enum SpanNodeKind {
 pub struct NodeSpan {
     pub span: Span,
     pub kind: SpanNodeKind,
+    pub disambiguator: Option<Symbol>,
 }
 
 impl NodeSpan {
     pub fn new(span: Span, kind: SpanNodeKind) -> Self {
-        Self { span, kind }
+        Self { span, kind, disambiguator: None }
+    }
+
+    pub fn with_disambiguator(span: Span, kind: SpanNodeKind, disambiguator: Symbol) -> Self {
+        Self { span, kind, disambiguator: Some(disambiguator) }
     }
 }
 
@@ -65,7 +70,7 @@ impl AstSpanMapper {
             return;
         }
 
-        let ns = NodeSpan { span, kind };
+        let ns = NodeSpan::new(span, kind);
         let old_ns = self.0.node_id_to_span_map.insert(id, ns);
         let _old_id = self.0.span_to_node_id_map.insert(ns, id);
 
@@ -75,6 +80,27 @@ impl AstSpanMapper {
         );
         // Some spans can show up in multiple nodes
         //assert!(old_id.is_none(), "span {ns:?} already has id {old_id:?} != {id:?}");
+    }
+
+    fn insert_mapping_with_disambiguator(
+        &mut self,
+        id: NodeId,
+        span: Span,
+        kind: SpanNodeKind,
+        disambiguator: Symbol,
+    ) {
+        if id == DUMMY_NODE_ID || span.is_dummy() {
+            return;
+        }
+
+        let ns = NodeSpan::with_disambiguator(span, kind, disambiguator);
+        let old_ns = self.0.node_id_to_span_map.insert(id, ns);
+        let _old_id = self.0.span_to_node_id_map.insert(ns, id);
+
+        assert!(
+            old_ns.is_none(),
+            "id {id:?} already has span {old_ns:?} != {ns:?}"
+        );
     }
 }
 
@@ -90,7 +116,38 @@ impl Visitor<'_> for AstSpanMapper {
     }
 
     fn visit_pat(&mut self, pat: &Pat) {
-        self.insert_mapping(pat.id, pat.span, SpanNodeKind::Pat);
+        match &pat.kind {
+            PatKind::Ident(_, ident, _) => {
+                // Use identifier name for disambiguation
+                self.insert_mapping_with_disambiguator(
+                    pat.id,
+                    pat.span,
+                    SpanNodeKind::Pat,
+                    ident.name,
+                );
+            }
+            PatKind::Struct(_, _, _, _) => {
+                // For struct patterns, we could extract the struct name
+                // For now, use default mapping
+                self.insert_mapping(pat.id, pat.span, SpanNodeKind::Pat);
+            }
+            PatKind::TupleStruct(_, _, _) => {
+                // For tuple struct patterns
+                self.insert_mapping(pat.id, pat.span, SpanNodeKind::Pat);
+            }
+            PatKind::Tuple(_) => {
+                // Disambiguate tuple patterns with a marker
+                self.insert_mapping_with_disambiguator(
+                    pat.id,
+                    pat.span,
+                    SpanNodeKind::Pat,
+                    rustc_span::Symbol::intern("tuple"),
+                );
+            }
+            _ => {
+                self.insert_mapping(pat.id, pat.span, SpanNodeKind::Pat);
+            }
+        }
         visit::walk_pat(self, pat);
     }
 
@@ -120,10 +177,42 @@ impl Visitor<'_> for AstSpanMapper {
     }
 
     fn visit_expr(&mut self, expr: &Expr) {
-        if matches!(expr.kind, ExprKind::Path(..)) {
-            self.insert_mapping(expr.id, expr.span, SpanNodeKind::PathExpr);
-        } else {
-            self.insert_mapping(expr.id, expr.span, SpanNodeKind::Expr);
+        use ExprKind::*;
+        match &expr.kind {
+            Path(_, path) => {
+                // Extract last segment name from path for disambiguation
+                if let Some(segment) = path.segments.last() {
+                    self.insert_mapping_with_disambiguator(
+                        expr.id,
+                        expr.span,
+                        SpanNodeKind::PathExpr,
+                        segment.ident.name,
+                    );
+                } else {
+                    self.insert_mapping(expr.id, expr.span, SpanNodeKind::PathExpr);
+                }
+            }
+            Field(_, ident) => {
+                // Use field name for disambiguation
+                self.insert_mapping_with_disambiguator(
+                    expr.id,
+                    expr.span,
+                    SpanNodeKind::Expr,
+                    ident.name,
+                );
+            }
+            MethodCall(segment, ..) => {
+                // Use method name for disambiguation
+                self.insert_mapping_with_disambiguator(
+                    expr.id,
+                    expr.span,
+                    SpanNodeKind::Expr,
+                    segment.ident.name,
+                );
+            }
+            _ => {
+                self.insert_mapping(expr.id, expr.span, SpanNodeKind::Expr);
+            }
         }
         visit::walk_expr(self, expr);
     }

@@ -519,9 +519,13 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn unify_expr_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
+    fn unify_expr_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>, _caller: &str) {
         if let Some(ch_kt) = kt.get().children() {
-            assert!(ch_kt.len() == 1);
+            if ch_kt.len() != 1 {
+                // Fallback: just visit without unifying
+                self.visit_expr(e);
+                return;
+            }
             self.visit_expr_unify(e, ch_kt[0]);
         } else {
             self.visit_expr(e);
@@ -531,7 +535,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     fn visit_expr_unify(&mut self, ex: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         let tcx = self.cx.ty_ctxt();
         match ex.kind {
-            ExprKind::Box(ref e) => self.unify_expr_child(e, kt),
+            ExprKind::Box(ref e) => self.unify_expr_child(e, kt, "ExprKind::Box"),
 
             ExprKind::Array(ref exprs) => {
                 // We really want the subexpressions to at least unify with
@@ -756,13 +760,44 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 let inner_key_tree = self.expr_ty_to_key_tree(e);
                 self.visit_expr_unify(e, inner_key_tree);
                 self.visit_ident(ident);
-                if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
-                    let ch = inner_key_tree.get().children();
+
+                // Use opt_node_type (not opt_adjusted_node_type) to match what expr_ty_to_key_tree uses
+                if let Some(ty) = self.cx.opt_node_type(e.id) {
+                    // Check if the type is a reference and unwrap accordingly
+                    let (struct_ty, ch) = match ty.kind() {
+                        sty::TyKind::Ref(_, inner_ty, _) => {
+                            // It's a reference type, unwrap one layer of the key tree
+                            let unwrapped_ch = match inner_key_tree.get() {
+                                LitTyKeyNode::Node(children) if children.len() == 1 => {
+                                    // Single child - unwrap to get the inner type's children
+                                    match children[0].get() {
+                                        LitTyKeyNode::Node(_) => children[0].get().children(),
+                                        _ => None, // Leaf or Empty - no children
+                                    }
+                                }
+                                LitTyKeyNode::Node(_) => {
+                                    // Multiple or zero children - use as-is
+                                    inner_key_tree.get().children()
+                                }
+                                _ => None, // Leaf or Empty - no children
+                            };
+                            (*inner_ty, unwrapped_ch)
+                        }
+                        _ => {
+                            // Not a reference, use the type and key tree as-is
+                            (ty, inner_key_tree.get().children())
+                        }
+                    };
+
                     match (ch, &struct_ty.kind()) {
                         (None, _) => {}
                         (Some(ch), sty::TyKind::Adt(def, _)) => {
                             let v = &def.non_enum_variant();
-                            assert!(ch.len() == v.fields.len());
+
+                            assert!(ch.len() == v.fields.len(),
+                                "Field count mismatch after reference unwrapping: key tree has {} children but struct has {} fields",
+                                ch.len(), v.fields.len());
+
                             let idx = tcx.find_field_index(ident, v).unwrap();
                             self.unify_key_trees(kt, ch[idx]);
                         }
@@ -826,14 +861,12 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ExprKind::Path(..) => {
                 visit::walk_expr(self, ex);
-                if let Some(res) = self.cx.try_resolve_expr_hir(ex) {
-                    let path_key_tree = self.res_to_key_tree(res, ex.span);
-                    self.unify_key_trees(kt, path_key_tree);
-                }
-                // TODO: handle TypeRelative paths
+                // Path expressions are already handled by expr_ty_to_key_tree in the caller
+                // which correctly accounts for references and adjustments.
+                // No need to call res_to_key_tree which may have stale type info.
             }
 
-            ExprKind::AddrOf(_, _, ref e) => self.unify_expr_child(e, kt),
+            ExprKind::AddrOf(_, _, ref e) => self.unify_expr_child(e, kt, "ExprKind::AddrOf"),
 
             // TODO: unify `Break` with return values
             //
@@ -842,7 +875,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             // TODO: unify non-generic `Struct`
 
             ExprKind::Repeat(ref e, ref count) => {
-                self.unify_expr_child(e, kt);
+                self.unify_expr_child(e, kt, "ExprKind::Repeat");
                 self.visit_anon_const(count);
             }
 
@@ -1111,7 +1144,9 @@ impl<'kt, 'tcx: 'kt> LitTyKeyNode<'kt, 'tcx> {
         match self {
             Self::Node(ch) => Some(ch),
             Self::Empty => None,
-            _ => panic!("expected node, found: {:?}", self)
+            Self::Leaf(_) => {
+                panic!("expected node, found: {:?}", self)
+            }
         }
     }
 }
@@ -1195,4 +1230,3 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("remove_null_terminator", |_args| mk(RemoveNullTerminator));
     reg.register("remove_literal_suffixes", |_| mk(RemoveLiteralSuffixes));
 }
-

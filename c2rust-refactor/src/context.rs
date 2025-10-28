@@ -55,6 +55,15 @@ struct SpanToHirMapper<'hir> {
     span_to_hir_map: SpanToHirMap,
 }
 
+/// Extract the identifier from a HIR QPath for use as a disambiguator
+fn extract_path_ident(qpath: &hir::QPath) -> Option<rustc_span::Symbol> {
+    match qpath {
+        hir::QPath::Resolved(_, path) => path.segments.last().map(|seg| seg.ident.name),
+        hir::QPath::TypeRelative(_, segment) => Some(segment.ident.name),
+        hir::QPath::LangItem(..) => None,
+    }
+}
+
 fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
     use SpanNodeKind::*;
     let ns = match hir_map.find(id) {
@@ -69,10 +78,25 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
         Some(Node::Field(field)) => Some(NodeSpan::new(field.span, FieldDef)),
         Some(Node::AnonConst(_)) => None,
         Some(Node::Expr(expr)) => {
-            if matches!(expr.kind, hir::ExprKind::Path(..)) {
-                Some(NodeSpan::new(expr.span, PathExpr))
-            } else {
-                Some(NodeSpan::new(expr.span, Expr))
+            use hir::ExprKind::*;
+            match &expr.kind {
+                Path(qpath) => {
+                    // Extract identifier from path for disambiguation
+                    if let Some(name) = extract_path_ident(qpath) {
+                        Some(NodeSpan::with_disambiguator(expr.span, PathExpr, name))
+                    } else {
+                        Some(NodeSpan::new(expr.span, PathExpr))
+                    }
+                }
+                Field(_, ident) => {
+                    // Use field name for disambiguation
+                    Some(NodeSpan::with_disambiguator(expr.span, Expr, ident.name))
+                }
+                MethodCall(segment, ..) => {
+                    // Use method name for disambiguation
+                    Some(NodeSpan::with_disambiguator(expr.span, Expr, segment.ident.name))
+                }
+                _ => Some(NodeSpan::new(expr.span, Expr)),
             }
         }
         Some(Node::Stmt(stmt)) => Some(NodeSpan::new(stmt.span, Stmt)),
@@ -82,7 +106,17 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
         // We do not have a SpanNodeKind for certain nodes
         Some(Node::TypeBinding(_)) => None,
         Some(Node::TraitRef(_)) => None,
-        Some(Node::Pat(pat)) => Some(NodeSpan::new(pat.span, Pat)),
+        Some(Node::Pat(pat)) => {
+            match &pat.kind {
+                hir::PatKind::Binding(_, _, ident, _) => {
+                    Some(NodeSpan::with_disambiguator(pat.span, Pat, ident.name))
+                }
+                hir::PatKind::Tuple(_, _) => {
+                    Some(NodeSpan::with_disambiguator(pat.span, Pat, rustc_span::Symbol::intern("tuple")))
+                }
+                _ => Some(NodeSpan::new(pat.span, Pat)),
+            }
+        }
         Some(Node::Arm(arm)) => Some(NodeSpan::new(arm.span, Arm)),
         Some(Node::Block(block)) => Some(NodeSpan::new(block.span, Block)),
         Some(Node::Local(local)) => Some(NodeSpan::new(local.span, Local)),
