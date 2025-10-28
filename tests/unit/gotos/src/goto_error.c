@@ -42,37 +42,39 @@ error:
     return x - 3;
 }
 
-/*
-void goto_error_but_its_all_gotos() {
-    int COND = 0;
-
-    if (COND) {
+int goto_error_but_its_all_gotos(int x) {
+    if (x >= 10) {
         goto B;
     } else {
         goto C;
     }
 
 B:
-    if (COND) {
-        goto X;
+    x += 2;
+    if (x == 20) {
+        x += 1;
+        goto error;
     } else {
         goto D;
     }
 
 C:
-    if (COND) {
-        goto X;
+    x -= 2;
+    if (x == 0) {
+        x -= 1;
+        goto error;
     } else {
         goto D;
     }
 
 D:
-    return;
+    return x + 3;
 
-X:
-    return;
+error:
+    return x - 3;
 }
 
+/*
 // `goto_error` with multiple error cases that then flow into a common
 // termination case.
 void goto_errors() {
