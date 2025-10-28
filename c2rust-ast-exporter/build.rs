@@ -1,7 +1,7 @@
 use c2rust_build_paths::find_llvm_config;
 use cmake::Config;
 use std::env;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 
@@ -129,13 +129,13 @@ fn build_native(llvm_info: &LLVMInfo) {
                 // Where to find LLVM/Clang CMake files
                 .define(
                     "LLVM_DIR",
-                    env::var("CMAKE_LLVM_DIR")
-                        .unwrap_or_else(|_| format!("{}/cmake/llvm", llvm_lib_dir)),
+                    env::var_os("CMAKE_LLVM_DIR")
+                        .unwrap_or_else(|| llvm_lib_dir.join("cmake/llvm").into()),
                 )
                 .define(
                     "Clang_DIR",
-                    env::var("CMAKE_CLANG_DIR")
-                        .unwrap_or_else(|_| format!("{}/cmake/clang", llvm_lib_dir)),
+                    env::var_os("CMAKE_CLANG_DIR")
+                        .unwrap_or_else(|| llvm_lib_dir.join("cmake/clang").into()),
                 )
                 // What to build
                 .build_target("clangAstExporter")
@@ -153,7 +153,7 @@ fn build_native(llvm_info: &LLVMInfo) {
     println!("cargo:rustc-link-lib=static=tinycbor");
     println!("cargo:rustc-link-lib=static=clangAstExporter");
 
-    println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
+    println!("cargo:rustc-link-search=native={}", llvm_lib_dir.display());
 
     // Some distro's, including arch and Fedora, no longer build with
     // BUILD_SHARED_LIBS=ON; programs linking to clang are required to
@@ -231,7 +231,7 @@ fn build_native(llvm_info: &LLVMInfo) {
 /// Holds information about LLVM paths we have found
 struct LLVMInfo {
     /// LLVM lib dir containing libclang* and libLLVM* libraries
-    pub lib_dir: String,
+    pub lib_dir: PathBuf,
 
     /// List of libs we need to link against
     pub libs: Vec<String>,
@@ -267,16 +267,12 @@ impl LLVMInfo {
           $ export LLVM_LIB_DIR=/usr/local/opt/llvm/lib
         ";
         let lib_dir = {
-            let path_str = env::var("LLVM_LIB_DIR")
-                .ok()
-                .or_else(|| invoke_command(llvm_config.as_deref(), ["--libdir"]))
+            let path_str = env::var_os("LLVM_LIB_DIR")
+                .or_else(|| {
+                    invoke_command(llvm_config.as_deref(), ["--libdir"]).map(OsString::from)
+                })
                 .expect(llvm_config_missing);
-            String::from(
-                Path::new(&path_str)
-                    .canonicalize()
-                    .unwrap()
-                    .to_string_lossy(),
-            )
+            Path::new(&path_str).canonicalize().unwrap()
         };
 
         let llvm_shared_libs = invoke_command(llvm_config.as_deref(), ["--libs", "--link-shared"]);

@@ -448,9 +448,11 @@ private:
             // built-in to normal vector types.
             case BuiltinType::Float16: return TagHalf;
             case BuiltinType::Half: return TagHalf;
+
 #if CLANG_VERSION_MAJOR >= 11
             case BuiltinType::BFloat16: return TagBFloat16;
 #endif
+
             case BuiltinType::Float: return TagFloat;
             case BuiltinType::Double: return TagDouble;
             case BuiltinType::LongDouble: return TagLongDouble;
@@ -462,13 +464,75 @@ private:
             case BuiltinType::Bool: return TagBool;
             case BuiltinType::WChar_S: return TagSWChar;
             case BuiltinType::WChar_U: return TagUWChar;
+
 #if CLANG_VERSION_MAJOR >= 17
-            case BuiltinType::SveCount: return TagSveCount;
-            case BuiltinType::SveBool: return TagSveBool;
-            case BuiltinType::SveBoolx2: return TagSveBoolx2;
-            case BuiltinType::SveBoolx4: return TagSveBoolx4;
             case BuiltinType::Float128: return TagFloat128;
-#endif
+
+            // From `clang/include/clang/Basic/AArch64ACLETypes.def`,
+            // but we can't `#include` it in an external clang tool.
+            case BuiltinType::SveInt8:
+            case BuiltinType::SveInt16:
+            case BuiltinType::SveInt32:
+            case BuiltinType::SveInt64:
+            case BuiltinType::SveUint8:
+            case BuiltinType::SveUint16:
+            case BuiltinType::SveUint32:
+            case BuiltinType::SveUint64:
+            case BuiltinType::SveFloat16:
+            case BuiltinType::SveFloat32:
+            case BuiltinType::SveFloat64:
+            case BuiltinType::SveBFloat16:
+            case BuiltinType::SveInt8x2:
+            case BuiltinType::SveInt16x2:
+            case BuiltinType::SveInt32x2:
+            case BuiltinType::SveInt64x2:
+            case BuiltinType::SveUint8x2:
+            case BuiltinType::SveUint16x2:
+            case BuiltinType::SveUint32x2:
+            case BuiltinType::SveUint64x2:
+            case BuiltinType::SveFloat16x2:
+            case BuiltinType::SveFloat32x2:
+            case BuiltinType::SveFloat64x2:
+            case BuiltinType::SveBFloat16x2:
+            case BuiltinType::SveInt8x3:
+            case BuiltinType::SveInt16x3:
+            case BuiltinType::SveInt32x3:
+            case BuiltinType::SveInt64x3:
+            case BuiltinType::SveUint8x3:
+            case BuiltinType::SveUint16x3:
+            case BuiltinType::SveUint32x3:
+            case BuiltinType::SveUint64x3:
+            case BuiltinType::SveFloat16x3:
+            case BuiltinType::SveFloat32x3:
+            case BuiltinType::SveFloat64x3:
+            case BuiltinType::SveBFloat16x3:
+            case BuiltinType::SveInt8x4:
+            case BuiltinType::SveInt16x4:
+            case BuiltinType::SveInt32x4:
+            case BuiltinType::SveInt64x4:
+            case BuiltinType::SveUint8x4:
+            case BuiltinType::SveUint16x4:
+            case BuiltinType::SveUint32x4:
+            case BuiltinType::SveUint64x4:
+            case BuiltinType::SveFloat16x4:
+            case BuiltinType::SveFloat32x4:
+            case BuiltinType::SveFloat64x4:
+            case BuiltinType::SveBFloat16x4:
+            case BuiltinType::SveBool:
+            case BuiltinType::SveBoolx2:
+            case BuiltinType::SveBoolx4:
+            case BuiltinType::SveCount:
+#endif // CLANG_VERSION_MAJOR >= 17
+
+#if CLANG_VERSION_MAJOR >= 20
+            case BuiltinType::MFloat8:
+            case BuiltinType::SveMFloat8:
+            case BuiltinType::SveMFloat8x2:
+            case BuiltinType::SveMFloat8x3:
+            case BuiltinType::SveMFloat8x4:
+#endif // CLANG_VERSION_MAJOR >= 20
+                return TagSve;
+
             default:
                 auto pol = clang::PrintingPolicy(Context->getLangOpts());
                 auto warning = std::string("Encountered unsupported BuiltinType kind ") +
