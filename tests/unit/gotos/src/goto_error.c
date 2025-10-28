@@ -1,5 +1,5 @@
 // Tests the common `goto error` pattern with a single error label.
-int goto_error(int x) {
+int goto_error_a(int x) {
     if (x >= 10) {
         if (x == 20) {
             x += 1;
@@ -19,20 +19,30 @@ error:
     return x - 3;
 }
 
-/*
-int simple_test(int x) {
-    if (x) {
-        if (x == 10) {
-            return 1;
+// Should have the same behavior as `goto_error_a`, but at one point this one
+// failed when the one above passed, so we want to keep both as a regression
+// test.
+int goto_error_b(int x) {
+    if (x >= 10) {
+        x += 2;
+        if (x == 20) {
+            x += 1;
+            goto error;
         }
-        return 2;
+    } else {
+        x -= 2;
+        if (x == 0) {
+            x -= 1;
+            goto error;
+        }
     }
-    else
-    {
-        return 3;
-    }
+    return x + 3;
+
+error:
+    return x - 3;
 }
 
+/*
 void goto_error_but_its_all_gotos() {
     int COND = 0;
 
