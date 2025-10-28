@@ -142,6 +142,7 @@ enum TypeTag {
     TagBuiltinFn,
 
     TagAttributedType,
+    TagCountAttributedType,
     TagBlockPointer,
     TagComplexType,
     TagHalf,

@@ -64,6 +64,30 @@ pub union NestedStructInUnion {
 pub struct InsideUnion {
     pub yup: ::core::ffi::c_int,
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct IntArray {
+    pub len: core::ffi::c_int,
+    pub data: [core::ffi::c_int; 0],
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct IntArray2 {
+    pub len: core::ffi::c_int,
+    pub data: *mut core::ffi::c_int,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct RawBuffer {
+    pub size: core::ffi::c_int,
+    pub ptr: *mut core::ffi::c_void,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct RawBuffer2 {
+    pub size: core::ffi::c_int,
+    pub ptr: *mut core::ffi::c_void,
+}
 #[no_mangle]
 pub unsafe extern "C" fn struct_declaration() {
     let mut value: ::core::ffi::c_int = VALUE2 as ::core::ffi::c_int;
@@ -74,6 +98,19 @@ pub unsafe extern "C" fn struct_declaration() {
     b.c2rust_unnamed.some_number = 7 as ::core::ffi::c_int;
     let mut c: NestedStructInStruct = NestedStructInStruct {};
     let mut d: InsideStruct = InsideStruct { yup: 0 };
+    let mut arr: IntArray = IntArray { len: 0, data: [] };
+    let mut arr2: IntArray2 = IntArray2 {
+        len: 0,
+        data: 0 as *mut core::ffi::c_int,
+    };
+    let mut buf: RawBuffer = RawBuffer {
+        size: 0,
+        ptr: 0 as *mut core::ffi::c_void,
+    };
+    let mut buf2: RawBuffer2 = RawBuffer2 {
+        size: 0,
+        ptr: 0 as *mut core::ffi::c_void,
+    };
 }
 #[no_mangle]
 pub unsafe extern "C" fn union_declaration() {

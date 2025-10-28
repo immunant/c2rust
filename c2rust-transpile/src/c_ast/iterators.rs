@@ -285,6 +285,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
         Pointer(qtype)
         | Reference(qtype)
         | Attributed(qtype, _)
+        | CountAttributed(qtype, ..)
         | BlockPointer(qtype)
         | Vector(qtype, _)
         | Atomic(qtype) => {
