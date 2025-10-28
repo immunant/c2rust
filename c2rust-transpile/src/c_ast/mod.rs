@@ -349,34 +349,36 @@ impl TypedAstContext {
 
     /// Follow a chain of typedefs and return true iff the last typedef is named
     /// `__builtin_va_list` thus naming the type clang uses to represent `va_list`s.
-    pub fn is_builtin_va_list(&self, typ: CTypeId) -> bool {
-        match self.index(typ).kind {
-            CTypeKind::Typedef(decl) => match &self.index(decl).kind {
-                CDeclKind::Typedef {
-                    name: name_,
-                    typ: ty,
-                    ..
-                } => {
-                    if name_ == "__builtin_va_list" {
-                        true
-                    } else {
-                        self.is_builtin_va_list(ty.ctype)
-                    }
-                }
+    pub fn is_builtin_va_list(&self, mut typ: CTypeId) -> bool {
+        loop {
+            // Skip over Elaborated types
+            let mut kind = &self.index(typ).kind;
+
+            while let &CTypeKind::Elaborated(typ) = kind {
+                kind = &self.index(typ).kind;
+            }
+
+            // TODO: Rust 1.65: use let-else
+            let decl = match kind {
+                &CTypeKind::Typedef(decl) => decl,
+                _ => return false,
+            };
+            let (name, qtyp) = match &self.index(decl).kind {
+                &CDeclKind::Typedef { ref name, typ, .. } => (name, typ),
                 _ => panic!("Typedef decl did not point to a typedef"),
-            },
-            _ => false,
+            };
+
+            if name == "__builtin_va_list" {
+                return true;
+            }
+
+            typ = qtyp.ctype;
         }
     }
 
     /// Predicate for types that are used to implement C's `va_list`.
     /// FIXME: can we get rid of this method and use `is_builtin_va_list` instead?
     pub fn is_va_list_struct(&self, typ: CTypeId) -> bool {
-        // detect `va_list`s based on typedef (should work across implementations)
-        //        if self.is_builtin_va_list(typ) {
-        //            return true;
-        //        }
-
         // detect `va_list`s based on type (assumes struct-based implementation)
         let resolved_ctype = self.resolve_type(typ);
         use CTypeKind::*;
@@ -400,28 +402,8 @@ impl TypedAstContext {
 
     /// Predicate for pointers to types that are used to implement C's `va_list`.
     pub fn is_va_list(&self, typ: CTypeId) -> bool {
-        use BuiltinVaListKind::*;
-        match self.va_list_kind {
-            CharPtrBuiltinVaList | VoidPtrBuiltinVaList | X86_64ABIBuiltinVaList => {
-                match self.resolve_type(typ).kind {
-                    CTypeKind::Pointer(CQualTypeId { ctype, .. })
-                    | CTypeKind::ConstantArray(ctype, _) => self.is_va_list_struct(ctype),
-                    _ => false,
-                }
-            }
-
-            AArch64ABIBuiltinVaList => self.is_va_list_struct(typ),
-
-            AAPCSABIBuiltinVaList => {
-                // The mechanism applies: va_list is a `struct __va_list { ... }` as per
-                // https://documentation-service.arm.com/static/5f201281bb903e39c84d7eae
-                // ("Procedure Call Standard for the Arm Architecture Release 2020Q2, Document
-                // number IHI 0042J") Section 8.1.4 "Additional Types"
-                self.is_va_list_struct(typ)
-            }
-
-            kind => unimplemented!("va_list type {:?} not yet implemented", kind),
-        }
+        // detect `va_list`s based on typedef (should work across implementations)
+        self.is_builtin_va_list(typ)
     }
 
     /// Predicate for function pointers

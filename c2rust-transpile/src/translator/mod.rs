@@ -4601,7 +4601,7 @@ impl<'c> Translation<'c> {
                 // and to be a pointer as a function argument we would get
                 // spurious casts when trying to treat it like a VaList which
                 // has reference semantics.
-                if self.ast_context.is_va_list(target_cty.ctype) {
+                if self.ast_context.is_va_list(source_cty.ctype) {
                     return Ok(val);
                 }
 
