@@ -1,19 +1,38 @@
 void stuff(const char *);
 
-void switch_with_fallthrough() {
-    int COND = 0;
-
-    stuff("A");
-    switch (COND)
+int fallthrough_2(int x) {
+    switch (x)
     {
     case 0:
-        stuff("B");
-    case 1:
-        stuff("C");
-    case 2:
-        stuff("D");
+        x += 1;
     default:
-        stuff("E");
+        x += 1;
     }
-    stuff("F");
+    return x;
+}
+
+int fallthrough_3(int x) {
+    switch (x)
+    {
+    case 0:
+        x += 1;
+    case 1:
+        x += 1;
+    default:
+        x += 1;
+    }
+    return x;
+}
+
+int fallthrough_without_default(int x) {
+    switch (x)
+    {
+    case 0:
+        x += 1;
+    case 1:
+        x += 1;
+    case 2:
+        x += 1;
+    }
+    return x;
 }
