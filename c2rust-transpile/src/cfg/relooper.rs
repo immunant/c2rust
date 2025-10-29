@@ -403,14 +403,17 @@ impl RelooperState {
             if !present.is_empty() {
                 let branches = absent.into_iter().map(|lbl| (lbl, vec![])).collect();
 
-                let mut then = vec![];
-                self.relooper(present, blocks, &mut then, false);
-
                 result.push(Structure::Multiple {
                     entries,
                     branches,
-                    then,
                 });
+
+                // UUUHHHHHHHHH idk if this is right. This used to be the `then`
+                // block in the multiple, but I have banned `then` and we decide
+                // based on the entries if we need the fallthrough case. So I
+                // guess this should just become the next structure after the
+                // multiple? That sounds right but I'm not 100% sure.
+                self.relooper(present, blocks, result, false);
             }
 
             return;
@@ -557,7 +560,7 @@ impl RelooperState {
             let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
             // Reloop each set of handled blocks into their own structured control flow.
-            let mut all_handlers: IndexMap<_, _> = handled_entries
+            let all_handlers: IndexMap<_, _> = handled_entries
                 .into_iter()
                 .map(|(lbl, blocks)| {
                     let entries = indexset![lbl.clone()];
@@ -570,30 +573,6 @@ impl RelooperState {
                     (lbl, structs)
                 })
                 .collect();
-
-            // If all entries are handled, we grab the first one to be the "then" branch,
-            // otherwise the "then" branch is empty.
-            //
-            // This is done because of how we generate `match` statements from `Multiple`.
-            // If all entries are handled, then we pull one case to be the `_ => { ... }`
-            // default case in the generated `match`. This works because every entry will
-            // have its own `match` arm, so it's safe to have the `_` arm cover one of them,
-            // and avoids having a dead `_` case just to satisfy exhaustiveness.
-            //
-            // If we have unhandled entries, then we'll have entries not covered by the
-            // `match`. In this case we want an empty `_ => {}` case, that way when we hit
-            // the `match` from one of the unhandled entries we just fall through the
-            // `match` and continue on to the correct entry.
-            let handler_keys: IndexSet<Label> = all_handlers.keys().cloned().collect();
-            let (then, branches) = if handler_keys == entries {
-                let last_handler = all_handlers
-                    .swap_remove_index(0)
-                    .expect("There has to be at least one handler")
-                    .1;
-                (last_handler, all_handlers)
-            } else {
-                (vec![], all_handlers)
-            };
 
             // Disable heuristics when relooping the follow blocks if all of our entries are
             // follow entries.
@@ -609,8 +588,7 @@ impl RelooperState {
 
             result.push(Structure::Multiple {
                 entries,
-                branches,
-                then,
+                branches: all_handlers,
             });
 
             self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
