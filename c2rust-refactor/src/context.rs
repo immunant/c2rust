@@ -22,7 +22,9 @@ use rustc_span::Span;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::util::{is_export_attr, namespace};
-use crate::ast_manip::{AstEquiv, AstSpanMaps, NodeSpan, SpanNodeKind};
+use crate::ast_manip::{
+    child_slot, AstEquiv, AstSpanMaps, NodeContextKey, NodeSpan, SpanNodeKind, StructuralContext,
+};
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
 use crate::reflect;
 use crate::{expect, match_or};
@@ -49,10 +51,16 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 }
 
 type SpanToHirMap = FxHashMap<NodeSpan, HirId>;
+type ContextToHirMap = FxHashMap<(NodeSpan, NodeContextKey), HirId>;
 
-struct SpanToHirMapper<'hir> {
+struct SpanToHirMapper<'def, 'hir> {
     hir_map: hir_map::Map<'hir>,
+    def_id_to_node_id: &'def IndexVec<LocalDefId, NodeId>,
     span_to_hir_map: SpanToHirMap,
+    /// Secondary lookup keyed by (span, structural context) for span-colliding nodes
+    context_to_hir_map: ContextToHirMap,
+    /// Tracks block/owner/child-slot stacks while walking the HIR
+    ctx: StructuralContext<HirId>,
 }
 
 fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
@@ -98,7 +106,82 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
     ns.filter(|ns| !ns.span.is_dummy())
 }
 
-impl<'hir> hir::intravisit::Visitor<'hir> for SpanToHirMapper<'hir> {
+/// Extract identifier symbol from HIR nodes for additional disambiguation
+fn hir_id_to_symbol(id: HirId, hir_map: hir_map::Map) -> Option<rustc_span::Symbol> {
+    match hir_map.find(id) {
+        Some(Node::Expr(expr)) => match &expr.kind {
+            hir::ExprKind::Path(hir::QPath::Resolved(_, path)) => {
+                path.segments.last().map(|seg| seg.ident.name)
+            }
+            _ => None,
+        },
+        Some(Node::Pat(pat)) => match &pat.kind {
+            hir::PatKind::Binding(_, _, ident, _) => Some(ident.name),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+impl<'def, 'hir> SpanToHirMapper<'def, 'hir> {
+    fn new(
+        hir_map: hir_map::Map<'hir>,
+        def_id_to_node_id: &'def IndexVec<LocalDefId, NodeId>,
+    ) -> Self {
+        Self {
+            hir_map,
+            def_id_to_node_id,
+            span_to_hir_map: Default::default(),
+            context_to_hir_map: Default::default(),
+            ctx: StructuralContext::default(),
+        }
+    }
+
+    fn into_maps(self) -> (SpanToHirMap, ContextToHirMap) {
+        (self.span_to_hir_map, self.context_to_hir_map)
+    }
+
+    fn current_owner_node_id(&self) -> Option<NodeId> {
+        let owner = self.ctx.current_owner()?;
+        let def_id = owner.owner;
+        self.def_id_to_node_id.get(def_id).copied()
+    }
+
+    fn visit_child<F>(&mut self, slot: u16, visit_fn: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        self.ctx.push_child(slot);
+        visit_fn(self);
+        self.ctx.pop_child();
+    }
+
+    fn insert_mapping(&mut self, id: HirId) {
+        if let Some(ns) = hir_id_to_span(id, self.hir_map) {
+            let _old_id = self.span_to_hir_map.insert(ns, id);
+
+            // Rebuild the context fingerprint that the AST side recorded for the matching NodeId
+            let symbol = hir_id_to_symbol(id, self.hir_map);
+
+            let mut context = self.ctx.current_context();
+            if let Some(stmt_idx) = self.ctx.current_stmt_index() {
+                context = context.with_stmt_index(stmt_idx);
+            }
+            if context.owner.is_none() {
+                if let Some(owner) = self.current_owner_node_id() {
+                    context = context.with_owner(Some(owner));
+                }
+            }
+            if let Some(sym) = symbol {
+                context = context.with_symbol(Some(sym));
+            }
+
+            let _old_context_id = self.context_to_hir_map.insert((ns, context.clone()), id);
+        }
+    }
+}
+
+impl<'def, 'hir> hir::intravisit::Visitor<'hir> for SpanToHirMapper<'def, 'hir> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
@@ -106,12 +189,131 @@ impl<'hir> hir::intravisit::Visitor<'hir> for SpanToHirMapper<'hir> {
     }
 
     fn visit_id(&mut self, id: HirId) {
-        if let Some(ns) = hir_id_to_span(id, self.hir_map) {
-            let _old_id = self.span_to_hir_map.insert(ns, id);
-            // Sometimes we get different HirId's with the same span, e.g., Expr
-            // TODO: we still should assert here, but we would need to
-            // refine the condition to avoid legitimate collisions
-            //assert!(old_id.is_none(), "span {ns:?} already has id {old_id:?} != {id:?}");
+        self.insert_mapping(id);
+    }
+
+    fn visit_item(&mut self, item: &'hir hir::Item<'hir>) {
+        self.visit_id(item.hir_id());
+        self.ctx.push_owner(item.hir_id());
+        hir::intravisit::walk_item(self, item);
+        self.ctx.pop_owner();
+    }
+
+    fn visit_impl_item(&mut self, item: &'hir hir::ImplItem<'hir>) {
+        self.visit_id(item.hir_id());
+        self.ctx.push_owner(item.hir_id());
+        hir::intravisit::walk_impl_item(self, item);
+        self.ctx.pop_owner();
+    }
+
+    fn visit_trait_item(&mut self, item: &'hir hir::TraitItem<'hir>) {
+        self.visit_id(item.hir_id());
+        self.ctx.push_owner(item.hir_id());
+        hir::intravisit::walk_trait_item(self, item);
+        self.ctx.pop_owner();
+    }
+
+    fn visit_foreign_item(&mut self, item: &'hir hir::ForeignItem<'hir>) {
+        self.visit_id(item.hir_id());
+        self.ctx.push_owner(item.hir_id());
+        hir::intravisit::walk_foreign_item(self, item);
+        self.ctx.pop_owner();
+    }
+
+    fn visit_block(&mut self, block: &'hir hir::Block<'hir>) {
+        // Record block mapping before descending so NodeId-based queries can find this block.
+        self.visit_id(block.hir_id);
+        // Keep track of the active block to fold the statement index into the context key.
+        self.ctx.push_block(block.hir_id);
+
+        // Manually walk statements to track indices
+        for stmt in block.stmts {
+            self.visit_stmt(stmt);
+            self.ctx.next_stmt();
+        }
+
+        // Visit the trailing expression if present
+        if let Some(expr) = block.expr {
+            self.visit_expr(expr);
+        }
+
+        self.ctx.pop_block();
+    }
+
+    fn visit_expr(&mut self, expr: &'hir hir::Expr<'hir>) {
+        // Insert mapping for this expression first
+        self.visit_id(expr.hir_id);
+
+        // Note: HIR Expr doesn't have attrs field (attributes are on items/stmts)
+
+        // Enumerate only those expression kinds whose AST and HIR shapes line up exactly.
+        // The slot values must stay in lockstep with `child_slot` so that both sides compute
+        // the same `NodeContextKey`.
+        match &expr.kind {
+            hir::ExprKind::Struct(..) => {
+                hir::intravisit::walk_expr(self, expr);
+            }
+            hir::ExprKind::Tup(exprs) => {
+                for (i, elem) in exprs.iter().enumerate() {
+                    self.visit_child(child_slot::tuple_elem(i), |this| {
+                        this.visit_expr(elem);
+                    });
+                }
+            }
+            hir::ExprKind::Array(exprs) => {
+                for (i, elem) in exprs.iter().enumerate() {
+                    self.visit_child(child_slot::array_elem(i), |this| {
+                        this.visit_expr(elem);
+                    });
+                }
+            }
+            hir::ExprKind::Binary(_, lhs, rhs) => {
+                self.visit_child(child_slot::BINARY_LHS, |this| {
+                    this.visit_expr(lhs);
+                });
+                self.visit_child(child_slot::BINARY_RHS, |this| {
+                    this.visit_expr(rhs);
+                });
+            }
+            hir::ExprKind::Unary(_, operand) => {
+                self.visit_child(child_slot::UNARY_OPERAND, |this| {
+                    this.visit_expr(operand);
+                });
+            }
+            hir::ExprKind::Call(callee, args) => {
+                self.visit_child(child_slot::CALL_CALLEE, |this| {
+                    this.visit_expr(callee);
+                });
+                for (i, arg) in args.iter().enumerate() {
+                    self.visit_child(child_slot::call_arg(i), |this| {
+                        this.visit_expr(arg);
+                    });
+                }
+            }
+            hir::ExprKind::MethodCall(segment, args, _span) => {
+                // Visit the method name/generics (PathSegment)
+                self.visit_path_segment(expr.span, segment);
+                // Visit receiver and arguments
+                for (i, arg) in args.iter().enumerate() {
+                    let slot = if i == 0 {
+                        child_slot::METHOD_RECEIVER
+                    } else {
+                        child_slot::method_arg(i - 1)
+                    };
+                    self.visit_child(slot, |this| {
+                        this.visit_expr(arg);
+                    });
+                }
+            }
+            _ => {
+                // Let the default walker recurse for every other expression kind.  Lowering
+                // rewrites those shapes (e.g. `if` introduces wrapper expressions, matches add
+                // guard nodes), so any slot assignments we invent here would disagree with the
+                // AST-side enumeration and we'd be back to unresolved NodeId lookups.  The
+                // default walker still records spans for all descendants; we simply omit the
+                // fragile structural fingerprint.
+                hir::intravisit::walk_expr(self, expr);
+            }
         }
     }
 }
@@ -128,6 +330,8 @@ pub struct HirMap<'hir> {
     def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
 
     span_to_hir_map: SpanToHirMap,
+    /// Tie-breaker map keyed by (span, NodeContextKey) for nodes that share spans
+    context_to_hir_map: ContextToHirMap,
     ast_span_maps: AstSpanMaps,
 }
 
@@ -139,14 +343,9 @@ impl<'hir> HirMap<'hir> {
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
         ast_span_maps: AstSpanMaps,
     ) -> Self {
-        let mut mapper = SpanToHirMapper {
-            hir_map: map,
-            span_to_hir_map: Default::default(),
-        };
+        let mut mapper = SpanToHirMapper::new(map, &def_id_to_node_id);
         map.visit_all_item_likes_in_crate(&mut mapper);
-        let SpanToHirMapper {
-            span_to_hir_map, ..
-        } = mapper;
+        let (span_to_hir_map, context_to_hir_map) = mapper.into_maps();
 
         Self {
             map,
@@ -154,6 +353,7 @@ impl<'hir> HirMap<'hir> {
             node_id_to_def_id,
             def_id_to_node_id,
             span_to_hir_map,
+            context_to_hir_map,
             ast_span_maps,
         }
     }
@@ -689,23 +889,38 @@ impl<'hir> HirMap<'hir> {
     #[inline]
     pub fn opt_node_to_hir_id(&self, id: NodeId) -> Option<HirId> {
         if id > self.max_node_id {
-            None
-        } else {
-            if let Some(ldid) = self.node_id_to_def_id.get(&id) {
-                return Some(self.map.local_def_id_to_hir_id(*ldid));
-            }
-
-            self.ast_span_maps
-                .node_id_to_span_map
-                .get(&id)
-                .and_then(|span| self.span_to_hir_map.get(&span).copied())
+            return None;
         }
+
+        if let Some(ldid) = self.node_id_to_def_id.get(&id) {
+            return Some(self.map.local_def_id_to_hir_id(*ldid));
+        }
+
+        if let Some(node_span) = self.ast_span_maps.node_id_to_span_map.get(&id) {
+            if let Some(context_key) = self.ast_span_maps.node_id_to_context_map.get(&id) {
+                if let Some(hir_id) = self
+                    .context_to_hir_map
+                    .get(&(*node_span, context_key.clone()))
+                {
+                    return Some(*hir_id);
+                }
+            }
+            return self.span_to_hir_map.get(node_span).copied();
+        }
+
+        None
     }
 
     #[inline]
     pub fn node_to_hir_id(&self, id: NodeId) -> HirId {
-        self.opt_node_to_hir_id(id)
-            .unwrap_or_else(|| panic!("Could not find an HIR id for NodeId: {:?}", id))
+        self.opt_node_to_hir_id(id).unwrap_or_else(|| {
+            let span = self.ast_span_maps.node_id_to_span_map.get(&id).copied();
+            let ctx = self.ast_span_maps.node_id_to_context_map.get(&id).cloned();
+            panic!(
+                "Could not find an HIR id for NodeId {:?}; span={:?}, context={:?}",
+                id, span, ctx
+            )
+        })
     }
 
     /// Retrieves the `Node` corresponding to `id`, returning `None` if cannot be found.
@@ -733,6 +948,14 @@ impl<'hir> HirMap<'hir> {
             return *id;
         }
 
+        // TODO: consult `context_to_node_id_map` using the structural fingerprint recorded by
+        // `SpanToHirMapper`.  Falling straight back to `opt_local_def_id` still conflates siblings
+        // that share a span (e.g. derive helpers), so HIR -> NodeId lookups remain lossy until we
+        // thread the same context key through this path.  Today `hir_to_node_id` feeds
+        // `transform::lifetime_analysis` (panic if the mapped AST node is the wrong kind),
+        // `analysis::mark_related_types` (marks land on the wrong `NodeId`), and
+        // `transform::retype` (changed-def rewrites miss their targets) among others, so the missing
+        // fingerprint shows up whenever macro/derive expansions give several HIR nodes the same span.
         self.map
             .opt_local_def_id(id)
             .and_then(|id| self.def_id_to_node_id.get(id))
