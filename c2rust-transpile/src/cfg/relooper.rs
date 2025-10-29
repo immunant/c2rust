@@ -401,12 +401,12 @@ impl RelooperState {
         // we can just exit.
         if !absent.is_empty() {
             if !present.is_empty() {
-                let branches = absent.into_iter().map(|lbl| (lbl, vec![])).collect();
+                // let branches = absent.into_iter().map(|lbl| (lbl, vec![])).collect();
 
-                result.push(Structure::Multiple {
-                    entries,
-                    branches,
-                });
+                // result.push(Structure::Multiple {
+                //     entries,
+                //     branches,
+                // });
 
                 // UUUHHHHHHHHH idk if this is right. This used to be the `then`
                 // block in the multiple, but I have banned `then` and we decide
