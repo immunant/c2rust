@@ -11,7 +11,6 @@ use rustc_span::symbol::Symbol;
 use rustc_ast::visit::{self, Visitor};
 use rustc_span::Span;
 use rustc_type_ir::sty;
-
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
@@ -295,6 +294,21 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 }
             }
 
+            (LitTyKeyNode::Node(ref ch), LitTyKeyNode::Leaf(_)) if ch.len() == 1 => {
+                // Example: `_xmlSchemaValDate::mon_day_hour_min` (a `[u8; 3]` bitfield backing
+                // array).  The HIR/type-side key tree still records the array wrapper as
+                // `Node([Leaf(u8)])`, whereas the expression we see in the derived accessor is a
+                // helper call whose key tree collapsed to a single `Leaf`.  Both shapes describe
+                // the same aggregate, so peel the wrapper instead of flagging a mismatch.
+                self.unify_key_trees_internal(ch[0], kt2, seen);
+            }
+
+            (LitTyKeyNode::Leaf(_), LitTyKeyNode::Node(ref ch)) if ch.len() == 1 => {
+                // Symmetric case: the expression retained the wrapper (e.g. literal array) while
+                // the type-derived tree collapsed to the inner key.
+                self.unify_key_trees_internal(kt1, ch[0], seen);
+            }
+
             (LitTyKeyNode::Leaf(l1), LitTyKeyNode::Leaf(l2)) => {
                 self.unif.unify_var_var(l1, l2).expect("failed to unify");
             }
@@ -520,11 +534,28 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     }
 
     fn unify_expr_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
-        if let Some(ch_kt) = kt.get().children() {
-            assert!(ch_kt.len() == 1);
-            self.visit_expr_unify(e, ch_kt[0]);
-        } else {
-            self.visit_expr(e);
+        match kt.get() {
+            LitTyKeyNode::Node(ch) => {
+                assert!(ch.len() == 1);
+                self.visit_expr_unify(e, ch[0]);
+            }
+            LitTyKeyNode::Empty => {
+                self.visit_expr(e);
+            }
+            unexpected => {
+                let tcx = self.cx.ty_ctxt();
+                let span_loc = tcx
+                    .sess
+                    .source_map()
+                    .span_to_diagnostic_string(e.span);
+                panic!(
+                    "remove_literal_suffixes: expected aggregate child for {:?} (node_id={:?}, span={}), but key tree collapsed to {:?}",
+                    e.kind,
+                    e.id,
+                    span_loc,
+                    unexpected,
+                );
+            }
         }
     }
 
@@ -599,7 +630,13 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             ExprKind::Tup(ref exprs) => {
                 if let Some(ch_kt) = kt.get().children() {
-                    assert!(ch_kt.len() == exprs.len());
+                    assert!(
+                        ch_kt.len() == exprs.len(),
+                        "Tuple arity mismatch at {:?}: AST has {} elements, key tree has {} children",
+                        ex.span,
+                        exprs.len(),
+                        ch_kt.len()
+                    );
                     for (e, ch_kt) in exprs.iter().zip(ch_kt.iter()) {
                         self.visit_expr_unify(e, ch_kt);
                     }
@@ -757,14 +794,54 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_expr_unify(e, inner_key_tree);
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
+                    let tcx = self.cx.ty_ctxt();
                     let ch = inner_key_tree.get().children();
                     match (ch, &struct_ty.kind()) {
                         (None, _) => {}
-                        (Some(ch), sty::TyKind::Adt(def, _)) => {
+                        (Some(mut struct_children), sty::TyKind::Adt(def, _)) => {
                             let v = &def.non_enum_variant();
-                            assert!(ch.len() == v.fields.len());
-                            let idx = tcx.find_field_index(ident, v).unwrap();
-                            self.unify_key_trees(kt, ch[idx]);
+                            // The expression-side key tree often wraps the actual struct payload
+                            // in one or more single-element aggregates (auto-deref, derive
+                            // shims, etc.).  Peel those wrappers only while we still need to
+                            // expose the real field list; once the arity matches the struct
+                            // definition we stop so we keep the node that represents the field.
+                            let mut peeled = 0usize;
+                            while struct_children.len() == 1
+                                && struct_children.len() != v.fields.len()
+                            {
+                                if peeled == 8 {
+                                    break;
+                                }
+                                match struct_children[0].get() {
+                                    LitTyKeyNode::Node(children) if !children.is_empty() => {
+                                        struct_children = children;
+                                        peeled += 1;
+                                    }
+                                    _ => break,
+                                }
+                            }
+
+                            if struct_children.len() == v.fields.len() {
+                                let idx = tcx.find_field_index(ident, v).unwrap();
+                                self.unify_key_trees(kt, struct_children[idx]);
+                            } else {
+                                let struct_path = tcx.def_path_str(def.did());
+                                let field_name = ident.as_str();
+                                let base_ty = self
+                                    .cx
+                                    .opt_node_type(e.id)
+                                    .map(|ty| format!("{:?}", ty))
+                                    .unwrap_or_else(|| "<unknown>".to_string());
+                                panic!(
+                                    "struct field key-tree arity mismatch after peeling: node_id={:?}, field={}, struct={}, base_ty={}, final_children={}, variant_fields={}",
+                                    e.id,
+                                    field_name,
+                                    struct_path,
+                                    base_ty,
+                                    struct_children.len(),
+                                    v.fields.len(),
+                                );
+                            }
                         }
                         (Some(ch), sty::TyKind::Tuple(ref tys)) => {
                             assert!(ch.len() == tys.len());
@@ -1195,4 +1272,3 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("remove_null_terminator", |_args| mk(RemoveNullTerminator));
     reg.register("remove_literal_suffixes", |_| mk(RemoveLiteralSuffixes));
 }
-
