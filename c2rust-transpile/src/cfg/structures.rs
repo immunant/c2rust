@@ -295,34 +295,17 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         i += 1;
 
         // Handle any followup multiple structures by wrapping the current structure's AST in a block.
-        while let Some(Structure::Multiple {
-            entries,
-            branches,
-            then,
-        }) = root.get(i)
-        {
-            eprintln!("Structure {:?}: handling followup multiple with entries {entries:?}", structure.get_entries());
-            for entry in entries {
+        while let Some(Structure::Multiple { branches, entries }) = root.get(i) {
+            eprintln!(
+                "Structure {:?}: handling followup multiple with entries {entries:?}",
+                structure.get_entries()
+            );
+
+            for (entry, branch) in branches {
                 eprintln!(
                     "Structure {:?}: wrapping structure in loop for entry {entry:?}",
                     structure.get_entries()
                 );
-
-                let branch = branches.get(entry).unwrap_or(then);
-
-                // Don't generate an extra block if the branch is empty.
-                //
-                // TODO: Okay but why is this the right thing to do??? Do we
-                // still want to generate these empty terminating branches? I
-                // think we could remove these empty branches at the relooper
-                // level.
-                if branch.is_empty() {
-                    eprintln!(
-                        "Structure {:?}: skipping empty branch for entry {entry:?}",
-                        structure.get_entries()
-                    );
-                    continue;
-                }
 
                 let branch_ast = forward_cfg_help::<S>(branch)?;
 
@@ -337,6 +320,23 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             }
 
             i += 1;
+
+            // Check for a simple or loop after the multiple. If there is one, we need to
+            // also wrap the current ast in a labeled block.
+            match root.get(i) {
+                Some(Structure::Simple { entries, .. }) => {
+                    if entries.len() == 1 {
+                        structure_ast = S::mk_loop(entries.first().cloned(), structure_ast);
+                    } else {
+                        todo!("Followup simple with multiple entries");
+                    }
+                }
+                Some(Structure::Loop { .. }) => todo!("Loop after followup multiple"),
+
+                // If there's another multiple (or no more structures), continue handling
+                // followup multiples.
+                Some(Structure::Multiple { .. }) | None => {}
+            }
         }
 
         ast = S::mk_append(ast, structure_ast);

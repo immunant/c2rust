@@ -165,7 +165,6 @@ pub enum Structure<Stmt> {
     Multiple {
         entries: IndexSet<Label>,
         branches: IndexMap<Label, Vec<Structure<Stmt>>>,
-        then: Vec<Structure<Stmt>>,
     },
 }
 
@@ -214,11 +213,7 @@ impl Structure<StmtOrDecl> {
                     .collect();
                 Structure::Loop { entries, body }
             }
-            Structure::Multiple {
-                entries,
-                branches,
-                then,
-            } => {
+            Structure::Multiple { entries, branches } => {
                 let branches = branches
                     .into_iter()
                     .map(|(lbl, vs)| {
@@ -230,15 +225,7 @@ impl Structure<StmtOrDecl> {
                         )
                     })
                     .collect();
-                let then = then
-                    .into_iter()
-                    .map(|s| s.place_decls(lift_me, store))
-                    .collect();
-                Structure::Multiple {
-                    entries,
-                    branches,
-                    then,
-                }
+                Structure::Multiple { entries, branches }
             }
         }
     }
