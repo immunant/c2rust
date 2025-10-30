@@ -4,38 +4,35 @@ static char simple[] = "mystring";
 static char *foo = "mystring";
 
 void entry(void) {
-    int arr[1][1] = { 1 };
-    arr[0][0] += 9;
+    int int_2d[1][1] = { 1 };
+    int_2d[0][0] += 9;
+    int int_empty_init[16] = {};
+    int_empty_init[15] += 9;
+    int int_too_long[2] = { 1, 2, 3 };
+    int int_zero[0] = { 1234 };
+    int int_too_short[16] = {0};
+    int_too_short[15] += 9;
 
-    int arr2[16] = {};
-    arr2[15] += 9;
+    struct {char* x; int y;} struct_init_too_short[1] = {};
+    struct_init_too_short[0].y += 9;
+    struct {short; int y;} struct_init_too_long[1] = { { 1, 2 } };
+    struct_init_too_long[0].y += 9;
 
-    struct {char* x; int y;} arr3[1] = {};
-    arr3[0].y += 9;
+    char char_with_string[] = "abc";
+    char char_with_chars[] = {'d','e','f'};
+    char char_with_ints[2] = {1};
+    char char_with_init[] = {"abcd"};
+    char char_too_long[3] = "abcde";
+    char char_too_short[20] = "abc";
 
-    int arr4[16] = {0};
-    arr4[15] += 9;
-
-    struct {short; int y;} arr5[1] = { { 1, 2 } };
-    arr5[0].y += 9;
-
-    // excess elements
-    int arr6[2] = { 1, 2, 3 };
-    int arr7[0] = { 1234 };
-
-    char abc[] = "abc";
-
-    char def[] = {'d','e','f'};
-
-    char part[2] = {1};
-
-    char *abcptr = "abc";
-
-    char init[] = {"abcd"};
-
-    char too_long[3] = "abcde";
-
-    char too_short[20] = "abc";
+    int *int_var_ptr = int_empty_init;
+    int (*int_var_array_ptr)[16] = &int_empty_init;
+    char *char_var_ptr_var = char_with_string;
+    char (*char_var_array_ptr)[4] = &char_with_string;
+    const char *const_char_lit_ptr = "abc";
+    const char (*const_char_lit_array_ptr)[4] = &"abc";
+    char *char_lit_ptr = "abc";
+    char (*char_lit_array_ptr)[4] = &"abc";
 
 // TODO re-enable after #1266 adds portable support for translating `wchar_t`.
 #if 0
