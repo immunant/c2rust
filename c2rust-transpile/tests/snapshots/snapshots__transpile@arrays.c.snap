@@ -86,13 +86,12 @@ pub unsafe extern "C" fn entry() {
     let mut const_char_lit_ptr: *const ::core::ffi::c_char =
         b"abc\0" as *const u8 as *const ::core::ffi::c_char;
     let mut const_char_lit_array_ptr: *const [::core::ffi::c_char; 4] =
-        &::core::mem::transmute::<[u8; 4], [::core::ffi::c_char; 4]>(*b"abc\0")
-            as *const [::core::ffi::c_char; 4];
+        b"abc\0" as *const [u8; 4] as *const [::core::ffi::c_char; 4];
     let mut char_lit_ptr: *mut ::core::ffi::c_char =
         b"abc\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
-    let mut char_lit_array_ptr: *mut [::core::ffi::c_char; 4] =
-        &::core::mem::transmute::<[u8; 4], [::core::ffi::c_char; 4]>(*b"abc\0")
-            as *const [::core::ffi::c_char; 4] as *mut [::core::ffi::c_char; 4];
+    let mut char_lit_array_ptr: *mut [::core::ffi::c_char; 4] = b"abc\0" as *const [u8; 4]
+        as *const [::core::ffi::c_char; 4]
+        as *mut [::core::ffi::c_char; 4];
     let mut past_end: *mut ::core::ffi::c_char = &mut *simple
         .as_mut_ptr()
         .offset(::core::mem::size_of::<[::core::ffi::c_char; 9]>() as isize)
