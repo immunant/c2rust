@@ -1,5 +1,12 @@
-use clap::{load_yaml, App, ArgMatches};
-use log::info;
+extern crate env_logger;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate clap;
+extern crate c2rust_refactor;
+extern crate shlex;
+
+use clap::{App, ArgMatches};
 use std::fs::File;
 use std::io::Read;
 use std::process;
