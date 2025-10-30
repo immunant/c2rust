@@ -6,6 +6,12 @@ pub fn test_fn_attrs() {
     // so instead we're checking the source itself
     let src = include_str!("fn_attrs.rs");
 
+    // Remove the c2rust::src_loc annotation, which is only produced if
+    // --reorganize-definitions is enabled.
+    let mut lines: Vec<&str> = src.lines().collect();
+    lines.retain(|x| !x.contains("#[c2rust::src_loc"));
+    let src = lines.join("\n");
+
     // Some C99 rules for convenience:
     // * In C99, a function defined inline will never, and a function defined extern inline
     //   will always, emit an externally visible function.
@@ -57,8 +63,7 @@ pub fn test_fn_attrs() {
 
     if cfg!(not(target_os = "macos")) {
         // aliased_fn is aliased to the inline_extern function
-        assert!(src.contains(
-            "extern \"C\" {\n    #[link_name = \"inline_extern\"]\n    fn aliased_fn();"
-        ));
+        let aliased_fn_syntax = |public| format!("extern \"C\" {{\n    #[link_name = \"inline_extern\"]\n    {}fn aliased_fn();", public);
+        assert!(src.contains(&aliased_fn_syntax("")) || src.contains(&aliased_fn_syntax("pub ")));
     }
 }
