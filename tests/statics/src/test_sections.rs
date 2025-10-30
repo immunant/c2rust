@@ -36,7 +36,12 @@ pub fn test_sectioned_used_static() {
         // directly at the source file
         let src = include_str!("attributes.rs");
 
-        let lines: Vec<&str> = src.lines().collect();
+        let mut lines: Vec<&str> = src.lines().collect();
+
+        // Remove the c2rust::src_loc annotation, which is only produced if
+        // --reorganize-definitions is enabled.
+        lines.retain(|x| !x.contains("#[c2rust::src_loc"));
+        let src = lines.join("\n");
 
         let pos = lines
             .iter()
@@ -52,6 +57,8 @@ pub fn test_sectioned_used_static() {
 
         // This static is pub, but we want to ensure it has attributes applied
         assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: ::core::ffi::c_int = 1 as ::core::ffi::c_int;"));
-        assert!(src.contains("extern \"C\" {\n    #[link_name = \"no_attrs\"]\n    static mut rust_aliased_static: ::core::ffi::c_int;"))
+        // This static is pub only with --reorganize-definitions
+        let aliased_static_syntax = |public| format!("extern \"C\" {{\n    #[link_name = \"no_attrs\"]\n    {}static mut rust_aliased_static: ::core::ffi::c_int;", public);
+        assert!(src.contains(&aliased_static_syntax("")) || src.contains(&aliased_static_syntax("pub ")))
     }
 }
