@@ -288,8 +288,47 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 )
             }
 
-            Structure::Loop { .. } => todo!(),
-            Structure::Multiple { .. } => todo!(),
+            Structure::Loop { entries, body } => {
+                let label = entries
+                    .first()
+                    .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
+                let body = forward_cfg_help(body)?;
+
+                // TODO: Is this the right way to label the loop? If we have
+                // multiple entries to a loop it means we have irreducible
+                // control flow. In that case is picking the first label the
+                // right thing to do? Do we need to do something else to handle
+                // a checked multiple in that case?
+                S::mk_loop(Some(label.clone()), body)
+            }
+
+            Structure::Multiple { entries, branches } => {
+                // If we have entries that aren't one of our branches, then our then case needs
+                // to be empty so that we fall through to the next structure. Otherwise we pull
+                // off the last branch as the then case.
+                //
+                // TODO: Is there a better way to do the `entries == branches.keys()` check? Can
+                // we do this without allocating a temporary collection? In theory we could do
+                // the comparison using iterators, but then if the order of the keys is
+                // different the comparison will fail even if they have the same keys.
+                let mut branches = branches.clone();
+                let then = if entries == &branches.keys().cloned().collect::<IndexSet<_>>() {
+                    let (_, then) = branches.pop().unwrap(); // UNWRAP: There's at least one branch.
+                    forward_cfg_help(&then)?
+                } else {
+                    S::empty()
+                };
+
+                let cases = branches
+                    .iter()
+                    .map(|(lbl, body)| {
+                        let stmts = forward_cfg_help(body)?;
+                        Ok((lbl.clone(), stmts))
+                    })
+                    .collect::<TranslationResult<_>>()?;
+
+                S::mk_goto_table(cases, then)
+            }
         };
 
         i += 1;
