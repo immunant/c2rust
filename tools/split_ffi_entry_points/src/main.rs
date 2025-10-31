@@ -579,7 +579,6 @@ fn main() {
 
     let sema = Semantics::new(&db);
 
-
     eprintln!("processing crate...");
     let krate = sema.first_crate(first_file_id).unwrap();
 
