@@ -8,12 +8,8 @@ syn = { version = "2.0.108", features = ["full", "visit-mut"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 
-ra_ap_rust-analyzer = "=0.0.301"
-# Cargo will pick versions of the remaining deps to match ra_ap_rust-analyzer.
-ra_ap_hir = "*"
-ra_ap_hir_ty = "*"
-ra_ap_ide_db = "*"
-ra_ap_load-cargo = "*"
-ra_ap_project_model = "*"
-ra_ap_syntax = "*"
-ra_ap_vfs = "*"
+ra_ap_hir = "=0.0.301"
+ra_ap_ide_db = "=0.0.301"
+ra_ap_load-cargo = "=0.0.301"
+ra_ap_project_model = "=0.0.301"
+ra_ap_syntax = "=0.0.301"
