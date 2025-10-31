@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
+use std::iter;
 use std::mem;
 use std::path::Path;
 use std::str::FromStr;
@@ -557,7 +558,8 @@ impl ToTokens for ParsedMetaExportName {
 
 
 fn main() {
-    let path = env::args().nth(1).unwrap();
+    let cargo_dir_path = env::args().nth(1).unwrap();
+    let cargo_dir_path = Path::new(&cargo_dir_path);
 
     let cargo_config = CargoConfig::default();
 
@@ -568,7 +570,7 @@ fn main() {
     };
 
     let (db, vfs, _proc_macro_client) = ra_ap_load_cargo::load_workspace_at(
-        Path::new(&path),
+        cargo_dir_path,
         &cargo_config,
         &load_cargo_config,
         &|_msg| {},
@@ -597,6 +599,14 @@ fn main() {
     }
 
     for (path, root) in files {
+        // Only rewrite files that are inside the provided cargo dir.  If our strategy for finding
+        // the main crate is wrong, this will keep us from overwriting files unexpectedly.
+        let mut ancestors = iter::successors(Some(path.as_path()), |p| p.parent());
+        if !ancestors.any(|a| a == cargo_dir_path) {
+            eprintln!("skip {path:?}: outside cargo dir {cargo_dir_path:?}");
+            continue;
+        }
+
         let code = fs::read_to_string(&path).unwrap();
 
         let ts = TokenStream::from_str(&code).unwrap();
