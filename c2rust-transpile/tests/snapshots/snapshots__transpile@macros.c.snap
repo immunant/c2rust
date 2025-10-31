@@ -375,7 +375,9 @@ pub const ZSTD_WINDOWLOG_MAX_32: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const ZSTD_WINDOWLOG_MAX_64: ::core::ffi::c_int = 31 as ::core::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn test_zstd() -> U64 {
-    return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as usize == 4 as usize {
+    return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as usize
+        == 4 as ::core::ffi::c_int as usize
+    {
         ZSTD_WINDOWLOG_MAX_32
     } else {
         ZSTD_WINDOWLOG_MAX_64
@@ -427,13 +429,13 @@ pub unsafe extern "C" fn use_local_value() -> ::core::ffi::c_int {
 }
 #[no_mangle]
 pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
-    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as uintptr_t);
+    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as ::core::ffi::c_int as uintptr_t);
 }
 #[no_mangle]
 pub unsafe extern "C" fn ntlm_v2_blob_len(mut ntlm: *mut ntlmdata) -> ::core::ffi::c_uint {
     return ((44 as ::core::ffi::c_int - 16 as ::core::ffi::c_int) as ::core::ffi::c_uint)
         .wrapping_add((*ntlm).target_info_len)
-        .wrapping_add(4 as ::core::ffi::c_uint);
+        .wrapping_add(4 as ::core::ffi::c_int as ::core::ffi::c_uint);
 }
 #[no_mangle]
 pub unsafe extern "C" fn late_init_var() -> ::core::ffi::c_int {

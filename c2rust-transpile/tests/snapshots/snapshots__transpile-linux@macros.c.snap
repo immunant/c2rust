@@ -39,8 +39,8 @@ pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut ::core::ffi::c_char) {
         POS.as_ptr() as *const ::core::ffi::c_void,
         (::core::mem::size_of::<[::core::ffi::c_char; 3]>() as size_t)
             .wrapping_div(::core::mem::size_of::<::core::ffi::c_char>() as size_t)
-            .wrapping_sub(1 as size_t)
-            .wrapping_add(1 as size_t)
+            .wrapping_sub(1 as ::core::ffi::c_int as size_t)
+            .wrapping_add(1 as ::core::ffi::c_int as size_t)
             .wrapping_mul(::core::mem::size_of::<::core::ffi::c_char>() as size_t),
     );
 }
