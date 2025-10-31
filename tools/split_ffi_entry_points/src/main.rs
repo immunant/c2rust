@@ -1,22 +1,16 @@
-use std::collections::{HashSet, BTreeSet};
+use std::collections::BTreeSet;
 use std::env;
-use std::fmt::Write as _;
 use std::fs;
 use std::mem;
 use std::path::Path;
 use std::str::FromStr;
-use proc_macro2::{TokenStream, TokenTree, Delimiter, Punct, Spacing, Span};
+use proc_macro2::{TokenStream, TokenTree, Delimiter, Spacing, Span};
 use quote::ToTokens;
-use ra_ap_hir::{Semantics, ModuleDef, HasAttrs, HirFileId};
-use ra_ap_hir::sym;
-//use ra_ap_hir_ty::HirDatabase;
+use ra_ap_hir::Semantics;
 use ra_ap_ide_db::RootDatabase;
-use ra_ap_ide_db::source_change::SourceChangeBuilder;
 use ra_ap_load_cargo::{self, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_project_model::CargoConfig;
-use ra_ap_syntax::{AstNode, SyntaxNode, SyntaxKind, TextRange, TextSize};
-use ra_ap_syntax::ast::{self, HasAttrs as _};
-use ra_ap_syntax::syntax_editor::{SyntaxEditor, Position};
+use ra_ap_syntax::SyntaxNode;
 use syn;
 use syn::spanned::Spanned;
 use syn::visit_mut::{self, VisitMut};
@@ -259,7 +253,6 @@ struct AddDerivedItemVisitor<F>(F);
 
 impl<F: FnMut(&mut syn::Item) -> Option<syn::Item>> AddDerivedItemVisitor<F> {
     fn visit_items(&mut self, items: &mut Vec<syn::Item>) {
-        eprintln!("parent has {} items", items.len());
         let new_items = Vec::with_capacity(items.len());
         let old_items = mem::replace(items, new_items);
         for mut item in old_items {
@@ -274,7 +267,6 @@ impl<F: FnMut(&mut syn::Item) -> Option<syn::Item>> AddDerivedItemVisitor<F> {
 
 impl<F: FnMut(&mut syn::Item) -> Option<syn::Item>> VisitMut for AddDerivedItemVisitor<F> {
     fn visit_item_mod_mut(&mut self, im: &mut syn::ItemMod) {
-        eprintln!("visit mod");
         let items = match im.content {
             Some((_, ref mut x)) => x,
             None => return,
@@ -284,16 +276,15 @@ impl<F: FnMut(&mut syn::Item) -> Option<syn::Item>> VisitMut for AddDerivedItemV
     }
 
     fn visit_file_mut(&mut self, f: &mut syn::File) {
-        eprintln!("visit file");
         self.visit_items(&mut f.items);
         visit_mut::visit_file_mut(self, f);
     }
 }
 
 fn add_ffi_wrapper(
-    db: &RootDatabase,
-    sema: &Semantics<RootDatabase>,
-    root: SyntaxNode,
+    _db: &RootDatabase,
+    _sema: &Semantics<RootDatabase>,
+    _root: SyntaxNode,
     item: &mut syn::Item,
 ) -> Option<syn::Item> {
     let fn_item = match *item {
@@ -326,15 +317,7 @@ fn add_ffi_wrapper(
     let mut need_wrapper = false;
 
     for mut attr in mem::take(&mut fn_item.attrs) {
-        eprintln!("old meta = {}", attr.meta.to_token_stream());
         let mut pm = ParsedMeta::from(attr.meta);
-        match pm {
-            ParsedMeta::Meta(..) => eprintln!("got meta"),
-            ParsedMeta::Unsafe(..) => eprintln!("got unsafe"),
-            ParsedMeta::CfgAttr(..) => eprintln!("got cfg_attr"),
-            ParsedMeta::NoMangle(..) => eprintln!("got no_mangle"),
-            ParsedMeta::ExportName(..) => eprintln!("got export_name"),
-        }
 
         let mut move_to_wrapper = false;
         pm.with_innermost_mut(&mut |pm| {
@@ -355,8 +338,6 @@ fn add_ffi_wrapper(
         });
 
         attr.meta = pm.into();
-        eprintln!("new meta = {}", attr.meta.to_token_stream());
-        eprintln!("   moved = {move_to_wrapper}");
 
         if move_to_wrapper {
             wrapper_attrs.push(attr);
@@ -445,7 +426,6 @@ fn span_to_text_range(span: Span) -> TextRange {
 enum ParsedMeta {
     Meta(syn::Meta),
     Unsafe(Box<ParsedMetaUnsafe>),
-    CfgAttr(Box<ParsedMetaCfgAttr>),
     NoMangle(ParsedMetaNoMangle),
     ExportName(ParsedMetaExportName),
 }
@@ -454,15 +434,6 @@ enum ParsedMeta {
 struct ParsedMetaUnsafe {
     ident: syn::Ident,
     paren: syn::token::Paren,
-    inner: ParsedMeta,
-}
-
-#[derive(Clone)]
-struct ParsedMetaCfgAttr {
-    ident: syn::Ident,
-    paren: syn::token::Paren,
-    cond: syn::Meta,
-    comma: syn::Token![,],
     inner: ParsedMeta,
 }
 
@@ -527,7 +498,6 @@ impl ParsedMeta {
             ParsedMeta::Meta(..) |
             ParsedMeta::NoMangle(..) |
             ParsedMeta::ExportName(..) => f(self),
-            ParsedMeta::CfgAttr(ref mut pmca) => pmca.inner.with_innermost_mut(f),
             ParsedMeta::Unsafe(ref mut pmu) => pmu.inner.with_innermost_mut(f),
         }
     }
@@ -556,7 +526,6 @@ impl ToTokens for ParsedMeta {
         match *self {
             ParsedMeta::Meta(ref x) => x.to_tokens(tokens),
             ParsedMeta::Unsafe(ref x) => x.to_tokens(tokens),
-            ParsedMeta::CfgAttr(ref x) => x.to_tokens(tokens),
             ParsedMeta::NoMangle(ref x) => x.to_tokens(tokens),
             ParsedMeta::ExportName(ref x) => x.to_tokens(tokens),
         }
@@ -567,17 +536,6 @@ impl ToTokens for ParsedMetaUnsafe {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.ident.to_tokens(tokens);
         self.paren.surround(tokens, |tokens| {
-            self.inner.to_tokens(tokens);
-        });
-    }
-}
-
-impl ToTokens for ParsedMetaCfgAttr {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        self.ident.to_tokens(tokens);
-        self.paren.surround(tokens, |tokens| {
-            self.cond.to_tokens(tokens);
-            self.comma.to_tokens(tokens);
             self.inner.to_tokens(tokens);
         });
     }
@@ -609,46 +567,31 @@ fn main() {
         prefill_caches: false,
     };
 
-    let (db, vfs, proc_macro_client) = ra_ap_load_cargo::load_workspace_at(
+    let (db, vfs, _proc_macro_client) = ra_ap_load_cargo::load_workspace_at(
         Path::new(&path),
         &cargo_config,
         &load_cargo_config,
-        &|msg| eprintln!("progress: {msg}"),
+        &|_msg| {},
     ).unwrap();
-    eprintln!("finished loading workspace\n");
-
-    for (id, path) in vfs.iter() {
-        eprintln!("vfs: {id:?}, {path:?}");
-    }
 
     // Assume the first file in `vfs` is the crate root.
     let (first_file_id, _) = vfs.iter().next().unwrap();
 
-    eprintln!("build Semantics...");
     let sema = Semantics::new(&db);
-    eprintln!("done building Semantics");
 
+
+    eprintln!("processing crate...");
     let krate = sema.first_crate(first_file_id).unwrap();
-    eprintln!("{:?}", krate.origin(&db));
-
-    let src = krate.root_module().definition_source(&db);
-    eprintln!("{src:?}");
-    let node = src.value.node();
-    eprintln!("{node:?}");
-    eprintln!("{node}");
 
     let mut files = Vec::new();
     for m in krate.modules(&db) {
         let src = m.definition_source(&db);
         let node = src.value.node();
-        eprintln!("module source = {src:?}");
-        eprintln!("  module node = {node:?}");
         if let Some(editioned_file_id) = m.as_source_file_id(&db) {
             sema.parse(editioned_file_id);
             let file_id = editioned_file_id.file_id(&db);
             let vfs_path = vfs.file_path(file_id);
             if let Some(path) = vfs_path.as_path() {
-                eprintln!("  module path = {path:?}");
                 files.push((path.to_path_buf(), node));
             }
         }
@@ -656,15 +599,13 @@ fn main() {
 
     for (path, root) in files {
         let code = fs::read_to_string(&path).unwrap();
-        eprintln!("{path:?}: read {} bytes", code.len());
 
         let ts = TokenStream::from_str(&code).unwrap();
         let orig_tokens = FlatTokens::new(ts.clone()).collect::<Vec<_>>();
-        let mut ti = TokenIndex::new(&orig_tokens);
+        let ti = TokenIndex::new(&orig_tokens);
 
         let mut ast: syn::File = syn::parse2(ts.clone()).unwrap();
         let mut v = AddDerivedItemVisitor(|i: &mut syn::Item| -> Option<syn::Item> {
-            eprintln!("visit item");
             add_ffi_wrapper(&db, &sema, root.clone(), i)
         });
         v.visit_file_mut(&mut ast);
@@ -673,6 +614,8 @@ fn main() {
 
         let mut buf = OutputBuffer::new();
         render_output(&code, &orig_tokens, &ti, new_ts, &mut buf);
-        println!("{}", buf.s);
+        let s = buf.finish();
+        fs::write(&path, &s).unwrap();
+        eprintln!("wrote {:?}", path);
     }
 }
