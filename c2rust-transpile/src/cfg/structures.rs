@@ -241,12 +241,11 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                         }
 
                         // TODO: Should we also cover `ContinueTo` here?
-                        GoTo(to) | BreakTo(to)
-                            if next_entries.len() == 1 && next_entries.contains(to) =>
-                        {
-                            Ok(insert_goto(to.clone(), next_entries))
-                        }
-
+                        // GoTo(to) | BreakTo(to)
+                        //     if next_entries.len() == 1 && next_entries.contains(to) =>
+                        // {
+                        //     Ok(insert_goto(to.clone(), next_entries))
+                        // }
                         BreakTo(to) => {
                             // TODO: Handle immediate exits, i.e. exits that don't need a target label.
                             let mut new_cfg = S::mk_exit(ExitStyle::Break, Some(to.clone()));
@@ -359,23 +358,24 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             }
 
             i += 1;
+        }
 
-            // Check for a simple or loop after the multiple. If there is one, we need to
-            // also wrap the current ast in a labeled block.
-            match root.get(i) {
-                Some(Structure::Simple { entries, .. }) => {
-                    if entries.len() == 1 {
-                        structure_ast = S::mk_loop(entries.first().cloned(), structure_ast);
-                    } else {
-                        todo!("Followup simple with multiple entries");
-                    }
+        // Check for a simple or loop after the multiple. If there is one, we need to
+        // also wrap the current ast in a labeled block.
+        match root.get(i) {
+            Some(Structure::Simple { entries, .. }) | Some(Structure::Loop { entries, .. }) => {
+                if entries.len() == 1 {
+                    structure_ast = S::mk_loop(entries.first().cloned(), structure_ast);
+                } else {
+                    todo!("Post-multiple structure with multiple entries");
                 }
-                Some(Structure::Loop { .. }) => todo!("Loop after followup multiple"),
-
-                // If there's another multiple (or no more structures), continue handling
-                // followup multiples.
-                Some(Structure::Multiple { .. }) | None => {}
             }
+
+            Some(Structure::Multiple { .. }) => {
+                unreachable!("We should have already handled followup multiples");
+            }
+
+            None => {}
         }
 
         ast = S::mk_append(ast, structure_ast);
