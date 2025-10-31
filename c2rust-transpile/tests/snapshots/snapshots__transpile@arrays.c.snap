@@ -108,7 +108,7 @@ pub unsafe extern "C" fn short_initializer() {
     let mut excess_elements_2: [::core::ffi::c_int; 0] = [0; 0];
     let mut single_struct: [C2RustUnnamed_2; 1] = [{
         let mut init = C2RustUnnamed_2 {
-            x: 1 as ::core::ffi::c_short,
+            x: 1 as ::core::ffi::c_int as ::core::ffi::c_short,
             y: 2 as ::core::ffi::c_int,
         };
         init
@@ -116,7 +116,7 @@ pub unsafe extern "C" fn short_initializer() {
     let mut many_struct: [C2RustUnnamed_1; 3] = [
         {
             let mut init = C2RustUnnamed_1 {
-                x: 1 as ::core::ffi::c_short,
+                x: 1 as ::core::ffi::c_int as ::core::ffi::c_short,
                 y: 2 as ::core::ffi::c_int,
             };
             init
