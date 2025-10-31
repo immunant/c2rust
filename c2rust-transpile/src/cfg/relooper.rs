@@ -355,16 +355,16 @@ impl RelooperState {
 
                     self.relooper(new_entries, blocks, result, false);
                 } else {
-                    let body = vec![];
-                    let terminator = Jump(StructureLabel::BreakTo(entry.clone()));
+                    // let body = vec![];
+                    // let terminator = Jump(StructureLabel::BreakTo(entry.clone()));
 
-                    result.push(Structure::Simple {
-                        entries,
-                        body,
-                        span: Span::call_site(),
-                        terminator,
-                    });
-                };
+                    // result.push(Structure::Simple {
+                    //     entries,
+                    //     body,
+                    //     span: Span::call_site(),
+                    //     terminator,
+                    // });
+                }
             } else {
                 // Our only entry is branched back to, make a loop.
                 self.make_loop(
