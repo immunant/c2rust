@@ -1,3 +1,11 @@
+int simple_loop(int x) {
+    while (x) {
+        x--;
+    }
+
+    return x;
+}
+
 // This should translate to a straightforward `break` with a loop label 
 int break_multiple(int x) {
   /* comment1 */
