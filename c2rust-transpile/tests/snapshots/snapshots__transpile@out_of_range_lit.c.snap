@@ -19,4 +19,5 @@ pub unsafe extern "C" fn f() {
     let mut b: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;
     let mut c: int32_t = 0x8000000000000000 as ::core::ffi::c_ulong as int32_t;
     let mut d: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;
+    let mut x: ::core::ffi::c_float = 340282360000000000000000000000000000000.0f32;
 }

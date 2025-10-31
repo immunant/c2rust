@@ -6,4 +6,6 @@ void f() {
     int32_t c = 0x8000000000000000;
 
     int32_t d = (unsigned int)0x80000000U; // Test with explicit cast.
+
+    float x = 340282360000000000000000000000000000000.0f;
 }
