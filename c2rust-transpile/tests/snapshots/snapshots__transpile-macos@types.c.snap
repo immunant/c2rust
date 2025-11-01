@@ -32,32 +32,33 @@ pub type ssize_t = __darwin_ssize_t;
 #[no_mangle]
 pub static mut intvar: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 #[no_mangle]
-pub static mut sizevar: size_t = 0 as ::core::ffi::c_int as size_t;
+pub static mut sizevar: size_t = 0 as size_t;
 #[no_mangle]
-pub static mut ssizevar: ssize_t = 0 as ::core::ffi::c_int as ssize_t;
+pub static mut ssizevar: ssize_t = 0 as ssize_t;
 #[no_mangle]
-pub static mut intptrvar: intptr_t = 0 as ::core::ffi::c_int as intptr_t;
+pub static mut intptrvar: intptr_t = 0 as intptr_t;
 #[no_mangle]
-pub static mut uintptrvar: uintptr_t = 0 as ::core::ffi::c_int as uintptr_t;
+pub static mut uintptrvar: uintptr_t = 0 as uintptr_t;
 #[no_mangle]
-pub static mut ptrdiffvar: ptrdiff_t = 0 as ::core::ffi::c_int as ptrdiff_t;
+pub static mut ptrdiffvar: ptrdiff_t = 0 as ptrdiff_t;
 #[no_mangle]
-pub static mut uint8var: uint8_t = 0 as ::core::ffi::c_int as uint8_t;
+pub static mut uint8var: uint8_t = 0 as uint8_t;
 #[no_mangle]
-pub static mut uint16var: uint16_t = 0 as ::core::ffi::c_int as uint16_t;
+pub static mut uint16var: uint16_t = 0 as uint16_t;
 #[no_mangle]
-pub static mut uint32var: uint32_t = 0 as ::core::ffi::c_int as uint32_t;
+pub static mut uint32var: uint32_t = 0 as uint32_t;
 #[no_mangle]
-pub static mut uint64var: uint64_t = 0 as ::core::ffi::c_int as uint64_t;
+pub static mut uint64var: uint64_t = 0 as uint64_t;
 #[no_mangle]
-pub static mut int8var: int8_t = 0 as ::core::ffi::c_int as int8_t;
+pub static mut int8var: int8_t = 0 as int8_t;
 #[no_mangle]
-pub static mut int16var: int16_t = 0 as ::core::ffi::c_int as int16_t;
+pub static mut int16var: int16_t = 0 as int16_t;
 #[no_mangle]
 pub static mut int32var: int32_t = 0 as int32_t;
 #[no_mangle]
-pub static mut int64var: int64_t = 0 as ::core::ffi::c_int as int64_t;
+pub static mut int64var: int64_t = 0 as int64_t;
 #[no_mangle]
-pub static mut maxvar: intmax_t = 0 as ::core::ffi::c_int as intmax_t;
+pub static mut maxvar: intmax_t = 0 as intmax_t;
 #[no_mangle]
-pub static mut umaxvar: uintmax_t = 0 as ::core::ffi::c_int as uintmax_t;
+pub static mut umaxvar: uintmax_t = 0 as uintmax_t;
+
