@@ -2286,7 +2286,7 @@ impl CTypeKind {
 
     pub fn is_floating_type(&self) -> bool {
         use CTypeKind::*;
-        matches!(self, Float | Double | LongDouble)
+        matches!(self, Float | Double | LongDouble | Half | BFloat16)
     }
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
