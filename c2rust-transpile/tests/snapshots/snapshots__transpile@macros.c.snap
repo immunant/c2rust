@@ -427,7 +427,7 @@ pub unsafe extern "C" fn use_local_value() -> ::core::ffi::c_int {
 }
 #[no_mangle]
 pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
-    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as uintptr_t);
+    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as ::core::ffi::c_int as uintptr_t);
 }
 #[no_mangle]
 pub unsafe extern "C" fn ntlm_v2_blob_len(mut ntlm: *mut ntlmdata) -> ::core::ffi::c_uint {
