@@ -112,6 +112,22 @@ void restart_valist(const char *fmt, ...) {
     va_end(ap);
 }
 
+void print_int(va_list *ap) {
+    printf("%d", va_arg(*ap, int));
+}
+
+void borrowed_valist(size_t count, ...) {
+    va_list ap;
+    va_start(ap, count);
+
+    while (count > 0) {
+        print_int(&ap);
+        --count;
+    }
+
+    va_end(ap);
+}
+
 // From: https://en.cppreference.com/w/c/variadic/va_copy (CC-BY-SA)
 double sample_stddev(int count, ...)
 {
