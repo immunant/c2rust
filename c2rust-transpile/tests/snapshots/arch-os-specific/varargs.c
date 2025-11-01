@@ -111,4 +111,21 @@ void restart_valist(const char *fmt, ...) {
     va_end(ap);
 }
 
+
+void print_int(va_list *ap) {
+    printf("%d", va_arg(*ap, int));
+}
+
+void borrowed_valist(size_t count, ...) {
+    va_list ap;
+    va_start(ap, count);
+
+    while (count > 0) {
+        print_int(&ap);
+        --count;
+    }
+
+    va_end(ap);
+}
+
 #endif

@@ -30,6 +30,7 @@ pub struct __va_list_tag {
     pub reg_save_area: *mut ::core::ffi::c_void,
 }
 pub type va_list = __builtin_va_list;
+pub type size_t = usize;
 #[derive()]
 #[repr(C)]
 pub struct vastruct<'a> {
@@ -142,4 +143,20 @@ pub unsafe extern "C" fn restart_valist(mut fmt: *const ::core::ffi::c_char, mut
     vprintf(fmt, ap.as_va_list());
     ap = args.clone();
     vprintf(fmt, ap.as_va_list());
+}
+#[no_mangle]
+pub unsafe extern "C" fn print_int(mut ap: *mut ::core::ffi::VaList) {
+    printf(
+        b"%d\0" as *const u8 as *const ::core::ffi::c_char,
+        (*ap).arg::<::core::ffi::c_int>(),
+    );
+}
+#[no_mangle]
+pub unsafe extern "C" fn borrowed_valist(mut count: size_t, mut args: ...) {
+    let mut ap: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    while count > 0 as size_t {
+        print_int(&mut ap.as_va_list());
+        count = count.wrapping_sub(1);
+    }
 }
