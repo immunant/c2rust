@@ -51,9 +51,7 @@ fn config() -> TranspilerConfig {
 fn transpile(platform: Option<&str>, c_path: &Path) {
     let status = Command::new("clang")
         .args([
-            "-c",
-            "-o",
-            "/dev/null",
+            "-fsyntax-only",
             "-w", // Disable warnings.
         ])
         .arg(c_path)
