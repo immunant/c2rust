@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::env::current_dir;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -422,7 +423,7 @@ impl Index<Target> for Targets {
 impl TargetArgs {
     /// `platform` can be any platform-specific string.
     /// It could be the `target_arch`, `target_os`, some combination, or something else.
-    pub fn transpile(&self, c_path: &Path, platform: &'static str) {
+    pub fn transpile(&self, c_path: &Path, platform: &str) {
         let cwd = current_dir().unwrap();
         let c_path = c_path.strip_prefix(&cwd).unwrap();
         // The crate name can't have `.`s in it, so use the file stem.
@@ -549,15 +550,18 @@ impl Targets {
         }
     }
 
-    pub fn transpile(&self, c_path: &Path, get_platform: impl Fn(Target) -> &'static str) {
-        let mut platforms = HashMap::<&'static str, Vec<&TargetArgs>>::new();
+    pub fn transpile<'a, P>(&self, c_path: &Path, get_platform: impl Fn(Target) -> P)
+    where
+        P: Into<Cow<'a, str>>,
+    {
+        let mut platforms = HashMap::<Cow<str>, Vec<&TargetArgs>>::new();
         for target in self.all.iter() {
             let platform = get_platform(target.target());
-            platforms.entry(platform).or_default().push(target);
+            platforms.entry(platform.into()).or_default().push(target);
         }
         for (platform, targets) in platforms {
             for target_args in targets {
-                target_args.transpile(c_path, platform);
+                target_args.transpile(c_path, &platform);
             }
         }
     }
