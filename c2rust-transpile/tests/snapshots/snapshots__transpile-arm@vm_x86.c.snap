@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/arch-specific/vm_x86.aarch64.rs
+expression: cat tests/snapshots/arch-specific/vm_x86.arm.rs
 input_file: c2rust-transpile/tests/snapshots/arch-specific/vm_x86.c
 ---
 #![allow(

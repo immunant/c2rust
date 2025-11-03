@@ -1,7 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/os-specific/rotate.macos.rs
-input_file: c2rust-transpile/tests/snapshots/os-specific/rotate.c
+expression: cat tests/snapshots/os-ptr-width-specific/rotate.macos-64.rs
+input_file: c2rust-transpile/tests/snapshots/os-ptr-width-specific/rotate.c
 ---
 #![allow(
     dead_code,

@@ -1,7 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/incomplete_arrays.rs
-input_file: c2rust-transpile/tests/snapshots/incomplete_arrays.c
+expression: cat tests/snapshots/os-ptr-width-specific/dummy.linux-64.rs
+input_file: c2rust-transpile/tests/snapshots/os-ptr-width-specific/dummy.c
 ---
 #![allow(
     dead_code,

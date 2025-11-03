@@ -76,12 +76,15 @@ int VM_CallCompiled(vm_t *vm, int *args)
 		: "cc", "memory", "%rax", "%rcx", "%rdx", "%r8", "%r9", "%r10", "%r11"
 	);
 #elif __i386__
-	__asm__ volatile(
-		"calll *%3\n"
-		: "+S" (programStack), "+D" (opStack), "+b" (opStackOfs)
-		: "g" (entryPoint)
-		: "cc", "memory", "%eax", "%ecx", "%edx"
-	);
+	// TODO transpilation is broken:
+	// `unknown use of instruction mnemonic without a size suffix` on the `mov`.
+	
+	// __asm__ volatile(
+	// 	"calll *%3\n"
+	// 	: "+S" (programStack), "+D" (opStack), "+b" (opStackOfs)
+	// 	: "g" (entryPoint)
+	// 	: "cc", "memory", "%eax", "%ecx", "%edx"
+	// );
 #endif
 
 	if(opStackOfs != 1 || *opStack != 0xDEADBEEF)

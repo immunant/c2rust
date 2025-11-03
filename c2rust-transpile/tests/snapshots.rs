@@ -73,6 +73,14 @@ impl Arch {
             RiscV64 => "riscv64",
         }
     }
+
+    pub const fn ptr_width(&self) -> u8 {
+        use Arch::*;
+        match *self {
+            X86 | Arm => 32,
+            X86_64 | AArch64 | RiscV64 => 64,
+        }
+    }
 }
 
 impl Display for Arch {
@@ -574,6 +582,8 @@ fn transpile_all() {
         "x86_64-apple-darwin",
         "aarch64-unknown-linux-gnu",
         "aarch64-apple-darwin",
+        "i686-unknown-linux-gnu",
+        "armv7-unknown-linux-gnueabihf",
     ]);
     targets.check_if_targets_are_installed();
 
@@ -582,4 +592,12 @@ fn transpile_all() {
         .transpile(path, |target| target.os().name()));
     insta::glob!("snapshots/arch-specific/*.c", |path| targets
         .transpile(path, |target| target.arch().name()));
+    insta::glob!("snapshots/ptr-width-specific/*.c", |path| targets
+        .transpile(path, |target| format!("{}", target.arch().ptr_width())));
+    insta::glob!("snapshots/os-ptr-width-specific/*.c", |path| targets
+        .transpile(path, |target| format!(
+            "{}-{}",
+            target.os(),
+            target.arch().ptr_width()
+        )));
 }

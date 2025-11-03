@@ -1,7 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/os-specific/rotate.linux.rs
-input_file: c2rust-transpile/tests/snapshots/os-specific/rotate.c
+expression: cat tests/snapshots/os-ptr-width-specific/rotate.linux-32.rs
+input_file: c2rust-transpile/tests/snapshots/os-ptr-width-specific/rotate.c
 ---
 #![allow(
     dead_code,
@@ -15,15 +15,11 @@ input_file: c2rust-transpile/tests/snapshots/os-specific/rotate.c
 pub unsafe extern "C" fn rotate_left_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {
-    return (x as ::core::ffi::c_ulong)
-        .rotate_left(4 as ::core::ffi::c_int as ::core::ffi::c_ulong as u32)
-        as ::core::ffi::c_ulonglong;
+    return x.rotate_left(4 as ::core::ffi::c_int as ::core::ffi::c_ulonglong as u32);
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_right_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {
-    return (x as ::core::ffi::c_ulong)
-        .rotate_right(4 as ::core::ffi::c_int as ::core::ffi::c_ulong as u32)
-        as ::core::ffi::c_ulonglong;
+    return x.rotate_right(4 as ::core::ffi::c_int as ::core::ffi::c_ulonglong as u32);
 }

@@ -14,7 +14,6 @@ input_file: c2rust-transpile/tests/snapshots/macros.c
 extern "C" {
     fn extern_fn() -> ::core::ffi::c_int;
 }
-pub type uintptr_t = usize;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct S {
@@ -35,7 +34,6 @@ pub struct ntlmdata {
     pub target_info_len: ::core::ffi::c_uint,
 }
 pub const true_0: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const UINTPTR_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
 pub const LITERAL_INT: ::core::ffi::c_int = 0xffff as ::core::ffi::c_int;
 pub const LITERAL_BOOL: ::core::ffi::c_int = true_0;
 pub const LITERAL_FLOAT: ::core::ffi::c_double = 3.14f64;
@@ -424,10 +422,6 @@ pub unsafe extern "C" fn local_fn() -> ::core::ffi::c_int {
 #[no_mangle]
 pub unsafe extern "C" fn use_local_value() -> ::core::ffi::c_int {
     return local_fn();
-}
-#[no_mangle]
-pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
-    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as uintptr_t);
 }
 #[no_mangle]
 pub unsafe extern "C" fn ntlm_v2_blob_len(mut ntlm: *mut ntlmdata) -> ::core::ffi::c_uint {
