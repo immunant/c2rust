@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env::current_dir;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs;
@@ -376,7 +377,7 @@ impl Index<Target> for AllTargetArgs {
 impl TargetArgs {
     /// `platform` can be any platform-specific string.
     /// It could be the `target_arch`, `target_os`, some combination, or something else.
-    pub fn transpile(&self, c_path: &Path, platform: Option<&str>) {
+    pub fn transpile(&self, c_path: &Path, platform: Option<&'static str>) {
         let o_path = NamedTempFile::new().unwrap();
         let status = Command::new("zig")
             .arg("cc")
@@ -467,35 +468,28 @@ impl TargetArgs {
     }
 }
 
+impl AllTargetArgs {
+    pub fn transpile(&self, c_path: &Path, get_platform: impl Fn(Target) -> Option<&'static str>) {
+        let mut platforms = HashMap::<Option<&'static str>, Vec<&TargetArgs>>::new();
+        for target in self.all.iter() {
+            let platform = get_platform(target.target());
+            platforms.entry(platform).or_default().push(target);
+        }
+        for (platform, targets) in platforms {
+            for target_args in targets {
+                target_args.transpile(c_path, platform);
+            }
+        }
+    }
+}
+
 #[test]
 fn transpile_all() {
     let targets = AllTargetArgs::find();
 
-    // Some things transpile differently on Linux vs. macOS,
-    // as they use `unsigned long` and `unsigned long long` differently for builtins.
-    // This makes snapshot tests trickier, as the output will be OS-dependent.
-    // We handle this by adding OS name to the snapshot result filename.
-    #[cfg(target_os = "linux")]
-    let os = Os::Linux;
-    #[cfg(target_os = "macos")]
-    let os = Os::MacOs;
-
-    // Similarly, some things transpile differently on different architectures.
-    #[cfg(target_arch = "x86_64")]
-    let arch = Arch::X86_64;
-    #[cfg(target_arch = "aarch64")]
-    let arch = Arch::AArch64;
-
-    let target = Target::from((arch, os));
-    let target_args = &targets[target];
-
-    insta::glob!("snapshots/*.c", |x| target_args.transpile(x, None));
-
-    insta::with_settings!({snapshot_suffix => os.name()}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| target_args.transpile(path, Some(os.name())));
-    });
-
-    insta::with_settings!({snapshot_suffix => arch.name()}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| target_args.transpile(path, Some(arch.name())));
-    })
+    insta::glob!("snapshots/*.c", |path| targets.transpile(path, |_| None));
+    insta::glob!("snapshots/os-specific/*.c", |path| targets
+        .transpile(path, |target| Some(target.os().name())));
+    insta::glob!("snapshots/arch-specific/*.c", |path| targets
+        .transpile(path, |target| Some(target.arch().name())));
 }

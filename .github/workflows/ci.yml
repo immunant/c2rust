@@ -50,6 +50,14 @@ jobs:
       # Run after `rust-cache` so that this is cached.
       - run: rustup component add rustfmt rustc-dev
 
+      - name: Install generated Rust targets
+        run: |
+          rustup +nightly-2023-04-15 target add \
+            x86_64-unknown-linux-gnu \
+            x86_64-apple-darwin \
+            aarch64-unknown-linux-gnu \
+            aarch64-apple-darwin
+
       - name: cargo fmt --check
         run: |
           export RUSTFLAGS="$RUSTFLAGS -D warnings"

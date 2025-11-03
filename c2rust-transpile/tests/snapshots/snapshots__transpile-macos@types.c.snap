@@ -1,8 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 69
-expression: cat tests/snapshots/platform-specific/types.rs
-input_file: c2rust-transpile/tests/snapshots/platform-specific/types.c
+expression: cat tests/snapshots/os-specific/types.macos.rs
+input_file: c2rust-transpile/tests/snapshots/os-specific/types.c
 ---
 #![allow(
     dead_code,
@@ -12,7 +11,6 @@ input_file: c2rust-transpile/tests/snapshots/platform-specific/types.c
     unused_assignments,
     unused_mut
 )]
-pub type __darwin_ptrdiff_t = isize;
 pub type __darwin_size_t = usize;
 pub type __darwin_ssize_t = isize;
 pub type int8_t = i8;
@@ -28,7 +26,7 @@ pub type uint32_t = u32;
 pub type uint64_t = u64;
 pub type intmax_t = ::libc::intmax_t;
 pub type uintmax_t = ::libc::uintmax_t;
-pub type ptrdiff_t = __darwin_ptrdiff_t;
+pub type ptrdiff_t = isize;
 pub type ssize_t = __darwin_ssize_t;
 #[no_mangle]
 pub static mut intvar: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -62,4 +60,3 @@ pub static mut int64var: int64_t = 0 as int64_t;
 pub static mut maxvar: intmax_t = 0 as intmax_t;
 #[no_mangle]
 pub static mut umaxvar: uintmax_t = 0 as uintmax_t;
-
