@@ -54,7 +54,9 @@ fn config() -> TranspilerConfig {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Arch {
+    X86,
     X86_64,
+    Arm,
     AArch64,
 }
 
@@ -62,7 +64,9 @@ impl Arch {
     pub const fn name(&self) -> &'static str {
         use Arch::*;
         match *self {
+            X86 => "x86",
             X86_64 => "x86_64",
+            Arm => "arm",
             AArch64 => "aarch64",
         }
     }
@@ -114,6 +118,8 @@ enum Target {
     X86_64AppleDarwin,
     AArch64UnknownLinuxGnu,
     AArch64AppleDarwin,
+    I686UnknownLinuxGnu,
+    ArmV7UnknownLinuxGnueabihf,
 }
 
 impl Target {
@@ -122,6 +128,8 @@ impl Target {
         Self::X86_64AppleDarwin,
         Self::AArch64UnknownLinuxGnu,
         Self::AArch64AppleDarwin,
+        Self::I686UnknownLinuxGnu,
+        Self::ArmV7UnknownLinuxGnueabihf,
     ];
 
     pub const fn rust_name(&self) -> &'static str {
@@ -131,6 +139,8 @@ impl Target {
             X86_64AppleDarwin => "x86_64-apple-darwin",
             AArch64UnknownLinuxGnu => "aarch64-unknown-linux-gnu",
             AArch64AppleDarwin => "aarch64-apple-darwin",
+            I686UnknownLinuxGnu => "i686-unknown-linux-gnu",
+            ArmV7UnknownLinuxGnueabihf => "armv7-unknown-linux-gnueabihf",
         }
     }
 
@@ -146,6 +156,8 @@ impl Target {
             X86_64AppleDarwin => "x86_64-macos",
             AArch64UnknownLinuxGnu => "aarch64-linux-gnu",
             AArch64AppleDarwin => "aarch64-macos",
+            I686UnknownLinuxGnu => "x86-linux-gnu",
+            ArmV7UnknownLinuxGnueabihf => "arm-linux-gnueabihf",
         }
     }
 
@@ -155,6 +167,8 @@ impl Target {
         match *self {
             X86_64UnknownLinuxGnu | X86_64AppleDarwin => X86_64,
             AArch64UnknownLinuxGnu | AArch64AppleDarwin => AArch64,
+            I686UnknownLinuxGnu => X86,
+            ArmV7UnknownLinuxGnueabihf => Arm,
         }
     }
 
@@ -162,7 +176,10 @@ impl Target {
         use Os::*;
         use Target::*;
         match *self {
-            X86_64UnknownLinuxGnu | AArch64UnknownLinuxGnu => Linux,
+            X86_64UnknownLinuxGnu
+            | AArch64UnknownLinuxGnu
+            | I686UnknownLinuxGnu
+            | ArmV7UnknownLinuxGnueabihf => Linux,
             X86_64AppleDarwin | AArch64AppleDarwin => MacOs,
         }
     }
@@ -180,8 +197,10 @@ impl Debug for Target {
     }
 }
 
-impl From<(Arch, Os)> for Target {
-    fn from((arch, os): (Arch, Os)) -> Self {
+impl TryFrom<(Arch, Os)> for Target {
+    type Error = ();
+
+    fn try_from((arch, os): (Arch, Os)) -> Result<Self, Self::Error> {
         use Arch::*;
         use Os::*;
         use Target::*;
@@ -190,10 +209,14 @@ impl From<(Arch, Os)> for Target {
             (X86_64, MacOs) => X86_64AppleDarwin,
             (AArch64, Linux) => AArch64UnknownLinuxGnu,
             (AArch64, MacOs) => AArch64AppleDarwin,
+            (X86, Linux) => I686UnknownLinuxGnu,
+            (X86, MacOs) => return Err(()),
+            (Arm, Linux) => ArmV7UnknownLinuxGnueabihf,
+            (Arm, MacOs) => return Err(()),
         };
         assert_eq!(target.arch(), arch);
         assert_eq!(target.os(), os);
-        target
+        Ok(target)
     }
 }
 
