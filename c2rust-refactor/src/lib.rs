@@ -343,9 +343,30 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     });
     let exec_dyn: Arc<dyn Executor> = exec.clone();
 
-    let _ = ops::compile_with_exec(&ws, &compile_opts, &exec_dyn);
+    match ops::compile_with_exec(&ws, &compile_opts, &exec_dyn) {
+        Ok(_) => {
+            info!("cargo compile_with_exec completed successfully");
+        }
+        Err(e) => {
+            warn!("cargo compile_with_exec failed: {:?}", e);
+            warn!("  workspace root: {:?}", ws.root());
+            warn!(
+                "  current package: {:?}",
+                ws.current().map(|p| (p.name(), p.package_id()))
+            );
+            warn!("  target dir: {:?}", ws.target_dir());
+            warn!("  compile mode: Check (test=false)");
+        }
+    }
 
     let mut arg_vec = exec.pkg_args.lock().unwrap().clone();
+
+    info!("Captured {} rustc invocation(s) from cargo", arg_vec.len());
+    if arg_vec.is_empty() {
+        warn!("No rustc invocations captured. Debugging info:");
+        warn!("  Workspace has {} member(s)", ws.members().count());
+        warn!("  Current package: {:?}", ws.current().map(|p| p.name()));
+    }
 
     for args in &mut arg_vec {
         let rustc = config.load_global_rustc(Some(&ws)).unwrap();

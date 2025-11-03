@@ -295,6 +295,20 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 }
             }
 
+            (LitTyKeyNode::Node(ref ch), LitTyKeyNode::Leaf(_)) if ch.len() == 1 => {
+                // Singleton Node -> Leaf unwrapping
+                // Example: `_xmlSchemaValDate::mon_day_hour_min` (bitfield backing array).
+                // The HIR/type-side key tree records the array wrapper as `Node([Leaf(u8)])`,
+                // whereas the expression in the derived accessor collapsed to a single `Leaf`.
+                // Both shapes describe the same aggregate, so peel the wrapper.
+                self.unify_key_trees_internal(ch[0], kt2, seen);
+            }
+
+            (LitTyKeyNode::Leaf(_), LitTyKeyNode::Node(ref ch)) if ch.len() == 1 => {
+                // Symmetric case: expression retained the wrapper while type collapsed
+                self.unify_key_trees_internal(kt1, ch[0], seen);
+            }
+
             (LitTyKeyNode::Leaf(l1), LitTyKeyNode::Leaf(l2)) => {
                 self.unif.unify_var_var(l1, l2).expect("failed to unify");
             }
@@ -440,6 +454,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 } else {
                     LitTySource::Unknown(false)
                 };
+                if std::env::var("C2RUST_TRACE_BITFIELDS").is_ok() {
+                    eprintln!("[TY_TO_KEYTREE] Creating Leaf for primitive type: {:?}", ty);
+                }
                 self.replace_with_leaf(new_node, source);
             }
 
@@ -520,11 +537,43 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     }
 
     fn unify_expr_child(&mut self, e: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
-        if let Some(ch_kt) = kt.get().children() {
-            assert!(ch_kt.len() == 1);
-            self.visit_expr_unify(e, ch_kt[0]);
-        } else {
-            self.visit_expr(e);
+        match kt.get() {
+            // If already a Leaf, it's the unwrapped type - use it directly
+            // This happens when singleton Node([Leaf]) collapses to just Leaf
+            LitTyKeyNode::Leaf(_) => {
+                self.visit_expr_unify(e, kt);
+            }
+            // Normal case: unwrap one layer from Node
+            LitTyKeyNode::Node(ch_kt) => {
+                if ch_kt.len() == 1 {
+                    self.visit_expr_unify(e, ch_kt[0]);
+                } else {
+                    if matches!(ch_kt[0].get(), LitTyKeyNode::Leaf(_)) {
+                        let first_key = ch_kt[0].get().as_key();
+                        let all_same_leaf = ch_kt.iter().all(|child| {
+                            matches!(child.get(), LitTyKeyNode::Leaf(key) if key == first_key)
+                        });
+                        if all_same_leaf {
+                            self.visit_expr_unify(e, ch_kt[0]);
+                            return;
+                        }
+                    }
+                    eprintln!("[PANIC DEBUG] unify_expr_child assertion failure:");
+                    eprintln!("  Expression: {:?}", e.kind);
+                    eprintln!("  Expression span: {:?}", e.span);
+                    eprintln!("  Expression ID: {:?}", e.id);
+                    eprintln!("  KeyTree children count: {}", ch_kt.len());
+                    eprintln!("  KeyTree: {:?}", kt.get());
+                    for (i, child) in ch_kt.iter().enumerate() {
+                        eprintln!("    Child {}: {:?}", i, child.get());
+                    }
+                    assert!(ch_kt.len() == 1);
+                }
+            }
+            // Empty means no type info - just visit normally
+            LitTyKeyNode::Empty => {
+                self.visit_expr(e);
+            }
         }
     }
 
@@ -757,14 +806,51 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.visit_expr_unify(e, inner_key_tree);
                 self.visit_ident(ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
-                    let ch = inner_key_tree.get().children();
+                    // Safely extract children, handling all LitTyKeyNode variants
+                    // Leaf can occur when span collisions cause ambiguous type lookups,
+                    // or when the field access itself represents a primitive value.
+                    // With proper span synthesis in proc macros, this should be rare.
+                    let ch = match inner_key_tree.get() {
+                        LitTyKeyNode::Node(children) => Some(children),
+                        LitTyKeyNode::Empty | LitTyKeyNode::Leaf(_) => None,
+                    };
                     match (ch, &struct_ty.kind()) {
                         (None, _) => {}
-                        (Some(ch), sty::TyKind::Adt(def, _)) => {
+                        (Some(mut struct_children), sty::TyKind::Adt(def, _)) => {
                             let v = &def.non_enum_variant();
-                            assert!(ch.len() == v.fields.len());
-                            let idx = tcx.find_field_index(ident, v).unwrap();
-                            self.unify_key_trees(kt, ch[idx]);
+
+                            // Peel singleton Node wrappers introduced by derives/macros
+                            // Example: bitfield accessors wrap the backing array in extra layers
+                            let mut peeled = 0usize;
+                            while struct_children.len() == 1
+                                && struct_children.len() != v.fields.len()
+                            {
+                                if peeled == 8 {
+                                    break;  // Safety limit to prevent infinite loops
+                                }
+                                match struct_children[0].get() {
+                                    LitTyKeyNode::Node(children) if !children.is_empty() => {
+                                        struct_children = children;
+                                        peeled += 1;
+                                    }
+                                    _ => break,
+                                }
+                            }
+
+                            if struct_children.len() == v.fields.len() {
+                                let idx = tcx.find_field_index(ident, v).unwrap();
+                                self.unify_key_trees(kt, struct_children[idx]);
+                            } else {
+                                // Arity mismatch - provide detailed error
+                                let struct_path = tcx.def_path_str(def.did());
+                                let field_name = ident.as_str();
+                                panic!(
+                                    "struct field key-tree arity mismatch after peeling {} layers: \
+                                     field={}, struct={}, final_children={}, variant_fields={}",
+                                    peeled, field_name, struct_path,
+                                    struct_children.len(), v.fields.len()
+                                );
+                            }
                         }
                         (Some(ch), sty::TyKind::Tuple(ref tys)) => {
                             assert!(ch.len() == tys.len());
@@ -1111,7 +1197,12 @@ impl<'kt, 'tcx: 'kt> LitTyKeyNode<'kt, 'tcx> {
         match self {
             Self::Node(ch) => Some(ch),
             Self::Empty => None,
-            _ => panic!("expected node, found: {:?}", self)
+            Self::Leaf(key) => {
+                // Leaf nodes have no children - this can happen due to span collisions
+                // in proc-macro-generated code or when type information is collapsed.
+                // Callers should handle None gracefully.
+                panic!("expected node, found: Leaf({:?})", key)
+            }
         }
     }
 }
@@ -1195,4 +1286,3 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("remove_null_terminator", |_args| mk(RemoveNullTerminator));
     reg.register("remove_literal_suffixes", |_| mk(RemoveLiteralSuffixes));
 }
-

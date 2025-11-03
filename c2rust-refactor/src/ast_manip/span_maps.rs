@@ -1,9 +1,9 @@
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::*;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_span::Span;
+use rustc_span::{ExpnId, Span};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SpanNodeKind {
     Crate,
     Block,
@@ -30,16 +30,36 @@ pub enum SpanNodeKind {
     PathExpr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeSpan {
     pub span: Span,
     pub kind: SpanNodeKind,
+    pub expn_trace: Vec<ExpnId>,
 }
 
 impl NodeSpan {
     pub fn new(span: Span, kind: SpanNodeKind) -> Self {
-        Self { span, kind }
+        Self {
+            span,
+            kind,
+            expn_trace: span_expansion_fingerprint(span),
+        }
     }
+}
+
+fn span_expansion_fingerprint(mut span: Span) -> Vec<ExpnId> {
+    let mut trace = Vec::new();
+    loop {
+        let ctxt = span.ctxt();
+        let expn_id = ctxt.outer_expn();
+        if expn_id == ExpnId::root() {
+            break;
+        }
+        trace.push(expn_id);
+        let data = ctxt.outer_expn_data();
+        span = data.call_site;
+    }
+    trace
 }
 
 #[derive(Default, Clone)]
@@ -65,9 +85,9 @@ impl AstSpanMapper {
             return;
         }
 
-        let ns = NodeSpan { span, kind };
-        let old_ns = self.0.node_id_to_span_map.insert(id, ns);
-        let _old_id = self.0.span_to_node_id_map.insert(ns, id);
+        let ns = NodeSpan::new(span, kind);
+        let old_ns = self.0.node_id_to_span_map.insert(id, ns.clone());
+        let _old_id = self.0.span_to_node_id_map.insert(ns.clone(), id);
 
         assert!(
             old_ns.is_none(),
