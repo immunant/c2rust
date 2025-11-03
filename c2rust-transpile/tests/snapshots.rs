@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+use c2rust_transpile::{ReplaceMode, TranspilerConfig, GENERATED_RUST_TOOLCHAIN};
 
 fn config() -> TranspilerConfig {
     TranspilerConfig {
@@ -120,7 +120,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     let rlib_path = format!("lib{crate_name}.rlib");
     let status = Command::new("rustc")
         .args([
-            "+nightly-2023-04-15",
+            &format!("+{GENERATED_RUST_TOOLCHAIN}"),
             "--crate-type",
             "lib",
             "--edition",

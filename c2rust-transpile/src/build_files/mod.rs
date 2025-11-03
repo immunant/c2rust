@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::slice;
+use std::str::{from_utf8, FromStr};
 
 use handlebars::Handlebars;
 use pathdiff::diff_paths;
@@ -257,6 +258,54 @@ fn emit_lib_rs(
 }
 
 pub const GENERATED_RUST_TOOLCHAIN_TOML: &str = include_str!("generated-rust-toolchain.toml");
+pub const GENERATED_RUST_TOOLCHAIN: &str = {
+    const fn find_substring(s: &str, sub: &str, start: usize) -> usize {
+        let s = s.as_bytes();
+        let sub = sub.as_bytes();
+        assert!(sub.len() + start <= s.len());
+        let n = s.len() - sub.len();
+        let mut i = start;
+        while i < n {
+            let mut j = 0;
+            let mut eq = true;
+            while j < sub.len() {
+                if s[i + j] != sub[j] {
+                    eq = false;
+                    break;
+                }
+                j += 1;
+            }
+            if eq {
+                return i;
+            }
+            i += 1;
+        }
+        assert!(false);
+        return 0;
+    }
+
+    let toml = GENERATED_RUST_TOOLCHAIN_TOML;
+    let prefix = "\nchannel = \"";
+    let suffix = "\"";
+    let prefix_start = find_substring(toml, prefix, 0);
+    let start = prefix_start + prefix.len();
+    let end = find_substring(toml, suffix, start);
+
+    let toml = toml.as_bytes();
+    let len = end - start;
+    assert!(start + len <= toml.len());
+    // `const` slicing.
+    // SAFETY: Above `assert!`.
+    let toolchain = unsafe {
+        let ptr = toml.as_ptr().add(start);
+        slice::from_raw_parts(ptr, len)
+    };
+    let toolchain = match from_utf8(toolchain) {
+        Ok(toolchain) => toolchain,
+        Err(_) => panic!(),
+    };
+    toolchain
+};
 
 /// If we translate variadic functions, the output will only compile
 /// on a nightly toolchain until the `c_variadics` feature is stable.
