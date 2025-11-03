@@ -422,7 +422,7 @@ impl Index<Target> for Targets {
 impl TargetArgs {
     /// `platform` can be any platform-specific string.
     /// It could be the `target_arch`, `target_os`, some combination, or something else.
-    pub fn transpile(&self, c_path: &Path, platform: Option<&'static str>) {
+    pub fn transpile(&self, c_path: &Path, platform: &'static str) {
         let cwd = current_dir().unwrap();
         let c_path = c_path.strip_prefix(&cwd).unwrap();
         // The crate name can't have `.`s in it, so use the file stem.
@@ -434,8 +434,8 @@ impl TargetArgs {
         // We need to move the `.rs` file to a platform-specific name
         // so that they don't overwrite each other.
         let rs_path = match platform {
-            None => original_rs_path.clone(),
-            Some(platform) => original_rs_path.with_extension(format!("{platform}.rs")),
+            "" => original_rs_path.clone(),
+            _ => original_rs_path.with_extension(format!("{platform}.rs")),
         };
 
         {
@@ -465,7 +465,7 @@ impl TargetArgs {
             c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
         c2rust_transpile::transpile(config(), &temp_path, &extra_args);
 
-        if platform.is_some() {
+        if !platform.is_empty() {
             fs::rename(&original_rs_path, &rs_path).unwrap();
         }
 
@@ -481,8 +481,8 @@ impl TargetArgs {
         let debug_expr = format!("cat {}", rs_path.display());
 
         let snapshot_name = match platform {
-            None => "transpile".into(),
-            Some(platform) => format!("transpile-{platform}"),
+            "" => "transpile".into(),
+            _ => format!("transpile-{platform}"),
         };
         insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
@@ -549,8 +549,8 @@ impl Targets {
         }
     }
 
-    pub fn transpile(&self, c_path: &Path, get_platform: impl Fn(Target) -> Option<&'static str>) {
-        let mut platforms = HashMap::<Option<&'static str>, Vec<&TargetArgs>>::new();
+    pub fn transpile(&self, c_path: &Path, get_platform: impl Fn(Target) -> &'static str) {
+        let mut platforms = HashMap::<&'static str, Vec<&TargetArgs>>::new();
         for target in self.all.iter() {
             let platform = get_platform(target.target());
             platforms.entry(platform).or_default().push(target);
@@ -573,9 +573,9 @@ fn transpile_all() {
     ]);
     targets.check_if_targets_are_installed();
 
-    insta::glob!("snapshots/*.c", |path| targets.transpile(path, |_| None));
+    insta::glob!("snapshots/*.c", |path| targets.transpile(path, |_| ""));
     insta::glob!("snapshots/os-specific/*.c", |path| targets
-        .transpile(path, |target| Some(target.os().name())));
+        .transpile(path, |target| target.os().name()));
     insta::glob!("snapshots/arch-specific/*.c", |path| targets
-        .transpile(path, |target| Some(target.arch().name())));
+        .transpile(path, |target| target.arch().name()));
 }
