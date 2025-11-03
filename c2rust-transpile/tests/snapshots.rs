@@ -1,9 +1,12 @@
 use std::env::current_dir;
+use std::fmt::{self, Debug, Display, Formatter};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::str::from_utf8;
 
 use c2rust_transpile::{ReplaceMode, TranspilerConfig, GENERATED_RUST_TOOLCHAIN};
+use tempfile::NamedTempFile;
 
 fn config() -> TranspilerConfig {
     TranspilerConfig {
@@ -46,27 +49,311 @@ fn config() -> TranspilerConfig {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Arch {
+    X86_64,
+    AArch64,
+}
+
+impl Arch {
+    pub const fn name(&self) -> &'static str {
+        use Arch::*;
+        match *self {
+            X86_64 => "x86_64",
+            AArch64 => "aarch64",
+        }
+    }
+}
+
+impl Display for Arch {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl Debug for Arch {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Os {
+    Linux,
+    MacOs,
+}
+
+impl Os {
+    pub const fn name(&self) -> &'static str {
+        use Os::*;
+        match *self {
+            Linux => "linux",
+            MacOs => "macos",
+        }
+    }
+}
+
+impl Display for Os {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+impl Debug for Os {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Target {
+    X86_64UnknownLinuxGnu,
+    X86_64AppleDarwin,
+    AArch64UnknownLinuxGnu,
+    AArch64AppleDarwin,
+}
+
+impl Target {
+    pub const ALL: &[Self] = &[
+        Self::X86_64UnknownLinuxGnu,
+        Self::X86_64AppleDarwin,
+        Self::AArch64UnknownLinuxGnu,
+        Self::AArch64AppleDarwin,
+    ];
+
+    pub const fn rust_name(&self) -> &'static str {
+        use Target::*;
+        match *self {
+            X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
+            X86_64AppleDarwin => "x86_64-apple-darwin",
+            AArch64UnknownLinuxGnu => "aarch64-unknown-linux-gnu",
+            AArch64AppleDarwin => "aarch64-apple-darwin",
+        }
+    }
+
+    pub const fn zig_name(&self) -> &'static str {
+        use Target::*;
+        match *self {
+            X86_64UnknownLinuxGnu => "x86_64-linux-gnu",
+            X86_64AppleDarwin => "x86_64-macos",
+            AArch64UnknownLinuxGnu => "aarch64-linux-gnu",
+            AArch64AppleDarwin => "aarch64-macos",
+        }
+    }
+
+    pub const fn arch(&self) -> Arch {
+        use Arch::*;
+        use Target::*;
+        match *self {
+            X86_64UnknownLinuxGnu | X86_64AppleDarwin => X86_64,
+            AArch64UnknownLinuxGnu | AArch64AppleDarwin => AArch64,
+        }
+    }
+
+    pub const fn os(&self) -> Os {
+        use Os::*;
+        use Target::*;
+        match *self {
+            X86_64UnknownLinuxGnu | AArch64UnknownLinuxGnu => Linux,
+            X86_64AppleDarwin | AArch64AppleDarwin => MacOs,
+        }
+    }
+}
+
+impl Display for Target {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.rust_name())
+    }
+}
+
+impl Debug for Target {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.rust_name())
+    }
+}
+
+impl From<(Arch, Os)> for Target {
+    fn from((arch, os): (Arch, Os)) -> Self {
+        use Arch::*;
+        use Os::*;
+        use Target::*;
+        let target = match (arch, os) {
+            (X86_64, Linux) => X86_64UnknownLinuxGnu,
+            (X86_64, MacOs) => X86_64AppleDarwin,
+            (AArch64, Linux) => AArch64UnknownLinuxGnu,
+            (AArch64, MacOs) => AArch64AppleDarwin,
+        };
+        assert_eq!(target.arch(), arch);
+        assert_eq!(target.os(), os);
+        target
+    }
+}
+
+impl TryFrom<&str> for Target {
+    type Error = ();
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        for &target in Self::ALL {
+            if target.rust_name() == value {
+                return Ok(target);
+            }
+        }
+        Err(())
+    }
+}
+
+fn parse_cc1_commands(stderr: &str) -> Vec<Vec<String>> {
+    stderr
+        .split('\n')
+        .filter_map(|line| {
+            let cc1 = "\"-cc1\"";
+            let i = line.find(cc1)?;
+            let args = &line[i..];
+            let args = shell_words::split(args).unwrap();
+            Some(args)
+        })
+        .collect()
+}
+
+fn cc1_command_to_driver_command(mut cc1_args: Vec<String>) -> Vec<String> {
+    let mut driver_args = Vec::new();
+
+    #[derive(PartialEq, Eq)]
+    enum Next {
+        Other,
+        ResourceDir,
+        ISystem,
+        Define,
+    }
+
+    let mut next = Next::Other;
+
+    for arg in cc1_args.drain(..) {
+        if next != Next::Other {
+            next = Next::Other;
+            driver_args.push(arg);
+            continue;
+        }
+        match arg.as_str() {
+            "-nostdsysteminc" => {
+                driver_args.push("-nostdinc".into());
+            }
+            "-nobuiltininc" => {
+                driver_args.push(arg);
+            }
+            "-resource-dir" => {
+                next = Next::ResourceDir;
+                driver_args.push(arg);
+            }
+            "-isystem" => {
+                next = Next::ISystem;
+                driver_args.push(arg);
+            }
+            "-D" => {
+                next = Next::Define;
+                driver_args.push(arg);
+            }
+            _ => {}
+        }
+    }
+
+    driver_args
+}
+
+struct TargetArgs {
+    target: Target,
+
+    /// `\0`-separated.
+    args: String,
+}
+
+impl TargetArgs {
+    /// Use `zig cc` to determine the args needed to cross-compile to `target`.
+    /// `zig cc` is used because it can be otherwise quite difficult
+    /// to get the right headers for other OSes.
+    pub fn find(target: Target) -> Self {
+        let empty_c = NamedTempFile::new().unwrap();
+        let empty_o = NamedTempFile::new().unwrap();
+        let mut cmd = Command::new("zig");
+        cmd.args([
+            "cc",
+            "-target",
+            target.zig_name(), //
+            // `-###` will print the cc1 commands.
+            "-###",
+            // `-x c` is needed to tell `zig cc` this is a C file, since it isn't a `*.c`.
+            "-x",
+            "c",
+            // Don't use `-fsyntax-only`.  `zig cc` doesn't handle it correctly.
+            // Don't use `-o /dev/null`.  `zig cc` doesn't handle it correctly.
+            "-c",
+            "-o",
+        ])
+        .args([empty_o.path(), empty_c.path()]);
+        let output = cmd.output().unwrap();
+        let stderr = from_utf8(&output.stderr).unwrap();
+        if !output.status.success() {
+            eprintln!("> {cmd:?}");
+            eprintln!("{stderr}")
+        }
+        assert!(output.status.success());
+        let mut cc1_cmds = parse_cc1_commands(stderr);
+        // There should only be one cc1 command.
+        assert!(cc1_cmds.len() == 1);
+        let cc1_cmd = cc1_cmds.pop().unwrap();
+        let driver_cmd = cc1_command_to_driver_command(cc1_cmd);
+        let args = driver_cmd.join("\0");
+        Self { target, args }
+    }
+
+    pub const fn target(&self) -> Target {
+        self.target
+    }
+
+    /// The `zig cc` args needed to cross-compile to [`Self::target`].
+    pub const fn zig_cc_args(&self) -> [&str; 2] {
+        ["-target", self.target().zig_name()]
+    }
+
+    /// The `clang` args needed to cross-compile to [`Self::target`].
+    pub fn clang_args(&self) -> Vec<&str> {
+        self.args
+            .split('\0')
+            .chain([
+                "-target",
+                self.target.zig_name(),
+                // Undefine `__BLOCKS__` because `c2rust-ast-exporter` doesn't handle them at all.
+                // macOS headers use `__BLOCKS__` and `^` block pointers.
+                "-U",
+                "__BLOCKS__",
+            ])
+            .collect()
+    }
+}
+
 /// `platform` can be any platform-specific string.
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile(platform: Option<&str>, c_path: &Path) {
-    let status = Command::new("clang")
+fn transpile(target: Target, platform: Option<&str>, c_path: &Path) {
+    let target_args = TargetArgs::find(target);
+    let o_path = NamedTempFile::new().unwrap();
+    let status = Command::new("zig")
+        .arg("cc")
+        .args(target_args.zig_cc_args())
         .args([
-            "-fsyntax-only",
             "-w", // Disable warnings.
+            "-c", "-o", // `zig cc` doesn't work with `-fsyntax-only` or `-o /dev/null`.
         ])
-        .arg(c_path)
-        .status();
-    assert!(status.unwrap().success());
+        .args([o_path.path(), c_path])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let mut extra_args = target_args.clang_args();
+    extra_args.push("-w"); // Disable warnings.
 
     let (_temp_dir, temp_path) =
         c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
-    c2rust_transpile::transpile(
-        config(),
-        &temp_path,
-        &[
-            "-w", // Disable warnings.
-        ],
-    );
+    c2rust_transpile::transpile(config(), &temp_path, &extra_args);
     let cwd = current_dir().unwrap();
     let c_path = c_path.strip_prefix(&cwd).unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
@@ -123,6 +410,8 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
             "lib",
             "--edition",
             edition,
+            "--target",
+            target.rust_name(),
             "--crate-name",
             crate_name,
             "-o",
@@ -137,38 +426,30 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
 
 #[test]
 fn transpile_all() {
-    insta::glob!("snapshots/*.c", |x| transpile(None, x));
-
     // Some things transpile differently on Linux vs. macOS,
     // as they use `unsigned long` and `unsigned long long` differently for builtins.
     // This makes snapshot tests trickier, as the output will be OS-dependent.
     // We handle this by adding OS name to the snapshot result filename.
-    #[allow(unused)]
-    let os = "unknown";
-
     #[cfg(target_os = "linux")]
-    let os = "linux";
+    let os = Os::Linux;
     #[cfg(target_os = "macos")]
-    let os = "macos";
+    let os = Os::MacOs;
 
     // Similarly, some things transpile differently on different architectures.
-    #[allow(unused)]
-    let arch = "unknown";
-
-    #[cfg(target_arch = "x86")]
-    let arch = "x86";
     #[cfg(target_arch = "x86_64")]
-    let arch = "x86_64";
-    #[cfg(target_arch = "arm")]
-    let arch = "arm";
+    let arch = Arch::X86_64;
     #[cfg(target_arch = "aarch64")]
-    let arch = "aarch64";
+    let arch = Arch::AArch64;
 
-    insta::with_settings!({snapshot_suffix => os}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| transpile(Some(os), path));
+    let target = Target::from((arch, os));
+
+    insta::glob!("snapshots/*.c", |x| transpile(target, None, x));
+
+    insta::with_settings!({snapshot_suffix => os.name()}, {
+        insta::glob!("snapshots/os-specific/*.c", |path| transpile(target, Some(os.name()), path));
     });
 
-    insta::with_settings!({snapshot_suffix => arch}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(Some(arch), path));
+    insta::with_settings!({snapshot_suffix => arch.name()}, {
+        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(target, Some(arch.name()), path));
     })
 }

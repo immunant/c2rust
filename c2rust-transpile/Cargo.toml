@@ -45,3 +45,4 @@ llvm-static = ["c2rust-ast-exporter/llvm-static"]
 
 [dev-dependencies]
 insta = { version = "1.43.2", features = ["glob"] }
+shell-words = "1.1.0"
