@@ -587,17 +587,23 @@ fn transpile_all() {
     ]);
     targets.check_if_targets_are_installed();
 
-    insta::glob!("snapshots/*.c", |path| targets.transpile(path, |_| ""));
-    insta::glob!("snapshots/os-specific/*.c", |path| targets
-        .transpile(path, |target| target.os().name()));
-    insta::glob!("snapshots/arch-specific/*.c", |path| targets
-        .transpile(path, |target| target.arch().name()));
-    insta::glob!("snapshots/ptr-width-specific/*.c", |path| targets
-        .transpile(path, |target| format!("{}", target.arch().ptr_width())));
-    insta::glob!("snapshots/os-ptr-width-specific/*.c", |path| targets
-        .transpile(path, |target| format!(
-            "{}-{}",
-            target.os(),
-            target.arch().ptr_width()
-        )));
+    let transpile = |path: &Path| {
+        let dir = path.parent().unwrap();
+        let dir_name = dir.file_name().unwrap_or_default();
+        let dir_name = dir_name.to_str().unwrap_or_default();
+        match dir_name {
+            "snapshots" => targets.transpile(path, |_| ""),
+            "os-specific" => targets.transpile(path, |target| target.os().name()),
+            "arch-specific" => targets.transpile(path, |target| target.arch().name()),
+            "ptr-width-specific" => {
+                targets.transpile(path, |target| format!("{}", target.arch().ptr_width()))
+            }
+            "os-ptr-width-specific" => targets.transpile(path, |target| {
+                format!("{}-{}", target.os(), target.arch().ptr_width())
+            }),
+            _ => unreachable!(),
+        }
+    };
+
+    insta::glob!("snapshots/**/*.c", transpile);
 }
