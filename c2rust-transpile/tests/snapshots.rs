@@ -134,6 +134,11 @@ impl Target {
         }
     }
 
+    pub const fn clang_name(&self) -> &'static str {
+        // These seem to be the same, but there may be some differences if we add more targets.
+        self.rust_name()
+    }
+
     pub const fn zig_name(&self) -> &'static str {
         use Target::*;
         match *self {
@@ -321,7 +326,7 @@ impl TargetArgs {
     pub fn clang_args_iter(&self) -> impl Iterator<Item = &str> {
         [
             "-target",
-            self.target.zig_name(),
+            self.target.clang_name(),
             // Undefine `__BLOCKS__` because `c2rust-ast-exporter` doesn't handle them at all.
             // macOS headers use `__BLOCKS__` and `^` block pointers.
             "-U",
