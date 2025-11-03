@@ -354,10 +354,16 @@ struct AllTargetArgs {
 }
 
 impl AllTargetArgs {
-    pub fn find() -> Self {
-        let all = Target::ALL
+    pub fn find<T>(targets: &[T]) -> Self
+    where
+        T: Copy,
+        Target: TryFrom<T>,
+        <Target as TryFrom<T>>::Error: Debug,
+    {
+        let all = targets
             .into_iter()
             .copied()
+            .map(|target| Target::try_from(target).unwrap())
             .map(TargetArgs::find)
             .collect();
         Self { all }
@@ -525,7 +531,12 @@ impl AllTargetArgs {
 
 #[test]
 fn transpile_all() {
-    let targets = AllTargetArgs::find();
+    let targets = AllTargetArgs::find(&[
+        "x86_64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+    ]);
     targets.check_if_targets_are_installed();
 
     insta::glob!("snapshots/*.c", |path| targets.transpile(path, |_| None));
