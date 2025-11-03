@@ -1,11 +1,13 @@
 use std::env::current_dir;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs;
+use std::ops::Index;
 use std::path::Path;
 use std::process::Command;
 use std::str::from_utf8;
 
 use c2rust_transpile::{ReplaceMode, TranspilerConfig, GENERATED_RUST_TOOLCHAIN};
+use itertools::Itertools;
 use tempfile::NamedTempFile;
 
 fn config() -> TranspilerConfig {
@@ -315,26 +317,65 @@ impl TargetArgs {
         ["-target", self.target().zig_name()]
     }
 
+    pub fn clang_args_iter(&self) -> impl Iterator<Item = &str> {
+        [
+            "-target",
+            self.target.zig_name(),
+            // Undefine `__BLOCKS__` because `c2rust-ast-exporter` doesn't handle them at all.
+            // macOS headers use `__BLOCKS__` and `^` block pointers.
+            "-U",
+            "__BLOCKS__",
+        ]
+        .into_iter()
+        .chain(self.args.split('\0'))
+    }
+
     /// The `clang` args needed to cross-compile to [`Self::target`].
     pub fn clang_args(&self) -> Vec<&str> {
-        self.args
-            .split('\0')
-            .chain([
-                "-target",
-                self.target.zig_name(),
-                // Undefine `__BLOCKS__` because `c2rust-ast-exporter` doesn't handle them at all.
-                // macOS headers use `__BLOCKS__` and `^` block pointers.
-                "-U",
-                "__BLOCKS__",
-            ])
-            .collect()
+        self.clang_args_iter().collect()
+    }
+}
+
+impl Display for TargetArgs {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let args = self.clang_args_iter().join(" ");
+        write!(f, "{args}")
+    }
+}
+
+struct AllTargetArgs {
+    all: Vec<TargetArgs>,
+}
+
+impl AllTargetArgs {
+    pub fn find() -> Self {
+        let all = Target::ALL
+            .into_iter()
+            .copied()
+            .map(TargetArgs::find)
+            .collect();
+        Self { all }
+    }
+
+    pub fn get(&self, target: Target) -> &TargetArgs {
+        self.all
+            .iter()
+            .find(|args| args.target() == target)
+            .unwrap()
+    }
+}
+
+impl Index<Target> for AllTargetArgs {
+    type Output = TargetArgs;
+
+    fn index(&self, index: Target) -> &Self::Output {
+        self.get(index)
     }
 }
 
 /// `platform` can be any platform-specific string.
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile(target: Target, platform: Option<&str>, c_path: &Path) {
-    let target_args = TargetArgs::find(target);
+fn transpile(target_args: &TargetArgs, platform: Option<&str>, c_path: &Path) {
     let o_path = NamedTempFile::new().unwrap();
     let status = Command::new("zig")
         .arg("cc")
@@ -411,7 +452,7 @@ fn transpile(target: Target, platform: Option<&str>, c_path: &Path) {
             "--edition",
             edition,
             "--target",
-            target.rust_name(),
+            target_args.target().rust_name(),
             "--crate-name",
             crate_name,
             "-o",
@@ -426,6 +467,8 @@ fn transpile(target: Target, platform: Option<&str>, c_path: &Path) {
 
 #[test]
 fn transpile_all() {
+    let targets = AllTargetArgs::find();
+
     // Some things transpile differently on Linux vs. macOS,
     // as they use `unsigned long` and `unsigned long long` differently for builtins.
     // This makes snapshot tests trickier, as the output will be OS-dependent.
@@ -442,14 +485,15 @@ fn transpile_all() {
     let arch = Arch::AArch64;
 
     let target = Target::from((arch, os));
+    let target_args = &targets[target];
 
-    insta::glob!("snapshots/*.c", |x| transpile(target, None, x));
+    insta::glob!("snapshots/*.c", |x| transpile(target_args, None, x));
 
     insta::with_settings!({snapshot_suffix => os.name()}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| transpile(target, Some(os.name()), path));
+        insta::glob!("snapshots/os-specific/*.c", |path| transpile(target_args, Some(os.name()), path));
     });
 
     insta::with_settings!({snapshot_suffix => arch.name()}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(target, Some(arch.name()), path));
+        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(target_args, Some(arch.name()), path));
     })
 }
