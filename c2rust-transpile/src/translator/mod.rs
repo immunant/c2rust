@@ -630,7 +630,7 @@ pub fn translate(
         }
 
         {
-            let convert_type = |decl_id: CDeclId, decl: &CDecl| {
+            let export_type = |decl_id: CDeclId, decl: &CDecl| {
                 let decl_file_id = t.ast_context.file_id(decl);
                 if t.tcfg.reorganize_definitions {
                     t.cur_file.set(decl_file_id);
@@ -684,7 +684,7 @@ pub fn translate(
                     _ => false,
                 };
                 if needs_export {
-                    convert_type(decl_id, decl);
+                    export_type(decl_id, decl);
                 }
             }
         }
