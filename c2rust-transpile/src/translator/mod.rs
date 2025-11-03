@@ -1011,13 +1011,13 @@ fn make_submodule(
         .get_file_include_line_number(file_id)
         .unwrap_or(0);
     let mod_name = clean_path(mod_names, file_path);
+    let use_path = || vec!["self".into(), mod_name.clone()];
 
     for item in items.iter() {
         let ident_name = match item_ident(item) {
             Some(i) => i.to_string(),
             None => continue,
         };
-        let use_path = vec!["self".into(), mod_name.clone()];
 
         let vis = match item_vis(item) {
             Some(Visibility::Public(_)) => mk().pub_(),
@@ -1025,7 +1025,7 @@ fn make_submodule(
             None => continue,
         };
 
-        use_item_store.add_use_with_attr(false, use_path, &ident_name, vis);
+        use_item_store.add_use_with_attr(false, use_path(), &ident_name, vis);
     }
 
     for foreign_item in foreign_items.iter() {
@@ -1033,9 +1033,8 @@ fn make_submodule(
             Some((ident, _vis)) => ident.to_string(),
             None => continue,
         };
-        let use_path = vec!["self".into(), mod_name.clone()];
 
-        use_item_store.add_use(false, use_path, &ident_name);
+        use_item_store.add_use(false, use_path(), &ident_name);
     }
 
     for item in uses.into_items() {
