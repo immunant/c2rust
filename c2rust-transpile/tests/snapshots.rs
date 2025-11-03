@@ -373,96 +373,98 @@ impl Index<Target> for AllTargetArgs {
     }
 }
 
-/// `platform` can be any platform-specific string.
-/// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile(target_args: &TargetArgs, platform: Option<&str>, c_path: &Path) {
-    let o_path = NamedTempFile::new().unwrap();
-    let status = Command::new("zig")
-        .arg("cc")
-        .args(target_args.zig_cc_args())
-        .args([
-            "-w", // Disable warnings.
-            "-c", "-o", // `zig cc` doesn't work with `-fsyntax-only` or `-o /dev/null`.
-        ])
-        .args([o_path.path(), c_path])
-        .status()
-        .unwrap();
-    assert!(status.success());
+impl TargetArgs {
+    /// `platform` can be any platform-specific string.
+    /// It could be the `target_arch`, `target_os`, some combination, or something else.
+    pub fn transpile(&self, c_path: &Path, platform: Option<&str>) {
+        let o_path = NamedTempFile::new().unwrap();
+        let status = Command::new("zig")
+            .arg("cc")
+            .args(self.zig_cc_args())
+            .args([
+                "-w", // Disable warnings.
+                "-c", "-o", // `zig cc` doesn't work with `-fsyntax-only` or `-o /dev/null`.
+            ])
+            .args([o_path.path(), c_path])
+            .status()
+            .unwrap();
+        assert!(status.success());
 
-    let mut extra_args = target_args.clang_args();
-    extra_args.push("-w"); // Disable warnings.
+        let mut extra_args = self.clang_args();
+        extra_args.push("-w"); // Disable warnings.
 
-    let (_temp_dir, temp_path) =
-        c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
-    c2rust_transpile::transpile(config(), &temp_path, &extra_args);
-    let cwd = current_dir().unwrap();
-    let c_path = c_path.strip_prefix(&cwd).unwrap();
-    // The crate name can't have `.`s in it, so use the file stem.
-    // This is also why we set it explicitly with `--crate-name`,
-    // as once we add `.{platform}`, the crate name derived from
-    // the file name won't be valid anymore.
-    let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
-    let rs_path = c_path.with_extension("rs");
-    // We need to move the `.rs` file to a platform-specific name
-    // so that they don't overwrite each other.
-    let rs_path = match platform {
-        None => rs_path,
-        Some(platform) => {
-            let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
-            fs::rename(&rs_path, &platform_rs_path).unwrap();
-            platform_rs_path
+        let (_temp_dir, temp_path) =
+            c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
+        c2rust_transpile::transpile(config(), &temp_path, &extra_args);
+        let cwd = current_dir().unwrap();
+        let c_path = c_path.strip_prefix(&cwd).unwrap();
+        // The crate name can't have `.`s in it, so use the file stem.
+        // This is also why we set it explicitly with `--crate-name`,
+        // as once we add `.{platform}`, the crate name derived from
+        // the file name won't be valid anymore.
+        let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
+        let rs_path = c_path.with_extension("rs");
+        // We need to move the `.rs` file to a platform-specific name
+        // so that they don't overwrite each other.
+        let rs_path = match platform {
+            None => rs_path,
+            Some(platform) => {
+                let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
+                fs::rename(&rs_path, &platform_rs_path).unwrap();
+                platform_rs_path
+            }
+        };
+
+        let edition = "2021";
+
+        let status = Command::new("rustfmt")
+            .args(["--edition", edition])
+            .arg(&rs_path)
+            .status();
+        assert!(status.unwrap().success());
+
+        let rs = fs::read_to_string(&rs_path).unwrap();
+        let debug_expr = format!("cat {}", rs_path.display());
+
+        let snapshot_name = match platform {
+            None => "transpile".into(),
+            Some(platform) => format!("transpile-{platform}"),
+        };
+        insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
+
+        // Using rustc itself to build snapshots that reference libc is difficult because we don't know
+        // the appropriate --extern libc=/path/to/liblibc-XXXXXXXXXXXXXXXX.rlib to pass. Skip for now,
+        // as we've already compared the literal text.
+        if rs.contains("libc::") {
+            eprintln!(
+                "warning: skipping compiling {} with rustc since it depends on libc",
+                rs_path.display()
+            );
+            return;
         }
-    };
 
-    let edition = "2021";
-
-    let status = Command::new("rustfmt")
-        .args(["--edition", edition])
-        .arg(&rs_path)
-        .status();
-    assert!(status.unwrap().success());
-
-    let rs = fs::read_to_string(&rs_path).unwrap();
-    let debug_expr = format!("cat {}", rs_path.display());
-
-    let snapshot_name = match platform {
-        None => "transpile".into(),
-        Some(platform) => format!("transpile-{platform}"),
-    };
-    insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
-
-    // Using rustc itself to build snapshots that reference libc is difficult because we don't know
-    // the appropriate --extern libc=/path/to/liblibc-XXXXXXXXXXXXXXXX.rlib to pass. Skip for now,
-    // as we've already compared the literal text.
-    if rs.contains("libc::") {
-        eprintln!(
-            "warning: skipping compiling {} with rustc since it depends on libc",
-            rs_path.display()
-        );
-        return;
+        // Don't need to worry about platform clashes here, as this is immediately deleted.
+        let rlib_path = format!("lib{crate_name}.rlib");
+        let status = Command::new("rustc")
+            .args([
+                &format!("+{GENERATED_RUST_TOOLCHAIN}"),
+                "--crate-type",
+                "lib",
+                "--edition",
+                edition,
+                "--target",
+                self.target().rust_name(),
+                "--crate-name",
+                crate_name,
+                "-o",
+                &rlib_path,
+                "-Awarnings", // Disable warnings.
+            ])
+            .arg(&rs_path)
+            .status();
+        assert!(status.unwrap().success());
+        fs::remove_file(&rlib_path).unwrap();
     }
-
-    // Don't need to worry about platform clashes here, as this is immediately deleted.
-    let rlib_path = format!("lib{crate_name}.rlib");
-    let status = Command::new("rustc")
-        .args([
-            &format!("+{GENERATED_RUST_TOOLCHAIN}"),
-            "--crate-type",
-            "lib",
-            "--edition",
-            edition,
-            "--target",
-            target_args.target().rust_name(),
-            "--crate-name",
-            crate_name,
-            "-o",
-            &rlib_path,
-            "-Awarnings", // Disable warnings.
-        ])
-        .arg(&rs_path)
-        .status();
-    assert!(status.unwrap().success());
-    fs::remove_file(&rlib_path).unwrap();
 }
 
 #[test]
@@ -487,13 +489,13 @@ fn transpile_all() {
     let target = Target::from((arch, os));
     let target_args = &targets[target];
 
-    insta::glob!("snapshots/*.c", |x| transpile(target_args, None, x));
+    insta::glob!("snapshots/*.c", |x| target_args.transpile(x, None));
 
     insta::with_settings!({snapshot_suffix => os.name()}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| transpile(target_args, Some(os.name()), path));
+        insta::glob!("snapshots/os-specific/*.c", |path| target_args.transpile(path, Some(os.name())));
     });
 
     insta::with_settings!({snapshot_suffix => arch.name()}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(target_args, Some(arch.name()), path));
+        insta::glob!("snapshots/arch-specific/*.c", |path| target_args.transpile(path, Some(arch.name())));
     })
 }
