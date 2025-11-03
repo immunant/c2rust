@@ -378,6 +378,28 @@ impl TargetArgs {
     /// `platform` can be any platform-specific string.
     /// It could be the `target_arch`, `target_os`, some combination, or something else.
     pub fn transpile(&self, c_path: &Path, platform: Option<&'static str>) {
+        let cwd = current_dir().unwrap();
+        let c_path = c_path.strip_prefix(&cwd).unwrap();
+        // The crate name can't have `.`s in it, so use the file stem.
+        // This is also why we set it explicitly with `--crate-name`,
+        // as once we add `.{platform}`, the crate name derived from
+        // the file name won't be valid anymore.
+        let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
+        let original_rs_path = c_path.with_extension("rs");
+        // We need to move the `.rs` file to a platform-specific name
+        // so that they don't overwrite each other.
+        let rs_path = match platform {
+            None => original_rs_path.clone(),
+            Some(platform) => original_rs_path.with_extension(format!("{platform}.rs")),
+        };
+
+        {
+            let c_path = c_path.display();
+            let rs_path = rs_path.display();
+            let target = self.target().rust_name();
+            println!("transpiling {c_path} to {rs_path} for --target {target}");
+        }
+
         let o_path = NamedTempFile::new().unwrap();
         let status = Command::new("zig")
             .arg("cc")
@@ -397,24 +419,10 @@ impl TargetArgs {
         let (_temp_dir, temp_path) =
             c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
         c2rust_transpile::transpile(config(), &temp_path, &extra_args);
-        let cwd = current_dir().unwrap();
-        let c_path = c_path.strip_prefix(&cwd).unwrap();
-        // The crate name can't have `.`s in it, so use the file stem.
-        // This is also why we set it explicitly with `--crate-name`,
-        // as once we add `.{platform}`, the crate name derived from
-        // the file name won't be valid anymore.
-        let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
-        let rs_path = c_path.with_extension("rs");
-        // We need to move the `.rs` file to a platform-specific name
-        // so that they don't overwrite each other.
-        let rs_path = match platform {
-            None => rs_path,
-            Some(platform) => {
-                let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
-                fs::rename(&rs_path, &platform_rs_path).unwrap();
-                platform_rs_path
-            }
-        };
+
+        if platform.is_some() {
+            fs::rename(&original_rs_path, &rs_path).unwrap();
+        }
 
         let edition = "2021";
 
