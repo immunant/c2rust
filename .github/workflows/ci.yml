@@ -34,6 +34,9 @@ jobs:
         run: |
           uv venv
           uv pip install -r ./scripts/requirements.txt
+          # `zig cc` needed for cross-compilation
+          uv tool install ziglang
+          ln -s $(which python-zig) $(dirname $(which python-zig))/zig
 
       # rust-cache very carefully caches toolchains and target directories,
       # based on the job and toolchain and other factors. See
