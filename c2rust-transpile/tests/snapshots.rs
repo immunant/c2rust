@@ -58,6 +58,7 @@ enum Arch {
     X86_64,
     Arm,
     AArch64,
+    RiscV64,
 }
 
 impl Arch {
@@ -68,6 +69,7 @@ impl Arch {
             X86_64 => "x86_64",
             Arm => "arm",
             AArch64 => "aarch64",
+            RiscV64 => "riscv64",
         }
     }
 }
@@ -120,6 +122,7 @@ enum Target {
     AArch64AppleDarwin,
     I686UnknownLinuxGnu,
     ArmV7UnknownLinuxGnueabihf,
+    RiscV64GcUnknownLinuxGnu,
 }
 
 impl Target {
@@ -130,6 +133,7 @@ impl Target {
         Self::AArch64AppleDarwin,
         Self::I686UnknownLinuxGnu,
         Self::ArmV7UnknownLinuxGnueabihf,
+        Self::RiscV64GcUnknownLinuxGnu,
     ];
 
     pub const fn rust_name(&self) -> &'static str {
@@ -141,12 +145,16 @@ impl Target {
             AArch64AppleDarwin => "aarch64-apple-darwin",
             I686UnknownLinuxGnu => "i686-unknown-linux-gnu",
             ArmV7UnknownLinuxGnueabihf => "armv7-unknown-linux-gnueabihf",
+            RiscV64GcUnknownLinuxGnu => "riscv64gc-unknown-linux-gnu",
         }
     }
 
     pub const fn clang_name(&self) -> &'static str {
-        // These seem to be the same, but there may be some differences if we add more targets.
-        self.rust_name()
+        use Target::*;
+        match *self {
+            RiscV64GcUnknownLinuxGnu => "riscv64-unknown-linux-gnu",
+            _ => self.rust_name(),
+        }
     }
 
     pub const fn zig_name(&self) -> &'static str {
@@ -158,6 +166,7 @@ impl Target {
             AArch64AppleDarwin => "aarch64-macos",
             I686UnknownLinuxGnu => "x86-linux-gnu",
             ArmV7UnknownLinuxGnueabihf => "arm-linux-gnueabihf",
+            RiscV64GcUnknownLinuxGnu => "riscv64-linux-gnu",
         }
     }
 
@@ -169,6 +178,7 @@ impl Target {
             AArch64UnknownLinuxGnu | AArch64AppleDarwin => AArch64,
             I686UnknownLinuxGnu => X86,
             ArmV7UnknownLinuxGnueabihf => Arm,
+            RiscV64GcUnknownLinuxGnu => RiscV64,
         }
     }
 
@@ -179,7 +189,8 @@ impl Target {
             X86_64UnknownLinuxGnu
             | AArch64UnknownLinuxGnu
             | I686UnknownLinuxGnu
-            | ArmV7UnknownLinuxGnueabihf => Linux,
+            | ArmV7UnknownLinuxGnueabihf
+            | RiscV64GcUnknownLinuxGnu => Linux,
             X86_64AppleDarwin | AArch64AppleDarwin => MacOs,
         }
     }
@@ -210,9 +221,9 @@ impl TryFrom<(Arch, Os)> for Target {
             (AArch64, Linux) => AArch64UnknownLinuxGnu,
             (AArch64, MacOs) => AArch64AppleDarwin,
             (X86, Linux) => I686UnknownLinuxGnu,
-            (X86, MacOs) => return Err(()),
             (Arm, Linux) => ArmV7UnknownLinuxGnueabihf,
-            (Arm, MacOs) => return Err(()),
+            (RiscV64, Linux) => RiscV64GcUnknownLinuxGnu,
+            (X86 | Arm | RiscV64, MacOs) => return Err(()),
         };
         assert_eq!(target.arch(), arch);
         assert_eq!(target.os(), os);
