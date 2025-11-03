@@ -664,6 +664,14 @@ pub fn translate(
                 if t.tcfg.reorganize_definitions
                     && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
+                    let name: Option<&String> = t
+                        .ast_context
+                        .get_decl(&decl_id)
+                        .and_then(|x| x.kind.get_name());
+                    log::debug!(
+                        "emitting submodule imports for exported type {}",
+                        name.unwrap_or(&"unknown".to_owned())
+                    );
                     t.generate_submodule_imports(decl_id, decl_file_id);
                 }
             };
@@ -771,6 +779,7 @@ pub fn translate(
             };
 
             if t.tcfg.reorganize_definitions && decl_file_id.map_or(false, |id| id != t.main_file) {
+                log::debug!("emitting any imports needed by {:?}", decl.kind.get_name());
                 t.generate_submodule_imports(*top_id, decl_file_id);
             }
         }
