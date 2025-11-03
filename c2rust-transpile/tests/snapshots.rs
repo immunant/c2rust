@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env::current_dir;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs;
@@ -469,6 +469,33 @@ impl TargetArgs {
 }
 
 impl AllTargetArgs {
+    pub fn check_if_targets_are_installed(&self) {
+        let output = Command::new("rustup")
+            .args([
+                &format!("+{GENERATED_RUST_TOOLCHAIN}"),
+                "target",
+                "list",
+                "--installed",
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let installed_targets = from_utf8(&output.stdout)
+            .unwrap()
+            .trim()
+            .split_whitespace()
+            .collect::<HashSet<_>>();
+        let uninstalled_targets = self
+            .all
+            .iter()
+            .map(|args| args.target().rust_name())
+            .filter(|target| !installed_targets.contains(target))
+            .join(" ");
+        if !uninstalled_targets.is_empty() {
+            panic!("not all targets installed, run:\nrustup +{GENERATED_RUST_TOOLCHAIN} target add {uninstalled_targets}\n");
+        }
+    }
+
     pub fn transpile(&self, c_path: &Path, get_platform: impl Fn(Target) -> Option<&'static str>) {
         let mut platforms = HashMap::<Option<&'static str>, Vec<&TargetArgs>>::new();
         for target in self.all.iter() {
@@ -486,6 +513,7 @@ impl AllTargetArgs {
 #[test]
 fn transpile_all() {
     let targets = AllTargetArgs::find();
+    targets.check_if_targets_are_installed();
 
     insta::glob!("snapshots/*.c", |path| targets.transpile(path, |_| None));
     insta::glob!("snapshots/os-specific/*.c", |path| targets
