@@ -995,6 +995,8 @@ fn foreign_item_ident_vis(fi: &ForeignItem) -> Option<(&Ident, Visibility)> {
     })
 }
 
+/// Create a submodule containing the items in `item_store`. Populates `use_item_store` with the set
+/// of `use`s to import the submodule's exports.
 fn make_submodule(
     ast_context: &TypedAstContext,
     item_store: &mut ItemStore,
