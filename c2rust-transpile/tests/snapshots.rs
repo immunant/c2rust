@@ -349,11 +349,11 @@ impl Display for TargetArgs {
     }
 }
 
-struct AllTargetArgs {
+struct Targets {
     all: Vec<TargetArgs>,
 }
 
-impl AllTargetArgs {
+impl Targets {
     pub fn find<T>(targets: &[T]) -> Self
     where
         T: Copy,
@@ -377,7 +377,7 @@ impl AllTargetArgs {
     }
 }
 
-impl Index<Target> for AllTargetArgs {
+impl Index<Target> for Targets {
     type Output = TargetArgs;
 
     fn index(&self, index: Target) -> &Self::Output {
@@ -487,7 +487,7 @@ impl TargetArgs {
     }
 }
 
-impl AllTargetArgs {
+impl Targets {
     pub fn check_if_targets_are_installed(&self) {
         let output = Command::new("rustup")
             .args([
@@ -531,7 +531,7 @@ impl AllTargetArgs {
 
 #[test]
 fn transpile_all() {
-    let targets = AllTargetArgs::find(&[
+    let targets = Targets::find(&[
         "x86_64-unknown-linux-gnu",
         "x86_64-apple-darwin",
         "aarch64-unknown-linux-gnu",
