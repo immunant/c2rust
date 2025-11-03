@@ -18,7 +18,7 @@ use syn::{
     ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
     ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
     ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
-    Stmt, Type, TypeTuple, Visibility,
+    Stmt, Type, TypeTuple, UseTree, Visibility,
 };
 use syn::{BinOp, UnOp}; // To override `c_ast::{BinOp,UnOp}` from glob import.
 
@@ -916,6 +916,42 @@ pub fn translate(
     }
 }
 
+/// Represent the set of names made visible by a `use`: either a set of specific names, or a glob.
+enum IdentsOrGlob<'a> {
+    Idents(Vec<&'a Ident>),
+    Glob,
+}
+
+impl<'a> IdentsOrGlob<'a> {
+    fn join(self, other: Self) -> Self {
+        use IdentsOrGlob::*;
+        match (self, other) {
+            (Glob, _) => Glob,
+            (_, Glob) => Glob,
+            (Idents(mut own), Idents(other)) => Idents({
+                own.extend(other.into_iter());
+                own
+            }),
+        }
+    }
+}
+
+/// Extract the set of names made visible by a `use`.
+fn use_idents<'a>(i: &'a UseTree) -> IdentsOrGlob<'a> {
+    match i {
+        UseTree::Path(up) => use_idents(&up.tree),
+        UseTree::Name(un) => IdentsOrGlob::Idents(vec![&un.ident]),
+        UseTree::Rename(ur) => IdentsOrGlob::Idents(vec![&ur.rename]),
+        UseTree::Glob(_ugl) => IdentsOrGlob::Glob,
+        UseTree::Group(ugr) => ugr
+            .items
+            .iter()
+            .map(|tree| use_idents(tree))
+            .reduce(IdentsOrGlob::join)
+            .unwrap_or(IdentsOrGlob::Idents(vec![])),
+    }
+}
+
 fn item_ident(i: &Item) -> Option<&Ident> {
     use Item::*;
     Some(match i {
@@ -1037,7 +1073,24 @@ fn make_submodule(
         use_item_store.add_use(false, use_path(), &ident_name);
     }
 
+    // Consumers will `use` reexported items at their exported locations.
     for item in uses.into_items() {
+        if let Item::Use(ItemUse {
+            vis: Visibility::Public(_),
+            tree,
+            ..
+        }) = &*item
+        {
+            match use_idents(tree) {
+                IdentsOrGlob::Idents(idents) => {
+                    for ident in idents {
+                        // Add a `use` for `self::this_module::exported_name`.
+                        use_item_store.add_use(false, use_path(), &ident.to_string());
+                    }
+                }
+                IdentsOrGlob::Glob => {}
+            }
+        }
         items.push(item);
     }
 
