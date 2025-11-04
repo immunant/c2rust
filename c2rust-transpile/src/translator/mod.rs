@@ -1084,8 +1084,25 @@ fn make_submodule(
             match use_idents(tree) {
                 IdentsOrGlob::Idents(idents) => {
                     for ident in idents {
-                        // Add a `use` for `self::this_module::exported_name`.
-                        use_item_store.add_use(false, use_path(), &ident.to_string());
+                        fn is_simd_type_name(name: &str) -> bool {
+                            const SIMD_TYPE_NAMES: &[&str] = &[
+                                "__m128i", "__m128", "__m128d", "__m64", "__m256", "__m256d",
+                                "__m256i",
+                            ];
+                            SIMD_TYPE_NAMES.contains(&name) || name.starts_with("_mm_")
+                        }
+                        let name = &*ident.to_string();
+                        if is_simd_type_name(name) {
+                            // Import vector type/operation names from the stdlib, as we also generate
+                            // other uses for them from that location and can't easily reason about
+                            // the ultimate target of reexported names when avoiding duplicate imports
+                            // (which are verboten).
+                            simd::add_arch_use(use_item_store, "x86", name);
+                            simd::add_arch_use(use_item_store, "x86_64", name);
+                        } else {
+                            // Add a `use` for `self::this_module::exported_name`.
+                            use_item_store.add_use(false, use_path(), name);
+                        }
                     }
                 }
                 IdentsOrGlob::Glob => {}
