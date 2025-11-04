@@ -879,6 +879,10 @@ pub fn translate(
 
             all_items.extend(mod_items);
 
+            // Before consuming `uses`, remove them from the uses from submodules to avoid duplicates.
+            let (_, _, mut new_uses) = new_uses.drain();
+            new_uses.remove(&uses);
+
             // This could have been merged in with items below; however, it's more idiomatic to have
             // imports near the top of the file than randomly scattered about. Also, there is probably
             // no reason to have comments associated with imports so it doesn't need to go through
@@ -886,7 +890,6 @@ pub fn translate(
             all_items.extend(uses.into_items());
 
             // Print new uses from submodules
-            let (_, _, new_uses) = new_uses.drain();
             all_items.extend(new_uses.into_items());
 
             if !foreign_items.is_empty() {
