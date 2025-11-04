@@ -4997,10 +4997,11 @@ impl<'c> Translation<'c> {
             self.import_type(type_id, file_id);
         }
 
+        // Caching skips critical side effect of `import_type` call.
         // Look up the decl in the cache and return what we find (if we find anything)
-        if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
+        /*if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
             return Ok(init.clone());
-        }
+        }*/
 
         let name_decl_id = match self.ast_context.index(type_id).kind {
             CTypeKind::Typedef(decl_id) => decl_id,
