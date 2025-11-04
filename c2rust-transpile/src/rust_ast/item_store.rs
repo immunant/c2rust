@@ -78,6 +78,24 @@ impl PathedMultiImports {
             })
             .collect()
     }
+
+    /// Remove all imports covered by the other `PathedMultiImports`.
+    pub fn remove(&mut self, other: &PathedMultiImports) {
+        for (k, v) in &mut self.0 {
+            // We don't consider attributes, just subtract leaf sets.
+            let other_items = other
+                .0
+                .get(k)
+                .map(|imports| {
+                    imports
+                        .leaves
+                        .iter()
+                        .collect::<std::collections::HashSet<_>>()
+                })
+                .unwrap_or_default();
+            v.leaves.retain(|leaf| !other_items.contains(leaf));
+        }
+    }
 }
 
 #[derive(Debug, Default)]
