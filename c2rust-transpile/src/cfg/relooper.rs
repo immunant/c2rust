@@ -664,14 +664,18 @@ impl RelooperState {
         // though we've already done that. Changing from `GoTo` to `ExitTo` means that
         // the back/out edges don't show up in the list of successors when calculating
         // predecessor and reachability information.
+        //
+        // TODO: Is picking the first entry as the loop label always correct? Is there a
+        // situation where we'd end up with nested loops with the same label? I kinda
+        // suspect no, but I'm not sure.
+        let loop_label = entries.first().unwrap();
         for bb in body_blocks.values_mut() {
             for lbl in bb.terminator.get_labels_mut() {
                 if let StructureLabel::GoTo(label) = lbl.clone() {
-                    // Branches back to our entries become `continue`s, branches anywhere else become `break`s.
                     if entries.contains(&label) {
-                        *lbl = StructureLabel::ContinueTo(label.clone())
+                        *lbl = StructureLabel::ContinueTo(loop_label.clone());
                     } else if follow_entries.contains(&label) {
-                        *lbl = StructureLabel::BreakTo(label.clone())
+                        *lbl = StructureLabel::BreakTo(label.clone());
                     }
                 }
             }
