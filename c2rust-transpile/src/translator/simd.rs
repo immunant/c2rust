@@ -67,7 +67,7 @@ static SIMD_X86_64_ONLY: &[&str] = &[
     "_mm_crc32_u64",
 ];
 
-fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
+pub fn add_arch_use(store: &mut ItemStore, arch_name: &str, item_name: &str) {
     store.add_use_with_attr(
         true,
         vec!["core".into(), "arch".into(), arch_name.into()],
