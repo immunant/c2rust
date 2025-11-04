@@ -1,11 +1,12 @@
 int static_single_int = (int) { 42 };
 int *static_single_int_ptr = &((int) { 42 });
 int *static_int_ptr_to_array = (int[]) { 42, 9001 };
+volatile int *static_volatile_int_ptr_to_array = (int[]) { 42, 9001 };
+int (*static_int_array_ptr)[2] = &(int[]) { 42, 9001 };
+
 // Currently generates broken Rust code, see
 // https://github.com/immunant/c2rust/issues/1410
 //char *static_char_ptr_to_array = (char[]) { "hello" };
-int (*static_int_array_ptr)[2] = &(int[]) { 42, 9001 };
-// As above
 //char (*static_char_array_ptr)[6] = &(char[]) { "hello" };
 
 #define SINGLE_INT ((int) { 42 })

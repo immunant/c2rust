@@ -1,7 +1,8 @@
 #include <stdlib.h>
 
-static char simple[] = "mystring";
-static char *foo = "mystring";
+char static_char_array[] = "mystring";
+char *static_char_ptr = "mystring";
+void *static_void_ptr = (void*) static_char_array;
 
 void entry(void) {
     int int_2d[1][1] = { 1 };
@@ -27,7 +28,7 @@ void entry(void) {
 
     int *int_var_ptr = int_empty_init;
     int (*int_var_array_ptr)[16] = &int_empty_init;
-    char *char_var_ptr_var = char_with_string;
+    char *char_var_ptr = char_with_string;
     char (*char_var_array_ptr)[4] = &char_with_string;
     const char *const_char_lit_ptr = "abc";
     const char (*const_char_lit_array_ptr)[4] = &"abc";
@@ -44,8 +45,8 @@ void entry(void) {
 #endif
 
     // Test that we can get the address of the element past the end of the array
-    char *past_end = &simple[sizeof(simple)];
-    past_end = &foo[8];
+    char *past_end = &static_char_array[sizeof(static_char_array)];
+    past_end = &static_char_ptr[8];
 }
 
 void short_initializer() {
