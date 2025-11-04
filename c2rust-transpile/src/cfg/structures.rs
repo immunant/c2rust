@@ -89,6 +89,8 @@ pub trait StructuredStatement: Sized {
     /// Make some sort of loop
     fn mk_loop(lbl: Option<Self::L>, body: Self) -> Self;
 
+    fn mk_block(lbl: Self::L, body: Self) -> Self;
+
     /// Make an exit from a loop
     fn mk_exit(
         exit_style: ExitStyle,  // `break` or a `continue`
@@ -135,6 +137,7 @@ pub enum StructuredASTKind<E, P, L, S> {
         Box<StructuredAST<E, P, L, S>>,
     ),
     Loop(Option<L>, Box<StructuredAST<E, P, L, S>>),
+    Block(L, Box<StructuredAST<E, P, L, S>>),
     Exit(ExitStyle, Option<L>),
 }
 
@@ -174,6 +177,10 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 
     fn mk_loop(lbl: Option<Self::L>, body: Self) -> Self {
         dummy_spanned(StructuredASTKind::Loop(lbl, Box::new(body)))
+    }
+
+    fn mk_block(lbl: Self::L, body: Self) -> Self {
+        dummy_spanned(StructuredASTKind::Block(lbl, Box::new(body)))
     }
 
     fn mk_exit(exit_style: ExitStyle, label: Option<Self::L>) -> Self {
@@ -349,12 +356,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 
                 // Put the code in a loop ending in a break so we can fall out the bottom of the loop.
                 // TODO: What if we just made a labeled block instead of a loop????
-                structure_ast = S::mk_loop(
-                    Some(entry.clone()),
-                    structure_ast,
-                    // S::mk_append(structure_ast, S::mk_exit(ExitStyle::Break, None)
-                );
-                structure_ast = S::mk_append(structure_ast, branch_ast);
+                structure_ast = S::mk_append(S::mk_block(entry.clone(), structure_ast), branch_ast);
             }
 
             i += 1;
@@ -364,10 +366,8 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         // also wrap the current ast in a labeled block.
         match root.get(i) {
             Some(Structure::Simple { entries, .. }) | Some(Structure::Loop { entries, .. }) => {
-                if entries.len() == 1 {
-                    structure_ast = S::mk_loop(entries.first().cloned(), structure_ast);
-                } else {
-                    todo!("Post-multiple structure with multiple entries");
+                for entry in entries {
+                    structure_ast = S::mk_block(entry.clone(), structure_ast);
                 }
             }
 
@@ -834,6 +834,17 @@ impl StructureState {
                     mk().span(body_span).block(body),
                     lbl.map(|l| l.pretty_print()),
                 );
+
+                mk().span(span).expr_stmt(e)
+            }
+
+            Block(lbl, body) => {
+                // Make a labeled block.
+
+                let (body, body_span) = self.to_stmt(*body, comment_store);
+
+                let e =
+                    mk().labelled_block_expr(mk().span(body_span).block(body), lbl.pretty_print());
 
                 mk().span(span).expr_stmt(e)
             }
