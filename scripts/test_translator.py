@@ -420,6 +420,7 @@ class TestDirectory:
             "stdsimd",
             "linkage",
             "register_tool",
+            "label_break_value",
         ])
         rust_file_builder.add_pragma("register_tool", ["c2rust"])
 
