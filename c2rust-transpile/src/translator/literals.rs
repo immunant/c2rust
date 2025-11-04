@@ -334,6 +334,10 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(union_id)
                     .unwrap();
+                if let Some(cur_file) = self.cur_file.get() {
+                    log::debug!("in file {cur_file} importing union {union_name}, id {union_id:?}");
+                    self.add_import(cur_file, union_id, &union_name);
+                }
                 match self.ast_context.index(union_field_id).kind {
                     CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
