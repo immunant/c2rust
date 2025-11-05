@@ -14,9 +14,11 @@ pub fn structured_cfg(
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
+    let checked_entries = find_checked_multiples(root);
+
     let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
         // structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
-        forward_cfg_help(root)?;
+        forward_cfg_help(root, &checked_entries)?;
 
     let s = StructureState {
         debug_labels,
@@ -202,8 +204,35 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 #[allow(dead_code)]
 type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 
+/// Searches the structured CFG for checked multiples and returns the set of
+/// labels that are entries to a checked multiple.
+// TODO: Do this in a more efficiently so we don't have to allocate all these
+// intermidiate sets. We probably want to pass a mutable set down the recursion
+// to populate instead.
+fn find_checked_multiples(root: &[Structure<Stmt>]) -> IndexSet<Label> {
+    let mut multiples = IndexSet::new();
+    for structure in root {
+        match structure {
+            Structure::Loop { entries, body } => {
+                if entries.len() > 1 {
+                    multiples.extend(entries.iter().cloned());
+                }
+                multiples.extend(find_checked_multiples(body));
+            }
+            Structure::Multiple { branches, .. } => {
+                for (_, branch) in branches {
+                    multiples.extend(find_checked_multiples(branch));
+                }
+            }
+            Structure::Simple { .. } => {},
+        }
+    }
+    multiples
+}
+
 fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
     root: &[Structure<Stmt>],
+    checked_entries: &IndexSet<Label>,
 ) -> TranslationResult<S> {
     let mut ast = S::empty();
     let mut i = 0;
@@ -247,22 +276,29 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             todo!("Handle nested terminators")
                         }
 
-                        // TODO: Should we also cover `ContinueTo` here?
-                        // GoTo(to) | BreakTo(to)
-                        //     if next_entries.len() == 1 && next_entries.contains(to) =>
-                        // {
-                        //     Ok(insert_goto(to.clone(), next_entries))
-                        // }
+                        // TODO: Maybe merge BreakTo and ContinueTo back into a
+                        // single ExitTo, but have it also hold on to an
+                        // `ExitStyle` to capture which kind of exit it is.
                         BreakTo(to) => {
+                            let mut new_cfg = S::empty();
+                            if checked_entries.contains(to) {
+                                new_cfg = S::mk_append(new_cfg, insert_goto(to.clone(), next_entries));
+                            }
+
                             // TODO: Handle immediate exits, i.e. exits that don't need a target label.
-                            let mut new_cfg = S::mk_exit(ExitStyle::Break, Some(to.clone()));
+                            new_cfg = S::mk_append(new_cfg, S::mk_exit(ExitStyle::Break, Some(to.clone())));
                             new_cfg.extend_span(*span);
                             Ok(new_cfg)
                         }
 
                         ContinueTo(to) => {
+                            let mut new_cfg = S::empty();
+                            if checked_entries.contains(to) {
+                                new_cfg = S::mk_append(new_cfg, insert_goto(to.clone(), next_entries));
+                            }
+
                             // TODO: Handle immediate exits, i.e. exits that don't need a target label.
-                            let mut new_cfg = S::mk_exit(ExitStyle::Continue, Some(to.clone()));
+                            new_cfg = S::mk_append(new_cfg, S::mk_exit(ExitStyle::Continue, Some(to.clone())));
                             new_cfg.extend_span(*span);
                             Ok(new_cfg)
                         }
@@ -298,7 +334,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let label = entries
                     .first()
                     .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
-                let body = forward_cfg_help(body)?;
+                let body = forward_cfg_help(body, checked_entries)?;
 
                 // TODO: Is this the right way to label the loop? If we have
                 // multiple entries to a loop it means we have irreducible
@@ -320,7 +356,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let mut branches = branches.clone();
                 let then = if entries == &branches.keys().cloned().collect::<IndexSet<_>>() {
                     let (_, then) = branches.pop().unwrap(); // UNWRAP: There's at least one branch.
-                    forward_cfg_help(&then)?
+                    forward_cfg_help(&then, checked_entries)?
                 } else {
                     S::empty()
                 };
@@ -328,7 +364,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let cases = branches
                     .iter()
                     .map(|(lbl, body)| {
-                        let stmts = forward_cfg_help(body)?;
+                        let stmts = forward_cfg_help(body, checked_entries)?;
                         Ok((lbl.clone(), stmts))
                     })
                     .collect::<TranslationResult<_>>()?;
@@ -352,7 +388,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                     structure.get_entries()
                 );
 
-                let branch_ast = forward_cfg_help::<S>(branch)?;
+                let branch_ast = forward_cfg_help::<S>(branch, checked_entries)?;
 
                 // Put the code in a loop ending in a break so we can fall out the bottom of the loop.
                 // TODO: What if we just made a labeled block instead of a loop????
