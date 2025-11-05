@@ -119,7 +119,7 @@ impl Serialize for Label {
 pub enum StructureLabel<S> {
     GoTo(Label),
     BreakTo(Label),
-    ContinueTo(Label),
+    ContinueTo { loop_label: Label, target: Label },
     Nested(Vec<Structure<S>>),
 }
 
@@ -134,7 +134,9 @@ impl StructureLabel<StmtOrDecl> {
         match self {
             StructureLabel::GoTo(l) => StructureLabel::GoTo(l),
             StructureLabel::BreakTo(l) => StructureLabel::BreakTo(l),
-            StructureLabel::ContinueTo(l) => StructureLabel::ContinueTo(l),
+            StructureLabel::ContinueTo { loop_label, target } => {
+                StructureLabel::ContinueTo { loop_label, target }
+            }
             StructureLabel::Nested(vs) => {
                 let vs = vs
                     .into_iter()

@@ -673,7 +673,10 @@ impl RelooperState {
             for lbl in bb.terminator.get_labels_mut() {
                 if let StructureLabel::GoTo(label) = lbl.clone() {
                     if entries.contains(&label) {
-                        *lbl = StructureLabel::ContinueTo(loop_label.clone());
+                        *lbl = StructureLabel::ContinueTo {
+                            loop_label: loop_label.clone(),
+                            target: label.clone(),
+                        };
                     } else if follow_entries.contains(&label) {
                         *lbl = StructureLabel::BreakTo(label.clone());
                     }
