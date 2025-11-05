@@ -291,14 +291,14 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             Ok(new_cfg)
                         }
 
-                        ContinueTo(to) => {
+                        ContinueTo { loop_label, target } => {
                             let mut new_cfg = S::empty();
-                            if checked_entries.contains(to) {
-                                new_cfg = S::mk_append(new_cfg, insert_goto(to.clone(), next_entries));
+                            if checked_entries.contains(target) {
+                                new_cfg = S::mk_append(new_cfg, insert_goto(target.clone(), next_entries));
                             }
 
                             // TODO: Handle immediate exits, i.e. exits that don't need a target label.
-                            new_cfg = S::mk_append(new_cfg, S::mk_exit(ExitStyle::Continue, Some(to.clone())));
+                            new_cfg = S::mk_append(new_cfg, S::mk_exit(ExitStyle::Continue, Some(loop_label.clone())));
                             new_cfg.extend_span(*span);
                             Ok(new_cfg)
                         }
