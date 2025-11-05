@@ -32,8 +32,16 @@ jobs:
 
       - name: Install Python Packages
         run: |
+          uv python install 3.14
+          uv run python -V
+
           uv venv
           uv pip install -r ./scripts/requirements.txt
+
+          # `zig cc` needed for cross-compilation
+          uv tool install ziglang
+          ln -s $(which python-zig) $(dirname $(which python-zig))/zig
+          zig version
 
       # rust-cache very carefully caches toolchains and target directories,
       # based on the job and toolchain and other factors. See
@@ -46,6 +54,17 @@ jobs:
 
       # Run after `rust-cache` so that this is cached.
       - run: rustup component add rustfmt rustc-dev
+
+      - name: Install generated Rust targets
+        run: |
+          rustup +nightly-2023-04-15 target add \
+            x86_64-unknown-linux-gnu \
+            x86_64-apple-darwin \
+            aarch64-unknown-linux-gnu \
+            aarch64-apple-darwin \
+            i686-unknown-linux-gnu \
+            armv7-unknown-linux-gnueabihf \
+            riscv64gc-unknown-linux-gnu
 
       - name: cargo fmt --check
         run: |
@@ -98,7 +117,6 @@ jobs:
           # It's important that we keep `RUSTFLAGS` consistent between different steps
           # so that we don't have to rebuild everything.
           echo "RUSTFLAGS=-Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
-          
 
       - name: cargo build --release
         run: |

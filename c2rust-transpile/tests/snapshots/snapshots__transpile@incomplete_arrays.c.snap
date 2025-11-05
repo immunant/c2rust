@@ -1,6 +1,5 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 80
 expression: cat tests/snapshots/incomplete_arrays.rs
 input_file: c2rust-transpile/tests/snapshots/incomplete_arrays.c
 ---
@@ -12,4 +11,3 @@ input_file: c2rust-transpile/tests/snapshots/incomplete_arrays.c
     unused_assignments,
     unused_mut
 )]
-
