@@ -915,7 +915,6 @@ impl<'c> Translation<'c> {
         lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let CQualTypeId { ctype, .. } = cqual_type;
-        let ty = self.convert_type(ctype)?;
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         let mut unary = match name {
@@ -927,94 +926,27 @@ impl<'c> Translation<'c> {
                     CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
                         return self.convert_expr(ctx, *target, None)
                     }
-                    // An AddrOf DeclRef/Member is safe to not decay if the translator isn't already giving a hard
-                    // yes to decaying (ie, BitCasts). So we only convert default to no decay.
+                    // An AddrOf DeclRef/Member is safe to not decay
+                    // if the translator isn't already giving a hard yes to decaying (ie, BitCasts).
+                    // So we only convert default to no decay.
                     CExprKind::DeclRef(..) | CExprKind::Member(..) => {
                         ctx.decay_ref.set_default_to_no()
                     }
                     _ => (),
-                };
-
-                // In this translation, there are only pointers to functions and
-                // & becomes a no-op when applied to a function.
+                }
 
                 let val = self.convert_expr(ctx.used().set_needs_address(true), arg, None)?;
 
-                if self.ast_context.is_function_pointer(ctype) {
-                    Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
-                } else {
-                    let pointee_ty =
-                        self.ast_context
-                            .get_pointee_qual_type(ctype)
-                            .ok_or_else(|| {
-                                TranslationError::generic("Address-of should return a pointer")
-                            })?;
-
-                    let expr_kind = &self.ast_context.index(arg).kind;
-                    let translate_as_macro = self
-                        .convert_const_macro_expansion(ctx, arg, None)
-                        .ok()
-                        .flatten()
-                        .is_some();
-
-                    // String literals are translated with a transmute, which produces a temporary.
-                    // Taking the address of a temporary leaves a dangling pointer. So instead,
-                    // cast the string literal directly so that its 'static lifetime is preserved.
-                    if let (
-                        &CExprKind::Literal(
-                            literal_cqual_type,
-                            CLiteral::String(ref bytes, element_size @ 1),
-                        ),
-                        false,
-                    ) = (expr_kind, translate_as_macro)
-                    {
-                        let bytes_padded = self.string_literal_bytes(
-                            literal_cqual_type.ctype,
-                            bytes,
-                            element_size,
-                        );
-
-                        let array_ty = mk().array_ty(
-                            mk().ident_ty("u8"),
-                            mk().lit_expr(bytes_padded.len() as u128),
-                        );
-                        let bytes_literal = mk().lit_expr(bytes_padded);
-                        let val = mk().cast_expr(bytes_literal, mk().ptr_ty(array_ty));
-                        let val = mk().cast_expr(val, ty);
-                        return Ok(WithStmts::new_val(val));
-                    }
-
-                    let mutbl = if pointee_ty.qualifiers.is_const {
-                        Mutability::Immutable
-                    } else {
-                        Mutability::Mutable
-                    };
-
-                    val.result_map(|a| {
-                        let mut addr_of_arg: Box<Expr>;
-
-                        if ctx.is_static {
-                            // static variable initializers aren't able to use &mut,
-                            // so we work around that by using & and an extra cast
-                            // through & to *const to *mut
-                            addr_of_arg = mk().addr_of_expr(a);
-                            if let Mutability::Mutable = mutbl {
-                                let ty_ = self.convert_pointee_type(pointee_ty.ctype)?;
-                                addr_of_arg = mk().cast_expr(addr_of_arg, mk().ptr_ty(ty_));
-                            }
-                        } else {
-                            // Normal case is allowed to use &mut if needed
-                            addr_of_arg = mk().set_mutbl(mutbl).addr_of_expr(a);
-
-                            // Avoid unnecessary reference to pointer decay in fn call args:
-                            if ctx.decay_ref.is_no() {
-                                return Ok(addr_of_arg);
-                            }
-                        }
-
-                        Ok(mk().cast_expr(addr_of_arg, ty))
-                    })
+                // & becomes a no-op when applied to a function.
+                if self.ast_context.is_function_pointer(cqual_type.ctype) {
+                    return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
                 }
+
+                let arg_cty = arg_kind
+                    .get_qual_type()
+                    .ok_or_else(|| format_err!("bad source type"))?;
+
+                self.convert_address_of(ctx, Some(arg), arg_cty, cqual_type, val, false)
             }
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
             c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),

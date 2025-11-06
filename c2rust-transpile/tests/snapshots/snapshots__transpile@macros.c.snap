@@ -370,7 +370,7 @@ pub static mut fns: fn_ptrs = {
     init
 };
 #[no_mangle]
-pub static mut p: *const fn_ptrs = unsafe { &fns as *const fn_ptrs };
+pub static mut p: *const fn_ptrs = unsafe { &fns };
 pub const ZSTD_WINDOWLOG_MAX_32: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const ZSTD_WINDOWLOG_MAX_64: ::core::ffi::c_int = 31 as ::core::ffi::c_int;
 #[no_mangle]
