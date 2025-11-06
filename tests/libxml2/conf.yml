@@ -13,6 +13,7 @@ refactor:
   - convert_printfs
   - fix_unused_unsafe
   - remove_redundant_casts
+  - remove_literal_suffixes
   - noop
 cargo.transpile:
   autogen: true

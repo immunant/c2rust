@@ -13,6 +13,11 @@ transpile:
   binary: ruby
 #  cflags: "-O0"
 
+refactor:
+  autogen: true
+  transforms:
+    - remove_literal_suffixes
+
 cargo.transpile:
   autogen: true
   xfail: true

@@ -9,6 +9,11 @@ transpile:
   autogen: true
   tflags: --reorganize-definitions
 
+refactor:
+  autogen: true
+  transforms:
+    - remove_literal_suffixes
+
 cargo.transpile:
   autogen: true
 
