@@ -14,6 +14,7 @@ refactor:
   autogen: true
   transforms:
     - remove_unused_labels
+    - remove_literal_suffixes
 
 cargo.transpile:
   autogen: true

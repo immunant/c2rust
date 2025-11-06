@@ -5,6 +5,11 @@ transpile:
   # needs support for __atomic_*
   xfail: true
 
+refactor:
+  autogen: true
+  transforms:
+    - remove_literal_suffixes
+
 cargo.transpile:
   autogen: true
 
