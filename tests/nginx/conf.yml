@@ -22,3 +22,5 @@ refactor:
   transforms:
     - remove_unused_labels
     - remove_literal_suffixes
+    - convert_cast_as_ptr
+    - remove_unnecessary_refs
