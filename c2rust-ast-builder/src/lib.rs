@@ -1,2 +1,2 @@
 mod builder;
-pub use crate::builder::{mk, properties, Builder, Make};
+pub use crate::builder::{mk, properties, Builder, CaptureBy, Make};
