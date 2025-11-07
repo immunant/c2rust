@@ -833,27 +833,19 @@ fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Stru
                     }) => {
                         use StructureLabel::*;
                         let rewrite = |t: &StructureLabel<Stmt>| match t {
-                            BreakTo(to) => {
-                                let entries = [to.clone()].into_iter().collect();
-                                let body = Vec::new();
-                                let terminator = Jump(BreakTo(to.clone()));
-                                let first_structure = Structure::Simple {
-                                    entries,
-                                    body,
-                                    span: Span::call_site(),
-                                    terminator,
-                                };
-
-                                let mut nested = vec![first_structure];
-                                nested.extend(branches.get(to).unwrap().clone());
-
-                                Nested(nested)
+                            BreakTo(to) => if let Some(branch) = branches.get(to) {
+                                Nested(branch.clone())
+                            } else {
+                                BreakTo(to.clone())
                             }
+                            
                             ContinueTo { loop_label, target } => ContinueTo {
                                 loop_label: loop_label.clone(),
                                 target: target.clone(),
                             },
-                            GoTo(to) => unreachable!("Found GoTo({to:?}) terminator in relooped structures"),
+                            GoTo(to) => {
+                                unreachable!("Found GoTo({to:?}) terminator in relooped structures")
+                            }
                             Nested(_) => panic!("simplify_structure: Nested precondition violated"),
                         };
 
