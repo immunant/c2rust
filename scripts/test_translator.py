@@ -93,6 +93,7 @@ class CFile:
         args.append("--ddump-structures")
         args.append("--json-function-cfgs")
         args.append("--no-incremental-relooper")
+        # args.append("--no-simplify-structures")
 
         if self.disable_incremental_relooper:
             args.append("--no-incremental-relooper")

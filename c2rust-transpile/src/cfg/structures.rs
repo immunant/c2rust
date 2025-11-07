@@ -236,11 +236,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 ) -> TranslationResult<S> {
     let mut ast = S::empty();
     let mut i = 0;
-    loop {
-        if i >= root.len() {
-            break;
-        }
-
+    while i < root.len() {
         let structure = &root[i];
 
         // Generate the AST for the current structure.
@@ -272,8 +268,9 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                     let next_entries = root.get(i + 1).map(|s| s.get_entries()).unwrap_or(&empty);
 
                     match slbl {
-                        Nested(_) => {
-                            todo!("Handle nested terminators")
+                        Nested(nested) => {
+                            let nested = forward_cfg_help(nested, checked_entries)?;
+                            Ok(nested)
                         }
 
                         // TODO: Maybe merge BreakTo and ContinueTo back into a
