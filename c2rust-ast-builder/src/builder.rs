@@ -2088,17 +2088,11 @@ impl Builder {
         self,
         capture: CaptureBy,
         mov: Movability,
-        decl: FnDecl,
+        inputs: Vec<Pat>,
+        output: ReturnType,
         body: Box<Expr>,
     ) -> Box<Expr> {
-        let (_name, inputs, _variadic, output) = decl;
-        let inputs = inputs
-            .into_iter()
-            .map(|e| match e {
-                FnArg::Receiver(_s) => panic!("found 'self' in closure arguments"),
-                FnArg::Typed(PatType { pat, .. }) => *pat,
-            })
-            .collect();
+        let inputs = inputs.into_iter().collect();
         let capture = match capture {
             CaptureBy::Ref => None,
             CaptureBy::Value => Some(Default::default()),
