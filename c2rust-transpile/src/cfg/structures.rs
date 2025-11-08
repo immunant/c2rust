@@ -224,7 +224,7 @@ fn find_checked_multiples(root: &[Structure<Stmt>]) -> IndexSet<Label> {
                     multiples.extend(find_checked_multiples(branch));
                 }
             }
-            Structure::Simple { .. } => {},
+            Structure::Simple { .. } => {}
         }
     }
     multiples
@@ -253,14 +253,6 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 }
                 body_ast.extend_span(*span);
 
-                let insert_goto = |to: Label, target: &IndexSet<Label>| -> S {
-                    if target.len() == 1 {
-                        S::empty()
-                    } else {
-                        S::mk_goto(to)
-                    }
-                };
-
                 let branch = |slbl: &StructureLabel<Stmt>| -> TranslationResult<S> {
                     use StructureLabel::*;
 
@@ -277,25 +269,38 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                         // single ExitTo, but have it also hold on to an
                         // `ExitStyle` to capture which kind of exit it is.
                         BreakTo(to) => {
-                            let mut new_cfg = S::empty();
-                            if checked_entries.contains(to) {
-                                new_cfg = S::mk_append(new_cfg, insert_goto(to.clone(), next_entries));
-                            }
+                            let mut new_cfg = if checked_entries.contains(to) {
+                                S::mk_goto(to.clone())
+                            } else {
+                                S::empty()
+                            };
 
-                            // TODO: Handle immediate exits, i.e. exits that don't need a target label.
-                            new_cfg = S::mk_append(new_cfg, S::mk_exit(ExitStyle::Break, Some(to.clone())));
+                            // Only generate an exit if we're not going to flow naturally into the
+                            // next structure's entries.
+                            if !next_entries.contains(to) {
+                                new_cfg = S::mk_append(
+                                    new_cfg,
+                                    S::mk_exit(ExitStyle::Break, Some(to.clone())),
+                                );
+                            }
                             new_cfg.extend_span(*span);
                             Ok(new_cfg)
                         }
 
                         ContinueTo { loop_label, target } => {
-                            let mut new_cfg = S::empty();
-                            if checked_entries.contains(target) {
-                                new_cfg = S::mk_append(new_cfg, insert_goto(target.clone(), next_entries));
-                            }
+                            let mut new_cfg = if checked_entries.contains(target) {
+                                S::mk_goto(target.clone())
+                            } else {
+                                S::empty()
+                            };
 
-                            // TODO: Handle immediate exits, i.e. exits that don't need a target label.
-                            new_cfg = S::mk_append(new_cfg, S::mk_exit(ExitStyle::Continue, Some(loop_label.clone())));
+                            // TODO: Don't generate an exit if we're going to flow naturally into the
+                            // next structure's entries?
+                            new_cfg = S::mk_append(
+                                new_cfg,
+                                S::mk_exit(ExitStyle::Continue, Some(loop_label.clone())),
+                            );
+
                             new_cfg.extend_span(*span);
                             Ok(new_cfg)
                         }
@@ -398,6 +403,10 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         // Check for a simple or loop after the multiple. If there is one, we need to
         // also wrap the current ast in a labeled block.
         match root.get(i) {
+            // HACK: Don't do any wrapping if a simple follows a simple. This avoids wrapping in the
+            // most obvious case, but doesn't generalize.
+            Some(Structure::Simple { .. }) if matches!(structure, Structure::Simple { .. }) => {}
+
             Some(Structure::Simple { entries, .. }) | Some(Structure::Loop { entries, .. }) => {
                 for entry in entries {
                     structure_ast = S::mk_block(entry.clone(), structure_ast);
