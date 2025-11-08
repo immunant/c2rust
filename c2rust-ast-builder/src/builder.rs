@@ -664,6 +664,17 @@ impl Builder {
         )))
     }
 
+    /// A convenience function for calling multiple methods in a chain.
+    pub fn method_chain_expr(
+        self,
+        expr: Box<Expr>,
+        calls: Vec<(PathSegment, Vec<Box<Expr>>)>,
+    ) -> Box<Expr> {
+        calls.into_iter().fold(expr, |expr, (seg, args)| {
+            mk().method_call_expr(expr, seg, args)
+        })
+    }
+
     pub fn tuple_expr(self, exprs: Vec<Box<Expr>>) -> Box<Expr> {
         Box::new(Expr::Tuple(ExprTuple {
             attrs: self.attrs,
