@@ -51,7 +51,7 @@ pub unsafe extern "C" fn VM_CallCompiled(
         as *mut ::core::ffi::c_int) = 0 as ::core::ffi::c_int;
     *(&mut *image.offset(programStack as isize) as *mut byte as *mut ::core::ffi::c_int) =
         -(1 as ::core::ffi::c_int);
-    entryPoint = ((*vm).codeBase).offset((*vm).entryOfs as isize);
+    entryPoint = (*vm).codeBase.offset((*vm).entryOfs as isize);
     opStack =
         (stack.as_mut_ptr() as *mut ::core::ffi::c_int).offset(16 as ::core::ffi::c_int as isize);
     *opStack = 0 as ::core::ffi::c_int;
