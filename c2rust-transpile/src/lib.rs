@@ -14,10 +14,10 @@ pub mod with_stmts;
 
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::{env, io};
 
 use crate::compile_cmds::CompileCmd;
 use failure::Error;
@@ -476,7 +476,7 @@ fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
     }
 
     // Assumes the subcommand executable is in the same directory as this program.
-    let cmd_path = std::env::current_exe().expect("Cannot get current executable path");
+    let cmd_path = env::current_exe().expect("Cannot get current executable path");
     let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
     cmd_path.pop(); // remove current executable
     cmd_path.push(format!("c2rust-refactor"));
