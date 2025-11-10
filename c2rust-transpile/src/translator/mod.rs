@@ -2516,30 +2516,41 @@ impl<'c> Translation<'c> {
             eprintln!("Wrote CFG json for {name} to dumps/{name}_cfg.json");
         }
 
-        let (lifted_stmts, relooped) = cfg::relooper::reloop(
+        let (lifted_stmts, mut relooped) = cfg::relooper::reloop(
             graph,
             store,
-            self.tcfg.simplify_structures,
             self.tcfg.use_c_loop_info,
             self.tcfg.use_c_multiple_info,
             live_in,
         );
 
-        if self.tcfg.dump_structures {
+        fn dump_structures(relooped: &[cfg::Structure<Stmt>], file_name: &str) {
             use std::fmt::Write;
 
             // TODO: Do this more efficiently lol
             let mut dump = String::new();
-            for s in &relooped {
+            for s in relooped {
                 writeln!(&mut dump, "{:#?}", s).unwrap();
             }
 
             std::fs::create_dir_all("dumps").unwrap();
-
-            let file_name = format!("dumps/{name}_structures.rs");
             std::fs::write(&file_name, dump).unwrap();
+        }
 
+        if self.tcfg.dump_structures {
+            let file_name = format!("dumps/{}_structures.rs", name);
+            dump_structures(&relooped, &file_name);
             eprintln!("Wrote relooped structures for {name} to {file_name}");
+        }
+
+        if self.tcfg.simplify_structures {
+            relooped = cfg::relooper::simplify_structure(relooped);
+
+            if self.tcfg.dump_structures {
+                let file_name = format!("dumps/{}_structures_simplified.rs", name);
+                dump_structures(&relooped, &file_name);
+                eprintln!("Wrote simplified structures for {name} to {file_name}");
+            }
         }
 
         let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");

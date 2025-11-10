@@ -106,7 +106,6 @@ use super::*;
 pub fn reloop(
     cfg: Cfg<Label, StmtOrDecl>, // the control flow graph to reloop
     mut store: DeclStmtStore,    // store of what to do with declarations
-    simplify_structures: bool,   // simplify the output structure
     use_c_loop_info: bool,       // use the loop information in the CFG (slower, but better)
     use_c_multiple_info: bool,   // use the multiple information in the CFG (slower, but better)
     live_in: IndexSet<CDeclId>,  // declarations we assume are live going into this graph
@@ -160,10 +159,6 @@ pub fn reloop(
         .into_iter()
         .map(|s| s.place_decls(&lift_me, &mut store))
         .collect();
-
-    if simplify_structures {
-        relooped = simplify_structure(relooped)
-    }
 
     (lifted_stmts, relooped)
 }
@@ -695,7 +690,7 @@ impl RelooperState {
 }
 
 /// Nested precondition: `structures` will contain no `StructureLabel::Nested` terminators.
-fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Structure<Stmt>> {
+pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<Structure<Stmt>> {
     // Recursive calls come first
     let structures: Vec<Structure<Stmt>> = structures
         .into_iter()
