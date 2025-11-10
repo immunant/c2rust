@@ -383,6 +383,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         i += 1;
 
         // Handle any followup multiple structures by wrapping the current structure's AST in a block.
+        let mut first = true;
         while let Some(Structure::Multiple { branches, entries }) = root.get(i) {
             let next_entries = get_next_entries(i + 1);
 
@@ -393,10 +394,14 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 
             let mut branches = branches.iter();
 
-            // Don't generate a block for the first branch, since we'll fall through to it directly.
-            let (_, branch) = branches.next().unwrap();
-            let branch_ast = forward_cfg_help::<S>(branch, checked_entries, &next_entries)?;
-            structure_ast = S::mk_append(structure_ast, branch_ast);
+            // Don't generate a block for the first branch of our followup multiples since we'll
+            // fall through to it directly.
+            if first {
+                let (_, branch) = branches.next().unwrap();
+                let branch_ast = forward_cfg_help::<S>(branch, checked_entries, &next_entries)?;
+                structure_ast = S::mk_append(structure_ast, branch_ast);
+                first = false;
+            }
 
             // Generate blocks as break targets for the remaining branches.
             for (entry, branch) in branches {
