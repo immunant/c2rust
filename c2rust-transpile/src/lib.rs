@@ -476,11 +476,9 @@ fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
     }
 
     // Assumes the subcommand executable is in the same directory as this program.
-    let cmd_path = env::current_exe().expect("Cannot get current executable path");
-    let mut cmd_path = cmd_path.as_path().canonicalize().unwrap();
-    cmd_path.pop(); // remove current executable
-    cmd_path.push(format!("c2rust-refactor"));
-    assert!(cmd_path.exists(), "{:?} is missing", cmd_path);
+    let refactor = env::current_exe()
+        .expect("Cannot get current executable path")
+        .with_file_name("c2rust-refactor");
     let args = [
         "--cargo",
         "--rewrite-mode",
@@ -489,10 +487,14 @@ fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
         ";",
         "reorganize_definitions",
     ];
-    let status = Command::new(cmd_path.into_os_string())
-        .args(&args)
+    let status = Command::new(&refactor)
+        .args(args)
         .current_dir(build_dir)
-        .status()?;
+        .status()
+        .map_err(|e| {
+            let refactor = refactor.display();
+            failure::format_err!("unable to run {refactor}: {e}\nNote that c2rust-refactor must be installed separately from c2rust and c2rust-transpile.")
+        })?;
     if status.success() {
         Ok(())
     } else {
