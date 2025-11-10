@@ -8,7 +8,7 @@ use std::str::FromStr;
 use c2rust_refactor::{file_io, CargoTarget, Command, Cursor, Mark, Options, RustcArgSource};
 
 fn main() {
-    let yaml = load_yaml!("../refactor.yaml");
+    let yaml = load_yaml!("refactor.yaml");
     let args = App::from_yaml(yaml).get_matches();
 
     let opts = match parse_opts(&args) {
