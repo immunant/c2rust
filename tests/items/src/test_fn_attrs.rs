@@ -8,7 +8,7 @@ pub fn test_fn_attrs() {
 
     // Remove the c2rust::src_loc annotation, which is only produced if
     // --reorganize-definitions is enabled.
-    let mut lines: Vec<&str> = src.lines().collect();
+    let mut lines = src.lines().collect::<Vec<_>>();
     lines.retain(|x| !x.contains("#[c2rust::src_loc"));
     let src = lines.join("\n");
 
