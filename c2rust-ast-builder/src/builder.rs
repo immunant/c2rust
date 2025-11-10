@@ -2222,18 +2222,20 @@ fn parenthesize_if_necessary(mut outer: Expr) -> Expr {
         }
     };
     match outer {
-        Expr::Field(ref mut ef) => {
-            if let Expr::Index(_) = *ef.base {
-                /* we do not need to parenthesize the indexing in a[b].c */
-            } else {
-                /*if let Expr::Unary(_) = *ef.base {
-                    parenthesize_mut(&mut ef.base);
-                } else { */
-                parenthesize_if_gt(&mut ef.base);
+        Expr::MethodCall(ref mut emc) => {
+            // Do not parenthesize `a.b.c()` or `a().b()` or `a[b].c()`
+            if !matches!(
+                *emc.receiver,
+                Expr::Field(..) | Expr::Call(..) | Expr::Index(..)
+            ) {
+                parenthesize_if_gt(&mut emc.receiver);
             }
         }
-        Expr::MethodCall(ref mut emc) => {
-            parenthesize_if_gt(&mut emc.receiver);
+        Expr::Field(ref mut ef) => {
+            // Do not parenthesize `a().b` or `a[b].c`
+            if !matches!(*ef.base, Expr::Call(..) | Expr::Index(..)) {
+                parenthesize_if_gt(&mut ef.base);
+            }
         }
         Expr::Call(ref mut ec) => {
             parenthesize_if_gt(&mut ec.func);

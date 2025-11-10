@@ -48,10 +48,10 @@ pub unsafe extern "C" fn unary_with_side_effect() {
         unsafe extern "C" fn() -> ::core::ffi::c_int,
     >(side_effect)() as isize) as *const ::core::ffi::c_char;
     *arr[side_effect() as usize];
-    arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(1);
-    arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);
-    arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(1);
-    arr[side_effect() as usize] = (arr[side_effect() as usize]).offset(-1);
+    arr[side_effect() as usize] = arr[side_effect() as usize].offset(1);
+    arr[side_effect() as usize] = arr[side_effect() as usize].offset(-1);
+    arr[side_effect() as usize] = arr[side_effect() as usize].offset(1);
+    arr[side_effect() as usize] = arr[side_effect() as usize].offset(-1);
 }
 #[no_mangle]
 pub unsafe extern "C" fn compound_literal() {
