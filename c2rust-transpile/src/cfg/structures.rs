@@ -288,7 +288,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 
                             // Only generate an exit if we're not going to flow naturally into the
                             // next structure's entries.
-                            if !(next_entries.contains(to) || followup_entries.contains(to)) {
+                            if !next_entries.contains(to) {
                                 new_ast = S::mk_append(
                                     new_ast,
                                     S::mk_exit(ExitStyle::Break, Some(to.clone())),
