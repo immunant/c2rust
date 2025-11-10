@@ -233,12 +233,18 @@ fn find_checked_multiples(root: &[Structure<Stmt>]) -> IndexSet<Label> {
 fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
     root: &[Structure<Stmt>],
     checked_entries: &IndexSet<Label>,
-    followup_entries: &IndexSet<Label>,
+    followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
 ) -> TranslationResult<S> {
+    // Gets the followup entries for the structure at index `i`. This only considers
+    // the handled branches of multiples. The returned set will also include
+    // everything in `followup_entries`.
     let get_next_entries = |i| {
-        root.get(i)
+        let mut entries = root
+            .get(i)
             .map(|s: &Structure<_>| s.get_handled_entries())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        entries.extend(followup_entries.iter().cloned());
+        entries
     };
 
     let mut ast = S::empty();
