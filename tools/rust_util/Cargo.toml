@@ -1,5 +1,5 @@
 [package]
-name = "rewrite_util"
+name = "rust_util"
 version = "0.1.0"
 edition = "2024"
 

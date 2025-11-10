@@ -1388,13 +1388,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rewrite_util"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
-]
-
-[[package]]
 name = "rowan"
 version = "0.15.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1405,6 +1398,15 @@ dependencies = [
  "memoffset",
  "rustc-hash 1.1.0",
  "text-size",
+]
+
+[[package]]
+name = "rust_util"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1632,7 +1634,7 @@ dependencies = [
  "ra_ap_load-cargo",
  "ra_ap_project_model",
  "ra_ap_syntax",
- "rewrite_util",
+ "rust_util",
  "syn",
 ]
 
