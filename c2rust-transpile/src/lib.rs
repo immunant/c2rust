@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::Command;
 use std::{env, io};
 
 use crate::compile_cmds::CompileCmd;
@@ -445,7 +445,7 @@ fn get_extra_args_macos() -> Vec<String> {
     if cfg!(target_os = "macos") {
         let usr_incl = Path::new("/usr/include");
         if !usr_incl.exists() {
-            let output = process::Command::new("xcrun")
+            let output = Command::new("xcrun")
                 .args(["--show-sdk-path"])
                 .output()
                 .expect("failed to run `xcrun` subcommand");
@@ -466,7 +466,7 @@ fn get_extra_args_macos() -> Vec<String> {
 
 fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
     // Make sure the crate builds cleanly
-    let status = process::Command::new("cargo")
+    let status = Command::new("cargo")
         .args(&["check"])
         .env("RUSTFLAGS", "-Awarnings")
         .current_dir(build_dir)
@@ -489,7 +489,7 @@ fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
         ";",
         "reorganize_definitions",
     ];
-    let status = process::Command::new(cmd_path.into_os_string())
+    let status = Command::new(cmd_path.into_os_string())
         .args(&args)
         .current_dir(build_dir)
         .status()?;
@@ -515,7 +515,7 @@ fn reorganize_definitions(
 
     invoke_refactor(build_dir)?;
     // fix the formatting of the output of `c2rust-refactor`
-    let status = process::Command::new("cargo")
+    let status = Command::new("cargo")
         .args(["fmt"])
         .current_dir(build_dir)
         .status()?;
