@@ -11,7 +11,7 @@ use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{self, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_project_model::CargoConfig;
 use ra_ap_syntax::SyntaxNode;
-use rewrite_util::{FlatTokens, TokenIndex, OutputBuffer, render_output};
+use rust_util::rewrite::{FlatTokens, TokenIndex, OutputBuffer, render_output};
 use syn;
 use syn::spanned::Spanned;
 use syn::visit_mut::{self, VisitMut};
