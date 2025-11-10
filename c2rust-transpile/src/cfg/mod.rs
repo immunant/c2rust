@@ -182,15 +182,14 @@ impl<S> Structure<S> {
 
     // Gets the entries that are handled by this structure.
     //
-    // This is different from `get_entries` in that it won't include unhandled
-    // entries to a multiple.
-    // TODO: Maybe return a `Cow` so we only allocate a set if necessary?
+    // Only includes the first branch of a `Multiple` structure, since that's
+    // the only branch that we flow naturally into for a followup multiple.
     fn get_handled_entries(&self) -> IndexSet<Label> {
         use Structure::*;
         match self {
             Simple { entries, .. } => entries.clone(),
             Loop { entries, .. } => entries.clone(),
-            Multiple { branches, .. } => branches.keys().cloned().collect(),
+            Multiple { branches, .. } => indexset! { branches.keys().next().unwrap().clone() },
         }
     }
 }
