@@ -467,7 +467,7 @@ fn get_extra_args_macos() -> Vec<String> {
 fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
     // Make sure the crate builds cleanly
     let status = Command::new("cargo")
-        .args(&["check"])
+        .args(["check"])
         .env("RUSTFLAGS", "-Awarnings")
         .current_dir(build_dir)
         .status()?;
