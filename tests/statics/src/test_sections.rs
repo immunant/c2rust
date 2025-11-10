@@ -36,7 +36,7 @@ pub fn test_sectioned_used_static() {
         // directly at the source file
         let src = include_str!("attributes.rs");
 
-        let mut lines: Vec<&str> = src.lines().collect();
+        let mut lines = src.lines().collect::<Vec<_>>();
 
         // Remove the c2rust::src_loc annotation, which is only produced if
         // --reorganize-definitions is enabled.

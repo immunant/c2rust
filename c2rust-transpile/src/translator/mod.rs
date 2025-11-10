@@ -664,7 +664,7 @@ pub fn translate(
                 if t.tcfg.reorganize_definitions
                     && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
-                    let name: Option<&String> = t
+                    let name = t
                         .ast_context
                         .get_decl(&decl_id)
                         .and_then(|x| x.kind.get_name());
@@ -941,12 +941,13 @@ impl<'a> IdentsOrGlob<'a> {
 
 /// Extract the set of names made visible by a `use`.
 fn use_idents<'a>(i: &'a UseTree) -> IdentsOrGlob<'a> {
+    use UseTree::*;
     match i {
-        UseTree::Path(up) => use_idents(&up.tree),
-        UseTree::Name(un) => IdentsOrGlob::Idents(vec![&un.ident]),
-        UseTree::Rename(ur) => IdentsOrGlob::Idents(vec![&ur.rename]),
-        UseTree::Glob(_ugl) => IdentsOrGlob::Glob,
-        UseTree::Group(ugr) => ugr
+        Path(up) => use_idents(&up.tree),
+        Name(un) => IdentsOrGlob::Idents(vec![&un.ident]),
+        Rename(ur) => IdentsOrGlob::Idents(vec![&ur.rename]),
+        Glob(_ugl) => IdentsOrGlob::Glob,
+        Group(ugr) => ugr
             .items
             .iter()
             .map(|tree| use_idents(tree))
