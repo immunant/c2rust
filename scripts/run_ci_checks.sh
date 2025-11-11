@@ -2,7 +2,7 @@
 
 set -euox pipefail
 
-# Run the same checks that are run in CI in `azure-pipelines.yml`.
+# Run the same checks that are run in CI in `ci.yml`.
 
 # Deny all warnings, including in documentation.
 if [[ "${ALLOW_WARNINGS:-0}" != "1" ]]; then

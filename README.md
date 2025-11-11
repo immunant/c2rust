@@ -1,11 +1,10 @@
 # C2Rust
 
-[![GitHub Actions Status]][github] [![Azure Build Status]][azure] [![Latest Version]][crates.io] [![Rustc Version]](#)
+[![ci GitHub Actions Status]][github] [![c2rust-testsuite GitHub Actions Status]][github] [![Latest Version]][crates.io] [![Rustc Version]](#)
 
-[GitHub Actions Status]: https://github.com/immunant/c2rust/workflows/c2rust-testsuite/badge.svg
+[ci GitHub Actions Status]: https://github.com/immunant/c2rust/workflows/ci/badge.svg
+[c2rust-testsuite GitHub Actions Status]: https://github.com/immunant/c2rust/workflows/c2rust-testsuite/badge.svg
 [github]: https://github.com/immunant/c2rust/actions
-[Azure Build Status]: https://dev.azure.com/immunant/c2rust/_apis/build/status/immunant.c2rust?branchName=master
-[azure]: https://dev.azure.com/immunant/c2rust/_build/latest?definitionId=1&branchName=master
 
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
