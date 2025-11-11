@@ -11,7 +11,7 @@ from tests.requirements import *
 
 class Test(object):
 
-    STAGES: dict = {
+    STAGES: dict[str, list[str]] = {
         "autogen": ["autogen.sh"],
         "configure": ["configure.sh"],
         "make": ["make.sh", "cmake.sh"],
@@ -39,12 +39,14 @@ class Test(object):
             if os.path.isfile(logfile):
                 grep_cmd = ['grep', '-i', '-A', '20', '-E', 'panicked|error', logfile]
                 grep = subprocess.Popen(grep_cmd, stdout=subprocess.PIPE)
+                assert grep.stdout is not None
                 for line in grep.stdout:
                     print(line.decode().rstrip())
 
                 # fall back to tail if grep didn't find anything
                 if grep.returncode != 0:
                     tail = subprocess.Popen(['tail', '-n', '20', logfile], stdout=subprocess.PIPE)
+                    assert tail.stdout is not None
                     for line in tail.stdout:
                         print(line.decode().rstrip())
             else:
@@ -80,6 +82,8 @@ class Test(object):
                 nc=Colors.NO_COLOR,
                 stage=stage,
                 script=relpath)
+        else:
+            line = ""
 
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
@@ -182,7 +186,7 @@ class Test(object):
         self.ensure_submodule_checkout()
 
         stages = Test.STAGES.keys()
-        if conf.stages:
+        if conf.stages is not None:
             # Check that all stages are valid
             for stage in conf.stages:
                 if stage not in Test.STAGES:

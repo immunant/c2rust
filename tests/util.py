@@ -4,12 +4,14 @@ import yaml
 import json
 import errno
 
-from typing import List, Iterable
+from typing import Any, List, Iterable, Never, Sequence
 
 CONF_YML: str = "conf.yml"
 
 
 class Config(object):
+    stages: list[str] | None
+
     def __init__(self, args):
         self.verbose = args.verbose
         self.projects = args.projects  # projects filter
@@ -18,8 +20,8 @@ class Config(object):
         self.project_dirs = find_project_dirs(self)
         self.project_conf = {cf: get_yaml(cf) for cf in get_conf_files(self)}
 
-    def try_get_conf_for(self, conf_file, *keys: List[str]):
-        def lookup(yaml, keys: List[str]):
+    def try_get_conf_for(self, conf_file, *keys: str):
+        def lookup(yaml, keys: Sequence[str]):
             if not keys:
                 return None
             head, *tail = keys
@@ -44,7 +46,7 @@ class Colors(object):
     NO_COLOR = '\033[0m'
 
 
-def die(emsg: str, status: int=errno.EINVAL):
+def die(emsg: str, status: int=errno.EINVAL) -> Never:
     (red, nc) = (Colors.FAIL, Colors.NO_COLOR)
     print(f"{red}error:{nc} {emsg}", file=sys.stderr)
     exit(status)
@@ -97,7 +99,7 @@ def find_project_dirs(conf: Config) -> List[str]:
     return [os.path.join(script_dir, s) for s in subdirs]
 
 
-def get_yaml(file: str) -> dict:
+def get_yaml(file: str) -> dict[str, Any]:
     with open(file, 'r') as stream:
         try:
             return yaml.safe_load(stream)
@@ -105,7 +107,7 @@ def get_yaml(file: str) -> dict:
             die(str(exc))
 
 
-def check_compile_commands(compile_commands_path: str) -> (bool, str):
+def check_compile_commands(compile_commands_path: str) -> tuple[bool, str]:
     """
     Return True iff compile_commands_path points to a valid
     compile_commands.json and all referenced source files exist.
