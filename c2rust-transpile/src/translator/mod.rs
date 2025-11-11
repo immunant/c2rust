@@ -268,10 +268,11 @@ pub struct Translation<'c> {
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
-    zero_inits: RefCell<IndexMap<CDeclId, WithStmts<Box<Expr>>>>,
+    zero_inits: RefCell<IndexMap<CDeclId, (WithStmts<Box<Expr>>, Vec<Import>)>>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
     macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
+    deferred_imports: RefCell<Option<Vec<Import>>>,
 
     // Comment support
     pub comment_context: CommentContext,      // Incoming comments
@@ -1306,6 +1307,7 @@ impl<'c> Translation<'c> {
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
             macro_expansions: RefCell::new(IndexMap::new()),
+            deferred_imports: RefCell::new(None),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             spans: HashMap::new(),
@@ -5006,9 +5008,12 @@ impl<'c> Translation<'c> {
 
         // Caching skips critical side effect of `import_type` call.
         // Look up the decl in the cache and return what we find (if we find anything)
-        /*if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
+        if let Some((init, imports)) = self.zero_inits.borrow().get(&decl_id) {
+            self.apply_imports(imports);
             return Ok(init.clone());
-        }*/
+        }
+
+        self.defer_imports();
 
         let name_decl_id = match self.ast_context.index(type_id).kind {
             CTypeKind::Typedef(decl_id) => decl_id,
@@ -5107,7 +5112,10 @@ impl<'c> Translation<'c> {
 
         if init.is_pure() {
             // Insert the initializer into the cache, then return it
-            self.zero_inits.borrow_mut().insert(decl_id, init.clone());
+            let imports = self.stop_deferring_imports();
+            self.zero_inits
+                .borrow_mut()
+                .insert(decl_id, (init.clone(), imports));
             Ok(init)
         } else {
             Err(TranslationError::generic(
@@ -5268,6 +5276,20 @@ impl<'c> Translation<'c> {
     }
 
     fn add_import(&self, decl_file_id: FileId, decl_id: CDeclId, ident_name: &str) {
+        // If deferring imports, store and return.
+        if self.deferring_imports() {
+            self.deferred_imports
+                .borrow_mut()
+                .as_mut()
+                .unwrap()
+                .push(Import {
+                    decl_file_id,
+                    decl_id,
+                    ident_name: ident_name.into(),
+                });
+            return;
+        }
+
         let decl = &self.ast_context[decl_id];
         let import_file_id = self.ast_context.file_id(decl);
 
@@ -5296,6 +5318,41 @@ impl<'c> Translation<'c> {
             .entry(decl_file_id)
             .or_default()
             .add_use(false, module_path, ident_name);
+    }
+
+    /// Delay the addition of imports until `stop_deferring_imports` is called.
+    fn defer_imports(&self) {
+        if !self.deferring_imports() {
+            *self.deferred_imports.borrow_mut() = Some(vec![]);
+        }
+    }
+
+    /// Return whether imports are currently being deferred for later emission.
+    fn deferring_imports(&self) -> bool {
+        self.deferred_imports.borrow().is_some()
+    }
+
+    /// Apply a list of imports.
+    fn apply_imports(&self, imports: &[Import]) {
+        for Import {
+            decl_file_id,
+            decl_id,
+            ident_name,
+        } in imports
+        {
+            self.add_import(*decl_file_id, *decl_id, &ident_name)
+        }
+    }
+
+    /// Apply all deferred imports, clearing the list of pending imports. Returns the imports applied.
+    fn stop_deferring_imports(&self) -> Vec<Import> {
+        let deferred = self
+            .deferred_imports
+            .borrow_mut()
+            .take()
+            .unwrap_or_default();
+        self.apply_imports(&deferred);
+        deferred
     }
 
     fn import_type(&self, ctype: CTypeId, decl_file_id: FileId) {
