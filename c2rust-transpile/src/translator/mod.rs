@@ -60,6 +60,13 @@ use crate::PragmaVec;
 pub const INNER_SUFFIX: &str = "_Inner";
 pub const PADDING_SUFFIX: &str = "_PADDING";
 
+#[derive(Debug, Clone)]
+pub struct Import {
+    decl_file_id: FileId,
+    decl_id: CDeclId,
+    ident_name: String,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DecayRef {
     Yes,
@@ -261,10 +268,11 @@ pub struct Translation<'c> {
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
-    zero_inits: RefCell<IndexMap<CDeclId, WithStmts<Box<Expr>>>>,
+    zero_inits: RefCell<IndexMap<CDeclId, (WithStmts<Box<Expr>>, Vec<Import>)>>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
     macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
+    deferred_imports: RefCell<Option<Vec<Import>>>,
 
     // Comment support
     pub comment_context: CommentContext,      // Incoming comments
@@ -1299,6 +1307,7 @@ impl<'c> Translation<'c> {
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
             macro_expansions: RefCell::new(IndexMap::new()),
+            deferred_imports: RefCell::new(None),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             spans: HashMap::new(),
@@ -4999,9 +5008,12 @@ impl<'c> Translation<'c> {
 
         // Caching skips critical side effect of `import_type` call.
         // Look up the decl in the cache and return what we find (if we find anything)
-        /*if let Some(init) = self.zero_inits.borrow().get(&decl_id) {
+        if let Some((init, imports)) = self.zero_inits.borrow().get(&decl_id) {
+            self.apply_imports(imports);
             return Ok(init.clone());
-        }*/
+        }
+
+        self.defer_imports();
 
         let name_decl_id = match self.ast_context.index(type_id).kind {
             CTypeKind::Typedef(decl_id) => decl_id,
@@ -5100,7 +5112,10 @@ impl<'c> Translation<'c> {
 
         if init.is_pure() {
             // Insert the initializer into the cache, then return it
-            self.zero_inits.borrow_mut().insert(decl_id, init.clone());
+            let imports = self.stop_deferring_imports();
+            self.zero_inits
+                .borrow_mut()
+                .insert(decl_id, (init.clone(), imports));
             Ok(init)
         } else {
             Err(TranslationError::generic(
@@ -5261,6 +5276,20 @@ impl<'c> Translation<'c> {
     }
 
     fn add_import(&self, decl_file_id: FileId, decl_id: CDeclId, ident_name: &str) {
+        // If deferring imports, store and return.
+        if self.deferring_imports() {
+            self.deferred_imports
+                .borrow_mut()
+                .as_mut()
+                .unwrap()
+                .push(Import {
+                    decl_file_id,
+                    decl_id,
+                    ident_name: ident_name.into(),
+                });
+            return;
+        }
+
         let decl = &self.ast_context[decl_id];
         let import_file_id = self.ast_context.file_id(decl);
 
@@ -5291,8 +5320,56 @@ impl<'c> Translation<'c> {
             .add_use(false, module_path, ident_name);
     }
 
+    /// Delay the addition of imports until `stop_deferring_imports` is called.
+    fn defer_imports(&self) {
+        if !self.deferring_imports() {
+            *self.deferred_imports.borrow_mut() = Some(vec![]);
+        }
+    }
+
+    /// Return whether imports are currently being deferred for later emission.
+    fn deferring_imports(&self) -> bool {
+        self.deferred_imports.borrow().is_some()
+    }
+
+    /// Apply a list of imports.
+    fn apply_imports(&self, imports: &[Import]) {
+        for Import {
+            decl_file_id,
+            decl_id,
+            ident_name,
+        } in imports
+        {
+            self.add_import(*decl_file_id, *decl_id, &ident_name)
+        }
+    }
+
+    /// Apply all deferred imports, clearing the list of pending imports. Returns the imports applied.
+    fn stop_deferring_imports(&self) -> Vec<Import> {
+        let deferred = self
+            .deferred_imports
+            .borrow_mut()
+            .take()
+            .unwrap_or_default();
+        self.apply_imports(&deferred);
+        deferred
+    }
+
     fn import_type(&self, ctype: CTypeId, decl_file_id: FileId) {
+        for Import {
+            decl_file_id,
+            decl_id,
+            ident_name,
+        } in self.imports_for_type(ctype, decl_file_id)
+        {
+            self.add_import(decl_file_id, decl_id, &ident_name)
+        }
+    }
+
+    fn imports_for_type(&self, ctype: CTypeId, decl_file_id: FileId) -> Vec<Import> {
         use self::CTypeKind::*;
+
+        let mut imports = vec![];
 
         let type_kind = &self.ast_context[ctype].kind;
         match type_kind {
@@ -5318,7 +5395,7 @@ impl<'c> Translation<'c> {
             | Reference(CQualTypeId { ctype, .. })
             | BlockPointer(CQualTypeId { ctype, .. })
             | TypeOf(ctype)
-            | Complex(ctype) => self.import_type(*ctype, decl_file_id),
+            | Complex(ctype) => imports = self.imports_for_type(*ctype, decl_file_id),
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
                 let mut decl_id = *decl_id;
                 // if the `decl` has been "squashed", get the corresponding `decl_id`
@@ -5326,12 +5403,16 @@ impl<'c> Translation<'c> {
                     decl_id = *self.ast_context.prenamed_decls.get(&decl_id).unwrap();
                 }
 
-                let ident_name = &self
+                let ident_name = self
                     .type_converter
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .expect("Expected decl name");
-                self.add_import(decl_file_id, decl_id, ident_name);
+                imports.push(Import {
+                    decl_file_id,
+                    decl_id,
+                    ident_name,
+                });
             }
             Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                 // Return Type
@@ -5339,12 +5420,12 @@ impl<'c> Translation<'c> {
 
                 // Rust doesn't use void for return type, so skip
                 if *type_kind != Void {
-                    self.import_type(*ctype, decl_file_id);
+                    imports = self.imports_for_type(*ctype, decl_file_id);
                 }
 
                 // Param Types
                 for param_id in params {
-                    self.import_type(param_id.ctype, decl_file_id);
+                    imports.extend(self.imports_for_type(param_id.ctype, decl_file_id))
                 }
             }
             Vector(..) => {
@@ -5355,6 +5436,7 @@ impl<'c> Translation<'c> {
                 // TODO: handle SVE types
             }
         }
+        imports
     }
 
     fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_id: Option<FileId>) {
