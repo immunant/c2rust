@@ -15,9 +15,21 @@ struct CanonicalizeRefs;
 impl Transform for CanonicalizeRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
-            let hir_id = cx.hir_map().node_to_hir_id(expr.id);
+            // `MutVisitNodes` walks into attributes even though rustc never lowers their bodies to HIR.
+            // We skip such nodes by probing with `opt_node_to_hir_id`; if we ever need an attribute-only
+            // walk we’d have to reimplement the traversal with an attribute-depth-aware visitor instead.
+            let Some(hir_id) = cx.hir_map().opt_node_to_hir_id(expr.id) else {
+                return;
+            };
             let hir_expr = cx.hir_map().expect_expr(hir_id);
             let parent = cx.hir_map().get_parent_item(hir_id);
+            if cx.hir_map().maybe_body_owned_by(parent).is_none() {
+                // `tcx.typeck(parent)` unwraps `primary_body_of` (rustc_typeck::check::mod.rs),
+                // so querying items without bodies (e.g. extern statics/functions) triggers a
+                // `span_bug!("can't type-check body ...")`. Skip any expressions owned by such
+                // items instead of poking the typeck tables.
+                return;
+            }
             let tables = cx.ty_ctxt().typeck(parent);
             for adjustment in tables.expr_adjustments(hir_expr) {
                 match adjustment.kind {
