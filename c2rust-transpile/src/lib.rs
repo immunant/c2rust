@@ -14,10 +14,10 @@ pub mod with_stmts;
 
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::Command;
+use std::{env, io};
 
 use crate::compile_cmds::CompileCmd;
 use failure::Error;
@@ -445,7 +445,7 @@ fn get_extra_args_macos() -> Vec<String> {
     if cfg!(target_os = "macos") {
         let usr_incl = Path::new("/usr/include");
         if !usr_incl.exists() {
-            let output = process::Command::new("xcrun")
+            let output = Command::new("xcrun")
                 .args(["--show-sdk-path"])
                 .output()
                 .expect("failed to run `xcrun` subcommand");
@@ -464,8 +464,45 @@ fn get_extra_args_macos() -> Vec<String> {
     args
 }
 
-fn invoke_refactor(_build_dir: &Path) -> Result<(), Error> {
-    Ok(())
+fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
+    // Make sure the crate builds cleanly
+    let status = Command::new("cargo")
+        .args(["check"])
+        .env("RUSTFLAGS", "-Awarnings")
+        .current_dir(build_dir)
+        .status()?;
+    if !status.success() {
+        return Err(failure::format_err!("Crate does not compile."));
+    }
+
+    // Assumes the subcommand executable is in the same directory as this program.
+    let refactor = env::current_exe()
+        .expect("Cannot get current executable path")
+        .with_file_name("c2rust-refactor");
+    let args = [
+        "--cargo",
+        "--rewrite-mode",
+        "inplace",
+        "rename_unnamed",
+        ";",
+        "reorganize_definitions",
+    ];
+    let status = Command::new(&refactor)
+        .args(args)
+        .current_dir(build_dir)
+        .status()
+        .map_err(|e| {
+            let refactor = refactor.display();
+            failure::format_err!("unable to run {refactor}: {e}\nNote that c2rust-refactor must be installed separately from c2rust and c2rust-transpile.")
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(failure::format_err!(
+            "Refactoring failed. Please fix errors above and re-run:\n    c2rust refactor {}",
+            args.join(" "),
+        ))
+    }
 }
 
 fn reorganize_definitions(
@@ -480,7 +517,7 @@ fn reorganize_definitions(
 
     invoke_refactor(build_dir)?;
     // fix the formatting of the output of `c2rust-refactor`
-    let status = process::Command::new("cargo")
+    let status = Command::new("cargo")
         .args(["fmt"])
         .current_dir(build_dir)
         .status()?;
