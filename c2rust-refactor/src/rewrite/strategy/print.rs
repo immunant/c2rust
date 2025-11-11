@@ -9,7 +9,7 @@
 //! pretty-printer output, since it likely has nicer formatting, comments, etc.  So there is some
 //! logic in this module for "recovering" from needing to use this strategy by splicing old AST
 //! text back into the new AST's pretty printer output.
-use log::{info, warn};
+use log::{debug, info, warn};
 use rustc_ast::attr;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
@@ -95,6 +95,45 @@ impl PrintParse for Ty {
     }
 }
 
+/// Parse a snippet that contains only outer attributes (e.g. a relocated `#[derive]` line).
+///
+/// Transforms such as `fold_let_assign` or `remove_redundant_let_types` may move attributes around
+/// on their own, which means `driver::parse_stmts` sees no statement tokens at all and would panic.
+/// By parsing the snippet as `attrs + dummy item` we can synthesize an empty statement that still
+/// carries the attribute span for recovery.
+fn parse_attr_only_stmt(sess: &Session, src: &str) -> Option<Stmt> {
+    let trimmed = src.trim_start();
+    if !(trimmed.starts_with("#[") || trimmed.starts_with("#!")) {
+        return None;
+    }
+
+    // Provide a dummy item so Rust's parser accepts the attributes. We only use the attribute spans,
+    // so the fabricated item never shows up in the recorded rewrite.
+    let wrapped_src = format!(
+        "{src}\nstruct __c2rust_dummy_for_attr_only_reparse;",
+        src = src
+    );
+    let mut items = driver::parse_items(sess, &wrapped_src);
+    if items.len() != 1 {
+        return None;
+    }
+    let item = items.pop().unwrap();
+    if item.attrs.is_empty() {
+        return None;
+    }
+    let span = item
+        .attrs
+        .iter()
+        .map(|attr| attr.span)
+        .reduce(|acc, s| acc.to(s))
+        .unwrap_or(item.span);
+    Some(Stmt {
+        id: DUMMY_NODE_ID,
+        span,
+        kind: StmtKind::Empty,
+    })
+}
+
 impl PrintParse for Stmt {
     fn to_string(&self) -> String {
         // pprust::stmt_to_string appends a semicolon to Expr kind statements,
@@ -110,7 +149,51 @@ impl PrintParse for Stmt {
 
     type Parsed = Stmt;
     fn parse(sess: &Session, src: &str) -> Self::Parsed {
-        driver::parse_stmts(sess, src).lone()
+        let mut stmts = driver::parse_stmts(sess, src);
+        match stmts.len() {
+            1 => stmts.pop().unwrap(),
+            0 => {
+                if src.trim().is_empty() {
+                    // ASTBuilder assigns DUMMY_SP to freshly synthesized statements (e.g. from
+                    // `mk().local_stmt(...)`), so pretty-printing them can legitimately produce an
+                    // empty buffer even though the inner `Local`/`Expr` still carries the original
+                    // span. Preserve that slot explicitly so Recover still sees the expected single
+                    // statement node and doesn’t panic on len()==0.
+                    return Stmt {
+                        id: DUMMY_NODE_ID,
+                        span: DUMMY_SP,
+                        kind: StmtKind::Empty,
+                    };
+                }
+                if let Some(stmt) = parse_attr_only_stmt(sess, src) {
+                    return stmt;
+                }
+                let mut items = driver::parse_items(sess, src);
+                if items.len() != 1 {
+                    panic!(
+                        "PrintParse<Stmt> expected 1 statement or item but parsed {} items from:\n{}",
+                        items.len(),
+                        src
+                    );
+                }
+                let item = items.pop().unwrap();
+                // Rust’s parser treats outer attributes as part of the following item. If recover
+                // reused the old struct body text but the attrs need reprinting, the snippet that
+                // reaches us can literally be just `#[derive(...)]`. Wrap the parsed item so the
+                // enclosing `Block` continues to hold a `StmtKind::Item`, matching rustc’s AST.
+                Stmt {
+                    id: DUMMY_NODE_ID,
+                    span: item.span,
+                    kind: StmtKind::Item(item),
+                }
+            }
+            n => {
+                panic!(
+                    "PrintParse<Stmt> expected 1 statement but parsed {} from:\n{}",
+                    n, src
+                );
+            }
+        }
     }
 }
 
@@ -252,7 +335,40 @@ impl Splice for Ty {
 
 impl Splice for Stmt {
     fn splice_span(&self) -> Span {
-        self.span
+        match &self.kind {
+            StmtKind::Local(local) => {
+                // Newly inserted locals often have DUMMY_SP; fall back to the local span so we can
+                // recover text/attrs from the original source.
+                let base = if self.span == DUMMY_SP {
+                    local.span
+                } else {
+                    self.span
+                };
+                extend_span_attrs(base, &local.attrs)
+            }
+            StmtKind::Item(item) => {
+                // Same fallback for items whose wrapper stmt lost its span.
+                let base = if self.span == DUMMY_SP {
+                    item.span
+                } else {
+                    self.span
+                };
+                extend_span_attrs(base, &item.attrs)
+            }
+            StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
+                // Expression statements carry attrs/comments on the child `Expr`. Use that span when
+                // the wrapper is dummy so `extend_span_attrs` still captures outer attributes and any
+                // trailing comments during rewrites.
+                let base = if self.span == DUMMY_SP {
+                    expr.span
+                } else {
+                    self.span
+                };
+                extend_span_attrs(base, &expr.attrs)
+            }
+            StmtKind::MacCall(mac) => extend_span_attrs(self.span, &mac.attrs),
+            StmtKind::Empty => self.span,
+        }
     }
 }
 
@@ -675,6 +791,27 @@ where
     T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
     let printed = add_comments(new.to_string(), new, &rcx);
+    let mut printed = printed;
+    if printed.trim().is_empty() {
+        // When the statement wrapper has DUMMY_SP the pretty printer outputs nothing even though the
+        // original source had a full `let`. Pull the old snippet (which still contains the attrs/body)
+        // so `parse()` sees valid syntax and the reparsed AST matches what we’re trying to insert.
+        if let Ok(snippet) = rcx
+            .session()
+            .source_map()
+            .span_to_snippet(new.splice_span())
+        {
+            if !snippet.trim().is_empty() {
+                printed = snippet;
+            }
+        }
+        if printed.trim().is_empty() {
+            debug!(
+                "rewrite_at_impl: empty printed text {:?} for {:?}",
+                printed, new
+            );
+        }
+    }
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
