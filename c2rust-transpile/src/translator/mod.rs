@@ -60,6 +60,13 @@ use crate::PragmaVec;
 pub const INNER_SUFFIX: &str = "_Inner";
 pub const PADDING_SUFFIX: &str = "_PADDING";
 
+#[derive(Debug, Clone)]
+pub struct Import {
+    decl_file_id: FileId,
+    decl_id: CDeclId,
+    ident_name: String,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DecayRef {
     Yes,
@@ -5292,7 +5299,20 @@ impl<'c> Translation<'c> {
     }
 
     fn import_type(&self, ctype: CTypeId, decl_file_id: FileId) {
+        for Import {
+            decl_file_id,
+            decl_id,
+            ident_name,
+        } in self.imports_for_type(ctype, decl_file_id)
+        {
+            self.add_import(decl_file_id, decl_id, &ident_name)
+        }
+    }
+
+    fn imports_for_type(&self, ctype: CTypeId, decl_file_id: FileId) -> Vec<Import> {
         use self::CTypeKind::*;
+
+        let mut imports = vec![];
 
         let type_kind = &self.ast_context[ctype].kind;
         match type_kind {
@@ -5318,7 +5338,7 @@ impl<'c> Translation<'c> {
             | Reference(CQualTypeId { ctype, .. })
             | BlockPointer(CQualTypeId { ctype, .. })
             | TypeOf(ctype)
-            | Complex(ctype) => self.import_type(*ctype, decl_file_id),
+            | Complex(ctype) => imports = self.imports_for_type(*ctype, decl_file_id),
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
                 let mut decl_id = *decl_id;
                 // if the `decl` has been "squashed", get the corresponding `decl_id`
@@ -5326,12 +5346,16 @@ impl<'c> Translation<'c> {
                     decl_id = *self.ast_context.prenamed_decls.get(&decl_id).unwrap();
                 }
 
-                let ident_name = &self
+                let ident_name = self
                     .type_converter
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .expect("Expected decl name");
-                self.add_import(decl_file_id, decl_id, ident_name);
+                imports.push(Import {
+                    decl_file_id,
+                    decl_id,
+                    ident_name,
+                });
             }
             Function(CQualTypeId { ctype, .. }, ref params, ..) => {
                 // Return Type
@@ -5339,12 +5363,12 @@ impl<'c> Translation<'c> {
 
                 // Rust doesn't use void for return type, so skip
                 if *type_kind != Void {
-                    self.import_type(*ctype, decl_file_id);
+                    imports = self.imports_for_type(*ctype, decl_file_id);
                 }
 
                 // Param Types
                 for param_id in params {
-                    self.import_type(param_id.ctype, decl_file_id);
+                    imports.extend(self.imports_for_type(param_id.ctype, decl_file_id))
                 }
             }
             Vector(..) => {
@@ -5355,6 +5379,7 @@ impl<'c> Translation<'c> {
                 // TODO: handle SVE types
             }
         }
+        imports
     }
 
     fn generate_submodule_imports(&self, decl_id: CDeclId, decl_file_id: Option<FileId>) {
