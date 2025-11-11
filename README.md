@@ -242,7 +242,7 @@ for compiling a single C file.  For example:
 intercept-build sh -c "cc program.c"
 ```
 
-#### ... with `bear` (Linux only)
+#### ... with `bear`
 
 If you have [`bear`](https://github.com/rizsotto/Bear) installed,
 it can be used similarly to `intercept-build`:
