@@ -177,6 +177,7 @@ c2rust transpile --binary myprog path/to/compile_commands.json
 
 Where `--binary myprog` tells the transpiler to use
 the `main` function from `myprog.rs` as the entry point for a binary.
+This can be repeated multiple times for multiple binaries.
 
 The translated Rust files will not depend directly on each other like
 normal Rust modules.
