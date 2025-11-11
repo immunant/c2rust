@@ -9,7 +9,7 @@
 
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
-[Rustc Version]: https://img.shields.io/badge/rustc-nightly--2022--02--14-lightgrey.svg "Rustc nightly-2022-02-14"
+[rustc Version]: https://img.shields.io/badge/rustc-nightly--2022--08--08-lightgrey.svg "rustc nightly-2022-08-08"
 
 C2Rust helps you migrate C99-compliant code to Rust.
 The translator (or transpiler), [`c2rust transpile`](./c2rust-transpile/),
