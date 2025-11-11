@@ -174,7 +174,7 @@ class Test(object):
             die(f"expected boolean xfail value; found {xfail}")
         return xfail
 
-    def __call__(self, conf: Config):
+    def run(self, conf: Config) -> bool:
         """Returns true if test was successful or expected to fail, false on unexpected
         failure
         """
@@ -205,14 +205,17 @@ class Test(object):
         return True
 
 
-def run_tests(conf):
+def run_tests(conf: Config):
     if not conf.ignore_requirements:
         check(conf)
 
     tests = [Test(td) for td in conf.project_dirs]
 
+    def run(tt: Test) -> bool:
+        return tt.run(conf)
+
     with ThreadPoolExecutor() as executor:
-        results = executor.map(lambda tt: tt(conf), tests)
+        results = executor.map(run, tests)
 
     if not all(results):
         exit(1)
