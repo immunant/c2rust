@@ -91,28 +91,18 @@ like this, for example:
 LLVM_CONFIG_PATH=llvm-config-14 cargo install c2rust
 ```
 
-On macOS with Homebrew LLVM, you need to point the build system at the LLVM installation. The path for the installation is architecture dependent:
-
-- **Intel Macs:**
-
-    ```sh
-    LLVM_CONFIG_PATH=/usr/local/opt/llvm/bin/llvm-config cargo install c2rust
-    ```
-
-
-- **Apple Silicon Macs:**
-
-    ```sh
-    LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config cargo install c2rust
-    ```
-
-On Linux with Linuxbrew LLVM, you need to point the build system at the LLVM installation as follows:
+If you're using LLVM from Homebrew (either on Apple Silicon, Intel Macs, or Linuxbrew),
+you can run:
 
 ```sh
-LLVM_CONFIG_PATH=/home/linuxbrew/.linuxbrew/opt/llvm/bin/llvm-config cargo install c2rust
+LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm/bin/llvm-config" cargo install c2rust
 ```
 
-Note: adjust `LLVM_CONFIG_PATH` accordingly if Linuxbrew was installed to your home directory.
+or for a specific LLVM version,
+
+```sh
+LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm@21/bin/llvm-config" cargo install c2rust
+```
 
 On Gentoo, you need to point the build system to
 the location of `libclang.so` and `llvm-config` as follows:
