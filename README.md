@@ -163,7 +163,7 @@ translate the C code to Rust with the following command:
 c2rust transpile path/to/compile_commands.json
 ```
 
-To generate a `Cargo.toml` template for a Rust library, add the `-e` option:
+To generate a `Cargo.toml` template for a Rust library, add the `--emit-build-files` option:
 
 ```sh
 c2rust transpile --emit-build-files path/to/compile_commands.json
