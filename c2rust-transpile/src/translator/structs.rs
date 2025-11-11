@@ -398,10 +398,8 @@ impl<'a> Translation<'a> {
         field_expr_ids: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = self.resolve_decl_inner_name(struct_id);
-        if let Some(cur_file) = self.cur_file.get() {
-            log::debug!("in file {cur_file} importing struct {name}, id {struct_id:?}");
-            self.add_import(cur_file, struct_id, &name);
-        }
+        log::debug!("importing struct {name}, id {struct_id:?}");
+        self.add_import(struct_id, &name);
 
         let (field_decl_ids, platform_byte_size) = match self.ast_context.index(struct_id).kind {
             CDeclKind::Struct {
