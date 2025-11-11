@@ -1,4 +1,5 @@
 
+from concurrent.futures import ThreadPoolExecutor
 import os
 import sys
 import subprocess
@@ -211,9 +212,8 @@ def run_tests(conf):
 
     tests = [Test(td) for td in conf.project_dirs]
 
-    failure = False
-    for tt in tests:
-        failure |= not tt(conf)
+    with ThreadPoolExecutor() as executor:
+        results = executor.map(lambda tt: tt(conf), tests)
 
-    if failure:
+    if not all(results):
         exit(1)
