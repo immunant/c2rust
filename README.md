@@ -149,7 +149,9 @@ c2rust transpile project/*.c project/*.h
 (The `c2rust refactor` tool was also available for refactoring Rust code, see [refactoring](./c2rust-refactor/), but is now being replaced by a more robust way to refactor.)
 
 For non-trivial projects, the translator requires the exact compiler commands used to build the C code.
-This information is provided via a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html) file named `compile_commands.json`.
+This information is provided via a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
+file named `compile_commands.json` (note that it must be named exactly `compile_commands.json`;
+otherwise `libclangTooling` can have (silent) trouble resolving it correctly).
 (Read more about [compilation databases here](https://sarcasm.github.io/notes/dev/compilation-database.html)).
 Many build systems can automatically generate this file;
 we show [a few examples below](#generating-compile_commandsjson-files).
