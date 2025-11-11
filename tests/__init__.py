@@ -80,7 +80,6 @@ class Test(object):
                 nc=Colors.NO_COLOR,
                 stage=stage,
                 script=relpath)
-            print(line, end="", flush=True)
 
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
@@ -93,7 +92,7 @@ class Test(object):
                     fill = (75 - len(line)) * "."
                     color = Colors.OKBLUE
                     msg = "OK_CACHED"
-                    print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
+                    print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
                 return True
             elif emsg:
                 if verbose:
@@ -121,11 +120,11 @@ class Test(object):
                 fill = (75 - len(line)) * "."
                 color = Colors.WARNING if xfail else Colors.OKGREEN
                 msg = "OK_XFAIL" if xfail else "OK"
-                print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
+                print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
             success = True
         except KeyboardInterrupt:
             if not verbose:
-                print(": {color}INTERRUPT{nocolor}".format(
+                print("{line}: {color}INTERRUPT{nocolor}".format(
                     color=Colors.WARNING,
                     nocolor=Colors.NO_COLOR)
                 )
@@ -133,7 +132,7 @@ class Test(object):
         except Exception:  # noqa
             if not verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
-                print("{fill} {color}{outcome}{nocolor}".format(
+                print("{line}{fill} {color}{outcome}{nocolor}".format(
                     fill=(75 - len(line)) * ".",
                     color=Colors.OKBLUE if xfail else Colors.FAIL,
                     outcome=outcome,
