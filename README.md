@@ -29,7 +29,8 @@ Here's the big picture:
 ![C2Rust overview](docs/c2rust-overview.png "C2Rust overview")
 
 To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0Vv7jhg) talk on YouTube
-and try the C2Rust translator online at [c2rust.com](https://www.c2rust.com).
+and try the C2Rust translator online using the [Compiler Explorer](https://godbolt.org/z/GdEzYWGq4).
+This uses the current `master` branch, updated every night.
 
 ## Documentation
 
