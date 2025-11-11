@@ -31,7 +31,7 @@ source ~/.cargo/env
 
 # rustfmt is required for c2rust-refactor tests
 # rustc-dev was added make sure it is installed on Azure/macOS-10.15
-rustup component add rustfmt-preview rustc-dev rust-src
+rustup component add rustfmt rustc-dev rust-src
 
 # Make rustup directory world-writable so other test users can install new rust
 # versions
