@@ -307,8 +307,6 @@ For this reason, we do not support cross compiling translated code at the moment
 > What platforms can C2Rust be run on?
 
 The translator and refactoring tool support both macOS and Linux.
-Other features, such as cross checking the functionality
-between C and Rust code, are currently limited to Linux hosts.
 
 ## Uses of `c2rust transpile`
 
