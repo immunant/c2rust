@@ -48,30 +48,22 @@ jobs:
         path: testsuite
         submodules: true
 
-    - name: Cache Rust toolchain
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup/toolchains
-          ~/.rustup/update-hashes
-          ~/.rustup/settings.toml
-        key: ${{ runner.os }}-rust-toolchain-${{ hashFiles('**/*rust-toolchain.toml') }}
-
-    - name: Cache Rust artifacts
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
-        key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/c2rust-ast-exporter/**/CMakeLists.txt', '**/examples/**/CMakeLists.txt') }}
-
     - uses: astral-sh/setup-uv@v6
 
     - name: Install Python Packages
       run: |
         uv tool install scan-build # for `intercept-build`
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-workspace-crates: true
+
+    - name: Install Rust toolchains
+      run: |
+        rustup toolchain install nightly-2022-08-08 \
+          --profile minimal --component rustfmt,rustc-dev
+        rustup toolchain install nightly-2023-04-15 \
+          --profile minimal --component rustfmt
 
     # TODO(pl): Figure out why json-c fails when caching compile commands
     # - name: Get Image Version
@@ -86,9 +78,6 @@ jobs:
     #     path: |
     #       ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
     #     key: ${{ runner.os }}-ccdb-${{ steps.get-image-ver.outputs.version }}
-
-    - name: Provision Rust
-      run:  rustup component add rustfmt rustc-dev
 
     - name: Provision Debian Packages
       run: |
