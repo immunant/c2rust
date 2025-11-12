@@ -10,6 +10,10 @@
 [crates.io]: https://crates.io/crates/c2rust
 [rustc Version]: https://img.shields.io/badge/rustc-nightly--2022--08--08-lightgrey.svg "rustc nightly-2022-08-08"
 
+<!-- ANCHOR: intro -->
+
+## Intro
+
 C2Rust helps you migrate C99-compliant code to Rust.
 The translator (or transpiler), [`c2rust transpile`](./c2rust-transpile/),
 produces unsafe Rust code that closely mirrors the input C code.
@@ -29,6 +33,8 @@ Here's the big picture:
 To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0Vv7jhg) talk on YouTube
 and try the C2Rust translator online using the [Compiler Explorer](https://godbolt.org/z/GdEzYWGq4).
 This uses the current `master` branch, updated every night.
+
+<!-- ANCHOR_END: intro -->
 
 ## Documentation
 
