@@ -396,7 +396,6 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         i += 1;
 
         // Handle any followup multiple structures by wrapping the current structure's AST in a block.
-        let mut first = true;
         while let Some(Structure::Multiple { branches, entries }) = root.get(i) {
             let next_entries = get_next_entries(i + 1);
 
