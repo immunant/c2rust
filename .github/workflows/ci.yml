@@ -98,7 +98,6 @@ jobs:
           # It's important that we keep `RUSTFLAGS` consistent between different steps
           # so that we don't have to rebuild everything.
           echo "RUSTFLAGS=-Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
-          
 
       - name: cargo build --release
         run: |
@@ -120,4 +119,4 @@ jobs:
           # causing tons of errors, so don't set that.
           # `test_translator.py` does not rebuild,
           # so changing `RUSTFLAGS` will not trigger a full rebuild.
-          uv run ./scripts/test_translator.py tests/
+          ./scripts/test_translator.py tests/
