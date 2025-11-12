@@ -192,7 +192,7 @@ definitions that cannot be translated.
 ### Generating `compile_commands.json` Files
 
 The `compile_commands.json` file can be automatically created
-using either `cmake`, `meson`, `intercept-build`, or `bear`.
+using either `cmake`, `meson`, `bear`, `intercept-build`, or `compiledb`.
 
 It may be a good idea to remove optimizations (`-OX`) from the compilation database,
 as there are optimization builtins which we do not support translating.
@@ -218,10 +218,48 @@ file inside of `<build_dir>`.
 meson setup <build_dir>
 ```
 
+#### ... with `bear`
+
+[`bear`](https://github.com/rizsotto/Bear) is recommended for projects whose build systems
+don't generate `compile_commands.json` automatically
+(`make`, for example, unlike `cmake` or `meson`). It can also be useful
+for `cmake` and `meson` to generate a subset of the full `compile_commands.json`,
+as it records all compilations that a subcommand does.
+
+It can be installed with
+
+```sh
+apt install bear
+```
+
+or
+
+```sh
+brew install bear
+```
+
+Usage:
+
+```sh
+bear -- <build command>
+```
+
+`<build command>` can be `make`, `make`/`cmake` for a single target, or a single `cc` compilation:
+
+```sh
+bear -- make
+bear -- cmake --build . --target $target
+bear -- cc -c program.c
+```
+
+Note that since it detects compilations,
+if compilations are cached (by `make` for example),
+you'll need a clean build first (e.g. `make clean`).
+
 #### ... with `intercept-build`
 
-`intercept-build` (part of the [scan-build tool](https://github.com/rizsotto/scan-build))
-is recommended for non-`cmake` projects.
+`intercept-build` (part of the [scan-build](https://github.com/rizsotto/scan-build))
+is very similar, but not always as up-to-date and comprehensive as `bear`.
 `intercept-build` is bundled with `clang` under `tools/scan-build-py`,
 but a standalone version can be easily installed via `pip` with:
 
@@ -229,31 +267,10 @@ but a standalone version can be easily installed via `pip` with:
 pip install scan-build
 ```
 
-Usage:
-
-```sh
-intercept-build <build command>
-```
-
-You can also use `intercept-build` to generate a compilation database
-for compiling a single C file.  For example:
-
-```sh
-intercept-build sh -c "cc program.c"
-```
-
-#### ... with `bear`
-
-If you have [`bear`](https://github.com/rizsotto/Bear) installed,
-it can be used similarly to `intercept-build`:
-
-```sh
-bear -- <build command>
-```
-
 #### ... with `compiledb`
 
-The `compiledb` package can also be used for makefile projects if the other tools don't work.
+The `compiledb` package can also be used for `make` projects if the other tools don't work.
+Unlike the others, it doesn't require a clean build/`make clean`.
 Install via `pip` with:
 
 ```sh
