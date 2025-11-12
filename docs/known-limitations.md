@@ -7,7 +7,6 @@ as well as things it probably won't ever handle.
 
 * variadic function definitions and macros that operate on `va_list`s
 * preserving comments
-* GNU inline assembly
 * `long double` type (Linux only)
 
 ## Unimplemented
