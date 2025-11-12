@@ -49,9 +49,6 @@ The [`c2rust-refactor`](../c2rust-refactor/) crate
 implements various rewrites and analyses
 for refactoring our generated Rust code into more idiomatic code.
 
-*Note*: This crate still exists in-tree, but it is not part of
-the Cargo workspace and `c2rust refactor` is no longer available.
-
 ### [`cross-checks`](../cross-checks)
 
 The former [`cross-checks`](../cross-checks) crate
