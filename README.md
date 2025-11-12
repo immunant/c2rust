@@ -81,34 +81,34 @@ you may need to install the correct nightly compiler version.
 ### Installing from crates.io
 
 ```sh
-cargo install c2rust
+cargo install --locked c2rust
 ```
 
 You can also set the LLVM version explicitly if you have multiple installed,
 like this, for example:
 
 ```sh
-LLVM_CONFIG_PATH=llvm-config-14 cargo install c2rust
+LLVM_CONFIG_PATH=llvm-config-14 cargo install --locked c2rust
 ```
 
 If you're using LLVM from Homebrew (either on Apple Silicon, Intel Macs, or Linuxbrew),
 you can run:
 
 ```sh
-LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm/bin/llvm-config" cargo install c2rust
+LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm/bin/llvm-config" cargo install --locked c2rust
 ```
 
 or for a specific LLVM version,
 
 ```sh
-LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm@21/bin/llvm-config" cargo install c2rust
+LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm@21/bin/llvm-config" cargo install --locked c2rust
 ```
 
 On Gentoo, you need to point the build system to
 the location of `libclang.so` and `llvm-config` as follows:
 
 ```sh
-LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo install c2rust
+LLVM_CONFIG_PATH=/path/to/llvm-config LIBCLANG_PATH=/path/to/libclang.so cargo install --locked c2rust
 ```
 
 If you have trouble with building and installing, or want to build from the latest master,
@@ -121,7 +121,7 @@ If you'd like to check our recently developed features or you urgently require a
 you can install it directly from Git:
 
 ```sh
-cargo install --git https://github.com/immunant/c2rust.git c2rust
+cargo install --locked --git https://github.com/immunant/c2rust.git c2rust
 ```
 
 Please note that the master branch is under constant development and you may experience issues or crashes.
