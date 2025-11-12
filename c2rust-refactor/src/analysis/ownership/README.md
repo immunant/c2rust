@@ -20,6 +20,7 @@ permission also includes the ability to free the pointed-to data, which amounts
 to "moving to nowhere".
 
 Here is a simple example to illustrate the major features of the analysis:
+
 ```rust
 struct Array {
     data: *mut i32,
@@ -290,6 +291,7 @@ There are four annotation types currently supported by the ownership system.
   `MOVE`).  The given permission values will be applied to the pointers in the
   static or field type, following a preorder traversal of the type.  For
   example:
+
     ```rust
     struct S {
         #[ownership_static(READ, WRITE, MOVE)]
@@ -317,6 +319,7 @@ There are four annotation types currently supported by the ownership system.
   numbered according to a preorder traversal of each node in the argument and
   return types of the function.  This example shows location of each variable
   in a simple signature:
+
     ```rust
     fn get_err(arr: /* _0 */ *mut Array,
                element_out: /* _1 */ *mut /* _2 */ *mut i32)
@@ -338,6 +341,7 @@ There are four annotation types currently supported by the ownership system.
   argument inference and later transformations.
 
   Example:
+
     ```rust
     #[ownership_mono("mut", WRITE, WRITE)]
     #[ownership_mono("", READ, READ)]
