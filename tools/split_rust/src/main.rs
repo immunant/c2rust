@@ -14,10 +14,10 @@ struct ItemSpanVisitor<'a> {
 }
 
 impl<'a> ItemSpanVisitor<'a> {
-    pub fn new(file_path: &'a Path) -> ItemSpanVisitor<'a> {
+    pub fn new(file_path: &'a Path, mod_path: Vec<String>) -> ItemSpanVisitor<'a> {
         ItemSpanVisitor {
             file_path,
-            cur_path: Vec::new(),
+            cur_path: mod_path,
             item_spans: Vec::new(),
         }
     }
@@ -58,11 +58,11 @@ impl Visit<'_> for ItemSpanVisitor<'_> {
 
 fn main() {
     let mut fc = FileCollector::default();
-    fc.parse(env::args().nth(1).unwrap(), true).unwrap();
+    fc.parse(env::args().nth(1).unwrap(), vec![], true).unwrap();
     let mut out = Vec::new();
-    for &(ref name, ref ast) in &fc.files {
+    for &(ref name, ref mod_path, ref ast) in &fc.files {
         eprintln!("visit {:?}", name);
-        let mut v = ItemSpanVisitor::new(name);
+        let mut v = ItemSpanVisitor::new(name, mod_path.to_owned());
         v.visit_file(ast);
         out.extend(v.item_spans);
     }
