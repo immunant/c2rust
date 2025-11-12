@@ -67,11 +67,11 @@ jobs:
           ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
         key: ${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/c2rust-ast-exporter/**/CMakeLists.txt', '**/examples/**/CMakeLists.txt') }}
 
-    - name: Cache Python - pip
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+    - uses: astral-sh/setup-uv@v6
+
+    - name: Install Python Packages
+      run: |
+        uv tool install scan-build # for `intercept-build`
 
     # TODO(pl): Figure out why json-c fails when caching compile commands
     # - name: Get Image Version
@@ -111,16 +111,10 @@ jobs:
             librtmp-dev             \
             libtool                 \
             libzstd-dev             \
-            python3-setuptools      \
-            python3-wheel           \
             rcs                     \
             tcl-dev                 \
             tk-dev                  \
             zlib1g-dev
-
-    # installs intercept-build to $HOME/.local/bin
-    - name: Provision Python Packages
-      run: python3 -m pip install -r $GITHUB_WORKSPACE/testsuite/requirements.txt
 
     # Runs a single command using the runners shell
     # Working dir is /home/runner/work/c2rust/c2rust
@@ -136,7 +130,7 @@ jobs:
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
-        python3 testsuite/test.py curl json-c lua nginx zstd libxml2 python2
+        ./testsuite/test.py curl json-c lua nginx zstd libxml2 python2
 
     - uses: actions/upload-artifact@v4
       with:
