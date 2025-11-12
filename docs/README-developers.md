@@ -1,12 +1,5 @@
 # Setting up a development environment
 
-There are two ways to build the C2Rust project:
-
-- [using **Docker**](../docker/)
-- **manually**, as explained below:
-
-The previous option automatically install all prerequisites during provisioning. You can also provision a macOS or Linux system manually.
-
 - If you are on a Debian-based OS, you can run `./scripts/provision_deb.sh` to do so.
 
 - If you are on macOS, install the Xcode command-line tools
