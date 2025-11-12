@@ -45,7 +45,12 @@ jobs:
           cache-workspace-crates: true
 
       # Run after `rust-cache` so that this is cached.
-      - run: rustup component add rustfmt rustc-dev
+      - name: Install Rust toolchains
+        run: |
+          rustup toolchain install nightly-2022-08-08 \
+            --profile minimal --component rustfmt,rustc-dev
+          rustup toolchain install nightly-2023-04-15 \
+            --profile minimal --component rustfmt
 
       - name: cargo fmt --check
         run: |
