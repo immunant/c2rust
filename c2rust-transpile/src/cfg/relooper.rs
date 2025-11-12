@@ -155,7 +155,7 @@ pub fn reloop(
         .collect();
 
     // We map over the existing structure and flatten everything to `Stmt`
-    let mut relooped: Vec<Structure<Stmt>> = relooped_with_decls
+    let relooped: Vec<Structure<Stmt>> = relooped_with_decls
         .into_iter()
         .map(|s| s.place_decls(&lift_me, &mut store))
         .collect();
