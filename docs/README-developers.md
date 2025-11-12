@@ -16,7 +16,7 @@ Then run `./scripts/provision_mac.sh`.
   - `ninja`
   - `unzip`
   - `clang` >= 7
-  - `intercept-build` or `bear` ([see why here](../README.md#generating-compilecommandsjson-files))
+  - `intercept-build` or `bear` ([see why here](../README.md#generating-compile_commandsjson-files))
   - `python-dev`
   - `python` >= 3.6
   - [python dependencies](../scripts/requirements.txt)
