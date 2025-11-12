@@ -45,18 +45,6 @@ The transpiler can create skeleton cargo build files for the translated Rust sou
   files, so remove this build file directory before re-creating build
   files. (implies `--emit-build-files`)
 
-## Cross-check instrumentation
-
-The transpiler can instrument the transpiled Rust code for
-[cross-checking](../cross-checks/). The following options control this
-instrumentation:
-
-- `-x`, `--cross-checks` - Add macros and build files for cross-checking.
-- `--use-fakechecks` - Link against the `fakechecks` library for cross-checking
-  instead of using the default online checks.
-- `-X <config>`, `--cross-check-config <config>` - Use the given config file as
-  the cross-checking config.
-
 ## For Developers
 
 The c2rust-transpile library uses the c2rust-ast-exporter library to translate C
