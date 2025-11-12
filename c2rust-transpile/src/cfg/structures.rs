@@ -16,9 +16,7 @@ pub fn structured_cfg(
 ) -> TranslationResult<Vec<Stmt>> {
     let checked_entries = find_checked_multiples(root);
 
-    let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
-        // structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
-        forward_cfg_help(root, &checked_entries, &IndexSet::new())?;
+    let (ast, _) = forward_cfg_help(root, &checked_entries, &IndexSet::new())?;
 
     let s = StructureState {
         debug_labels,
@@ -234,18 +232,19 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
     root: &[Structure<Stmt>],
     checked_entries: &IndexSet<Label>,
     followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
-) -> TranslationResult<S> {
+) -> TranslationResult<(S, IndexSet<Label>)> {
     // Gets the followup entries for the structure at index `i`. This only considers
-    // the handled branches of multiples. The returned set will also include
-    // everything in `followup_entries`.
-    let get_next_entries = |i| {
-        let mut entries = root
-            .get(i)
-            .map(|s: &Structure<_>| s.get_handled_entries())
-            .unwrap_or_default();
-        entries.extend(followup_entries.iter().cloned());
-        entries
+    // the handled branches of multiples. If we are looking past the last structure,
+    // then we use `followup_entries`.
+    let get_next_entries = |i: usize| {
+        if i < root.len() {
+            root[i].get_handled_entries()
+        } else {
+            followup_entries.clone()
+        }
     };
+
+    let mut indirect_jumps = IndexSet::new();
 
     let mut ast = S::empty();
     let mut i = 0;
@@ -267,12 +266,14 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 }
                 body_ast.extend_span(*span);
 
-                let branch = |slbl: &StructureLabel<Stmt>| -> TranslationResult<S> {
+                let mut branch = |slbl: &StructureLabel<Stmt>| -> TranslationResult<S> {
                     use StructureLabel::*;
 
                     match slbl {
                         Nested(nested) => {
-                            let nested = forward_cfg_help(nested, checked_entries, &next_entries)?;
+                            let (nested, jumps) =
+                                forward_cfg_help(nested, checked_entries, &next_entries)?;
+                            indirect_jumps.extend(jumps);
                             Ok(nested)
                         }
 
@@ -293,6 +294,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                                     new_ast,
                                     S::mk_exit(ExitStyle::Break, Some(to.clone())),
                                 );
+                                indirect_jumps.insert(to.clone());
                             }
                             new_ast.extend_span(*span);
                             Ok(new_ast)
@@ -347,7 +349,8 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let label = entries
                     .first()
                     .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
-                let body = forward_cfg_help(body, checked_entries, &next_entries)?;
+                let (body, jumps) = forward_cfg_help(body, checked_entries, entries)?;
+                indirect_jumps.extend(jumps);
 
                 // TODO: Is this the right way to label the loop? If we have
                 // multiple entries to a loop it means we have irreducible
@@ -369,7 +372,9 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let mut branches = branches.clone();
                 let then = if entries == &branches.keys().cloned().collect::<IndexSet<_>>() {
                     let (_, then) = branches.pop().unwrap(); // UNWRAP: There's at least one branch.
-                    forward_cfg_help(&then, checked_entries, &next_entries)?
+                    let (then, jumps) = forward_cfg_help(&then, checked_entries, &next_entries)?;
+                    indirect_jumps.extend(jumps);
+                    then
                 } else {
                     S::empty()
                 };
@@ -377,7 +382,9 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let cases = branches
                     .iter()
                     .map(|(lbl, body)| {
-                        let stmts = forward_cfg_help(body, checked_entries, &next_entries)?;
+                        let (stmts, jumps) =
+                            forward_cfg_help(body, checked_entries, &next_entries)?;
+                        indirect_jumps.extend(jumps);
                         Ok((lbl.clone(), stmts))
                     })
                     .collect::<TranslationResult<_>>()?;
@@ -398,29 +405,29 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 structure.get_entries()
             );
 
-            let mut branches = branches.iter();
-
-            // Don't generate a block for the first branch of our followup multiples since we'll
-            // fall through to it directly.
-            if first {
-                let (_, branch) = branches.next().unwrap();
-                let branch_ast = forward_cfg_help::<S>(branch, checked_entries, &next_entries)?;
-                structure_ast = S::mk_append(structure_ast, branch_ast);
-                first = false;
-            }
-
             // Generate blocks as break targets for the remaining branches.
             for (entry, branch) in branches {
-                eprintln!(
-                    "Structure {:?}: wrapping structure in loop for entry {entry:?}",
-                    structure.get_entries()
-                );
+                let (branch_ast, jumps) =
+                    forward_cfg_help::<S>(branch, checked_entries, &next_entries)?;
+                indirect_jumps.extend(jumps); // Also here as well, should we be adding the new jumps to our current set of indirect jumps?
 
-                let branch_ast = forward_cfg_help::<S>(branch, checked_entries, &next_entries)?;
+                if indirect_jumps.contains(entry) {
+                    eprintln!(
+                        "Structure {:?}: wrapping structure in block for entry {entry:?}",
+                        structure.get_entries()
+                    );
 
-                // Put the code in a loop ending in a break so we can fall out the bottom of the loop.
-                // TODO: What if we just made a labeled block instead of a loop????
-                structure_ast = S::mk_append(S::mk_block(entry.clone(), structure_ast), branch_ast);
+                    // Put the code in a loop ending in a break so we can fall out the bottom of the loop.
+                    // TODO: What if we just made a labeled block instead of a loop????
+                    structure_ast = S::mk_block(entry.clone(), structure_ast);
+                } else {
+                    eprintln!(
+                        "Structure {:?}: Not wrapping branch {entry:?} in block because there are no indirect jumps to it",
+                        structure.get_entries()
+                    );
+                }
+
+                structure_ast = S::mk_append(structure_ast, branch_ast);
             }
 
             i += 1;
@@ -428,15 +435,12 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 
         // Check for a simple or loop after the multiple. If there is one, we need to
         // also wrap the current ast in a labeled block.
-        let prev = &root[i - 1];
         match root.get(i) {
-            // HACK: Don't do any wrapping if a simple follows a simple. This avoids wrapping in the
-            // most obvious case, but doesn't generalize.
-            Some(Structure::Simple { .. }) if matches!(prev, Structure::Simple { .. }) => {}
-
             Some(Structure::Simple { entries, .. }) | Some(Structure::Loop { entries, .. }) => {
                 for entry in entries {
-                    structure_ast = S::mk_block(entry.clone(), structure_ast);
+                    if indirect_jumps.contains(entry) {
+                        structure_ast = S::mk_block(entry.clone(), structure_ast);
+                    }
                 }
             }
 
@@ -450,7 +454,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         ast = S::mk_append(ast, structure_ast);
     }
 
-    Ok(ast)
+    Ok((ast, indirect_jumps))
 }
 
 /// Recursive helper for `structured_cfg`
