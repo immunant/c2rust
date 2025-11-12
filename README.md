@@ -40,6 +40,8 @@ This uses the current `master` branch, updated every night.
 
 To learn more about using and developing C2Rust, check out the [manual](https://c2rust.com/manual/).
 The manual is still a work-in-progress, so if you can't find something please let us know.
+[c2rust.com/manual/](https://c2rust.com/manual/) also has not been updated since ~2019,
+so refer to the in-tree [./manual/](./manual/) for more up-to-date instructions.
 
 <!-- ANCHOR: installation -->
 
