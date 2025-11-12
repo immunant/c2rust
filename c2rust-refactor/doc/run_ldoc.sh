@@ -8,6 +8,6 @@ LUA_AST_NODE_RS=src/scripting/lua_ast_node_gen.inc.rs
 
 # Auto-generate the .rs file before running ldoc
 cd $C2RUST_REFACTOR_DIR
-python3 -B gen/process_ast.py lua_ast_node $LUA_AST_NODE_RS
+./gen/process_ast.py lua_ast_node $LUA_AST_NODE_RS
 ldoc .
 rm $LUA_AST_NODE_RS

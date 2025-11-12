@@ -50,12 +50,21 @@ so refer to the in-tree [./manual/](./manual/) for more up-to-date instructions.
 ### Prerequisites
 
 C2Rust requires LLVM 7 or later with its corresponding clang compiler and libraries.
-Python 3.6 or later, CMake 3.5 or later, and openssl (1.0) are also required. These prerequisites may be installed with the following commands, depending on your platform:
+Python (through `uv`), CMake 3.5 or later and openssl (1.0) are also required.
+These prerequisites may be installed with the following commands, depending on your platform:
+
+Python:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv
+uv pip install -r scripts/requirements.txt
+```
 
 - **Ubuntu 18.04, Debian 10, and later:**
 
     ```sh
-    apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config python3 git
+    apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config git
     ```
 
 Depending on the LLVM distribution, the `llvm-dev` package may also be required.
@@ -64,7 +73,7 @@ For example, the official LLVM packages from [apt.llvm.org](https://apt.llvm.org
 - **Arch Linux:**
 
     ```sh
-    pacman -S base-devel llvm clang cmake openssl python
+    pacman -S base-devel llvm clang cmake openssl
     ```
 
 - **NixOS / nix:**
@@ -77,7 +86,7 @@ For example, the official LLVM packages from [apt.llvm.org](https://apt.llvm.org
 
     ```sh
     xcode-select --install
-    brew install llvm python3 cmake openssl
+    brew install llvm cmake openssl
     ```
 
 The C2Rust transpiler now builds using a stable Rust compiler.
@@ -302,7 +311,7 @@ is very similar, but not always as up-to-date and comprehensive as `bear`.
 but a standalone version can be easily installed via `pip` with:
 
 ```sh
-pip install scan-build
+uv tool install scan-build
 ```
 
 #### ... with `compiledb`
@@ -312,7 +321,7 @@ Unlike the others, it doesn't require a clean build/`make clean`.
 Install via `pip` with:
 
 ```sh
-pip install compiledb
+uv tool install compiledb
 ```
 
 Usage:

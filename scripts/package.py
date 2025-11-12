@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
 
 import argparse
 from distutils.util import strtobool
@@ -23,7 +23,7 @@ from common import (
 
 git = get_cmd_or_die('git')
 cargo = get_cmd_or_die('cargo')
-python3 = get_cmd_or_die('python3')
+test_translator = get_cmd_or_die('scripts/test_translator.py')
 
 
 # These crates should be sorted in reverse dependency order.
@@ -92,9 +92,8 @@ class Driver:
             if not invoke_quietly(cargo['build', '--release']):
                 print_error('cargo build failed in root workspace')
                 ok = False
-            test_translator = python3['scripts/test_translator.py', 'tests']
-            if not invoke_quietly(test_translator):
-                print_error('scripts/test_translator.py failed')
+            if not invoke_quietly(test_translator['tests']):
+                print_error(f'{test_translator} failed')
                 ok = False
         # with pb.local.cwd(c.RUST_CHECKS_DIR):
         #     invoke_quietly(cargo['clean'])

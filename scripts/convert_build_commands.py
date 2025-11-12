@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env -S uv run
 
 import bencode
 import glob

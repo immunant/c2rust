@@ -1,7 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+
 import json
 import os
-from plumbum.cmd import python3, cargo
+from plumbum.cmd import cargo
 from plumbum import local
 import re
 import shlex
@@ -60,7 +61,7 @@ def translate_example(args):
     name, = args
     assert '/' not in name
     translate_py = os.path.join(ROOT_DIR, 'examples', name, 'translate.py')
-    python3[translate_py]()
+    local[translate_py]()
     return '<!-- ran %s to translate %s -->' % (translate_py, name)
 
 

@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
 # -*- coding: utf-8 -*-
+
 """This script automates the process of generating C test files using
 the csmith tool.
 
