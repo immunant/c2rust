@@ -19,10 +19,8 @@ test suites should continue to pass after translation.
 Generating safe and idiomatic Rust code from C ultimately requires manual effort.
 We are currently working on analysis to automate some of the effort
 required to lift unsafe Rust into safe Rust types.
+However, we are building a [refactoring tool](c2rust-refactor) that reduces the tedium of doing so.
 This work is still in the early stages; please get in touch if you're interested!
-We previously maintained a scriptable refactoring tool, [`c2rust refactor`](./c2rust-refactor/),
-that reduces the tedium of refactoring, but this tool is now deprecated
-so that we can move forward with a recent Rust toolchain.
 
 Here's the big picture:
 
@@ -128,6 +126,30 @@ Please note that the master branch is under constant development and you may exp
 
 You should also set `LLVM_CONFIG_PATH` accordingly if required as described above.
 
+### Nightly Tools
+
+`c2rust` and `c2rust-transpile` are installed by default and can be built on `stable` `rustc`.
+The other tools, such as `c2rust-refactor`, use `rustc` internal APIs, however,
+and are thus pinned to a specific `rustc` `nightly` version: `nightly-2022-08-08`.
+These are also not published to `crates.io`.
+To install these, these can be installed with `cargo` with the pinned nightly.  For example,
+
+```sh
+cargo +nightly-2022-08-08 install --locked --git https://github.com/immunant/c2rust.git c2rust-refactor
+```
+
+However, we recommend installing them from a full checkout,
+as this will resolve the pinned nightly automatically:
+
+```sh
+git clone https://github.com/immunant/c2rust.git
+cd c2rust
+cargo build --release
+```
+
+These tools, like `c2rust-refactor`, can then also be invoked through `c2rust`
+as `c2rust refactor`, assuming they are installed in the same directory.
+
 <!-- ANCHOR_END: installation -->
 <!-- ANCHOR: translating-c-to-rust -->
 
@@ -145,8 +167,6 @@ c2rust transpile compile_commands.json
 ```sh
 c2rust transpile project/*.c project/*.h
 ```
-
-(The `c2rust refactor` tool was also available for refactoring Rust code, see [refactoring](./c2rust-refactor/), but is now being replaced by a more robust way to refactor.)
 
 For non-trivial projects, the translator requires the exact compiler commands used to build the C code.
 This information is provided via a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
@@ -183,6 +203,16 @@ The translated Rust files will not depend directly on each other like
 normal Rust modules.
 They will export and import functions through the C API.
 These modules can be compiled together into a single static Rust library or binary.
+
+You can run with `--reorganize-definitions` (which invokes `c2rust-refactor`),
+which should deduplicate definitions and directly import them
+with `use`s instead of through the C API.
+
+The refactorer can also be run on its own to run other refactoring passes:
+
+```sh
+c2rust refactor --cargo $transform
+```
 
 There are several [known limitations](./docs/known-limitations.md) in this
 translator.
