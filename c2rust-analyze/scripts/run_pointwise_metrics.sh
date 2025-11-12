@@ -100,4 +100,4 @@ done |& tee "$unmodified_log_file"
 echo
 echo 
 
-python3 "$SCRIPT_DIR/pointwise_metrics.py" "$pointwise_log_file" "$unmodified_log_file"
+"$SCRIPT_DIR/pointwise_metrics.py" "$pointwise_log_file" "$unmodified_log_file"

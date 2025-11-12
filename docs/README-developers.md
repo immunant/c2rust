@@ -17,8 +17,7 @@ Then run `./scripts/provision_mac.sh`.
   - `unzip`
   - `clang` >= 7
   - `intercept-build` or `bear` ([see why here](../README.md#generating-compile_commandsjson-files))
-  - `python-dev`
-  - `python` >= 3.6
+  - `uv`
   - [python dependencies](../scripts/requirements.txt)
   - `rustc` [version](../rust-toolchain.toml)
   - `rustfmt` component for the above `rustc` version

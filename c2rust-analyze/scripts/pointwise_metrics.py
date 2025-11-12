@@ -1,3 +1,5 @@
+#!/usr/bin/env -S uv run
+
 '''
 Process logs to compute pointwise success rate metrics.
 
