@@ -13,7 +13,6 @@ as well as things it probably won't ever handle.
 ## Unimplemented
 
 * `_Complex` type (partially blocked by Rust language)
-* C11 `_Atomic` type-specifier and type-qualifier (see https://en.cppreference.com/w/c/language/atomic)
 * Using `long double` type in variadic functions (blocked on Rust language; see https://github.com/immunant/c2rust/issues/154)
 * Non-x86/64 SIMD function/types and x86/64 SIMD function/types which have no Rust equivalent
 * Certain compiler builtins (see e.g. https://github.com/immunant/c2rust/issues/88)
