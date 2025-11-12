@@ -19,7 +19,6 @@ as well as things it probably won't ever handle.
   
 ## Unimplemented, _might_ be implementable
 
-* GNU packed structs (Rust has `#[repr(packed)]` compatible with `#[repr(C)]`)
 * `restrict` pointers (Rust has references)
 * macros
 * GNU labels-as-values (https://github.com/immunant/c2rust/issues/221)
