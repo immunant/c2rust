@@ -14,10 +14,10 @@ cargo test lighttpd_buffer
 
 # Auto-fix remaining compile errors
 rustc --crate-type rlib --error-format json test_buffer.rs 2>errors.json
-python3 scripts/auto_fix_errors.py errors.json
+./scripts/auto_fix_errors.py errors.json
 # Run again to fix newly uncovered errors
 rustc --crate-type rlib --error-format json test_buffer.rs 2>errors.json
-python3 scripts/auto_fix_errors.py errors.json
+./scripts/auto_fix_errors.py errors.json
 
 # Remove `unsafe`
 sed -i -e 's/\<unsafe //' test_buffer.rs

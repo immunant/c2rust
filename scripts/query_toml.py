@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
 
 from argparse import ArgumentParser
 from pathlib import Path

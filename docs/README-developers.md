@@ -1,12 +1,5 @@
 # Setting up a development environment
 
-There are two ways to build the C2Rust project:
-
-- [using **Docker**](../docker/)
-- **manually**, as explained below:
-
-The previous option automatically install all prerequisites during provisioning. You can also provision a macOS or Linux system manually.
-
 - If you are on a Debian-based OS, you can run `./scripts/provision_deb.sh` to do so.
 
 - If you are on macOS, install the Xcode command-line tools
@@ -23,12 +16,11 @@ Then run `./scripts/provision_mac.sh`.
   - `ninja`
   - `unzip`
   - `clang` >= 7
-  - `intercept-build` or `bear` ([see why here](../README.md#generating-compilecommandsjson-files))
-  - `python-dev`
-  - `python` >= 3.6
+  - `intercept-build` or `bear` ([see why here](../README.md#generating-compile_commandsjson-files))
+  - `uv`
   - [python dependencies](../scripts/requirements.txt)
   - `rustc` [version](../rust-toolchain.toml)
-  - `rustfmt-preview` component for the above `rustc` version
+  - `rustfmt` component for the above `rustc` version
   - `libssl` (development library, dependency of the refactoring tool)
 
 ## Building with system LLVM libraries

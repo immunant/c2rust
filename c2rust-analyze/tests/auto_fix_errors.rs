@@ -38,8 +38,8 @@ fn test(file_name: &str) {
     );
 
     // Run the script to fix errors.
-    let mut cmd = Command::new("python3");
-    cmd.arg(&script_path).arg(&json_path);
+    let mut cmd = Command::new(script_path);
+    cmd.arg(&json_path);
     let status = cmd.status().unwrap();
     assert!(
         status.success(),

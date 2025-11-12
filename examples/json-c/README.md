@@ -6,7 +6,7 @@
     ../configure    # use the custom c2rust configure script
     intercept-build make
     make check
-    python3 ../translate.py
+    ../translate.py
     ninja -C rust
 
 This will produce `rust/libjson-c.so.4.0.0`.

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
 # -*- coding: utf-8 -*-
 
 import sys
@@ -11,7 +11,7 @@ from common import die
 try:
     import cbor2
 except ImportError:
-    # run `pip install cbor2` or `easy_install cbor2` to fix
+    # add `cbor2` to `requirements.txt` to fix
     print("error: python package cbor2 is not installed.", file=sys.stderr)
     sys.exit(errno.ENOENT)
 

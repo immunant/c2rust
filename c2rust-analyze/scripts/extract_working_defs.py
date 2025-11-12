@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+
 """
 Script for extracting defs on which rewriting succeeded.  Currently, this is
 specific to lighttpd_rust_amalgamated, but it could be generalized to work on
@@ -8,6 +9,7 @@ log of a `c2rust-analyze` run and collecting defs that have no reported
 then locates each working def in the rewritten code by searching for "start/end
 of def" comments and prints the code for each working def to stdout.
 """
+
 from dataclasses import dataclass
 import re
 import subprocess

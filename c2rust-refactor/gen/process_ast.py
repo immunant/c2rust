@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+
 from collections import namedtuple
 import re
 import sys

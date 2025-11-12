@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+
 # -*- coding: utf-8 -*-
 
 from plumbum import local

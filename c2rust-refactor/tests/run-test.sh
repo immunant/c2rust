@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-export nightly=nightly-2017-11-20
+export nightly=nightly-2022-08-08
 triple=unknown
 unamestr=`uname`
 if [ "$unamestr" = 'Linux' ]; then
