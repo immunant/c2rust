@@ -4998,16 +4998,16 @@ impl<'c> Translation<'c> {
         ty_id: CTypeId,
         is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let resolved_ty_id = self.ast_context.resolve_type_id(ty_id);
-        let resolved_ty = &self.ast_context.index(resolved_ty_id).kind;
-
-        if self.ast_context.is_va_list(resolved_ty_id) {
+        if self.ast_context.is_va_list(ty_id) {
             // generate MaybeUninit::uninit().assume_init()
             let path = vec!["core", "mem", "MaybeUninit", "uninit"];
             let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
             let call = mk().method_call_expr(call, "assume_init", vec![]);
             return Ok(WithStmts::new_val(call));
         }
+
+        let resolved_ty_id = self.ast_context.resolve_type_id(ty_id);
+        let resolved_ty = &self.ast_context.index(resolved_ty_id).kind;
 
         if resolved_ty.is_bool() {
             Ok(WithStmts::new_val(mk().lit_expr(mk().bool_lit(false))))
