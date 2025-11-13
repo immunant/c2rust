@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::path::Path;
 use proc_macro2::Span;
 use rust_util::collect::FileCollector;
@@ -59,12 +61,17 @@ impl Visit<'_> for ItemSpanVisitor<'_> {
 fn main() {
     let mut fc = FileCollector::default();
     fc.parse(env::args().nth(1).unwrap(), vec![], true).unwrap();
-    let mut out = Vec::new();
+    let mut out = HashMap::new();
     for &(ref name, ref mod_path, ref ast) in &fc.files {
         eprintln!("visit {:?}", name);
         let mut v = ItemSpanVisitor::new(name, mod_path.to_owned());
         v.visit_file(ast);
-        out.extend(v.item_spans);
+
+        let src = fs::read_to_string(name).unwrap();
+        for &(ref item_path, _, lo, hi) in &v.item_spans {
+            let snippet = &src[lo .. hi];
+            out.insert(item_path.join("::"), snippet.to_owned());
+        }
     }
     serde_json::to_writer(std::io::stdout(), &out).unwrap();
 }
