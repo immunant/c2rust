@@ -239,12 +239,24 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
     followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
     break_targets: &mut IndexSet<Label>, // Any labels that we've had to indirectly `break` to. This tells us when we need to generate blocks as break targets.
 ) -> TranslationResult<S> {
-    // Gets the followup entries for the structure at index `i`. This only considers
-    // the handled branches of multiples. If we are looking past the last structure,
-    // then we use `followup_entries`.
+    use Structure::*;
+
+    // Gets the followup entries for the structure at index `i`. This only considers the handled
+    // branches of multiples. If we are looking past the last structure, then we use
+    // `followup_entries`.
+    //
+    // TODO: Do this better, the way we have to clone/allocate sets is kinda gross. Oh also this is
+    // kinda named bad and does the wrong thing because for loops it's not the next structures
+    // entries that come up next, it's the loop's entries that we'll hit when we get to the end of
+    // the loop. we're currently handling it correctly when we render the loops body, but the way
+    // we're doing it could probbby be clearer.
     let get_next_entries = |i: usize| {
         if i < root.len() {
-            root[i].get_handled_entries()
+            match &root[i] {
+                Simple { entries, .. } => entries.clone(),
+                Loop { entries, .. } => entries.clone(),
+                Multiple { branches, .. } => indexset! { branches.keys().next().unwrap().clone() },
+            }
         } else {
             followup_entries.clone()
         }
@@ -258,7 +270,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 
         // Generate the AST for the current structure.
         let mut structure_ast = match structure {
-            Structure::Simple {
+            Simple {
                 body,
                 span,
                 terminator,
@@ -308,12 +320,15 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                                 S::empty()
                             };
 
-                            // TODO: Don't generate an exit if we're going to flow naturally into the
-                            // next structure's entries?
-                            new_ast = S::mk_append(
-                                new_ast,
-                                S::mk_exit(ExitStyle::Continue, Some(loop_label.clone())),
-                            );
+                            // TODO: Is it correct to test `loop_label` here? Should we be testing
+                            // `target` instead? `loop_label` seems reasonable since that's the label the loop has to have in code but also idk whatever.
+                            if !next_entries.contains(loop_label) {
+                                new_ast = S::mk_append(
+                                    new_ast,
+                                    S::mk_exit(ExitStyle::Continue, Some(loop_label.clone())),
+                                );
+                                break_targets.insert(loop_label.clone());
+                            }
 
                             new_ast.extend_span(*span);
                             Ok(new_ast)
@@ -346,7 +361,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 )
             }
 
-            Structure::Loop { entries, body } => {
+            Loop { entries, body } => {
                 let label = entries
                     .first()
                     .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
@@ -360,7 +375,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 S::mk_loop(Some(label.clone()), body)
             }
 
-            Structure::Multiple { entries, branches } => {
+            Multiple { entries, branches } => {
                 // If we have entries that aren't one of our branches, then our then case needs
                 // to be empty so that we fall through to the next structure. Otherwise we pull
                 // off the last branch as the then case.
@@ -393,7 +408,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         i += 1;
 
         // Handle any followup multiple structures by wrapping the current structure's AST in a block.
-        while let Some(Structure::Multiple { branches, entries }) = root.get(i) {
+        while let Some(Multiple { branches, entries }) = root.get(i) {
             let next_entries = get_next_entries(i + 1);
 
             eprintln!(
@@ -428,7 +443,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         // Check for a simple or loop after the multiple. If there is one, we need to
         // also wrap the current ast in a labeled block.
         match root.get(i) {
-            Some(Structure::Simple { entries, .. }) | Some(Structure::Loop { entries, .. }) => {
+            Some(Simple { entries, .. }) | Some(Loop { entries, .. }) => {
                 for entry in entries {
                     if break_targets.contains(entry) {
                         structure_ast = S::mk_block(entry.clone(), structure_ast);
@@ -436,7 +451,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 }
             }
 
-            Some(Structure::Multiple { .. }) => {
+            Some(Multiple { .. }) => {
                 unreachable!("We should have already handled followup multiples");
             }
 
