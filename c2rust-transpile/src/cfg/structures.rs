@@ -417,9 +417,20 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             );
 
             // Generate blocks as break targets for the remaining branches.
-            for (entry, branch) in branches {
+            for (branch_idx, (entry, branch)) in branches.iter().enumerate() {
+                // Choose the next entries for the branch. For most of the branches we want to
+                // say that there are no next entries, because we don't want one branch to flow
+                // into another. But the last branch can fall through to the next entries that
+                // follow this multiple.
+                let empty = IndexSet::new();
+                let next_entries = if branch_idx == branches.len() - 1 {
+                    &next_entries
+                } else {
+                    &empty
+                };
+
                 let branch_ast =
-                    forward_cfg_help::<S>(branch, checked_entries, &next_entries, break_targets)?;
+                    forward_cfg_help::<S>(branch, checked_entries, next_entries, break_targets)?;
 
                 if break_targets.contains(entry) {
                     eprintln!(
