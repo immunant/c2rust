@@ -60,51 +60,79 @@ fn cast_tys<'bv>(bv: BV<'bv>, tys: &[SimpleTy], pw: PointerWidth) -> BV<'bv> {
     tys.windows(2).fold(bv, |y, w| cast_bv(y, w[0], w[1], pw))
 }
 
-thread_local!(static Z3_CONFIG: Config = Config::new());
+thread_local!(static Z3_CONFIG: Config = { let mut c = Config::new(); c.set_model_generation(true); c });
 thread_local!(static Z3_CONTEXT: Context = Z3_CONFIG.with(|cfg| Context::new(cfg)));
 
-quickcheck! {
-    // Verify `check_double_cast` using QuickCheck and Z3
-    fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
-        if tys.len() <= 1 {
-            return true;
-        }
+#[test]
+fn test_cast_i32_u32_ssize() {
+    verify_double_cast(
+        PointerWidth(64),
+        vec![
+            SimpleTy::Int(32, true),
+            SimpleTy::Int(32, false),
+            SimpleTy::Size(true),
+        ],
+    );
+}
 
-        Z3_CONTEXT.with(|ctx| {
-            // Build a minimized list of types with double casts removed
-            let mut min_tys = vec![tys[0].clone()];
-            for ty in &tys[1..] {
-                assert!(!min_tys.is_empty());
-                if *ty == min_tys[min_tys.len() - 1] {
-                    // Cast to the same type, ignore it
-                    continue;
+// Verify `check_double_cast` using Z3
+fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
+    if tys.len() <= 1 {
+        return true;
+    }
+
+    Z3_CONTEXT.with(|ctx| {
+        // Build a minimized list of types with double casts removed
+        let mut min_tys = vec![tys[0].clone()];
+        for ty in &tys[1..] {
+            assert!(!min_tys.is_empty());
+            if *ty == min_tys[min_tys.len() - 1] {
+                // Cast to the same type, ignore it
+                continue;
+            }
+            if min_tys.len() < 2 {
+                min_tys.push(ty.clone());
+                continue;
+            }
+            let last2 = &min_tys[min_tys.len() - 2..];
+            match check_double_cast(last2[0], last2[1], *ty) {
+                DoubleCastAction::RemoveBoth => {
+                    min_tys.pop();
                 }
-                if min_tys.len() < 2 {
+                DoubleCastAction::RemoveInner => {
+                    *min_tys.last_mut().unwrap() = ty.clone();
+                }
+                DoubleCastAction::KeepBoth => {
                     min_tys.push(ty.clone());
-                    continue;
-                }
-                let last2 = &min_tys[min_tys.len() - 2..];
-                match check_double_cast(last2[0], last2[1], *ty) {
-                    DoubleCastAction::RemoveBoth => {
-                        min_tys.pop();
-                    }
-                    DoubleCastAction::RemoveInner => {
-                        *min_tys.last_mut().unwrap() = ty.clone();
-                    }
-                    DoubleCastAction::KeepBoth => {
-                        min_tys.push(ty.clone());
-                    }
                 }
             }
+        }
 
-            let x = BV::new_const(&ctx, "x", ty_bit_width(tys[0], pw));
-            let y = cast_tys(x.clone(), &tys[..], pw);
-            let z = cast_tys(x, &min_tys[..], pw);
+        let x = BV::new_const(&ctx, "x", ty_bit_width(tys[0], pw));
+        let y = cast_tys(x.clone(), &tys[..], pw);
+        let z = cast_tys(x.clone(), &min_tys[..], pw);
 
-            // Check the full type list against the minimized one
-            let solver = Solver::new(&ctx);
-            solver.assert(&z._eq(&y).not());
-            solver.check() == SatResult::Unsat
-        })
+        // Check the full type list against the minimized one
+        let solver = Solver::new(&ctx);
+        solver.assert(&z._eq(&y).not());
+        if solver.check() == SatResult::Unsat {
+            true
+        } else {
+            let model = solver.get_model().unwrap();
+            panic!(
+                "{}b counterexample:\n{:?} =>\n {:?} via tys {tys:?} vs.\n {:?} via min_tys {min_tys:?}",
+                pw.0,
+                model.eval(&x, true).unwrap(),
+                model.eval(&y, true).unwrap(),
+                model.eval(&z, true).unwrap()
+            )
+        }
+    })
+}
+
+quickcheck! {
+    // Apply `verify_double_cast` to a sample of possible cast sequences using QuickCheck
+    fn quickcheck_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
+        verify_double_cast(pw, tys)
     }
 }
