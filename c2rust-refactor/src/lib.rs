@@ -251,7 +251,12 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     let config = Config::default().unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
     let mode = CompileMode::Check { test: false };
-    let compile_opts = CompileOptions::new(&config, mode).unwrap();
+    let mut compile_opts = CompileOptions::new(&config, mode).unwrap();
+
+    // The Rust toolchain for our transpiled files is different
+    // from the version we use for the tools themselves (transpiler, refactor)
+    // so set honor_rust_version to false so they can be out of sync.
+    compile_opts.honor_rust_version = false;
 
     let manifest_path = find_root_manifest_for_wd(config.cwd()).unwrap();
     let ws = Workspace::new(&manifest_path, &config).unwrap();
