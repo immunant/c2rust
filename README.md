@@ -361,7 +361,7 @@ c2rust transpile ${existing_args[@]} -- --target=x86_64-linux-gnu --sysroot=/usr
 ```
 
 These extra args are passed to the `libclangTooling` that `c2rust-transpile` uses.
-You sometimes also need to pass extra headers, as sometimes headers are installed globally
+You sometimes also need to pass extra headers, as occasionally headers are installed globally
 in the default sysroot and won't be found in the cross-compiling sysroot.
 
 > What platforms can C2Rust be run on?
