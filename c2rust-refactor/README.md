@@ -13,7 +13,9 @@ automatically-generated Rust code.
 
 `c2rust refactor` command line usage is as follows:
 
-    c2rust refactor [flags] <command> [command args] -- <input file> [rustc flags]
+```sh
+c2rust refactor [flags] <command> [command args] -- <input file> [rustc flags]
+```
 
 Flags for `c2rust refactor` are described by `c2rust refactor --help`.
 

@@ -1,5 +1,7 @@
+#!/usr/bin/env -S uv run
+
 '''
-Usage: `python3 rename_nll_facts.py src ref dest`
+Usage: `./rename_nll_facts.py src ref dest`
 
 Renames atoms in `src/*.facts` to match the names used in `ref/*.facts`, then
 writes the renamed facts to `dest/`.

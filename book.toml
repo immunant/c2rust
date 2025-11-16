@@ -7,7 +7,7 @@ create-missing = false
 preprocess = ["links", "index"]
 
 [preprocessor.generator_dispatch]
-command = "python3 manual/preprocessors/generator_dispatch.py"
+command = "./manual/preprocessors/generator_dispatch.py"
 
 [output.html]
 

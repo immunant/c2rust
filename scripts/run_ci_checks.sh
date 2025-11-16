@@ -2,7 +2,7 @@
 
 set -euox pipefail
 
-# Run the same checks that are run in CI in `azure-pipelines.yml`.
+# Run the same checks that are run in CI in `ci.yml`.
 
 # Deny all warnings, including in documentation.
 if [[ "${ALLOW_WARNINGS:-0}" != "1" ]]; then
@@ -50,7 +50,7 @@ test-translator() {
     unset RUSTFLAGS
     uv venv
     uv pip install -r ./scripts/requirements.txt
-    uv run ./scripts/test_translator.py tests/
+    ./scripts/test_translator.py tests/
 }
 
 all() {

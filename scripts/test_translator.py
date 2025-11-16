@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
 
 import errno
 import os
@@ -18,7 +18,6 @@ from common import (
     regex,
     setup_logging,
     die,
-    ensure_dir,
     on_mac,
 )
 from enum import Enum
@@ -26,8 +25,6 @@ from rust_file import (
     CrateType,
     RustFile,
     RustFileBuilder,
-    RustFunction,
-    RustMatch,
     RustMod,
     RustVisibility,
 )

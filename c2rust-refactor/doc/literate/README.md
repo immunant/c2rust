@@ -4,8 +4,9 @@ rendered diff of the results after each refactoring block.
 
 Basic usage:
 
-    python3 -m literate --project-dir repo/rust render input.md output.md
-
+```sh
+uv run python -m literate --project-dir repo/rust render input.md output.md
+```
 
 The tool is controlled mainly by specially-tagged code blocks in the Markdown
 input.
