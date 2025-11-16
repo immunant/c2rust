@@ -2,6 +2,7 @@
 use rustc_ast::*;
 use rustc_span::Symbol;
 use smallvec::SmallVec;
+use std::fmt::Debug;
 
 pub mod cursor;
 pub mod dataflow;
@@ -17,16 +18,16 @@ impl<T> Lone<T> for T {
     }
 }
 
-impl<T> Lone<T> for Vec<T> {
+impl<T: Debug> Lone<T> for Vec<T> {
     fn lone(mut self) -> T {
-        assert!(self.len() == 1);
+        assert!(self.len() == 1, "Vec has multiple elements: {self:#?}");
         self.pop().unwrap()
     }
 }
 
-impl<T> Lone<T> for SmallVec<[T; 1]> {
+impl<T: Debug> Lone<T> for SmallVec<[T; 1]> {
     fn lone(mut self) -> T {
-        assert!(self.len() == 1);
+        assert!(self.len() == 1, "SmallVec has multiple elements: {self:#?}");
         self.pop().unwrap()
     }
 }
