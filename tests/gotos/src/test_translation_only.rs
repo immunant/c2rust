@@ -1,3 +1,5 @@
+//! feature_label_break_value
+
 use crate::jump_into_loop::rust_jump_into_loop;
 use crate::label_break_trigger::rust_triggers_label_break;
 
