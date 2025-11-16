@@ -56,9 +56,27 @@ pub fn test_sectioned_used_static() {
         );
 
         // This static is pub, but we want to ensure it has attributes applied
-        assert!(src.contains("#[link_section = \"fb\"]\npub static mut rust_initialized_extern: ::core::ffi::c_int = 1 as ::core::ffi::c_int;"));
+        assert!(src.contains(
+            r#"
+#[link_section = "fb"]
+pub static mut rust_initialized_extern: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+"#
+            .trim(),
+        ));
         // This static is pub only with --reorganize-definitions
-        let aliased_static_syntax = |public| format!("extern \"C\" {{\n    #[link_name = \"no_attrs\"]\n    {}static mut rust_aliased_static: ::core::ffi::c_int;", public);
-        assert!(src.contains(&aliased_static_syntax("")) || src.contains(&aliased_static_syntax("pub ")))
+        let aliased_static_syntax = |public| {
+            format!(
+                r#"
+extern "C" {{
+    #[link_name = "no_attrs"]
+    {}static mut rust_aliased_static: ::core::ffi::c_int;
+"#,
+                public
+            )
+        };
+        assert!(
+            src.contains(aliased_static_syntax("").trim())
+                || src.contains(aliased_static_syntax("pub ").trim())
+        )
     }
 }
