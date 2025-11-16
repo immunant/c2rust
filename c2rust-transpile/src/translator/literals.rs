@@ -71,7 +71,7 @@ impl<'c> Translation<'c> {
     }
 
     /// Return whether the literal can be directly translated as this type.
-    pub fn literal_kind_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId) -> bool {
+    pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
             CLiteral::Integer(value, _) if ty_kind.is_integral_type() && !ty_kind.is_bool() => {
