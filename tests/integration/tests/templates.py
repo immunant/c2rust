@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
 import stat
 from collections.abc import Mapping
-from typing import Any, Dict, List
+from typing import Any, Dict, Generator, List
 
 from tests.util import *
 from jinja2 import Template
@@ -94,16 +95,16 @@ def render_script(template: str, out_path: str, params: Dict):
     os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
 
 
-def autogen_cargo(conf_file, yaml: Dict):
-    def render_stage(stage_conf: Mapping[str, Any] | None, filename: str) -> bool:
+def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path]:
+    def render_stage(stage_conf: Mapping[str, Any] | None, filename: str) -> Generator[Path]:
         if not isinstance(stage_conf, Mapping):
-            return False
+            return
         if not stage_conf:
-            return False
+            return
 
         ag = stage_conf.get("autogen")
         if not (ag and isinstance(ag, bool)):
-            return False
+            return
 
         params: Dict[str, str] = {}
         rustflags = stage_conf.get("rustflags")
@@ -115,16 +116,16 @@ def autogen_cargo(conf_file, yaml: Dict):
             filename
         )
         render_script(CARGO_SH, out_path, params)
-        return True
+        yield Path(out_path)
 
     for key, fname in (
         ("cargo.transpile", "cargo.transpile.gen.sh"),
         ("cargo.refactor", "cargo.refactor.gen.sh"),
     ):
-        render_stage(yaml.get(key), fname)
+        yield from render_stage(yaml.get(key), fname)
 
 
-def autogen_refactor(conf_file, yaml: Dict):
+def autogen_refactor(conf_file, yaml: Dict) -> Generator[str]:
     refactor = yaml.get("refactor")
     if refactor and isinstance(refactor, Dict):
         ag = refactor.get("autogen")
@@ -149,9 +150,10 @@ def autogen_refactor(conf_file, yaml: Dict):
                     "refactor.gen.sh"
                 )
                 render_script(REFACTOR_SH, out_path, params)
+                yield Path(out_path)
 
 
-def autogen_transpile(conf_file, yaml: Dict):
+def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path]:
     transpile = yaml.get("transpile")
     if transpile and isinstance(transpile, Dict):
         ag = transpile.get("autogen")
@@ -180,10 +182,11 @@ def autogen_transpile(conf_file, yaml: Dict):
                 "transpile.gen.sh"
             )
             render_script(TRANSPILE_SH, out_path, params)
+            yield Path(out_path)
 
 
-def autogen(conf: Config):
+def autogen(conf: Config) -> Generator[Path]:
     for (cf, yaml) in conf.project_conf.items():
-        autogen_transpile(cf, yaml)
-        autogen_refactor(cf, yaml)
-        autogen_cargo(cf, yaml)
+        yield from autogen_transpile(cf, yaml)
+        yield from autogen_refactor(cf, yaml)
+        yield from autogen_cargo(cf, yaml)
