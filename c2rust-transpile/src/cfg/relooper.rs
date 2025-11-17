@@ -332,15 +332,6 @@ impl RelooperState {
                         self.add_to_scope(d);
                     }
 
-                    // Normalize terminator labels to `BreakTo`. All forward jumps can be be
-                    // `BreakTo`s, i.e. a block break, and we know this simple doesn't have a back
-                    // edge or we'd have generated a loop.
-                    for lbl in terminator.get_labels_mut() {
-                        if let StructureLabel::GoTo(label) = lbl.clone() {
-                            *lbl = StructureLabel::BreakTo(label.clone())
-                        }
-                    }
-
                     result.push(Structure::Simple {
                         entries,
                         body,
@@ -828,19 +819,27 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
                     }) => {
                         use StructureLabel::*;
                         let rewrite = |t: &StructureLabel<Stmt>| match t {
-                            BreakTo(to) => if let Some(branch) = branches.get(to) {
-                                Nested(branch.clone())
-                            } else {
-                                BreakTo(to.clone())
+                            GoTo(to) => {
+                                if let Some(branch) = branches.get(to) {
+                                    Nested(branch.clone())
+                                } else {
+                                    GoTo(to.clone())
+                                }
                             }
-                            
+
+                            BreakTo(to) => {
+                                if let Some(branch) = branches.get(to) {
+                                    Nested(branch.clone())
+                                } else {
+                                    BreakTo(to.clone())
+                                }
+                            }
+
                             ContinueTo { loop_label, target } => ContinueTo {
                                 loop_label: loop_label.clone(),
                                 target: target.clone(),
                             },
-                            GoTo(to) => {
-                                unreachable!("Found GoTo({to:?}) terminator in relooped structures")
-                            }
+
                             Nested(_) => panic!("simplify_structure: Nested precondition violated"),
                         };
 
