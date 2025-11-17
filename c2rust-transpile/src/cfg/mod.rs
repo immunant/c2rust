@@ -179,19 +179,6 @@ impl<S> Structure<S> {
             Multiple { entries, .. } => entries,
         }
     }
-
-    // Gets the entries that are handled by this structure.
-    //
-    // Only includes the first branch of a `Multiple` structure, since that's
-    // the only branch that we flow naturally into for a followup multiple.
-    fn get_handled_entries(&self) -> IndexSet<Label> {
-        use Structure::*;
-        match self {
-            Simple { entries, .. } => entries.clone(),
-            Loop { entries, .. } => entries.clone(),
-            Multiple { branches, .. } => indexset! { branches.keys().next().unwrap().clone() },
-        }
-    }
 }
 
 impl Structure<StmtOrDecl> {
