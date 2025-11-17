@@ -96,7 +96,15 @@ def render_script(template: str, out_path: str, params: Dict):
 
 
 def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path]:
+    """
+    Yield generated paths.
+    """
+
     def render_stage(stage_conf: Mapping[str, Any] | None, filename: str) -> Generator[Path]:
+        """
+        Yield generated paths.
+        """
+        
         if not isinstance(stage_conf, Mapping):
             return
         if not stage_conf:
@@ -126,6 +134,10 @@ def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path]:
 
 
 def autogen_refactor(conf_file, yaml: Dict) -> Generator[str]:
+    """
+    Yield generated paths.
+    """
+    
     refactor = yaml.get("refactor")
     if refactor and isinstance(refactor, Dict):
         ag = refactor.get("autogen")
@@ -154,6 +166,10 @@ def autogen_refactor(conf_file, yaml: Dict) -> Generator[str]:
 
 
 def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path]:
+    """
+    Yield generated paths.
+    """
+    
     transpile = yaml.get("transpile")
     if transpile and isinstance(transpile, Dict):
         ag = transpile.get("autogen")
@@ -186,6 +202,10 @@ def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path]:
 
 
 def autogen(conf: Config) -> Generator[Path]:
+    """
+    Yield generated paths.
+    """
+    
     for (cf, yaml) in conf.project_conf.items():
         yield from autogen_transpile(cf, yaml)
         yield from autogen_refactor(cf, yaml)
