@@ -334,12 +334,20 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             Ok(new_ast)
                         }
 
-                        GoTo(to) => Err(format_err!(
-                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                            to,
-                            next_entries
-                        )
-                        .into()),
+                        GoTo(to) => {
+                            if next_entries.contains(to) {
+                                Ok(if checked_entries.contains(to) {
+                                    S::mk_goto(to.clone())
+                                } else {
+                                    S::empty()
+                                })
+                            } else {
+                                unreachable!(
+                                    "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
+                                    to, next_entries,
+                                );
+                            }
+                        }
                     }
                 };
 
