@@ -42,5 +42,5 @@ if __name__ == "__main__":
     elif not conf.project_dirs and len(args.projects) > 0:
         util.die(f"no such project: {args.project}")
     else:
-        templates.autogen(conf)
-        tests.run_tests(conf)
+        generated_scripts = set(templates.autogen(conf))
+        tests.run_tests(conf, generated_scripts)

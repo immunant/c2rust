@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 import os
+from pathlib import Path
 import sys
 import subprocess
 from time import perf_counter
@@ -25,9 +26,11 @@ class Test(object):
         "check": ["check.sh", "test.sh"]
     }
 
-    def __init__(self, directory: str):
-        ff = next(os.walk(directory))[2]
-        self.scripts = set(filter(lambda f: f.endswith(".sh"), ff))
+    def __init__(self, directory: str, generated_scripts: set[Path]):
+        self.scripts = {
+            f.name for f in Path(directory).iterdir() if f.suffix == ".sh" and
+            (".gen" not in f.suffixes or any(f.samefile(script) for script in generated_scripts))
+        }
         self.dir = directory
         self.conf_file = os.path.join(directory, CONF_YML)
         self.name = os.path.basename(directory)
@@ -210,11 +213,11 @@ class TestResult:
     time: timedelta
 
 
-def run_tests(conf: Config):
+def run_tests(conf: Config, generated_scripts: set[Path]):
     if not conf.ignore_requirements:
         check(conf)
 
-    tests = [Test(td) for td in conf.project_dirs]
+    tests = [Test(td, generated_scripts) for td in conf.project_dirs]
 
     def run(test: Test) -> TestResult:
         start = perf_counter()
