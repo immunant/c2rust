@@ -52,10 +52,6 @@ jobs:
 
     - run: uv python install
 
-    - name: Install Python Packages
-      run: |
-        uv tool install scan-build # for `intercept-build`
-
     - uses: Swatinem/rust-cache@v2
       with:
         cache-workspace-crates: true
