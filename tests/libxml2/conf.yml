@@ -1,11 +1,13 @@
 transpile:
   autogen: true
   binary: runtest
-  tflags: --reorganize-definitions
+  tflags: --reorganize-definitions --disable-refactoring
 
 refactor:
   autogen: true
   transforms:
+  - rename_unnamed
+  - reorganize_definitions
   - remove_unused_labels
   - remove_null_terminator
   - bytestr_to_str

@@ -9,13 +9,15 @@ requirements:
 
 transpile:
   autogen: true
-  tflags: --reorganize-definitions
+  tflags: --reorganize-definitions --disable-refactoring
   binary: ruby
 #  cflags: "-O0"
 
 refactor:
   autogen: true
   transforms:
+    - rename_unnamed
+    - reorganize_definitions
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs

@@ -8,12 +8,14 @@ transpile:
   autogen: true
   binary: fullbench # zstdcli
   cflags: -Qunused-arguments
-  tflags: --reorganize-definitions
+  tflags: --reorganize-definitions --disable-refactoring
 
 refactor:
   # TODO: re-enable once c2rust-refactor supports asm!
   #autogen: true
   transforms:
+    - rename_unnamed
+    - reorganize_definitions
     - remove_unused_labels
     - remove_literal_suffixes
 
