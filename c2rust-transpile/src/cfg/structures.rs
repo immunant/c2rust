@@ -20,6 +20,7 @@ pub fn structured_cfg(
         root,
         &checked_entries,
         &IndexSet::new(),
+        &IndexSet::new(),
         &mut IndexSet::new(),
     )?;
 
@@ -237,6 +238,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
     root: &[Structure<Stmt>],
     checked_entries: &IndexSet<Label>,
     followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
+    loop_exits: &IndexSet<Label>, // If we're inside a loop, these are the labels that immediately follow it. Used to determine if we need a label when breaking out of a loop.
     break_targets: &mut IndexSet<Label>, // Any labels that we've had to indirectly `break` to. This tells us when we need to generate blocks as break targets.
 ) -> TranslationResult<S> {
     use Structure::*;
@@ -286,9 +288,13 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                     use StructureLabel::*;
 
                     match slbl {
-                        Nested(nested) => {
-                            forward_cfg_help(nested, checked_entries, &next_entries, break_targets)
-                        }
+                        Nested(nested) => forward_cfg_help(
+                            nested,
+                            checked_entries,
+                            &next_entries,
+                            loop_exits,
+                            break_targets,
+                        ),
 
                         // TODO: Maybe merge BreakTo and ContinueTo back into a
                         // single ExitTo, but have it also hold on to an
@@ -303,11 +309,14 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             // Only generate an exit if we're not going to flow naturally into the
                             // next structure's entries.
                             if !next_entries.contains(to) {
-                                new_ast = S::mk_append(
-                                    new_ast,
-                                    S::mk_exit(ExitStyle::Break, Some(to.clone())),
-                                );
-                                break_targets.insert(to.clone());
+                                let label = if loop_exits.contains(to) {
+                                    None
+                                } else {
+                                    break_targets.insert(to.clone());
+                                    Some(to.clone())
+                                };
+                                new_ast =
+                                    S::mk_append(new_ast, S::mk_exit(ExitStyle::Break, label));
                             }
                             new_ast.extend_span(*span);
                             Ok(new_ast)
@@ -373,14 +382,20 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let label = entries
                     .first()
                     .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
-                let body = forward_cfg_help(body, checked_entries, entries, break_targets)?;
+                let body =
+                    forward_cfg_help(body, checked_entries, entries, &next_entries, break_targets)?;
 
                 // TODO: Is this the right way to label the loop? If we have
                 // multiple entries to a loop it means we have irreducible
                 // control flow. In that case is picking the first label the
                 // right thing to do? Do we need to do something else to handle
                 // a checked multiple in that case?
-                S::mk_loop(Some(label.clone()), body)
+                let label = if break_targets.contains(label) {
+                    Some(label.clone())
+                } else {
+                    None
+                };
+                S::mk_loop(label, body)
             }
 
             Multiple { entries, branches } => {
@@ -395,7 +410,13 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let mut branches = branches.clone();
                 let then = if entries == &branches.keys().cloned().collect::<IndexSet<_>>() {
                     let (_, then) = branches.pop().unwrap(); // UNWRAP: There's at least one branch.
-                    forward_cfg_help(&then, checked_entries, &next_entries, break_targets)?
+                    forward_cfg_help(
+                        &then,
+                        checked_entries,
+                        &next_entries,
+                        loop_exits,
+                        break_targets,
+                    )?
                 } else {
                     S::empty()
                 };
@@ -403,8 +424,13 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let cases = branches
                     .iter()
                     .map(|(lbl, body)| {
-                        let stmts =
-                            forward_cfg_help(body, checked_entries, &next_entries, break_targets)?;
+                        let stmts = forward_cfg_help(
+                            body,
+                            checked_entries,
+                            &next_entries,
+                            loop_exits,
+                            break_targets,
+                        )?;
                         Ok((lbl.clone(), stmts))
                     })
                     .collect::<TranslationResult<_>>()?;
@@ -437,8 +463,13 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                     &empty
                 };
 
-                let branch_ast =
-                    forward_cfg_help::<S>(branch, checked_entries, next_entries, break_targets)?;
+                let branch_ast = forward_cfg_help::<S>(
+                    branch,
+                    checked_entries,
+                    next_entries,
+                    loop_exits,
+                    break_targets,
+                )?;
 
                 if break_targets.contains(entry) {
                     eprintln!(
