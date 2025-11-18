@@ -5369,19 +5369,13 @@ impl<'c> Translation<'c> {
     }
 
     fn import_type(&self, ctype: CTypeId) {
-        for Import {
-            decl_id,
-            ident_name,
-        } in self.imports_for_type(ctype)
-        {
-            self.add_import(decl_id, &ident_name)
-        }
+        self.add_imports(&self.imports_for_type(ctype))
     }
 
-    fn imports_for_type(&self, ctype: CTypeId) -> Vec<Import> {
+    fn imports_for_type(&self, ctype: CTypeId) -> IndexSet<Import> {
         use self::CTypeKind::*;
 
-        let mut imports = vec![];
+        let mut imports = IndexSet::default();
 
         let type_kind = &self.ast_context[ctype].kind;
         match type_kind {
@@ -5407,7 +5401,7 @@ impl<'c> Translation<'c> {
             | Reference(CQualTypeId { ctype, .. })
             | BlockPointer(CQualTypeId { ctype, .. })
             | TypeOf(ctype)
-            | Complex(ctype) => imports = self.imports_for_type(*ctype),
+            | Complex(ctype) => imports.extend(self.imports_for_type(*ctype)),
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
                 let mut decl_id = *decl_id;
                 // if the `decl` has been "squashed", get the corresponding `decl_id`
@@ -5420,7 +5414,7 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .resolve_decl_name(decl_id)
                     .expect("Expected decl name");
-                imports.push(Import {
+                imports.insert(Import {
                     decl_id,
                     ident_name,
                 });
@@ -5431,7 +5425,7 @@ impl<'c> Translation<'c> {
 
                 // Rust doesn't use void for return type, so skip
                 if *type_kind != Void {
-                    imports = self.imports_for_type(*ctype);
+                    imports.extend(self.imports_for_type(*ctype));
                 }
 
                 // Param Types
