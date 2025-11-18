@@ -348,8 +348,21 @@ or email us at [c2rust@immunant.com](mailto:c2rust@immunant.com).
 > I translated code on platform X, but it didn't work correctly on platform Y.
 
 We run the C preprocessor before translation to Rust.
-This specializes the code to the host platform.
-For this reason, we do not support cross compiling translated code at the moment.
+This specializes the code to the target platform (usually the host platform).
+We do, however, support cross-architecture transpilation with a different sysroot
+(cross-OS transpilation is more difficult because
+it can be difficult to get a sysroot for the target OS).
+For example, on an `aarch64-linux-gnu` host, to cross-transpile to `x86_64-linux-gnu`,
+you can run
+
+```sh
+sudo apt install gcc-x86-64-linux-gnu # install cross-compiler, which comes with a sysroot
+c2rust transpile ${existing_args[@]} -- --target=x86_64-linux-gnu --sysroot=/usr/x86_64-linux-gnu
+```
+
+These extra args are passed to the `libclangTooling` that `c2rust-transpile` uses.
+You sometimes also need to pass extra headers, as occasionally headers are installed globally
+in the default sysroot and won't be found in the cross-compiling sysroot.
 
 > What platforms can C2Rust be run on?
 
