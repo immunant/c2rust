@@ -332,6 +332,16 @@ impl RelooperState {
                         self.add_to_scope(d);
                     }
 
+                    // Rewrite `GoTo`s that don't target our next blocks into `BreakTo`s so that
+                    // they correctly jump past the code that naturally follows the simple.
+                    for lbl in terminator.get_labels_mut() {
+                        if let StructureLabel::GoTo(label) = lbl {
+                            if !blocks.contains_key(label) {
+                                *lbl = StructureLabel::BreakTo(label.clone())
+                            }
+                        }
+                    }
+
                     result.push(Structure::Simple {
                         entries,
                         body,
