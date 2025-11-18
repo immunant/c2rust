@@ -18,7 +18,7 @@ use rustc_ast::ptr::P;
 use rustc_ast_pretty::pprust::{self, PrintState, item_to_string};
 use rustc_span::symbol::{Ident, kw};
 use rustc_data_structures::map_in_place::MapInPlace;
-use rustc_span::{BytePos, DUMMY_SP};
+use rustc_span::{BytePos, DUMMY_SP, Symbol};
 use smallvec::smallvec;
 
 use crate::ast_manip::util::{is_relative_path, join_visibility, namespace, split_uses, is_exported, is_c2rust_attr};
@@ -28,7 +28,6 @@ use crate::driver::Phase;
 use crate::{expect, match_or};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::RefactorCtxt;
-use crate::util::Lone;
 use crate::ast_builder::mk;
 
 use super::externs;
@@ -553,10 +552,19 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         let mut module_items: IndexMap<NodeId, Vec<MovedDecl>> = IndexMap::new();
         // Move named items into module_items
         idents.map(|idents| {
-            for (ident, items) in idents.into_iter() {
-                for item in items {
+            for items in idents.into_values() {
+                for (idx, mut item) in items.into_iter().enumerate() {
+                    if idx > 0 {
+                        let ident = item.ident();
+                        // Append a number suffix to this item if
+                        // there are multiple items with the same name
+                        let name = format!("{0}_{idx}", ident.name.as_str());
+                        item.ident_mut().name = Symbol::intern(&name);
+                    }
+
                     let dest_module_id = self.find_destination_id(&item);
 
+                    let ident = item.ident();
                     let dest_module_info = self.modules.get_mut(&dest_module_id).unwrap();
                     dest_module_info.items[item.namespace].insert(ident);
                     let mut path_segments = dest_module_info.path.clone();
@@ -1100,6 +1108,22 @@ impl MovedDecl {
             },
         }
     }
+
+    fn ident_mut(&mut self) -> &mut Ident {
+        match &mut self.kind {
+            DeclKind::ForeignItem(item, _) => &mut item.ident,
+            DeclKind::Item(item) => {
+                // Reborrow the item inside the P<Item> so we can
+                // sub-borrow different fields from it
+                let item = &mut **item;
+                if let ItemKind::Use(UseTree { kind: UseTreeKind::Simple(Some(rename), _, _), .. }) = &mut item.kind {
+                    rename
+                } else {
+                    &mut item.ident
+                }
+            }
+        }
+    }
 }
 
 impl ToString for MovedDecl {
@@ -1408,8 +1432,8 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             .type_ns
             .into_iter()
             .chain(unnamed_items.value_ns.into_iter())
-            .chain(idents.type_ns.into_iter().map(|(_, v)| v.lone()))
-            .chain(idents.value_ns.into_iter().map(|(_, v)| v.lone()))
+            .chain(idents.type_ns.into_values().flatten())
+            .chain(idents.value_ns.into_values().flatten())
             .collect::<Vec<_>>();
 
         all_items.sort_by(|a, b| {
