@@ -336,9 +336,7 @@ impl RelooperState {
                     // they correctly jump past the code that naturally follows the simple.
                     for lbl in terminator.get_labels_mut() {
                         if let StructureLabel::GoTo(label) = lbl {
-                            if !blocks.contains_key(label) {
-                                *lbl = StructureLabel::BreakTo(label.clone())
-                            }
+                            *lbl = StructureLabel::BreakTo(label.clone())
                         }
                     }
 
