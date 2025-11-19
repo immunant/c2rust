@@ -11,7 +11,8 @@ transpile:
   tflags: --reorganize-definitions
 
 refactor:
-  autogen: true
+  # TODO: re-enable once c2rust-refactor supports asm!
+  #autogen: true
   transforms:
     - remove_unused_labels
     - remove_literal_suffixes
