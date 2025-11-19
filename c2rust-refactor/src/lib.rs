@@ -84,7 +84,7 @@ mod context;
 
 use cargo::core::TargetKind;
 use cargo_util::paths;
-use log::{info, warn};
+use log::info;
 use rustc_ast::NodeId;
 use rustc_interface::interface;
 use std::collections::HashSet;
@@ -397,7 +397,7 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
 fn main_impl(opts: Options) -> interface::Result<()> {
     let target_args = get_rustc_arg_strings(opts.rustc_args.clone());
     if target_args.is_empty() {
-        warn!("Could not derive any rustc invocations for refactoring");
+        panic!("Could not derive any rustc invocations for refactoring");
     }
     let multiple_refactorings = target_args.len() > 1;
     for rustc_args in target_args {
