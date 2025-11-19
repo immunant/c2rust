@@ -166,11 +166,17 @@ fn transpile_all() {
     #[cfg(target_arch = "aarch64")]
     let arch = "aarch64";
 
+    let arch_os = format!("{}-{}", arch, os);
+
     insta::with_settings!({snapshot_suffix => os}, {
         insta::glob!("snapshots/os-specific/*.c", |path| transpile(Some(os), path));
     });
 
     insta::with_settings!({snapshot_suffix => arch}, {
         insta::glob!("snapshots/arch-specific/*.c", |path| transpile(Some(arch), path));
-    })
+    });
+
+    insta::with_settings!({snapshot_suffix => arch_os.as_str()}, {
+        insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile(Some(arch_os.as_str()), path));
+    });
 }
