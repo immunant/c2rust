@@ -63,9 +63,16 @@ ARTIFACT_DIR="${ARTIFACT_ROOT}/${PROJECT_NAME}"
 rm -rf "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 
+diff_idx=0
 while IFS= read -r transform; do
     [[ -z "$transform" ]] && continue
-    DIFF_FILE="$ARTIFACT_DIR/${transform}.diff"
+
+    # Print the index in 4 digit format with leading zeroes,
+    # so the indices align just like in git outputs
+    diff_idx4=$(printf "%04d" "${diff_idx}")
+    : $((diff_idx++))
+
+    DIFF_FILE="$ARTIFACT_DIR/${diff_idx4}_${transform}.diff"
 
     c2rust-refactor \
         ${transform} \
