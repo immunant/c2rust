@@ -1,6 +1,7 @@
 use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
 use rustc_ast::{Crate, Expr, ExprKind, Mutability, UnOp};
 use rustc_ast::ptr::P;
+use rustc_type_ir::sty;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::MutVisitNodes;
@@ -59,21 +60,21 @@ impl Transform for CanonicalizeRefs {
 struct RemoveUnnecessaryRefs;
 
 impl Transform for RemoveUnnecessaryRefs {
-    fn transform(&self, krate: &mut Crate, _st: &CommandState, _cx: &RefactorCtxt) {
+    fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
             match &mut expr.kind {
                 ExprKind::MethodCall(_path, args, _span) => {
                     let (receiver, rest) = args.split_first_mut().unwrap();
-                    remove_reborrow(receiver);
+                    remove_reborrow(receiver, cx);
                     remove_ref(receiver);
-                    remove_all_derefs(receiver);
+                    remove_all_derefs(receiver, cx);
                     for arg in rest {
-                        remove_reborrow(arg);
+                        remove_reborrow(arg, cx);
                     }
                 }
                 ExprKind::Call(_callee, args) => {
                     for arg in args.iter_mut() {
-                        remove_reborrow(arg);
+                        remove_reborrow(arg, cx);
                     }
                 }
                 _ => {}
@@ -93,21 +94,31 @@ fn remove_ref(expr: &mut P<Expr>) {
     }
 }
 
-fn remove_all_derefs(expr: &mut P<Expr>) {
+fn is_pointer(expr: &P<Expr>, cx: &RefactorCtxt) -> bool {
+    let ty = cx.node_type(expr.id);
+    matches!(ty.kind(), sty::TyKind::RawPtr(..))
+}
+
+fn remove_all_derefs(expr: &mut P<Expr>, cx: &RefactorCtxt) {
     match &expr.kind {
-        ExprKind::Unary(UnOp::Deref, inner) => {
+        ExprKind::Unary(UnOp::Deref, inner) if !is_pointer(inner, cx) => {
             *expr = inner.clone();
-            remove_all_derefs(expr);
+            remove_all_derefs(expr, cx);
         }
         _ => {}
     }
 }
 
-fn remove_reborrow(expr: &mut P<Expr>) {
+fn remove_reborrow(expr: &mut P<Expr>, cx: &RefactorCtxt) {
     if let ExprKind::AddrOf(_, _, ref subexpr) = expr.kind {
         if let ExprKind::Unary(UnOp::Deref, ref subexpr) = subexpr.kind {
+            if is_pointer(subexpr, cx) {
+                // &* on a pointer produces a reference, so it's not a no-op
+                return;
+            }
+
             *expr = subexpr.clone();
-            remove_reborrow(expr);
+            remove_reborrow(expr, cx);
         }
     }
 }
