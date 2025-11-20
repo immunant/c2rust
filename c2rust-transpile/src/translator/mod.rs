@@ -18,7 +18,7 @@ use syn::{
     ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
     ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
     ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
-    Stmt, Type, TypeTuple, Visibility,
+    Stmt, Type, TypeTuple, UseTree, Visibility,
 };
 use syn::{BinOp, UnOp}; // To override `c_ast::{BinOp,UnOp}` from glob import.
 
@@ -630,7 +630,7 @@ pub fn translate(
         }
 
         {
-            let convert_type = |decl_id: CDeclId, decl: &CDecl| {
+            let export_type = |decl_id: CDeclId, decl: &CDecl| {
                 let decl_file_id = t.ast_context.file_id(decl);
                 if t.tcfg.reorganize_definitions {
                     t.cur_file.set(decl_file_id);
@@ -664,6 +664,14 @@ pub fn translate(
                 if t.tcfg.reorganize_definitions
                     && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
+                    let name = t
+                        .ast_context
+                        .get_decl(&decl_id)
+                        .and_then(|x| x.kind.get_name());
+                    log::debug!(
+                        "emitting submodule imports for exported type {}",
+                        name.unwrap_or(&"unknown".to_owned())
+                    );
                     t.generate_submodule_imports(decl_id, decl_file_id);
                 }
             };
@@ -684,7 +692,7 @@ pub fn translate(
                     _ => false,
                 };
                 if needs_export {
-                    convert_type(decl_id, decl);
+                    export_type(decl_id, decl);
                 }
             }
         }
@@ -771,6 +779,7 @@ pub fn translate(
             };
 
             if t.tcfg.reorganize_definitions && decl_file_id.map_or(false, |id| id != t.main_file) {
+                log::debug!("emitting any imports needed by {:?}", decl.kind.get_name());
                 t.generate_submodule_imports(*top_id, decl_file_id);
             }
         }
@@ -870,6 +879,10 @@ pub fn translate(
 
             all_items.extend(mod_items);
 
+            // Before consuming `uses`, remove them from the uses from submodules to avoid duplicates.
+            let (_, _, mut new_uses) = new_uses.drain();
+            new_uses.remove(&uses);
+
             // This could have been merged in with items below; however, it's more idiomatic to have
             // imports near the top of the file than randomly scattered about. Also, there is probably
             // no reason to have comments associated with imports so it doesn't need to go through
@@ -877,7 +890,6 @@ pub fn translate(
             all_items.extend(uses.into_items());
 
             // Print new uses from submodules
-            let (_, _, new_uses) = new_uses.drain();
             all_items.extend(new_uses.into_items());
 
             if !foreign_items.is_empty() {
@@ -904,6 +916,43 @@ pub fn translate(
             .collect();
 
         (translation, pragmas, crates)
+    }
+}
+
+/// Represent the set of names made visible by a `use`: either a set of specific names, or a glob.
+enum IdentsOrGlob<'a> {
+    Idents(Vec<&'a Ident>),
+    Glob,
+}
+
+impl<'a> IdentsOrGlob<'a> {
+    fn join(self, other: Self) -> Self {
+        use IdentsOrGlob::*;
+        match (self, other) {
+            (Glob, _) => Glob,
+            (_, Glob) => Glob,
+            (Idents(mut own), Idents(other)) => Idents({
+                own.extend(other.into_iter());
+                own
+            }),
+        }
+    }
+}
+
+/// Extract the set of names made visible by a `use`.
+fn use_idents<'a>(i: &'a UseTree) -> IdentsOrGlob<'a> {
+    use UseTree::*;
+    match i {
+        Path(up) => use_idents(&up.tree),
+        Name(un) => IdentsOrGlob::Idents(vec![&un.ident]),
+        Rename(ur) => IdentsOrGlob::Idents(vec![&ur.rename]),
+        Glob(_ugl) => IdentsOrGlob::Glob,
+        Group(ugr) => ugr
+            .items
+            .iter()
+            .map(|tree| use_idents(tree))
+            .reduce(IdentsOrGlob::join)
+            .unwrap_or(IdentsOrGlob::Idents(vec![])),
     }
 }
 
@@ -986,6 +1035,8 @@ fn foreign_item_ident_vis(fi: &ForeignItem) -> Option<(&Ident, Visibility)> {
     })
 }
 
+/// Create a submodule containing the items in `item_store`. Populates `use_item_store` with the set
+/// of `use`s to import the submodule's exports.
 fn make_submodule(
     ast_context: &TypedAstContext,
     item_store: &mut ItemStore,
@@ -1000,13 +1051,13 @@ fn make_submodule(
         .get_file_include_line_number(file_id)
         .unwrap_or(0);
     let mod_name = clean_path(mod_names, file_path);
+    let use_path = || vec!["self".into(), mod_name.clone()];
 
     for item in items.iter() {
         let ident_name = match item_ident(item) {
             Some(i) => i.to_string(),
             None => continue,
         };
-        let use_path = vec!["self".into(), mod_name.clone()];
 
         let vis = match item_vis(item) {
             Some(Visibility::Public(_)) => mk().pub_(),
@@ -1014,7 +1065,7 @@ fn make_submodule(
             None => continue,
         };
 
-        use_item_store.add_use_with_attr(false, use_path, &ident_name, vis);
+        use_item_store.add_use_with_attr(false, use_path(), &ident_name, vis);
     }
 
     for foreign_item in foreign_items.iter() {
@@ -1022,12 +1073,45 @@ fn make_submodule(
             Some((ident, _vis)) => ident.to_string(),
             None => continue,
         };
-        let use_path = vec!["self".into(), mod_name.clone()];
 
-        use_item_store.add_use(false, use_path, &ident_name);
+        use_item_store.add_use(false, use_path(), &ident_name);
     }
 
+    // Consumers will `use` reexported items at their exported locations.
     for item in uses.into_items() {
+        if let Item::Use(ItemUse {
+            vis: Visibility::Public(_),
+            tree,
+            ..
+        }) = &*item
+        {
+            match use_idents(tree) {
+                IdentsOrGlob::Idents(idents) => {
+                    for ident in idents {
+                        fn is_simd_type_name(name: &str) -> bool {
+                            const SIMD_TYPE_NAMES: &[&str] = &[
+                                "__m128i", "__m128", "__m128d", "__m64", "__m256", "__m256d",
+                                "__m256i",
+                            ];
+                            SIMD_TYPE_NAMES.contains(&name) || name.starts_with("_mm_")
+                        }
+                        let name = &*ident.to_string();
+                        if is_simd_type_name(name) {
+                            // Import vector type/operation names from the stdlib, as we also generate
+                            // other uses for them from that location and can't easily reason about
+                            // the ultimate target of reexported names when avoiding duplicate imports
+                            // (which are verboten).
+                            simd::add_arch_use(use_item_store, "x86", name);
+                            simd::add_arch_use(use_item_store, "x86_64", name);
+                        } else {
+                            // Add a `use` for `self::this_module::exported_name`.
+                            use_item_store.add_use(false, use_path(), name);
+                        }
+                    }
+                }
+                IdentsOrGlob::Glob => {}
+            }
+        }
         items.push(item);
     }
 
