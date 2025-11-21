@@ -402,6 +402,9 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 // a checked multiple in that case?
                 let label = if break_targets.contains(label) {
                     Some(label.clone())
+                } else if let Some(target) = break_targets.intersection(&next_entries).next().cloned() {
+                    break_targets.remove(&target);
+                    Some(target)
                 } else {
                     None
                 };
