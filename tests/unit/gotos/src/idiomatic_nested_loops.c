@@ -11,6 +11,7 @@ int nested_loop(int x) {
         while (x < 5) {
             x++;
         }
+        x++;
     }
 
     return x;
@@ -25,7 +26,9 @@ int break_multiple(int x) {
                     goto break_outer;
                 x++;
             }
+            x++;
         }
+        x++;
     }
 
 break_outer:
