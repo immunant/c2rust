@@ -790,8 +790,7 @@ fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
     T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
-    let printed = add_comments(new.to_string(), new, &rcx);
-    let mut printed = printed;
+    let mut printed = add_comments(new.to_string(), new, &rcx);
     if printed.trim().is_empty() {
         // When the statement wrapper has DUMMY_SP the pretty printer outputs nothing even though the
         // original source had a full `let`. Pull the old snippet (which still contains the attrs/body)
