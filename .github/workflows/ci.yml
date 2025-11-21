@@ -43,6 +43,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-workspace-crates: true
+          # Add the runner name to the cache key because we have
+          # multiple Linux runners with different versions of the
+          # system libraries and we do not want to mix them up.
+          key: "${{ matrix.runner }}"
 
       # Run after `rust-cache` so that this is cached.
       - name: Install Rust toolchains
