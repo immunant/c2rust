@@ -12,7 +12,7 @@ transpile:
 
 refactor:
   # TODO: re-enable once c2rust-refactor supports asm!
-  #autogen: true
+  # autogen: true
   transforms:
     - rename_unnamed
     - reorganize_definitions

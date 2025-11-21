@@ -11,7 +11,7 @@ transpile:
   autogen: true
   tflags: --reorganize-definitions --disable-refactoring
   binary: ruby
-#  cflags: "-O0"
+  # cflags: "-O0"
 
 refactor:
   autogen: true
