@@ -121,7 +121,9 @@ jobs:
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
-        ./testsuite/test.py curl json-c lua nginx zstd libxml2 python2
+        # Needs to be run from `testsuite/` (or further inside)
+        # to correctly load the `pyproject.toml`.
+        (cd testsuite && ./test.py curl json-c lua nginx zstd libxml2 python2)
 
     - uses: actions/upload-artifact@v4
       with:
