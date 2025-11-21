@@ -329,9 +329,19 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                                 S::empty()
                             };
 
+                            // If we can get where we're going with an unlabeled `break`, prefer
+                            // that over using a labeled `continue`. This helps us to reconstruct
+                            // `while` loops in more cases, since generating a `while` requires the
+                            // AST to be structured like `loop { if { break; } }`.
+                            //
                             // TODO: Is it correct to test `loop_label` here? Should we be testing
-                            // `target` instead? `loop_label` seems reasonable since that's the label the loop has to have in code but also idk whatever.
-                            if !next_entries.contains(loop_label) {
+                            // `target` instead? `loop_label` seems reasonable since that's the
+                            // label the loop has to have in code but also idk whatever.
+                            if loop_exits.contains(loop_label) {
+                                // TODO: Uuuuhhhhhhhhhhh is this correct in all cases? This is what
+                                // we wanna do if we're inside a nested loop, but what if we're not?
+                                new_ast = S::mk_append(new_ast, S::mk_exit(ExitStyle::Break, None));
+                            } else if !next_entries.contains(loop_label) {
                                 new_ast = S::mk_append(
                                     new_ast,
                                     S::mk_exit(ExitStyle::Continue, Some(loop_label.clone())),
