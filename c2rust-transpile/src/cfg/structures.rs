@@ -403,6 +403,8 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let label = if break_targets.contains(label) {
                     Some(label.clone())
                 } else if let Some(target) = break_targets.intersection(&next_entries).next().cloned() {
+                    // NOTE: Remove the label from the set of break targets so that we don't
+                    // generate an extra block for it.
                     break_targets.remove(&target);
                     Some(target)
                 } else {
