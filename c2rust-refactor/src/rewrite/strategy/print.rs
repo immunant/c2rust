@@ -252,7 +252,24 @@ impl Splice for Ty {
 
 impl Splice for Stmt {
     fn splice_span(&self) -> Span {
-        self.span
+        // Extend statement span to include attributes on the inner node.
+        //
+        // Transforms like sink_lets set stmt.span = local.span, but attributes are
+        // stored on the inner Local/Item/Expr, not the Stmt wrapper. The pretty-printer
+        // outputs attributes, but if stmt.span doesn't cover them, the rewrite system
+        // can't extract the complete source text.
+        //
+        // extend_span_attrs() expands the span backward to include attributes that
+        // appear before the node in source, checking syntax contexts to avoid crossing
+        // macro boundaries.
+        let attrs = match &self.kind {
+            StmtKind::Local(local) => &local.attrs[..],
+            StmtKind::Item(item) => &item.attrs[..],
+            StmtKind::Expr(expr) | StmtKind::Semi(expr) => &expr.attrs[..],
+            StmtKind::MacCall(mac) => &mac.attrs[..],
+            StmtKind::Empty => &[],
+        };
+        extend_span_attrs(self.span, attrs)
     }
 }
 
@@ -674,7 +691,29 @@ fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
     T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
-    let printed = add_comments(new.to_string(), new, &rcx);
+    let mut printed = add_comments(new.to_string(), new, &rcx);
+
+    // Fallback: extract source snippet when pretty-printing produces empty output.
+    //
+    // When transforms move macro-expanded code (e.g., from #[derive]), the span may
+    // point to generated code with no source file location. Pretty-printing such nodes
+    // can produce empty output, which causes problems during the reparse/recovery phase.
+    //
+    // If the printed text is empty, try extracting the source directly using
+    // splice_span() (which includes attributes). If source is available, use that
+    // for reparsing instead of the empty pretty-printed text.
+    if printed.trim().is_empty() {
+        if let Ok(snippet) = rcx
+            .session()
+            .source_map()
+            .span_to_snippet(new.splice_span())
+        {
+            if !snippet.trim().is_empty() {
+                printed = snippet;
+            }
+        }
+    }
+
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
