@@ -50,6 +50,8 @@ jobs:
 
     - uses: astral-sh/setup-uv@v6
 
+    - run: uv python install
+
     - name: Install Python Packages
       run: |
         uv tool install scan-build # for `intercept-build`
