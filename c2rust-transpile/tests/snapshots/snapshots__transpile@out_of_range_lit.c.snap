@@ -1,0 +1,22 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/out_of_range_lit.rs
+input_file: c2rust-transpile/tests/snapshots/out_of_range_lit.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+pub type __int32_t = i32;
+pub type int32_t = __int32_t;
+#[no_mangle]
+pub unsafe extern "C" fn f() {
+    let mut a: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;
+    let mut b: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;
+    let mut c: int32_t = 0x8000000000000000 as ::core::ffi::c_ulong as int32_t;
+    let mut d: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;
+}
