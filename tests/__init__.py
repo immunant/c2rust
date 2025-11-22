@@ -53,7 +53,6 @@ class Test(object):
                     nocolor=Colors.NO_COLOR)
                 )
 
-        prev_dir = os.getcwd()
         script_path = os.path.join(self.dir, script)
 
         if not os.path.isfile(script_path):
@@ -73,7 +72,7 @@ class Test(object):
             return False
 
         if not verbose:
-            relpath = os.path.relpath(script_path, prev_dir)
+            relpath = os.path.relpath(script_path, os.getcwd())
             line = "{blue}{name}{nc}: {stage}({script})".format(
                 blue=Colors.OKBLUE,
                 name=self.name,
@@ -108,14 +107,15 @@ class Test(object):
 
         # noinspection PyBroadException
         try:
-            os.chdir(self.dir)
             if verbose:
-                subprocess.check_call(args=[script_path])
+                subprocess.check_call(cwd=self.dir, args=[script_path])
             else:
                 subprocess.check_call(
+                    cwd=self.dir,
                     args=[script_path],
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
+                    stderr=subprocess.DEVNULL,
+                )
 
                 fill = (75 - len(line)) * "."
                 color = Colors.WARNING if xfail else Colors.OKGREEN
@@ -140,7 +140,6 @@ class Test(object):
                 )
                 print_log_tail_on_fail(script_path)
         finally:
-            os.chdir(prev_dir)
             return success
 
     def ensure_submodule_checkout(self):
