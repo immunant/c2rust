@@ -664,6 +664,17 @@ impl Builder {
         )))
     }
 
+    /// A convenience function for calling multiple methods in a chain.
+    pub fn method_chain_expr(
+        self,
+        expr: Box<Expr>,
+        calls: Vec<(PathSegment, Vec<Box<Expr>>)>,
+    ) -> Box<Expr> {
+        calls.into_iter().fold(expr, |expr, (seg, args)| {
+            mk().method_call_expr(expr, seg, args)
+        })
+    }
+
     pub fn tuple_expr(self, exprs: Vec<Box<Expr>>) -> Box<Expr> {
         Box::new(Expr::Tuple(ExprTuple {
             attrs: self.attrs,
@@ -2088,17 +2099,11 @@ impl Builder {
         self,
         capture: CaptureBy,
         mov: Movability,
-        decl: FnDecl,
+        inputs: Vec<Pat>,
+        output: ReturnType,
         body: Box<Expr>,
     ) -> Box<Expr> {
-        let (_name, inputs, _variadic, output) = decl;
-        let inputs = inputs
-            .into_iter()
-            .map(|e| match e {
-                FnArg::Receiver(_s) => panic!("found 'self' in closure arguments"),
-                FnArg::Typed(PatType { pat, .. }) => *pat,
-            })
-            .collect();
+        let inputs = inputs.into_iter().collect();
         let capture = match capture {
             CaptureBy::Ref => None,
             CaptureBy::Value => Some(Default::default()),
