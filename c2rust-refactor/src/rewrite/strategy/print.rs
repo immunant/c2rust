@@ -252,24 +252,7 @@ impl Splice for Ty {
 
 impl Splice for Stmt {
     fn splice_span(&self) -> Span {
-        // Extend statement span to include attributes on the inner node.
-        //
-        // Transforms like sink_lets set stmt.span = local.span, but attributes are
-        // stored on the inner Local/Item/Expr, not the Stmt wrapper. The pretty-printer
-        // outputs attributes, but if stmt.span doesn't cover them, the rewrite system
-        // can't extract the complete source text.
-        //
-        // extend_span_attrs() expands the span backward to include attributes that
-        // appear before the node in source, checking syntax contexts to avoid crossing
-        // macro boundaries.
-        let attrs = match &self.kind {
-            StmtKind::Local(local) => &local.attrs[..],
-            StmtKind::Item(item) => &item.attrs[..],
-            StmtKind::Expr(expr) | StmtKind::Semi(expr) => &expr.attrs[..],
-            StmtKind::MacCall(mac) => &mac.attrs[..],
-            StmtKind::Empty => &[],
-        };
-        extend_span_attrs(self.span, attrs)
+        self.span
     }
 }
 
@@ -695,13 +678,15 @@ where
 
     // Fallback: extract source snippet when pretty-printing produces empty output.
     //
-    // When transforms move macro-expanded code (e.g., from #[derive]), the span may
-    // point to generated code with no source file location. Pretty-printing such nodes
-    // can produce empty output, which causes problems during the reparse/recovery phase.
+    // The rustc pretty-printer (pprust) produces empty output for AST nodes with
+    // DUMMY_NODE_ID. This commonly occurs when transforms like sink_lets create new
+    // statement wrappers with DUMMY_NODE_ID to distinguish transformed nodes from
+    // originals (see vars.rs:79). Without this fallback, empty pretty-printer output
+    // causes parsing failures (0 statements instead of 1), crashing the rewrite system.
     //
-    // If the printed text is empty, try extracting the source directly using
-    // splice_span() (which includes attributes). If source is available, use that
-    // for reparsing instead of the empty pretty-printed text.
+    // The fallback extracts source text directly from the node's span using
+    // span_to_snippet(). This requires that statements have valid spans set, which
+    // is why both span preservation and this fallback mechanism are necessary.
     if printed.trim().is_empty() {
         if let Ok(snippet) = rcx
             .session()
