@@ -10,6 +10,8 @@
 **/tests/
 /build
 *.pyc
+**/__pycache__
+*.egg-info/
 .vagrant
 **/compile_commands.json
 .python-version
