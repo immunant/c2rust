@@ -678,15 +678,11 @@ where
 
     // Fallback: extract source snippet when pretty-printing produces empty output.
     //
-    // The rustc pretty-printer (pprust) produces empty output for AST nodes with
-    // DUMMY_NODE_ID. This commonly occurs when transforms like sink_lets create new
-    // statement wrappers with DUMMY_NODE_ID to distinguish transformed nodes from
-    // originals (see vars.rs:79). Without this fallback, empty pretty-printer output
-    // causes parsing failures (0 statements instead of 1), crashing the rewrite system.
-    //
-    // The fallback extracts source text directly from the node's span using
-    // span_to_snippet(). This requires that statements have valid spans set, which
-    // is why both span preservation and this fallback mechanism are necessary.
+    // pprust can emit "" for Local statements whose inner Local has DUMMY_NODE_ID
+    // (sink_lets sets that intentionally). Reparse of "" yields 0 statements and
+    // hits the lone() assertion. The fallback replaces the empty string with the
+    // original source via span_to_snippet(), assuming the statement carries a real
+    // span (set in vars.rs).
     if printed.trim().is_empty() {
         if let Ok(snippet) = rcx
             .session()
