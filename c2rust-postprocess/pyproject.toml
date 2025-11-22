@@ -1,0 +1,57 @@
+[project]
+name = "postprocess"
+version = "0.1.0"
+description = "c2rust-postprocess"
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai",
+    "jq>=1.10.0",
+    "openai>=2.9.0",
+    "pygments>=2.19.2",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-rust>=0.24.0",
+]
+
+[project.scripts]
+postproc = "postprocess.__main__:main" # CLI entry point
+
+[tool.uv]
+# let `uv` to manage the environment
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+    "ruff>=0.14.6",
+]
+
+# lets us run tests as `uv run pytest`
+[tool.pytest.ini_options]
+minversion = "6.0"
+# strict-markers: raises error on unregistered markers (catch typos)
+addopts = "--strict-markers"
+# Only search for tests in the 'tests' folder
+testpaths = ["tests"]
+# Add current directory to pythonpath so 'postprocess' is importable
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors (standard formatting)
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes (finds unused imports, variables, etc.)
+    "I",   # isort (sorts your imports automatically)
+    "B",   # flake8-bugbear (catches common bugs/pitfalls)
+    "UP",  # pyupgrade (rewrites old syntax to new Python 3.12 syntax)
+    "SIM", # flake8-simplify (suggests simplifying complex logic)
+    "N",   # pep8-naming (ensures variables use snake_case, classes use CamelCase)
+]
+
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["postprocess"]
