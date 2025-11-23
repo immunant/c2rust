@@ -1,8 +1,11 @@
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import timedelta
 import os
 import sys
 import subprocess
+from time import perf_counter
 from typing import List  # , Set, Dict, Tuple, Optional
 
 from tests.util import *
@@ -200,18 +203,31 @@ class Test(object):
         return True
 
 
+@dataclass
+class TestResult:
+    test: Test
+    passed: bool
+    time: timedelta
+
+
 def run_tests(conf: Config):
     if not conf.ignore_requirements:
         check(conf)
 
     tests = [Test(td) for td in conf.project_dirs]
 
-    def run(tt: Test) -> tuple[Test, bool]:
-        return tt, tt.run(conf)
+    def run(test: Test) -> TestResult:
+        start = perf_counter()
+        passed = test.run(conf)
+        end = perf_counter()
+        time = timedelta(seconds=end - start)
+        return TestResult(test=test, passed=passed, time=time)
 
     with ThreadPoolExecutor() as executor:
         results = executor.map(run, tests)
 
-    if not all(result[1] for result in results):
-        print(f"projects failed: {" ".join(result[0].name for result in results)}")
+    for result in results:
+        print(f"{result.test.name} took {result.time}")
+    if not all(result.passed for result in results):
+        print(f"projects failed: {" ".join(result.test.name for result in results)}")
         exit(1)
