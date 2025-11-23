@@ -125,20 +125,14 @@ class Test(object):
             return True
         except KeyboardInterrupt:
             if not verbose:
-                print("{line}: {color}INTERRUPT{nocolor}".format(
-                    color=Colors.WARNING,
-                    nocolor=Colors.NO_COLOR)
-                )
+                print(f"{line}: {Colors.WARNING}INTERRUPT{Colors.NO_COLOR}")
             exit(1)
         except Exception:  # noqa
             if not verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
-                print("{line}{fill} {color}{outcome}{nocolor}".format(
-                    fill=(75 - len(line)) * ".",
-                    color=Colors.OKBLUE if xfail else Colors.FAIL,
-                    outcome=outcome,
-                    nocolor=Colors.NO_COLOR)
-                )
+                fill = (75 - len(line)) * "."
+                color = Colors.OKBLUE if xfail else Colors.FAIL
+                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
                 print_log_tail_on_fail(script_path)
             return False
 
