@@ -215,11 +215,12 @@ def run_tests(conf: Config):
 
     tests = [Test(td) for td in conf.project_dirs]
 
-    def run(tt: Test) -> bool:
-        return tt.run(conf)
+    def run(tt: Test) -> tuple[Test, bool]:
+        return tt, tt.run(conf)
 
     with ThreadPoolExecutor() as executor:
         results = executor.map(run, tests)
 
-    if not all(results):
+    if not all(result[1] for result in results):
+        print(f"projects failed: {" ".join(result[0].name for result in results)}")
         exit(1)
