@@ -200,6 +200,7 @@ class Test(object):
                     xfail = self.is_stage_xfail(stage, script, conf)
                     cont = self.run_script(stage, script, conf.verbose, xfail)
                     if not cont:
+                        print(f"{self.name} failed on stage {stage}")
                         return xfail
                     break  # found script for stage; skip alternatives
         return True
