@@ -299,6 +299,39 @@ impl TypedAstContext {
         }
     }
 
+    /// Construct a map from top-level decls in the main file to their source ranges.
+    pub fn top_decl_locs(&self) -> IndexMap<CDeclId, (SrcLoc, SrcLoc)> {
+        let mut name_loc_map = IndexMap::new();
+        let mut prev_end_loc = SrcLoc {
+            fileid: 0,
+            line: 0,
+            column: 0,
+        };
+        for (decl_id, decl) in &self.c_decls {
+            let begin_loc: SrcLoc = decl.begin_loc().expect("no begin loc for top-level decl");
+            let end_loc: SrcLoc = decl.end_loc().expect("no end loc for top-level decl");
+
+            // If encountering a new file, reset end of last top-level decl.
+            if prev_end_loc.fileid != begin_loc.fileid {
+                prev_end_loc = SrcLoc {
+                    fileid: begin_loc.fileid,
+                    line: 1,
+                    column: 1,
+                }
+            }
+
+            // Include only decls from the main file.
+            if self.c_decls_top.contains(decl_id)
+                && self.get_source_path(decl) == Some(&self.main_file)
+            {
+                let entry = (prev_end_loc, end_loc);
+                name_loc_map.insert(*decl_id, entry);
+            }
+            prev_end_loc = end_loc;
+        }
+        name_loc_map
+    }
+
     pub fn iter_decls(&self) -> indexmap::map::Iter<'_, CDeclId, CDecl> {
         self.c_decls.iter()
     }

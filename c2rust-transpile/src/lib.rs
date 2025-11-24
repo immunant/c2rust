@@ -72,6 +72,7 @@ pub struct TranspilerConfig {
     pub dump_structures: bool,
     pub verbose: bool,
     pub debug_ast_exporter: bool,
+    pub emit_c_decl_map: bool,
 
     // Options that control translation
     pub incremental_relooper: bool,
@@ -599,8 +600,29 @@ fn transpile_single(
     }
 
     // Perform the translation
-    let (translated_string, pragmas, crates) =
+    let (translated_string, maybe_decl_map, pragmas, crates) =
         translator::translate(typed_context, tcfg, input_path);
+
+    if let Some(decl_map) = maybe_decl_map {
+        let decl_map_path = output_path.with_extension("c_decls.json");
+        let file = match File::create(&decl_map_path) {
+            Ok(file) => file,
+            Err(e) => panic!(
+                "Unable to open file {} for writing: {}",
+                output_path.display(),
+                e
+            ),
+        };
+
+        match serde_json::ser::to_writer(file, &decl_map) {
+            Ok(()) => (),
+            Err(e) => panic!(
+                "Unable to write C declaration map to file {}: {}",
+                output_path.display(),
+                e
+            ),
+        };
+    }
 
     let mut file = match File::create(&output_path) {
         Ok(file) => file,
