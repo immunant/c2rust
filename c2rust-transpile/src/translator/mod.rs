@@ -9,6 +9,7 @@ use dtoa;
 use failure::{err_msg, format_err, Fail};
 use indexmap::indexmap;
 use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools;
 use log::{error, info, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
@@ -454,11 +455,13 @@ pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
     }
 }
 
+type DeclMap = IndexMap<String, String>;
+
 pub fn translate(
     ast_context: TypedAstContext,
     tcfg: &TranspilerConfig,
     main_file: &Path,
-) -> (String, PragmaVec, CrateSet) {
+) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
@@ -473,6 +476,10 @@ pub fn translate(
 
     {
         t.locate_comments();
+
+        // Compute source ranges of top decls before pruning any, because pruned
+        // decls may help inform the ranges of kept ones.
+        let decl_source_ranges = t.ast_context.top_decl_locs();
 
         // Headers often pull in declarations that are unused;
         // we simplify the translator output by omitting those.
@@ -723,6 +730,83 @@ pub fn translate(
             })
             .collect::<HashMap<_, _>>();
 
+        // Generate a map from Rust items to the source code of their C declarations.
+        let decl_map = if tcfg.emit_c_decl_map {
+            let mut path_to_c_source_range: HashMap<&Ident, (SrcLoc, SrcLoc)> = Default::default();
+            for (decl, source_range) in decl_source_ranges {
+                match converted_decls.get(&decl) {
+                    Some(ConvertedDecl::ForeignItem(item)) => {
+                        path_to_c_source_range
+                            .insert(foreign_item_ident_vis(&*item).unwrap().0, source_range);
+                    }
+                    Some(ConvertedDecl::Item(item)) => {
+                        path_to_c_source_range.insert(item_ident(&*item).unwrap(), source_range);
+                    }
+                    Some(ConvertedDecl::Items(items)) => {
+                        for item in items {
+                            path_to_c_source_range
+                                .insert(item_ident(&*item).unwrap(), source_range);
+                        }
+                    }
+                    Some(ConvertedDecl::NoItem) => {}
+                    None => log::warn!(
+                        "no converted form to add to C decl map for top-level decl {decl:?}: {:?}!",
+                        t.ast_context.get_decl(&decl)
+                    ),
+                }
+            }
+
+            let file_content =
+                std::fs::read(&t.ast_context.get_file_path(t.main_file).unwrap()).unwrap();
+            let line_end_offsets = //memchr::memchr_iter(file_content, '\n')
+                file_content.iter().positions(|c| *c == b'\n')
+                .collect::<Vec<_>>();
+
+            /// Convert a source location line/column into a byte offset, given the positions of each newline in the file.
+            fn src_loc_to_byte_offset(line_end_offsets: &[usize], loc: SrcLoc) -> usize {
+                let line_offset = line_end_offsets
+                    .get(loc.line as usize - 2) // end of the previous line; for line < 1, index out of bounds
+                    .map(|x| x + 1) // increment end of the prev line to find start of this one
+                    .unwrap_or(0); // if we indexed out of bounds, start at byte 0
+                line_offset + (loc.column as usize).saturating_sub(1)
+            }
+
+            // Slice into the source file, fixing up the ends to account for Clang AST quirks.
+            let slice_decl_with_fixups = |begin, end| -> &[u8] {
+                let mut begin_offset = src_loc_to_byte_offset(&line_end_offsets, begin);
+                let mut end_offset = src_loc_to_byte_offset(&line_end_offsets, end);
+                const VT: u8 = 11;
+                // Skip whitespace and any trailing semicolons after the previous decl.
+                while let Some(b'\t' | b'\n' | &VT | b'\r' | b' ' | b';') =
+                    file_content.get(begin_offset)
+                {
+                    begin_offset += 1;
+                }
+
+                // Extend to include a single trailing semicolon if this decl is not a block
+                // (e.g., a variable declaration).
+                if file_content.get(end_offset - 1) != Some(&b'}')
+                    && file_content.get(end_offset) == Some(&b';')
+                {
+                    end_offset += 1;
+                }
+
+                &file_content[begin_offset..end_offset]
+            };
+
+            let item_path_to_c_source: IndexMap<_, _> = path_to_c_source_range
+                .into_iter()
+                .map(|(ident, (begin, end))| {
+                    let path = ident.to_string();
+                    let c_src = std::str::from_utf8(slice_decl_with_fixups(begin, end)).unwrap();
+                    (path, c_src.to_owned())
+                })
+                .collect();
+            Some(item_path_to_c_source)
+        } else {
+            None
+        };
+
         t.ast_context.sort_top_decls_for_emitting();
 
         for top_id in &t.ast_context.c_decls_top {
@@ -887,7 +971,7 @@ pub fn translate(
             .copied()
             .collect();
 
-        (translation, pragmas, crates)
+        (translation, decl_map, pragmas, crates)
     }
 }
 
