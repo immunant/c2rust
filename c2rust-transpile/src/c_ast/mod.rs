@@ -2185,7 +2185,11 @@ impl CTypeKind {
     }
 
     /// Whether `value` is guaranteed to be in this integer type's range.
-    /// Thus, minimum ranges are used (e.x. [`i16::MIN`] for [`Self::Int`]).
+    /// Thus, the narrowest possible range is used.
+    ///
+    /// For example, for [`Self::Long`], [`i32`]'s range is used,
+    /// as on Linux and macOS (LP64), it's an [`i64`],
+    /// but on Windows (LLP64), it's only an [`i32`].
     pub fn guaranteed_integer_in_range(&self, value: u64) -> bool {
         fn in_range<T: TryFrom<u64>>(value: u64) -> bool {
             T::try_from(value).is_ok()
@@ -2273,6 +2277,8 @@ impl CTypeKind {
         }
     }
 
+    /// See [`Self::guaranteed_integer_in_range`].
+    /// This is the same, but for floats.
     pub fn guaranteed_float_in_range(&self, value: f64) -> bool {
         fn in_range<T: TryFrom<f64>>(value: f64) -> bool {
             T::try_from(value).is_ok()
