@@ -1,0 +1,13 @@
+transpile:
+  autogen: true
+
+refactor:
+  autogen: true
+  transforms:
+    - remove_unused_labels
+
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
+  autogen: true

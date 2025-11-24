@@ -42,3 +42,6 @@
 	path = tests/snudown/repo
 	url = https://github.com/reddit/snudown.git
 	ignore = all
+[submodule "tests/libmcs/repo"]
+	path = tests/libmcs/repo
+	url = https://gitlab.com/gtd-gmbh/libmcs
