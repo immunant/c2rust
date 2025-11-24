@@ -2202,7 +2202,8 @@ impl CTypeKind {
         match *self {
             Void => false,
 
-            Bool => (0..=1).contains(&value),
+            // Kind of an integer type, but would definitely need an explicit cast.
+            Bool => false,
 
             // Can be signed or unsigned, so choose the minimum range of each.
             Char => (u8::MIN as u64..=i8::MAX as u64).contains(&value),
