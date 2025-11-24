@@ -1,13 +1,24 @@
 use std::collections::HashMap;
-use std::env;
 use std::fs::{self, File};
+use std::path::PathBuf;
 use rust_util::collect::FileCollector;
 use rust_util::item_span::item_spans;
 use serde_json;
+use clap::Parser;
+
+#[derive(Parser)]
+/// Merge updated item definitions into a Rust codebase.
+struct Args {
+    /// Root Rust source file to update (`lib.rs` or `main.rs`).
+    src_root_path: PathBuf,
+    /// JSON file containing mapping from Rust item paths to desired new contents.
+    new_snippets_file: PathBuf,
+}
 
 fn main() {
-    let src_root_path = env::args().nth(1).unwrap();
-    let new_snippet_json_path = env::args().nth(2).unwrap();
+    let args = Args::parse();
+    let src_root_path = args.src_root_path;
+    let new_snippet_json_path = args.new_snippets_file;
 
     let new_snippets_file = File::open(&new_snippet_json_path).unwrap();
     let new_snippets: HashMap<String, String> =
