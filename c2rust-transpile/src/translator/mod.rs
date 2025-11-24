@@ -3699,7 +3699,7 @@ impl<'c> Translation<'c> {
                     if let (Some(ty), CExprKind::Literal(_ty, lit)) =
                         (override_ty, &self.ast_context[expr].kind)
                     {
-                        if self.literal_kind_matches_ty(lit, ty) {
+                        if self.literal_matches_ty(lit, ty) {
                             return self.convert_expr(ctx, expr, override_ty);
                         }
                     }

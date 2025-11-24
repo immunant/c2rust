@@ -2183,6 +2183,190 @@ impl CTypeKind {
             _ => unimplemented!("Printer::print_type({:?})", self),
         }
     }
+
+    /// Whether `value` is guaranteed to be in this integer type's range.
+    /// Thus, the narrowest possible range is used.
+    ///
+    /// For example, for [`Self::Long`], [`i32`]'s range is used,
+    /// as on Linux and macOS (LP64), it's an [`i64`],
+    /// but on Windows (LLP64), it's only an [`i32`].
+    ///
+    /// This should only be called on integer types.
+    /// Other types will return `false`.
+    pub fn guaranteed_integer_in_range(&self, value: u64) -> bool {
+        fn in_range<T: TryFrom<u64>>(value: u64) -> bool {
+            T::try_from(value).is_ok()
+        }
+
+        use CTypeKind::*;
+        match *self {
+            Void => false,
+
+            // Kind of an integer type, but would definitely need an explicit cast.
+            Bool => false,
+
+            // Can be signed or unsigned, so choose the minimum range of each.
+            Char => (u8::MIN as u64..=i8::MAX as u64).contains(&value),
+            WChar => in_range::<i32>(value),
+
+            // `int` is at least `i16` and `long` is at least `i32`.
+            SChar => in_range::<i8>(value),
+            Short => in_range::<i16>(value),
+            Int => in_range::<i16>(value),
+            Long => in_range::<i32>(value),
+            LongLong => in_range::<i64>(value),
+
+            // `unsigned int` is at least `u16` and `unsigned long` is at least `u32`.
+            UChar => in_range::<u8>(value),
+            UShort => in_range::<u16>(value),
+            UInt => in_range::<u16>(value),
+            ULong => in_range::<u32>(value),
+            ULongLong => in_range::<u64>(value),
+
+            Int8 => in_range::<i8>(value),
+            Int16 => in_range::<i16>(value),
+            Int32 => in_range::<i32>(value),
+            Int64 => in_range::<i64>(value),
+            Int128 => in_range::<i128>(value),
+
+            UInt8 => in_range::<u8>(value),
+            UInt16 => in_range::<u16>(value),
+            UInt32 => in_range::<u32>(value),
+            UInt64 => in_range::<u64>(value),
+            UInt128 => in_range::<u128>(value),
+
+            // There's no guarantee on pointer size, but `NULL` should work.
+            IntPtr => value == 0,
+            UIntPtr => value == 0,
+
+            IntMax => in_range::<i64>(value),
+            UIntMax => in_range::<u64>(value),
+
+            // `size_t` is at least a `u16`, and similar for `ssize_t` and `ptrdiff_t`.
+            Size => in_range::<u16>(value),
+            SSize => in_range::<i16>(value),
+            PtrDiff => in_range::<i16>(value),
+
+            // Floats, see `Self::guaranteed_float_in_range`.
+            Float => false,
+            Double => false,
+            LongDouble => false,
+            Half => false,
+            BFloat16 => false,
+            Float128 => false,
+
+            // Non-scalars.
+            Complex(_) => false,
+            Pointer(_) => false,
+            Reference(_) => false,
+            ConstantArray(_, _) => false,
+            IncompleteArray(_) => false,
+            VariableArray(_, _) => false,
+            TypeOf(_) => false,
+            TypeOfExpr(_) => false,
+            Function(_, _, _, _, _) => false,
+            Typedef(_) => false,
+            Decayed(_) => false,
+            Elaborated(_) => false,
+            Paren(_) => false,
+            Struct(_) => false,
+            Union(_) => false,
+            Enum(_) => false,
+            BuiltinFn => false,
+            Attributed(_, _) => false,
+            BlockPointer(_) => false,
+            Vector(_, _) => false,
+            UnhandledSveType => false,
+            Atomic(_) => false,
+        }
+    }
+
+    /// See [`Self::guaranteed_integer_in_range`].
+    /// This is the same, but for floats.
+    ///
+    /// This should only be called on float types.
+    /// Other types will return `false`.
+    pub fn guaranteed_float_in_range(&self, value: f64) -> bool {
+        fn in_range<T: TryFrom<f64>>(value: f64) -> bool {
+            T::try_from(value).is_ok()
+        }
+
+        use CTypeKind::*;
+        match *self {
+            // `f32: TryFrom<f64>` is not implemented.
+            // C `float`s are not guaranteed to be `f32`,
+            // but Rust (namely `libc`) doesn't support any platform where this isn't the case.
+            Float => value >= f32::MIN as f64 && value <= f32::MAX as f64,
+
+            // Similarly to `float`, `double` is not guaranteed to be `f64`,
+            // but `libc` doesn't support any platform where this isn't the case.
+            Double => in_range::<f64>(value),
+
+            // `long double` (not `f128`) is only guaranteed to be at least as precise as a `double`.
+            LongDouble => in_range::<f64>(value),
+
+            // All `f64`s are valid `f128`s.
+            Float128 => in_range::<f64>(value),
+
+            // TODO Would like to depend on `half`.
+            Half => todo!("f16 range"),
+            BFloat16 => todo!("bf16 range"),
+
+            Void => false,
+            Bool => false,
+            Char => false,
+            SChar => false,
+            Short => false,
+            Int => false,
+            Long => false,
+            LongLong => false,
+            UChar => false,
+            UShort => false,
+            UInt => false,
+            ULong => false,
+            ULongLong => false,
+            Int128 => false,
+            UInt128 => false,
+            Complex(_) => false,
+            Pointer(_) => false,
+            Reference(_) => false,
+            ConstantArray(_, _) => false,
+            IncompleteArray(_) => false,
+            VariableArray(_, _) => false,
+            TypeOf(_) => false,
+            TypeOfExpr(_) => false,
+            Function(_, _, _, _, _) => false,
+            Typedef(_) => false,
+            Decayed(_) => false,
+            Elaborated(_) => false,
+            Paren(_) => false,
+            Struct(_) => false,
+            Union(_) => false,
+            Enum(_) => false,
+            BuiltinFn => false,
+            Attributed(_, _) => false,
+            BlockPointer(_) => false,
+            Vector(_, _) => false,
+            UnhandledSveType => false,
+            Atomic(_) => false,
+            Int8 => false,
+            Int16 => false,
+            Int32 => false,
+            Int64 => false,
+            IntPtr => false,
+            UInt8 => false,
+            UInt16 => false,
+            UInt32 => false,
+            UInt64 => false,
+            UIntPtr => false,
+            IntMax => false,
+            UIntMax => false,
+            Size => false,
+            SSize => false,
+            PtrDiff => false,
+            WChar => false,
+        }
+    }
 }
 
 impl Display for CTypeKind {
@@ -2286,7 +2470,7 @@ impl CTypeKind {
 
     pub fn is_floating_type(&self) -> bool {
         use CTypeKind::*;
-        matches!(self, Float | Double | LongDouble)
+        matches!(self, Float | Double | LongDouble | Half | BFloat16)
     }
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
