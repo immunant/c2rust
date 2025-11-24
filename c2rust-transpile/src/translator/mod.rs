@@ -3957,7 +3957,15 @@ impl<'c> Translation<'c> {
                                 };
 
                             let mul = self.compute_size_of_expr(pointee_type_id.ctype);
-                            Ok(pointer_offset(lhs, rhs, mul, false, true))
+                            let mut val = pointer_offset(lhs, rhs, mul, false, true);
+                            // if the context wants a different type, add a cast
+                            if let Some(expected_ty) = override_ty {
+                                if expected_ty != pointee_type_id {
+                                    val =
+                                        mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
+                                }
+                            }
+                            Ok(val)
                         })
                     }
                 })
