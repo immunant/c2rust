@@ -16,6 +16,7 @@ fn config() -> TranspilerConfig {
         dump_structures: false,
         verbose: false,
         debug_ast_exporter: false,
+        emit_c_decl_map: false,
         incremental_relooper: true,
         fail_on_multiple: false,
         filter: None,

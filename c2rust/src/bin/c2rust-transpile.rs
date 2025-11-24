@@ -36,6 +36,10 @@ struct Args {
     #[clap(long)]
     debug_ast_exporter: bool,
 
+    /// Dump map of top-level C decls
+    #[clap(long)]
+    emit_c_decl_map: bool,
+
     /// Verbose mode
     #[clap(short = 'v', long)]
     verbose: bool,
@@ -205,6 +209,7 @@ fn main() {
         dump_cfg_liveness: args.dump_cfgs_liveness,
         dump_structures: args.dump_structures,
         debug_ast_exporter: args.debug_ast_exporter,
+        emit_c_decl_map: args.emit_c_decl_map,
         verbose: args.verbose,
 
         incremental_relooper: !args.no_incremental_relooper,
