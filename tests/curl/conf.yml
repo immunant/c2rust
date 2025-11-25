@@ -12,14 +12,12 @@ requirements:
 
 transpile:
   autogen: true
-  tflags: --reorganize-definitions --disable-refactoring
+  # tflags: --reorganize-definitions
   binary: tool_main
 
 refactor:
   autogen: true
   transforms:
-    - rename_unnamed
-    - reorganize_definitions
     - remove_unused_labels
     - remove_literal_suffixes
     - convert_cast_as_ptr

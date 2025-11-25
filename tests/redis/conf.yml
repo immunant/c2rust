@@ -1,6 +1,5 @@
 transpile:
   autogen: true
-  tflags: --reorganize-definitions --disable-refactoring
   binary: redis-server
 
   # needs support for __atomic_*
@@ -9,8 +8,6 @@ transpile:
 refactor:
   autogen: true
   transforms:
-    - rename_unnamed
-    - reorganize_definitions
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs
