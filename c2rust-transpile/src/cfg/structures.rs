@@ -391,24 +391,45 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let label = entries
                     .first()
                     .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
+
+                // Check if our loop label is a break target BEFORE we process the loop body.
+                // This helps determine if we can label the loop to avoid generating a separate
+                // block later.
+                let previous_break_targets =
+                    break_targets.intersection(&next_entries).next().is_some();
+
                 let body =
                     forward_cfg_help(body, checked_entries, entries, &next_entries, break_targets)?;
 
-                // TODO: Is this the right way to label the loop? If we have
-                // multiple entries to a loop it means we have irreducible
-                // control flow. In that case is picking the first label the
-                // right thing to do? Do we need to do something else to handle
+                // Determine how to label the loop.
+                //
+                // If there are breaks directly targeting the loop's entries, then we label the
+                // loop according to its first entry. This is somewhat arbitrary, but works fine
+                // as long as we use the same label when generating the breaks.
+                //
+                // If there are breaks targeting the next structure's entries, then we attempt
+                // to use the loop as the break target. This only works if the breaks are coming
+                // from inside the loop, so if there were breaks targeting the label before we
+                // processed the loop body then we can't apply this optimization.
+                //
+                // TODO: Is this the right way to label the loop? If we have multiple entries to
+                // a loop it means we have irreducible control flow. In that case is picking the
+                // first label the right thing to do? Do we need to do something else to handle
                 // a checked multiple in that case?
                 let label = if break_targets.contains(label) {
                     Some(label.clone())
-                } else if let Some(target) = break_targets.intersection(&next_entries).next().cloned() {
+                } else if let Some(target) =
+                    break_targets.intersection(&next_entries).next().cloned()
+                    && !previous_break_targets
+                {
                     // NOTE: Remove the label from the set of break targets so that we don't
-                    // generate an extra block for it.
+                    // generate an extra block for it later.
                     break_targets.remove(&target);
                     Some(target)
                 } else {
                     None
                 };
+
                 S::mk_loop(label, body)
             }
 

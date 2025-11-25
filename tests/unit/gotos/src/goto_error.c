@@ -124,3 +124,59 @@ int goto_success(int x) {
 success:
     return x + 4;
 }
+
+int goto_error_over_loop(int x)
+{
+    if (x > 10) {
+        x++;
+        if (x == 15)
+            goto bad;
+        x++;
+    }
+
+    for (int j = 0; j < 4; j++) {
+        x++;
+        if (x == 100)
+            goto bad;
+        x++;
+    }
+
+    return x;
+
+bad:
+    return -x;
+}
+
+int multi_goto_error_over_loop(int x)
+{
+    if (x > 10) {
+        x++;
+        if (x == 15)
+            goto bad;
+        x++;
+    }
+
+    if (x > 10) {
+        x++;
+        if (x == 15)
+            goto also_bad;
+        x++;
+    }
+
+    for (int j = 0; j < 4; j++) {
+        x++;
+        if (x == 100)
+            goto bad;
+        x++;
+        if (x == 100)
+            goto also_bad;
+    }
+
+    return x;
+
+bad:
+    return -x;
+
+also_bad:
+    return -2 * x;
+}

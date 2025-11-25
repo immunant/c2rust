@@ -52,3 +52,25 @@ pub fn test_goto_success() {
         assert_eq!(rust_goto_success(1), -6);
     }
 }
+
+#[test]
+pub fn test_goto_error_loop() {
+    use crate::goto_error::rust_goto_error_over_loop;
+    unsafe {
+        assert_eq!(rust_goto_error_over_loop(11), 21);
+        assert_eq!(rust_goto_error_over_loop(14), -15);
+        assert_eq!(rust_goto_error_over_loop(5), 13);
+        assert_eq!(rust_goto_error_over_loop(95), -100);
+    }
+}
+
+#[test]
+pub fn test_multi_goto_error_loop() {
+    use crate::goto_error::rust_multi_goto_error_over_loop;
+    unsafe {
+        assert_eq!(rust_multi_goto_error_over_loop(11), 23);
+        assert_eq!(rust_multi_goto_error_over_loop(14), -15);
+        assert_eq!(rust_multi_goto_error_over_loop(5), 13);
+        assert_eq!(rust_multi_goto_error_over_loop(95), -100);
+    }
+}
