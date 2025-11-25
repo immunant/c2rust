@@ -25,3 +25,6 @@
 [submodule "examples/tinycc/repo"]
 	path = examples/tinycc/repo
 	url = https://github.com/immunant/tinycc-rs.git
+[submodule "testsuite"]
+	path = testsuite
+	url = git@github.com:immunant/c2rust-testsuite.git
