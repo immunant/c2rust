@@ -101,6 +101,7 @@
 //!   `Multiple` and reducing nesting depth.
 
 use super::*;
+use indexmap::indexmap;
 
 /// Convert the CFG into a sequence of structures
 pub fn reloop(
@@ -395,19 +396,29 @@ impl RelooperState {
         // we can just exit.
         if !absent.is_empty() {
             if !present.is_empty() {
-                // let branches = absent.into_iter().map(|lbl| (lbl, vec![])).collect();
+                // Arbitrarily pick one of the present entries to be the branch label in the
+                // multiple. This is probably the wrong thing to do if there are multiple
+                // present entries, but most of the time there's just one sooooooooooooooo.
+                //
+                // Originally this was stuffing the relooped blocks into the `then` branch of
+                // the multiple, but I removed the `then` branch from `Multiple`. This is meant
+                // to give us the same behavior, but seems sus idk.
+                //
+                // An important reason to generate a `Multiple` here: It allows us to nest more
+                // code when we do structure simplification. I should elaborate on that point if
+                // we do indeed need to create a multiple here.
+                assert_eq!(present.len(), 1, "Multiple present entries when some are absent");
+                let label = present.first().unwrap().clone();
 
-                // result.push(Structure::Multiple {
-                //     entries,
-                //     branches,
-                // });
+                let mut branch = Vec::new();
+                self.relooper(present, blocks, &mut branch, false);
 
-                // UUUHHHHHHHHH idk if this is right. This used to be the `then`
-                // block in the multiple, but I have banned `then` and we decide
-                // based on the entries if we need the fallthrough case. So I
-                // guess this should just become the next structure after the
-                // multiple? That sounds right but I'm not 100% sure.
-                self.relooper(present, blocks, result, false);
+                result.push(Structure::Multiple {
+                    entries,
+                    branches: indexmap! {
+                        label => branch,
+                    },
+                });
             }
 
             return;
