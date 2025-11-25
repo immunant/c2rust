@@ -9,13 +9,12 @@ use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
     root: &[Structure<Stmt>],
+    checked_entries: &IndexSet<Label>,
     comment_store: &mut comment_store::CommentStore,
     current_block: Box<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
-    let checked_entries = find_checked_multiples(root);
-
     let ast = forward_cfg_help(
         root,
         &checked_entries,
@@ -213,7 +212,7 @@ type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 // TODO: Do this in a more efficiently so we don't have to allocate all these
 // intermidiate sets. We probably want to pass a mutable set down the recursion
 // to populate instead.
-fn find_checked_multiples(root: &[Structure<Stmt>]) -> IndexSet<Label> {
+pub fn find_checked_multiples(root: &[Structure<Stmt>]) -> IndexSet<Label> {
     let mut multiples = IndexSet::new();
     for structure in root {
         match structure {
@@ -527,182 +526,6 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
     }
 
     Ok(ast)
-}
-
-/// Recursive helper for `structured_cfg`
-///
-/// TODO: move this into `structured_cfg`?
-#[allow(dead_code)]
-#[cfg(none)]
-fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
-    exits: Vec<Exit>,
-    next: &IndexSet<Label>,
-    root: &[Structure<Stmt>],
-    used_loop_labels: &mut IndexSet<Label>,
-) -> TranslationResult<S> {
-    let mut next: &IndexSet<Label> = next;
-    let mut rest: S = S::empty();
-
-    for structure in root.iter().rev() {
-        let mut new_rest: S = S::empty();
-
-        use Structure::*;
-        match structure {
-            Simple {
-                body,
-                terminator,
-                span,
-                ..
-            } => {
-                for s in body.clone() {
-                    new_rest = S::mk_append(new_rest, S::mk_singleton(s));
-                }
-                new_rest.extend_span(*span);
-
-                let insert_goto = |to: Label, target: &IndexSet<Label>| -> S {
-                    if target.len() == 1 {
-                        S::empty()
-                    } else {
-                        S::mk_goto(to)
-                    }
-                };
-
-                let mut branch = |slbl: &StructureLabel<Stmt>| -> TranslationResult<S> {
-                    use StructureLabel::*;
-                    match slbl {
-                        Nested(ref nested) => {
-                            structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
-                        }
-
-                        GoTo(to) | ExitTo(to) if next.contains(to) => {
-                            Ok(insert_goto(to.clone(), next))
-                        }
-
-                        ExitTo(to) => {
-                            let mut immediate = true;
-                            for (label, local) in &exits {
-                                if let Some(&(ref follow, exit_style)) = local.get(to) {
-                                    let lbl = if immediate {
-                                        None
-                                    } else {
-                                        used_loop_labels.insert(label.clone());
-                                        Some(label.clone())
-                                    };
-
-                                    let mut new_cfg = S::mk_append(
-                                        insert_goto(to.clone(), follow),
-                                        S::mk_exit(exit_style, lbl),
-                                    );
-                                    new_cfg.extend_span(*span);
-                                    return Ok(new_cfg);
-                                }
-                                immediate = false;
-                            }
-
-                            Err(
-                                format_err!("Not a valid exit: {:?} has nothing to exit to", to)
-                                    .into(),
-                            )
-                        }
-
-                        GoTo(to) => Err(format_err!(
-                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                            to,
-                            next
-                        )
-                        .into()),
-                    }
-                };
-
-                new_rest = S::mk_append(
-                    new_rest,
-                    match terminator {
-                        End => S::empty(),
-                        Jump(to) => branch(to)?,
-                        Branch(c, t, f) => S::mk_if(c.clone(), branch(t)?, branch(f)?),
-                        Switch { expr, cases } => {
-                            let branched_cases = cases
-                                .iter()
-                                .map(|(pat, slbl)| Ok((pat.clone(), branch(slbl)?)))
-                                .collect::<TranslationResult<_>>()?;
-
-                            S::mk_match(expr.clone(), branched_cases)
-                        }
-                    },
-                );
-            }
-
-            Multiple { branches, then, .. } => {
-                let cases = branches
-                    .iter()
-                    .map(|(lbl, body)| {
-                        let stmts =
-                            structured_cfg_help(exits.clone(), next, body, used_loop_labels)?;
-                        Ok((lbl.clone(), stmts))
-                    })
-                    .collect::<TranslationResult<_>>()?;
-
-                let then: S = structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
-
-                new_rest = S::mk_append(new_rest, S::mk_goto_table(cases, then));
-            }
-
-            Loop { body, entries } => {
-                let label = entries
-                    .iter()
-                    .next()
-                    .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
-
-                let mut these_exits = IndexMap::new();
-                these_exits.extend(
-                    entries
-                        .iter()
-                        .map(|e| (e.clone(), (entries.clone(), ExitStyle::Continue))),
-                );
-                these_exits.extend(
-                    next.iter()
-                        .map(|e| (e.clone(), (next.clone(), ExitStyle::Break))),
-                );
-
-                let mut exits_new = vec![(label.clone(), these_exits)];
-                exits_new.extend(exits.clone());
-
-                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels)?;
-                let loop_lbl = if used_loop_labels.contains(label) {
-                    Some(label.clone())
-                } else {
-                    None
-                };
-                new_rest = S::mk_append(new_rest, S::mk_loop(loop_lbl, body));
-            }
-        }
-
-        new_rest = S::mk_append(new_rest, rest);
-
-        rest = new_rest;
-        next = structure.get_entries();
-    }
-
-    Ok(rest)
-}
-
-/// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
-/// `current_block` variable.
-pub fn has_multiple<Stmt>(root: &[Structure<Stmt>]) -> bool {
-    use Structure::*;
-    root.iter().any(|structure| match structure {
-        Simple { terminator, .. } => {
-            terminator
-                .get_labels()
-                .into_iter()
-                .any(|structure_label| match structure_label {
-                    StructureLabel::Nested(nested) => has_multiple(nested),
-                    _ => false,
-                })
-        }
-        Multiple { .. } => true,
-        Loop { body, .. } => has_multiple(body),
-    })
 }
 
 struct StructureState {

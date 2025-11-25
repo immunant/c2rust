@@ -2553,10 +2553,12 @@ impl<'c> Translation<'c> {
             }
         }
 
+        let checked_entries = cfg::structures::find_checked_multiples(&relooped);
+
         let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
         let current_block = mk().ident_expr(&current_block_ident);
         let mut stmts: Vec<Stmt> = lifted_stmts;
-        if cfg::structures::has_multiple(&relooped) {
+        if !checked_entries.is_empty() {
             if self.tcfg.fail_on_multiple {
                 panic!("Uses of `current_block' are illegal with `--fail-on-multiple'.");
             }
@@ -2577,6 +2579,7 @@ impl<'c> Translation<'c> {
 
         stmts.extend(cfg::structures::structured_cfg(
             &relooped,
+            &checked_entries,
             &mut self.comment_store.borrow_mut(),
             current_block,
             self.tcfg.debug_relooper_labels,
