@@ -455,7 +455,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
                         _ => {
                             if let Some(decl_ty) = self.cx.opt_node_type(decl.id) {
-                                self.cx.structural_eq_tys(decl_ty, self.cx.ty_ctxt().type_of(def_id))
+                                self.cx.structural_eq_tys_with_vis(decl_ty, self.cx.ty_ctxt().type_of(def_id))
                             } else {
                                 false
                             }
@@ -491,7 +491,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     let export_static_ty = self.cx.ty_ctxt().type_of(def_id);
                                     let foreign_def_id = self.cx.node_def_id(foreign.id);
                                     let foreign_static_ty = self.cx.ty_ctxt().type_of(foreign_def_id);
-                                    self.cx.structural_eq_tys(export_static_ty, foreign_static_ty)
+                                    self.cx.structural_eq_tys_with_vis(export_static_ty, foreign_static_ty)
                                 } else {
                                     false
                                 }
