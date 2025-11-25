@@ -84,3 +84,37 @@ int break_multiple(int x) {
 break_outer:
     return x + 4;
 }
+
+int do_while_with_breaks(int x) {
+    do {
+        if (x) {
+            if (x) {
+                x++;
+                break;
+            }
+        }
+
+        if (x)
+            break;
+    } while(1);
+
+    return x;
+}
+
+int my_printf_simplified(int x) {
+    if (x) {
+        switch (x) {
+            case 0:
+                x++;
+                break;
+            case 1:
+                x++;
+                break;
+            case 2:
+                x++;
+                break;
+        }
+    }
+
+    return x;
+}
