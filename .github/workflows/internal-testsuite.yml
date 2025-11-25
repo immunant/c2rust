@@ -39,14 +39,8 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: immunant/c2rust
-
-    # Working dir is /home/runner/work/c2rust/c2rust/testsuite
-    - name: Checkout c2rust-testsuite
-      uses: actions/checkout@v2
-      with:
-        repository: immunant/c2rust-testsuite
-        path: testsuite
-        submodules: true
+        # Import all submodules including the test suite and its sub-submodules
+        submodules: recursive
 
     - uses: astral-sh/setup-uv@v6
 
