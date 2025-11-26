@@ -180,3 +180,29 @@ bad:
 also_bad:
     return -2 * x;
 }
+
+// This test forces a situation where we want to break out of a loop through a
+// labeled block, which forces us to use a labeled break where we'd otherwise
+// want to use an unlabeled break.
+int goto_out_of_labeled_block(int x) {
+    int c = 0;
+    while (c < 4) {
+        switch(c) {
+        case 0:
+            x++;
+            if (x == 5)
+                goto error;
+        case 1:
+            x++;
+            if (x == 5)
+                goto error;
+        case 2:
+            x++;
+        }
+        c++;
+    }
+    return x;
+
+error:
+    return -x;
+}

@@ -269,6 +269,28 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         let structure = &root[i];
         let next_entries = get_next_entries(i + 1);
 
+        // HACK: Look ahead for followup multiples so we know if we're going to be inside of a
+        // labeled block. This is necessary to know if we can use an unlabeled break when inside
+        // of a loop. This is really gross and inelegant, but seems to work.
+        let mut followup_branches = 0;
+        for s in &root[i + 1..] {
+            if let Multiple { branches, .. } = s {
+                followup_branches += branches.len();
+            } else {
+                break;
+            }
+        }
+
+        // If there are followup multiples, this structure is going to be wrapped in a labeled
+        // block, which means we can't use an unlabeled break. So we say that there are no loop
+        // exists to indicate that we need to label the break.
+        let empty = IndexSet::new();
+        let loop_exits = if followup_branches > 0 {
+            &empty
+        } else {
+            &loop_exits
+        };
+
         // Generate the AST for the current structure.
         let mut structure_ast = match structure {
             Simple {
@@ -507,16 +529,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 )?;
 
                 if break_targets.contains(entry) {
-                    eprintln!(
-                        "Structure {:?}: wrapping structure in block for entry {entry:?}",
-                        structure.get_entries()
-                    );
                     structure_ast = S::mk_block(entry.clone(), structure_ast);
-                } else {
-                    eprintln!(
-                        "Structure {:?}: Not wrapping branch {entry:?} in block because there are no indirect jumps to it",
-                        structure.get_entries()
-                    );
                 }
 
                 structure_ast = S::mk_append(structure_ast, branch_ast);
