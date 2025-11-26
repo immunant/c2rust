@@ -395,102 +395,10 @@ impl RelooperState {
         // If we only have absent entries, then there's no other blocks to structure and
         // we can just exit.
         if !absent.is_empty() {
-            if !present.is_empty() {
-                // Arbitrarily pick one of the present entries to be the branch label in the
-                // multiple. This is probably the wrong thing to do if there are multiple
-                // present entries, but most of the time there's just one sooooooooooooooo.
-                //
-                // Originally this was stuffing the relooped blocks into the `then` branch of
-                // the multiple, but I removed the `then` branch from `Multiple`. This is meant
-                // to give us the same behavior, but seems sus idk.
-                //
-                // An important reason to generate a `Multiple` here: It allows us to nest more
-                // code when we do structure simplification. I should elaborate on that point if
-                // we do indeed need to create a multiple here.
-                assert_eq!(present.len(), 1, "Multiple present entries when some are absent");
-                let label = present.first().unwrap().clone();
-
-                let mut branch = Vec::new();
-                self.relooper(present, blocks, &mut branch, false);
-
-                result.push(Structure::Multiple {
-                    entries,
-                    branches: indexmap! {
-                        label => branch,
-                    },
-                });
-            }
-
-            return;
-        }
-
-        // --------------------------------------
-        // Loops
-
-        /*
-        // Try to match an existing branch point (from the initial C).
-        //
-        // We do this before creating a loop to better handle the cases where we have
-        // multiple entries that are part of disjoint loops. The loop analysis that
-        // comes next doesn't recognize disjoint loops and will always produce a single
-        // loop structure if there is at least one loop back to an entry. If we have
-        // multiple branches with disjoint loops, this means we might generate a single
-        // loop with a state machine inside it, merging all loop bodies together and
-        // resulting in suboptimal control flow. If the original C had multiple
-        // branches, this logic will recreate them, avoiding the problem of merging
-        // loops accidentally.
-        let mut recognized_c_multiple = false;
-        if let Some(ref multiple_info) = self.multiple_info {
-            let entries_key = entries.iter().cloned().collect();
-            if let Some((join, arms)) = multiple_info.get_multiple(&entries_key) {
-                recognized_c_multiple = true;
-
-                // Search through the arms of the C multiple to verify that our current CFG matches
-                // its structure.
-                'search: for (entry, content) in arms {
-                    let mut to_visit: Vec<Label> = vec![entry.clone()];
-                    let mut visited: IndexSet<Label> = IndexSet::new();
-
-                    // Walk the graph forwards from the entry, making sure we only see blocks that
-                    // are part of the current multiple. If we find any nodes that aren't in
-                    // `content` then the CFG differs from the C multiple.
-                    //
-                    // NOTE: We can't reuse the previous reachability analysis here because it
-                    // includes nodes past the join node, which isn't what we want here.
-                    //
-                    // legaren: Actually I'm not 100% sure about that last part, if we restructure
-                    // the logic here a bit we may be able to reuse `strict_reachable_from` or
-                    // `transitive_closure`, but I haven't thought through it enough yet and I'd
-                    // want to have tests before playing with this logic anyway.
-                    while let Some(lbl) = to_visit.pop() {
-                        // Stop at things you've already seen or the join block
-                        if !visited.insert(lbl.clone()) || lbl == *join {
-                            continue;
-                        }
-
-                        if let Some(bb) = blocks.get(&lbl) {
-                            if !content.contains(&lbl) {
-                                recognized_c_multiple = false;
-                                break 'search;
-                            }
-
-                            to_visit.extend(bb.successors())
-                        }
-                    }
-
-                    // Check that we've only visited the expected nodes. If we've visited any nodes
-                    // not in `content`, then the CFG differs from the C multiple and the search
-                    // fails.
-                    visited.swap_remove(join);
-                    if visited.difference(content).next().is_some() {
-                        recognized_c_multiple = false;
-                        break 'search;
-                    }
-                }
+            if present.is_empty() {
+                return;
             }
         }
-        recognized_c_multiple = recognized_c_multiple && !disable_heuristics;
-        */
 
         // --------------------------------------
         // Multiple
@@ -524,9 +432,11 @@ impl RelooperState {
         if !singly_reached.is_empty() {
             // Map from entry labels to the set of blocks only reachable from that entry,
             // i.e. `singly_reached` but with the set of reachable labels replaced by the
-            // corresponding blocks.
+            // corresponding blocks. We also filter out any entries that aren't present in
+            // our current set of blocks, as we don't want branches for those entries.
             let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
                 .into_iter()
+                .filter(|(lbl, _)| present.contains(lbl))
                 .map(|(lbl, within)| {
                     let val = blocks
                         .iter()
