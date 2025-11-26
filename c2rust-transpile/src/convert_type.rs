@@ -268,44 +268,49 @@ impl TypeConverter {
         Ok(mk().unsafe_().extern_("C").barefn_ty(fn_ty))
     }
 
+    /// Converts the qualified type of a pointer.
     pub fn convert_pointer(
         &mut self,
         ctxt: &TypedAstContext,
         qtype: CQualTypeId,
     ) -> TranslationResult<Box<Type>> {
-        let mutbl = if qtype.qualifiers.is_const {
-            Mutability::Immutable
-        } else {
-            Mutability::Mutable
-        };
+        let pointee_ty = self.convert_pointee(ctxt, qtype.ctype)?;
 
-        match ctxt.resolve_type(qtype.ctype).kind {
+        if let CTypeKind::Function(..) = ctxt.resolve_type(qtype.ctype).kind {
+            // Function pointers are translated to Option applied to the function type
+            // in order to support NULL function pointers natively
+            let param = mk().angle_bracketed_args(vec![pointee_ty]);
+            Ok(mk().path_ty(vec![mk().path_segment_with_args("Option", param)]))
+        } else {
+            let mutbl = if qtype.qualifiers.is_const {
+                Mutability::Immutable
+            } else {
+                Mutability::Mutable
+            };
+
+            Ok(mk().set_mutbl(mutbl).ptr_ty(pointee_ty))
+        }
+    }
+
+    /// Converts the pointee type of a pointer.
+    pub fn convert_pointee(
+        &mut self,
+        ctxt: &TypedAstContext,
+        ctype: CTypeId,
+    ) -> TranslationResult<Box<Type>> {
+        match ctxt.resolve_type(ctype).kind {
             // While void converts to () in function returns, it converts to c_void
             // in the case of pointers.
-            CTypeKind::Void => Ok(mk()
-                .set_mutbl(mutbl)
-                .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"]))),
+            CTypeKind::Void => Ok(mk().abs_path_ty(vec!["core", "ffi", "c_void"])),
 
             CTypeKind::VariableArray(mut elt, _len) => {
                 while let CTypeKind::VariableArray(elt_, _) = ctxt.resolve_type(elt).kind {
                     elt = elt_
                 }
-                let child_ty = self.convert(ctxt, elt)?;
-                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
+                self.convert(ctxt, elt)
             }
 
-            // Function pointers are translated to Option applied to the function type
-            // in order to support NULL function pointers natively
-            CTypeKind::Function(..) => {
-                let fn_ty = self.convert(ctxt, qtype.ctype)?;
-                let param = mk().angle_bracketed_args(vec![fn_ty]);
-                Ok(mk().path_ty(vec![mk().path_segment_with_args("Option", param)]))
-            }
-
-            _ => {
-                let child_ty = self.convert(ctxt, qtype.ctype)?;
-                Ok(mk().set_mutbl(mutbl).ptr_ty(child_ty))
-            }
+            _ => self.convert(ctxt, ctype),
         }
     }
 

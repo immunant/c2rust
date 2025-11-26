@@ -3071,6 +3071,14 @@ impl<'c> Translation<'c> {
             .convert(&self.ast_context, type_id)
     }
 
+    fn convert_pointee_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {
+        self.import_type(type_id);
+
+        self.type_converter
+            .borrow_mut()
+            .convert_pointee(&self.ast_context, type_id)
+    }
+
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
     fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> TranslationResult<Box<Expr>> {
@@ -3085,13 +3093,8 @@ impl<'c> Translation<'c> {
         let ty = self.convert_type(type_id)?;
         let mut zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
         if is_static && !pointee.qualifiers.is_const {
-            let mut qtype = pointee;
-            qtype.qualifiers.is_const = true;
-            let ty_ = self
-                .type_converter
-                .borrow_mut()
-                .convert_pointer(&self.ast_context, qtype)?;
-            zero = mk().cast_expr(zero, ty_);
+            let ty_ = self.convert_pointee_type(pointee.ctype)?;
+            zero = mk().cast_expr(zero, mk().ptr_ty(ty_));
         }
         Ok(mk().cast_expr(zero, ty))
     }

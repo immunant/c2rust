@@ -1009,13 +1009,8 @@ impl<'c> Translation<'c> {
                             // through & to *const to *mut
                             addr_of_arg = mk().addr_of_expr(a);
                             if let Mutability::Mutable = mutbl {
-                                let mut qtype = pointee_ty;
-                                qtype.qualifiers.is_const = true;
-                                let ty_ = self
-                                    .type_converter
-                                    .borrow_mut()
-                                    .convert_pointer(&self.ast_context, qtype)?;
-                                addr_of_arg = mk().cast_expr(addr_of_arg, ty_);
+                                let ty_ = self.convert_pointee_type(pointee_ty.ctype)?;
+                                addr_of_arg = mk().cast_expr(addr_of_arg, mk().ptr_ty(ty_));
                             }
                         } else {
                             // Normal case is allowed to use &mut if needed
