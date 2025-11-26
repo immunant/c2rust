@@ -830,9 +830,13 @@ class TranslateASTVisitor final
         Decl *ast, ASTEntryTag tag, const std::vector<void *> &childIds,
         const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
+        auto &Mgr = Context->getSourceManager();
         auto rvalue = false;
         auto encodeMacroExpansions = false;
-        encode_entry_raw(ast, tag, ast->getSourceRange(), T, rvalue,
+        auto charRange = clang::CharSourceRange::getCharRange(ast->getSourceRange());
+        // Extend the range to include the entire final token.
+        charRange.setEnd(clang::Lexer::getLocForEndOfToken(ast->getSourceRange().getEnd(), 0, Mgr, Context->getLangOpts()));
+        encode_entry_raw(ast, tag, charRange.getAsRange(), T, rvalue,
                          isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
 
@@ -1998,7 +2002,13 @@ class TranslateASTVisitor final
 
         // We prefer non-implicit decls for their type information.
         auto functionType = paramsFD->getType();
-        auto span = paramsFD->getSourceRange();
+        auto &Mgr = Context->getSourceManager();
+        auto rvalue = false;
+        auto encodeMacroExpansions = false;
+        auto charRange = clang::CharSourceRange::getCharRange(FD->getSourceRange());
+        // Extend the range to include the entire final token.
+        charRange.setEnd(clang::Lexer::getLocForEndOfToken(FD->getSourceRange().getEnd(), 0, Mgr, Context->getLangOpts()));
+        auto span = charRange.getAsRange();
         encode_entry(
             FD, TagFunctionDecl, span, childIds, functionType,
             [this, FD](CborEncoder *array) {
@@ -2119,7 +2129,12 @@ class TranslateASTVisitor final
         // type
         auto T = def->getType();
 
-        auto loc = is_defn ? def->getLocation() : VD->getLocation();
+        auto loc = is_defn ? def->getSourceRange() : VD->getSourceRange();
+        auto &Mgr = Context->getSourceManager();
+        auto charRange = clang::CharSourceRange::getCharRange(loc);
+        // Extend the range to include the entire final token.
+        charRange.setEnd(clang::Lexer::getLocForEndOfToken(loc.getEnd(), 0, Mgr, Context->getLangOpts()));
+        loc = charRange.getAsRange();
 
         encode_entry(
             VD, TagVarDecl, loc, childIds, T,
