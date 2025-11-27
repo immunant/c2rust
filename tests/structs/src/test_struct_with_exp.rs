@@ -1,3 +1,5 @@
+//! feature_raw_ref_op
+
 use crate::struct_with_exp::rust_struct_with_exp;
 use std::ffi::{c_int, c_uint};
 
