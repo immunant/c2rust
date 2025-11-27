@@ -1,5 +1,6 @@
 #![feature(extern_types)]
 #![feature(rustc_private)]
+#![feature(register_tool)]
 #![register_tool(c2rust)]
 
 #![allow(non_upper_case_globals)]
@@ -8,6 +9,8 @@
 #![allow(dead_code)]
 #![allow(mutable_transmutes)]
 #![allow(unused_mut)]
+
+extern crate libc;
 
 #[c2rust::src_loc = "15:0"]
 type outside = i32;
