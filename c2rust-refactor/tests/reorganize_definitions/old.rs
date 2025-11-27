@@ -53,12 +53,10 @@ pub mod bar {
     use bar_h::bar_t;
 
     #[no_mangle]
-    static mut Bar: bar_t = unsafe {
-        bar_t {
-            alloc: 0 as *mut libc::c_char,
-            data: 0 as *mut libc::c_char,
-            i: 0,
-        }
+    static mut Bar: bar_t = bar_t {
+        alloc: 0 as *mut libc::c_char,
+        data: 0 as *mut libc::c_char,
+        i: 0,
     };
 }
 
@@ -106,7 +104,7 @@ pub mod foo {
     }
 
     unsafe fn foo() -> *const bar_t {
-        let c = conflicting { y: 10 };
+        let _c = conflicting { y: 10 };
         &Bar as *const bar_t
     }
 }
