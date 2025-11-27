@@ -46,12 +46,10 @@ pub mod bar {
     type FooInt = i32;
 
     #[no_mangle]
-    static mut Bar: crate::bar::bar_t = unsafe {
-        crate::bar::bar_t {
-            alloc: 0 as *mut libc::c_char,
-            data: 0 as *mut libc::c_char,
-            i: 0,
-        }
+    static mut Bar: crate::bar::bar_t = crate::bar::bar_t {
+        alloc: 0 as *mut libc::c_char,
+        data: 0 as *mut libc::c_char,
+        i: 0,
     };
 }
 
@@ -72,7 +70,7 @@ pub mod foo {
     }
 
     unsafe fn foo() -> *const crate::bar::bar_t {
-        let c = crate::compat_h::conflicting_1 { y: 10 };
+        let _c = crate::compat_h::conflicting_1 { y: 10 };
         &crate::bar::Bar as *const crate::bar::bar_t
     }
 }
