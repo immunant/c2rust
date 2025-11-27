@@ -30,6 +30,26 @@ pub mod bar {
     use crate::outside;
     //test2
     use libc;
+    // Import both the statfs64 type and function declaration from
+    // libc exactly as they are defined in that crate. However, since
+    // both definitions have a private field, the transform shouldn't
+    // unify them across crates.
+    #[repr(C)]
+
+    pub struct statvfs {
+        pub f_bsize: libc::c_ulong,
+        pub f_frsize: libc::c_ulong,
+        pub f_blocks: libc::fsblkcnt_t,
+        pub f_bfree: libc::fsblkcnt_t,
+        pub f_bavail: libc::fsblkcnt_t,
+        pub f_files: libc::fsfilcnt_t,
+        pub f_ffree: libc::fsfilcnt_t,
+        pub f_favail: libc::fsfilcnt_t,
+        pub f_fsid: libc::c_ulong,
+        pub f_flag: libc::c_ulong,
+        pub f_namemax: libc::c_ulong,
+        __f_spare: [libc::c_int; 6],
+    }
     //test1
     type OtherInt = i32;
     // Comment on bar_t
@@ -57,8 +77,10 @@ pub mod foo {
     use libc;
 
     use crate::bar::bar_t;
+    use crate::bar::statvfs;
     use crate::bar::Bar;
     use crate::compat_h::conflicting_1;
+    use libc::statvfs;
 
     // Comment on foo_t
 
@@ -70,6 +92,35 @@ pub mod foo {
     }
 
     unsafe fn foo() -> *const crate::bar::bar_t {
+        // Use the local definitions.
+        let mut buf = unsafe { std::mem::zeroed::<crate::bar::statvfs>() };
+        ::libc::statvfs(
+            core::ptr::null(),
+            &mut buf as *mut _ as *mut ::libc::statvfs,
+        );
+
+        // Use the definitions that have all public fields.
+        // The transform should not reuse any of the libc declarations.
+        let mut buf = unsafe { std::mem::zeroed::<crate::bar::statvfs>() };
+        ::libc::statvfs(
+            core::ptr::null(),
+            &mut buf as *mut _ as *mut ::libc::statvfs,
+        );
+
+        // Use the definitions that are identical to libc.
+        let mut buf = unsafe { std::mem::zeroed::<::libc::statfs64>() };
+        ::libc::statfs64(
+            core::ptr::null(),
+            &mut buf as *mut _ as *mut ::libc::statfs64,
+        );
+
+        // Use the definitions that are identical to libc.
+        let mut buf = unsafe { std::mem::zeroed::<::libc::statfs64>() };
+        ::libc::statfs64(
+            core::ptr::null(),
+            &mut buf as *mut _ as *mut ::libc::statfs64,
+        );
+
         let _c = crate::compat_h::conflicting_1 { y: 10 };
         &crate::bar::Bar as *const crate::bar::bar_t
     }
