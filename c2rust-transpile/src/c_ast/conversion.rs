@@ -534,7 +534,7 @@ impl ConversionContext {
                     if is_case_expr(expr_id) {
                         expr_id
                     } else {
-                        self.typed_context.beneath_implicit_casts(expr_id)
+                        self.typed_context.unwrap_implicit_cast_expr(expr_id)
                     },
                     macro_ids,
                 )

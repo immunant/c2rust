@@ -451,26 +451,25 @@ impl TypedAstContext {
         }
     }
 
-    /// Resolve expression value, ignoring any casts
-    pub fn resolve_expr(&self, expr_id: CExprId) -> (CExprId, &CExprKind) {
-        let expr = &self.index(expr_id).kind;
-        use CExprKind::*;
-        match expr {
-            ImplicitCast(_, subexpr, _, _, _)
-            | ExplicitCast(_, subexpr, _, _, _)
-            | Paren(_, subexpr) => self.resolve_expr(*subexpr),
-            _ => (expr_id, expr),
+    /// Unwraps the underlying expression beneath any casts.
+    pub fn unwrap_cast_expr(&self, mut expr_id: CExprId) -> CExprId {
+        while let CExprKind::Paren(_, subexpr)
+        | CExprKind::ImplicitCast(_, subexpr, _, _, _)
+        | CExprKind::ExplicitCast(_, subexpr, _, _, _) = self.index(expr_id).kind
+        {
+            expr_id = subexpr;
         }
+
+        expr_id
     }
 
-    /// Find underlying expression beneath any implicit casts.
-    pub fn beneath_implicit_casts(&self, expr_id: CExprId) -> CExprId {
-        let expr = &self.index(expr_id).kind;
-        if let CExprKind::ImplicitCast(_, subexpr, _, _, _) = expr {
-            self.beneath_implicit_casts(*subexpr)
-        } else {
-            expr_id
+    /// Unwraps the underlying expression beneath any implicit casts.
+    pub fn unwrap_implicit_cast_expr(&self, mut expr_id: CExprId) -> CExprId {
+        while let CExprKind::ImplicitCast(_, subexpr, _, _, _) = self.index(expr_id).kind {
+            expr_id = subexpr;
         }
+
+        expr_id
     }
 
     /// Resolve true expression type, iterating through any casts and variable
