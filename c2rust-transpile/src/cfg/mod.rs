@@ -1866,11 +1866,11 @@ impl CfgBuilder {
                 self.add_wip_block(wip, Jump(this_label.clone()));
 
                 // Case
-                let resolved = translator.ast_context.resolve_expr(case_expr);
-                let branch = match resolved.1 {
+                let resolved = translator.ast_context.unwrap_cast_expr(case_expr);
+                let branch = match translator.ast_context.index(resolved).kind {
                     CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
                         match translator
-                            .convert_expr(ctx.used(), resolved.0, None)?
+                            .convert_expr(ctx.used(), resolved, None)?
                             .to_pure_expr()
                         {
                             Some(expr) => match *expr {

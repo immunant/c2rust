@@ -5,9 +5,9 @@ use std::sync::atomic::Ordering;
 
 impl<'c> Translation<'c> {
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
-        let val = self.ast_context.resolve_expr(expr).1;
-        match val {
-            &CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i != 0),
+        let val = self.ast_context.unwrap_cast_expr(expr);
+        match self.ast_context.index(val).kind {
+            CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i != 0),
             _ => None,
         }
     }
