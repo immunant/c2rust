@@ -145,6 +145,17 @@ int statement_expr_with_statements(int x) {
 int statement_expr_with_label(int x) {
     int result = ({
     label:
+        x++;
+        0;
+    });
+
+    return x + result;
+}
+
+int statement_expr_with_labeled_return(int x) {
+    int result = ({
+        x++;
+    label:
         0;
     });
 
