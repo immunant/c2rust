@@ -1223,14 +1223,14 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         }
 
         for (&arg_ty1, &arg_ty2) in sig1.inputs().iter().zip(sig2.inputs().iter()) {
-            if !self.structural_eq_tys(arg_ty1, arg_ty2) {
+            if !self.structural_eq_tys_with_vis(arg_ty1, arg_ty2) {
                 return false;
             }
         }
 
         let out_ty1 = sig1.output();
         let out_ty2 = sig2.output();
-        self.structural_eq_tys(out_ty1, out_ty2)
+        self.structural_eq_tys_with_vis(out_ty1, out_ty2)
     }
 
     /// Compare two AST types for structural equivalence, ignoring names.

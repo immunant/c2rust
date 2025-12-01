@@ -196,7 +196,7 @@ pub mod foo {
             pub y: libc::c_char,
         }
     }
-    use bar_h::{Bar, bar_t, statvfs};
+    use bar_h::{Bar, bar_t};
     use compat_h::conflicting;
 
     // Comment on foo_t
