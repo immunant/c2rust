@@ -2620,6 +2620,7 @@ impl<'c> Translation<'c> {
         cut_out_trailing_ret: bool,
     ) -> TranslationResult<Vec<Stmt>> {
         if self.tcfg.dump_function_cfgs {
+            std::fs::create_dir_all("dumps").unwrap();
             graph
                 .dump_dot_graph(
                     &self.ast_context,
@@ -2631,8 +2632,9 @@ impl<'c> Translation<'c> {
                 .expect("Failed to write CFG .dot file");
         }
         if self.tcfg.json_function_cfgs {
+            std::fs::create_dir_all("dumps").unwrap();
             graph
-                .dump_json_graph(&store, format!("{}_{}.json", "cfg", name))
+                .dump_json_graph(&store, format!("dumps/{}_{}.json", "cfg", name))
                 .expect("Failed to write CFG .json file");
         }
 
