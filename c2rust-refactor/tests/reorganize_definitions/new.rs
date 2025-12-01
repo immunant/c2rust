@@ -24,6 +24,9 @@ type outside = i32;
 
 pub mod bar {
 
+    extern "C" {
+        pub fn statvfs(path: *const libc::c_char, buf: *mut crate::bar::statvfs) -> libc::c_int;
+    }
     // =============== BEGIN bar_h ================
 
     // Test relative paths
@@ -77,10 +80,8 @@ pub mod foo {
     use libc;
 
     use crate::bar::bar_t;
-    use crate::bar::statvfs;
     use crate::bar::Bar;
     use crate::compat_h::conflicting_1;
-    use libc::statvfs;
 
     // Comment on foo_t
 
@@ -94,18 +95,12 @@ pub mod foo {
     unsafe fn foo() -> *const crate::bar::bar_t {
         // Use the local definitions.
         let mut buf = unsafe { std::mem::zeroed::<crate::bar::statvfs>() };
-        ::libc::statvfs(
-            core::ptr::null(),
-            &mut buf as *mut _ as *mut ::libc::statvfs,
-        );
+        crate::bar::statvfs(core::ptr::null(), &mut buf);
 
         // Use the definitions that have all public fields.
         // The transform should not reuse any of the libc declarations.
         let mut buf = unsafe { std::mem::zeroed::<crate::bar::statvfs>() };
-        ::libc::statvfs(
-            core::ptr::null(),
-            &mut buf as *mut _ as *mut ::libc::statvfs,
-        );
+        crate::bar::statvfs(core::ptr::null(), &mut buf);
 
         // Use the definitions that are identical to libc.
         let mut buf = unsafe { std::mem::zeroed::<::libc::statfs64>() };
