@@ -2626,7 +2626,7 @@ impl<'c> Translation<'c> {
                     &store,
                     self.tcfg.dump_cfg_liveness,
                     self.tcfg.use_c_loop_info,
-                    format!("{}_{}.dot", "cfg", name),
+                    format!("dumps/{}_{}.dot", "cfg", name),
                 )
                 .expect("Failed to write CFG .dot file");
         }
@@ -2645,11 +2645,23 @@ impl<'c> Translation<'c> {
             live_in,
         );
 
-        if self.tcfg.dump_structures {
-            eprintln!("Relooped structures:");
-            for s in &relooped {
-                eprintln!("  {:#?}", s);
+        fn dump_structures(relooped: &[cfg::Structure<Stmt>], file_name: &str) {
+            use std::fmt::Write;
+
+            // TODO: Do this more efficiently lol
+            let mut dump = String::new();
+            for s in relooped {
+                writeln!(&mut dump, "{:#?}", s).unwrap();
             }
+
+            std::fs::create_dir_all("dumps").unwrap();
+            std::fs::write(&file_name, dump).unwrap();
+        }
+
+        if self.tcfg.dump_structures {
+            let file_name = format!("dumps/{}_structures.rs", name);
+            dump_structures(&relooped, &file_name);
+            eprintln!("Wrote relooped structures for {name} to {file_name}");
         }
 
         let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
