@@ -4882,7 +4882,10 @@ impl<'c> Translation<'c> {
         mut val: WithStmts<Box<Expr>>,
         is_array_decay: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let arg_expr_kind = arg.map(|arg| &self.ast_context.index(arg).kind);
+        let arg_expr_kind = arg.map(|arg| {
+            let arg = self.ast_context.unwrap_predefined_ident(arg);
+            &self.ast_context.index(arg).kind
+        });
         let pointee_cty = self
             .ast_context
             .get_pointee_qual_type(pointer_cty.ctype)

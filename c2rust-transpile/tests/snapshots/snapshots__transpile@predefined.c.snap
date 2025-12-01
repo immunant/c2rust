@@ -16,9 +16,6 @@ pub unsafe extern "C" fn predefined() {
     let mut line: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
     let mut file_name: *const ::core::ffi::c_char =
         b"predefined.c\0" as *const u8 as *const ::core::ffi::c_char;
-    let mut func: *const ::core::ffi::c_char = ::core::mem::transmute::<
-        [u8; 11],
-        [::core::ffi::c_char; 11],
-    >(*b"predefined\0")
-        .as_ptr();
+    let mut func: *const ::core::ffi::c_char =
+        b"predefined\0" as *const u8 as *const ::core::ffi::c_char;
 }
