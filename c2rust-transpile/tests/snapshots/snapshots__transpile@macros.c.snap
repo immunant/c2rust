@@ -240,7 +240,7 @@ static mut global_static_const_mixed_arithmetic: ::core::ffi::c_float =
         - true_0 as ::core::ffi::c_double) as ::core::ffi::c_float;
 static mut global_static_const_parens: ::core::ffi::c_int = PARENS;
 static mut global_static_const_ptr_arithmetic: *const ::core::ffi::c_char =
-    0 as *const ::core::ffi::c_char;
+    ::core::ptr::null::<::core::ffi::c_char>();
 static mut global_static_const_widening_cast: ::core::ffi::c_ulonglong = WIDENING_CAST;
 static mut global_static_const_narrowing_cast: ::core::ffi::c_char =
     LITERAL_INT as ::core::ffi::c_char;
@@ -254,7 +254,7 @@ static mut global_static_const_str_concatenation: [::core::ffi::c_char; 18] = un
 static mut global_static_const_builtin: ::core::ffi::c_int =
     (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
 static mut global_static_const_ref_indexing: *const ::core::ffi::c_char =
-    0 as *const ::core::ffi::c_char;
+    ::core::ptr::null::<::core::ffi::c_char>();
 static mut global_static_const_ref_struct: *const S = &LITERAL_STRUCT as *const S as *mut S;
 static mut global_static_const_ternary: ::core::ffi::c_int = 0;
 static mut global_static_const_member: ::core::ffi::c_int = 0;
@@ -313,7 +313,7 @@ pub static mut global_const_mixed_arithmetic: ::core::ffi::c_float =
 pub static mut global_const_parens: ::core::ffi::c_int = PARENS;
 #[no_mangle]
 pub static mut global_const_ptr_arithmetic: *const ::core::ffi::c_char =
-    0 as *const ::core::ffi::c_char;
+    ::core::ptr::null::<::core::ffi::c_char>();
 #[no_mangle]
 pub static mut global_const_widening_cast: ::core::ffi::c_ulonglong = WIDENING_CAST;
 #[no_mangle]
@@ -335,7 +335,7 @@ pub static mut global_const_builtin: ::core::ffi::c_int =
     (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
 #[no_mangle]
 pub static mut global_const_ref_indexing: *const ::core::ffi::c_char =
-    0 as *const ::core::ffi::c_char;
+    ::core::ptr::null::<::core::ffi::c_char>();
 #[no_mangle]
 pub static mut global_const_ref_struct: *const S = &LITERAL_STRUCT as *const S as *mut S;
 #[no_mangle]
@@ -363,7 +363,7 @@ pub unsafe extern "C" fn reference_define() -> ::core::ffi::c_int {
 #[no_mangle]
 pub static mut fns: fn_ptrs = {
     let mut init = fn_ptrs {
-        v: 0 as *const ::core::ffi::c_void as *mut ::core::ffi::c_void,
+        v: ::core::ptr::null::<::core::ffi::c_void>() as *mut ::core::ffi::c_void,
         fn1: None,
         fn2: None,
     };

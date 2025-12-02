@@ -28,11 +28,11 @@ pub unsafe extern "C" fn VM_CallCompiled(
     mut args: *mut ::core::ffi::c_int,
 ) -> ::core::ffi::c_int {
     let mut stack: [byte; 271] = [0; 271];
-    let mut entryPoint: *mut ::core::ffi::c_void = 0 as *mut ::core::ffi::c_void;
+    let mut entryPoint: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
     let mut programStack: ::core::ffi::c_int = 0;
     let mut stackOnEntry: ::core::ffi::c_int = 0;
-    let mut image: *mut byte = 0 as *mut byte;
-    let mut opStack: *mut ::core::ffi::c_int = 0 as *mut ::core::ffi::c_int;
+    let mut image: *mut byte = ::core::ptr::null_mut::<byte>();
+    let mut opStack: *mut ::core::ffi::c_int = ::core::ptr::null_mut::<::core::ffi::c_int>();
     let mut opStackOfs: ::core::ffi::c_int = 0;
     let mut arg: ::core::ffi::c_int = 0;
     let mut currentVM: *mut vm_t = vm;
