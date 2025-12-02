@@ -53,6 +53,24 @@ pub mod bar {
         pub f_namemax: libc::c_ulong,
         __f_spare: [libc::c_int; 6],
     }
+    // Slightly different version of the structure: all fields are public.
+    // This shouldn't get unified either.
+    #[repr(C)]
+
+    pub struct statvfs_1 {
+        pub f_bsize: libc::c_ulong,
+        pub f_frsize: libc::c_ulong,
+        pub f_blocks: libc::fsblkcnt_t,
+        pub f_bfree: libc::fsblkcnt_t,
+        pub f_bavail: libc::fsblkcnt_t,
+        pub f_files: libc::fsfilcnt_t,
+        pub f_ffree: libc::fsfilcnt_t,
+        pub f_favail: libc::fsfilcnt_t,
+        pub f_fsid: libc::c_ulong,
+        pub f_flag: libc::c_ulong,
+        pub f_namemax: libc::c_ulong,
+        pub __f_spare: [libc::c_int; 6],
+    }
     //test1
     type OtherInt = i32;
     // Comment on bar_t
@@ -99,7 +117,7 @@ pub mod foo {
 
         // Use the definitions that have all public fields.
         // The transform should not reuse any of the libc declarations.
-        let mut buf = unsafe { std::mem::zeroed::<crate::bar::statvfs>() };
+        let mut buf = unsafe { std::mem::zeroed::<crate::bar::statvfs_1>() };
         crate::bar::statvfs(core::ptr::null(), &mut buf);
 
         // Use the definitions that are identical to libc.

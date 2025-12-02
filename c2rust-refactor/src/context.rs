@@ -788,9 +788,12 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path)
     }
 
-    /// Compare two items for type compatibility under the C definition
-    pub fn compatible_types(&self, item1: &Item, item2: &Item) -> bool {
-        TypeCompare::new(self).compatible_types(item1, item2)
+    /// Compare two items for type compatibility under the C definition.
+    ///
+    /// If `match_vis` is `true`, the visibility of all structure/enum/union
+    /// fields (i.e. if they are `pub`) must match between the two items.
+    pub fn compatible_types(&self, item1: &Item, item2: &Item, match_vis: bool) -> bool {
+        TypeCompare::new(self).compatible_types(item1, item2, match_vis)
     }
 
     /// Compare two function declarations for equivalent argument and return types,
@@ -1062,8 +1065,11 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         }
     }
 
-    /// Compare two items for type compatibility under the C definition
-    pub fn compatible_types(&self, item1: &Item, item2: &Item) -> bool {
+    /// Compare two items for type compatibility under the C definition.
+    ///
+    /// If `match_vis` is `true`, the visibility of all structure/enum/union
+    /// fields (i.e. if they are `pub`) must match between the two items.
+    pub fn compatible_types(&self, item1: &Item, item2: &Item, match_vis: bool) -> bool {
         use rustc_ast::ItemKind::*;
         match (&item1.kind, &item2.kind) {
             // * Assure that these two items are in fact of the same type, just to be safe.
@@ -1072,7 +1078,13 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     self.cx.opt_node_type(item1.id),
                     self.cx.opt_node_type(item2.id),
                 ) {
-                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
+                    (Some(ty1), Some(ty2)) => {
+                        if match_vis {
+                            self.structural_eq_tys_with_vis(ty1, ty2)
+                        } else {
+                            self.structural_eq_tys(ty1, ty2)
+                        }
+                    }
                     _ => {
                         // TODO: handle type aliases in traits; for now we don't
                         // care about them because C2Rust does not emit traits
@@ -1081,7 +1093,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
                         if ta1.generics.params.is_empty() && ta2.generics.params.is_empty() {
                             // TODO: compare the other fields
-                            self.structural_eq_ast_tys(ty1, ty2)
+                            self.structural_eq_ast_tys(ty1, ty2, match_vis)
                                 && ta1.defaultness.unnamed_equiv(&ta2.defaultness)
                         } else {
                             // FIXME: handle generics (we don't need to for now)
@@ -1102,7 +1114,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                             && def1.unnamed_equiv(def2)
                     }
                     _ => {
-                        self.structural_eq_ast_tys(ty1, ty2)
+                        self.structural_eq_ast_tys(ty1, ty2, match_vis)
                             && expr1.unnamed_equiv(expr2)
                             && def1.unnamed_equiv(def2)
                     }
@@ -1139,11 +1151,23 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     self.cx.opt_node_type(item1.id),
                     self.cx.opt_node_type(item2.id),
                 ) {
-                    (Some(ty1), Some(ty2)) => self.structural_eq_tys(ty1, ty2),
+                    (Some(ty1), Some(ty2)) => {
+                        if match_vis {
+                            self.structural_eq_tys_with_vis(ty1, ty2)
+                        } else {
+                            self.structural_eq_tys(ty1, ty2)
+                        }
+                    }
                     _ => {
                         let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
                         fields.all(|(field1, field2)| {
-                            self.structural_eq_ast_tys(&field1.ty, &field2.ty)
+                            // TODO: either Visibility or VisibilityKind should implement
+                            // PartialEq; until then, the closest we have is `is_pub`
+                            if match_vis && field1.vis.kind.is_pub() != field2.vis.kind.is_pub() {
+                                return false;
+                            }
+
+                            self.structural_eq_ast_tys(&field1.ty, &field2.ty, match_vis)
                         })
                     }
                 }
@@ -1159,6 +1183,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                         .zip(variant2.data.fields().iter())
                 });
                 fields.all(|(field1, field2)| {
+                    if match_vis && field1.vis.kind.is_pub() != field2.vis.kind.is_pub() {
+                        return false;
+                    }
+
                     match (
                         self.cx.opt_node_type(field1.id),
                         self.cx.opt_node_type(field2.id),
@@ -1177,7 +1205,13 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                         self.cx.opt_node_type(item1.id),
                         self.cx.opt_node_type(item2.id),
                     ) {
-                        (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
+                        (Some(ty1), Some(ty2)) => {
+                            if match_vis {
+                                return self.structural_eq_tys_with_vis(ty1, ty2);
+                            } else {
+                                return self.structural_eq_tys(ty1, ty2);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1192,7 +1226,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
     /// ignoring argument names.
     pub fn compatible_fn_prototypes(&self, decl1: &FnDecl, decl2: &FnDecl) -> bool {
         let mut args = decl1.inputs.iter().zip(decl2.inputs.iter());
-        if !args.all(|(arg1, arg2)| self.structural_eq_ast_tys(&arg1.ty, &arg2.ty)) {
+        if !args.all(|(arg1, arg2)| self.structural_eq_ast_tys(&arg1.ty, &arg2.ty, true)) {
             return false;
         }
 
@@ -1208,7 +1242,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             FnRetTy::Ty(ty) => &ty,
         };
 
-        self.structural_eq_ast_tys(ty1, ty2)
+        self.structural_eq_ast_tys(ty1, ty2, true)
     }
 
     /// Compare two ty function signatures for equivalent argument and return
@@ -1234,13 +1268,24 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
     }
 
     /// Compare two AST types for structural equivalence, ignoring names.
-    fn structural_eq_ast_tys(&self, ty1: &rustc_ast::Ty, ty2: &rustc_ast::Ty) -> bool {
+    ///
+    /// If `match_vis` is `true`, the visibility of all structure/enum/union
+    /// fields (i.e. if they are `pub`) must match between the two types.
+    fn structural_eq_ast_tys(
+        &self,
+        ty1: &rustc_ast::Ty,
+        ty2: &rustc_ast::Ty,
+        match_vis: bool,
+    ) -> bool {
         match (self.cx.opt_node_type(ty1.id), self.cx.opt_node_type(ty2.id)) {
+            (Some(ty1), Some(ty2)) if match_vis => {
+                return self.structural_eq_tys_with_vis(ty1, ty2)
+            }
             (Some(ty1), Some(ty2)) => return self.structural_eq_tys(ty1, ty2),
             _ => {}
         }
         match (self.cx.try_resolve_ty(ty1), self.cx.try_resolve_ty(ty2)) {
-            (Some(did1), Some(did2)) => self.structural_eq_defs(did1, did2, false),
+            (Some(did1), Some(did2)) => self.structural_eq_defs(did1, did2, match_vis),
             _ => ty1.unnamed_equiv(ty2),
         }
     }
