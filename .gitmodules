@@ -25,3 +25,50 @@
 [submodule "examples/tinycc/repo"]
 	path = examples/tinycc/repo
 	url = https://github.com/immunant/tinycc-rs.git
+[submodule "tests/integration/tests/lua"]
+	path = tests/integration/tests/lua/repo
+	url = https://github.com/immunant/lua.git
+	branch = c2rust
+	ignore = all
+[submodule "tests/integration/tests/zstd"]
+	path = tests/integration/tests/zstd/repo
+	url = https://github.com/facebook/zstd
+	branch = dev
+	ignore = all
+[submodule "tests/integration/tests/ruby"]
+	path = tests/integration/tests/ruby/repo
+	url = https://github.com/ruby/ruby
+	branch = ruby_2_6
+	ignore = all
+[submodule "tests/integration/tests/python2"]
+	path = tests/integration/tests/python2/repo
+	url = https://github.com/python/cpython.git
+	branch = 2.7
+	ignore = all
+[submodule "tests/integration/tests/json-c"]
+	path = tests/integration/tests/json-c/repo
+	url = https://github.com/json-c/json-c.git
+	ignore = all
+[submodule "tests/integration/tests/curl/repo"]
+	path = tests/integration/tests/curl/repo
+	url = https://github.com/curl/curl.git
+	ignore = all
+[submodule "tests/integration/tests/nginx/repo"]
+	path = tests/integration/tests/nginx/repo
+	url = https://github.com/nginx/nginx.git
+	ignore = all
+[submodule "tests/integration/tests/libxml2/repo"]
+	path = tests/integration/tests/libxml2/repo
+	url = https://github.com/GNOME/libxml2.git
+	ignore = all
+[submodule "tests/integration/tests/redis/repo"]
+	path = tests/integration/tests/redis/repo
+	url = https://github.com/antirez/redis.git
+	ignore = all
+[submodule "tests/integration/tests/snudown/repo"]
+	path = tests/integration/tests/snudown/repo
+	url = https://github.com/reddit/snudown.git
+	ignore = all
+[submodule "tests/integration/tests/libmcs/repo"]
+	path = tests/integration/tests/libmcs/repo
+	url = https://gitlab.com/gtd-gmbh/libmcs
