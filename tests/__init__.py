@@ -1,7 +1,11 @@
 
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import timedelta
 import os
 import sys
 import subprocess
+from time import perf_counter
 from typing import List  # , Set, Dict, Tuple, Optional
 
 from tests.util import *
@@ -10,7 +14,7 @@ from tests.requirements import *
 
 class Test(object):
 
-    STAGES: dict = {
+    STAGES: dict[str, list[str]] = {
         "autogen": ["autogen.sh"],
         "configure": ["configure.sh"],
         "make": ["make.sh", "cmake.sh"],
@@ -38,12 +42,14 @@ class Test(object):
             if os.path.isfile(logfile):
                 grep_cmd = ['grep', '-i', '-A', '20', '-E', 'panicked|error', logfile]
                 grep = subprocess.Popen(grep_cmd, stdout=subprocess.PIPE)
+                assert grep.stdout is not None
                 for line in grep.stdout:
                     print(line.decode().rstrip())
 
                 # fall back to tail if grep didn't find anything
                 if grep.returncode != 0:
                     tail = subprocess.Popen(['tail', '-n', '20', logfile], stdout=subprocess.PIPE)
+                    assert tail.stdout is not None
                     for line in tail.stdout:
                         print(line.decode().rstrip())
             else:
@@ -53,7 +59,6 @@ class Test(object):
                     nocolor=Colors.NO_COLOR)
                 )
 
-        prev_dir = os.getcwd()
         script_path = os.path.join(self.dir, script)
 
         if not os.path.isfile(script_path):
@@ -73,14 +78,15 @@ class Test(object):
             return False
 
         if not verbose:
-            relpath = os.path.relpath(script_path, prev_dir)
+            relpath = os.path.relpath(script_path, os.getcwd())
             line = "{blue}{name}{nc}: {stage}({script})".format(
                 blue=Colors.OKBLUE,
                 name=self.name,
                 nc=Colors.NO_COLOR,
                 stage=stage,
                 script=relpath)
-            print(line, end="", flush=True)
+        else:
+            line = ""
 
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
@@ -93,7 +99,7 @@ class Test(object):
                     fill = (75 - len(line)) * "."
                     color = Colors.OKBLUE
                     msg = "OK_CACHED"
-                    print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
+                    print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
                 return True
             elif emsg:
                 if verbose:
@@ -103,45 +109,35 @@ class Test(object):
                 except OSError:
                     print(f"could not remove {compile_commands}")
 
-
-        success = False
-
         # noinspection PyBroadException
         try:
-            os.chdir(self.dir)
             if verbose:
-                subprocess.check_call(args=[script_path])
+                subprocess.check_call(cwd=self.dir, args=[script_path])
             else:
                 subprocess.check_call(
+                    cwd=self.dir,
                     args=[script_path],
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
+                    stderr=subprocess.DEVNULL,
+                )
 
                 fill = (75 - len(line)) * "."
                 color = Colors.WARNING if xfail else Colors.OKGREEN
                 msg = "OK_XFAIL" if xfail else "OK"
-                print(f"{fill} {color}{msg}{Colors.NO_COLOR}")
-            success = True
+                print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
+            return True
         except KeyboardInterrupt:
             if not verbose:
-                print(": {color}INTERRUPT{nocolor}".format(
-                    color=Colors.WARNING,
-                    nocolor=Colors.NO_COLOR)
-                )
+                print(f"{line}: {Colors.WARNING}INTERRUPT{Colors.NO_COLOR}")
             exit(1)
         except Exception:  # noqa
             if not verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
-                print("{fill} {color}{outcome}{nocolor}".format(
-                    fill=(75 - len(line)) * ".",
-                    color=Colors.OKBLUE if xfail else Colors.FAIL,
-                    outcome=outcome,
-                    nocolor=Colors.NO_COLOR)
-                )
+                fill = (75 - len(line)) * "."
+                color = Colors.OKBLUE if xfail else Colors.FAIL
+                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
                 print_log_tail_on_fail(script_path)
-        finally:
-            os.chdir(prev_dir)
-            return success
+            return False
 
     def ensure_submodule_checkout(self):
         # make sure the `repo` directory exists and is not empty
@@ -175,7 +171,7 @@ class Test(object):
             die(f"expected boolean xfail value; found {xfail}")
         return xfail
 
-    def __call__(self, conf: Config):
+    def run(self, conf: Config) -> bool:
         """Returns true if test was successful or expected to fail, false on unexpected
         failure
         """
@@ -183,7 +179,7 @@ class Test(object):
         self.ensure_submodule_checkout()
 
         stages = Test.STAGES.keys()
-        if conf.stages:
+        if conf.stages is not None:
             # Check that all stages are valid
             for stage in conf.stages:
                 if stage not in Test.STAGES:
@@ -201,20 +197,37 @@ class Test(object):
                     xfail = self.is_stage_xfail(stage, script, conf)
                     cont = self.run_script(stage, script, conf.verbose, xfail)
                     if not cont:
+                        print(f"{self.name} failed on stage {stage}")
                         return xfail
                     break  # found script for stage; skip alternatives
         return True
 
 
-def run_tests(conf):
+@dataclass
+class TestResult:
+    test: Test
+    passed: bool
+    time: timedelta
+
+
+def run_tests(conf: Config):
     if not conf.ignore_requirements:
         check(conf)
 
     tests = [Test(td) for td in conf.project_dirs]
 
-    failure = False
-    for tt in tests:
-        failure |= not tt(conf)
+    def run(test: Test) -> TestResult:
+        start = perf_counter()
+        passed = test.run(conf)
+        end = perf_counter()
+        time = timedelta(seconds=end - start)
+        return TestResult(test=test, passed=passed, time=time)
 
-    if failure:
+    with ThreadPoolExecutor() as executor:
+        results = executor.map(run, tests)
+
+    for result in results:
+        print(f"{result.test.name} took {result.time}")
+    if not all(result.passed for result in results):
+        print(f"projects failed: {" ".join(result.test.name for result in results)}")
         exit(1)
