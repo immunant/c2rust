@@ -1158,7 +1158,11 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                             self.structural_eq_tys(ty1, ty2)
                         }
                     }
-                    _ => {
+                    _ => 'match_fields: {
+                        if variant1.fields().len() != variant2.fields().len() {
+                            break 'match_fields false;
+                        }
+
                         let mut fields = variant1.fields().iter().zip(variant2.fields().iter());
                         fields.all(|(field1, field2)| {
                             // TODO: either Visibility or VisibilityKind should implement
