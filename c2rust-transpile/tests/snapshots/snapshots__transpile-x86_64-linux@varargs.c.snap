@@ -1,0 +1,145 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/arch-os-specific/varargs.x86_64-linux.rs
+input_file: c2rust-transpile/tests/snapshots/arch-os-specific/varargs.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(c_variadic)]
+extern "C" {
+    fn printf(__format: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
+    fn vprintf(
+        __format: *const ::core::ffi::c_char,
+        __arg: ::core::ffi::VaList,
+    ) -> ::core::ffi::c_int;
+    fn putchar(__c: ::core::ffi::c_int) -> ::core::ffi::c_int;
+}
+pub type __builtin_va_list = [__va_list_tag; 1];
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct __va_list_tag {
+    pub gp_offset: ::core::ffi::c_uint,
+    pub fp_offset: ::core::ffi::c_uint,
+    pub overflow_arg_area: *mut ::core::ffi::c_void,
+    pub reg_save_area: *mut ::core::ffi::c_void,
+}
+pub type va_list = __builtin_va_list;
+#[derive()]
+#[repr(C)]
+pub struct vastruct<'a> {
+    pub args: ::core::ffi::VaListImpl<'a>,
+}
+#[no_mangle]
+pub unsafe extern "C" fn call_printf() {
+    printf(
+        b"%d, %f\n\0" as *const u8 as *const ::core::ffi::c_char,
+        10 as ::core::ffi::c_int,
+        1.5f64,
+    );
+}
+#[no_mangle]
+pub unsafe extern "C" fn my_vprintf(
+    mut format: *const ::core::ffi::c_char,
+    mut ap: ::core::ffi::VaList,
+) {
+    vprintf(format, ap.as_va_list() as ::core::ffi::VaList);
+}
+#[no_mangle]
+pub unsafe extern "C" fn call_vprintf(mut format: *const ::core::ffi::c_char, mut args: ...) {
+    let mut ap: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    my_vprintf(format, ap.as_va_list());
+}
+#[no_mangle]
+pub unsafe extern "C" fn my_printf(mut fmt: *const ::core::ffi::c_char, mut args: ...) {
+    let mut ap: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    while *fmt != 0 {
+        match *fmt as ::core::ffi::c_int {
+            37 => {
+                fmt = fmt.offset(1);
+                if !(*fmt == 0) {
+                    match *fmt as ::core::ffi::c_int {
+                        105 | 100 => {
+                            printf(
+                                b"%d\0" as *const u8 as *const ::core::ffi::c_char,
+                                ap.arg::<::core::ffi::c_int>(),
+                            );
+                        }
+                        102 => {
+                            printf(
+                                b"%f\0" as *const u8 as *const ::core::ffi::c_char,
+                                ap.arg::<::core::ffi::c_double>(),
+                            );
+                        }
+                        115 => {
+                            printf(
+                                b"%s\0" as *const u8 as *const ::core::ffi::c_char,
+                                ap.arg::<*mut ::core::ffi::c_char>(),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {
+                putchar(*fmt as ::core::ffi::c_int);
+            }
+        }
+        fmt = fmt.offset(1);
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn simple_vacopy(mut fmt: *const ::core::ffi::c_char, mut args: ...) {
+    let mut ap: ::core::ffi::VaListImpl;
+    let mut aq: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    aq = ap.clone();
+    vprintf(fmt, ap.as_va_list());
+    vprintf(fmt, aq.as_va_list());
+}
+#[no_mangle]
+pub unsafe extern "C" fn valist_struct_member(mut fmt: *const ::core::ffi::c_char, mut args: ...) {
+    let mut a: vastruct = vastruct {
+        args: ::core::mem::MaybeUninit::uninit().assume_init(),
+    };
+    let mut b: vastruct = vastruct {
+        args: ::core::mem::MaybeUninit::uninit().assume_init(),
+    };
+    a.args = args.clone();
+    b.args = a.args.clone();
+    vprintf(fmt, a.args.as_va_list());
+    vprintf(fmt, b.args.as_va_list());
+}
+#[no_mangle]
+pub unsafe extern "C" fn valist_struct_pointer_member(
+    mut fmt: *const ::core::ffi::c_char,
+    mut args: ...
+) {
+    let mut a: vastruct = vastruct {
+        args: ::core::mem::MaybeUninit::uninit().assume_init(),
+    };
+    let mut b: vastruct = vastruct {
+        args: ::core::mem::MaybeUninit::uninit().assume_init(),
+    };
+    let mut p: *mut vastruct = &mut a;
+    let mut q: *mut vastruct = &mut b;
+    (*p).args = args.clone();
+    (*q).args = (*p).args.clone();
+    vprintf(fmt, (*p).args.as_va_list());
+    vprintf(fmt, (*q).args.as_va_list());
+}
+#[no_mangle]
+pub unsafe extern "C" fn restart_valist(mut fmt: *const ::core::ffi::c_char, mut args: ...) {
+    let mut ap: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    vprintf(fmt, ap.as_va_list());
+    ap = args.clone();
+    vprintf(fmt, ap.as_va_list());
+}

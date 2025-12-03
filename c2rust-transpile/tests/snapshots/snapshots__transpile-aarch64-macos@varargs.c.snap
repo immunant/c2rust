@@ -1,0 +1,24 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/arch-os-specific/varargs.aarch64-macos.rs
+input_file: c2rust-transpile/tests/snapshots/arch-os-specific/varargs.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+extern "C" {
+    fn printf(_: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn call_printf() {
+    printf(
+        b"%d, %f\n\0" as *const u8 as *const ::core::ffi::c_char,
+        10 as ::core::ffi::c_int,
+        1.5f64,
+    );
+}
