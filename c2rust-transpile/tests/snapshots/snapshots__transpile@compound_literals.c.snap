@@ -17,10 +17,11 @@ pub static mut static_single_int: ::core::ffi::c_int = 42;
 pub static mut static_single_int_ptr: *mut ::core::ffi::c_int =
     &42 as *const ::core::ffi::c_int as *mut ::core::ffi::c_int;
 #[no_mangle]
-pub static mut static_int_ptr_to_array: *mut ::core::ffi::c_int = [42, 9001].as_ptr() as *mut _;
+pub static mut static_int_ptr_to_array: *mut ::core::ffi::c_int =
+    [42, 9001].as_ptr() as *mut ::core::ffi::c_int;
 #[no_mangle]
 pub static mut static_volatile_int_ptr_to_array: *mut ::core::ffi::c_int =
-    [42, 9001].as_ptr() as *mut _ as *mut ::core::ffi::c_int;
+    [42, 9001].as_ptr() as *mut ::core::ffi::c_int as *mut ::core::ffi::c_int;
 #[no_mangle]
 pub static mut static_int_array_ptr: *mut [::core::ffi::c_int; 2] =
     &[42, 9001] as *const [::core::ffi::c_int; 2] as *mut [::core::ffi::c_int; 2];
