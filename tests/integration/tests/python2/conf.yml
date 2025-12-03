@@ -1,0 +1,36 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        # - python-setuptools
+        - tcl-dev
+        - liblzma-dev
+        - libgdbm-dev
+        - tk-dev # apt-get -y --no-install-recommends install tk-dev
+        - libncurses-dev
+        - libexpat1-dev
+        - libssl-dev
+        - zlib1g-dev
+        - libsqlite3-dev
+        - libbz2-dev
+        - libdb-dev
+
+transpile:
+  autogen: true
+  binary: python
+
+refactor:
+  autogen: true
+  transforms:
+    - remove_unused_labels
+    - remove_literal_suffixes
+    - convert_cast_as_ptr
+    - remove_unnecessary_refs
+
+cargo.transpile:
+  autogen: true
+  rustflags: "-C link-args=-Wl,-export-dynamic"
+
+cargo.refactor:
+  autogen: true
+  rustflags: "-C link-args=-Wl,-export-dynamic"

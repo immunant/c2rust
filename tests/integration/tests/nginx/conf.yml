@@ -1,0 +1,27 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - libgcrypt20
+        - libpcre3-dev
+        - zlib1g-dev
+
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
+  autogen: true
+
+transpile:
+  autogen: true
+  # blocked on https://github.com/immunant/c2rust/issues/266
+  # tflags: --reorganize-definitions
+  binary: nginx
+
+refactor:
+  autogen: true
+  transforms:
+    - remove_unused_labels
+    - remove_literal_suffixes
+    - convert_cast_as_ptr
+    - remove_unnecessary_refs

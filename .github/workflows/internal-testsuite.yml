@@ -8,8 +8,6 @@ on:
   push:
     branches: [ master, feature/ci-dev ]
   pull_request:
-  # allow using from other repos (in particular, c2rust-testsuite)
-  workflow_call:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -39,13 +37,6 @@ jobs:
       uses: actions/checkout@v2
       with:
         repository: immunant/c2rust
-
-    # Working dir is /home/runner/work/c2rust/c2rust/testsuite
-    - name: Checkout c2rust-testsuite
-      uses: actions/checkout@v2
-      with:
-        repository: immunant/c2rust-testsuite
-        path: testsuite
         submodules: true
 
     - uses: astral-sh/setup-uv@v6
@@ -74,7 +65,7 @@ jobs:
     #   uses: actions/cache@v4
     #   with:
     #     path: |
-    #       ${{ github.workspace }}/testsuite/tests/**/compile_commands.json
+    #       ${{ github.workspace }}/tests/integration/tests/**/compile_commands.json
     #     key: ${{ runner.os }}-ccdb-${{ steps.get-image-ver.outputs.version }}
 
     - name: Provision Debian Packages
@@ -113,19 +104,19 @@ jobs:
     # TODO(pl): figure out why compile_commands.json may cause json-c to fail
     - name: Run c2rust testsuite
       run: |
-        find testsuite -type f -name compile_commands.json -delete
+        find tests/integration -type f -name compile_commands.json -delete
         export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
-        # Needs to be run from `testsuite/` (or further inside)
+        # Needs to be run from `tests/integration/` (or further inside)
         # to correctly load the `pyproject.toml`.
-        (cd testsuite && ./test.py curl json-c lua nginx zstd libxml2 python2 libmcs)
+        (cd tests/integration && ./test.py curl json-c lua nginx zstd libxml2 python2 libmcs)
 
     - uses: actions/upload-artifact@v4
       with:
         name: testsuite-${{ matrix.runner }}-artifacts
         path: |
-          ${{ github.workspace }}/testsuite/**/*.log
-          ${{ github.workspace }}/testsuite/**/compile_commands.json
-          ${{ github.workspace }}/testsuite/tests/refactor-diffs/**
+          ${{ github.workspace }}/tests/integration/**/*.log
+          ${{ github.workspace }}/tests/integration/**/compile_commands.json
+          ${{ github.workspace }}/tests/integration/tests/refactor-diffs/**
       if: always()

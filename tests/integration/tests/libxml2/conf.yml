@@ -1,0 +1,27 @@
+transpile:
+  autogen: true
+  binary: runtest
+  tflags: --reorganize-definitions --disable-refactoring
+
+refactor:
+  autogen: true
+  transforms:
+  - rename_unnamed
+  - reorganize_definitions
+  - remove_unused_labels
+  - remove_null_terminator
+  - bytestr_to_str
+  - convert_format_args
+  - convert_printfs
+  - fix_unused_unsafe
+  - remove_redundant_casts
+  - convert_cast_as_ptr
+  - remove_unnecessary_refs
+  - remove_literal_suffixes
+  - noop
+
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
+  autogen: true

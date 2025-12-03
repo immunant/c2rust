@@ -50,7 +50,7 @@ test-translator() {
     unset RUSTFLAGS
     uv venv
     uv pip install -r ./scripts/requirements.txt
-    ./scripts/test_translator.py tests/
+    ./scripts/test_translator.py tests/unit
 }
 
 all() {

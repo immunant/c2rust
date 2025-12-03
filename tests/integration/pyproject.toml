@@ -1,0 +1,10 @@
+[project]
+name = "c2rust-testsuite"
+version = "0.21.0"
+requires-python = ">=3.12"
+dependencies = [
+    "distro>=1.9.0",
+    "jinja2>=3.1.6",
+    "pyyaml>=6.0.3",
+    "scan-build>=2.0.20",
+]

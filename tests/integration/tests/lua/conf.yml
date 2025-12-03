@@ -1,0 +1,25 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - libreadline-dev
+        - rcs # used in makefile
+
+transpile:
+  autogen: true
+  tflags: --reorganize-definitions --disable-refactoring
+  binary: lua
+
+refactor:
+  autogen: true
+  transforms:
+    - rename_unnamed
+    - reorganize_definitions
+    - remove_unused_labels
+    - remove_literal_suffixes
+
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
+  autogen: true

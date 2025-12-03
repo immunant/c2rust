@@ -79,7 +79,7 @@ Tests are found in the [`tests`](../tests/) folder.
 If you build the translator successfully, you should be able to run the tests with:
 
 ```sh
-./scripts/test_translator.py tests
+./scripts/test_translator.py tests/unit
 ```
 
 This basically tests that the original C file and translated Rust file

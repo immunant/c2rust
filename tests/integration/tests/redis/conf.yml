@@ -1,0 +1,19 @@
+transpile:
+  autogen: true
+  binary: redis-server
+
+  # needs support for __atomic_*
+  xfail: true
+
+refactor:
+  autogen: true
+  transforms:
+    - remove_literal_suffixes
+    - convert_cast_as_ptr
+    - remove_unnecessary_refs
+
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
+  autogen: true
