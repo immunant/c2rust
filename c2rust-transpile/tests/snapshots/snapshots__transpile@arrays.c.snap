@@ -41,9 +41,8 @@ pub static mut static_char_array: [::core::ffi::c_char; 9] =
 pub static mut static_char_ptr: *mut ::core::ffi::c_char =
     b"mystring\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
 #[no_mangle]
-pub static mut static_void_ptr: *mut ::core::ffi::c_void = unsafe {
-    static_char_array.as_ptr() as *mut _ as *mut ::core::ffi::c_void
-};
+pub static mut static_void_ptr: *mut ::core::ffi::c_void =
+    unsafe { static_char_array.as_ptr() as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void };
 #[no_mangle]
 pub unsafe extern "C" fn entry() {
     let mut int_2d: [[::core::ffi::c_int; 1]; 1] = [[1 as ::core::ffi::c_int]];
