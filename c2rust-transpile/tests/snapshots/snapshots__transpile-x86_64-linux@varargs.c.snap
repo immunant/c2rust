@@ -49,7 +49,7 @@ pub unsafe extern "C" fn my_vprintf(
     mut format: *const ::core::ffi::c_char,
     mut ap: ::core::ffi::VaList,
 ) {
-    vprintf(format, ap.as_va_list() as ::core::ffi::VaList);
+    vprintf(format, ap.as_va_list());
 }
 #[no_mangle]
 pub unsafe extern "C" fn call_vprintf(mut format: *const ::core::ffi::c_char, mut args: ...) {
@@ -145,7 +145,7 @@ pub unsafe extern "C" fn restart_valist(mut fmt: *const ::core::ffi::c_char, mut
     vprintf(fmt, ap.as_va_list());
 }
 #[no_mangle]
-pub unsafe extern "C" fn print_int(mut ap: *mut ::core::ffi::VaList) {
+pub unsafe extern "C" fn print_int(mut ap: *mut ::core::ffi::VaListImpl) {
     printf(
         b"%d\0" as *const u8 as *const ::core::ffi::c_char,
         (*ap).arg::<::core::ffi::c_int>(),
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn borrowed_valist(mut count: size_t, mut args: ...) {
     let mut ap: ::core::ffi::VaListImpl;
     ap = args.clone();
     while count > 0 as size_t {
-        print_int(&mut ap.as_va_list());
+        print_int(&mut ap);
         count = count.wrapping_sub(1);
     }
 }
