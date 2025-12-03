@@ -52,23 +52,23 @@ Similarly, `//! feature_X` adds `#![feature(X)]` to the top of the main driver f
 
 ## Running the tests
 
-_From the project root_, run `./scripts/test_translator.py tests` to run all of the tests in the
-`tests` folder. Here are a couple other handy options:
+_From the project root_, run `./scripts/test_translator.py tests/unit` to run all of the tests in the
+`tests/unit` folder. Here are a couple other handy options:
 
 ```shell
 # run a subset of the tests
-$ ./scripts/test_translator.py --only-directories="loops" tests
+$ ./scripts/test_translator.py --only-directories="loops" tests/unit
 # show output of failed tests
-$ ./scripts/test_translator.py --log ERROR                tests
+$ ./scripts/test_translator.py --log ERROR                tests/unit
 # keep all of the files generated during testing
-$ ./scripts/test_translator.py --keep=all                 tests
+$ ./scripts/test_translator.py --keep=all                 tests/unit
 # get help with the command line options
 $ ./scripts/test_translator.py --help
 ```
 
 ## What happens under the hood
 
-This `tests` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
+This `tests/unit` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
 
   1. A `compile_commands.json` file is created for the Clang plugin in `c2rust-ast-exporter` to recognize its C source input
 

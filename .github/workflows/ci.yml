@@ -128,4 +128,4 @@ jobs:
           # causing tons of errors, so don't set that.
           # `test_translator.py` does not rebuild,
           # so changing `RUSTFLAGS` will not trigger a full rebuild.
-          ./scripts/test_translator.py tests/
+          ./scripts/test_translator.py tests/unit
