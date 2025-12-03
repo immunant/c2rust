@@ -1,0 +1,17 @@
+# system-wide conf
+
+requirements:
+  ubuntu: # for ubuntu hosts
+    apt:
+      packages:
+        - build-essential
+
+  generic: # for any host
+    programs:
+      in_path:
+        - c2rust
+        - c2rust-refactor
+        - make
+        - cmake
+        - cargo
+        - intercept-build

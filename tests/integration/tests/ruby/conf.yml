@@ -1,0 +1,31 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - autoconf
+        - bison
+        - ruby
+        - libgdbm-dev
+
+transpile:
+  autogen: true
+  tflags: --reorganize-definitions --disable-refactoring
+  binary: ruby
+  # cflags: "-O0"
+
+refactor:
+  autogen: true
+  transforms:
+    - rename_unnamed
+    - reorganize_definitions
+    - remove_literal_suffixes
+    - convert_cast_as_ptr
+    - remove_unnecessary_refs
+
+cargo.transpile:
+  autogen: true
+  xfail: true
+
+cargo.refactor:
+  autogen: true
+  xfail: true

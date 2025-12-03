@@ -1,0 +1,25 @@
+requirements:
+  ubuntu: # for ubuntu hosts
+    apt:
+      packages:
+        - python2.7
+        - python2.7-dev
+
+transpile:
+  autogen: true
+  tflags: --reorganize-definitions --disable-refactoring
+
+refactor:
+  autogen: true
+  transforms:
+    - rename_unnamed
+    - reorganize_definitions
+    - remove_literal_suffixes
+    - convert_cast_as_ptr
+    - remove_unnecessary_refs
+
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
+  autogen: true

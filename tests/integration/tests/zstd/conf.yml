@@ -1,0 +1,26 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+      - zlib1g-dev
+
+transpile:
+  autogen: true
+  binary: fullbench # zstdcli
+  cflags: -Qunused-arguments
+  tflags: --reorganize-definitions --disable-refactoring
+
+refactor:
+  # TODO: re-enable once c2rust-refactor supports asm!
+  # autogen: true
+  transforms:
+    - rename_unnamed
+    - reorganize_definitions
+    - remove_unused_labels
+    - remove_literal_suffixes
+
+cargo.transpile:
+  autogen: true
+
+cargo.refactor:
+  autogen: true
