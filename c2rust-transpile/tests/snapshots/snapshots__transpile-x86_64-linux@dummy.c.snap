@@ -1,0 +1,13 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/arch-os-specific/dummy.x86_64-linux.rs
+input_file: c2rust-transpile/tests/snapshots/arch-os-specific/dummy.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
