@@ -250,7 +250,10 @@ impl TypeConverter {
     ) -> TranslationResult<Box<Type>> {
         let barefn_inputs = params
             .iter()
-            .map(|x| mk().bare_arg(self.convert(ctxt, x.ctype).unwrap(), None::<Box<Ident>>))
+            .map(|x| {
+                let ty = self.convert_function_param(ctxt, x.ctype).unwrap();
+                mk().bare_arg(ty, None::<Box<Ident>>)
+            })
             .collect::<Vec<_>>();
 
         let output = match ret {
@@ -322,7 +325,7 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaList"]);
+            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaListImpl"]);
             return Ok(ty);
         }
 
@@ -445,6 +448,22 @@ impl TypeConverter {
 
             ref t => Err(format_err!("Unsupported type {:?}", t).into()),
         }
+    }
+
+    // Variant of `convert` that handles types that need to be converted differently if they
+    // are the type of a function parameter.
+    pub fn convert_function_param(
+        &mut self,
+        ctxt: &TypedAstContext,
+        ctype: CTypeId,
+    ) -> TranslationResult<Box<Type>> {
+        if ctxt.is_va_list(ctype) {
+            // va_list parameters are translated as VaList rather than VaListImpl
+            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaList"]);
+            return Ok(ty);
+        }
+
+        self.convert(ctxt, ctype)
     }
 
     /// Add the given parameters to a K&R function pointer type,
