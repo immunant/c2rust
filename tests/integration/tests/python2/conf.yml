@@ -17,12 +17,21 @@ requirements:
 
 transpile:
   autogen: true
+  tflags: --reorganize-definitions --disable-refactoring
   binary: python
 
 refactor:
   autogen: true
   transforms:
+    - rename_unnamed
+    - reorganize_definitions
     - remove_unused_labels
+    - remove_null_terminator
+    - bytestr_to_str
+    - convert_format_args
+    - convert_printfs
+    - fix_unused_unsafe
+    - remove_redundant_casts
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs
