@@ -68,8 +68,8 @@ pub unsafe extern "C" fn array_extra_braces() {
 pub unsafe extern "C" fn array_of_ptrs() {
     let mut _s: [*const ::core::ffi::c_char; 3] = [
         b"hello\0" as *const u8 as *const ::core::ffi::c_char,
-        0 as *const ::core::ffi::c_char,
-        0 as *const ::core::ffi::c_char,
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        ::core::ptr::null::<::core::ffi::c_char>(),
     ];
 }
 #[no_mangle]

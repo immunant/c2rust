@@ -2990,7 +2990,7 @@ impl<'c> Translation<'c> {
                     }
                     _ => {
                         // Non function null ptrs provide enough information to skip
-                        // type annotations; ie `= 0 as *const MyStruct;`
+                        // type annotations; ie `= ::core::ptr::null::<MyStruct>();`
                         if initializer.is_none() {
                             return false;
                         }
@@ -3086,17 +3086,37 @@ impl<'c> Translation<'c> {
             return Ok(mk().path_expr(vec!["None"]));
         }
 
-        let pointee = self
+        let pointer_qty = self
             .ast_context
             .get_pointee_qual_type(type_id)
             .ok_or_else(|| TranslationError::generic("null_ptr requires a pointer"))?;
-        let ty = self.convert_type(type_id)?;
-        let mut zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
-        if is_static && !pointee.qualifiers.is_const {
-            let ty_ = self.convert_pointee_type(pointee.ctype)?;
-            zero = mk().cast_expr(zero, mk().ptr_ty(ty_));
+
+        let func = if pointer_qty.qualifiers.is_const
+            // static variable initializers aren't able to use null_mut
+            // TODO: Rust 1.83: Allowed, so this can be removed.
+            || is_static
+        {
+            "null"
+        } else {
+            "null_mut"
+        };
+        let pointee_ty = self.convert_pointee_type(pointer_qty.ctype)?;
+        let type_args = mk().angle_bracketed_args(vec![pointee_ty.clone()]);
+        let mut val = mk().call_expr(
+            mk().abs_path_expr(vec![
+                mk().path_segment("core"),
+                mk().path_segment("ptr"),
+                mk().path_segment_with_args(func, type_args),
+            ]),
+            vec![],
+        );
+
+        // TODO: Rust 1.83: Remove.
+        if is_static && !pointer_qty.qualifiers.is_const {
+            val = mk().cast_expr(val, mk().mutbl().ptr_ty(pointee_ty));
         }
-        Ok(mk().cast_expr(zero, ty))
+
+        Ok(val)
     }
 
     fn addr_lhs(
