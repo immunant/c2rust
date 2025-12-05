@@ -772,9 +772,11 @@ pub fn translate(
             }
 
             // Slice into the source file, fixing up the ends to account for Clang AST quirks.
-            let slice_decl_with_fixups = |begin, end| -> &[u8] {
+            let slice_decl_with_fixups = |begin: SrcLoc, end: SrcLoc| -> &[u8] {
+                assert!(begin.line <= end.line, "{} <= {}", begin.line, end.line);
                 let mut begin_offset = src_loc_to_byte_offset(&line_end_offsets, begin);
                 let mut end_offset = src_loc_to_byte_offset(&line_end_offsets, end);
+                assert!(begin_offset <= end_offset);
                 const VT: u8 = 11;
                 // Skip whitespace and any trailing semicolons after the previous decl.
                 while let Some(b'\t' | b'\n' | &VT | b'\r' | b' ' | b';') =
@@ -783,6 +785,8 @@ pub fn translate(
                     begin_offset += 1;
                 }
 
+                assert!(begin_offset <= end_offset);
+
                 // Extend to include a single trailing semicolon if this decl is not a block
                 // (e.g., a variable declaration).
                 if file_content.get(end_offset - 1) != Some(&b'}')
@@ -790,6 +794,8 @@ pub fn translate(
                 {
                     end_offset += 1;
                 }
+
+                assert!(begin_offset <= end_offset);
 
                 &file_content[begin_offset..end_offset]
             };
