@@ -2005,9 +2005,9 @@ class TranslateASTVisitor final
         auto &Mgr = Context->getSourceManager();
         auto rvalue = false;
         auto encodeMacroExpansions = false;
-        auto charRange = clang::CharSourceRange::getCharRange(FD->getSourceRange());
+        auto charRange = clang::CharSourceRange::getCharRange(paramsFD->getSourceRange());
         // Extend the range to include the entire final token.
-        charRange.setEnd(clang::Lexer::getLocForEndOfToken(FD->getSourceRange().getEnd(), 0, Mgr, Context->getLangOpts()));
+        charRange.setEnd(clang::Lexer::getLocForEndOfToken(paramsFD->getSourceRange().getEnd(), 0, Mgr, Context->getLangOpts()));
         auto span = charRange.getAsRange();
         encode_entry(
             FD, TagFunctionDecl, span, childIds, functionType,
