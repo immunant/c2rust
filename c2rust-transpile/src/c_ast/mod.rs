@@ -307,7 +307,11 @@ impl TypedAstContext {
             line: 0,
             column: 0,
         };
-        for (decl_id, decl) in &self.c_decls {
+        // Sort decls by source location so we can reason about the possibly comment-containing gaps
+        // between them.
+        let mut decls_sorted = self.c_decls.clone();
+        decls_sorted.sort_by(|_k1, v1, _k2, v2| v1.begin_loc().cmp(&v2.begin_loc()));
+        for (decl_id, decl) in &decls_sorted {
             let begin_loc: SrcLoc = decl.begin_loc().expect("no begin loc for top-level decl");
             let end_loc: SrcLoc = decl.end_loc().expect("no end loc for top-level decl");
 
