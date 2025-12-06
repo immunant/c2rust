@@ -324,14 +324,23 @@ impl TypedAstContext {
                 }
             }
 
+            // This definition ends before the previous one does, i.e. it is nested.
+            // This does not generally occur for regular definitions, e.g. variables within
+            // functions, because the variables will not be top-level decls. But it can occur
+            // for macros defined inside functions, since all macros are top-level decls!
+            let is_nested = end_loc < prev_src_loc;
+            let new_begin_loc = if is_nested { begin_loc } else { prev_src_loc };
+
             // Include only decls from the main file.
             if self.c_decls_top.contains(decl_id)
                 && self.get_source_path(decl) == Some(&self.main_file)
             {
-                let entry = (prev_src_loc, end_loc);
+                let entry = (new_begin_loc, end_loc);
                 name_loc_map.insert(*decl_id, entry);
             }
-            prev_src_loc = end_loc;
+            if !is_nested {
+                prev_src_loc = end_loc;
+            }
         }
         name_loc_map
     }
