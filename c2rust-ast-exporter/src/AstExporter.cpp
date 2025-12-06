@@ -2198,7 +2198,7 @@ class TranslateASTVisitor final
             // Attributes may also be attached to the non-canonical declaration so
             // we emit them too.
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, QualType(),
+            encode_entry(D, TagNonCanonicalDecl, D->getSourceRange(), childIds, QualType(),
                 [D](CborEncoder *local) {
                 // 1. Attributes stored as an array of attribute names
                 CborEncoder attrs;
@@ -2218,7 +2218,7 @@ class TranslateASTVisitor final
 
         auto t = D->getTypeForDecl();
 
-        auto loc = D->getLocation();
+        auto loc = D->getSourceRange();
         std::vector<void *> childIds;
         if (def) {
             for (auto decl : def->decls()) {
@@ -2234,7 +2234,7 @@ class TranslateASTVisitor final
             // Since the RecordDecl D isn't the complete definition,
             // the actual location should be given. This should handle opaque
             // types.
-            loc = def->getLocation();
+            loc = def->getSourceRange();
 
             const ASTRecordLayout &layout =
                 this->Context->getASTRecordLayout(def);
@@ -2433,7 +2433,7 @@ class TranslateASTVisitor final
         if (!D->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, typeForDecl);
+            encode_entry(D, TagNonCanonicalDecl, D->getSourceRange(), childIds, typeForDecl);
             typeEncoder.VisitQualTypeOf(typeForDecl, D);
             return true;
         }
