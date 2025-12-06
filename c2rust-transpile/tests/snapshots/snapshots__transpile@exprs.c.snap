@@ -43,7 +43,7 @@ pub unsafe extern "C" fn unary_with_side_effect() {
     side_effect();
     !side_effect();
     (side_effect() == 0) as ::core::ffi::c_int;
-    &*(b"\0" as *const u8 as *const ::core::ffi::c_char).offset(::core::mem::transmute::<
+    (b"\0" as *const u8 as *const ::core::ffi::c_char).offset(::core::mem::transmute::<
         unsafe extern "C" fn() -> ::core::ffi::c_int,
         unsafe extern "C" fn() -> ::core::ffi::c_int,
     >(side_effect)() as isize) as *const ::core::ffi::c_char;
