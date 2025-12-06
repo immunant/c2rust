@@ -764,10 +764,12 @@ pub fn translate(
 
             /// Convert a source location line/column into a byte offset, given the positions of each newline in the file.
             fn src_loc_to_byte_offset(line_end_offsets: &[usize], loc: SrcLoc) -> usize {
-                let line_offset = line_end_offsets
-                    .get(loc.line as usize - 2) // end of the previous line; for line < 1, index out of bounds
+                let line_offset = loc
+                    .line
+                    .checked_sub(2) // lines are 1-indexed, and we want end of the previous line
+                    .and_then(|line| line_end_offsets.get(line as usize))
                     .map(|x| x + 1) // increment end of the prev line to find start of this one
-                    .unwrap_or(0); // if we indexed out of bounds, start at byte 0
+                    .unwrap_or(0); // if we indexed out of bounds (e.g. for line 1), start at byte 0
                 line_offset + (loc.column as usize).saturating_sub(1)
             }
 
