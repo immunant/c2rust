@@ -908,7 +908,7 @@ impl<'c> Translation<'c> {
 
     pub fn convert_unary_operator(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         name: c_ast::UnOp,
         cqual_type: CQualTypeId,
         arg: CExprId,
@@ -918,69 +918,12 @@ impl<'c> Translation<'c> {
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         let mut unary = match name {
-            c_ast::UnOp::AddressOf => {
-                let arg_kind = &self.ast_context[arg].kind;
-
-                match arg_kind {
-                    // C99 6.5.3.2 para 4
-                    CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
-                        return self.convert_expr(ctx, *target, None)
-                    }
-                    // An AddrOf DeclRef/Member is safe to not decay
-                    // if the translator isn't already giving a hard yes to decaying (ie, BitCasts).
-                    // So we only convert default to no decay.
-                    CExprKind::DeclRef(..) | CExprKind::Member(..) => {
-                        ctx.decay_ref.set_default_to_no()
-                    }
-                    _ => (),
-                }
-
-                let val = self.convert_expr(ctx.used().set_needs_address(true), arg, None)?;
-
-                // & becomes a no-op when applied to a function.
-                if self.ast_context.is_function_pointer(cqual_type.ctype) {
-                    return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
-                }
-
-                let arg_cty = arg_kind
-                    .get_qual_type()
-                    .ok_or_else(|| format_err!("bad source type"))?;
-
-                self.convert_address_of(ctx, Some(arg), arg_cty, cqual_type, val, false)
-            }
+            c_ast::UnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
             c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
             c_ast::UnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
             c_ast::UnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
-            c_ast::UnOp::Deref => {
-                match self.ast_context[arg].kind {
-                    CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg_, _) => {
-                        self.convert_expr(ctx.used(), arg_, None)
-                    }
-                    _ => {
-                        self.convert_expr(ctx.used(), arg, None)?
-                            .result_map(|val: Box<Expr>| {
-                                if let CTypeKind::Function(..) =
-                                    self.ast_context.resolve_type(ctype).kind
-                                {
-                                    Ok(unwrap_function_pointer(val))
-                                } else if let Some(_vla) = self.compute_size_of_expr(ctype) {
-                                    Ok(val)
-                                } else {
-                                    let mut val =
-                                        mk().unary_expr(UnOp::Deref(Default::default()), val);
-
-                                    // If the type on the other side of the pointer we are dereferencing is volatile and
-                                    // this whole expression is not an LValue, we should make this a volatile read
-                                    if lrvalue.is_rvalue() && cqual_type.qualifiers.is_volatile {
-                                        val = self.volatile_read(val, cqual_type)?
-                                    }
-                                    Ok(val)
-                                }
-                            })
-                    }
-                }
-            }
+            c_ast::UnOp::Deref => self.convert_deref(ctx, cqual_type, arg, lrvalue),
             c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
             c_ast::UnOp::Negate => {
