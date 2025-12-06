@@ -513,60 +513,46 @@ impl<'c> Translation<'c> {
                         }
 
                         // Everything else
-                        AssignAdd if pointer_lhs.is_some() => {
-                            let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
-                            let ptr = pointer_offset(write.clone(), rhs, mul, false, false);
-                            WithStmts::new_unsafe_val(mk().assign_expr(write, ptr))
-                        }
-                        AssignSubtract if pointer_lhs.is_some() => {
-                            let mul = self.compute_size_of_expr(pointer_lhs.unwrap().ctype);
-                            let ptr = pointer_offset(write.clone(), rhs, mul, true, false);
-                            WithStmts::new_unsafe_val(mk().assign_expr(write, ptr))
+                        AssignAdd | AssignSubtract if pointer_lhs.is_some() => {
+                            let ptr = self.convert_pointer_offset(
+                                write.clone(),
+                                rhs,
+                                pointer_lhs.unwrap().ctype,
+                                op == AssignSubtract,
+                                false,
+                            );
+                            ptr.map(|ptr| mk().assign_expr(write, ptr))
                         }
 
                         _ => {
-                            if let (AssignAdd | AssignSubtract, Some(pointer_lhs)) =
-                                (op, pointer_lhs)
-                            {
-                                let mul = self.compute_size_of_expr(pointer_lhs.ctype);
-                                let ptr = pointer_offset(
-                                    write.clone(),
-                                    rhs,
-                                    mul,
-                                    op == AssignSubtract,
-                                    false,
-                                );
-                                WithStmts::new_unsafe_val(mk().assign_expr(write, ptr))
-                            } else {
-                                fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
-                                    f(Default::default())
-                                }
-
-                                let (bin_op, bin_op_kind) = match op {
-                                    AssignAdd => (Add, eq(BinOp::AddAssign)),
-                                    AssignSubtract => (Subtract, eq(BinOp::SubAssign)),
-                                    AssignMultiply => (Multiply, eq(BinOp::MulAssign)),
-                                    AssignDivide => (Divide, eq(BinOp::DivAssign)),
-                                    AssignModulus => (Modulus, eq(BinOp::RemAssign)),
-                                    AssignBitXor => (BitXor, eq(BinOp::BitXorAssign)),
-                                    AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlAssign)),
-                                    AssignShiftRight => (ShiftRight, eq(BinOp::ShrAssign)),
-                                    AssignBitOr => (BitOr, eq(BinOp::BitOrAssign)),
-                                    AssignBitAnd => (BitAnd, eq(BinOp::BitAndAssign)),
-                                    _ => panic!("Cannot convert non-assignment operator"),
-                                };
-                                self.convert_assignment_operator_aux(
-                                    bin_op_kind,
-                                    bin_op,
-                                    read.clone(),
-                                    write,
-                                    rhs,
-                                    compute_lhs_type_id.unwrap(),
-                                    compute_res_type_id.unwrap(),
-                                    expr_type_id,
-                                    rhs_type_id,
-                                )?
+                            fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
+                                f(Default::default())
                             }
+
+                            let (bin_op, bin_op_kind) = match op {
+                                AssignAdd => (Add, eq(BinOp::AddAssign)),
+                                AssignSubtract => (Subtract, eq(BinOp::SubAssign)),
+                                AssignMultiply => (Multiply, eq(BinOp::MulAssign)),
+                                AssignDivide => (Divide, eq(BinOp::DivAssign)),
+                                AssignModulus => (Modulus, eq(BinOp::RemAssign)),
+                                AssignBitXor => (BitXor, eq(BinOp::BitXorAssign)),
+                                AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlAssign)),
+                                AssignShiftRight => (ShiftRight, eq(BinOp::ShrAssign)),
+                                AssignBitOr => (BitOr, eq(BinOp::BitOrAssign)),
+                                AssignBitAnd => (BitAnd, eq(BinOp::BitAndAssign)),
+                                _ => panic!("Cannot convert non-assignment operator"),
+                            };
+                            self.convert_assignment_operator_aux(
+                                bin_op_kind,
+                                bin_op,
+                                read.clone(),
+                                write,
+                                rhs,
+                                compute_lhs_type_id.unwrap(),
+                                compute_res_type_id.unwrap(),
+                                expr_type_id,
+                                rhs_type_id,
+                            )?
                         }
                     };
 
@@ -698,15 +684,9 @@ impl<'c> Translation<'c> {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = lhs_type {
-            let mul = self.compute_size_of_expr(pointee.ctype);
-            Ok(WithStmts::new_unsafe_val(pointer_offset(
-                lhs, rhs, mul, false, false,
-            )))
+            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, false, false))
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            let mul = self.compute_size_of_expr(pointee.ctype);
-            Ok(WithStmts::new_unsafe_val(pointer_offset(
-                rhs, lhs, mul, false, false,
-            )))
+            Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false))
         } else if lhs_type.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,
@@ -743,10 +723,7 @@ impl<'c> Translation<'c> {
 
             Ok(WithStmts::new_unsafe_val(mk().cast_expr(offset, ty)))
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            let mul = self.compute_size_of_expr(pointee.ctype);
-            Ok(WithStmts::new_unsafe_val(pointer_offset(
-                lhs, rhs, mul, true, false,
-            )))
+            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
         } else if lhs_type.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,

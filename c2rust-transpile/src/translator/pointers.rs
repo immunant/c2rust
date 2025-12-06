@@ -303,10 +303,7 @@ impl<'c> Translation<'c> {
 
                     // Don't dereference the offset if we're still within the variable portion
                     if let Some(elt_type_id) = var_elt_type_id {
-                        let mul = self.compute_size_of_expr(elt_type_id);
-                        Ok(WithStmts::new_unsafe_val(pointer_offset(
-                            lhs, rhs, mul, false, true,
-                        )))
+                        Ok(self.convert_pointer_offset(lhs, rhs, elt_type_id, false, true))
                     } else {
                         Ok(WithStmts::new_val(
                             mk().index_expr(lhs, cast_int(rhs, "usize", false)),
@@ -315,9 +312,8 @@ impl<'c> Translation<'c> {
                 })
             } else {
                 // LHS must be ref decayed for the offset method call's self param
-                let mut lhs = self.convert_expr(ctx.used().decay_ref(), lhs, None)?;
-                lhs.set_unsafe(); // `pointer_offset` is unsafe.
-                lhs.result_map(|lhs| {
+                let lhs = self.convert_expr(ctx.used().decay_ref(), lhs, None)?;
+                lhs.and_then(|lhs| {
                     // stmts.extend(lhs.stmts_mut());
                     // is_unsafe = is_unsafe || lhs.is_unsafe();
 
@@ -335,18 +331,49 @@ impl<'c> Translation<'c> {
                         }
                     };
 
-                    let mul = self.compute_size_of_expr(pointee_type_id.ctype);
-                    let mut val = pointer_offset(lhs, rhs, mul, false, true);
+                    let mut val =
+                        self.convert_pointer_offset(lhs, rhs, pointee_type_id.ctype, false, true);
                     // if the context wants a different type, add a cast
                     if let Some(expected_ty) = override_ty {
                         if expected_ty != pointee_type_id {
-                            val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
+                            let ty = self.convert_type(expected_ty.ctype)?;
+                            val = val.map(|val| mk().cast_expr(val, ty));
                         }
                     }
                     Ok(val)
                 })
             }
         })
+    }
+
+    /// Pointer offset that casts its argument to isize
+    pub fn convert_pointer_offset(
+        &self,
+        ptr: Box<Expr>,
+        offset: Box<Expr>,
+        pointee_cty: CTypeId,
+        neg: bool,
+        mut deref: bool,
+    ) -> WithStmts<Box<Expr>> {
+        let mut offset = cast_int(offset, "isize", false);
+
+        if let Some(mul) = self.compute_size_of_expr(pointee_cty) {
+            let mul = cast_int(mul, "isize", false);
+            offset = mk().binary_expr(BinOp::Mul(Default::default()), offset, mul);
+            deref = false;
+        }
+
+        if neg {
+            offset = mk().unary_expr(UnOp::Neg(Default::default()), offset);
+        }
+
+        let mut res = mk().method_call_expr(ptr, "offset", vec![offset]);
+
+        if deref {
+            res = mk().unary_expr(UnOp::Deref(Default::default()), res);
+        }
+
+        WithStmts::new_unsafe_val(res)
     }
 
     /// Construct an expression for a NULL at any type, including forward declarations,
@@ -395,33 +422,5 @@ impl<'c> Translation<'c> {
         self.type_converter
             .borrow_mut()
             .convert_pointee(&self.ast_context, type_id)
-    }
-}
-
-/// Pointer offset that casts its argument to isize
-pub fn pointer_offset(
-    ptr: Box<Expr>,
-    offset: Box<Expr>,
-    multiply_by: Option<Box<Expr>>,
-    neg: bool,
-    mut deref: bool,
-) -> Box<Expr> {
-    let mut offset = cast_int(offset, "isize", false);
-
-    if let Some(mul) = multiply_by {
-        let mul = cast_int(mul, "isize", false);
-        offset = mk().binary_expr(BinOp::Mul(Default::default()), offset, mul);
-        deref = false;
-    }
-
-    if neg {
-        offset = mk().unary_expr(UnOp::Neg(Default::default()), offset);
-    }
-
-    let res = mk().method_call_expr(ptr, "offset", vec![offset]);
-    if deref {
-        mk().unary_expr(UnOp::Deref(Default::default()), res)
-    } else {
-        res
     }
 }
