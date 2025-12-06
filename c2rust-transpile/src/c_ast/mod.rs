@@ -315,6 +315,11 @@ impl TypedAstContext {
             let begin_loc: SrcLoc = decl.begin_loc().expect("no begin loc for top-level decl");
             let end_loc: SrcLoc = decl.end_loc().expect("no end loc for top-level decl");
 
+            // Skip fileid 0; this is not a real file, so these source locations aren't important.
+            if begin_loc.fileid == 0 {
+                continue;
+            }
+
             // If encountering a new file, reset end of last top-level decl.
             if prev_end_loc.fileid != begin_loc.fileid {
                 prev_end_loc = SrcLoc {
