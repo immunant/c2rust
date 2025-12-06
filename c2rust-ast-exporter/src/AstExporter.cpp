@@ -830,9 +830,13 @@ class TranslateASTVisitor final
         Decl *ast, ASTEntryTag tag, const std::vector<void *> &childIds,
         const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
+        auto &Mgr = Context->getSourceManager();
         auto rvalue = false;
         auto encodeMacroExpansions = false;
-        encode_entry_raw(ast, tag, ast->getSourceRange(), T, rvalue,
+        auto charRange = clang::CharSourceRange::getCharRange(ast->getSourceRange());
+        // Extend the range to include the entire final token.
+        charRange.setEnd(clang::Lexer::getLocForEndOfToken(ast->getSourceRange().getEnd(), 0, Mgr, Context->getLangOpts()));
+        encode_entry_raw(ast, tag, charRange.getAsRange(), T, rvalue,
                          isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
 
@@ -973,6 +977,8 @@ class TranslateASTVisitor final
 
             std::vector<void *> childIds;
             auto range = SourceRange(Mac->getDefinitionLoc(), Mac->getDefinitionEndLoc());
+            // Extend the range to include the entire final token.
+            range.setEnd(clang::Lexer::getLocForEndOfToken(range.getEnd(), 0, Context->getSourceManager(), Context->getLangOpts()));
             encode_entry_raw(Mac, tag, range, QualType(), false,
                              false, false, childIds, [Name](CborEncoder *local) {
                                  cbor_encode_string(local, Name.str());
@@ -1998,7 +2004,13 @@ class TranslateASTVisitor final
 
         // We prefer non-implicit decls for their type information.
         auto functionType = paramsFD->getType();
-        auto span = paramsFD->getSourceRange();
+        auto &Mgr = Context->getSourceManager();
+        auto rvalue = false;
+        auto encodeMacroExpansions = false;
+        auto charRange = clang::CharSourceRange::getCharRange(paramsFD->getSourceRange());
+        // Extend the range to include the entire final token.
+        charRange.setEnd(clang::Lexer::getLocForEndOfToken(paramsFD->getSourceRange().getEnd(), 0, Mgr, Context->getLangOpts()));
+        auto span = charRange.getAsRange();
         encode_entry(
             FD, TagFunctionDecl, span, childIds, functionType,
             [this, FD](CborEncoder *array) {
@@ -2119,7 +2131,12 @@ class TranslateASTVisitor final
         // type
         auto T = def->getType();
 
-        auto loc = is_defn ? def->getLocation() : VD->getLocation();
+        auto loc = is_defn ? def->getSourceRange() : VD->getSourceRange();
+        auto &Mgr = Context->getSourceManager();
+        auto charRange = clang::CharSourceRange::getCharRange(loc);
+        // Extend the range to include the entire final token.
+        charRange.setEnd(clang::Lexer::getLocForEndOfToken(loc.getEnd(), 0, Mgr, Context->getLangOpts()));
+        loc = charRange.getAsRange();
 
         encode_entry(
             VD, TagVarDecl, loc, childIds, T,
@@ -2183,7 +2200,7 @@ class TranslateASTVisitor final
             // Attributes may also be attached to the non-canonical declaration so
             // we emit them too.
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, QualType(),
+            encode_entry(D, TagNonCanonicalDecl, D->getSourceRange(), childIds, QualType(),
                 [D](CborEncoder *local) {
                 // 1. Attributes stored as an array of attribute names
                 CborEncoder attrs;
@@ -2203,7 +2220,7 @@ class TranslateASTVisitor final
 
         auto t = D->getTypeForDecl();
 
-        auto loc = D->getLocation();
+        auto loc = D->getSourceRange();
         std::vector<void *> childIds;
         if (def) {
             for (auto decl : def->decls()) {
@@ -2219,7 +2236,7 @@ class TranslateASTVisitor final
             // Since the RecordDecl D isn't the complete definition,
             // the actual location should be given. This should handle opaque
             // types.
-            loc = def->getLocation();
+            loc = def->getSourceRange();
 
             const ASTRecordLayout &layout =
                 this->Context->getASTRecordLayout(def);
@@ -2418,7 +2435,7 @@ class TranslateASTVisitor final
         if (!D->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, typeForDecl);
+            encode_entry(D, TagNonCanonicalDecl, D->getSourceRange(), childIds, typeForDecl);
             typeEncoder.VisitQualTypeOf(typeForDecl, D);
             return true;
         }

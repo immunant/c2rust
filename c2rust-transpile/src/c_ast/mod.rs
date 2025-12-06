@@ -299,6 +299,66 @@ impl TypedAstContext {
         }
     }
 
+    /// Construct a map from top-level decls in the main file to their source ranges.
+    pub fn top_decl_locs(&self) -> IndexMap<CDeclId, (SrcLoc, SrcLoc)> {
+        let mut name_loc_map = IndexMap::new();
+        let mut prev_src_loc = SrcLoc {
+            fileid: 0,
+            line: 0,
+            column: 0,
+        };
+        // Sort decls by source location so we can reason about the possibly comment-containing gaps
+        // between them.
+        let mut decls_sorted = self.c_decls_top.clone();
+        decls_sorted.sort_by(|v1, v2| {
+            self.c_decls[v1]
+                .begin_loc()
+                .cmp(&self.c_decls[v2].begin_loc())
+        });
+        for decl_id in &decls_sorted {
+            let decl = &self.c_decls[decl_id];
+            let begin_loc: SrcLoc = decl.begin_loc().expect("no begin loc for top-level decl");
+            let end_loc: SrcLoc = decl.end_loc().expect("no end loc for top-level decl");
+
+            // Skip fileid 0; this is not a real file, so these source locations aren't important.
+            if begin_loc.fileid == 0 {
+                continue;
+            }
+            if begin_loc == end_loc {
+                log::warn!("zero-length source range for top-level decl. source ranges for top-level decls may be incorrect.\ndecl: {decl:?}");
+                continue;
+            }
+
+            // If encountering a new file, reset end of last top-level decl.
+            if prev_src_loc.fileid != begin_loc.fileid {
+                prev_src_loc = SrcLoc {
+                    fileid: begin_loc.fileid,
+                    line: 1,
+                    column: 1,
+                }
+            }
+
+            // This definition ends before the previous one does, i.e. it is nested.
+            // This does not generally occur for regular definitions, e.g. variables within
+            // functions, because the variables will not be top-level decls. But it can occur
+            // for macros defined inside functions, since all macros are top-level decls!
+            let is_nested = end_loc < prev_src_loc;
+            let new_begin_loc = if is_nested { begin_loc } else { prev_src_loc };
+
+            // Include only decls from the main file.
+            if self.c_decls_top.contains(decl_id)
+                && self.get_source_path(decl) == Some(&self.main_file)
+            {
+                let entry = (new_begin_loc, end_loc);
+                name_loc_map.insert(*decl_id, entry);
+            }
+            if !is_nested {
+                prev_src_loc = end_loc;
+            }
+        }
+        name_loc_map
+    }
+
     pub fn iter_decls(&self) -> indexmap::map::Iter<'_, CDeclId, CDecl> {
         self.c_decls.iter()
     }
