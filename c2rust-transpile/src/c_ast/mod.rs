@@ -319,6 +319,13 @@ impl TypedAstContext {
             if begin_loc.fileid == 0 {
                 continue;
             }
+            if begin_loc == end_loc {
+                log::warn!(
+                    "zero-length source range for top-level decl; skipping. source ranges for \
+                    top-level decls may be incorrect.\ndecl: {decl:?}"
+                );
+                continue;
+            }
 
             // If encountering a new file, reset end of last top-level decl.
             if prev_end_loc.fileid != begin_loc.fileid {
