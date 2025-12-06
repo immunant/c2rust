@@ -1,17 +1,81 @@
 use std::ops::Index;
 
 use c2rust_ast_builder::{mk, properties::Mutability};
+use c2rust_ast_exporter::clang_ast::LRValue;
+use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
 use crate::{
-    diagnostics::{TranslationError, TranslationResult},
-    translator::{cast_int, ExprContext, Translation},
+    c_ast,
+    diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
+    translator::{cast_int, unwrap_function_pointer, ExprContext, Translation},
     with_stmts::WithStmts,
-    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
+    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind,
 };
 
 impl<'c> Translation<'c> {
     pub fn convert_address_of(
+        &self,
+        mut ctx: ExprContext,
+        cqual_type: CQualTypeId,
+        arg: CExprId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let arg_kind = &self.ast_context[arg].kind;
+
+        match arg_kind {
+            // C99 6.5.3.2 para 4
+            CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
+                return self.convert_expr(ctx, *target, None)
+            }
+            // An AddrOf DeclRef/Member is safe to not decay
+            // if the translator isn't already giving a hard yes to decaying (ie, BitCasts).
+            // So we only convert default to no decay.
+            CExprKind::DeclRef(..) | CExprKind::Member(..) => ctx.decay_ref.set_default_to_no(),
+            _ => (),
+        }
+
+        let val = self.convert_expr(ctx.used().set_needs_address(true), arg, None)?;
+
+        // & becomes a no-op when applied to a function.
+        if self.ast_context.is_function_pointer(cqual_type.ctype) {
+            return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
+        }
+
+        let arg_cty = arg_kind
+            .get_qual_type()
+            .ok_or_else(|| format_err!("bad source type"))?;
+
+        self.convert_address_of_common(ctx, Some(arg), arg_cty, cqual_type, val, false)
+    }
+
+    pub fn convert_array_to_pointer_decay(
+        &self,
+        ctx: ExprContext,
+        source_cty: CQualTypeId,
+        target_cty: CQualTypeId,
+        val: WithStmts<Box<Expr>>,
+        expr: Option<CExprId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        // Because va_list is sometimes defined as a single-element
+        // array in order for it to allocate memory as a local variable
+        // and to be a pointer as a function argument we would get
+        // spurious casts when trying to treat it like a VaList which
+        // has reference semantics.
+        if self.ast_context.is_va_list(target_cty.ctype) {
+            return Ok(val);
+        }
+
+        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
+
+        // Variable length arrays are already represented as pointers.
+        if let CTypeKind::VariableArray(..) = source_ty_kind {
+            return Ok(val);
+        }
+
+        self.convert_address_of_common(ctx, expr, source_cty, target_cty, val, true)
+    }
+
+    fn convert_address_of_common(
         &self,
         ctx: ExprContext,
         arg: Option<CExprId>,
@@ -109,6 +173,180 @@ impl<'c> Translation<'c> {
         }
 
         Ok(val)
+    }
+
+    pub fn convert_deref(
+        &self,
+        ctx: ExprContext,
+        cqual_type: CQualTypeId,
+        arg: CExprId,
+        lrvalue: LRValue,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let arg_expr_kind = &self.ast_context.index(arg).kind;
+
+        if let &CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg, _) = arg_expr_kind {
+            return self.convert_expr(ctx.used(), arg, None);
+        }
+
+        self.convert_expr(ctx.used(), arg, None)?
+            .result_map(|val: Box<Expr>| {
+                if let CTypeKind::Function(..) =
+                    self.ast_context.resolve_type(cqual_type.ctype).kind
+                {
+                    Ok(unwrap_function_pointer(val))
+                } else if let Some(_vla) = self.compute_size_of_expr(cqual_type.ctype) {
+                    Ok(val)
+                } else {
+                    let mut val = mk().unary_expr(UnOp::Deref(Default::default()), val);
+
+                    // If the type on the other side of the pointer we are dereferencing is volatile and
+                    // this whole expression is not an LValue, we should make this a volatile read
+                    if lrvalue.is_rvalue() && cqual_type.qualifiers.is_volatile {
+                        val = self.volatile_read(val, cqual_type)?
+                    }
+                    Ok(val)
+                }
+            })
+    }
+
+    pub fn convert_array_subscript(
+        &self,
+        ctx: ExprContext,
+        lhs: CExprId,
+        rhs: CExprId,
+        override_ty: Option<CQualTypeId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let lhs_node = &self.ast_context.index(lhs).kind;
+        let rhs_node = &self.ast_context.index(rhs).kind;
+
+        let lhs_node_type = lhs_node
+            .get_type()
+            .ok_or_else(|| format_err!("lhs node bad type"))?;
+        let lhs_node_kind = &self.ast_context.resolve_type(lhs_node_type).kind;
+        let lhs_is_indexable = lhs_node_kind.is_pointer() || lhs_node_kind.is_vector();
+
+        // From here on in, the LHS is the pointer/array and the RHS the index
+        let (lhs, rhs, lhs_node) = if lhs_is_indexable {
+            (lhs, rhs, lhs_node)
+        } else {
+            (rhs, lhs, rhs_node)
+        };
+
+        let lhs_node_type = lhs_node
+            .get_type()
+            .ok_or_else(|| format_err!("lhs node bad type"))?;
+        if self
+            .ast_context
+            .resolve_type(lhs_node_type)
+            .kind
+            .is_vector()
+        {
+            return Err(TranslationError::from(
+                err_msg("Attempting to index a vector type")
+                    .context(TranslationErrorKind::OldLLVMSimd),
+            ));
+        }
+
+        let rhs = self.convert_expr(ctx.used(), rhs, None)?;
+        rhs.and_then(|rhs| {
+            let simple_index_array = if ctx.needs_address() {
+                // We can't necessarily index into an array if we're using
+                // that element to compute an address.
+                None
+            } else {
+                match lhs_node {
+                    &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
+                        match self.ast_context[arr].kind {
+                            CExprKind::Member(_, _, field_decl, _, _)
+                                if self
+                                    .potential_flexible_array_members
+                                    .borrow()
+                                    .contains(&field_decl) =>
+                            {
+                                None
+                            }
+                            ref kind => {
+                                let arr_type =
+                                    kind.get_type().ok_or_else(|| format_err!("bad arr type"))?;
+                                match self.ast_context.resolve_type(arr_type).kind {
+                                    // These get translated to 0-element arrays, this avoids the bounds check
+                                    // that using an array subscript in Rust would cause
+                                    CTypeKind::IncompleteArray(_) => None,
+                                    _ => Some(arr),
+                                }
+                            }
+                        }
+                    }
+                    _ => None,
+                }
+            };
+
+            if let Some(arr) = simple_index_array {
+                // If the LHS just underwent an implicit cast from array to pointer, bypass that
+                // to make an actual Rust indexing operation
+
+                let t = self.ast_context[arr]
+                    .kind
+                    .get_type()
+                    .ok_or_else(|| format_err!("bad arr type"))?;
+                let var_elt_type_id = match self.ast_context.resolve_type(t).kind {
+                    CTypeKind::ConstantArray(..) => None,
+                    CTypeKind::IncompleteArray(..) => None,
+                    CTypeKind::VariableArray(elt, _) => Some(elt),
+                    ref other => panic!("Unexpected array type {:?}", other),
+                };
+
+                let lhs = self.convert_expr(ctx.used(), arr, None)?;
+                lhs.and_then(|lhs| {
+                    // stmts.extend(lhs.stmts_mut());
+                    // is_unsafe = is_unsafe || lhs.is_unsafe();
+
+                    // Don't dereference the offset if we're still within the variable portion
+                    if let Some(elt_type_id) = var_elt_type_id {
+                        let mul = self.compute_size_of_expr(elt_type_id);
+                        Ok(WithStmts::new_unsafe_val(pointer_offset(
+                            lhs, rhs, mul, false, true,
+                        )))
+                    } else {
+                        Ok(WithStmts::new_val(
+                            mk().index_expr(lhs, cast_int(rhs, "usize", false)),
+                        ))
+                    }
+                })
+            } else {
+                // LHS must be ref decayed for the offset method call's self param
+                let mut lhs = self.convert_expr(ctx.used().decay_ref(), lhs, None)?;
+                lhs.set_unsafe(); // `pointer_offset` is unsafe.
+                lhs.result_map(|lhs| {
+                    // stmts.extend(lhs.stmts_mut());
+                    // is_unsafe = is_unsafe || lhs.is_unsafe();
+
+                    let lhs_type_id = lhs_node
+                        .get_type()
+                        .ok_or_else(|| format_err!("bad lhs type"))?;
+
+                    // Determine the type of element being indexed
+                    let pointee_type_id = match self.ast_context.resolve_type(lhs_type_id).kind {
+                        CTypeKind::Pointer(pointee_id) => pointee_id,
+                        _ => {
+                            return Err(
+                                format_err!("Subscript applied to non-pointer: {:?}", lhs).into()
+                            );
+                        }
+                    };
+
+                    let mul = self.compute_size_of_expr(pointee_type_id.ctype);
+                    let mut val = pointer_offset(lhs, rhs, mul, false, true);
+                    // if the context wants a different type, add a cast
+                    if let Some(expected_ty) = override_ty {
+                        if expected_ty != pointee_type_id {
+                            val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
+                        }
+                    }
+                    Ok(val)
+                })
+            }
+        })
     }
 
     /// Construct an expression for a NULL at any type, including forward declarations,
