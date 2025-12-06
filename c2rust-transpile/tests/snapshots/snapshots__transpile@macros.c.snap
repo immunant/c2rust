@@ -107,7 +107,7 @@ pub unsafe extern "C" fn local_muts() {
         ::core::mem::transmute::<[u8; 18], [::core::ffi::c_char; 18]>(*b"hello hello world\0");
     let mut builtin: ::core::ffi::c_int =
         (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
-    let mut ref_indexing: *const ::core::ffi::c_char = &*NESTED_STR
+    let mut ref_indexing: *const ::core::ffi::c_char = NESTED_STR
         .as_ptr()
         .offset(LITERAL_FLOAT as ::core::ffi::c_int as isize)
         as *const ::core::ffi::c_char;
@@ -177,7 +177,7 @@ pub unsafe extern "C" fn local_consts() {
     let str_concatenation: [::core::ffi::c_char; 18] =
         ::core::mem::transmute::<[u8; 18], [::core::ffi::c_char; 18]>(*b"hello hello world\0");
     let builtin: ::core::ffi::c_int = (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
-    let ref_indexing: *const ::core::ffi::c_char = &*NESTED_STR
+    let ref_indexing: *const ::core::ffi::c_char = NESTED_STR
         .as_ptr()
         .offset(LITERAL_FLOAT as ::core::ffi::c_int as isize)
         as *const ::core::ffi::c_char;
@@ -446,7 +446,7 @@ pub unsafe extern "C" fn late_init_var() -> ::core::ffi::c_int {
 unsafe extern "C" fn run_static_initializers() {
     global_static_const_ptr_arithmetic = PTR_ARITHMETIC;
     global_static_const_indexing = NESTED_STR[LITERAL_FLOAT as ::core::ffi::c_int as usize];
-    global_static_const_ref_indexing = &*NESTED_STR
+    global_static_const_ref_indexing = NESTED_STR
         .as_ptr()
         .offset(LITERAL_FLOAT as ::core::ffi::c_int as isize)
         as *const ::core::ffi::c_char;
@@ -458,7 +458,7 @@ unsafe extern "C" fn run_static_initializers() {
     global_static_const_member = LITERAL_STRUCT.i;
     global_const_ptr_arithmetic = PTR_ARITHMETIC;
     global_const_indexing = NESTED_STR[LITERAL_FLOAT as ::core::ffi::c_int as usize];
-    global_const_ref_indexing = &*NESTED_STR
+    global_const_ref_indexing = NESTED_STR
         .as_ptr()
         .offset(LITERAL_FLOAT as ::core::ffi::c_int as isize)
         as *const ::core::ffi::c_char;
