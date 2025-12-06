@@ -21,6 +21,7 @@ exclude = [
     "analysis/tests",
     "examples",
     "tests",
+    "tools",
 ]
 
 [workspace.package]
