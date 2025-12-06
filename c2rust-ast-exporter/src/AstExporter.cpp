@@ -994,6 +994,8 @@ class TranslateASTVisitor final
 
             std::vector<void *> childIds;
             auto range = SourceRange(Mac->getDefinitionLoc(), Mac->getDefinitionEndLoc());
+            // Extend the range to include the entire final token.
+            expandSpanToFinalChar(range, Context);
             encode_entry_raw(Mac, tag, range, QualType(), false,
                              false, false, childIds, [Name](CborEncoder *local) {
                                  cbor_encode_string(local, Name.str());
