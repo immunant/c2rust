@@ -154,6 +154,18 @@ void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Me
     printDiag(Context, Lvl, Message, loc, t->getSourceRange());
 }
 
+// Extend the source range to include its entire final token. Clang source
+// ranges are stored as ranges of tokens, and their end will point to the
+// first byte of the final token, rather than its last byte. This converts
+// the range to a character range and extends its endpoint to the final
+// character of the final token.
+void expandSpanToFinalChar(SourceRange& span, ASTContext* Context) {
+    auto &Mgr = Context->getSourceManager();
+    auto charRange = clang::CharSourceRange::getCharRange(span);
+    charRange.setEnd(clang::Lexer::getLocForEndOfToken(span.getEnd(), 0, Mgr, Context->getLangOpts()));
+    span = charRange.getAsRange();
+}
+
 } // namespace
 
 class TranslateASTVisitor;
