@@ -479,7 +479,11 @@ pub fn translate(
 
         // Compute source ranges of top decls before pruning any, because pruned
         // decls may help inform the ranges of kept ones.
-        let decl_source_ranges = t.ast_context.top_decl_locs();
+        let decl_source_ranges = if tcfg.emit_c_decl_map {
+            Some(t.ast_context.top_decl_locs())
+        } else {
+            None
+        };
 
         // Headers often pull in declarations that are unused;
         // we simplify the translator output by omitting those.
@@ -731,7 +735,7 @@ pub fn translate(
             .collect::<HashMap<_, _>>();
 
         // Generate a map from Rust items to the source code of their C declarations.
-        let decl_map = if tcfg.emit_c_decl_map {
+        let decl_map = decl_source_ranges.and_then(|decl_source_ranges| {
             let mut path_to_c_source_range: HashMap<&Ident, (SrcLoc, SrcLoc)> = Default::default();
             for (decl, source_range) in decl_source_ranges {
                 match converted_decls.get(&decl) {
@@ -811,9 +815,7 @@ pub fn translate(
                 })
                 .collect();
             Some(item_path_to_c_source)
-        } else {
-            None
-        };
+        });
 
         t.ast_context.sort_top_decls_for_emitting();
 
