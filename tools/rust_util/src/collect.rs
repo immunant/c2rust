@@ -3,6 +3,7 @@ use std::fs;
 use std::iter;
 use std::path::{Path, PathBuf};
 use syn;
+use syn::ext::IdentExt;
 use crate::error::Error;
 
 
@@ -56,10 +57,10 @@ impl FileCollector {
                 syn::Item::Mod(ref im) => im,
                 _ => continue,
             };
-            mod_path.push(im.ident.to_string());
+            mod_path.push(im.ident.unraw().to_string());
             if let Some((_, ref inline_items)) = im.content {
                 let name = path_attr_value(&im.attrs)?
-                    .unwrap_or_else(|| im.ident.to_string());
+                    .unwrap_or_else(|| im.ident.unraw().to_string());
                 let module = parent_module.iter().copied().chain(iter::once(&name as &_))
                     .collect::<Vec<_>>();
                 self.walk_items(inline_items, base_path, mod_path.clone(), &module)?;
@@ -72,7 +73,7 @@ impl FileCollector {
                     path.push(attr_path);
                     self.parse(path, mod_path.clone(), false)?;
                 } else {
-                    let name = im.ident.to_string();
+                    let name = im.ident.unraw().to_string();
                     // Try `foo/mod.rs` first; if it doesn't exist, try `foo.rs` instead.
                     path.push(name);
                     path.push("mod.rs");
