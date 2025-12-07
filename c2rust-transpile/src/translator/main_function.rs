@@ -4,6 +4,7 @@
 //! Rust.
 
 use super::*;
+use c2rust_ast_builder::CaptureBy;
 use failure::format_err;
 use proc_macro2::{TokenStream, TokenTree};
 
@@ -53,45 +54,97 @@ impl<'c> Translation<'c> {
             if n >= 2 {
                 // `argv` and `argc`
 
-                stmts.push(mk().local_stmt(Box::new(mk().local(
-                    mk().mutbl().ident_pat("args"),
-                    Some(mk().path_ty(vec![mk().path_segment_with_args(
+                stmts.push(mk().local_stmt(Box::new({
+                    // ty = Vec<Vec<u8>>
+                    let ty = mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
-                        mk().angle_bracketed_args(vec![
-                            mk().mutbl().ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_char"])),
-                        ]),
-                    )])),
-                    Some(mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![])),
-                ))));
-                stmts.push(mk().semi_stmt(mk().for_expr(
-                    mk().ident_pat("arg"),
-                    mk().call_expr(args_fn, vec![]),
-                    mk().block(vec![mk().semi_stmt(mk().method_call_expr(
-                        mk().path_expr(vec!["args"]),
-                        "push",
-                        vec![mk().method_call_expr(
-                            mk().method_call_expr(
-                                mk().call_expr(
-                                    // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
-                                    mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
-                                    vec![mk().path_expr(vec!["arg"])],
-                                ),
-                                "expect",
-                                vec![mk().lit_expr("Failed to convert argument into CString.")],
-                            ),
-                            "into_raw",
+                        mk().angle_bracketed_args(vec![mk().path_ty(vec![mk()
+                            .path_segment_with_args(
+                                "Vec",
+                                mk().angle_bracketed_args(vec![mk().ident_ty("u8")]),
+                            )])]),
+                    )]);
+                    // map_arg = |arg| {
+                    //     (::std::ffi::CString::new(arg))
+                    //         .expect("Failed to convert argument into CString.")
+                    //         .into_bytes_with_nul()
+                    // }
+                    let cstring_call = mk().call_expr(
+                        // TODO(kkysen) change `"std"` to `"alloc"` after `#![feature(alloc_c_string)]` is stabilized in `1.63.0`
+                        mk().abs_path_expr(vec!["std", "ffi", "CString", "new"]),
+                        vec![mk().path_expr(vec!["arg"])],
+                    );
+                    let expect_arg = mk().lit_expr("Failed to convert argument into CString.");
+                    let map_arg = mk().closure_expr(
+                        CaptureBy::Ref,
+                        Movability::Movable,
+                        vec![mk().ident_pat("arg")],
+                        ReturnType::Default,
+                        mk().method_chain_expr(
+                            cstring_call,
+                            vec![
+                                (mk().path_segment("expect"), vec![expect_arg]),
+                                (mk().path_segment("into_bytes_with_nul"), vec![]),
+                            ],
+                        ),
+                    );
+                    // init = args_fn
+                    //     .map(map_arg)
+                    //     .collect();
+                    let init = mk().method_chain_expr(
+                        mk().call_expr(args_fn, vec![]),
+                        vec![
+                            (mk().path_segment("map"), vec![map_arg]),
+                            (mk().path_segment("collect"), vec![]),
+                        ],
+                    );
+                    mk().local(mk().mutbl().ident_pat("args_strings"), Some(ty), Some(init))
+                })));
+
+                stmts.push(mk().local_stmt(Box::new({
+                    // ty = Vec<*mut ::core::ffi::c_char>
+                    let ty = mk().path_ty(vec![mk().path_segment_with_args(
+                        "Vec",
+                        mk().angle_bracketed_args(vec![mk()
+                            .mutbl()
+                            .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_char"]))]),
+                    )]);
+                    // map_arg = |arg| arg.as_mut_ptr() as *mut ::core::ffi::c_char
+                    let map_arg = mk().closure_expr(
+                        CaptureBy::Ref,
+                        Movability::Movable,
+                        vec![mk().ident_pat("arg")],
+                        ReturnType::Default,
+                        mk().cast_expr(
+                            mk().method_call_expr(mk().ident_expr("arg"), "as_mut_ptr", vec![]),
+                            mk().mutbl()
+                                .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_char"])),
+                        ),
+                    );
+                    // chain_arg = ::core::iter::once(::core::ptr::null_mut())
+                    let chain_arg = mk().call_expr(
+                        mk().abs_path_expr(vec!["core", "iter", "once"]),
+                        vec![mk().call_expr(
+                            mk().abs_path_expr(vec!["core", "ptr", "null_mut"]),
                             vec![],
                         )],
-                    ))]),
-                    None::<Ident>,
-                )));
-                stmts.push(mk().semi_stmt(mk().method_call_expr(
-                    mk().path_expr(vec!["args"]),
-                    "push",
-                    vec![
-                        mk().call_expr(mk().abs_path_expr(vec!["core", "ptr", "null_mut"]), vec![]),
-                    ],
-                )));
+                    );
+                    // init = args_strings
+                    //     .iter_mut()
+                    //     .map(map_arg)
+                    //     .chain(chain_arg)
+                    //     .collect()
+                    let init = mk().method_chain_expr(
+                        mk().ident_expr("args_strings"),
+                        vec![
+                            (mk().path_segment("iter_mut"), vec![]),
+                            (mk().path_segment("map"), vec![map_arg]),
+                            (mk().path_segment("chain"), vec![chain_arg]),
+                            (mk().path_segment("collect"), vec![]),
+                        ],
+                    );
+                    mk().local(mk().mutbl().ident_pat("args_ptrs"), Some(ty), Some(init))
+                })));
 
                 let argc_ty: Box<Type> = match self.ast_context.index(parameters[0]).kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
@@ -105,8 +158,7 @@ impl<'c> Translation<'c> {
                         "Cannot find type of 'argv' argument in main function",
                     )),
                 }?;
-
-                let args = mk().ident_expr("args");
+                let args = mk().ident_expr("args_ptrs");
                 let argc = mk().binary_expr(
                     BinOp::Sub(Default::default()),
                     mk().method_call_expr(args.clone(), "len", no_args.clone()),
