@@ -54,7 +54,8 @@ using clang::ASTContext;
 using clang::QualType;
 using std::string;
 
-namespace {
+namespace { // for local definitions, preferred to making each `static`
+
 // Encode a string object assuming that it is valid UTF-8 encoded text
 void cbor_encode_string(CborEncoder *encoder, const std::string &str) {
     auto ptr = str.data();
@@ -105,7 +106,6 @@ std::optional<APSInt> getIntegerConstantExpr(const Expr &E,
     return E.getIntegerConstantExpr(Ctx);
 }
 #endif // CLANG_VERSION_MAJOR
-} // namespace
 
 DiagnosticBuilder getDiagBuilder(ASTContext *Context,
                                  SourceLocation Loc,
@@ -153,6 +153,8 @@ void printDiag(ASTContext *Context, DiagnosticsEngine::Level Lvl, std::string Me
     }
     printDiag(Context, Lvl, Message, loc, t->getSourceRange());
 }
+
+} // namespace
 
 class TranslateASTVisitor;
 
