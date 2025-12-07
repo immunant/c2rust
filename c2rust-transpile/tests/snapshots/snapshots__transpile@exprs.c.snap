@@ -38,7 +38,7 @@ pub unsafe extern "C" fn unary_without_side_effect() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn unary_with_side_effect() {
-    let mut arr: [*mut ::core::ffi::c_char; 1] = [0 as *mut ::core::ffi::c_char];
+    let mut arr: [*mut ::core::ffi::c_char; 1] = [::core::ptr::null_mut::<::core::ffi::c_char>()];
     -side_effect();
     side_effect();
     !side_effect();

@@ -56,7 +56,7 @@ pub unsafe extern "C" fn entry() {
     let mut int_too_short: [::core::ffi::c_int; 16] = [0 as ::core::ffi::c_int; 16];
     int_too_short[15 as ::core::ffi::c_int as usize] += 9 as ::core::ffi::c_int;
     let mut struct_init_too_short: [C2RustUnnamed_0; 1] = [C2RustUnnamed_0 {
-        x: 0 as *mut ::core::ffi::c_char,
+        x: ::core::ptr::null_mut::<::core::ffi::c_char>(),
         y: 0,
     }; 1];
     struct_init_too_short[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
