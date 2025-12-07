@@ -2105,7 +2105,7 @@ class TranslateASTVisitor final
         if (!VD->isCanonicalDecl() && !VD->isExternC()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {VD->getCanonicalDecl()};
-            encode_entry(VD, TagNonCanonicalDecl, VD->getLocation(), childIds, VD->getType());
+            encode_entry(VD, TagNonCanonicalDecl, VD->getSourceRange(), childIds, VD->getType());
             typeEncoder.VisitQualTypeOf(VD->getType(), VD);
             return true;
         }
@@ -2140,7 +2140,7 @@ class TranslateASTVisitor final
         // type
         auto T = def->getType();
 
-        auto loc = is_defn ? def->getLocation() : VD->getLocation();
+        auto loc = is_defn ? def->getSourceRange() : VD->getSourceRange();
 
         encode_entry(
             VD, TagVarDecl, loc, childIds, T,
@@ -2330,7 +2330,7 @@ class TranslateASTVisitor final
         if (!D->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, QualType());
+            encode_entry(D, TagNonCanonicalDecl, D->getSourceRange(), childIds, QualType());
             return true;
         }
 
@@ -2356,7 +2356,7 @@ class TranslateASTVisitor final
         if (!D->isCanonicalDecl()) {
             // Emit non-canonical decl so we have a placeholder to attach comments to
             std::vector<void *> childIds = {D->getCanonicalDecl()};
-            encode_entry(D, TagNonCanonicalDecl, D->getLocation(), childIds, D->getType());
+            encode_entry(D, TagNonCanonicalDecl, D->getSourceRange(), childIds, D->getType());
             typeEncoder.VisitQualTypeOf(D->getType(), D);
             return true;
         }
