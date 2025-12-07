@@ -4,8 +4,9 @@ use crate::varargs::rust_call_printf;
 // See #1281. Varargs don't yet work on aarch64.
 #[cfg(not(target_arch = "aarch64"))]
 use crate::varargs::{
-    rust_call_vprintf, rust_my_printf, rust_restart_valist, rust_sample_stddev, rust_simple_vacopy,
-    rust_valist_struct_member, rust_valist_struct_pointer_member,
+    rust_borrowed_valist, rust_call_vprintf, rust_my_printf, rust_restart_valist,
+    rust_sample_stddev, rust_simple_vacopy, rust_valist_struct_member,
+    rust_valist_struct_pointer_member,
 };
 
 use std::ffi::c_char;
@@ -31,6 +32,8 @@ extern "C" {
     fn valist_struct_pointer_member(_: *const c_char, ...);
 
     fn restart_valist(_: *const c_char, ...);
+
+    fn borrowed_valist(_: usize, ...);
 
     fn sample_stddev(count: i32, ...) -> f64;
 }
@@ -105,6 +108,15 @@ pub fn test_restart_valist() {
     unsafe {
         restart_valist(fmt_str.as_ptr(), 10, 1.5);
         rust_restart_valist(fmt_str.as_ptr(), 10, 1.5);
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[test]
+pub fn test_borrowed_valist() {
+    unsafe {
+        borrowed_valist(5, 1, 2, 3, 4, 5);
+        rust_borrowed_valist(5, 1, 2, 3, 4, 5);
     }
 }
 

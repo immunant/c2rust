@@ -126,10 +126,6 @@ pub struct ExprContext {
     // address in function pointer literals.
     needs_address: bool,
 
-    /// Set to false if we should decay VaListImpl to VaList or true if we are
-    /// expect a VaListImpl in this context.
-    expecting_valistimpl: bool,
-
     ternary_needs_parens: bool,
     expanding_macro: Option<CDeclId>,
 }
@@ -189,13 +185,6 @@ impl ExprContext {
     pub fn set_needs_address(self, needs_address: bool) -> Self {
         ExprContext {
             needs_address,
-            ..self
-        }
-    }
-
-    pub fn expect_valistimpl(self) -> Self {
-        ExprContext {
-            expecting_valistimpl: true,
             ..self
         }
     }
@@ -505,7 +494,6 @@ pub fn translate(
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
-        expecting_valistimpl: false,
         ternary_needs_parens: false,
         expanding_macro: None,
     };
@@ -1270,6 +1258,11 @@ struct ConvertedVariable {
     pub ty: Box<Type>,
     pub mutbl: Mutability,
     pub init: TranslationResult<WithStmts<Box<Expr>>>,
+}
+
+struct ConvertedFunctionParam {
+    pub ty: Box<Type>,
+    pub mutbl: Mutability,
 }
 
 impl<'c> Translation<'c> {
@@ -2345,8 +2338,7 @@ impl<'c> Translation<'c> {
 
             // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
-                let ConvertedVariable { ty, mutbl, init: _ } =
-                    self.convert_variable(ctx, None, typ)?;
+                let ConvertedFunctionParam { ty, mutbl } = self.convert_function_param(ctx, typ)?;
 
                 let pat = if var.is_empty() {
                     mk().wild_pat()
@@ -3063,6 +3055,25 @@ impl<'c> Translation<'c> {
         Ok(ConvertedVariable { ty, mutbl, init })
     }
 
+    fn convert_function_param(
+        &self,
+        ctx: ExprContext,
+        typ: CQualTypeId,
+    ) -> TranslationResult<ConvertedFunctionParam> {
+        if self.ast_context.is_va_list(typ.ctype) {
+            let mutbl = if typ.qualifiers.is_const {
+                Mutability::Immutable
+            } else {
+                Mutability::Mutable
+            };
+            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaList"]);
+            return Ok(ConvertedFunctionParam { mutbl, ty });
+        }
+
+        self.convert_variable(ctx, None, typ)
+            .map(|ConvertedVariable { ty, mutbl, .. }| ConvertedFunctionParam { ty, mutbl })
+    }
+
     fn convert_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {
         self.import_type(type_id);
 
@@ -3362,19 +3373,31 @@ impl<'c> Translation<'c> {
             .collect()
     }
 
-    /// Variant of `convert_exprs` for when only a prefix of the expression types are known due to
-    /// the relevant signature being varargs
+    /// Variant of `convert_exprs` for the arguments of a function call.
+    /// Accounts for differences in translation for arguments, and for varargs where only a prefix
+    /// of the expression types are known.
     #[allow(clippy::vec_box/*, reason = "not worth a substantial refactor"*/)]
-    fn convert_exprs_partial(
+    fn convert_call_args(
         &self,
         ctx: ExprContext,
         exprs: &[CExprId],
-        arg_tys: &[CQualTypeId],
+        arg_tys: Option<&[CQualTypeId]>,
+        is_variadic: bool,
     ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
+        let arg_tys = if let Some(arg_tys) = arg_tys {
+            if !is_variadic {
+                assert!(arg_tys.len() == exprs.len());
+            }
+
+            arg_tys
+        } else {
+            &[]
+        };
+
         exprs
             .iter()
             .enumerate()
-            .map(|(n, arg)| self.convert_expr(ctx, *arg, arg_tys.get(n).copied()))
+            .map(|(n, arg)| self.convert_call_arg(ctx, *arg, arg_tys.get(n).copied()))
             .collect()
     }
 
@@ -3530,12 +3553,6 @@ impl<'c> Translation<'c> {
                 if let &CDeclKind::EnumConstant { .. } = decl {
                     let ty = self.convert_type(qual_ty.ctype)?;
                     val = mk().cast_expr(val, ty);
-                }
-
-                // Most references to the va_list should refer to the VaList
-                // type, not VaListImpl
-                if !ctx.expecting_valistimpl && self.ast_context.is_va_list(qual_ty.ctype) {
-                    val = mk().method_call_expr(val, "as_va_list", Vec::new());
                 }
 
                 // If we are referring to a function and need its address, we
@@ -4080,19 +4097,8 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let args = if is_variadic {
-                        let arg_tys = arg_tys.unwrap_or_default();
-                        self.convert_exprs_partial(ctx.used(), args, arg_tys.as_slice())?
-                    } else {
-                        let arg_tys = if let Some(ref arg_tys) = arg_tys {
-                            assert!(arg_tys.len() == args.len());
-                            Some(arg_tys.as_slice())
-                        } else {
-                            None
-                        };
-
-                        self.convert_exprs(ctx.used(), args, arg_tys)?
-                    };
+                    let args =
+                        self.convert_call_args(ctx.used(), args, arg_tys.as_deref(), is_variadic)?;
 
                     let mut call_expr = args.map(|args| mk().call_expr(func, args));
                     if let Some(expected_ty) = override_ty {
@@ -4168,14 +4174,6 @@ impl<'c> Translation<'c> {
                     } else {
                         val = val.map(|v| mk().field_expr(v, field_name));
                     };
-
-                    // Most references to the va_list should refer to the VaList
-                    // type, not VaListImpl
-                    if !ctx.expecting_valistimpl && self.ast_context.is_va_list(qual_ty.ctype) {
-                        val = val.map(|v| {
-                            mk().method_call_expr(v, "as_va_list", Vec::<Box<Expr>>::new())
-                        });
-                    }
 
                     // if the context wants a different type, add a cast
                     if let Some(expected_ty) = override_ty {
@@ -4289,6 +4287,28 @@ impl<'c> Translation<'c> {
             ),
         };
         Ok(expr)
+    }
+
+    /// Wrapper around `convert_expr` for the arguments of a function call.
+    pub fn convert_call_arg(
+        &self,
+        ctx: ExprContext,
+        expr_id: CExprId,
+        override_ty: Option<CQualTypeId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let mut val;
+
+        if (self.ast_context.index(expr_id).kind.get_qual_type())
+            .map_or(false, |qtype| self.ast_context.is_va_list(qtype.ctype))
+        {
+            // No `override_ty` to avoid unwanted casting.
+            val = self.convert_expr(ctx, expr_id, None)?;
+            val = val.map(|val| mk().method_call_expr(val, "as_va_list", Vec::new()));
+        } else {
+            val = self.convert_expr(ctx, expr_id, override_ty)?;
+        }
+
+        Ok(val)
     }
 
     /// Convert the expansion of a const-like macro.
