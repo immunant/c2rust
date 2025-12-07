@@ -824,7 +824,9 @@ class TranslateASTVisitor final
         // See https://github.com/immunant/c2rust/issues/1124
         bool isRValue = ast->getValueKind() == VK_PRValue;
 #endif
-        encode_entry_raw(ast, tag, ast->getSourceRange(), ty, isRValue, isVaList,
+        auto span = ast->getSourceRange();
+        expandSpanToFinalChar(span, Context);
+        encode_entry_raw(ast, tag, span, ty, isRValue, isVaList,
                          encodeMacroExpansions, childIds, extra);
         typeEncoder.VisitQualTypeOf(ty, ast);
     }
@@ -836,7 +838,9 @@ class TranslateASTVisitor final
         auto rvalue = false;
         auto isVaList = false;
         auto encodeMacroExpansions = false;
-        encode_entry_raw(ast, tag, ast->getSourceRange(), s, rvalue, isVaList,
+        auto span = ast->getSourceRange();
+        expandSpanToFinalChar(span, Context);
+        encode_entry_raw(ast, tag, span, s, rvalue, isVaList,
                          encodeMacroExpansions, childIds, extra);
     }
 
@@ -846,7 +850,9 @@ class TranslateASTVisitor final
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
         auto encodeMacroExpansions = false;
-        encode_entry_raw(ast, tag, ast->getSourceRange(), T, rvalue,
+        auto span = ast->getSourceRange();
+        expandSpanToFinalChar(span, Context);
+        encode_entry_raw(ast, tag, span, T, rvalue,
                          isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
 
@@ -859,6 +865,7 @@ class TranslateASTVisitor final
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
         auto encodeMacroExpansions = false;
+        expandSpanToFinalChar(loc, Context);
         encode_entry_raw(ast, tag, loc, T, rvalue,
                          isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
