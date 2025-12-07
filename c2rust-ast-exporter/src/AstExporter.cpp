@@ -1973,7 +1973,7 @@ class TranslateASTVisitor final
         // }
 
         // Use the parameters from the function declaration
-        // the defines the body, if one exists.
+        // that defines the body, if one exists.
         const FunctionDecl *paramsFD = FD;
         auto body =
             FD->getBody(paramsFD); // replaces its argument if body exists
