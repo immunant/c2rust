@@ -21,8 +21,10 @@ def check_apt_package(yaml: List[str]):
         last: str = output.splitlines()[-1]
         expected: str = f"ii  {p}"
         if not last.startswith(expected):
-            errors.append(f"package not (properly) installed: {p} (dpkg output: {output}) ")
-    
+            errors.append(
+                f"package not (properly) installed: {p} (dpkg output: {output}) "
+            )
+
     if errors:
         errors = "\n".join(errors)
         die(errors)
@@ -65,7 +67,7 @@ def check_host(host: str, yaml: Dict):
         return
     # print(f"{host} -> {reqs}")
 
-    for (key, val) in reqs.items():
+    for key, val in reqs.items():
         if key == "apt":
             check_apt(val)
         elif key == "programs":
@@ -92,7 +94,7 @@ def check_file(file: str, yaml):
 
 
 def check(conf):
-    for (cf, yaml) in conf.project_conf.items():
+    for cf, yaml in conf.project_conf.items():
         check_file(cf, yaml)
 
 

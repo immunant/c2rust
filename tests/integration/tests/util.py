@@ -15,7 +15,7 @@ class Config(object):
     def __init__(self, args):
         self.verbose = args.verbose
         self.projects = args.projects  # projects filter
-        self.stages = args.stages      # stage filter
+        self.stages = args.stages  # stage filter
         self.ignore_requirements = args.ignore_requirements
         self.project_dirs = find_project_dirs(self)
         self.project_conf = {cf: get_yaml(cf) for cf in get_conf_files(self)}
@@ -39,14 +39,14 @@ class Config(object):
 
 class Colors(object):
     # Terminal escape codes
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    NO_COLOR = '\033[0m'
+    OKBLUE = "\033[94m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    NO_COLOR = "\033[0m"
 
 
-def die(emsg: str, status: int=errno.EINVAL) -> Never:
+def die(emsg: str, status: int = errno.EINVAL) -> Never:
     (red, nc) = (Colors.FAIL, Colors.NO_COLOR)
     print(f"{red}error:{nc} {emsg}", file=sys.stderr)
     exit(status)
@@ -81,8 +81,9 @@ def find_project_dirs(conf: Config) -> List[str]:
     subdirs = sorted(next(os.walk(script_dir))[1])
 
     # filter out __pycache__ and anything else starting with `_`
-    subdirs = list(filter(lambda d: not(d.startswith("_") or d.startswith(".")),
-                          subdirs))
+    subdirs = list(
+        filter(lambda d: not (d.startswith("_") or d.startswith(".")), subdirs)
+    )
 
     if len(conf.projects) > 0:  # only test named project
         projects = list(filter(lambda d: d in conf.projects, subdirs))
@@ -100,7 +101,7 @@ def find_project_dirs(conf: Config) -> List[str]:
 
 
 def get_yaml(file: str) -> dict[str, Any]:
-    with open(file, 'r') as stream:
+    with open(file, "r") as stream:
         try:
             return yaml.safe_load(stream)
         except yaml.YAMLError as exc:
