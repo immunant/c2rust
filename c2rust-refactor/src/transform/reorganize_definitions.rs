@@ -361,7 +361,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
             let decl_ids = declarations.remove_matching_defs(ns, item.ident, |decl| {
                 match decl {
-                    DeclKind::Item(decl) => self.cx.compatible_types(&decl, item),
+                    DeclKind::Item(decl) => self.cx.compatible_types(&decl, item, true),
                     DeclKind::ForeignItem(foreign, _) => foreign_equiv(&foreign, item),
                 }
             });
@@ -1547,7 +1547,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         // Otherwise make sure these items are structurally
                         // equivalent.
                         _ => {
-                            if self.cx.compatible_types(&item, &existing_item) {
+                            if self.cx.compatible_types(&item, &existing_item, true) {
                                 return ContainsDecl::Equivalent(existing_decl);
                             }
                         }
