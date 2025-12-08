@@ -790,7 +790,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Compare two items for type compatibility under the C definition.
     ///
-    /// If `match_vis` is `true`, the visibility of all structure/enum/union
+    /// If `match_vis` is `true`, the visibility of all `struct`/`enum`/`union`
     /// fields (i.e. if they are `pub`) must match between the two items.
     pub fn compatible_types(&self, item1: &Item, item2: &Item, match_vis: bool) -> bool {
         TypeCompare::new(self).compatible_types(item1, item2, match_vis)
@@ -1067,7 +1067,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
     /// Compare two items for type compatibility under the C definition.
     ///
-    /// If `match_vis` is `true`, the visibility of all structure/enum/union
+    /// If `match_vis` is `true`, the visibility of all `struct`/`enum`/`union`
     /// fields (i.e. if they are `pub`) must match between the two items.
     pub fn compatible_types(&self, item1: &Item, item2: &Item, match_vis: bool) -> bool {
         use rustc_ast::ItemKind::*;
@@ -1273,7 +1273,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
     /// Compare two AST types for structural equivalence, ignoring names.
     ///
-    /// If `match_vis` is `true`, the visibility of all structure/enum/union
+    /// If `match_vis` is `true`, the visibility of all `struct`/`enum`/`union`
     /// fields (i.e. if they are `pub`) must match between the two types.
     fn structural_eq_ast_tys(
         &self,
