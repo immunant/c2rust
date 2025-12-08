@@ -1370,6 +1370,9 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     return true;
                 }
 
+                // Iterate separately over the variants and fields (as opposed to the `.all_fields()` flat map).
+                // Otherwise, we may find a false equivalence for empty variants,
+                // or, in general, the flattened iterator could have the same elements but different variant boundaries.
                 def1.variants().len() == def2.variants().len()
                     && def1
                         .variants()
