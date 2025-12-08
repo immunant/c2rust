@@ -1,4 +1,4 @@
-//! feature_c_variadic,
+//! feature_c_variadic, feature_raw_ref_op
 
 use crate::varargs::rust_call_printf;
 // See #1281. Varargs don't yet work on aarch64.

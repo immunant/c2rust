@@ -11,6 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/ref_ub.c
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Foo {
@@ -27,7 +28,7 @@ unsafe fn main_0() -> ::core::ffi::c_int {
         };
         init
     };
-    let mut fp: *mut Foo = &mut f;
+    let mut fp: *mut Foo = &raw mut f;
     dec(fp);
     f.len = 6 as ::core::ffi::c_int;
     dec(fp);

@@ -142,7 +142,17 @@ impl<'c> Translation<'c> {
                     Some(mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(len as u128)));
             }
             needs_cast = true;
-        } else {
+        }
+        // Values that translate into temporaries can't be raw-borrowed in Rust,
+        // and must be regular-borrowed first.
+        // Borrowing in a static/const context will extend the lifetime to static.
+        else if arg_is_macro
+            || ctx.is_static
+                && matches!(
+                    arg_expr_kind,
+                    Some(CExprKind::Literal(..) | CExprKind::CompoundLiteral(..))
+                )
+        {
             let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
 
             if is_array_decay {
@@ -167,6 +177,15 @@ impl<'c> Translation<'c> {
                 if ctx.decay_ref.is_yes() || needs_cast {
                     ref_cast_pointee_ty = Some(self.convert_pointee_type(arg_cty.ctype)?);
                 }
+            }
+        } else {
+            self.use_feature("raw_ref_op");
+            val = val.map(|val| mk().set_mutbl(mutbl).raw_borrow_expr(val));
+
+            if is_array_decay {
+                // TODO: Call `ptr::as_[mut]_ptr` instead once that is available.
+                // (`array_ptr_get` feature added to nightly in January 2024)
+                needs_cast = true;
             }
         }
 

@@ -11,7 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/arch-specific/vm_x86.c
     unused_assignments,
     unused_mut
 )]
-#![feature(asm)]
+#![feature(asm, raw_ref_op)]
 use ::core::arch::asm;
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -54,8 +54,8 @@ pub unsafe extern "C" fn VM_CallCompiled(
     *(image.offset(programStack as isize) as *mut byte as *mut ::core::ffi::c_int) =
         -(1 as ::core::ffi::c_int);
     entryPoint = (*vm).codeBase.offset((*vm).entryOfs as isize);
-    opStack =
-        (stack.as_mut_ptr() as *mut ::core::ffi::c_int).offset(16 as ::core::ffi::c_int as isize);
+    opStack = (&raw mut stack as *mut byte as *mut ::core::ffi::c_int)
+        .offset(16 as ::core::ffi::c_int as isize);
     *opStack = 0 as ::core::ffi::c_int;
     opStackOfs = 0 as ::core::ffi::c_int;
     asm!(

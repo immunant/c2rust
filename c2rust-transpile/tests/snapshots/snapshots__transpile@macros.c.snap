@@ -11,6 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/macros.c
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 extern "C" {
     fn extern_fn() -> ::core::ffi::c_int;
 }
@@ -370,7 +371,7 @@ pub static mut fns: fn_ptrs = {
     init
 };
 #[no_mangle]
-pub static mut p: *const fn_ptrs = unsafe { &fns };
+pub static mut p: *const fn_ptrs = unsafe { &raw const fns };
 pub const ZSTD_WINDOWLOG_MAX_32: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const ZSTD_WINDOWLOG_MAX_64: ::core::ffi::c_int = 31 as ::core::ffi::c_int;
 #[no_mangle]
@@ -384,7 +385,7 @@ pub unsafe extern "C" fn test_zstd() -> U64 {
 #[no_mangle]
 pub unsafe extern "C" fn stmt_expr_inc() -> ::core::ffi::c_int {
     let mut a: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    let mut b: *mut ::core::ffi::c_int = &mut a;
+    let mut b: *mut ::core::ffi::c_int = &raw mut a;
     ({
         *b += 1;
         *b;

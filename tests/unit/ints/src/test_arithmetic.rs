@@ -1,3 +1,5 @@
+//! feature_raw_ref_op
+
 use crate::arithmetic::rust_entry2;
 use std::ffi::{c_int, c_uint};
 
