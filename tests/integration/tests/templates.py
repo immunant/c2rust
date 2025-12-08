@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
 import stat
 from collections.abc import Mapping
-from typing import Any, Dict, List
+from typing import Any, Dict, Generator, List
 
 from tests.util import *
 from jinja2 import Template
@@ -96,42 +97,53 @@ C2RUST_TRANSFORMS
 def render_script(template: str, out_path: str, params: Dict):
     out = Template(template).render(**params)
 
-    with open(out_path, 'w') as fh:
+    with open(out_path, "w") as fh:
         fh.writelines(out)
     os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
 
 
-def autogen_cargo(conf_file, yaml: Dict):
-    def render_stage(stage_conf: Mapping[str, Any] | None, filename: str) -> bool:
+def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path]:
+    """
+    Yield generated paths.
+    """
+
+    def render_stage(
+        stage_conf: Mapping[str, Any] | None, filename: str
+    ) -> Generator[Path]:
+        """
+        Yield generated paths.
+        """
+
         if not isinstance(stage_conf, Mapping):
-            return False
+            return
         if not stage_conf:
-            return False
+            return
 
         ag = stage_conf.get("autogen")
         if not (ag and isinstance(ag, bool)):
-            return False
+            return
 
         params: Dict[str, str] = {}
         rustflags = stage_conf.get("rustflags")
         if rustflags and isinstance(rustflags, str):
             params["extra_rustflags"] = rustflags
 
-        out_path = os.path.join(
-            os.path.dirname(conf_file),
-            filename
-        )
+        out_path = os.path.join(os.path.dirname(conf_file), filename)
         render_script(CARGO_SH, out_path, params)
-        return True
+        yield Path(out_path)
 
     for key, fname in (
         ("cargo.transpile", "cargo.transpile.gen.sh"),
         ("cargo.refactor", "cargo.refactor.gen.sh"),
     ):
-        render_stage(yaml.get(key), fname)
+        yield from render_stage(yaml.get(key), fname)
 
 
-def autogen_refactor(conf_file, yaml: Dict):
+def autogen_refactor(conf_file, yaml: Dict) -> Generator[str]:
+    """
+    Yield generated paths.
+    """
+
     refactor = yaml.get("refactor")
     if refactor and isinstance(refactor, Dict):
         ag = refactor.get("autogen")
@@ -141,7 +153,9 @@ def autogen_refactor(conf_file, yaml: Dict):
             # Get list of transformations from config
             transforms = refactor.get("transforms")
             if transforms and isinstance(transforms, list):
-                lines = [t.strip() for t in transforms if isinstance(t, str) and t.strip()]
+                lines = [
+                    t.strip() for t in transforms if isinstance(t, str) and t.strip()
+                ]
                 if lines:
                     params["transform_lines"] = "\n".join(lines)
             elif transforms and isinstance(transforms, str):
@@ -151,14 +165,16 @@ def autogen_refactor(conf_file, yaml: Dict):
 
             # Only generate script if we have transformations
             if params["transform_lines"]:
-                out_path = os.path.join(
-                    os.path.dirname(conf_file),
-                    "refactor.gen.sh"
-                )
+                out_path = os.path.join(os.path.dirname(conf_file), "refactor.gen.sh")
                 render_script(REFACTOR_SH, out_path, params)
+                yield Path(out_path)
 
 
-def autogen_transpile(conf_file, yaml: Dict):
+def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path]:
+    """
+    Yield generated paths.
+    """
+
     transpile = yaml.get("transpile")
     if transpile and isinstance(transpile, Dict):
         ag = transpile.get("autogen")
@@ -181,16 +197,17 @@ def autogen_transpile(conf_file, yaml: Dict):
                     tflags = " ".join(tflags)
                 params["tflags"] = tflags
 
-
-            out_path = os.path.join(
-                os.path.dirname(conf_file),
-                "transpile.gen.sh"
-            )
+            out_path = os.path.join(os.path.dirname(conf_file), "transpile.gen.sh")
             render_script(TRANSPILE_SH, out_path, params)
+            yield Path(out_path)
 
 
-def autogen(conf: Config):
-    for (cf, yaml) in conf.project_conf.items():
-        autogen_transpile(cf, yaml)
-        autogen_refactor(cf, yaml)
-        autogen_cargo(cf, yaml)
+def autogen(conf: Config) -> Generator[Path]:
+    """
+    Yield generated paths.
+    """
+
+    for cf, yaml in conf.project_conf.items():
+        yield from autogen_transpile(cf, yaml)
+        yield from autogen_refactor(cf, yaml)
+        yield from autogen_cargo(cf, yaml)

@@ -20,6 +20,7 @@ def is_ubuntu_1804() -> bool:
 # def is_ubuntu_1404():
 #     return 'Ubuntu-14.04-trusty' in platform()
 
+
 def is_centos() -> bool:
     return distro.name() == "CentOS"
 
