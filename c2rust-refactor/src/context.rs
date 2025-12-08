@@ -1334,6 +1334,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
         match (&ty1.kind(), &ty2.kind()) {
             (TyKind::Adt(def1, substs1), TyKind::Adt(def2, substs2)) => {
+                if def1.adt_kind() != def2.adt_kind() {
+                    return false;
+                }
+
                 if substs1.types().count() != substs2.types().count()
                     || !substs1
                         .types()
@@ -1366,15 +1370,24 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     return true;
                 }
 
-                def1.all_fields().count() == def2.all_fields().count()
+                // Iterate separately over the variants and fields (as opposed to the `.all_fields()` flat map).
+                // Otherwise, we may find a false equivalence for empty variants,
+                // or, in general, the flattened iterator could have the same elements but different variant boundaries.
+                def1.variants().len() == def2.variants().len()
                     && def1
-                        .all_fields()
-                        .zip(def2.all_fields())
-                        .all(|(field1, field2)| {
-                            field1.ident(tcx).unnamed_equiv(&field2.ident(tcx))
-                                && (!match_vis || field1.vis == field2.vis)
-                                && self.structural_eq_defs_impl(
-                                    field1.did, field2.did, match_vis, seen,
+                        .variants()
+                        .iter()
+                        .zip(def2.variants().iter())
+                        .all(|(var1, var2)| {
+                            var1.fields.len() == var2.fields.len()
+                                && var1.fields.iter().zip(var2.fields.iter()).all(
+                                    |(field1, field2)| {
+                                        field1.ident(tcx).unnamed_equiv(&field2.ident(tcx))
+                                            && (!match_vis || field1.vis == field2.vis)
+                                            && self.structural_eq_defs_impl(
+                                                field1.did, field2.did, match_vis, seen,
+                                            )
+                                    },
                                 )
                         })
             }
