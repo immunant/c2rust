@@ -11,6 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/arrays.c
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct C2RustUnnamed {
@@ -42,7 +43,7 @@ pub static mut static_char_ptr: *mut ::core::ffi::c_char =
     b"mystring\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
 #[no_mangle]
 pub static mut static_void_ptr: *mut ::core::ffi::c_void =
-    unsafe { static_char_array.as_ptr() as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void };
+    unsafe { &raw const static_char_array as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void };
 #[no_mangle]
 pub unsafe extern "C" fn entry() {
     let mut int_2d: [[::core::ffi::c_int; 1]; 1] = [[1 as ::core::ffi::c_int]];
@@ -84,10 +85,12 @@ pub unsafe extern "C" fn entry() {
         ::core::mem::transmute::<[u8; 20], [::core::ffi::c_char; 20]>(
             *b"abc\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
         );
-    let mut int_var_ptr: *mut ::core::ffi::c_int = int_empty_init.as_mut_ptr();
-    let mut int_var_array_ptr: *mut [::core::ffi::c_int; 16] = &mut int_empty_init;
-    let mut char_var_ptr: *mut ::core::ffi::c_char = char_with_string.as_mut_ptr();
-    let mut char_var_array_ptr: *mut [::core::ffi::c_char; 4] = &mut char_with_string;
+    let mut int_var_ptr: *mut ::core::ffi::c_int =
+        &raw mut int_empty_init as *mut ::core::ffi::c_int;
+    let mut int_var_array_ptr: *mut [::core::ffi::c_int; 16] = &raw mut int_empty_init;
+    let mut char_var_ptr: *mut ::core::ffi::c_char =
+        &raw mut char_with_string as *mut ::core::ffi::c_char;
+    let mut char_var_array_ptr: *mut [::core::ffi::c_char; 4] = &raw mut char_with_string;
     let mut const_char_lit_ptr: *const ::core::ffi::c_char =
         b"abc\0" as *const u8 as *const ::core::ffi::c_char;
     let mut const_char_lit_array_ptr: *const [::core::ffi::c_char; 4] =
@@ -97,8 +100,8 @@ pub unsafe extern "C" fn entry() {
     let mut char_lit_array_ptr: *mut [::core::ffi::c_char; 4] = b"abc\0" as *const [u8; 4]
         as *const [::core::ffi::c_char; 4]
         as *mut [::core::ffi::c_char; 4];
-    let mut past_end: *mut ::core::ffi::c_char = static_char_array
-        .as_mut_ptr()
+    let mut past_end: *mut ::core::ffi::c_char = (&raw mut static_char_array
+        as *mut ::core::ffi::c_char)
         .offset(::core::mem::size_of::<[::core::ffi::c_char; 9]>() as isize)
         as *mut ::core::ffi::c_char;
     past_end = static_char_ptr.offset(8 as ::core::ffi::c_int as isize) as *mut ::core::ffi::c_char;

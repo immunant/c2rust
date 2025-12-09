@@ -1,3 +1,5 @@
+//! feature_raw_ref_op
+
 use crate::uninitialized::{bar, baz, e, foo, rust_entry2, s, /*myint, myintp,*/ u};
 use std::ffi::{c_int, c_uint};
 

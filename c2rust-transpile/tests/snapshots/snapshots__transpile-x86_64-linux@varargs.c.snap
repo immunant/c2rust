@@ -11,7 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/arch-os-specific/varargs.c
     unused_assignments,
     unused_mut
 )]
-#![feature(c_variadic)]
+#![feature(c_variadic, raw_ref_op)]
 extern "C" {
     fn printf(__format: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
     fn vprintf(
@@ -129,8 +129,8 @@ pub unsafe extern "C" fn valist_struct_pointer_member(
     let mut b: vastruct = vastruct {
         args: ::core::mem::MaybeUninit::uninit().assume_init(),
     };
-    let mut p: *mut vastruct = &mut a;
-    let mut q: *mut vastruct = &mut b;
+    let mut p: *mut vastruct = &raw mut a;
+    let mut q: *mut vastruct = &raw mut b;
     (*p).args = args.clone();
     (*q).args = (*p).args.clone();
     vprintf(fmt, (*p).args.as_va_list());
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn borrowed_valist(mut count: size_t, mut args: ...) {
     let mut ap: ::core::ffi::VaListImpl;
     ap = args.clone();
     while count > 0 as size_t {
-        print_int(&mut ap);
+        print_int(&raw mut ap);
         count = count.wrapping_sub(1);
     }
 }

@@ -1,3 +1,5 @@
+//! feature_raw_ref_op
+
 use crate::define::{rust_fns, rust_stmt_expr_inc};
 use crate::define::{rust_reference_define, TEST_CONST1, TEST_CONST2, TEST_PARENS};
 use crate::define::{rust_test_zstd, ZSTD_WINDOWLOG_MAX_32, ZSTD_WINDOWLOG_MAX_64};

@@ -11,6 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/exprs.c
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 extern "C" {
     fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }
@@ -29,7 +30,7 @@ pub unsafe extern "C" fn unary_without_side_effect() {
     i;
     !i;
     (i == 0) as ::core::ffi::c_int;
-    &mut i;
+    &raw mut i;
     i;
     i += 1;
     i -= 1;

@@ -1,4 +1,4 @@
-//! feature_c_variadic
+//! feature_c_variadic, feature_raw_ref_op
 
 use crate::function_pointers::rust_entry3;
 use crate::pointer_arith::rust_entry2;
