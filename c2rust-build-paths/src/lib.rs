@@ -84,8 +84,7 @@ pub fn find_llvm_config() -> Option<PathBuf> {
             env::var_os("LLVM_LIB_DIR")
                 .map(PathBuf::from)
                 .map(|mut lib_dir| {
-                    lib_dir.push("..");
-                    lib_dir.push("bin");
+                    lib_dir.push("../bin");
                     lib_dir.push(if cfg!(target_os = "windows") {
                         "llvm-config.exe"
                     } else {
