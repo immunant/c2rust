@@ -86,11 +86,11 @@ pub fn find_llvm_config() -> Option<PathBuf> {
                 .map(|mut lib_dir| {
                     lib_dir.push("..");
                     lib_dir.push("bin");
-                    if cfg!(target_os = "windows") {
-                        lib_dir.push("llvm-config.exe");
+                    lib_dir.push(if cfg!(target_os = "windows") {
+                        "llvm-config.exe"
                     } else {
-                        lib_dir.push("llvm-config");
-                    }
+                        "llvm-config"
+                    });
                     let canonicalized_dir = lib_dir.canonicalize();
                     if canonicalized_dir.is_err() {
                         panic!(
