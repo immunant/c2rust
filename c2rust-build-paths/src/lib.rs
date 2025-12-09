@@ -91,13 +91,12 @@ pub fn find_llvm_config() -> Option<PathBuf> {
                         "llvm-config"
                     });
                     let canonicalized_dir = lib_dir.canonicalize();
-                    if canonicalized_dir.is_err() {
+                    lib_dir.canonicalize().unwrap_or_else(|_| {
                         panic!(
-                            "LLVM_LIB_DIR is set but `{}' does not exist",
+                            "LLVM_LIB_DIR is set but `{}` does not exist",
                             lib_dir.display()
                         );
-                    }
-                    canonicalized_dir.unwrap()
+                    })
                 })
         })
         .or_else(|| {
