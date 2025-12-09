@@ -3791,7 +3791,7 @@ impl<'c> Translation<'c> {
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             ArraySubscript(_, lhs, rhs, _) => self
-                .convert_array_subscript(ctx, lhs, rhs, override_ty)
+                .convert_array_subscript(ctx, lhs, rhs, override_ty, true)
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             Call(call_expr_ty, func, ref args) => {

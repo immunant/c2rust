@@ -20,12 +20,22 @@ impl<'c> Translation<'c> {
         cqual_type: CQualTypeId,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let arg_kind = &self.ast_context[arg].kind;
+        let arg_kind = &self.ast_context[self.ast_context.resolve_parens(arg)].kind;
 
         match arg_kind {
             // C99 6.5.3.2 para 4
             CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
                 return self.convert_expr(ctx, *target, None)
+            }
+            // Array subscript functions as a deref too.
+            &CExprKind::ArraySubscript(_, lhs, rhs, _) => {
+                return self.convert_array_subscript(
+                    ctx.used().set_needs_address(true),
+                    lhs,
+                    rhs,
+                    Some(cqual_type),
+                    false,
+                )
             }
             // An AddrOf DeclRef/Member is safe to not decay
             // if the translator isn't already giving a hard yes to decaying (ie, BitCasts).
@@ -215,6 +225,7 @@ impl<'c> Translation<'c> {
         lhs: CExprId,
         rhs: CExprId,
         override_ty: Option<CQualTypeId>,
+        deref: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let lhs_node = &self.ast_context.index(lhs).kind;
         let rhs_node = &self.ast_context.index(rhs).kind;
@@ -303,7 +314,7 @@ impl<'c> Translation<'c> {
 
                     // Don't dereference the offset if we're still within the variable portion
                     if let Some(elt_type_id) = var_elt_type_id {
-                        Ok(self.convert_pointer_offset(lhs, rhs, elt_type_id, false, true))
+                        Ok(self.convert_pointer_offset(lhs, rhs, elt_type_id, false, deref))
                     } else {
                         Ok(WithStmts::new_val(
                             mk().index_expr(lhs, cast_int(rhs, "usize", false)),
@@ -332,7 +343,7 @@ impl<'c> Translation<'c> {
                     };
 
                     let mut val =
-                        self.convert_pointer_offset(lhs, rhs, pointee_type_id.ctype, false, true);
+                        self.convert_pointer_offset(lhs, rhs, pointee_type_id.ctype, false, deref);
                     // if the context wants a different type, add a cast
                     if let Some(expected_ty) = override_ty {
                         if expected_ty != pointee_type_id {
