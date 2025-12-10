@@ -38,3 +38,12 @@ void compound_literal(){
     /// https://github.com/immunant/c2rust/issues/1234
     int i = (enum {A, B, C}){1};
 }
+
+void statement_expr() {
+    ({
+        puts("should execute");
+        return;
+    });
+
+    puts("should be unreachable!");
+}
