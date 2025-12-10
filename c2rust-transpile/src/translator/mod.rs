@@ -14,11 +14,11 @@ use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::{
     AttrStyle, BareVariadic, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast, ExprField,
-    ExprIndex, ExprParen, ExprUnary, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
-    ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
-    ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
-    ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
-    Stmt, Type, TypeTuple, UseTree, Visibility,
+    ExprIndex, ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn,
+    ForeignItemMacro, ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum,
+    ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct,
+    ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment,
+    ReturnType, Stmt, Type, TypeTuple, UseTree, Visibility,
 };
 use syn::{BinOp, UnOp}; // To override `c_ast::{BinOp,UnOp}` from glob import.
 
@@ -2404,6 +2404,7 @@ impl<'c> Translation<'c> {
                 };
                 let mut converted_body =
                     self.convert_function_body(ctx, name, body_ids, return_type, ret)?;
+                strip_tail_return(&mut converted_body);
 
                 // If `alloca` was used in the function body, include a variable to hold the
                 // allocations.
@@ -2520,7 +2521,6 @@ impl<'c> Translation<'c> {
         graph: cfg::Cfg<cfg::Label, cfg::StmtOrDecl>,
         store: cfg::DeclStmtStore,
         live_in: IndexSet<CDeclId>,
-        cut_out_trailing_ret: bool,
     ) -> TranslationResult<Vec<Stmt>> {
         if self.tcfg.dump_function_cfgs {
             graph
@@ -2582,7 +2582,6 @@ impl<'c> Translation<'c> {
             &mut self.comment_store.borrow_mut(),
             current_block,
             self.tcfg.debug_relooper_labels,
-            cut_out_trailing_ret,
         )?);
         Ok(stmts)
     }
@@ -2598,7 +2597,7 @@ impl<'c> Translation<'c> {
         // Function body scope
         self.with_scope(|| {
             let (graph, store) = cfg::Cfg::from_stmts(self, ctx, body_ids, ret, ret_ty)?;
-            self.convert_cfg(name, graph, store, IndexSet::new(), true)
+            self.convert_cfg(name, graph, store, IndexSet::new())
         })
     }
 
@@ -5264,5 +5263,13 @@ impl<'c> Translation<'c> {
             } if has_static_duration || has_thread_duration => {}
             ref e => unimplemented!("{:?}", e),
         }
+    }
+}
+
+// If the very last statement in the vector is a `return`, either cut it out or replace it with
+// the returned value.
+fn strip_tail_return(stmts: &mut Vec<Stmt>) {
+    if let Some(Stmt::Expr(Expr::Return(ExprReturn { expr: None, .. }), _)) = stmts.last() {
+        stmts.pop();
     }
 }
