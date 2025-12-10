@@ -59,5 +59,6 @@ pub unsafe extern "C" fn compound_literal() {
 #[no_mangle]
 pub unsafe extern "C" fn statement_expr() {
     puts(b"should execute\0" as *const u8 as *const ::core::ffi::c_char);
+    return;
     puts(b"should be unreachable!\0" as *const u8 as *const ::core::ffi::c_char);
 }
