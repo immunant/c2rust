@@ -22,11 +22,8 @@ pub unsafe extern "C" fn dec(mut f: *mut Foo) {
     (*f).len -= 1;
 }
 unsafe fn main_0() -> ::core::ffi::c_int {
-    let mut f: Foo = {
-        let mut init = Foo {
-            len: 5 as ::core::ffi::c_int,
-        };
-        init
+    let mut f: Foo = Foo {
+        len: 5 as ::core::ffi::c_int,
     };
     let mut fp: *mut Foo = &raw mut f;
     dec(fp);

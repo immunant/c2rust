@@ -420,7 +420,6 @@ impl<'a> Translation<'a> {
         let mut fields = Vec::with_capacity(field_decl_ids.len());
         let reorganized_fields =
             self.get_field_types(struct_id, field_decl_ids, platform_byte_size)?;
-        let local_pat = mk().mutbl().ident_pat("init");
         let mut padding_count = 0;
         let mut next_padding_field = || {
             let field_name = self
@@ -542,41 +541,47 @@ impl<'a> Translation<'a> {
             }
         }
 
-        fields
+        let fields = fields
             .into_iter()
-            .collect::<WithStmts<Vec<syn::FieldValue>>>()
-            .and_then(|fields| {
-                let struct_expr = mk().struct_expr(name.as_str(), fields);
-                let local_variable = Box::new(mk().local(local_pat, None, Some(struct_expr)));
+            .collect::<WithStmts<Vec<syn::FieldValue>>>();
+        let struct_expr = fields.map(|fields| mk().struct_expr(name.as_str(), fields));
 
-                let mut is_unsafe = false;
-                let mut stmts = vec![mk().local_stmt(local_variable)];
+        if bitfield_inits.is_empty() {
+            return Ok(struct_expr);
+        }
 
-                // Now we must use the bitfield methods to initialize bitfields
-                for (field_name, val) in bitfield_inits {
-                    let field_name_setter = format!("set_{}", field_name);
-                    let struct_ident = mk().ident_expr("init");
-                    is_unsafe |= val.is_unsafe();
-                    let val = val
-                        .to_pure_expr()
-                        .expect("Expected no statements in bitfield initializer");
-                    let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
+        struct_expr.and_then(|struct_expr| {
+            let local_pat = mk().mutbl().ident_pat("init");
+            let local_variable = Box::new(mk().local(local_pat, None, Some(struct_expr)));
 
-                    stmts.push(mk().semi_stmt(expr));
-                }
+            let mut is_unsafe = false;
+            let mut stmts = vec![mk().local_stmt(local_variable)];
 
+            // Now we must use the bitfield methods to initialize bitfields
+            for (field_name, val) in bitfield_inits {
+                let field_name_setter = format!("set_{}", field_name);
                 let struct_ident = mk().ident_expr("init");
+                is_unsafe |= val.is_unsafe();
+                let val = val
+                    .to_pure_expr()
+                    .expect("Expected no statements in bitfield initializer");
+                let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
 
-                stmts.push(mk().expr_stmt(struct_ident));
+                stmts.push(mk().semi_stmt(expr));
+            }
 
-                let val = mk().block_expr(mk().block(stmts));
+            let struct_ident = mk().ident_expr("init");
 
-                if is_unsafe {
-                    Ok(WithStmts::new_unsafe_val(val))
-                } else {
-                    Ok(WithStmts::new_val(val))
-                }
-            })
+            stmts.push(mk().expr_stmt(struct_ident));
+
+            let val = mk().block_expr(mk().block(stmts));
+
+            if is_unsafe {
+                Ok(WithStmts::new_unsafe_val(val))
+            } else {
+                Ok(WithStmts::new_val(val))
+            }
+        })
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields

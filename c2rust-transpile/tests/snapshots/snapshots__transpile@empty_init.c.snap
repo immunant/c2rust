@@ -17,9 +17,6 @@ pub struct Scope {
     pub next: *mut Scope,
 }
 #[no_mangle]
-pub static mut scope: *mut Scope = &{
-    let mut init = Scope {
-        next: ::core::ptr::null::<Scope>() as *mut Scope,
-    };
-    init
+pub static mut scope: *mut Scope = &Scope {
+    next: ::core::ptr::null::<Scope>() as *mut Scope,
 } as *const Scope as *mut Scope;
