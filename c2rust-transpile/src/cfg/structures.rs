@@ -15,13 +15,14 @@ pub fn structured_cfg(
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
-    let ast = forward_cfg_help(
+    let mut ast = forward_cfg_help(
         root,
         &checked_entries,
         &IndexSet::new(),
         &IndexSet::new(),
         &mut IndexSet::new(),
     )?;
+    cleanup_labels(&mut ast, &None, &mut IndexSet::new());
 
     let s = StructureState {
         debug_labels,
@@ -38,6 +39,75 @@ pub fn structured_cfg(
     }
 
     Ok(stmts)
+}
+
+/// Removes labels from exits if they target the loop they are directly inside
+/// of.
+///
+/// This is an optimization pass on the relooped AST. When building the AST from
+/// the structured CFG, it's easier and less error-prone to always label all
+/// loops and exits. But doing so makes the resulting code more verbose and gets
+/// in the way of our ability to generate `while` loops, which relies on `loop {
+/// if cond { break; } }` being in the AST.
+///
+/// This function walks the AST, keeping track of when we're allowed to use
+/// unlabeled exits (i.e. when we're in a loop and NOT inside a labeled block),
+/// and remove labels from exits that don't need them. We then also remove
+/// labels from loops if there aren't any exits that need the label.
+fn cleanup_labels(
+    ast: &mut StructuredAST<Box<Expr>, Pat, Label, Stmt>,
+    current_loop: &Option<Label>,
+    encountered_labels: &mut IndexSet<Label>,
+) {
+    use StructuredASTKind::*;
+
+    match &mut ast.node {
+        // Remove the label if an exit targets the loop its directly inside of. If we
+        // can't remove the label, track it in `encountered_labels` so we can later
+        // decide if the loop needs its label.
+        Exit(_, label) => {
+            if label == current_loop {
+                *label = None;
+            } else {
+                encountered_labels.insert(label.clone().expect("All exits must be labeled"));
+            }
+        }
+
+        // Recurse through loops and blocks, tracking if we're directly inside a loop.
+        // The loop label may be omitted if there are no exits in its body that need the
+        // label.
+        Loop(label, body) => {
+            cleanup_labels(body, label, encountered_labels);
+            if !encountered_labels.contains(label.as_ref().expect("All loops must be labeled")) {
+                *label = None;
+            }
+        }
+        Block(_, body) => {
+            cleanup_labels(body, &None, encountered_labels);
+        }
+
+        // Recurse through the rest of the AST.
+        Append(left, right) => {
+            cleanup_labels(left, current_loop, encountered_labels);
+            cleanup_labels(right, current_loop, encountered_labels);
+        }
+        Match(_, arms) => {
+            for (_, arm) in arms {
+                cleanup_labels(arm, current_loop, encountered_labels);
+            }
+        }
+        If(_, then, else_) => {
+            cleanup_labels(then, current_loop, encountered_labels);
+            cleanup_labels(else_, current_loop, encountered_labels);
+        }
+        GotoTable(cases, then) => {
+            for (_, case) in cases {
+                cleanup_labels(case, current_loop, encountered_labels);
+            }
+            cleanup_labels(then, current_loop, encountered_labels);
+        }
+        Empty | Singleton(_) | Goto(_) => {}
+    }
 }
 
 /// Ways of exiting from a loop body
@@ -269,28 +339,6 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         let structure = &root[i];
         let next_entries = get_next_entries(i + 1);
 
-        // HACK: Look ahead for followup multiples so we know if we're going to be inside of a
-        // labeled block. This is necessary to know if we can use an unlabeled break when inside
-        // of a loop. This is really gross and inelegant, but seems to work.
-        let mut followup_branches = 0;
-        for s in &root[i + 1..] {
-            if let Multiple { branches, .. } = s {
-                followup_branches += branches.len();
-            } else {
-                break;
-            }
-        }
-
-        // If there are followup multiples, this structure is going to be wrapped in a labeled
-        // block, which means we can't use an unlabeled break. So we say that there are no loop
-        // exists to indicate that we need to label the break.
-        let empty = IndexSet::new();
-        let loop_exits = if followup_branches > 0 {
-            &empty
-        } else {
-            &loop_exits
-        };
-
         // Generate the AST for the current structure.
         let mut structure_ast = match structure {
             Simple {
@@ -330,12 +378,8 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             // Only generate an exit if we're not going to flow naturally into the
                             // next structure's entries.
                             if !next_entries.contains(to) {
-                                let label = if loop_exits.contains(to) {
-                                    None
-                                } else {
-                                    break_targets.insert(to.clone());
-                                    Some(to.clone())
-                                };
+                                let label = Some(to.clone());
+                                break_targets.insert(to.clone());
                                 new_ast =
                                     S::mk_append(new_ast, S::mk_exit(ExitStyle::Break, label));
                             }
@@ -359,9 +403,10 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             // `target` instead? `loop_label` seems reasonable since that's the
                             // label the loop has to have in code but also idk whatever.
                             if loop_exits.contains(loop_label) {
-                                // TODO: Uuuuhhhhhhhhhhh is this correct in all cases? This is what
-                                // we wanna do if we're inside a nested loop, but what if we're not?
-                                new_ast = S::mk_append(new_ast, S::mk_exit(ExitStyle::Break, None));
+                                new_ast = S::mk_append(
+                                    new_ast,
+                                    S::mk_exit(ExitStyle::Break, Some(loop_label.clone())),
+                                );
                             } else if !next_entries.contains(loop_label) {
                                 new_ast = S::mk_append(
                                     new_ast,
@@ -410,49 +455,10 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             }
 
             Loop { entries, body } => {
-                let label = entries
-                    .first()
-                    .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
-
-                // Check if our loop label is a break target BEFORE we process the loop body.
-                // This helps determine if we can label the loop to avoid generating a separate
-                // block later.
-                let previous_break_targets =
-                    break_targets.intersection(&next_entries).next().is_some();
-
                 let body =
                     forward_cfg_help(body, checked_entries, entries, &next_entries, break_targets)?;
-
-                // Determine how to label the loop.
-                //
-                // If there are breaks directly targeting the loop's entries, then we label the
-                // loop according to its first entry. This is somewhat arbitrary, but works fine
-                // as long as we use the same label when generating the breaks.
-                //
-                // If there are breaks targeting the next structure's entries, then we attempt
-                // to use the loop as the break target. This only works if the breaks are coming
-                // from inside the loop, so if there were breaks targeting the label before we
-                // processed the loop body then we can't apply this optimization.
-                //
-                // TODO: Is this the right way to label the loop? If we have multiple entries to
-                // a loop it means we have irreducible control flow. In that case is picking the
-                // first label the right thing to do? Do we need to do something else to handle
-                // a checked multiple in that case?
-                let label = if break_targets.contains(label) {
-                    Some(label.clone())
-                } else if let Some(target) =
-                    break_targets.intersection(&next_entries).next().cloned()
-                    && !previous_break_targets
-                {
-                    // NOTE: Remove the label from the set of break targets so that we don't
-                    // generate an extra block for it later.
-                    break_targets.remove(&target);
-                    Some(target)
-                } else {
-                    None
-                };
-
-                S::mk_loop(label, body)
+                let label = entries.first().expect("There must be at least one entry");
+                S::mk_loop(Some(label.clone()), body)
             }
 
             Multiple { entries, branches } => {
