@@ -43,11 +43,8 @@ pub const LITERAL_FLOAT: ::core::ffi::c_double = 3.14f64;
 pub const LITERAL_CHAR: ::core::ffi::c_int = 'x' as i32;
 pub const LITERAL_STR: [::core::ffi::c_char; 6] =
     unsafe { ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0") };
-pub const LITERAL_STRUCT: S = {
-    let mut init = S {
-        i: 5 as ::core::ffi::c_int,
-    };
-    init
+pub const LITERAL_STRUCT: S = S {
+    i: 5 as ::core::ffi::c_int,
 };
 pub const NESTED_INT: ::core::ffi::c_int = LITERAL_INT;
 pub const NESTED_BOOL: ::core::ffi::c_int = LITERAL_BOOL;
@@ -362,13 +359,10 @@ pub unsafe extern "C" fn reference_define() -> ::core::ffi::c_int {
     return x;
 }
 #[no_mangle]
-pub static mut fns: fn_ptrs = {
-    let mut init = fn_ptrs {
-        v: ::core::ptr::null::<::core::ffi::c_void>() as *mut ::core::ffi::c_void,
-        fn1: None,
-        fn2: None,
-    };
-    init
+pub static mut fns: fn_ptrs = fn_ptrs {
+    v: ::core::ptr::null::<::core::ffi::c_void>() as *mut ::core::ffi::c_void,
+    fn1: None,
+    fn2: None,
 };
 #[no_mangle]
 pub static mut p: *const fn_ptrs = unsafe { &raw const fns };

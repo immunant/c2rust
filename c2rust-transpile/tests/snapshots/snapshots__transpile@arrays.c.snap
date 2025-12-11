@@ -61,11 +61,8 @@ pub unsafe extern "C" fn entry() {
         y: 0,
     }; 1];
     struct_init_too_short[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
-    let mut struct_init_too_long: [C2RustUnnamed; 1] = [{
-        let mut init = C2RustUnnamed {
-            y: 1 as ::core::ffi::c_int,
-        };
-        init
+    let mut struct_init_too_long: [C2RustUnnamed; 1] = [C2RustUnnamed {
+        y: 1 as ::core::ffi::c_int,
     }];
     struct_init_too_long[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
     let mut char_with_string: [::core::ffi::c_char; 4] =
@@ -114,20 +111,14 @@ pub unsafe extern "C" fn short_initializer() {
     let mut excess_elements_1: [::core::ffi::c_int; 2] =
         [1 as ::core::ffi::c_int, 2 as ::core::ffi::c_int];
     let mut excess_elements_2: [::core::ffi::c_int; 0] = [0; 0];
-    let mut single_struct: [C2RustUnnamed_2; 1] = [{
-        let mut init = C2RustUnnamed_2 {
-            x: 1 as ::core::ffi::c_short,
-            y: 2 as ::core::ffi::c_int,
-        };
-        init
+    let mut single_struct: [C2RustUnnamed_2; 1] = [C2RustUnnamed_2 {
+        x: 1 as ::core::ffi::c_short,
+        y: 2 as ::core::ffi::c_int,
     }];
     let mut many_struct: [C2RustUnnamed_1; 3] = [
-        {
-            let mut init = C2RustUnnamed_1 {
-                x: 1 as ::core::ffi::c_short,
-                y: 2 as ::core::ffi::c_int,
-            };
-            init
+        C2RustUnnamed_1 {
+            x: 1 as ::core::ffi::c_short,
+            y: 2 as ::core::ffi::c_int,
         },
         C2RustUnnamed_1 { x: 0, y: 0 },
         C2RustUnnamed_1 { x: 0, y: 0 },
