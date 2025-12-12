@@ -74,8 +74,8 @@ fn cleanup_labels(
         Exit(_, label) => {
             if label == current_loop {
                 *label = None;
-            } else {
-                encountered_labels.insert(label.clone().expect("All exits must be labeled"));
+            } else if let Some(label) = label {
+                encountered_labels.insert(label.clone());
             }
         }
 
