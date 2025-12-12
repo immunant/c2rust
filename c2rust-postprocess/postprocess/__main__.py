@@ -47,7 +47,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--update-cache",
-        type=bool,
         required=False,
         default=True,
         action=argparse.BooleanOptionalAction,
