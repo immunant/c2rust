@@ -323,8 +323,8 @@ impl ToTokens for ParsedMetaExportName {
     }
 }
 
-#[derive(Parser)]
 /// Split FFI entrypoints out of a freshly-transpiled Rust codebase.
+#[derive(Parser)]
 struct Args {
     /// Directory of Rust project to modify. `Cargo.toml` should reside inside this directory.
     cargo_dir_path: PathBuf,
