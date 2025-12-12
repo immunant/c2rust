@@ -2114,13 +2114,8 @@ impl CfgBuilder {
         };
 
         // Run relooper
-        let mut stmts = translator.convert_cfg(
-            &format!("<substmt_{:?}>", stmt_id),
-            graph,
-            store,
-            live_in,
-            false,
-        )?;
+        let mut stmts =
+            translator.convert_cfg(&format!("<substmt_{:?}>", stmt_id), graph, store, live_in)?;
 
         let inner_span = stmts.first().map(|stmt| stmt.span());
 
