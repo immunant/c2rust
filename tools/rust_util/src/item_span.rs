@@ -24,7 +24,8 @@ impl ItemSpanVisitor {
         self.cur_path.push(name);
 
         let range = sp.byte_range();
-        self.item_spans.push((self.cur_path.clone(), range.start, range.end));
+        self.item_spans
+            .push((self.cur_path.clone(), range.start, range.end));
         let r = f(self);
 
         self.cur_path.pop();
@@ -38,20 +39,19 @@ impl Visit<'_> for ItemSpanVisitor {
             syn::Item::Fn(ref ifn) => {
                 let name = ifn.sig.ident.to_string();
                 self.enter(name, ifn.span(), |v| v.visit_item_fn(ifn));
-            },
+            }
             syn::Item::Mod(ref im) => {
                 let name = im.ident.to_string();
                 self.enter(name, im.span(), |v| v.visit_item_mod(im));
-            },
+            }
             // TODO: handle other items that can contain nested items.  Note that any expr or type
             // can contain items, e.g. `type T = [u8; { fn f(){} 10 }];`
             _ => {
                 visit::visit_item(self, item);
-            },
+            }
         }
     }
 }
-
 
 pub fn item_spans(mod_path: Vec<String>, ast: &syn::File) -> Vec<(Vec<String>, usize, usize)> {
     let mut v = ItemSpanVisitor::new(mod_path);

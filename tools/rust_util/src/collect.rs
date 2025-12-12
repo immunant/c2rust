@@ -1,11 +1,10 @@
+use crate::error::Error;
 use std::collections::HashSet;
 use std::fs;
 use std::iter;
 use std::path::{Path, PathBuf};
 use syn;
 use syn::ext::IdentExt;
-use crate::error::Error;
-
 
 #[derive(Clone, Default)]
 pub struct FileCollector {
@@ -35,7 +34,9 @@ impl FileCollector {
         let is_mod_rs = is_root || file_path.file_name().is_some_and(|n| n == "mod.rs");
         let base_path_storage;
         let base_path = if is_mod_rs {
-            file_path.parent().ok_or_else(|| format!("mod.rs path {file_path:?} has no parent"))?
+            file_path
+                .parent()
+                .ok_or_else(|| format!("mod.rs path {file_path:?} has no parent"))?
         } else {
             base_path_storage = file_path.with_extension("");
             &base_path_storage
@@ -59,9 +60,12 @@ impl FileCollector {
             };
             mod_path.push(im.ident.unraw().to_string());
             if let Some((_, ref inline_items)) = im.content {
-                let name = path_attr_value(&im.attrs)?
-                    .unwrap_or_else(|| im.ident.unraw().to_string());
-                let module = parent_module.iter().copied().chain(iter::once(&name as &_))
+                let name =
+                    path_attr_value(&im.attrs)?.unwrap_or_else(|| im.ident.unraw().to_string());
+                let module = parent_module
+                    .iter()
+                    .copied()
+                    .chain(iter::once(&name as &_))
                     .collect::<Vec<_>>();
                 self.walk_items(inline_items, base_path, mod_path.clone(), &module)?;
             } else {

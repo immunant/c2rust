@@ -1,0 +1,17 @@
+[package]
+name = "related_decls"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rust_util = { path = "../rust_util" }
+
+syn = { version = "2.0.108", features = ["full", "visit-mut", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+
+ra_ap_hir = "=0.0.301"
+ra_ap_ide_db = "=0.0.301"
+ra_ap_load-cargo = "=0.0.301"
+ra_ap_project_model = "=0.0.301"
+ra_ap_syntax = "=0.0.301"

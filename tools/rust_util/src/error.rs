@@ -2,7 +2,6 @@ use std::fmt::{self, Display};
 use std::io;
 use syn;
 
-
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
@@ -12,19 +11,27 @@ pub enum Error {
 }
 
 impl From<io::Error> for Error {
-    fn from(x: io::Error) -> Error { Error::Io(x) }
+    fn from(x: io::Error) -> Error {
+        Error::Io(x)
+    }
 }
 
 impl From<syn::Error> for Error {
-    fn from(x: syn::Error) -> Error { Error::Syn(x) }
+    fn from(x: syn::Error) -> Error {
+        Error::Syn(x)
+    }
 }
 
 impl From<String> for Error {
-    fn from(x: String) -> Error { Error::Str(x) }
+    fn from(x: String) -> Error {
+        Error::Str(x)
+    }
 }
 
 impl From<&str> for Error {
-    fn from(x: &str) -> Error { Error::Str(x.to_owned()) }
+    fn from(x: &str) -> Error {
+        Error::Str(x.to_owned())
+    }
 }
 
 impl Error {
