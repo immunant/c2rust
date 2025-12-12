@@ -3495,12 +3495,14 @@ impl<'c> Translation<'c> {
                                 parameters,
                             )?;
                         if let Some(actual_ty) = actual_ty {
-                            // If we're casting a concrete function to
-                            // a K&R function pointer type, use transmute
-                            self.import_type(qual_ty.ctype);
+                            if actual_ty != ty {
+                                // If we're casting a concrete function to
+                                // a K&R function pointer type, use transmute
+                                self.import_type(qual_ty.ctype);
 
-                            val = transmute_expr(actual_ty, ty, val);
-                            set_unsafe = true;
+                                val = transmute_expr(actual_ty, ty, val);
+                                set_unsafe = true;
+                            }
                         } else {
                             let decl_kind = &self.ast_context[decl_id].kind;
                             let kind_with_declared_args =
@@ -4406,21 +4408,35 @@ impl<'c> Translation<'c> {
 
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
-                val.and_then(|x| {
-                    if self.ast_context.is_function_pointer(target_cty.ctype)
-                        || self.ast_context.is_function_pointer(source_cty.ctype)
-                    {
-                        let source_ty = self.convert_type(source_cty.ctype)?;
-                        let target_ty = self.convert_type(target_cty.ctype)?;
-                        Ok(WithStmts::new_unsafe_val(transmute_expr(
-                            source_ty, target_ty, x,
-                        )))
-                    } else {
-                        // Normal case
-                        let target_ty = self.convert_type(target_cty.ctype)?;
-                        Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
+                if self.ast_context.is_function_pointer(target_cty.ctype)
+                    || self.ast_context.is_function_pointer(source_cty.ctype)
+                {
+                    let source_ty = self
+                        .type_converter
+                        .borrow_mut()
+                        .convert(&self.ast_context, source_cty.ctype)?;
+                    let target_ty = self
+                        .type_converter
+                        .borrow_mut()
+                        .convert(&self.ast_context, target_cty.ctype)?;
+
+                    if source_ty == target_ty {
+                        return Ok(val);
                     }
-                })
+
+                    self.import_type(source_cty.ctype);
+                    self.import_type(target_cty.ctype);
+
+                    val.and_then(|val| {
+                        Ok(WithStmts::new_unsafe_val(transmute_expr(
+                            source_ty, target_ty, val,
+                        )))
+                    })
+                } else {
+                    // Normal case
+                    let target_ty = self.convert_type(target_cty.ctype)?;
+                    Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+                }
             }
 
             CastKind::IntegralToPointer
