@@ -19,7 +19,7 @@ pub fn structured_cfg(
         root,
         &checked_entries,
         &IndexSet::new(),
-        &IndexSet::new(),
+        &None,
         &mut IndexSet::new(),
     )?;
     cleanup_labels(&mut ast, &None, &mut IndexSet::new());
@@ -62,7 +62,7 @@ fn cleanup_labels(
     use StructuredASTKind::*;
 
     match &mut ast.node {
-        // Remove the label if an exit targets the loop its directly inside of. If we
+        // Remove the label if an exit targets the loop it's directly inside of. If we
         // can't remove the label, track it in `encountered_labels` so we can later
         // decide if the loop needs its label.
         Exit(_, label) => {
@@ -74,16 +74,35 @@ fn cleanup_labels(
         }
 
         // Recurse through loops and blocks, tracking if we're directly inside a loop.
-        // The loop label may be omitted if there are no exits in its body that need the
-        // label.
-        Loop(label, body) => {
-            cleanup_labels(body, label, encountered_labels);
-            if !encountered_labels.contains(label.as_ref().expect("All loops must be labeled")) {
-                *label = None;
+        Loop(label_place, body) => {
+            let mut inner_labels = IndexSet::new();
+            cleanup_labels(body, label_place, &mut inner_labels);
+
+            // Remove the loop's label if it's never used in the loop's body.
+            if let Some(label) = label_place && !inner_labels.contains(label) {
+                *label_place = None;
             }
+
+            encountered_labels.extend(inner_labels);
         }
-        Block(_, body) => {
-            cleanup_labels(body, &None, encountered_labels);
+        Block(block_label, body) => {
+            let mut inner_labels = IndexSet::new();
+            cleanup_labels(body, &None, &mut inner_labels);
+
+            // If, after cleaning up labels in the block's body, the block's only contents
+            // are an unlabeled loop, remove the block and apply the label to the loop
+            // instead. After doing this we must then re-process the block's contents to see
+            // if we can remove more labels from the loop's body.
+            if let Loop(loop_label @ None, _) = &mut body.node {
+                *loop_label = Some(block_label.clone());
+
+                inner_labels.clear();
+                cleanup_labels(body, &None, &mut inner_labels);
+
+                *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+            }
+
+            encountered_labels.extend(inner_labels);
         }
 
         // Recurse through the rest of the AST.
@@ -307,7 +326,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
     root: &[Structure<Stmt>],
     checked_entries: &IndexSet<Label>,
     followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
-    loop_exits: &IndexSet<Label>, // If we're inside a loop, these are the labels that immediately follow it. Used to determine if we need a label when breaking out of a loop.
+    loop_context: &Option<(Label, &IndexSet<Label>)>,
     break_targets: &mut IndexSet<Label>, // Any labels that we've had to indirectly `break` to. This tells us when we need to generate blocks as break targets.
 ) -> TranslationResult<S> {
     use Structure::*;
@@ -361,7 +380,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             nested,
                             checked_entries,
                             &next_entries,
-                            loop_exits,
+                            loop_context,
                             break_targets,
                         ),
 
@@ -394,19 +413,16 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                                 S::empty()
                             };
 
-                            // If we can get where we're going with an unlabeled `break`, prefer
-                            // that over using a labeled `continue`. This helps us to reconstruct
-                            // `while` loops in more cases, since generating a `while` requires the
-                            // AST to be structured like `loop { if { break; } }`.
-                            //
-                            // TODO: Is it correct to test `loop_label` here? Should we be testing
-                            // `target` instead? `loop_label` seems reasonable since that's the
-                            // label the loop has to have in code but also idk whatever.
-                            if loop_exits.contains(loop_label) {
+                            // If we can get where we're going with a `break`, prefer that over
+                            // using a `continue`. This helps us to reconstruct `while` loops in
+                            // more cases, since generating a `while` requires the AST to be
+                            // structured like `loop { if { break; } }`.
+                            if let Some((current_loop, loop_exits)) = loop_context && loop_exits.contains(loop_label) {
                                 new_ast = S::mk_append(
                                     new_ast,
-                                    S::mk_exit(ExitStyle::Break, Some(loop_label.clone())),
+                                    S::mk_exit(ExitStyle::Break, Some(current_loop.clone())),
                                 );
+                                break_targets.insert(current_loop.clone());
                             } else if !next_entries.contains(loop_label) {
                                 new_ast = S::mk_append(
                                     new_ast,
@@ -455,9 +471,14 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             }
 
             Loop { entries, body } => {
-                let body =
-                    forward_cfg_help(body, checked_entries, entries, &next_entries, break_targets)?;
                 let label = entries.first().expect("There must be at least one entry");
+                let body = forward_cfg_help(
+                    body,
+                    checked_entries,
+                    entries,
+                    &Some((label.clone(), &next_entries)),
+                    break_targets,
+                )?;
                 S::mk_loop(Some(label.clone()), body)
             }
 
@@ -477,7 +498,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                         &then,
                         checked_entries,
                         &next_entries,
-                        loop_exits,
+                        loop_context,
                         break_targets,
                     )?
                 } else {
@@ -491,7 +512,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             body,
                             checked_entries,
                             &next_entries,
-                            loop_exits,
+                            loop_context,
                             break_targets,
                         )?;
                         Ok((lbl.clone(), stmts))
@@ -530,7 +551,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                     branch,
                     checked_entries,
                     next_entries,
-                    loop_exits,
+                    loop_context,
                     break_targets,
                 )?;
 
