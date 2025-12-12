@@ -6,8 +6,8 @@ use rust_util::item_span::item_spans;
 use serde_json;
 use clap::Parser;
 
-#[derive(Parser)]
 /// Split a Rust codebase into a JSON map from item paths to their source text.
+#[derive(Parser)]
 struct Args {
     /// Root Rust source file to split (`lib.rs` or `main.rs`).
     src_root_path: PathBuf,

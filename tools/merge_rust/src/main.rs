@@ -6,8 +6,8 @@ use rust_util::item_span::item_spans;
 use serde_json;
 use clap::Parser;
 
-#[derive(Parser)]
 /// Merge updated item definitions into a Rust codebase.
+#[derive(Parser)]
 struct Args {
     /// Root Rust source file to update (`lib.rs` or `main.rs`).
     src_root_path: PathBuf,
