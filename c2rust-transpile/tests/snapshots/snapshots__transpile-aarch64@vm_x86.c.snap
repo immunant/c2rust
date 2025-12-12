@@ -68,5 +68,5 @@ pub unsafe extern "C" fn VM_CallCompiled(
         return 0 as ::core::ffi::c_int;
     }
     (*vm).programStack = stackOnEntry;
-    return *opStack.offset(opStackOfs as isize);
+    *opStack.offset(opStackOfs as isize)
 }
