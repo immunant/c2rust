@@ -101,7 +101,6 @@
 //!   `Multiple` and reducing nesting depth.
 
 use super::*;
-use indexmap::indexmap;
 
 /// Convert the CFG into a sequence of structures
 pub fn reloop(
