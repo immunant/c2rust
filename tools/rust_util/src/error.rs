@@ -35,22 +35,22 @@ impl Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Io(ref x) => Display::fmt(x, f),
-            Error::Syn(ref x) => Display::fmt(x, f),
-            Error::Str(ref x) => Display::fmt(x, f),
-            Error::At(ref desc, ref inner) => write!(f, "{desc}: {inner}"),
+        match self {
+            Error::Io(x) => Display::fmt(x, f),
+            Error::Syn(x) => Display::fmt(x, f),
+            Error::Str(x) => Display::fmt(x, f),
+            Error::At(desc, inner) => write!(f, "{desc}: {inner}"),
         }
     }
 }
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            Error::Io(ref x) => Some(x),
-            Error::Syn(ref x) => Some(x),
+        match self {
+            Error::Io(x) => Some(x),
+            Error::Syn(x) => Some(x),
             Error::Str(_) => None,
-            Error::At(_, ref x) => Some(x),
+            Error::At(_, x) => Some(x),
         }
     }
 }
