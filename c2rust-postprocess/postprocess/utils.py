@@ -15,7 +15,6 @@ def get_tool_path(tool_name: str) -> Path:
         root = Path(__file__).resolve().parents[2]
         tool_path = root / f"tools/{tool_name}/target/release/{tool_name}"
         if not tool_path.exists():
-            tool_path = root / f"tools/{tool_name}/target/debug/{tool_name}"
             raise FileNotFoundError(
                 f"{tool_path} not in path; nor in any expected location; "
                 "did you built it?"
