@@ -22,6 +22,9 @@ pub fn structured_cfg(
         &None,
         &mut IndexSet::new(),
     )?;
+
+    // TODO: It would be good to be able to spit out the AST before label cleanup
+    // for debugging purposes.
     cleanup_labels(&mut ast, &None, &mut IndexSet::new());
 
     let s = StructureState {
@@ -41,8 +44,8 @@ pub fn structured_cfg(
     Ok(stmts)
 }
 
-/// Removes labels from exits if they target the loop they are directly inside
-/// of.
+/// Simplifies the relooped AST by removing labels from exits and moving block
+/// labels to loop labels.
 ///
 /// This is an optimization pass on the relooped AST. When building the AST from
 /// the structured CFG, it's easier and less error-prone to always label all
@@ -52,8 +55,11 @@ pub fn structured_cfg(
 ///
 /// This function walks the AST, keeping track of when we're allowed to use
 /// unlabeled exits (i.e. when we're in a loop and NOT inside a labeled block),
-/// and remove labels from exits that don't need them. We then also remove
+/// and removes labels from exits that don't need them. We then also remove
 /// labels from loops if there aren't any exits that need the label.
+///
+/// We also simplify the structure of the AST by removing blocks that contain an
+/// unlabeled loop by moving the label to the loop.
 fn cleanup_labels(
     ast: &mut StructuredAST<Box<Expr>, Pat, Label, Stmt>,
     current_loop: &Option<Label>,
@@ -435,20 +441,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                             Ok(new_ast)
                         }
 
-                        GoTo(to) => {
-                            if next_entries.contains(to) {
-                                Ok(if checked_entries.contains(to) {
-                                    S::mk_goto(to.clone())
-                                } else {
-                                    S::empty()
-                                })
-                            } else {
-                                unreachable!(
-                                    "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                                    to, next_entries,
-                                );
-                            }
-                        }
+                        GoTo(to) => panic!("Encountered GoTo({to:?}) in structured AST"),
                     }
                 };
 
@@ -493,7 +486,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 // different the comparison will fail even if they have the same keys.
                 let mut branches = branches.clone();
                 let then = if entries == &branches.keys().cloned().collect::<IndexSet<_>>() {
-                    let (_, then) = branches.pop().unwrap(); // UNWRAP: There's at least one branch.
+                    let (_, then) = branches.pop().expect("There must be at least one branch");
                     forward_cfg_help(
                         &then,
                         checked_entries,
