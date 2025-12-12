@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
+use clap::Parser;
 use rust_util::collect::FileCollector;
 use rust_util::item_span::item_spans;
 use serde_json;
-use clap::Parser;
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
 /// Split a Rust codebase into a JSON map from item paths to their source text.
 #[derive(Parser)]
@@ -22,7 +22,7 @@ fn main() {
         eprintln!("visit {:?}", name);
         let src = fs::read_to_string(name).unwrap();
         for (item_path, lo, hi) in item_spans(mod_path.to_owned(), ast) {
-            let snippet = &src[lo .. hi];
+            let snippet = &src[lo..hi];
             out.insert(item_path.join("::"), snippet.to_owned());
         }
     }
