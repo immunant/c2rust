@@ -1318,12 +1318,14 @@ impl<'c> Translation<'c> {
         let mut pragmas: PragmaVec = vec![(
             "allow",
             vec![
-                "non_upper_case_globals",
-                "non_camel_case_types",
-                "non_snake_case",
+                "clippy::missing_safety_doc",
                 "dead_code",
-                "unused_mut",
+                "non_snake_case",
+                "non_camel_case_types",
+                "non_upper_case_globals",
                 "unused_assignments",
+                "unused_imports",
+                "unused_mut",
             ],
         )];
 
