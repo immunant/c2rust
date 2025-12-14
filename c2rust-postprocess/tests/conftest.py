@@ -55,7 +55,6 @@ def transpile_qsort(generate_compile_commands_for_qsort):
     subprocess.run(
         [str(c2rust), "transpile", str(compile_commands)],
         check=True,
-        capture_output=True,
     )
 
     qsort_rs = qsort_dir / "qsort.rs"
