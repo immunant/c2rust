@@ -200,7 +200,7 @@ def get_rust_comments(code: str) -> list[str]:
     tree = parser.parse(code_bytes)
 
     def walk(node: Node) -> Generator[str]:
-        if node.type in {"line_comment", "block_comment", "doc_comment"}:
+        if node.type in {"line_comment", "block_comment"}:
             yield code_bytes[node.start_byte : node.end_byte].decode()
         for child in node.children:
             yield from walk(child)
