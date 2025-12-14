@@ -3,9 +3,12 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Any, Self
+from typing import Any, Self, Union
 
+import tomli
+import tomlkit
 from platformdirs import user_cache_dir
+from tomlkit.items import String
 
 
 class AbstractCache(ABC):
@@ -66,6 +69,39 @@ class AbstractCache(ABC):
         pass
 
 
+TomlValue = Union[None, str, int, float, bool, "TomlList", "TomlDict"]
+TomlList = list[TomlValue]
+TomlDict = dict[str, TomlValue]
+
+
+def to_multiline_toml(value: TomlDict) -> str:
+    """
+    Convert a `TomlDict` to a multiline toml str.
+    Any multiline value becomes a multiline string.
+    `tomli-w` and `tomlkit` don't do this natively.
+    `None` values are also skipped.
+    """
+
+    def convert_value(value: TomlValue) -> TomlValue | String:
+        if isinstance(value, str) and "\n" in value:
+            return tomlkit.string(value, multiline=True)
+        elif isinstance(value, dict):
+            return {k: convert_value(v) for k, v in value.items() if v is not None}
+        elif isinstance(value, list):
+            return [convert_value(e) for e in value if e is not None]
+        else:
+            assert value is not None
+            return value
+
+    converted_value = convert_value(value)
+    assert isinstance(converted_value, dict)
+    doc = tomlkit.document()
+    for k, v in converted_value.items():
+        doc[k] = v
+
+    return tomlkit.dumps(doc)
+
+
 class DirectoryCache(AbstractCache):
     """
     Cache that stores cached responses in a directory.
@@ -109,18 +145,23 @@ class DirectoryCache(AbstractCache):
         messages_str = json.dumps(messages, sort_keys=True)
         return hashlib.sha256(messages_str.encode()).hexdigest()
 
+    def cache_file(self, messages: list[dict[str, Any]]) -> Path:
+        message_digest = self.get_message_digest(messages)
+        return self._path / f"{message_digest}.toml"
+
     def lookup(
         self,
         messages: list[dict[str, Any]],
     ) -> str | None:
-        message_digest = self.get_message_digest(messages)
-        cache_file = self._path / f"{message_digest}" / "response.txt"
+        cache_file = self.cache_file(messages)
+        try:
+            toml = cache_file.read_text()
+        except FileNotFoundError:
+            return None
+        logging.debug(f"Cache hit: {cache_file}")
+        data = tomli.loads(toml)
 
-        if cache_file.exists():
-            logging.debug(f"Cache hit: {cache_file}")
-            with open(cache_file, encoding="utf-8") as f:
-                return f.read()
-        return None
+        return data["response"]
 
     def update(
         self,
@@ -130,34 +171,17 @@ class DirectoryCache(AbstractCache):
         identifier: str | None = None,
         transform: str | None = None,
     ) -> None:
-        message_digest = self.get_message_digest(messages)
-        cache_file = self._path / f"{message_digest}" / "response.txt"
+        data = {
+            "transform": transform,
+            "identifier": identifier,
+            "model": model,
+            "messages": messages,
+            "response": response,
+        }
+        toml = to_multiline_toml(data)
 
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(cache_file, "w", encoding="utf-8") as f:
-            f.write(response)
-
-        cache_file = self._path / f"{message_digest}" / "messages.txt"
-        messages_str = json.dumps(messages, sort_keys=True)
-        with open(cache_file, "w", encoding="utf-8") as f:
-            f.write(messages_str)
-
-        if model:
-            model_file = self._path / f"{message_digest}" / "model.txt"
-            with open(model_file, "w", encoding="utf-8") as f:
-                f.write(model)
-
-        if identifier:
-            identifier_file = self._path / f"{message_digest}" / "identifier.txt"
-            with open(identifier_file, "w", encoding="utf-8") as f:
-                f.write(identifier)
-
-        if transform:
-            transform_file = self._path / f"{message_digest}" / "transform.txt"
-            with open(transform_file, "w", encoding="utf-8") as f:
-                f.write(transform)
-
+        cache_file = self.cache_file(messages)
+        cache_file.write_text(toml)
         logging.debug(f"Cache updated: {cache_file}")
 
     def clear(self) -> None:

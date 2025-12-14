@@ -9,6 +9,8 @@ dependencies = [
     "openai>=2.9.0",
     "platformdirs>=4.5.1",
     "pygments>=2.19.2",
+    "tomli>=2.3.0",
+    "tomlkit>=0.13.3",
     "tree-sitter>=0.25.2",
     "tree-sitter-rust>=0.24.0",
 ]
