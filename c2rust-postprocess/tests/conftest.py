@@ -53,7 +53,7 @@ def transpile_qsort(generate_compile_commands_for_qsort):
     compile_commands = qsort_dir / "compile_commands.json"
 
     subprocess.run(
-        [str(c2rust), "transpile", str(compile_commands)],
+        [c2rust, "transpile", compile_commands],
         check=True,
     )
 
