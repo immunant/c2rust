@@ -11,10 +11,10 @@ from google.genai import types
 from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.models import api_key_from_env, get_model_by_id
 from postprocess.models.mock import MockGenerativeModel
-from postprocess.transforms import (
+from postprocess.transforms import get_transform_by_id
+from postprocess.transforms.comments import (
     SYSTEM_INSTRUCTION,
     AbstractGenerativeModel,
-    CommentsTransform,
 )
 from postprocess.utils import existing_file
 
@@ -63,9 +63,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Enable or disable caching of LLM responses (default: enabled)",
     )
 
+    parser.add_argument(
+        "--transforms",
+        type=str,
+        required=False,
+        default="comments",
+        help="Comma-separated list of transforms to apply in order (default: comments)",
+    )
+
     # TODO: add option to select model
     # TODO: add option to configure cache
-    # TODO: add option to select what transforms to apply
 
     return parser
 
@@ -103,9 +110,18 @@ def main(argv: Sequence[str] | None = None):
 
         model = get_model(args.model_id)
 
-        # TODO: instantiate transform(s) based on command line args
-        xform = CommentsTransform(cache, model)
-        xform.transfer_comments(args.root_rust_source_file, args.ident_filter)
+        transform_ids = [
+            transform_id.strip()
+            for transform_id in args.transforms.split(",")
+            if transform_id.strip()
+        ]
+        transforms = [
+            get_transform_by_id(transform_id, cache=cache, model=model)
+            for transform_id in transform_ids
+        ]
+
+        for transform in transforms:
+            transform.apply(args.root_rust_source_file, args.ident_filter)
 
         return 0
     except KeyboardInterrupt:

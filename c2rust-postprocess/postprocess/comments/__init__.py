@@ -12,6 +12,7 @@ from postprocess.definitions import (
     update_rust_definition,
 )
 from postprocess.models import AbstractGenerativeModel
+from postprocess.transforms.base import AbstractTransform
 from postprocess.utils import get_highlighted_c, get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -20,7 +21,7 @@ SYSTEM_INSTRUCTION = (
 )
 
 
-class CommentsTransformPrompt:
+class CommentsPrompt:
     c_function: str
     rust_function: str
     prompt_text: str
@@ -49,12 +50,13 @@ class CommentsTransformPrompt:
         )
 
 
-class CommentsTransform:
+class CommentsTransform(AbstractTransform):
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
+        super().__init__(SYSTEM_INSTRUCTION)
         self.cache = cache
         self.model = model
 
-    def transfer_comments(
+    def apply(
         self, root_rust_source_file: Path, ident_filter: str | None = None
     ) -> None:
         pattern = re.compile(ident_filter) if ident_filter else None
@@ -65,7 +67,7 @@ class CommentsTransform:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
-        prompts: list[CommentsTransformPrompt] = []
+        prompts = list[CommentsPrompt]
         for identifier, rust_definition in rust_definitions.items():
             if pattern and not pattern.search(identifier):
                 continue
@@ -108,7 +110,7 @@ class CommentsTransform:
             prompt_text = dedent(prompt_text).strip()
 
             prompts.append(
-                CommentsTransformPrompt(
+                CommentsPrompt(
                     c_function=c_definition,
                     rust_function=rust_definition,
                     prompt_text=prompt_text,
@@ -121,39 +123,27 @@ class CommentsTransform:
                 {"role": "user", "content": str(prompt)},
             ]
 
-            transform = self.__class__.__name__
-            identifier = prompt.identifier
-            model = self.model.id
-            if not (
-                response := self.cache.lookup(
-                    transform=transform,
-                    identifier=identifier,
-                    model=model,
-                    messages=messages,
-                )
-            ):
+            if not (response := self.cache.lookup(messages)):
                 response = self.model.generate_with_tools(messages)
                 if response is None:
                     logging.error("Model returned no response")
                     continue
                 self.cache.update(
-                    transform=transform,
-                    identifier=identifier,
-                    model=model,
-                    messages=messages,
-                    response=response,
+                    messages,
+                    response,
+                    self.model.id,
+                    prompt.identifier,
+                    self.__class__.__name__,
                 )
 
-            rust_fn = remove_backticks(response)
+            response = remove_backticks(response)
 
+            # TODO: validate response
             c_comments = get_c_comments(prompt.c_function)
-            logging.debug(f"{c_comments=}")
+            _rust_comments = get_rust_comments(response)
+            # logging.debug(f"C comments:\n{"\n".join(c_comments)}")
+            # logging.debug(f"Rust comments:\n{"\n".join(rust_comments)}")
 
-            rust_comments = get_rust_comments(rust_fn)
-            logging.debug(f"{rust_comments=}")
+            print(get_highlighted_rust(response))
 
-            assert c_comments == rust_comments
-
-            print(get_highlighted_rust(rust_fn))
-
-            update_rust_definition(root_rust_source_file, prompt.identifier, rust_fn)
+            update_rust_definition(root_rust_source_file, prompt.identifier, response)
