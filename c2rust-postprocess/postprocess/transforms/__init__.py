@@ -144,14 +144,14 @@ class CommentTransfer:
                     response=response,
                 )
 
-            response = remove_backticks(response)
+            rust_fn = remove_backticks(response)
 
             # TODO: validate response
             c_comments = get_c_comments(prompt.c_function)
             logging.debug(f"{c_comments=}")
-            rust_comments = get_rust_comments(response)
+            rust_comments = get_rust_comments(rust_fn)
             logging.debug(f"{rust_comments=}")
 
-            print(get_highlighted_rust(response))
+            print(get_highlighted_rust(rust_fn))
 
-            update_rust_definition(root_rust_source_file, prompt.identifier, response)
+            update_rust_definition(root_rust_source_file, prompt.identifier, rust_fn)
