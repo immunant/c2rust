@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -151,13 +151,49 @@ def get_function_span_pairs(
     return pairs
 
 
+def get_comment_text(comment: str) -> Generator[str]:
+    """
+    Get the lines of text of any C or Rust comment.
+    Exclude things like leading ///, //, /*, *, **, etc. and trailing */.
+    """
+    comment = comment.strip()
+    if comment.startswith("///"):
+        yield comment.removeprefix("///").lstrip()
+    elif comment.startswith("//"):
+        yield comment.removeprefix("//").lstrip()
+    elif comment.startswith("/*"):
+        comment = comment.removeprefix("/*").removesuffix("*/").strip()
+        for line in comment.splitlines():
+            yield line.strip().lstrip("*/").lstrip()
+    else:
+        yield comment
+
+
+def get_comments_text(comments: Iterable[str]) -> list[str]:
+    """
+    Get the lines of text of any C or Rust comment for many comments.
+    Multi-line comments are split and flattened.
+    """
+    return [
+        comment_line
+        for comment in comments
+        for comment_line in get_comment_text(comment)
+    ]
+
+
 def get_c_comments(code: str) -> list[str]:
-    """Extract comments from the given C code."""
-    return get_comments(code, CLexer())
+    """
+    Extract comments from the given C code.
+    Exclude the comment markers themselves.
+    """
+    return get_comments_text(get_comments(code, CLexer()))
 
 
 def get_rust_comments(code: str) -> list[str]:
-    """Extract comments from the given Rust code."""
+    """
+    Extract comments from the given Rust code.
+    Exclude the comment markers themselves.
+    """
     parser = Parser(RUST_LANGUAGE)
 
     code_bytes = code.encode()
@@ -169,7 +205,7 @@ def get_rust_comments(code: str) -> list[str]:
         for child in node.children:
             yield from walk(child)
 
-    return list(walk(tree.root_node))
+    return get_comments_text(walk(tree.root_node))
 
 
 def get_comments(code: str, lexer: RegexLexer) -> list[str]:
