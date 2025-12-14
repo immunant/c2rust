@@ -14,10 +14,10 @@ from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.models import api_key_from_env, get_model_by_id
 from postprocess.models.mock import MockGenerativeModel
-from postprocess.transforms import (
+from postprocess.transforms import get_transform_by_id
+from postprocess.transforms.comments import (
     SYSTEM_INSTRUCTION,
     AbstractGenerativeModel,
-    CommentsTransform,
 )
 from postprocess.utils import existing_file
 
@@ -93,9 +93,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update the Rust in-place",
     )
 
+    parser.add_argument(
+        "--transform",
+        type=str,
+        required=False,
+        action="append",
+        default=["comments"],
+        help=(
+            "Transform to apply; pass multiple times to apply multiple transforms "
+            "in sorted order (default: comments)"
+        ),
+    )
+
     # TODO: add option to select model
     # TODO: add option to configure cache
-    # TODO: add option to select what transforms to apply
 
     return parser
 
@@ -133,14 +144,25 @@ def main(argv: Sequence[str] | None = None):
 
         model = get_model(args.model_id)
 
-        # TODO: instantiate transform(s) based on command line args
-        xform = CommentsTransform(cache, model)
-        xform.transfer_comments_dir(
-            root_rust_source_file=args.root_rust_source_file,
-            exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
-            ident_filter=args.ident_filter,
-            update_rust=args.update_rust,
+        # sort transform IDs to transforms always run in the same order to
+        # maximize cache hits even if the user passed them in a different order
+        transform_ids = sorted(
+            transform_id.strip()
+            for transform_id in set(args.transform)
+            if transform_id.strip()
         )
+        transforms = [
+            get_transform_by_id(transform_id, cache=cache, model=model)
+            for transform_id in transform_ids
+        ]
+
+        for transform in transforms:
+            transform.apply_dir(
+                root_rust_source_file=args.root_rust_source_file,
+                exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
+                ident_filter=args.ident_filter,
+                update_rust=args.update_rust,
+            )
 
         return 0
     except KeyboardInterrupt:
