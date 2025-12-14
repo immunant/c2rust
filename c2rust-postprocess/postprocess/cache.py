@@ -174,6 +174,7 @@ class DirectoryCache(AbstractCache):
         try:
             toml = cache_file.read_text()
         except FileNotFoundError:
+            logging.debug(f"Cache miss: {cache_file}: {messages}")
             return None
         logging.debug(f"Cache hit: {cache_file}")
         data = tomli.loads(toml)
