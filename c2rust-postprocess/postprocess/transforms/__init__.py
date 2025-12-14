@@ -70,9 +70,12 @@ class CommentTransfer:
             if pattern and not pattern.search(identifier):
                 continue
 
-            if get_rust_comments(rust_definition):
+            rust_comments = get_rust_comments(rust_definition)
+            if rust_comments:
                 logging.info(
-                    f"Skipping Rust function with existing comments: {identifier}"
+                    f"Skipping Rust fn {identifier} with existing comments:\
+                    \n{rust_comments} in\
+                    \n{rust_definition}"
                 )
                 continue
 
