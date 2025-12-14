@@ -13,6 +13,7 @@ from postprocess.definitions import (
 )
 from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.models import AbstractGenerativeModel
+from postprocess.transforms.base import AbstractTransform
 from postprocess.utils import get_highlighted_c, get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -50,14 +51,14 @@ class CommentsTransformPrompt:
         )
 
 
-class CommentsTransform:
+class CommentsTransform(AbstractTransform):
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
+        super().__init__(SYSTEM_INSTRUCTION)
         self.cache = cache
         self.model = model
 
-    def transfer_comments(
+    def apply(
         self,
-        root_rust_source_file: Path,
         rust_source_file: Path,
         exclude_list: IdentifierExcludeList,
         ident_filter: str | None = None,
@@ -174,33 +175,7 @@ class CommentsTransform:
 
             if update_rust:
                 update_rust_definition(
-                    root_rust_source_file=root_rust_source_file,
+                    root_rust_source_file=rust_source_file,
                     identifier=prompt.identifier,
                     new_definition=rust_fn,
                 )
-
-    def transfer_comments_dir(
-        self,
-        root_rust_source_file: Path,
-        exclude_list: IdentifierExcludeList,
-        ident_filter: str | None = None,
-        update_rust: bool = True,
-    ):
-        """
-        Run `self.transfer_comments` on each `*.rs` in `dir`
-        with a corresponding `*.c_decls.json`.
-        """
-        root_dir = root_rust_source_file.parent
-        c_decls_json_suffix = ".c_decls.json"
-        for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
-            rs_path = c_decls_path.with_name(
-                c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
-            )
-            assert rs_path.exists()
-            self.transfer_comments(
-                root_rust_source_file=root_rust_source_file,
-                rust_source_file=rs_path,
-                exclude_list=exclude_list,
-                ident_filter=ident_filter,
-                update_rust=update_rust,
-            )
