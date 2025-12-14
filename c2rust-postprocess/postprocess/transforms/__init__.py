@@ -148,8 +148,8 @@ class CommentTransfer:
 
             # TODO: validate response
             c_comments = get_c_comments(prompt.c_function)
-            rust_comments = get_rust_comments(response)
             logging.debug(f"{c_comments=}")
+            rust_comments = get_rust_comments(response)
             logging.debug(f"{rust_comments=}")
 
             print(get_highlighted_rust(response))
