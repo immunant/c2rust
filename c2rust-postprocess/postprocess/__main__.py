@@ -67,7 +67,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         logging.basicConfig(level=logging.getLevelName(args.log_level.upper()))
 
-        cache = DirectoryCache()
+        cache = DirectoryCache.repo()
         if not args.update_cache:
             cache = FrozenCache(cache)
 

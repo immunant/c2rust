@@ -337,6 +337,15 @@ wheels = [
 ]
 
 [[package]]
+name = "platformdirs"
+version = "4.5.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cf/86/0248f086a84f01b37aaec0fa567b397df1a119f73c16f6c7a9aac73ea309/platformdirs-4.5.1.tar.gz", hash = "sha256:61d5cdcc6065745cdd94f0f878977f8de9437be93de97c1c12f853c9c0cdcbda", size = 21715, upload-time = "2025-12-05T13:52:58.638Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/28/3bfe2fa5a7b9c46fe7e13c97bda14c895fb10fa2ebf1d0abb90e0cea7ee1/platformdirs-4.5.1-py3-none-any.whl", hash = "sha256:d03afa3963c806a9bed9d5125c8f4cb2fdaf74a55ab60e5d59b3fde758104d31", size = 18731, upload-time = "2025-12-05T13:52:56.823Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -353,6 +362,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "jq" },
     { name = "openai" },
+    { name = "platformdirs" },
     { name = "pygments" },
     { name = "tree-sitter" },
     { name = "tree-sitter-rust" },
@@ -369,6 +379,7 @@ requires-dist = [
     { name = "google-genai" },
     { name = "jq", specifier = ">=1.10.0" },
     { name = "openai", specifier = ">=2.9.0" },
+    { name = "platformdirs", specifier = ">=4.5.1" },
     { name = "pygments", specifier = ">=2.19.2" },
     { name = "tree-sitter", specifier = ">=0.25.2" },
     { name = "tree-sitter-rust", specifier = ">=0.24.0" },
