@@ -72,12 +72,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             cache = FrozenCache(cache)
 
         from google.genai import types
+
         model = get_model_by_id(
-                args.model_id,
-                generation_config = {"system_instruction": types.Content(
-                    role="system",
-                    parts=[types.Part.from_text(text=SYSTEM_INSTRUCTION)]
-                )}
+            args.model_id,
+            generation_config={
+                "system_instruction": types.Content(
+                    role="system", parts=[types.Part.from_text(text=SYSTEM_INSTRUCTION)]
+                )
+            },
         )
 
         # TODO: instantiate transform(s) based on command line args
@@ -86,10 +88,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         return 0
     except KeyboardInterrupt:
-            logging.warning("Interrupted by user, terminating...")
-            sys.exit(130)  # 128 + SIGINT(2)
+        logging.warning("Interrupted by user, terminating...")
+        sys.exit(130)  # 128 + SIGINT(2)
 
 
 if __name__ == "__main__":
-        sys.exit(main())
-
+    sys.exit(main())

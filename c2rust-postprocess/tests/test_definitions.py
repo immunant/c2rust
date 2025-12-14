@@ -20,7 +20,7 @@ def test_get_c_sourcefile_qsort(generate_compile_commands_for_qsort, transpile_q
     assert qsort_c == qsort_rs.with_suffix(".c")
 
     prefix = commonpath([qsort_c, qsort_rs])
-    assert prefix == str( EXAMPLES_ROOT / "qsort" )
+    assert prefix == str(EXAMPLES_ROOT / "qsort")
 
 
 def test_get_rust_function_spans(transpile_qsort, pytestconfig):
@@ -31,22 +31,23 @@ def test_get_rust_function_spans(transpile_qsort, pytestconfig):
 
     assert len(fn_spans) == 3
 
-    assert fn_spans[0]['name'] == "swap"
-    assert fn_spans[0]['start_line'] == 10
-    assert fn_spans[0]['end_line'] == 17
+    assert fn_spans[0]["name"] == "swap"
+    assert fn_spans[0]["start_line"] == 10
+    assert fn_spans[0]["end_line"] == 17
 
-    assert fn_spans[1]['name'] == "partition"
-    assert fn_spans[1]['start_line'] == 19
-    assert fn_spans[1]['end_line'] == 39
+    assert fn_spans[1]["name"] == "partition"
+    assert fn_spans[1]["start_line"] == 19
+    assert fn_spans[1]["end_line"] == 39
 
-    assert fn_spans[2]['name'] == "quickSort"
-    assert fn_spans[2]['start_line'] == 41
-    assert fn_spans[2]['end_line'] == 51
+    assert fn_spans[2]["name"] == "quickSort"
+    assert fn_spans[2]["start_line"] == 41
+    assert fn_spans[2]["end_line"] == 51
 
 
 # TODO: this test needs a clearer scope
 def test_c_function_splitting(generate_compile_commands_for_qsort, transpile_qsort):
     from postprocess.utils import read_chunk
+
     commands = generate_compile_commands_for_qsort
     qsort_rs = transpile_qsort
     qsort_c = get_c_sourcefile(commands, qsort_rs)
@@ -56,12 +57,12 @@ def test_c_function_splitting(generate_compile_commands_for_qsort, transpile_qso
     rust_fn_spans = get_function_span_pairs(commands, qsort_rs)
 
     for rust_fn, c_fn in rust_fn_spans:
-        assert rust_fn['name'] == c_fn['name']
+        assert rust_fn["name"] == c_fn["name"]
 
-        c_def = read_chunk(qsort_c, c_fn['start_byte'], c_fn['end_byte'])
+        c_def = read_chunk(qsort_c, c_fn["start_byte"], c_fn["end_byte"])
         print(f"C function {c_fn['name']} definition:\n{c_def}\n")
 
-        rust_def = read_chunk(qsort_rs, rust_fn['start_byte'], rust_fn['end_byte'])
+        rust_def = read_chunk(qsort_rs, rust_fn["start_byte"], rust_fn["end_byte"])
         print(f"Rust function {rust_fn['name']} definition:\n{rust_def}\n")
 
     # assert False

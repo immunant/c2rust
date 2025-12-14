@@ -14,10 +14,8 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
     """
 
     def __init__(
-            self,
-            id: str = "gemini-2.5-flash",
-            api_key: str | None = None,
-            **kwargs: Any):
+        self, id: str = "gemini-2.5-flash", api_key: str | None = None, **kwargs: Any
+    ):
         super().__init__(id, **kwargs)
         self.client = genai.Client(api_key=api_key)
         self._generation_config = kwargs.get("generation_config", {})
@@ -26,24 +24,21 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
         self,
         messages: list[dict[str, Any]],
         tools: list[Callable] | None = None,
-        max_tool_loops: int = 5
+        max_tool_loops: int = 5,
     ) -> Any:
-
         contents = self._convert_messages(messages)
 
         config = types.GenerateContentConfig(
             tools=tools,  # SDK automatically generates schemas from python functions
             automatic_function_calling=types.AutomaticFunctionCallingConfig(
                 disable=False,
-                maximum_remote_calls=max_tool_loops  # Enforces the loop limit natively
+                maximum_remote_calls=max_tool_loops,  # Enforces the loop limit natively
             ),
-            **self._generation_config
+            **self._generation_config,
         )
 
         response = self.client.models.generate_content(
-            model=self._id,
-            contents=contents,
-            config=config
+            model=self._id, contents=contents, config=config
         )
 
         return response.text
@@ -70,8 +65,7 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
 
             gemini_contents.append(
                 types.Content(
-                    role=gemini_role,
-                    parts=[types.Part.from_text(text=str(content))]
+                    role=gemini_role, parts=[types.Part.from_text(text=str(content))]
                 )
             )
 

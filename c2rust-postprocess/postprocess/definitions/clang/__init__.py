@@ -1,4 +1,3 @@
-
 import json
 import subprocess
 from typing import Any
@@ -16,7 +15,7 @@ def get_functions_from_clang_ast(ast: dict[str, Any]) -> list[dict[str, Any]]:
     """
     query = jq.compile(
         '.inner[] | select(.kind =="FunctionDecl") | '
-        '{name: .name, loc: .loc, range: .range}'
+        "{name: .name, loc: .loc, range: .range}"
     )
     return query.transform(ast, multiple_output=True)
 

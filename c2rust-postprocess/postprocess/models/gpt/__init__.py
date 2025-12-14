@@ -7,13 +7,7 @@ from postprocess.models import AbstractGenerativeModel
 
 
 class GPTModel(AbstractGenerativeModel):
-
-    def __init__(
-        self,
-        id: str = "gpt-5.1",
-        api_key: str | None = None,
-        **kwargs: Any
-    ):
+    def __init__(self, id: str = "gpt-5.1", api_key: str | None = None, **kwargs: Any):
         super().__init__(id, **kwargs)
         self.client = OpenAI(api_key=api_key)
         self.kwargs = kwargs
@@ -22,9 +16,8 @@ class GPTModel(AbstractGenerativeModel):
         self,
         messages: list[dict[str, Any]],
         tools: list[Callable] | None = None,
-        max_tool_loops: int = 5
+        max_tool_loops: int = 5,
     ) -> Any:
-
         # TODO: implement tool calling support
         assert tools is None, "Tool calling not yet implemented for GPTModel"
 
