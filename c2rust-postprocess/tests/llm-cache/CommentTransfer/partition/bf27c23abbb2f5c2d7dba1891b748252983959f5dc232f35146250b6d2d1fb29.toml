@@ -1,0 +1,97 @@
+transform = "CommentTransfer"
+identifier = "partition"
+model = "gemini-3-pro-preview"
+response = """```rust
+/// Lomuto Partition Scheme:
+/// Partitions the array so that elements < pivot are on the left, 
+/// and elements >= pivot are on the right.
+#[no_mangle]
+pub unsafe extern "C" fn partition(
+    mut arr: *mut ::core::ffi::c_int,
+    mut low: ::core::ffi::c_int,
+    mut high: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    // Partition the subarray around the last element as pivot and return pivot's final index.
+    let mut pivot: ::core::ffi::c_int = *arr.offset(high as isize);
+    let mut i: ::core::ffi::c_int = low - 1 as ::core::ffi::c_int;
+    let mut j: ::core::ffi::c_int = low;
+    while j <= high - 1 as ::core::ffi::c_int {
+        if *arr.offset(j as isize) <= pivot {
+            i += 1;
+            // Move elements <= pivot into the left partition.
+            swap(
+                arr.offset(i as isize) as *mut ::core::ffi::c_int,
+                arr.offset(j as isize) as *mut ::core::ffi::c_int,
+            );
+        }
+        j += 1;
+    }
+    // Place pivot just after the final element of the left partition.
+    swap(
+        arr.offset((i + 1 as ::core::ffi::c_int) as isize) as *mut ::core::ffi::c_int,
+        arr.offset(high as isize) as *mut ::core::ffi::c_int,
+    );
+    return i + 1 as ::core::ffi::c_int;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* 
+ * Lomuto Partition Scheme:
+ * Partitions the array so that elements < pivot are on the left, 
+ * and elements >= pivot are on the right.
+ */
+int partition (int arr[], int low, int high)
+{
+    // Partition the subarray around the last element as pivot and return pivot's final index.
+    int pivot = arr[high];
+    int i = low - 1;
+
+    for (int j = low; j <= high - 1; j++) {
+        if (arr[j] <= pivot) {
+            i++;
+            // Move elements <= pivot into the left partition.
+            swap(&arr[i], &arr[j]);
+        }
+    }
+    // Place pivot just after the final element of the left partition.
+    swap(&arr[i + 1], &arr[high]);
+    return i + 1;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn partition(
+    mut arr: *mut ::core::ffi::c_int,
+    mut low: ::core::ffi::c_int,
+    mut high: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut pivot: ::core::ffi::c_int = *arr.offset(high as isize);
+    let mut i: ::core::ffi::c_int = low - 1 as ::core::ffi::c_int;
+    let mut j: ::core::ffi::c_int = low;
+    while j <= high - 1 as ::core::ffi::c_int {
+        if *arr.offset(j as isize) <= pivot {
+            i += 1;
+            swap(
+                arr.offset(i as isize) as *mut ::core::ffi::c_int,
+                arr.offset(j as isize) as *mut ::core::ffi::c_int,
+            );
+        }
+        j += 1;
+    }
+    swap(
+        arr.offset((i + 1 as ::core::ffi::c_int) as isize) as *mut ::core::ffi::c_int,
+        arr.offset(high as isize) as *mut ::core::ffi::c_int,
+    );
+    return i + 1 as ::core::ffi::c_int;
+}```
+"""
