@@ -129,3 +129,21 @@ jobs:
           # `test_translator.py` does not rebuild,
           # so changing `RUSTFLAGS` will not trigger a full rebuild.
           ./scripts/test_translator.py tests/unit
+
+  check-postprocess:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: c2rust-postprocess
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uv sync
+
+      - run: uv run ruff format --check
+
+      - run: uv run ruff check
