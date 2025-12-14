@@ -30,9 +30,11 @@ def get_c_sourcefile(compile_commands, rustfile: Path) -> Path | None:
     return None
 
 
+RUST_LANGUAGE = Language(tsrust.language())
+
+
 def get_rust_function_spans(rustfile: Path) -> list[dict[str, Any]]:
-    language = Language(tsrust.language())
-    parser = Parser(language)
+    parser = Parser(RUST_LANGUAGE)
 
     if not rustfile.exists():
         raise FileNotFoundError(f"{rustfile} does not exist")
@@ -155,21 +157,20 @@ def get_c_comments(code: str) -> list[str]:
 
 def get_rust_comments(code: str) -> list[str]:
     """Extract comments from the given Rust code."""
-    language = Language(tsrust.language())
-    parser = Parser(language)
+    parser = Parser(RUST_LANGUAGE)
 
-    tree = parser.parse(code.encode("utf8"))
-    root = tree.root_node
+    code_bytes = code.encode()
+    tree = parser.parse(code_bytes)
 
     comments: list[str] = []
 
     def walk(node: Node):
-        if node.type == "comment":
-            comments.append(code[node.start_byte : node.end_byte])
+        if node.type in {"line_comment", "block_comment", "doc_comment"}:
+            comments.append(code_bytes[node.start_byte : node.end_byte].decode())
         for child in node.children:
             walk(child)
 
-    walk(root)
+    walk(tree.root_node)
     return comments
 
 
