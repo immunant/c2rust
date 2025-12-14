@@ -1,7 +1,4 @@
-//! This module implements the translation of main functions in C.
-//! Translating main requires us to wrap the C implementation to
-//! a helper that can be called from a generated main function in
-//! Rust.
+//! This module implements the translation of functions in C.
 
 use super::*;
 use c2rust_ast_builder::CaptureBy;
@@ -9,6 +6,11 @@ use failure::format_err;
 use proc_macro2::{TokenStream, TokenTree};
 
 impl<'c> Translation<'c> {
+    /// Translates the C main function.
+    ///
+    /// Translating main requires us to wrap the C implementation to
+    /// a helper that can be called from a generated main function in
+    /// Rust.
     pub fn convert_main(&self, main_id: CDeclId) -> TranslationResult<Box<Item>> {
         if let CDeclKind::Function {
             ref parameters,
