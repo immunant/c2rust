@@ -1,2 +1,2 @@
 #!/bin/sh
-uv run postproc "$@"
+uv run postprocess "$@"

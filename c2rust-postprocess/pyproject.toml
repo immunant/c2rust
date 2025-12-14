@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-postproc = "postprocess.__main__:main" # CLI entry point
+postprocess = "postprocess.__main__:main" # CLI entry point
 
 [tool.uv]
 # let `uv` to manage the environment
