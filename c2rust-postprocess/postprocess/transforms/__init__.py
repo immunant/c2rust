@@ -65,7 +65,7 @@ class CommentTransfer:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
-        prompts = []
+        prompts: list[CommentTransferPrompt] = []
         for identifier, rust_definition in rust_definitions.items():
             if pattern and not pattern.search(identifier):
                 continue
@@ -121,17 +121,27 @@ class CommentTransfer:
                 {"role": "user", "content": str(prompt)},
             ]
 
-            if not (response := self.cache.lookup(messages)):
+            transform = self.__class__.__name__
+            identifier = prompt.identifier
+            model = self.model.id
+            if not (
+                response := self.cache.lookup(
+                    transform=transform,
+                    identifier=identifier,
+                    model=model,
+                    messages=messages,
+                )
+            ):
                 response = self.model.generate_with_tools(messages)
                 if response is None:
                     logging.error("Model returned no response")
                     continue
                 self.cache.update(
-                    messages,
-                    response,
-                    self.model.id,
-                    prompt.identifier,
-                    self.__class__.__name__,
+                    transform=transform,
+                    identifier=identifier,
+                    model=model,
+                    messages=messages,
+                    response=response,
                 )
 
             response = remove_backticks(response)

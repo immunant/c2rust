@@ -27,6 +27,10 @@ class AbstractCache(ABC):
     @abstractmethod
     def lookup(
         self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
         messages: list[dict[str, Any]],
     ) -> str | None:
         """Lookup a cached response for the given messages.
@@ -39,11 +43,12 @@ class AbstractCache(ABC):
     @abstractmethod
     def update(
         self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
         messages: list[dict[str, Any]],
         response: str,
-        model: str | None = None,
-        identifier: str | None = None,
-        transform: str | None = None,
     ) -> None:
         """Store a response in the cache for the given messages.
 
@@ -145,15 +150,27 @@ class DirectoryCache(AbstractCache):
         messages_str = json.dumps(messages, sort_keys=True)
         return hashlib.sha256(messages_str.encode()).hexdigest()
 
-    def cache_file(self, messages: list[dict[str, Any]]) -> Path:
+    def cache_file(
+        self,
+        *,
+        transform: str,
+        identifier: str,
+        messages: list[dict[str, Any]],
+    ) -> Path:
         message_digest = self.get_message_digest(messages)
-        return self._path / f"{message_digest}.toml"
+        return self._path / transform / identifier / f"{message_digest}.toml"
 
     def lookup(
         self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
         messages: list[dict[str, Any]],
     ) -> str | None:
-        cache_file = self.cache_file(messages)
+        cache_file = self.cache_file(
+            transform=transform, identifier=identifier, messages=messages
+        )
         try:
             toml = cache_file.read_text()
         except FileNotFoundError:
@@ -165,11 +182,12 @@ class DirectoryCache(AbstractCache):
 
     def update(
         self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
         messages: list[dict[str, Any]],
         response: str,
-        model: str | None = None,
-        identifier: str | None = None,
-        transform: str | None = None,
     ) -> None:
         data = {
             "transform": transform,
@@ -180,7 +198,10 @@ class DirectoryCache(AbstractCache):
         }
         toml = to_multiline_toml(data)
 
-        cache_file = self.cache_file(messages)
+        cache_file = self.cache_file(
+            transform=transform, identifier=identifier, messages=messages
+        )
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(toml)
         logging.debug(f"Cache updated: {cache_file}")
 
