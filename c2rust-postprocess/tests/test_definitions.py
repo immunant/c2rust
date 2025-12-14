@@ -37,11 +37,11 @@ def test_get_rust_function_spans(transpile_qsort, pytestconfig):
 
     assert fn_spans[1]["name"] == "partition"
     assert fn_spans[1]["start_line"] == 19
-    assert fn_spans[1]["end_line"] == 39
+    assert fn_spans[1]["end_line"] == 42
 
     assert fn_spans[2]["name"] == "quickSort"
-    assert fn_spans[2]["start_line"] == 41
-    assert fn_spans[2]["end_line"] == 51
+    assert fn_spans[2]["start_line"] == 44
+    assert fn_spans[2]["end_line"] == 54
 
 
 # TODO: this test needs a clearer scope
