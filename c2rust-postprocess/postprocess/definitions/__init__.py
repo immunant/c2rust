@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
@@ -162,16 +163,13 @@ def get_rust_comments(code: str) -> list[str]:
     code_bytes = code.encode()
     tree = parser.parse(code_bytes)
 
-    comments: list[str] = []
-
-    def walk(node: Node):
+    def walk(node: Node) -> Generator[str]:
         if node.type in {"line_comment", "block_comment", "doc_comment"}:
-            comments.append(code_bytes[node.start_byte : node.end_byte].decode())
+            yield code_bytes[node.start_byte : node.end_byte].decode()
         for child in node.children:
-            walk(child)
+            yield from walk(child)
 
-    walk(tree.root_node)
-    return comments
+    return list(walk(tree.root_node))
 
 
 def get_comments(code: str, lexer: RegexLexer) -> list[str]:
