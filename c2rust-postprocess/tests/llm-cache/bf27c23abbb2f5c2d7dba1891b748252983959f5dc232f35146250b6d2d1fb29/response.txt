@@ -1,0 +1,34 @@
+```rust
+/// 
+/// Lomuto Partition Scheme:
+/// Partitions the array so that elements < pivot are on the left, 
+/// and elements >= pivot are on the right.
+#[no_mangle]
+pub unsafe extern "C" fn partition(
+    mut arr: *mut ::core::ffi::c_int,
+    mut low: ::core::ffi::c_int,
+    mut high: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    // Partition the subarray around the last element as pivot and return pivot's final index.
+    let mut pivot: ::core::ffi::c_int = *arr.offset(high as isize);
+    let mut i: ::core::ffi::c_int = low - 1 as ::core::ffi::c_int;
+    let mut j: ::core::ffi::c_int = low;
+    while j <= high - 1 as ::core::ffi::c_int {
+        if *arr.offset(j as isize) <= pivot {
+            i += 1;
+            // Move elements <= pivot into the left partition.
+            swap(
+                arr.offset(i as isize) as *mut ::core::ffi::c_int,
+                arr.offset(j as isize) as *mut ::core::ffi::c_int,
+            );
+        }
+        j += 1;
+    }
+    // Place pivot just after the final element of the left partition.
+    swap(
+        arr.offset((i + 1 as ::core::ffi::c_int) as isize) as *mut ::core::ffi::c_int,
+        arr.offset(high as isize) as *mut ::core::ffi::c_int,
+    );
+    return i + 1 as ::core::ffi::c_int;
+}
+```

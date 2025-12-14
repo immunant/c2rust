@@ -3,7 +3,9 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Any
+from typing import Any, Self
+
+from platformdirs import user_cache_dir
 
 
 class AbstractCache(ABC):
@@ -70,13 +72,36 @@ class DirectoryCache(AbstractCache):
     If no path is specified, a temporary directory is used.
     """
 
-    def __init__(self, path: Path | None = None, **kwargs: Any):
-        if path is None:
-            path = Path(gettempdir()) / "c2rust-postprocess"
+    def __init__(self, path: Path, **kwargs: Any):
         super().__init__(path, **kwargs)
         self._path.mkdir(parents=True, exist_ok=True)
 
         logging.debug(f"Using cache directory: {self._path}")
+
+    @classmethod
+    def system(cls, **kwargs: Any) -> Self:
+        """
+        Use the system temporary cache.
+        """
+        path = Path(gettempdir()) / "c2rust-postprocess"
+        return cls(path=path, **kwargs)
+
+    @classmethod
+    def user(cls, **kwargs: Any) -> Self:
+        """
+        Use the user's cache.
+        """
+        path = Path(user_cache_dir(appname="c2rust-postprocess"))
+        return cls(path=path, **kwargs)
+
+    @classmethod
+    def repo(cls, **kwargs: Any) -> Self:
+        """
+        Use a cache that is checked into the git repo.
+        This is intended to be used by CI.
+        """
+        path = Path(__file__).parent / "../tests/llm-cache"
+        return cls(path=path, **kwargs)
 
     def get_message_digest(self, messages: list[dict[str, Any]]) -> str:
         import hashlib
