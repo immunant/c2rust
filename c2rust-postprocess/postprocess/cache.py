@@ -23,7 +23,6 @@ class AbstractCache(ABC):
     def lookup(
         self,
         messages: list[dict[str, Any]],
-
     ) -> str | None:
         """Lookup a cached response for the given messages.
 
@@ -94,7 +93,7 @@ class DirectoryCache(AbstractCache):
 
         if cache_file.exists():
             logging.debug(f"Cache hit: {cache_file}")
-            with open(cache_file, encoding='utf-8') as f:
+            with open(cache_file, encoding="utf-8") as f:
                 return f.read()
         return None
 
@@ -111,27 +110,27 @@ class DirectoryCache(AbstractCache):
 
         cache_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(cache_file, 'w', encoding='utf-8') as f:
+        with open(cache_file, "w", encoding="utf-8") as f:
             f.write(response)
 
         cache_file = self._path / f"{message_digest}" / "messages.txt"
         messages_str = json.dumps(messages, sort_keys=True)
-        with open(cache_file, 'w', encoding='utf-8') as f:
+        with open(cache_file, "w", encoding="utf-8") as f:
             f.write(messages_str)
 
         if model:
             model_file = self._path / f"{message_digest}" / "model.txt"
-            with open(model_file, 'w', encoding='utf-8') as f:
+            with open(model_file, "w", encoding="utf-8") as f:
                 f.write(model)
 
         if identifier:
             identifier_file = self._path / f"{message_digest}" / "identifier.txt"
-            with open(identifier_file, 'w', encoding='utf-8') as f:
+            with open(identifier_file, "w", encoding="utf-8") as f:
                 f.write(identifier)
 
         if transform:
             transform_file = self._path / f"{message_digest}" / "transform.txt"
-            with open(transform_file, 'w', encoding='utf-8') as f:
+            with open(transform_file, "w", encoding="utf-8") as f:
                 f.write(transform)
 
         logging.debug(f"Cache updated: {cache_file}")

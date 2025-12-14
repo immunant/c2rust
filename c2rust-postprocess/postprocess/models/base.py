@@ -52,6 +52,6 @@ class AbstractGenerativeModel(ABC):
         self,
         messages: list[dict[str, Any]],
         tools: list[Callable] | None = None,
-        max_tool_loops: int = 5
+        max_tool_loops: int = 5,
     ) -> str | None:
         pass

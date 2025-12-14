@@ -44,7 +44,7 @@ def test_get_rust_files_raises_on_missing_path():
 
 def test_get_rust_files_happy_path(tmp_path):
     (tmp_path / "main.rs").touch()
-    (tmp_path / "ignored.txt").touch() # Should be ignored
+    (tmp_path / "ignored.txt").touch()  # Should be ignored
 
     results = get_rust_files(tmp_path)
 
@@ -53,7 +53,7 @@ def test_get_rust_files_happy_path(tmp_path):
 
 
 def test_test_rust_files_finds_qsort_rs(transpile_qsort):
-    files = get_rust_files(EXAMPLES_ROOT / "qsort" )
+    files = get_rust_files(EXAMPLES_ROOT / "qsort")
 
     assert len(files) == 1
     assert files[0].is_file()

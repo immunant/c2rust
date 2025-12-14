@@ -29,10 +29,7 @@ class CommentTransferPrompt:
     __slots__ = ("c_function", "rust_function", "prompt_text", "identifier")
 
     def __init__(
-        self, c_function: str,
-        rust_function: str,
-        prompt_text: str,
-        identifier: str
+        self, c_function: str, rust_function: str, prompt_text: str, identifier: str
     ):
         self.c_function = c_function
         self.rust_function = rust_function
@@ -40,23 +37,26 @@ class CommentTransferPrompt:
         self.identifier = identifier
 
     def __str__(self) -> str:
-        return self.prompt_text + "\n\n" + \
-            "C function:\n```c\n" + self.c_function + "```\n\n" + \
-            "Rust function:\n```rust\n" + self.rust_function + "```\n"
+        return (
+            self.prompt_text
+            + "\n\n"
+            + "C function:\n```c\n"
+            + self.c_function
+            + "```\n\n"
+            + "Rust function:\n```rust\n"
+            + self.rust_function
+            + "```\n"
+        )
 
 
 class CommentTransfer:
-
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
         self.cache = cache
         self.model = model
 
     def transfer_comments(
-            self,
-            root_rust_source_file: Path,
-            ident_filter: str | None = None
-        ) -> None:
-
+        self, root_rust_source_file: Path, ident_filter: str | None = None
+    ) -> None:
         pattern = re.compile(ident_filter) if ident_filter else None
 
         rust_definitions = get_rust_definitions(root_rust_source_file)
@@ -66,7 +66,7 @@ class CommentTransfer:
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
         prompts = []
-        for (identifier, rust_definition) in rust_definitions.items():
+        for identifier, rust_definition in rust_definitions.items():
             if pattern and not pattern.search(identifier):
                 continue
 
@@ -77,9 +77,7 @@ class CommentTransfer:
                 continue
 
             if identifier not in c_definitions:
-                logging.warning(
-                    f"No corresponding C definition found for {identifier}"
-                )
+                logging.warning(f"No corresponding C definition found for {identifier}")
                 continue
 
             c_definition = c_definitions[identifier]
@@ -103,7 +101,7 @@ class CommentTransfer:
             Do not add any comments that are not present in the C function.
             Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
             Respond with the Rust function definition with the transferred comments; say nothing else.
-            """ # noqa: E501
+            """  # noqa: E501
             prompt_text = dedent(prompt_text).strip()
 
             prompts.append(
@@ -143,9 +141,4 @@ class CommentTransfer:
 
             print(get_highlighted_rust(response))
 
-            update_rust_definition(
-                root_rust_source_file,
-                prompt.identifier,
-                response
-            )
-
+            update_rust_definition(root_rust_source_file, prompt.identifier, response)

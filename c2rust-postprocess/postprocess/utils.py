@@ -28,6 +28,7 @@ def get_tool_path(tool_name: str) -> Path:
 
     return tool_path
 
+
 def existing_file(value: str) -> Path:
     path = Path(value)
     if path.is_file():
@@ -73,15 +74,16 @@ def get_rust_files(path: Path) -> list[Path]:
 
 
 # TODO: test
-def read_chunk(filepath: Path, start_offset: int, end_offset: int, encoding='utf-8'):
+def read_chunk(filepath: Path, start_offset: int, end_offset: int, encoding="utf-8"):
     if start_offset < 0 or end_offset < start_offset:
         raise ValueError(f"Invalid range: {start_offset}–{end_offset}")
 
-    length = end_offset - start_offset + 1 # inclusive range
+    length = end_offset - start_offset + 1  # inclusive range
 
-    with open(filepath, 'rb') as f: # Only byte mode supports seeking to byte offset
+    with open(filepath, "rb") as f:  # Only byte mode supports seeking to byte offset
         f.seek(start_offset)
         return f.read(length).decode(encoding)
+
 
 # TODO: test
 def remove_backticks(text: str) -> str:
@@ -100,14 +102,19 @@ def remove_backticks(text: str) -> str:
 
 def get_highlighted_c(c_code: str, bg="dark") -> None:
     from pygments.lexers.c_cpp import CLexer
+
     return get_highlighted_code(c_code, CLexer(), bg=bg)
+
 
 def get_highlighted_rust(rust_code: str, bg="dark") -> None:
     from pygments.lexers.rust import RustLexer
+
     return get_highlighted_code(rust_code, RustLexer(), bg=bg)
+
 
 def get_highlighted_code(code: str, lexer: RegexLexer, bg: str) -> None:
     from pygments import highlight
     from pygments.formatters import TerminalFormatter
+
     # TODO: detect when terminal supports colors
     return highlight(code, lexer, TerminalFormatter(bg=bg))
