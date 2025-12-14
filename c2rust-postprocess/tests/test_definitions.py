@@ -29,19 +29,34 @@ def test_get_rust_function_spans(transpile_qsort, pytestconfig):
     fn_spans = get_rust_function_spans(qsort_rs)
     print(json.dumps(fn_spans, indent=4))
 
-    assert len(fn_spans) == 3
+    expected_fn_spans = [
+        {
+            "name": "swap",
+            "start_line": 10,
+            "end_line": 17,
+            "start_byte": 154,
+            "end_byte": 327,
+        },
+        {
+            "name": "partition",
+            "start_line": 19,
+            "end_line": 42,
+            "start_byte": 341,
+            "end_byte": 1204,
+        },
+        {
+            "name": "quickSort",
+            "start_line": 44,
+            "end_line": 54,
+            "start_byte": 1218,
+            "end_byte": 1577,
+        },
+    ]
 
-    assert fn_spans[0]["name"] == "swap"
-    assert fn_spans[0]["start_line"] == 10
-    assert fn_spans[0]["end_line"] == 17
-
-    assert fn_spans[1]["name"] == "partition"
-    assert fn_spans[1]["start_line"] == 19
-    assert fn_spans[1]["end_line"] == 42
-
-    assert fn_spans[2]["name"] == "quickSort"
-    assert fn_spans[2]["start_line"] == 44
-    assert fn_spans[2]["end_line"] == 54
+    for actual_fn_span, expected_fn_span in zip(
+        fn_spans, expected_fn_spans, strict=True
+    ):
+        assert actual_fn_span == expected_fn_span
 
 
 # TODO: this test needs a clearer scope
