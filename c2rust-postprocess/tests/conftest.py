@@ -56,6 +56,7 @@ def transpile_qsort(generate_compile_commands_for_qsort):
         [
             c2rust,
             "transpile",
+            "--overwrite-existing",
             "--emit-c-decl-map",
             compile_commands,
         ],
