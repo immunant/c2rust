@@ -6,9 +6,9 @@ from typing import Any
 import tree_sitter_rust as tsrust
 from pygments import lex
 from pygments.lexer import RegexLexer
-from pygments.lexers import CLexer, RustLexer
+from pygments.lexers import CLexer
 from pygments.token import Comment
-from tree_sitter import Language, Parser
+from tree_sitter import Language, Node, Parser
 
 from postprocess.definitions.clang import (
     get_c_ast_as_json,
@@ -155,13 +155,29 @@ def get_c_comments(code: str) -> list[str]:
 
 def get_rust_comments(code: str) -> list[str]:
     """Extract comments from the given Rust code."""
-    return get_comments(code, RustLexer())
+    language = Language(tsrust.language())
+    parser = Parser(language)
+
+    tree = parser.parse(code.encode("utf8"))
+    root = tree.root_node
+
+    comments: list[str] = []
+
+    def walk(node: Node):
+        if node.type == "comment":
+            comments.append(code[node.start_byte : node.end_byte])
+        for child in node.children:
+            walk(child)
+
+    walk(root)
+    return comments
 
 
 def get_comments(code: str, lexer: RegexLexer) -> list[str]:
     comments = []
     for tok_type, tok_value in lex(code, lexer):
         if tok_type in Comment:
+            print(tok_type, tok_value)
             # Keep exactly what appears, including delimiters (//, /* */)
             comments.append(tok_value)
     return comments
