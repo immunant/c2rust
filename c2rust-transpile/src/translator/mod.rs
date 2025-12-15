@@ -468,7 +468,7 @@ pub fn emit_c_decl_map(
                 }
             }
             Some(ConvertedDecl::NoItem) => {}
-            None => log::warn!(
+            None => log::debug!(
                 "no converted form to add to C decl map for top-level decl {decl:?}: {:?}!",
                 t.ast_context.get_decl(&decl)
             ),
