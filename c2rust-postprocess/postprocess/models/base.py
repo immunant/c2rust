@@ -8,9 +8,8 @@ class AbstractGenerativeModel(ABC):
     Abstract base class for LLM clients using Native Function Calling.
     """
 
-    def __init__(self, id: str, **kwargs: Any):
+    def __init__(self, id: str):
         self._id = id
-        self._config = kwargs
 
     @property
     def id(self) -> str:

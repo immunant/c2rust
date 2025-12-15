@@ -14,11 +14,16 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
     """
 
     def __init__(
-        self, id: str = "gemini-2.5-flash", api_key: str | None = None, **kwargs: Any
+        self,
+        id: str = "gemini-2.5-flash",
+        api_key: str | None = None,
+        generation_config: dict[str, Any] | None = None,
     ):
-        super().__init__(id, **kwargs)
+        super().__init__(id)
         self.client = genai.Client(api_key=api_key)
-        self._generation_config = kwargs.get("generation_config", {})
+        if generation_config is None:
+            generation_config = {}
+        self._generation_config = generation_config
 
     def generate_with_tools(
         self,
