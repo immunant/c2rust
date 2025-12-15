@@ -1,5 +1,6 @@
 import json
 import subprocess
+from subprocess import CalledProcessError
 from typing import Any
 
 import jq
@@ -45,7 +46,7 @@ def get_c_ast_as_json(entry: dict[str, Any]) -> dict[str, Any]:
             cmd, capture_output=True, text=True, check=True, cwd=entry["directory"]
         )
         return json.loads(result.stdout)
-    except subprocess.CalledProcessError as e:
+    except CalledProcessError as e:
         print(f"Error running clang on {source_file}: {e.stderr}")
         raise
 

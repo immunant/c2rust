@@ -1,9 +1,9 @@
 import json
 import logging
 import subprocess
-import tempfile
 from collections.abc import Generator, Iterable
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 import tree_sitter_rust as tsrust
@@ -254,7 +254,7 @@ def update_rust_definition(
 
     new_definition_json = {identifier: new_definition}
 
-    with tempfile.NamedTemporaryFile(mode="w+t") as temp_file:
+    with NamedTemporaryFile(mode="w+t") as temp_file:
         json.dump(new_definition_json, temp_file)
         temp_file.flush()
 

@@ -10,6 +10,7 @@ from pygments.formatters.terminal import TerminalFormatter
 from pygments.lexer import RegexLexer
 from pygments.lexers.c_cpp import CLexer
 from pygments.lexers.rust import RustLexer
+from requests.exceptions import JSONDecodeError
 
 
 def get_tool_path(tool_name: str) -> Path:
@@ -50,7 +51,7 @@ def get_compile_commands(compile_commands_path: Path) -> list[dict[str, Any]]:
         raise RuntimeError(
             f"Failed to read compile commands from {compile_commands_path}: {exc}"
         ) from exc
-    except json.JSONDecodeError as exc:
+    except JSONDecodeError as exc:
         raise RuntimeError(
             f"Failed to parse JSON from {compile_commands_path}: {exc}"
         ) from exc
