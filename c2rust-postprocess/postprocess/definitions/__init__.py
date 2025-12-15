@@ -37,14 +37,8 @@ RUST_LANGUAGE = Language(tsrust.language())
 def get_rust_function_spans(rustfile: Path) -> list[dict[str, Any]]:
     parser = Parser(RUST_LANGUAGE)
 
-    if not rustfile.exists():
-        raise FileNotFoundError(f"{rustfile} does not exist")
-    if not rustfile.is_file():
-        raise NotADirectoryError(f"{rustfile} is not a file")
-
     try:
-        with open(rustfile, "rb") as rust_source:
-            source_bytes = rust_source.read()
+        source_bytes = rustfile.read_bytes()
     except OSError as exc:
         logging.error(f"Failed to read Rust file {rustfile}: {exc}")
         return []
@@ -227,9 +221,6 @@ def get_rust_definitions(root_rust_source_file: Path) -> dict[str, str]:
 
     split_rust_path = get_tool_path("split_rust")
 
-    if not root_rust_source_file.is_file():
-        raise FileNotFoundError(f"{root_rust_source_file} is not a file")
-
     # call split_rust tool with root_rust_source_file as argument
     result = subprocess.run(
         [split_rust_path, root_rust_source_file],
@@ -245,12 +236,12 @@ def get_rust_definitions(root_rust_source_file: Path) -> dict[str, str]:
 def get_c_definitions(root_rust_source_file: Path) -> dict[str, str]:
     c_defs_json = root_rust_source_file.with_suffix(".c_decls.json")
 
-    if not c_defs_json.is_file():
-        raise FileNotFoundError(f"C definitions JSON file not found: {c_defs_json}")
-
     logging.debug(f"Loading C definitions from {c_defs_json}")
-    with open(c_defs_json, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        return json.loads(c_defs_json.read_text())
+    except OSError as e:
+        e.add_note(f"C definitions JSON file not found: {c_defs_json}")
+        raise e
 
 
 def update_rust_definition(
@@ -263,9 +254,6 @@ def update_rust_definition(
     import tempfile
 
     merge_rust_path = get_tool_path("merge_rust")
-
-    if not root_rust_source_file.is_file():
-        raise FileNotFoundError(f"{root_rust_source_file} is not a file")
 
     new_definition_json = {identifier: new_definition}
 

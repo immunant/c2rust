@@ -61,16 +61,12 @@ def get_compile_commands(compile_commands_path: Path) -> list[dict[str, Any]]:
 
 
 def get_rust_files(path: Path) -> list[Path]:
-    rust_files = []
-
+    # `Path.glob` doesn't error if the path doesn't exist.
     if not path.exists():
         raise FileNotFoundError(f"{path} does not exist")
     if not path.is_dir():
         raise NotADirectoryError(f"{path} is not a directory")
-
-    for file in path.glob("**/*.rs"):
-        rust_files.append(file)
-    return rust_files
+    return list(path.glob("**/*.rs"))
 
 
 # TODO: test
