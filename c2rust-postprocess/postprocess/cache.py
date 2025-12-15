@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -144,8 +145,6 @@ class DirectoryCache(AbstractCache):
         return cls(path=path)
 
     def get_message_digest(self, messages: list[dict[str, Any]]) -> str:
-        import hashlib
-
         messages_str = json.dumps(messages, sort_keys=True)
         return hashlib.sha256(messages_str.encode()).hexdigest()
 
