@@ -45,15 +45,14 @@ def existing_file(value: str) -> Path:
 # TODO: test
 def get_compile_commands(compile_commands_path: Path) -> list[dict[str, Any]]:
     try:
-        with open(compile_commands_path, encoding="utf-8") as f:
-            compile_commands = json.load(f)
-    except OSError as exc:
-        raise RuntimeError(
-            f"Failed to read compile commands from {compile_commands_path}: {exc}"
-        ) from exc
+        compile_commands = json.loads(compile_commands_path.read_text())
     except JSONDecodeError as exc:
         raise RuntimeError(
             f"Failed to parse JSON from {compile_commands_path}: {exc}"
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to read compile commands from {compile_commands_path}: {exc}"
         ) from exc
 
     if not isinstance(compile_commands, list):
