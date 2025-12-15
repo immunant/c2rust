@@ -15,7 +15,7 @@ from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import (
     SYSTEM_INSTRUCTION,
     AbstractGenerativeModel,
-    CommentTransfer,
+    CommentsTransform,
 )
 from postprocess.utils import existing_file
 
@@ -113,7 +113,7 @@ def main(argv: Sequence[str] | None = None):
         model = get_model(args.model_id)
 
         # TODO: instantiate transform(s) based on command line args
-        xform = CommentTransfer(cache, model)
+        xform = CommentsTransform(cache, model)
         xform.transfer_comments_dir(
             root_rust_source_file=args.root_rust_source_file,
             ident_filter=args.ident_filter,
