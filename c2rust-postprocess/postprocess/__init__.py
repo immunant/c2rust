@@ -6,7 +6,7 @@ import argparse
 import logging
 from collections.abc import Sequence
 
-from openai import types
+from google.genai import types
 
 from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.models import api_key_from_env, get_model_by_id
@@ -91,17 +91,23 @@ def get_model(model_id: str) -> AbstractGenerativeModel:
 
 
 def main(argv: Sequence[str] | None = None):
-    parser = build_arg_parser()
-    args = parser.parse_args(argv)
+    try:
+        parser = build_arg_parser()
+        args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.getLevelName(args.log_level.upper()))
+        logging.basicConfig(level=logging.getLevelName(args.log_level.upper()))
 
-    cache = DirectoryCache.repo()
-    if not args.update_cache:
-        cache = FrozenCache(cache)
+        cache = DirectoryCache.repo()
+        if not args.update_cache:
+            cache = FrozenCache(cache)
 
-    model = get_model(args.model_id)
+        model = get_model(args.model_id)
 
-    # TODO: instantiate transform(s) based on command line args
-    xform = CommentTransfer(cache, model)
-    xform.transfer_comments(args.root_rust_source_file, args.ident_filter)
+        # TODO: instantiate transform(s) based on command line args
+        xform = CommentTransfer(cache, model)
+        xform.transfer_comments(args.root_rust_source_file, args.ident_filter)
+
+        return 0
+    except KeyboardInterrupt:
+        logging.warning("Interrupted by user, terminating...")
+        return 130  # 128 + SIGINT(2)
