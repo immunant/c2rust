@@ -8,27 +8,30 @@ accelerate the types of translation and migration that help move C code to Rust.
 - Python 3.12 or later
 - `uv` in path
 - A valid `GEMINI_API_KEY` set
-- A transpiled codebase with a correct `compile_commands.json`
+- A transpiled codebase with `*.c_decls.json` for each `*.rs` you want to transfer comments to.
+- `../tools/split_rust/target/release/split_rust`
+- `../tools/merge_rust/target/release/merge_rust`
 
 # Running
 
-- `c2rust-postprocess path/to/compile_commands.json`, or
-- `uv run postprocess path/to/compile_commands.json`
+- `c2rust-postprocess path/to/transpiled_rust.rs`, or
+- `uv run postprocess path/to/transpiled_rust.rs`
 
 # Testing
 
 ## Test prerequisites
 
-- `bear` and `c2rust` in path 
+- `bear` and `c2rust` in path
 
-```
-   uv run pytest -v
-   uv run pytest -v tests/test_utils.py # filter tests to run
+```sh
+uv run pytest -v
+uv run pytest -v tests/test_utils.py # filter tests to run
 ```
 
 ## Misc
 
-- `uv run ruff check --fix .` to format & lint
+- `uv run ruff format` to format
+- `uv run ruff check --fix .` to lint
 
 # TODOs
 
