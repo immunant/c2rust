@@ -39,7 +39,7 @@ class AbstractGenerativeModel(ABC):
     # def generate_with_tools(
     #     self,
     #     messages: list[dict[str, Any]],
-    #     tools: list[Callable] | None = None,
+    #     tools: list[Callable[..., Any]] | None = None,
     #     max_tool_loops: int = 5
     # ) -> str | None:
     #     """Synchronous wrapper for agenerate_response."""
@@ -50,7 +50,7 @@ class AbstractGenerativeModel(ABC):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable] | None = None,
+        tools: list[Callable[..., Any]] | None = None,
         max_tool_loops: int = 5,
     ) -> str | None:
         pass
