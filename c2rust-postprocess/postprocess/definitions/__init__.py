@@ -232,7 +232,7 @@ def get_rust_definitions(root_rust_source_file: Path) -> dict[str, str]:
 
     # call split_rust tool with root_rust_source_file as argument
     result = subprocess.run(
-        [str(split_rust_path), str(root_rust_source_file)],
+        [split_rust_path, root_rust_source_file],
         capture_output=True,
         text=True,
         check=True,
@@ -273,7 +273,7 @@ def update_rust_definition(
         json.dump(new_definition_json, temp_file)
         temp_file.flush()
 
-        args = [str(merge_rust_path), str(root_rust_source_file), temp_file.name]
+        args = [merge_rust_path, root_rust_source_file, temp_file.name]
         logging.debug(f"Running merge_rust with args: {args}")
 
         result = subprocess.run(
