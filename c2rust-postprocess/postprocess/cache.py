@@ -225,17 +225,27 @@ class FrozenCache(AbstractCache):
 
     def lookup(
         self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
         messages: list[dict[str, Any]],
     ) -> str | None:
-        return self.inner_cache.lookup(messages)
+        return self.inner_cache.lookup(
+            transform=transform,
+            identifier=identifier,
+            model=model,
+            messages=messages,
+        )
 
     def update(
         self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
         messages: list[dict[str, Any]],
         response: str,
-        model: str | None = None,
-        identifier: str | None = None,
-        transform: str | None = None,
     ) -> None:
         pass
 
