@@ -107,7 +107,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     except KeyboardInterrupt:
         logging.warning("Interrupted by user, terminating...")
-        sys.exit(130)  # 128 + SIGINT(2)
+        raise
 
 
 if __name__ == "__main__":
