@@ -1,0 +1,5 @@
+{
+    "swap": "void swap(int* a, int* b)\n{\n    int t = *a;\n    *a = *b;\n    *b = t;\n}",
+    "quickSort": "void quickSort(int arr[], int low, int high)\n{\n    if (low < high) {\n        /* pi is the partitioning index; arr[pi] is now at the right place */\n        int pi = partition(arr, low, high);\n\n        /* Recursively sort elements before and after partition */\n        quickSort(arr, low, pi - 1);\n        quickSort(arr, pi + 1, high);\n    }\n}",
+    "partition": "/* \n * Lomuto Partition Scheme:\n * Partitions the array so that elements < pivot are on the left, \n * and elements >= pivot are on the right.\n */\nint partition (int arr[], int low, int high)\n{\n    // Partition the subarray around the last element as pivot and return pivot's final index.\n    int pivot = arr[high];\n    int i = low - 1;\n\n    for (int j = low; j <= high - 1; j++) {\n        if (arr[j] <= pivot) {\n            i++;\n            // Move elements <= pivot into the left partition.\n            swap(&arr[i], &arr[j]);\n        }\n    }\n    // Place pivot just after the final element of the left partition.\n    swap(&arr[i + 1], &arr[high]);\n    return i + 1;\n}"
+}

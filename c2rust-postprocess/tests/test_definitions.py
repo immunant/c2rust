@@ -1,8 +1,10 @@
 import json
 from os.path import commonpath
+from pathlib import Path
 
 from conftest import EXAMPLES_ROOT
 
+from postprocess import main
 from postprocess.definitions import (
     get_c_sourcefile,
     get_function_span_pairs,
@@ -81,3 +83,9 @@ def test_c_function_splitting(generate_compile_commands_for_qsort, transpile_qso
         print(f"Rust function {rust_fn['name']} definition:\n{rust_def}\n")
 
     # assert False
+
+
+def test_comment_insertion_qsort():
+    qsort_rs = Path(__file__).parent / "examples/qsort.rs"
+    qsort_rs = qsort_rs.relative_to(Path.cwd())
+    main([str(qsort_rs)])
