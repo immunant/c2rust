@@ -20,7 +20,7 @@ SYSTEM_INSTRUCTION = (
 )
 
 
-class CommentTransferPrompt:
+class CommentsTransformPrompt:
     c_function: str
     rust_function: str
     prompt_text: str
@@ -49,7 +49,7 @@ class CommentTransferPrompt:
         )
 
 
-class CommentTransfer:
+class CommentsTransform:
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
         self.cache = cache
         self.model = model
@@ -65,7 +65,7 @@ class CommentTransfer:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
-        prompts: list[CommentTransferPrompt] = []
+        prompts: list[CommentsTransformPrompt] = []
         for identifier, rust_definition in rust_definitions.items():
             if pattern and not pattern.search(identifier):
                 continue
@@ -108,7 +108,7 @@ class CommentTransfer:
             prompt_text = dedent(prompt_text).strip()
 
             prompts.append(
-                CommentTransferPrompt(
+                CommentsTransformPrompt(
                     c_function=c_definition,
                     rust_function=rust_definition,
                     prompt_text=prompt_text,
