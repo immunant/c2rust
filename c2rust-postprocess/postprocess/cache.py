@@ -150,7 +150,7 @@ class DirectoryCache(AbstractCache):
         messages_str = json.dumps(messages, sort_keys=True)
         return hashlib.sha256(messages_str.encode()).hexdigest()
 
-    def cache_file(
+    def cache_dir(
         self,
         *,
         transform: str,
@@ -158,7 +158,7 @@ class DirectoryCache(AbstractCache):
         messages: list[dict[str, Any]],
     ) -> Path:
         message_digest = self.get_message_digest(messages)
-        return self._path / transform / identifier / f"{message_digest}.toml"
+        return self._path / transform / identifier / message_digest
 
     def lookup(
         self,
@@ -168,9 +168,10 @@ class DirectoryCache(AbstractCache):
         model: str,
         messages: list[dict[str, Any]],
     ) -> str | None:
-        cache_file = self.cache_file(
+        cache_dir = self.cache_dir(
             transform=transform, identifier=identifier, messages=messages
         )
+        cache_file = cache_dir / "metadata.toml"
         try:
             toml = cache_file.read_text()
         except FileNotFoundError:
@@ -199,12 +200,15 @@ class DirectoryCache(AbstractCache):
         }
         toml = to_multiline_toml(data)
 
-        cache_file = self.cache_file(
+        cache_dir = self.cache_dir(
             transform=transform, identifier=identifier, messages=messages
         )
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(toml)
-        logging.debug(f"Cache updated: {cache_file}")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        metadata_path = cache_dir / "metadata.toml"
+        response_path = cache_dir / "response.txt"
+        metadata_path.write_text(toml)
+        response_path.write_text(response)
+        logging.debug(f"Cache updated: {cache_dir}")
 
     def clear(self) -> None:
         self._path.unlink(missing_ok=True)
