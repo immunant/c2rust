@@ -14,9 +14,9 @@ class GPTModel(AbstractGenerativeModel):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable] | None = None,
+        tools: list[Callable[..., Any]] | None = None,
         max_tool_loops: int = 5,
-    ) -> Any:
+    ) -> str:
         # TODO: implement tool calling support
         assert tools is None, "Tool calling not yet implemented for GPTModel"
 

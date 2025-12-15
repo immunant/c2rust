@@ -28,9 +28,9 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable] | None = None,
+        tools: list[Callable[..., Any]] | None = None,
         max_tool_loops: int = 5,
-    ) -> Any:
+    ) -> str | None:
         contents = self._convert_messages(messages)
 
         config = types.GenerateContentConfig(

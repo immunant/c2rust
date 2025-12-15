@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Never
 
 from postprocess.models import AbstractGenerativeModel
 
@@ -16,9 +16,9 @@ class MockGenerativeModel(AbstractGenerativeModel):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable] | None = None,
+        tools: list[Callable[..., Any]] | None = None,
         max_tool_loops: int = 5,
-    ) -> Any:
+    ) -> Never:
         raise NotImplementedError(
             "MockGenerativeModel, by design, does not generate responses.\n"
             "If this is unexpected, check if you forgot to add an API key "
