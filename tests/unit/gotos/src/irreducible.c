@@ -24,6 +24,9 @@ l3:
 
 // TODO: We want a snapshot test of this case to verify that we don't generate
 // excessive blocks when jumping to a loop with multiple entries.
+//
+// TODO: Also why do we get a different translation of the irreducible
+// control-flow here than we do in the isolated example above???
 int jump_to_irreducible(int x) {
   switch (x) {
     case 0:
@@ -37,7 +40,12 @@ int jump_to_irreducible(int x) {
     case 2:
       x++;
       goto l3;
+    
+    case 3:
+      x += 5;
     }
+
+    x += 20;
 
 l1:
     if (x < 6) {
