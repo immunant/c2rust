@@ -7,10 +7,9 @@ from postprocess.models import AbstractGenerativeModel
 
 
 class GPTModel(AbstractGenerativeModel):
-    def __init__(self, id: str = "gpt-5.1", api_key: str | None = None, **kwargs: Any):
-        super().__init__(id, **kwargs)
+    def __init__(self, id: str = "gpt-5.1", api_key: str | None = None):
+        super().__init__(id)
         self.client = OpenAI(api_key=api_key)
-        self.kwargs = kwargs
 
     def generate_with_tools(
         self,

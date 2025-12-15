@@ -16,9 +16,8 @@ class AbstractCache(ABC):
     Abstract base class for caching of LLM interactions.
     """
 
-    def __init__(self, path: Path, **kwargs: Any):
+    def __init__(self, path: Path):
         self._path = path
-        self._config = kwargs
 
     @property
     def path(self) -> Path:
@@ -113,36 +112,36 @@ class DirectoryCache(AbstractCache):
     If no path is specified, a temporary directory is used.
     """
 
-    def __init__(self, path: Path, **kwargs: Any):
-        super().__init__(path, **kwargs)
+    def __init__(self, path: Path):
+        super().__init__(path)
         self._path.mkdir(parents=True, exist_ok=True)
 
         logging.debug(f"Using cache directory: {self._path}")
 
     @classmethod
-    def system(cls, **kwargs: Any) -> Self:
+    def system(cls) -> Self:
         """
         Use the system temporary cache.
         """
         path = Path(gettempdir()) / "c2rust-postprocess"
-        return cls(path=path, **kwargs)
+        return cls(path=path)
 
     @classmethod
-    def user(cls, **kwargs: Any) -> Self:
+    def user(cls) -> Self:
         """
         Use the user's cache.
         """
         path = Path(user_cache_dir(appname="c2rust-postprocess"))
-        return cls(path=path, **kwargs)
+        return cls(path=path)
 
     @classmethod
-    def repo(cls, **kwargs: Any) -> Self:
+    def repo(cls) -> Self:
         """
         Use a cache that is checked into the git repo.
         This is intended to be used by CI.
         """
         path = Path(__file__).parent / "../tests/llm-cache"
-        return cls(path=path, **kwargs)
+        return cls(path=path)
 
     def get_message_digest(self, messages: list[dict[str, Any]]) -> str:
         import hashlib
@@ -219,8 +218,8 @@ class FrozenCache(AbstractCache):
     Cache that does not allow updates of an inner cache.
     """
 
-    def __init__(self, inner_cache: AbstractCache, **kwargs: Any):
-        super().__init__(Path("/dev/null"), **kwargs)
+    def __init__(self, inner_cache: AbstractCache):
+        super().__init__(Path("/dev/null"))
         self._inner_cache = inner_cache
 
     @property

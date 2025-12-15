@@ -1,5 +1,4 @@
 import os
-from typing import Any
 
 from postprocess.models.base import AbstractGenerativeModel
 from postprocess.models.gemini import GoogleGenerativeModel
@@ -15,11 +14,11 @@ def api_key_from_env(model_id: str) -> str | None:
     return None
 
 
-def get_model_by_id(id: str, **kwargs: Any) -> AbstractGenerativeModel:
+def get_model_by_id(id: str) -> AbstractGenerativeModel:
     """Factory function to get model instance by ID."""
     if id.startswith("gemini"):
-        return GoogleGenerativeModel(id=id, **kwargs)
+        return GoogleGenerativeModel(id=id)
     elif id.startswith("gpt"):
-        return GPTModel(id=id, **kwargs)
+        return GPTModel(id=id)
 
     raise ValueError(f"Unsupported model identifier: {id}")

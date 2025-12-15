@@ -10,8 +10,8 @@ class MockGenerativeModel(AbstractGenerativeModel):
     Raises NotImplementedError on generation attempts.
     """
 
-    def __init__(self, **kwargs: Any):
-        super().__init__(id="mock-llm", **kwargs)
+    def __init__(self):
+        super().__init__(id="mock-llm")
 
     def generate_with_tools(
         self,
