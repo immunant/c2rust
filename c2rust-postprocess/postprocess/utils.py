@@ -1,14 +1,19 @@
 import argparse
+import json
 import os
 from pathlib import Path
+from shutil import which
 from typing import Any
 
+from pygments import highlight
+from pygments.formatters.terminal import TerminalFormatter
 from pygments.lexer import RegexLexer
+from pygments.lexers.c_cpp import CLexer
+from pygments.lexers.rust import RustLexer
 
 
 def get_tool_path(tool_name: str) -> Path:
     """Get the path to the given tool in the system PATH."""
-    from shutil import which
 
     tool_path = which(tool_name)
     if tool_path is None:
@@ -38,8 +43,6 @@ def existing_file(value: str) -> Path:
 
 # TODO: test
 def get_compile_commands(compile_commands_path: Path) -> list[dict[str, Any]]:
-    import json
-
     try:
         with open(compile_commands_path, encoding="utf-8") as f:
             compile_commands = json.load(f)
@@ -97,20 +100,13 @@ def remove_backticks(text: str) -> str:
 
 
 def get_highlighted_c(c_code: str, bg="dark") -> None:
-    from pygments.lexers.c_cpp import CLexer
-
     return get_highlighted_code(c_code, CLexer(), bg=bg)
 
 
 def get_highlighted_rust(rust_code: str, bg="dark") -> None:
-    from pygments.lexers.rust import RustLexer
-
     return get_highlighted_code(rust_code, RustLexer(), bg=bg)
 
 
 def get_highlighted_code(code: str, lexer: RegexLexer, bg: str) -> None:
-    from pygments import highlight
-    from pygments.formatters import TerminalFormatter
-
     # TODO: detect when terminal supports colors
     return highlight(code, lexer, TerminalFormatter(bg=bg))

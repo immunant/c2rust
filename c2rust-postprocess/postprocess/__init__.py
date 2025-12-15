@@ -6,6 +6,8 @@ import argparse
 import logging
 from collections.abc import Sequence
 
+from openai import types
+
 from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.models import api_key_from_env, get_model_by_id
 from postprocess.models.mock import MockGenerativeModel
@@ -78,8 +80,6 @@ def get_model(model_id: str) -> AbstractGenerativeModel:
         return MockGenerativeModel()
 
     # TODO: remove google specific API bits
-    from google.genai import types
-
     return get_model_by_id(
         model_id,
         generation_config={

@@ -43,7 +43,6 @@ class AbstractGenerativeModel(ABC):
     #     max_tool_loops: int = 5
     # ) -> str | None:
     #     """Synchronous wrapper for agenerate_response."""
-    #     import asyncio
     #     return asyncio.run(self.agenerate_with_tools(messages, tools, max_tool_loops))
 
     @abstractmethod

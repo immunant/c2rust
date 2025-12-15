@@ -10,6 +10,7 @@ from postprocess.definitions import (
     get_function_span_pairs,
     get_rust_function_spans,
 )
+from postprocess.utils import read_chunk
 
 
 def test_get_c_sourcefile_qsort(generate_compile_commands_for_qsort, transpile_qsort):
@@ -63,8 +64,6 @@ def test_get_rust_function_spans(transpile_qsort, pytestconfig):
 
 # TODO: this test needs a clearer scope
 def test_c_function_splitting(generate_compile_commands_for_qsort, transpile_qsort):
-    from postprocess.utils import read_chunk
-
     commands = generate_compile_commands_for_qsort
     qsort_rs = transpile_qsort
     qsort_c = get_c_sourcefile(commands, qsort_rs)

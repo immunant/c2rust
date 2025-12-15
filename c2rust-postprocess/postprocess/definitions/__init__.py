@@ -1,5 +1,7 @@
 import json
 import logging
+import subprocess
+import tempfile
 from collections.abc import Generator, Iterable
 from pathlib import Path
 from typing import Any
@@ -217,8 +219,6 @@ def get_rust_definitions(root_rust_source_file: Path) -> dict[str, str]:
     Call ../tools/split_rust/target/release/split_rust rust_source_file_root and
     return the output as a dict mapping function identifiers to their definitions.
     """
-    import subprocess
-
     split_rust_path = get_tool_path("split_rust")
 
     # call split_rust tool with root_rust_source_file as argument
@@ -250,9 +250,6 @@ def update_rust_definition(
     new_definition: str,
 ) -> None:
     """Update the Rust source file with the new definition."""
-    import subprocess
-    import tempfile
-
     merge_rust_path = get_tool_path("merge_rust")
 
     new_definition_json = {identifier: new_definition}
