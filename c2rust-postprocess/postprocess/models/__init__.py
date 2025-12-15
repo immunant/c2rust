@@ -1,8 +1,18 @@
+import os
 from typing import Any
 
 from postprocess.models.base import AbstractGenerativeModel
 from postprocess.models.gemini import GoogleGenerativeModel
 from postprocess.models.gpt import GPTModel
+
+
+def api_key_from_env(model_id: str) -> str | None:
+    """Retrieve API key from environment variable based on model ID."""
+    if model_id.startswith("gemini"):
+        return os.getenv("GEMINI_API_KEY")
+    elif model_id.startswith("gpt"):
+        return os.getenv("OPENAI_API_KEY")
+    return None
 
 
 def get_model_by_id(id: str, **kwargs: Any) -> AbstractGenerativeModel:

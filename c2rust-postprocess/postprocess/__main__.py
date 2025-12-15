@@ -4,8 +4,13 @@ import sys
 from collections.abc import Sequence
 
 from postprocess.cache import DirectoryCache, FrozenCache
-from postprocess.models import get_model_by_id
-from postprocess.transforms import SYSTEM_INSTRUCTION, CommentTransfer
+from postprocess.models import api_key_from_env, get_model_by_id
+from postprocess.models.mock import MockGenerativeModel
+from postprocess.transforms import (
+    SYSTEM_INSTRUCTION,
+    AbstractGenerativeModel,
+    CommentTransfer,
+)
 from postprocess.utils import existing_file
 
 
@@ -60,6 +65,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def get_model(model_id: str) -> AbstractGenerativeModel:
+    api_key = api_key_from_env(model_id)
+    if api_key is None:
+        logging.warning(
+            f"API key for model {model_id} not found in env; "
+            "using cached responses only."
+        )
+        return MockGenerativeModel()
+
+    # TODO: remove google specific API bits
+    from google.genai import types
+
+    return get_model_by_id(
+        model_id,
+        generation_config={
+            "system_instruction": types.Content(
+                role="system", parts=[types.Part.from_text(text=SYSTEM_INSTRUCTION)]
+            )
+        },
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         parser = build_arg_parser()
@@ -71,16 +98,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.update_cache:
             cache = FrozenCache(cache)
 
-        from google.genai import types
-
-        model = get_model_by_id(
-            args.model_id,
-            generation_config={
-                "system_instruction": types.Content(
-                    role="system", parts=[types.Part.from_text(text=SYSTEM_INSTRUCTION)]
-                )
-            },
-        )
+        model = get_model(args.model_id)
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
