@@ -23,7 +23,7 @@ def generate_compile_commands_for_qsort(ensure_bear):
 
     # compile to /dev/null, we just want compile_commands.json
     subprocess.run(
-        ["bear", "--", "cc", "-c", str(qsort_dir / "qsort.c"), "-o", "/dev/null"],
+        ["bear", "--", "cc", "-c", qsort_dir / "qsort.c", "-o", "/dev/null"],
         cwd=qsort_dir,
         check=True,
         capture_output=True,
