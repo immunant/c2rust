@@ -356,7 +356,7 @@ impl TypeConverter {
         &mut self,
         ctxt: &TypedAstContext,
         ctype: CTypeId,
-        params: &Vec<CParamId>,
+        params: &[CParamId],
     ) -> TranslationResult<Option<Box<Type>>> {
         match ctxt.index(ctype).kind {
             // ANSI/ISO C-style function
