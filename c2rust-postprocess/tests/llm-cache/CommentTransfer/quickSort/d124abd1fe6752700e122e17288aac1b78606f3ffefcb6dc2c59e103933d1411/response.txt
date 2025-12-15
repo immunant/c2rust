@@ -1,0 +1,17 @@
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn quickSort(
+    mut arr: *mut ::core::ffi::c_int,
+    mut low: ::core::ffi::c_int,
+    mut high: ::core::ffi::c_int,
+) {
+    if low < high {
+        /* pi is the partitioning index; arr[pi] is now at the right place */
+        let mut pi: ::core::ffi::c_int = partition(arr, low, high);
+
+        /* Recursively sort elements before and after partition */
+        quickSort(arr, low, pi - 1 as ::core::ffi::c_int);
+        quickSort(arr, pi + 1 as ::core::ffi::c_int, high);
+    }
+}
+```
