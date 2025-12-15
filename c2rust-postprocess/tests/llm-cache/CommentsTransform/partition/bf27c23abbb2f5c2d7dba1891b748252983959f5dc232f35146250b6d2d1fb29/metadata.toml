@@ -1,4 +1,4 @@
-transform = "CommentTransfer"
+transform = "CommentsTransform"
 identifier = "partition"
 model = "gemini-3-flash-preview"
 response = """/// Lomuto Partition Scheme:
@@ -42,9 +42,9 @@ Respond with the Rust function definition with the transferred comments; say not
 
 C function:
 ```c
-/* 
+/*
  * Lomuto Partition Scheme:
- * Partitions the array so that elements < pivot are on the left, 
+ * Partitions the array so that elements < pivot are on the left,
  * and elements >= pivot are on the right.
  */
 int partition (int arr[], int low, int high)
