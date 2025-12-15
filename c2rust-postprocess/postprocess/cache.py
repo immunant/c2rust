@@ -1,7 +1,7 @@
-import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
+from hashlib import sha256
 from pathlib import Path
 from tempfile import gettempdir
 from typing import Any, Self, Union
@@ -146,7 +146,7 @@ class DirectoryCache(AbstractCache):
 
     def get_message_digest(self, messages: list[dict[str, Any]]) -> str:
         messages_str = json.dumps(messages, sort_keys=True)
-        return hashlib.sha256(messages_str.encode()).hexdigest()
+        return sha256(messages_str.encode()).hexdigest()
 
     def cache_dir(
         self,
