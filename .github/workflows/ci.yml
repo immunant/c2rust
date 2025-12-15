@@ -148,6 +148,16 @@ jobs:
 
       - run: uv run ruff check
 
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build tools/split_rust
+        run: cargo build --release
+        working-directory: tools/split_rust
+      
+      - name: Build tools/merge_rust
+        run: cargo build --release
+        working-directory: tools/merge_rust
+
       - name: Install packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
