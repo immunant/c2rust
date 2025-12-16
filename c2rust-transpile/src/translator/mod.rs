@@ -4763,16 +4763,13 @@ impl<'c> Translation<'c> {
                 fields: Some(ref fields),
                 platform_byte_size,
                 ..
-            } => {
-                let name = self.resolve_decl_inner_name(name_decl_id);
-                self.convert_struct_zero_initializer(
-                    name,
-                    decl_id,
-                    fields,
-                    platform_byte_size,
-                    is_static,
-                )?
-            }
+            } => self.convert_struct_zero_initializer(
+                decl_id,
+                name_decl_id,
+                fields,
+                platform_byte_size,
+                is_static,
+            )?,
 
             CDeclKind::Struct { fields: None, .. } => {
                 return Err(TranslationError::generic(
