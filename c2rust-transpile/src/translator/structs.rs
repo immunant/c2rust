@@ -456,57 +456,69 @@ impl<'a> Translation<'a> {
         let fields = fields
             .into_iter()
             .collect::<WithStmts<Vec<syn::FieldValue>>>();
-        let struct_expr = fields.map(|fields| mk().struct_expr(name.as_str(), fields));
+        let mut val = fields.map(|fields| mk().struct_expr(name.as_str(), fields));
 
-        if bitfield_inits.is_empty() {
-            return Ok(struct_expr);
+        if !bitfield_inits.is_empty() {
+            val = val.and_then(|val| -> TranslationResult<_> {
+                let local_pat = mk().mutbl().ident_pat("init");
+                let local_variable = Box::new(mk().local(local_pat, None, Some(val)));
+
+                let mut is_unsafe = false;
+                let mut stmts = vec![mk().local_stmt(local_variable)];
+
+                // Now we must use the bitfield methods to initialize bitfields
+                for (field_name, val) in bitfield_inits {
+                    let field_name_setter = format!("set_{}", field_name);
+                    let struct_ident = mk().ident_expr("init");
+                    is_unsafe |= val.is_unsafe();
+                    let val = val
+                        .to_pure_expr()
+                        .expect("Expected no statements in bitfield initializer");
+                    let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
+
+                    stmts.push(mk().semi_stmt(expr));
+                }
+
+                stmts.push(mk().expr_stmt(mk().ident_expr("init")));
+
+                let val = mk().block_expr(mk().block(stmts));
+
+                if is_unsafe {
+                    Ok(WithStmts::new_unsafe_val(val))
+                } else {
+                    Ok(WithStmts::new_val(val))
+                }
+            })?;
         }
 
-        struct_expr.and_then(|struct_expr| {
-            let local_pat = mk().mutbl().ident_pat("init");
-            let local_variable = Box::new(mk().local(local_pat, None, Some(struct_expr)));
+        // If the structure is split into an outer/inner,
+        // wrap the inner initializer using the outer structure
+        if self.ast_context.has_inner_struct_decl(struct_id) {
+            let outer_name = self
+                .type_converter
+                .borrow()
+                .resolve_decl_name(struct_id)
+                .unwrap();
 
-            let mut is_unsafe = false;
-            let mut stmts = vec![mk().local_stmt(local_variable)];
+            let outer_path = mk().path_expr(vec![outer_name]);
+            val = val.map(|val| mk().call_expr(outer_path, vec![val]));
+        }
 
-            // Now we must use the bitfield methods to initialize bitfields
-            for (field_name, val) in bitfield_inits {
-                let field_name_setter = format!("set_{}", field_name);
-                let struct_ident = mk().ident_expr("init");
-                is_unsafe |= val.is_unsafe();
-                let val = val
-                    .to_pure_expr()
-                    .expect("Expected no statements in bitfield initializer");
-                let expr = mk().method_call_expr(struct_ident, field_name_setter, vec![val]);
-
-                stmts.push(mk().semi_stmt(expr));
-            }
-
-            let struct_ident = mk().ident_expr("init");
-
-            stmts.push(mk().expr_stmt(struct_ident));
-
-            let val = mk().block_expr(mk().block(stmts));
-
-            if is_unsafe {
-                Ok(WithStmts::new_unsafe_val(val))
-            } else {
-                Ok(WithStmts::new_val(val))
-            }
-        })
+        Ok(val)
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
     /// & padding fields
     pub fn convert_struct_zero_initializer(
         &self,
-        name: String,
-        struct_id: CRecordId,
+        decl_id: CRecordId,
+        name_decl_id: CDeclId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
         is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let reorganized_fields = self.get_field_types(struct_id, field_ids, platform_byte_size)?;
+        let name = self.resolve_decl_inner_name(name_decl_id);
+        let reorganized_fields = self.get_field_types(decl_id, field_ids, platform_byte_size)?;
         let mut fields = Vec::with_capacity(reorganized_fields.len());
 
         let mut padding_count = 0;
@@ -514,7 +526,7 @@ impl<'a> Translation<'a> {
             let field_name = self
                 .type_converter
                 .borrow_mut()
-                .declare_padding(struct_id, padding_count);
+                .declare_padding(decl_id, padding_count);
             padding_count += 1;
             field_name
         };
