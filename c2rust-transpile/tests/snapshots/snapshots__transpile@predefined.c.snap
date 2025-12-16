@@ -11,6 +11,7 @@ input_file: c2rust-transpile/tests/snapshots/predefined.c
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 #[no_mangle]
 pub unsafe extern "C" fn predefined() {
     let mut line: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
@@ -18,4 +19,11 @@ pub unsafe extern "C" fn predefined() {
         b"predefined.c\0" as *const u8 as *const ::core::ffi::c_char;
     let mut func: *const ::core::ffi::c_char =
         b"predefined\0" as *const u8 as *const ::core::ffi::c_char;
+}
+#[no_mangle]
+pub unsafe extern "C" fn extension_operator() -> *const ::core::ffi::c_char {
+    return &raw const ::core::mem::transmute::<
+        [u8; 33],
+        [::core::ffi::c_char; 33],
+    >(*b"const char *extension_operator()\0") as *const ::core::ffi::c_char;
 }
