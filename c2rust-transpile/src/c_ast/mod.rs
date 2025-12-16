@@ -559,9 +559,18 @@ impl TypedAstContext {
         expr_id
     }
 
+    /// Returns the expression inside an `__extension__` operator.
+    pub fn resolve_extension(&self, expr_id: CExprId) -> CExprId {
+        if let CExprKind::Unary(_, UnOp::Extension, subexpr, _) = self.index(expr_id).kind {
+            subexpr
+        } else {
+            expr_id
+        }
+    }
+
     /// Unwraps a predefined expression, if there is one.
     pub fn unwrap_predefined_ident(&self, mut expr_id: CExprId) -> CExprId {
-        expr_id = self.resolve_parens(expr_id);
+        expr_id = self.resolve_extension(self.resolve_parens(expr_id));
 
         if let CExprKind::Predefined(_, subexpr) = self.index(expr_id).kind {
             subexpr

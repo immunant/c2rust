@@ -19,3 +19,7 @@ pub unsafe extern "C" fn predefined() {
     let mut func: *const ::core::ffi::c_char =
         b"predefined\0" as *const u8 as *const ::core::ffi::c_char;
 }
+#[no_mangle]
+pub unsafe extern "C" fn extension_operator() -> *const ::core::ffi::c_char {
+    return b"const char *extension_operator()\0" as *const u8 as *const ::core::ffi::c_char;
+}
