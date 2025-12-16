@@ -1,5 +1,6 @@
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
 from textwrap import dedent
 
@@ -12,6 +13,7 @@ from postprocess.definitions import (
     update_rust_definition,
 )
 from postprocess.models import AbstractGenerativeModel
+from postprocess.transforms.base import AbstractTransform
 from postprocess.utils import get_highlighted_c, get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -20,7 +22,7 @@ SYSTEM_INSTRUCTION = (
 )
 
 
-class CommentTransferPrompt:
+class CommentsTransformPrompt:
     c_function: str
     rust_function: str
     prompt_text: str
@@ -49,12 +51,54 @@ class CommentTransferPrompt:
         )
 
 
-class CommentTransfer:
+class CommentsTransform(AbstractTransform):
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
+        super().__init__(SYSTEM_INSTRUCTION)
         self.cache = cache
         self.model = model
 
-    def transfer_comments(
+    @staticmethod
+    def get_validation_fn(c_comments: list[str]) -> Callable[[str], str]:
+        def validate_response(rust_fn: str) -> str:
+            """Check whether the Rust function's comments match the C source.
+
+            Returns a success message when every comment matches; otherwise
+            enumerates missing or extra comments so the model can fix them.
+
+            param: rust_fn: The Rust function definition to validate.
+            return: A diagnostic message starting with `SUCCESS` or `FAILURE`.
+            """
+            nonlocal c_comments
+            rust_fn = remove_backticks(rust_fn)
+            rust_comments = get_rust_comments(rust_fn)
+            logging.debug(f"{rust_comments=}")
+
+            diagnostic = "SUCCESS: Comments transferred correctly!"
+            if rust_comments == c_comments:
+                logging.debug(diagnostic)
+                return diagnostic
+
+            diagnostic = "FAILURE: Comments not transferred correctly."
+            rust_comments = set(rust_comments)
+            for c_comment in c_comments:
+                if c_comment not in rust_comments:
+                    diagnostic += (
+                        f"\nMissing comment in Rust function: {c_comment}. Insert it!"
+                    )
+
+            c_comments_set = set(c_comments)
+            for rust_comment in rust_comments:
+                if rust_comment not in c_comments_set:
+                    diagnostic += (
+                        f"\nExtra comment in Rust function: {rust_comment}. Remove it!"
+                    )
+
+            logging.debug(diagnostic)
+            return diagnostic
+
+        return validate_response
+
+    def apply(
         self, root_rust_source_file: Path, ident_filter: str | None = None
     ) -> None:
         pattern = re.compile(ident_filter) if ident_filter else None
@@ -65,7 +109,7 @@ class CommentTransfer:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
-        prompts: list[CommentTransferPrompt] = []
+        prompts: list[CommentsTransformPrompt] = []
         for identifier, rust_definition in rust_definitions.items():
             if pattern and not pattern.search(identifier):
                 continue
@@ -108,7 +152,7 @@ class CommentTransfer:
             prompt_text = dedent(prompt_text).strip()
 
             prompts.append(
-                CommentTransferPrompt(
+                CommentsTransformPrompt(
                     c_function=c_definition,
                     rust_function=rust_definition,
                     prompt_text=prompt_text,
@@ -132,10 +176,25 @@ class CommentTransfer:
                     messages=messages,
                 )
             ):
-                response = self.model.generate_with_tools(messages)
+                c_comments = get_c_comments(prompt.c_function)
+                logging.debug(f"{c_comments=}")
+
+                # TODO: One-size-fits-all validation strategy may not be ideal.
+                #       Maybe the validator needs to be customized to the model?
+                validate_response = self.get_validation_fn(c_comments)
+
+                response = self.model.generate_with_tools(
+                    messages, tools=[validate_response]
+                )
                 if response is None:
                     logging.error("Model returned no response")
                     continue
+
+                validation_result = validate_response(response)
+                assert validation_result.startswith("SUCCESS"), (
+                    "Model response failed validation: " + validation_result
+                )
+
                 self.cache.update(
                     transform=transform,
                     identifier=identifier,
@@ -145,14 +204,6 @@ class CommentTransfer:
                 )
 
             rust_fn = remove_backticks(response)
-
-            c_comments = get_c_comments(prompt.c_function)
-            logging.debug(f"{c_comments=}")
-
-            rust_comments = get_rust_comments(rust_fn)
-            logging.debug(f"{rust_comments=}")
-
-            assert c_comments == rust_comments
 
             print(get_highlighted_rust(rust_fn))
 
