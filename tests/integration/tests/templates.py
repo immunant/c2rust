@@ -102,14 +102,14 @@ def render_script(template: str, out_path: str, params: Dict):
     os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
 
 
-def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path]:
+def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
 
     def render_stage(
         stage_conf: Mapping[str, Any] | None, filename: str
-    ) -> Generator[Path]:
+    ) -> Generator[Path, None, None]:
         """
         Yield generated paths.
         """
@@ -139,7 +139,7 @@ def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path]:
         yield from render_stage(yaml.get(key), fname)
 
 
-def autogen_refactor(conf_file, yaml: Dict) -> Generator[str]:
+def autogen_refactor(conf_file, yaml: Dict) -> Generator[str, None, None]:
     """
     Yield generated paths.
     """
@@ -170,7 +170,7 @@ def autogen_refactor(conf_file, yaml: Dict) -> Generator[str]:
                 yield Path(out_path)
 
 
-def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path]:
+def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -202,7 +202,7 @@ def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path]:
             yield Path(out_path)
 
 
-def autogen(conf: Config) -> Generator[Path]:
+def autogen(conf: Config) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
