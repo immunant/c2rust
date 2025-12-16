@@ -240,6 +240,7 @@ def run_tests(conf: Config, generated_scripts: set[Path]):
     with ThreadPoolExecutor() as executor:
         results = executor.map(run, tests)
 
+    results = [result for result in results]
     for result in results:
         print(f"{result.test.name} took {result.time}")
     if not all(result.passed for result in results):
