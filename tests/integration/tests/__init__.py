@@ -238,7 +238,7 @@ def run_tests(conf: Config, generated_scripts: set[Path]):
         return TestResult(test=test, passed=passed, time=time)
 
     with ThreadPoolExecutor() as executor:
-        results = executor.map(run, tests)
+        results = list(executor.map(run, tests))
 
     for result in results:
         print(f"{result.test.name} took {result.time}")
