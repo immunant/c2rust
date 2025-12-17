@@ -21,7 +21,7 @@ pub const B: C2RustUnnamed = 1;
 pub const A: C2RustUnnamed = 0;
 unsafe extern "C" fn side_effect() -> ::core::ffi::c_int {
     puts(b"the return of side effect\0" as *const u8 as *const ::core::ffi::c_char);
-    return 10 as ::core::ffi::c_int;
+    10 as ::core::ffi::c_int
 }
 #[no_mangle]
 pub unsafe extern "C" fn unary_without_side_effect() {
