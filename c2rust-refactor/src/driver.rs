@@ -254,7 +254,11 @@ pub fn create_config(args: &[String]) -> interface::Config {
     let output_dir = matches.opt_str("out-dir").map(|o| PathBuf::from(&o));
     let output_file = matches.opt_str("o").map(|o| PathBuf::from(&o));
 
-    assert!(matches.free.len() == 1, "expected exactly one input file");
+    assert!(
+        matches.free.len() == 1,
+        "expected exactly one input file, but found: {:?}",
+        matches.free
+    );
     let input_path = Some(Path::new(&matches.free[0]).to_owned());
     let input = Input::File(input_path.as_ref().unwrap().clone());
 
