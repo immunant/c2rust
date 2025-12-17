@@ -37,5 +37,5 @@ pub unsafe extern "C" fn alloca_sum(
         alloca2 = alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_int;
         *alloca2 = val2;
     }
-    return *alloca1 + *alloca2;
+    *alloca1 + *alloca2
 }

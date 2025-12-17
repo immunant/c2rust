@@ -14,12 +14,13 @@ use log::{error, info, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::{
-    AttrStyle, BareVariadic, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast, ExprField,
-    ExprIndex, ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn,
-    ForeignItemMacro, ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum,
-    ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct,
-    ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment,
-    ReturnType, Stmt, Type, TypeTuple, UseTree, Visibility,
+    Arm, AttrStyle, BareVariadic, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast,
+    ExprField, ExprIf, ExprIndex, ExprMatch, ExprParen, ExprReturn, ExprTuple, ExprUnary,
+    ExprUnsafe, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic,
+    ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod,
+    ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemTraitAlias, ItemType,
+    ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType, Stmt, Type, TypeTuple,
+    UseTree, Visibility,
 };
 use syn::{BinOp, UnOp}; // To override `c_ast::{BinOp,UnOp}` from glob import.
 
@@ -341,12 +342,7 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
             }),
             None,
         )) if stmts.is_empty() => return block,
-        Some(mut s) => {
-            if let Stmt::Expr(e, None) = s {
-                s = Stmt::Expr(e, Some(Default::default()));
-            }
-            stmts.push(s);
-        }
+        Some(s) => stmts.push(s),
     }
     mk().block(stmts)
 }
@@ -5388,7 +5384,77 @@ impl<'c> Translation<'c> {
 // If the very last statement in the vector is a `return`, either cut it out or replace it with
 // the returned value.
 fn strip_tail_return(stmts: &mut Vec<Stmt>) {
-    if let Some(Stmt::Expr(Expr::Return(ExprReturn { expr: None, .. }), _)) = stmts.last() {
-        stmts.pop();
+    if let Some(Stmt::Expr(expr, semi)) = stmts.last_mut() {
+        *semi = None;
+        strip_tail_return_expr(expr);
+
+        // If the expression was replaced with an empty tuple (), then just delete it altogether.
+        if matches!(expr, Expr::Tuple(ExprTuple { elems, .. }) if elems.is_empty()) {
+            stmts.pop();
+        }
+    }
+}
+
+// If a return is found, replace it with the returned expression.
+// If an expression of another kind is found, and it contains a subexpression that becomes the
+// final value of the whole, then recurse down into it.
+fn strip_tail_return_expr(expr: &mut Expr) {
+    match expr {
+        old_expr @ Expr::Return(ExprReturn { .. }) => {
+            // placeholder value to allow swapping
+            let temp = mem::replace(old_expr, Expr::Verbatim(Default::default()));
+            // TODO: Rust 1.65: use let-else
+            let expr = match temp {
+                Expr::Return(ExprReturn { expr, .. }) => expr,
+                _ => unreachable!(),
+            };
+
+            if let Some(expr) = expr {
+                // Replace return + expression with the expression.
+                *old_expr = *expr;
+            } else {
+                // Replace standalone return with ()
+                *old_expr = *mk().tuple_expr(vec![]);
+            }
+        }
+
+        // Simple blocks, recurse down
+        // TODO: add when syn is updated
+        // | Expr::Const(ExprConst { block, .. })
+        Expr::Block(ExprBlock { block, .. }) | Expr::Unsafe(ExprUnsafe { block, .. }) => {
+            strip_tail_return(&mut block.stmts);
+        }
+
+        // Recurse down both branches of the `if`
+        Expr::If(ExprIf {
+            then_branch,
+            else_branch,
+            ..
+        }) => {
+            strip_tail_return(&mut then_branch.stmts);
+
+            // If the function returns a value, then there must be an else_branch,
+            // but if it returns void then there doesn't have to be. For example
+            //
+            //     if condition {
+            //         // stuff
+            //         return;
+            //     }
+            // } // end of function
+            if let Some((_, else_branch)) = else_branch {
+                strip_tail_return_expr(else_branch);
+            }
+        }
+
+        // Recurse down all arms of the `match`
+        Expr::Match(ExprMatch { arms, .. }) => {
+            for Arm { body, .. } in arms {
+                strip_tail_return_expr(body);
+            }
+        }
+
+        // Other expression types do not have blocks with tail expressions, whose value becomes
+        // that of the whole expression.
+        _ => (),
     }
 }
