@@ -29,7 +29,7 @@ unsafe fn main_0() -> ::core::ffi::c_int {
     dec(fp);
     f.len = 6 as ::core::ffi::c_int;
     dec(fp);
-    return 0;
+    0
 }
 pub fn main() {
     unsafe { ::std::process::exit(main_0() as i32) }
