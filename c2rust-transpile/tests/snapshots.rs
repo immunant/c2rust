@@ -39,6 +39,7 @@ fn config() -> TranspilerConfig {
         output_dir: None,
         translate_const_macros: Default::default(),
         translate_fn_macros: Default::default(),
+        disable_rustfmt: false,
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,

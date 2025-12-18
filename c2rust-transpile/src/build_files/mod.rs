@@ -226,7 +226,10 @@ fn emit_build_rs(
     let output = reg.render("build.rs", &json).unwrap();
     let output_path = build_dir.join("build.rs");
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
-    rustfmt(&output_path, build_dir);
+
+    if !tcfg.disable_rustfmt {
+        rustfmt(&output_path, build_dir);
+    }
 
     Some(path)
 }
@@ -256,7 +259,10 @@ fn emit_lib_rs(
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
-    rustfmt(&output_path, build_dir);
+
+    if !tcfg.disable_rustfmt {
+        rustfmt(&output_path, build_dir);
+    }
 
     Some(path)
 }

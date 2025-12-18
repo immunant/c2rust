@@ -97,6 +97,7 @@ pub struct TranspilerConfig {
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: TranslateMacros,
     pub translate_fn_macros: TranslateMacros,
+    pub disable_rustfmt: bool,
     pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
@@ -517,14 +518,18 @@ fn reorganize_definitions(
     }
 
     invoke_refactor(build_dir)?;
-    // fix the formatting of the output of `c2rust-refactor`
-    let status = Command::new("cargo")
-        .args(["fmt"])
-        .current_dir(build_dir)
-        .status()?;
-    if !status.success() {
-        warn!("cargo fmt failed, code may not be well-formatted");
+
+    if !tcfg.disable_rustfmt {
+        // fix the formatting of the output of `c2rust-refactor`
+        let status = Command::new("cargo")
+            .args(["fmt"])
+            .current_dir(build_dir)
+            .status()?;
+        if !status.success() {
+            warn!("cargo fmt failed, code may not be well-formatted");
+        }
     }
+
     Ok(())
 }
 
@@ -642,7 +647,9 @@ fn transpile_single(
         ),
     };
 
-    rustfmt(&output_path, build_dir);
+    if !tcfg.disable_rustfmt {
+        rustfmt(&output_path, build_dir);
+    }
 
     Ok((output_path, pragmas, crates))
 }
