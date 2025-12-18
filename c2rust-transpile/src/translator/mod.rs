@@ -2712,68 +2712,44 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad condition type"))?;
 
         let null_pointer_case =
-            |negated: bool, ptr: CExprId| -> TranslationResult<WithStmts<Box<Expr>>> {
+            |ptr: CExprId, is_true: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
                 let ptr_type = self.ast_context[ptr]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
-                val.and_then(|e| {
-                    Ok(WithStmts::new_val(
-                        if self.ast_context.is_function_pointer(ptr_type) {
-                            if negated {
-                                mk().method_call_expr(e, "is_some", vec![])
-                            } else {
-                                mk().method_call_expr(e, "is_none", vec![])
-                            }
-                        } else {
-                            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
-                            if ctx.is_const {
-                                return Err(format_translation_err!(
-                                    None,
-                                    "cannot check nullity of pointer in `const` context",
-                                ));
-                            }
-                            let is_null = mk().method_call_expr(e, "is_null", vec![]);
-                            if negated {
-                                mk().unary_expr(UnOp::Not(Default::default()), is_null)
-                            } else {
-                                is_null
-                            }
-                        },
-                    ))
-                })
+
+                val.result_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_true))
             };
 
         match self.ast_context[cond_id].kind {
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(ptr, target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(ptr, target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(ptr, !target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(ptr, !target)
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
                 self.convert_condition(ctx, !target, subexpr_id)
             }
-
             _ => {
                 // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
                 // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
@@ -4956,30 +4932,13 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<Box<Expr>> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
-        Ok(if self.ast_context.is_function_pointer(ty_id) {
-            if target {
-                mk().method_call_expr(val, "is_some", vec![])
-            } else {
-                mk().method_call_expr(val, "is_none", vec![])
-            }
-        } else if ty.is_pointer() {
-            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
-            if ctx.is_const {
-                return Err(format_translation_err!(
-                    None,
-                    "cannot check nullity of pointer in `const` context",
-                ));
-            }
-            let mut res = mk().method_call_expr(val, "is_null", vec![]);
-            if target {
-                res = mk().unary_expr(UnOp::Not(Default::default()), res)
-            }
-            res
+        if ty.is_pointer() {
+            self.convert_pointer_is_null(ctx, ty_id, val, !target)
         } else if ty.is_bool() {
             if target {
-                val
+                Ok(val)
             } else {
-                mk().unary_expr(UnOp::Not(Default::default()), val)
+                Ok(mk().unary_expr(UnOp::Not(Default::default()), val))
             }
         } else {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
@@ -5026,11 +4985,11 @@ impl<'c> Translation<'c> {
             };
 
             if target {
-                mk().binary_expr(BinOp::Ne(Default::default()), val, zero)
+                Ok(mk().binary_expr(BinOp::Ne(Default::default()), val, zero))
             } else {
-                mk().binary_expr(BinOp::Eq(Default::default()), val, zero)
+                Ok(mk().binary_expr(BinOp::Eq(Default::default()), val, zero))
             }
-        })
+        }
     }
 
     pub fn with_scope<F, A>(&self, f: F) -> A

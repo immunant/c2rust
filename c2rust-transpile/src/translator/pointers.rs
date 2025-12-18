@@ -565,4 +565,36 @@ impl<'c> Translation<'c> {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
     }
+
+    pub fn convert_pointer_is_null(
+        &self,
+        ctx: ExprContext,
+        ptr_type: CTypeId,
+        mut val: Box<Expr>,
+        is_true: bool,
+    ) -> TranslationResult<Box<Expr>> {
+        if self.ast_context.is_function_pointer(ptr_type) {
+            if is_true {
+                val = mk().method_call_expr(val, "is_none", vec![]);
+            } else {
+                val = mk().method_call_expr(val, "is_some", vec![]);
+            }
+        } else {
+            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "cannot check nullity of pointer in `const` context",
+                ));
+            }
+
+            val = mk().method_call_expr(val, "is_null", vec![]);
+
+            if !is_true {
+                val = mk().unary_expr(UnOp::Not(Default::default()), val);
+            }
+        }
+
+        Ok(val)
+    }
 }
