@@ -18,6 +18,7 @@ refactor:
   transforms:
     - rename_unnamed
     - reorganize_definitions
+    - shorten_imported_paths
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs
