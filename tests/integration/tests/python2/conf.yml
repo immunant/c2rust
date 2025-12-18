@@ -25,6 +25,7 @@ refactor:
   transforms:
     - rename_unnamed
     - reorganize_definitions
+    - shorten_imported_paths
     - remove_unused_labels
     - remove_null_terminator
     - bytestr_to_str
