@@ -25,51 +25,6 @@ impl<'c> Translation<'c> {
         Ok(mk().cast_expr(mk().lit_expr(lit), target_ty))
     }
 
-    /// Given an integer value this attempts to either generate the corresponding enum
-    /// variant directly, otherwise it transmutes a number to the enum type.
-    pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
-        let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
-            CTypeKind::Enum(def_id) => def_id,
-            _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
-        };
-
-        let (variants, underlying_type_id) = match self.ast_context[def_id].kind {
-            CDeclKind::Enum {
-                ref variants,
-                integral_type,
-                ..
-            } => (variants, integral_type),
-            _ => panic!("{:?} does not point to an `enum` declaration", def_id),
-        };
-
-        for &variant_id in variants {
-            match self.ast_context[variant_id].kind {
-                CDeclKind::EnumConstant { value: v, .. } => {
-                    if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
-                        let name = self.renamer.borrow().get(&variant_id).unwrap();
-
-                        // Import the enum variant if needed
-                        self.add_import(variant_id, &name);
-                        return mk().path_expr(vec![name]);
-                    }
-                }
-                _ => panic!("{:?} does not point to an enum variant", variant_id),
-            }
-        }
-
-        let underlying_type_id =
-            underlying_type_id.expect("Attempt to construct value of forward declared enum");
-        let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
-            CTypeKind::UInt => mk().lit_expr(mk().int_unsuffixed_lit((value as u32) as u128)),
-            CTypeKind::ULong => mk().lit_expr(mk().int_unsuffixed_lit((value as u64) as u128)),
-            _ => signed_int_expr(value),
-        };
-
-        let target_ty = self.convert_type(enum_type_id).unwrap();
-
-        mk().cast_expr(value, target_ty)
-    }
-
     /// Return whether the literal can be directly translated as this type.
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
