@@ -5,7 +5,9 @@ use std::path::Path;
 use std::process::Command;
 
 fn process_ast(mode: &str, dest: &Path) {
-    let mut p = Command::new("gen/process_ast.py")
+    let mut p = Command::new("uv")
+        .arg("run")
+        .arg("gen/process_ast.py")
         .arg(mode)
         .arg(dest)
         .spawn()
