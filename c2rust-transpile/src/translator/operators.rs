@@ -221,9 +221,12 @@ impl<'c> Translation<'c> {
         } else {
             let compute_lhs_resolved_ty = &self.ast_context.resolve_type(compute_lhs_type_id.ctype);
             let lhs_type = self.convert_type(compute_lhs_type_id.ctype)?;
+            let resolve_lhs_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
 
-            // We can't simply as-cast into a non primitive like f128
-            let lhs = if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
+            let lhs = if let CTypeKind::Enum(..) = resolve_lhs_kind {
+                self.convert_cast_from_enum(compute_lhs_type_id.ctype, read)?
+            } else if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
+                // We can't simply as-cast into a non primitive like f128
                 self.use_crate(ExternCrate::F128);
 
                 let fn_path = mk().abs_path_expr(vec!["f128", "f128", "from"]);
@@ -245,11 +248,9 @@ impl<'c> Translation<'c> {
                 None,
             )?;
 
-            let resolve_lhs_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-
             val = if let &CTypeKind::Enum(enum_id) = resolve_lhs_kind {
                 val.result_map(|val| {
-                    self.convert_cast_to_enum(ctx, lhs_type_id.ctype, enum_id, None, val)
+                    self.convert_cast_to_enum(ctx, enum_id, None, compute_lhs_type_id.ctype, val)
                 })?
             } else if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
                 // We can't as-cast from a non primitive like f128 back to the result_type
@@ -487,9 +488,9 @@ impl<'c> Translation<'c> {
                                 val = if let &CTypeKind::Enum(enum_id) = expr_resolved_ty_kind {
                                     val.result_map(|val| self.convert_cast_to_enum(
                                         ctx,
-                                        expr_type_id.ctype,
                                         enum_id,
                                         None,
+                                        expr_type_id.ctype,
                                         val,
                                     ))?
                                 } else {

@@ -15,10 +15,12 @@ input_file: c2rust-transpile/tests/snapshots/exprs.c
 extern "C" {
     fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }
-pub type C2Rust_Unnamed = ::core::ffi::c_uint;
-pub const C: C2Rust_Unnamed = 2;
-pub const B: C2Rust_Unnamed = 1;
-pub const A: C2Rust_Unnamed = 0;
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
+pub const C: C2Rust_Unnamed = C2Rust_Unnamed(2);
+pub const B: C2Rust_Unnamed = C2Rust_Unnamed(1);
+pub const A: C2Rust_Unnamed = C2Rust_Unnamed(0);
 unsafe extern "C" fn side_effect() -> ::core::ffi::c_int {
     puts(b"the return of side effect\0" as *const u8 as *const ::core::ffi::c_char);
     return 10 as ::core::ffi::c_int;
@@ -54,7 +56,7 @@ pub unsafe extern "C" fn unary_with_side_effect() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn compound_literal() {
-    let mut i: ::core::ffi::c_int = B as ::core::ffi::c_int;
+    let mut i: ::core::ffi::c_int = B.0 as ::core::ffi::c_int;
 }
 #[no_mangle]
 pub unsafe extern "C" fn statement_expr() {
