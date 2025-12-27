@@ -207,8 +207,10 @@ impl TypedAstContext {
         if cfg!(debug_assertions) {
             if let Some(root_include) = includes.first() {
                 let file_id = self.file_map[root_include.fileid as usize];
-                let file = &self.files[file_id];
-                assert_eq!(file.path.as_deref(), Some(self.main_file.as_path()));
+                // headers included via `-include` will not have an include path
+                if let Some(path) = self.get_file_path(file_id) {
+                    assert_eq!(path, self.main_file.as_path());
+                }
             }
         }
         includes
