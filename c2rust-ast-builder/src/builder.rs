@@ -1373,6 +1373,26 @@ impl Builder {
         }))
     }
 
+    pub fn const_impl_item<I>(self, name: I, ty: Box<Type>, init: Box<Expr>) -> ImplItem
+    where
+        I: Make<Ident>,
+    {
+        let name = name.make(&self);
+        ImplItem::Const(ImplItemConst {
+            attrs: self.attrs,
+            vis: self.vis,
+            defaultness: None,
+            const_token: Token![const](self.span),
+            ident: name,
+            generics: self.generics,
+            colon_token: Token![:](self.span),
+            ty: *ty,
+            eq_token: Token![=](self.span),
+            expr: *init,
+            semi_token: Token![;](self.span),
+        })
+    }
+
     pub fn fn_item<S>(self, sig: S, block: Block) -> Box<Item>
     where
         S: Make<Signature>,

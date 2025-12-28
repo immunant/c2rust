@@ -673,7 +673,6 @@ pub fn translate(
                 Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
                 Typedef { ref name, .. } => Name::Type(name),
                 Function { ref name, .. } => Name::Var(name),
-                EnumConstant { ref name, .. } => Name::Var(name),
                 Variable { ref ident, .. } if t.ast_context.c_decls_top.contains(&decl_id) => {
                     Name::Var(ident)
                 }
@@ -751,7 +750,6 @@ pub fn translate(
                 let needs_export = match decl.kind {
                     Struct { .. } => true,
                     Enum { .. } => true,
-                    EnumConstant { .. } => true,
                     Union { .. } => true,
                     Typedef { .. } => {
                         // Only check the key as opposed to `contains`
@@ -1851,11 +1849,13 @@ impl<'c> Translation<'c> {
             )),
 
             Enum {
+                ref variants,
                 integral_type: Some(integral_type),
                 ..
-            } => self.convert_enum(decl_id, span, integral_type),
+            } => self.convert_enum(decl_id, span, integral_type, variants),
 
-            EnumConstant { value, .. } => self.convert_enum_constant(decl_id, span, value),
+            // EnumConstant is translated as part of Enum.
+            EnumConstant { .. } => Ok(ConvertedDecl::NoItem),
 
             // We can allow non top level function declarations (i.e. extern
             // declarations) without any problem. Clang doesn't support nested
@@ -3440,82 +3440,83 @@ impl<'c> Translation<'c> {
                 }
 
                 let varname = decl.get_name().expect("expected variable name").to_owned();
-                let rustname = self
-                    .renamer
-                    .borrow_mut()
-                    .get(&decl_id)
-                    .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
-
-                // Import the referenced global decl into our submodule
-                if self.tcfg.reorganize_definitions {
-                    self.add_import(decl_id, &rustname);
-                    // match decl {
-                    //     CDeclKind::Variable { is_defn: false, .. } => {}
-                    //     _ => self.add_import(decl_id, &rustname),
-                    // }
-                }
-
-                let mut val = mk().path_expr(vec![rustname]);
-
-                // If the variable is volatile and used as something that isn't an LValue, this
-                // constitutes a volatile read.
-                if lrvalue.is_rvalue() && qual_ty.qualifiers.is_volatile {
-                    val = self.volatile_read(val, qual_ty)?;
-                }
-
-                // If the variable is actually an `EnumConstant`, we need to add a cast to the
-                // expected integral type.
-                if let &CDeclKind::EnumConstant { .. } = decl {
-                    val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
-                }
-
-                // If we are referring to a function and need its address, we
-                // need to cast it to fn() to ensure that it has a real address.
                 let mut set_unsafe = false;
-                if ctx.needs_address() {
-                    if let CDeclKind::Function { parameters, .. } = decl {
-                        let ty = self.convert_type(qual_ty.ctype)?;
-                        let actual_ty = self
-                            .type_converter
-                            .borrow_mut()
-                            .knr_function_type_with_parameters(
-                                &self.ast_context,
-                                qual_ty.ctype,
-                                parameters,
-                            )?;
-                        if let Some(actual_ty) = actual_ty {
-                            if actual_ty != ty {
-                                // If we're casting a concrete function to
-                                // a K&R function pointer type, use transmute
-                                self.import_type(qual_ty.ctype);
 
-                                val = transmute_expr(actual_ty, ty, val);
-                                set_unsafe = true;
-                            }
-                        } else {
-                            let decl_kind = &self.ast_context[decl_id].kind;
-                            let kind_with_declared_args =
-                                self.ast_context.fn_decl_ty_with_declared_args(decl_kind);
+                let mut val = if let &CDeclKind::EnumConstant { .. } = decl {
+                    self.convert_enum_constant_decl_ref(decl_id, qual_ty.ctype)?
+                } else {
+                    let rustname = self
+                        .renamer
+                        .borrow_mut()
+                        .get(&decl_id)
+                        .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
 
-                            if let Some(ty) = self
-                                .ast_context
-                                .type_for_kind(&kind_with_declared_args)
-                                .map(CQualTypeId::new)
-                            {
-                                let ty = self.convert_type(ty.ctype)?;
-                                val = mk().cast_expr(val, ty);
+                    // Import the referenced global decl into our submodule
+                    if self.tcfg.reorganize_definitions {
+                        self.add_import(decl_id, &rustname);
+                        // match decl {
+                        //     CDeclKind::Variable { is_defn: false, .. } => {}
+                        //     _ => self.add_import(decl_id, &rustname),
+                        // }
+                    }
+
+                    let mut val = mk().path_expr(vec![rustname]);
+
+                    // If the variable is volatile and used as something that isn't an LValue, this
+                    // constitutes a volatile read.
+                    if lrvalue.is_rvalue() && qual_ty.qualifiers.is_volatile {
+                        val = self.volatile_read(val, qual_ty)?;
+                    }
+
+                    // If we are referring to a function and need its address, we
+                    // need to cast it to fn() to ensure that it has a real address.
+                    if ctx.needs_address() {
+                        if let CDeclKind::Function { parameters, .. } = decl {
+                            let ty = self.convert_type(qual_ty.ctype)?;
+                            let actual_ty = self
+                                .type_converter
+                                .borrow_mut()
+                                .knr_function_type_with_parameters(
+                                    &self.ast_context,
+                                    qual_ty.ctype,
+                                    parameters,
+                                )?;
+                            if let Some(actual_ty) = actual_ty {
+                                if actual_ty != ty {
+                                    // If we're casting a concrete function to
+                                    // a K&R function pointer type, use transmute
+                                    self.import_type(qual_ty.ctype);
+
+                                    val = transmute_expr(actual_ty, ty, val);
+                                    set_unsafe = true;
+                                }
                             } else {
-                                val = mk().cast_expr(val, ty);
+                                let decl_kind = &self.ast_context[decl_id].kind;
+                                let kind_with_declared_args =
+                                    self.ast_context.fn_decl_ty_with_declared_args(decl_kind);
+
+                                if let Some(ty) = self
+                                    .ast_context
+                                    .type_for_kind(&kind_with_declared_args)
+                                    .map(CQualTypeId::new)
+                                {
+                                    let ty = self.convert_type(ty.ctype)?;
+                                    val = mk().cast_expr(val, ty);
+                                } else {
+                                    val = mk().cast_expr(val, ty);
+                                }
                             }
                         }
                     }
-                }
 
-                if let CTypeKind::VariableArray(..) =
-                    self.ast_context.resolve_type(qual_ty.ctype).kind
-                {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
-                }
+                    if let CTypeKind::VariableArray(..) =
+                        self.ast_context.resolve_type(qual_ty.ctype).kind
+                    {
+                        val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
+                    }
+
+                    val
+                };
 
                 // if the context wants a different type, add a cast
                 if let Some(expected_ty) = override_ty {
