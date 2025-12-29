@@ -85,44 +85,44 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         enum_type_id: CTypeId,
         enum_id: CEnumId,
-        expr: CExprId,
+        expr: Option<CExprId>,
         val: Box<Expr>,
     ) -> TranslationResult<Box<Expr>> {
-        match self.ast_context[expr].kind {
-            // This is the case of finding a variable which is an `EnumConstant` of the same enum
-            // we are casting to. Here, we can just remove the extraneous cast instead of generating
-            // a new one.
-            CExprKind::DeclRef(_, enum_constant_id, _)
-                if self.is_variant_of_enum(enum_id, enum_constant_id) =>
-            {
-                // `enum`s shouldn't need portable `override_ty`s.
-                let expr_is_macro = matches!(
-                    self.convert_const_macro_expansion(ctx, expr, None),
-                    Ok(Some(_))
-                );
-
-                // If this DeclRef expanded to a const macro, we actually need to insert a cast,
-                // because the translation of a const macro skips implicit casts in its context.
-                if !expr_is_macro {
-                    return Ok(self.enum_constant_expr(enum_constant_id));
-                }
-            }
-
-            CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                return Ok(self.enum_for_i64(enum_type_id, i as i64));
-            }
-
-            CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id, _) => {
-                if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
-                    &self.ast_context[subexpr_id].kind
+        if let Some(expr) = expr {
+            match self.ast_context[expr].kind {
+                // This is the case of finding a variable which is an `EnumConstant` of the same
+                // enum we are casting to. Here, we can just remove the extraneous cast instead of
+                // generating a new one.
+                CExprKind::DeclRef(_, enum_constant_id, _)
+                    if self.is_variant_of_enum(enum_id, enum_constant_id) =>
                 {
-                    return Ok(self.enum_for_i64(enum_type_id, -(i as i64)));
-                }
-            }
+                    // `enum`s shouldn't need portable `override_ty`s.
+                    let expr_is_macro = matches!(
+                        self.convert_const_macro_expansion(ctx, expr, None),
+                        Ok(Some(_))
+                    );
 
-            // In all other cases, a cast to an enum requires a `transmute` - Rust enums cannot be
-            // converted into integral types as easily as C ones.
-            _ => {}
+                    // If this DeclRef expanded to a const macro, we actually need to insert a cast,
+                    // because the translation of a const macro skips implicit casts in its context.
+                    if !expr_is_macro {
+                        return Ok(self.enum_constant_expr(enum_constant_id));
+                    }
+                }
+
+                CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
+                    return Ok(self.enum_for_i64(enum_type_id, i as i64));
+                }
+
+                CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id, _) => {
+                    if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
+                        &self.ast_context[subexpr_id].kind
+                    {
+                        return Ok(self.enum_for_i64(enum_type_id, -(i as i64)));
+                    }
+                }
+
+                _ => {}
+            }
         }
 
         let target_ty = self.convert_type(enum_type_id)?;
@@ -130,7 +130,7 @@ impl<'c> Translation<'c> {
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
-    /// variant directly, otherwise it transmutes a number to the enum type.
+    /// variant directly, otherwise it converts a number to the enum type.
     fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
         let enum_id = match self.ast_context.resolve_type(enum_type_id).kind {
             CTypeKind::Enum(enum_id) => enum_id,

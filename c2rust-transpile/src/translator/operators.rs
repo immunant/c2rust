@@ -199,6 +199,7 @@ impl<'c> Translation<'c> {
 
     fn convert_assignment_operator_aux(
         &self,
+        ctx: ExprContext,
         bin_op_kind: BinOp,
         bin_op: c_ast::BinOp,
         read: Box<Expr>,
@@ -230,7 +231,7 @@ impl<'c> Translation<'c> {
 
                 mk().call_expr(fn_path, args)
             } else {
-                mk().cast_expr(read, lhs_type.clone())
+                mk().cast_expr(read, lhs_type)
             };
             let ty = self.convert_type(compute_res_type_id.ctype)?;
             let mut val = self.convert_binary_operator(
@@ -244,25 +245,20 @@ impl<'c> Translation<'c> {
                 None,
             )?;
 
-            let is_enum_result = self
-                .ast_context
-                .resolve_type(lhs_type_id.ctype)
-                .kind
-                .is_enum();
-            let result_type = self.convert_type(lhs_type_id.ctype)?;
-            let val = if is_enum_result {
-                val.set_unsafe();
-                val.map(|val| transmute_expr(lhs_type, result_type, val))
-            } else {
-                // We can't as-cast from a non primitive like f128 back to the result_type
-                if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
-                    let resolved_lhs_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+            let resolve_lhs_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
 
-                    self.f128_cast_to(val, resolved_lhs_kind)?
-                } else {
-                    val.map(|val| mk().cast_expr(val, result_type))
-                }
+            val = if let &CTypeKind::Enum(enum_id) = resolve_lhs_kind {
+                val.result_map(|val| {
+                    self.convert_cast_to_enum(ctx, lhs_type_id.ctype, enum_id, None, val)
+                })?
+            } else if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
+                // We can't as-cast from a non primitive like f128 back to the result_type
+                self.f128_cast_to(val, resolve_lhs_kind)?
+            } else {
+                let result_type = self.convert_type(lhs_type_id.ctype)?;
+                val.map(|val| mk().cast_expr(val, result_type))
             };
+
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
     }
@@ -473,7 +469,7 @@ impl<'c> Translation<'c> {
                                 let lhs_type =
                                     self.convert_type(compute_lhs_type_id.unwrap().ctype)?;
                                 let write_type = self.convert_type(expr_type_id.ctype)?;
-                                let lhs = mk().cast_expr(read.clone(), lhs_type.clone());
+                                let lhs = mk().cast_expr(read.clone(), lhs_type);
                                 let ty = self.convert_type(result_type_id.ctype)?;
                                 let mut val = self.convert_binary_operator(
                                     op,
@@ -486,16 +482,21 @@ impl<'c> Translation<'c> {
                                     None,
                                 )?;
 
-                                let expr_resolved_ty =
-                                    self.ast_context.resolve_type(expr_type_id.ctype);
-                                let is_enum_result = expr_resolved_ty.kind.is_enum();
-                                let expr_type = self.convert_type(expr_type_id.ctype)?;
-                                let val = if is_enum_result {
-                                    val.set_unsafe();
-                                    val.map(|val| transmute_expr(lhs_type, expr_type, val))
+                                let expr_resolved_ty_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
+
+                                val = if let &CTypeKind::Enum(enum_id) = expr_resolved_ty_kind {
+                                    val.result_map(|val| self.convert_cast_to_enum(
+                                        ctx,
+                                        expr_type_id.ctype,
+                                        enum_id,
+                                        None,
+                                        val,
+                                    ))?
                                 } else {
+                                    let expr_type = self.convert_type(expr_type_id.ctype)?;
                                     val.map(|val| mk().cast_expr(val, expr_type))
                                 };
+
                                 val.map(|val| mk().cast_expr(val, write_type))
                             };
 
@@ -543,6 +544,7 @@ impl<'c> Translation<'c> {
                                 _ => panic!("Cannot convert non-assignment operator"),
                             };
                             self.convert_assignment_operator_aux(
+                                ctx,
                                 bin_op_kind,
                                 bin_op,
                                 read.clone(),
