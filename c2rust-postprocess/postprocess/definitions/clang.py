@@ -3,8 +3,6 @@ import subprocess
 from subprocess import CalledProcessError
 from typing import Any
 
-import jq
-
 
 def get_functions_from_clang_ast(ast: dict[str, Any]) -> list[dict[str, Any]]:
     """
@@ -14,11 +12,15 @@ def get_functions_from_clang_ast(ast: dict[str, Any]) -> list[dict[str, Any]]:
     Returns:
         list[dict]: A list of dictionaries, each representing a function declaration.
     """
-    query = jq.compile(
-        '.inner[] | select(.kind =="FunctionDecl") | '
-        "{name: .name, loc: .loc, range: .range}"
-    )
-    return query.transform(ast, multiple_output=True)
+    return [
+        {
+            "name": node["name"],
+            "loc": node["loc"],
+            "range": node["range"],
+        }
+        for node in ast["inner"]
+        if node["kind"] == "FunctionDecl"
+    ]
 
 
 def get_c_ast_as_json(entry: dict[str, Any]) -> dict[str, Any]:

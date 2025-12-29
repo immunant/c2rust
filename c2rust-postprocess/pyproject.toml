@@ -5,7 +5,6 @@ description = "c2rust-postprocess"
 requires-python = ">=3.12"
 dependencies = [
     "google-genai",
-    "jq>=1.10.0",
     "openai>=2.9.0",
     "platformdirs>=4.5.1",
     "pygments>=2.19.2",
