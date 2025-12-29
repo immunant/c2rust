@@ -26,6 +26,7 @@ package = true
 dev = [
     "pytest>=9.0.1",
     "ruff>=0.14.6",
+    "ty>=0.0.8",
 ]
 
 # lets us run tests as `uv run pytest`
