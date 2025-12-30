@@ -99,14 +99,14 @@ def remove_backticks(text: str) -> str:
     return text
 
 
-def get_highlighted_c(c_code: str, bg="dark") -> None:
+def get_highlighted_c(c_code: str, bg="dark") -> str:
     return get_highlighted_code(c_code, CLexer(), bg=bg)
 
 
-def get_highlighted_rust(rust_code: str, bg="dark") -> None:
+def get_highlighted_rust(rust_code: str, bg="dark") -> str:
     return get_highlighted_code(rust_code, RustLexer(), bg=bg)
 
 
-def get_highlighted_code(code: str, lexer: RegexLexer, bg: str) -> None:
+def get_highlighted_code(code: str, lexer: RegexLexer, bg: str) -> str:
     # TODO: detect when terminal supports colors
     return highlight(code, lexer, TerminalFormatter(bg=bg))
