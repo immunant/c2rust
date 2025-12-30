@@ -87,4 +87,4 @@ def test_c_function_splitting(generate_compile_commands_for_qsort, transpile_qso
 def test_comment_insertion_qsort():
     qsort_rs = Path(__file__).parent / "examples/qsort.rs"
     qsort_rs = qsort_rs.relative_to(Path.cwd())
-    main([str(qsort_rs)])
+    main([str(qsort_rs), "--no-update-rust"])
