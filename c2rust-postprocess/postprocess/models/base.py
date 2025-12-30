@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 
@@ -39,7 +39,7 @@ class AbstractGenerativeModel(ABC):
     # def generate_with_tools(
     #     self,
     #     messages: list[dict[str, Any]],
-    #     tools: list[Callable[..., Any]] | None = None,
+    #     tools: Iterable[Callable[..., Any]] = (),
     #     max_tool_loops: int = 5
     # ) -> str | None:
     #     """Synchronous wrapper for agenerate_response."""
@@ -49,7 +49,7 @@ class AbstractGenerativeModel(ABC):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable[..., Any]] | None = None,
+        tools: Iterable[Callable[..., Any]] = (),
         max_tool_loops: int = 5,
     ) -> str | None:
         pass

@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from openai import OpenAI
@@ -14,7 +14,7 @@ class GPTModel(AbstractGenerativeModel):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable[..., Any]] | None = None,
+        tools: Iterable[Callable[..., Any]] = (),
         max_tool_loops: int = 5,
     ) -> str:
         # TODO: implement tool calling support

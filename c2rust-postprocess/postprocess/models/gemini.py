@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from google import genai
@@ -28,13 +28,14 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable[..., Any]] | None = None,
+        tools: Iterable[Callable[..., Any]] = (),
         max_tool_loops: int = 5,
     ) -> str | None:
         contents = self._convert_messages(messages)
 
         config = types.GenerateContentConfig(
-            tools=tools,  # SDK automatically generates schemas from python functions
+            # SDK automatically generates schemas from python functions
+            tools=list(tools),
             automatic_function_calling=types.AutomaticFunctionCallingConfig(
                 disable=False,
                 maximum_remote_calls=max_tool_loops,  # Enforces the loop limit natively
