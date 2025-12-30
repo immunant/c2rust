@@ -85,7 +85,7 @@ struct Args {
     #[clap(long = "ddump-structures")]
     dump_structures: bool,
 
-    /// Generate readable 'current_block' values in relooper
+    /// Generate readable 'c2rust_current_block' values in relooper
     #[clap(long = "ddebug-labels")]
     debug_labels: bool,
 

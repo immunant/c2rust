@@ -34,21 +34,22 @@ pub const CHAR_ARRAY: [::core::ffi::c_char; 6] =
 #[no_mangle]
 pub unsafe extern "C" fn local_compound_literals() {
     let mut single_int: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
-    let mut fresh0: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
-    let mut single_int_ptr: *mut ::core::ffi::c_int = &raw mut fresh0;
-    let mut fresh1: [::core::ffi::c_int; 2] =
+    let mut c2rust_fresh0: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut single_int_ptr: *mut ::core::ffi::c_int = &raw mut c2rust_fresh0;
+    let mut c2rust_fresh1: [::core::ffi::c_int; 2] =
         [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
-    let mut int_ptr_to_array: *mut ::core::ffi::c_int = &raw mut fresh1 as *mut ::core::ffi::c_int;
-    let mut fresh2: [::core::ffi::c_char; 6] =
+    let mut int_ptr_to_array: *mut ::core::ffi::c_int =
+        &raw mut c2rust_fresh1 as *mut ::core::ffi::c_int;
+    let mut c2rust_fresh2: [::core::ffi::c_char; 6] =
         ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
     let mut char_ptr_to_array: *mut ::core::ffi::c_char =
-        &raw mut fresh2 as *mut ::core::ffi::c_char;
-    let mut fresh3: [::core::ffi::c_int; 2] =
+        &raw mut c2rust_fresh2 as *mut ::core::ffi::c_char;
+    let mut c2rust_fresh3: [::core::ffi::c_int; 2] =
         [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
-    let mut int_array_ptr: *mut [::core::ffi::c_int; 2] = &raw mut fresh3;
-    let mut fresh4: [::core::ffi::c_char; 6] =
+    let mut int_array_ptr: *mut [::core::ffi::c_int; 2] = &raw mut c2rust_fresh3;
+    let mut c2rust_fresh4: [::core::ffi::c_char; 6] =
         ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
-    let mut char_array_ptr: *mut [::core::ffi::c_char; 6] = &raw mut fresh4;
+    let mut char_array_ptr: *mut [::core::ffi::c_char; 6] = &raw mut c2rust_fresh4;
     let mut macro_single_int: ::core::ffi::c_int = SINGLE_INT;
     let mut macro_single_int_ptr: *mut ::core::ffi::c_int =
         &mut SINGLE_INT as *mut ::core::ffi::c_int;

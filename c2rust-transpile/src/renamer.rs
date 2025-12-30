@@ -174,7 +174,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     pub fn fresh(&mut self) -> String {
         let fresh = self.next_fresh;
         self.next_fresh += 1;
-        self.pick_name(&format!("fresh{}", fresh))
+        self.pick_name(&format!("c2rust_fresh{fresh}"))
     }
 }
 
