@@ -101,9 +101,9 @@ impl<'a> Translation<'a> {
             // which Rust doesn't currently support; instead, we split
             // the structure into 2 structures like this:
             //   #[align(N)]
-            //   pub struct Foo(pub Foo_Inner);
+            //   pub struct Foo(pub Foo_C2RustInner);
             //   #[packed(M)]
-            //   pub struct Foo_Inner {
+            //   pub struct Foo_C2RustInner {
             //     ...fields...
             //   }
             //
@@ -136,7 +136,7 @@ impl<'a> Translation<'a> {
                 )
                 .struct_item(name, vec![outer_field], true);
 
-            // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
+            // Emit `const X_C2RustPADDING: usize = size_of(Outer) - size_of(Inner);`
             let padding_name = self
                 .type_converter
                 .borrow_mut()
@@ -690,7 +690,7 @@ impl<'a> Translation<'a> {
                         stmts.push(mk().semi_stmt(method_call));
                     }
                     _ if contains_block(&param_expr) => {
-                        let name = self.renamer.borrow_mut().pick_name("rhs");
+                        let name = self.renamer.borrow_mut().pick_name("c2rust_rhs");
                         let name_ident = mk().mutbl().ident_pat(name.clone());
                         let temporary_stmt = mk().local(name_ident, None, Some(param_expr.clone()));
                         let assignment_expr = mk().method_call_expr(
@@ -792,7 +792,7 @@ impl<'a> Translation<'a> {
                             && self.ast_context.is_aligned_struct_type(ctype)
                         {
                             // If we're embedding an aligned structure inside a packed one,
-                            // we need to use the `_Inner` version and add padding
+                            // we need to use the `_C2RustInner` version and add padding
                             let decl_id = self
                                 .ast_context
                                 .resolve_type(ctype)
