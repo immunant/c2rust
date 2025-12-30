@@ -114,7 +114,7 @@ def main(argv: Sequence[str] | None = None):
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
-        xform.transfer_comments(
+        xform.transfer_comments_dir(
             root_rust_source_file=args.root_rust_source_file,
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
