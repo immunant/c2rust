@@ -349,7 +349,7 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
 }
 
 /// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
-/// `current_block` variable.
+/// `c2rust_current_block` variable.
 pub fn has_multiple<Stmt>(root: &[Structure<Stmt>]) -> bool {
     use Structure::*;
     root.iter().any(|structure| match structure {
@@ -469,7 +469,7 @@ impl StructureState {
             }
 
             Goto(to) => {
-                // Assign to `current_block` the next label we want to go to.
+                // Assign to `c2rust_current_block` the next label we want to go to.
 
                 let lbl_expr = if self.debug_labels {
                     to.to_string_expr()
@@ -563,7 +563,7 @@ impl StructureState {
             }
 
             GotoTable(cases, then) => {
-                // Dispatch based on the next `current_block` value.
+                // Dispatch based on the next `c2rust_current_block` value.
 
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
