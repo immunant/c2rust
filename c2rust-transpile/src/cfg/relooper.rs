@@ -110,8 +110,8 @@ pub fn reloop(
     use_c_multiple_info: bool,   // use the multiple information in the CFG (slower, but better)
     live_in: IndexSet<CDeclId>,  // declarations we assume are live going into this graph
 ) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
-    let entries: IndexSet<Label> = vec![cfg.entries].into_iter().collect();
-    let blocks = cfg
+    let entries: IndexSet<Label> = vec![cfg.entries.clone()].into_iter().collect();
+    let blocks: StructuredBlocks = cfg
         .nodes
         .into_iter()
         .map(|(lbl, bb)| {
@@ -142,7 +142,22 @@ pub fn reloop(
     } else {
         None
     };
-    let mut state = RelooperState::new(loop_info, multiple_info, live_in);
+
+    let successors = blocks
+        .iter()
+        .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
+        .collect();
+    let global_predecessors = flip_edges(successors);
+    let domination_sets = flip_edges(compute_dominators(&cfg.entries, &global_predecessors));
+
+    let mut state = RelooperState {
+        scopes: vec![live_in],
+        lifted: IndexSet::new(),
+        loop_info,
+        multiple_info,
+        domination_sets,
+        global_predecessors,
+    };
     state.relooper(entries, blocks, &mut relooped_with_decls, false);
 
     // These are declarations we need to lift
@@ -177,22 +192,21 @@ struct RelooperState {
 
     /// Information about multiples
     multiple_info: Option<MultipleInfo<Label>>,
+
+    /// The set of nodes dominated by each node in the CFG.
+    ///
+    /// TODO: Maybe write some words about what "domination" means in the context of a CFG.
+    domination_sets: AdjacencyList,
+
+    /// Global predecessor information.
+    ///
+    /// Normally we only need local predecessor information, but when we're deciding what
+    /// nodes to pull into a loop it's useful to have global predecessor information to
+    /// figure out which nodes are merge nodes.
+    global_predecessors: AdjacencyList,
 }
 
 impl RelooperState {
-    pub fn new(
-        loop_info: Option<LoopInfo<Label>>,
-        multiple_info: Option<MultipleInfo<Label>>,
-        live_in: IndexSet<CDeclId>,
-    ) -> Self {
-        RelooperState {
-            scopes: vec![live_in],
-            lifted: IndexSet::new(),
-            loop_info,
-            multiple_info,
-        }
-    }
-
     pub fn open_scope(&mut self) {
         self.scopes.push(IndexSet::new());
     }
@@ -269,24 +283,18 @@ impl RelooperState {
         // set, since blocks may have successors that are outside the current set. For
         // both of these, labels in the values set will always correspond to blocks in
         // the current set.
-        let (predecessor_map, strict_reachable_from) = {
-            // Map each of our current blocks to its immediate successors.
-            let successor_map = blocks
-                .iter()
-                .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
-                .collect();
+        //
+        // TODO: Do we need to recalculate this every time, or would we be able to use global successor information?
+        let successor_map = blocks
+            .iter()
+            .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
+            .collect();
 
-            // Calculate the transitive closure of the successor map, i.e. the full set of
-            // labels reachable from each block, not including itself. Then flip the edges
-            // to get a map from a label to the set of labels that can reach it.
-            let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
-
-            // Flip the edges of the successor map to get a map of immediate predecessors
-            // for each block.
-            let predecessor_map = flip_edges(successor_map);
-
-            (predecessor_map, strict_reachable_from)
-        };
+        // Map from each label to the set of labels that reach it. A label does not
+        // count as reaching itself unless there is an explicit back edge to that label.
+        //
+        // TODO: Do we need to recalculate this every time, or would we be able to use global successor information?
+        let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
 
         // --------------------------------------
         // Simple cases
@@ -348,26 +356,10 @@ impl RelooperState {
                     });
 
                     self.relooper(new_entries, blocks, result, false);
-                } else {
-                    // let body = vec![];
-                    // let terminator = Jump(StructureLabel::BreakTo(entry.clone()));
-
-                    // result.push(Structure::Simple {
-                    //     entries,
-                    //     body,
-                    //     span: Span::call_site(),
-                    //     terminator,
-                    // });
                 }
             } else {
                 // Our only entry is branched back to, make a loop.
-                self.make_loop(
-                    &strict_reachable_from,
-                    blocks,
-                    entries,
-                    &predecessor_map,
-                    result,
-                );
+                self.make_loop(&strict_reachable_from, blocks, entries, result);
             }
             return;
         }
@@ -518,13 +510,7 @@ impl RelooperState {
         // Loop fallback
 
         // We couldn't create a multiple, so create a loop.
-        self.make_loop(
-            &strict_reachable_from,
-            blocks,
-            entries,
-            &predecessor_map,
-            result,
-        );
+        self.make_loop(&strict_reachable_from, blocks, entries, result);
     }
 
     fn make_loop(
@@ -532,7 +518,6 @@ impl RelooperState {
         strict_reachable_from: &AdjacencyList,
         blocks: StructuredBlocks,
         entries: IndexSet<Label>,
-        predecessor_map: &AdjacencyList,
         result: &mut Vec<Structure<StmtOrDecl>>,
     ) {
         // Gather the set of current blocks that can reach one of our entries, not
@@ -557,13 +542,31 @@ impl RelooperState {
         // becomes an entry for the follow blocks.
         let mut follow_entries = out_edges(&body_blocks);
 
-        // If matching an existing loop didn't work, fall back on a heuristic
-        loops::heuristic_loop_body(
-            &predecessor_map,
-            &mut body_blocks,
-            &mut follow_blocks,
-            &mut follow_entries,
-        );
+        // If there's more than one path out of the loop, we want to try moving
+        // additional nodes into the loop to avoid ending up with a multiple after the
+        // loop.
+        if follow_entries.len() > 1 {
+            // Gather the set of follow entries that only have a single in edge. These can
+            // be inlined into a branch in one of the loop body nodes, so we want to pull
+            // them into the loop.
+            let inlined = follow_entries
+                .iter()
+                .filter(|&e| self.global_predecessors[e].len() == 1);
+
+            // Move all nodes dominated by an inlined node into the loop. This will include
+            // the inlined node since all nodes dominate themself.
+            for inlined in inlined {
+                for dominated in &self.domination_sets[inlined] {
+                    let block = follow_blocks
+                        .remove(dominated)
+                        .expect("Dominated node not in follow blocks");
+                    body_blocks.insert(dominated.clone(), block);
+                }
+            }
+
+            // Recalculate our follow entries based on which nodes we moved into the loop body.
+            follow_entries = out_edges(&body_blocks);
+        }
 
         // Rewrite `GoTo`s that exit the loop body to `ExitTo`s.
         //
@@ -820,8 +823,8 @@ fn out_edges(blocks: &StructuredBlocks) -> IndexSet<Label> {
 }
 
 /// Transforms `{1: {'a', 'b'}, 2: {'b'}}` into `{'a': {1}, 'b': {1,2}}`.
-fn flip_edges(map: IndexMap<Label, IndexSet<Label>>) -> IndexMap<Label, IndexSet<Label>> {
-    let mut flipped_map: IndexMap<Label, IndexSet<Label>> = IndexMap::new();
+fn flip_edges(map: AdjacencyList) -> AdjacencyList {
+    let mut flipped_map: AdjacencyList = IndexMap::new();
     for (lbl, vals) in map {
         for val in vals {
             flipped_map.entry(val).or_default().insert(lbl.clone());
@@ -861,4 +864,239 @@ fn transitive_closure<V: Clone + Hash + Eq>(
     }
 
     closure
+}
+
+/// Calculate the dominator sets for each node in the CFG.
+///
+/// A node `d` dominates node `n` if every path from the entry to `n` must pass
+/// through `d`. Every node dominates itself.
+///
+/// Returns a map from each label to the set of labels that dominate it.
+fn compute_dominators(entry: &Label, predecessor_map: &AdjacencyList) -> AdjacencyList {
+    // All non-entry nodes (nodes that have predecessors, excluding entry itself).
+    let nodes: Vec<Label> = predecessor_map
+        .keys()
+        .filter(|k| *k != entry)
+        .cloned()
+        .collect();
+
+    // The initial conservative dominator set includes entry + all non-entry nodes.
+    let initial_dom: IndexSet<Label> = nodes
+        .iter()
+        .cloned()
+        .chain(std::iter::once(entry.clone()))
+        .collect();
+
+    // Entry is dominated only by itself, all others start dominated by all nodes.
+    let mut dominators = IndexMap::new();
+    dominators.insert(entry.clone(), indexset! { entry.clone() });
+    for node in &nodes {
+        dominators.insert(node.clone(), initial_dom.clone());
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for node in &nodes {
+            let preds = &predecessor_map[node];
+
+            let mut new_dom = initial_dom.clone();
+            for pred in preds {
+                let pred_dom = &dominators[pred];
+                new_dom.retain(|x| pred_dom.contains(x));
+            }
+            new_dom.insert(node.clone()); // A node always dominates itself.
+
+            if dominators.get(node) != Some(&new_dom) {
+                dominators.insert(node.clone(), new_dom);
+                changed = true;
+            }
+        }
+    }
+
+    dominators
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper to create a synthetic label for testing
+    fn label(id: u64) -> Label {
+        Label::Synthetic(id)
+    }
+
+    /// Helper to build a successor adjacency list from a list of edges
+    fn build_successor_map(edges: &[(u64, u64)]) -> AdjacencyList {
+        let mut graph: AdjacencyList = IndexMap::new();
+        for &(from, to) in edges {
+            graph.entry(label(from)).or_default().insert(label(to));
+        }
+        // Ensure all nodes are in the graph, even if they have no outgoing edges
+        for &(_, to) in edges {
+            graph.entry(label(to)).or_default();
+        }
+        graph
+    }
+
+    /// Helper to build a predecessor adjacency list from a list of edges
+    fn build_predecessor_map(edges: &[(u64, u64)]) -> AdjacencyList {
+        flip_edges(build_successor_map(edges))
+    }
+
+    #[test]
+    fn test_dominators_linear_chain() {
+        // Linear CFG: 1 -> 2 -> 3 -> 4
+        let predecessors = build_predecessor_map(&[(1, 2), (2, 3), (3, 4)]);
+        let entry = label(1);
+        let doms = compute_dominators(&entry, &predecessors);
+
+        // Node 1 is dominated only by itself
+        assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
+
+        // Node 2 is dominated by 1 and 2
+        assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
+
+        // Node 3 is dominated by 1, 2, and 3
+        assert_eq!(
+            doms.get(&label(3)),
+            Some(&indexset! { label(1), label(2), label(3) })
+        );
+
+        // Node 4 is dominated by 1, 2, 3, and 4
+        assert_eq!(
+            doms.get(&label(4)),
+            Some(&indexset! { label(1), label(2), label(3), label(4) })
+        );
+    }
+
+    #[test]
+    fn test_dominators_diamond() {
+        // Diamond CFG:
+        //       1
+        //      / \
+        //     2   3
+        //      \ /
+        //       4
+        let predecessors = build_predecessor_map(&[(1, 2), (1, 3), (2, 4), (3, 4)]);
+        let entry = label(1);
+        let doms = compute_dominators(&entry, &predecessors);
+
+        // Node 1 dominates itself
+        assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
+
+        // Node 2 is dominated by 1 and 2
+        assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
+
+        // Node 3 is dominated by 1 and 3
+        assert_eq!(doms.get(&label(3)), Some(&indexset! { label(1), label(3) }));
+
+        // Node 4 is dominated by 1 and 4 (not 2 or 3, since there are two paths)
+        assert_eq!(doms.get(&label(4)), Some(&indexset! { label(1), label(4) }));
+    }
+
+    #[test]
+    fn test_dominators_loop() {
+        // CFG with a loop:
+        //     1 -> 2 -> 3
+        //          ^    |
+        //          +----+
+        let predecessors = build_predecessor_map(&[(1, 2), (2, 3), (3, 2)]);
+        let entry = label(1);
+        let doms = compute_dominators(&entry, &predecessors);
+
+        // Node 1 dominates itself
+        assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
+
+        // Node 2 is dominated by 1 and 2
+        assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
+
+        // Node 3 is dominated by 1, 2, and 3
+        assert_eq!(
+            doms.get(&label(3)),
+            Some(&indexset! { label(1), label(2), label(3) })
+        );
+    }
+
+    #[test]
+    fn test_dominators_complex() {
+        // More complex CFG:
+        //       1
+        //      / \
+        //     2   3
+        //     |   |
+        //     4   5
+        //      \ /
+        //       6
+        let predecessors = build_predecessor_map(&[(1, 2), (1, 3), (2, 4), (3, 5), (4, 6), (5, 6)]);
+        let entry = label(1);
+        let doms = compute_dominators(&entry, &predecessors);
+
+        assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
+        assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
+        assert_eq!(doms.get(&label(3)), Some(&indexset! { label(1), label(3) }));
+        assert_eq!(
+            doms.get(&label(4)),
+            Some(&indexset! { label(1), label(2), label(4) })
+        );
+        assert_eq!(
+            doms.get(&label(5)),
+            Some(&indexset! { label(1), label(3), label(5) })
+        );
+        // Node 6 is only dominated by 1 and itself (join point)
+        assert_eq!(doms.get(&label(6)), Some(&indexset! { label(1), label(6) }));
+    }
+
+    #[test]
+    fn test_dominators_single_node() {
+        // Single node CFG
+        let predecessors: AdjacencyList = IndexMap::new();
+        let entry = label(1);
+        let doms = compute_dominators(&entry, &predecessors);
+
+        assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
+    }
+
+    #[test]
+    fn test_dominators_self_loop() {
+        // Node with self-loop: 1 -> 2 -> 2
+        let predecessors = build_predecessor_map(&[(1, 2), (2, 2)]);
+        let entry = label(1);
+        let doms = compute_dominators(&entry, &predecessors);
+
+        assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
+        assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
+    }
+
+    #[test]
+    fn test_dominators_loop_with_branch() {
+        // CFG with loop and branches:
+        //     1 -> 2, 3
+        //     2 -> 3, 4
+        //     3 -> 1, 5  (back edge to 1)
+        //     4 -> 5
+        //     5 -> END
+        let predecessors =
+            build_predecessor_map(&[(1, 2), (1, 3), (2, 3), (2, 4), (3, 1), (3, 5), (4, 5)]);
+        let entry = label(1);
+        let doms = compute_dominators(&entry, &predecessors);
+
+        // Node 1 dominates itself
+        assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
+
+        // Node 2: only predecessor is 1, so Dom(2) = {1, 2}
+        assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
+
+        // Node 3: predecessors are 1 and 2. Dom(3) = {3} ∪ (Dom(1) ∩ Dom(2)) = {1, 3}
+        assert_eq!(doms.get(&label(3)), Some(&indexset! { label(1), label(3) }));
+
+        // Node 4: predecessor is 2 only. Dom(4) = {1, 2, 4}
+        assert_eq!(
+            doms.get(&label(4)),
+            Some(&indexset! { label(1), label(2), label(4) })
+        );
+
+        // Node 5: predecessors are 3 and 4. Dom(5) = {5} ∪ (Dom(3) ∩ Dom(4)) = {1, 5}
+        assert_eq!(doms.get(&label(5)), Some(&indexset! { label(1), label(5) }));
+    }
 }
