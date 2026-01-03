@@ -1,3 +1,34 @@
+// Basic loop structures.
+
+int while_loop(int x) {
+    while (x) {
+        x += 1;
+    }
+    return x;
+}
+
+int for_loop(int x) {
+    for (int i = 0; i < 10; i++) {
+        x += 1;
+    }
+    return x;
+}
+
+void infinite_loop(int x) {
+    for (;;) {
+        x += 1;
+    }
+}
+
+int goto_loop(int x) {
+loop:
+    x += 1;
+    if (x) {
+        goto loop;
+    }
+    return x;
+}
+
 // These tests verify that we pull the right nodes into a loop when there are
 // multiple paths out of the loop. When there are multiple paths out of a loop
 // it's valid to leave all of those branches outside of the loop, but doing so

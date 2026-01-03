@@ -13,6 +13,38 @@ input_file: c2rust-transpile/tests/snapshots/loops.c
     unused_mut
 )]
 #[no_mangle]
+pub unsafe extern "C" fn while_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        x += 1 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn for_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 10 as ::core::ffi::c_int {
+        x += 1 as ::core::ffi::c_int;
+        i += 1;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn infinite_loop(mut x: ::core::ffi::c_int) {
+    loop {
+        x += 1 as ::core::ffi::c_int;
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        x += 1 as ::core::ffi::c_int;
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
 pub unsafe extern "C" fn explicit_loop_multi_exit(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     loop {
         match x {
