@@ -113,10 +113,15 @@ int explicit_loop_multi_exit(int x) {
 
         case 2:
             x += 2;
+            if (x)
+                x += 3;
+            else
+                x += 4;
+            x += 5;
             goto out;
 
         default:
-            x += 3;
+            x += 6;
             goto out;
         }
     }
@@ -135,10 +140,15 @@ redo:
 
     case 2:
         x += 2;
+        if (x)
+            x += 3;
+        else
+            x += 4;
+        x += 5;
         break;
 
     default:
-        x += 3;
+        x += 6;
         break;
     }
 
