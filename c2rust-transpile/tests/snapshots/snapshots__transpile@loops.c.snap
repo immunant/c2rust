@@ -92,6 +92,46 @@ pub unsafe extern "C" fn for_loop_multi_continue(mut x: ::core::ffi::c_int) -> :
     return x;
 }
 #[no_mangle]
+pub unsafe extern "C" fn do_loop_single_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        's_2: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_2;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+        }
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn do_loop_multi_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        's_2: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_2;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                if x != 0 {
+                    break 's_2;
+                }
+            }
+            x += 2 as ::core::ffi::c_int;
+        }
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
 pub unsafe extern "C" fn explicit_loop_multi_exit(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     loop {
         match x {
