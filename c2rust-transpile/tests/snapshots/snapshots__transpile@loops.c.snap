@@ -140,10 +140,16 @@ pub unsafe extern "C" fn explicit_loop_multi_exit(mut x: ::core::ffi::c_int) -> 
             }
             2 => {
                 x += 2 as ::core::ffi::c_int;
+                if x != 0 {
+                    x += 3 as ::core::ffi::c_int;
+                } else {
+                    x += 4 as ::core::ffi::c_int;
+                }
+                x += 5 as ::core::ffi::c_int;
                 break;
             }
             _ => {
-                x += 3 as ::core::ffi::c_int;
+                x += 6 as ::core::ffi::c_int;
                 break;
             }
         }
@@ -160,10 +166,16 @@ pub unsafe extern "C" fn implicit_loop_multi_exit(mut x: ::core::ffi::c_int) -> 
             }
             2 => {
                 x += 2 as ::core::ffi::c_int;
+                if x != 0 {
+                    x += 3 as ::core::ffi::c_int;
+                } else {
+                    x += 4 as ::core::ffi::c_int;
+                }
+                x += 5 as ::core::ffi::c_int;
                 break;
             }
             _ => {
-                x += 3 as ::core::ffi::c_int;
+                x += 6 as ::core::ffi::c_int;
                 break;
             }
         }
