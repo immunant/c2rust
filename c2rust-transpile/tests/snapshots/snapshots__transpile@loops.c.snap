@@ -1,6 +1,5 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 107
 expression: cat tests/snapshots/loops.rs
 input_file: c2rust-transpile/tests/snapshots/loops.c
 ---
@@ -41,6 +40,54 @@ pub unsafe extern "C" fn goto_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_
         if !(x != 0) {
             break;
         }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn do_while_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        x += 1 as ::core::ffi::c_int;
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn for_loop_single_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 10 as ::core::ffi::c_int {
+        's_4: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_4;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+        }
+        i += 1;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn for_loop_multi_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 10 as ::core::ffi::c_int {
+        's_4: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_4;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                if x != 0 {
+                    break 's_4;
+                }
+            }
+            x += 2 as ::core::ffi::c_int;
+        }
+        i += 1;
     }
     return x;
 }

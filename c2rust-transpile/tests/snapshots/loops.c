@@ -29,11 +29,53 @@ loop:
     return x;
 }
 
+int do_while_loop(int x) {
+    do {
+        x += 1;
+    } while (x);
+
+    return x;
+}
+
+// `continue` in `for` loops.
+//
+// `for` loops are fun because they require doing something at the *end* of
+// every loop, which we don't have a direct analog for in Rust. When there's a
+// `continue` in a `for` loop, we can't just `continue` in the translated Rust
+// because that would skip the logic that's supposed to happen at the end of the
+// loop. To handle this we instead generate a block in the loop body and use a
+// labeled `break` to jump to the logic at the end of the loop.
+
+int for_loop_single_continue(int x) {
+    for (int i = 0; i < 10; i++) {
+        if (x) {
+            if (x)
+                continue;
+        }
+        x += 1;
+    }
+    return x;
+}
+
+int for_loop_multi_continue(int x) {
+    for (int i = 0; i < 10; i++) {
+        if (x)
+            if (x)
+                continue;
+        x += 1;
+        if (x)
+            if (x)
+                continue;
+        x += 2;
+    }
+    return x;
+}
+
 // These tests verify that we pull the right nodes into a loop when there are
 // multiple paths out of the loop. When there are multiple paths out of a loop
 // it's valid to leave all of those branches outside of the loop, but doing so
 // means that we have to wrap the loop in extra labeled blocks so that we can
-// jump to the appropriate code path when exiting the loop. We can avoid that by
+// jump to the appropriate code path when exiting the loop. We avoid that by
 // pulling in any nodes that can be cleanly inlined into a branch within the
 // loop.
 
