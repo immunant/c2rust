@@ -33,18 +33,18 @@ int do_while_loop(int x) {
     do {
         x += 1;
     } while (x);
-
     return x;
 }
 
-// `continue` in `for` loops.
+// `continue` in `for` and `do` loops.
 //
-// `for` loops are fun because they require doing something at the *end* of
-// every loop, which we don't have a direct analog for in Rust. When there's a
-// `continue` in a `for` loop, we can't just `continue` in the translated Rust
-// because that would skip the logic that's supposed to happen at the end of the
-// loop. To handle this we instead generate a block in the loop body and use a
-// labeled `break` to jump to the logic at the end of the loop.
+// `for` and `do` loops are fun because they require doing something at the
+// *end* of every loop, which we don't have a direct analog for in Rust. When
+// there's a `continue` in a `for` loop, we can't just `continue` in the
+// translated Rust because that would skip the logic that's supposed to happen
+// at the end of the loop. To handle this we instead generate a block in the
+// loop body and use a labeled `break` to jump to the logic at the end of the
+// loop.
 
 int for_loop_single_continue(int x) {
     for (int i = 0; i < 10; i++) {
@@ -68,6 +68,31 @@ int for_loop_multi_continue(int x) {
                 continue;
         x += 2;
     }
+    return x;
+}
+
+int do_loop_single_continue(int x) {
+    do {
+        if (x) {
+            if (x)
+                continue;
+        }
+        x += 1;
+    } while (x);
+    return x;
+}
+
+int do_loop_multi_continue(int x) {
+    do {
+        if (x)
+            if (x)
+                continue;
+        x += 1;
+        if (x)
+            if (x)
+                continue;
+        x += 2;
+    } while (x);
     return x;
 }
 
