@@ -54,6 +54,75 @@ pub unsafe extern "C" fn do_while_loop(mut x: ::core::ffi::c_int) -> ::core::ffi
     return x;
 }
 #[no_mangle]
+pub unsafe extern "C" fn break_while(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        if x != 0 {
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                break;
+            }
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn continue_while(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        if x != 0 {
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                continue;
+            }
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn exit_nested_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_break_outer: while x != 0 {
+        while x != 0 {
+            if x != 0 {
+                break '_break_outer;
+            }
+            x += 1;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn continue_nested_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    's_28: while x != 0 {
+        while x != 0 {
+            if x != 0 {
+                continue 's_28;
+            }
+            x += 1;
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn break_and_continue_nested_loops(
+    mut x: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    '_break_outer: while x != 0 {
+        while x != 0 {
+            if x != 0 {
+                break '_break_outer;
+            }
+            if x != 0 {
+                continue '_break_outer;
+            }
+            x += 1;
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
 pub unsafe extern "C" fn for_loop_single_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < 10 as ::core::ffi::c_int {

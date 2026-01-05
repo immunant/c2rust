@@ -36,6 +36,78 @@ int do_while_loop(int x) {
     return x;
 }
 
+// Simple break and continue.
+
+int break_while(int x) {
+    while (x) {
+        if (x) {
+            x += 1;
+            if (x)
+                break;
+        }
+        x += 2;
+    }
+    return x;
+}
+
+int continue_while(int x) {
+    while (x) {
+        if (x) {
+            x += 1;
+            if (x)
+                continue;
+        }
+        x += 2;
+    }
+    return x;
+}
+
+// Multi-level break and continue.
+
+int exit_nested_loops(int x) {
+    while (x) {
+        while (x) {
+            if (x)
+                goto break_outer;
+            x++;
+        }
+    }
+
+break_outer:
+    return x;
+}
+
+int continue_nested_loops(int x) {
+top:
+    while (x) {
+        while (x) {
+            if (x)
+                goto top;
+            x++;
+        }
+        x += 2;
+    }
+
+    return x;
+}
+
+int break_and_continue_nested_loops(int x) {
+top:
+    while (x) {
+        while (x) {
+            if (x)
+                goto break_outer;
+            if (x)
+                goto top;
+            x++;
+        }
+        x += 2;
+    }
+
+break_outer:
+    return x;
+}
+
 // `continue` in `for` and `do` loops.
 //
 // `for` and `do` loops are fun because they require doing something at the
