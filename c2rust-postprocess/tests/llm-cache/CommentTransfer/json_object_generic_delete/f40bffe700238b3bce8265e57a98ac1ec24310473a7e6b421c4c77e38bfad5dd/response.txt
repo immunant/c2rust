@@ -1,0 +1,9 @@
+```rust
+/* generic object construction and destruction parts */
+#[c2rust::src_loc = "215:1"]
+unsafe extern "C" fn json_object_generic_delete(mut jso: *mut json_object) {
+    /* REFCOUNT_DEBUG */
+    printbuf_free((*jso)._pb);
+    free(jso as *mut ::core::ffi::c_void);
+}
+```
