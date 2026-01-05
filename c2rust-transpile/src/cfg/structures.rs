@@ -79,7 +79,8 @@ fn cleanup_labels(
             }
         }
 
-        // Recurse through loops and blocks, tracking if we're directly inside a loop.
+        // Recurse through loops and blocks, tracking if we're directly inside a loop
+        // and cleaning up labels where possible.
         Loop(label_place, body) => {
             let mut inner_labels = IndexSet::new();
             cleanup_labels(body, label_place, &mut inner_labels);
@@ -91,21 +92,62 @@ fn cleanup_labels(
 
             encountered_labels.extend(inner_labels);
         }
-        Block(block_label, body) => {
+        Block(label, body) => {
             let mut inner_labels = IndexSet::new();
             cleanup_labels(body, &None, &mut inner_labels);
 
-            // If, after cleaning up labels in the block's body, the block's only contents
-            // are an unlabeled loop, remove the block and apply the label to the loop
-            // instead. After doing this we must then re-process the block's contents to see
-            // if we can remove more labels from the loop's body.
-            if let Loop(loop_label @ None, _) = &mut body.node {
-                *loop_label = Some(block_label.clone());
+            match &mut body.node {
+                // If, after cleaning up labels in the block's body, the block's only contents
+                // are an unlabeled loop, remove the block and apply the label to the loop
+                // instead. After doing this we must then re-process the block's contents to see
+                // if we can remove more labels from the loop's body.
+                Loop(loop_label @ None, _) => {
+                    *loop_label = Some(label.clone());
 
-                inner_labels.clear();
-                cleanup_labels(body, &None, &mut inner_labels);
+                    inner_labels.clear();
+                    cleanup_labels(body, &None, &mut inner_labels);
 
-                *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+                    *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+                }
+
+                // If the block's body is a labeled loop or a block, then exiting either takes
+                // us to the same place. In that case we can merge the two labels together and
+                // then replace the block with its contents.
+                //
+                // NOTE: In the future we may want to be a bit smarter about which label we
+                // choose to use. Currently we always replaces the inner label with the outer
+                // label, but it's possible that the inner label might have a more meaningful
+                // name. The names of labels are either taken from `goto` labels in the original
+                // C, or are synthetic, numeric names. At time of writing, when we do generate
+                // an AST like this (i.e. a block containing a labeled loop), the inner loop
+                // will have a synthetic label and the outer block will have the `goto` label
+                // from the original C (this comes from the fact that the original C has to use
+                // a `goto` to exit nested loops).
+                //
+                // In theory the smarter approach is to look at both labels, and if one of them
+                // is a named label then choose that one, preferring the outer label if both are
+                // named. However the current approach is simpler and does the right thing for
+                // now.
+                Loop(Some(inner_label), _) => {
+                    // Clone the label to avoid borrowing `body` while we modify it.
+                    let inner_label = inner_label.clone();
+                    merge_labels(body, &inner_label, label);
+
+                    // The loop's label has changed, re-process it to see if any more labels can be
+                    // removed.
+                    inner_labels.clear();
+                    cleanup_labels(body, &None, &mut inner_labels);
+
+                    *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+                }
+                Block(inner_label, _) => {
+                    // Clone the label to avoid borrowing `body` while we modify it.
+                    let inner_label = inner_label.clone();
+                    merge_labels(body, &inner_label, label);
+                    *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+                }
+
+                _ => {}
             }
 
             encountered_labels.extend(inner_labels);
@@ -135,8 +177,51 @@ fn cleanup_labels(
     }
 }
 
+/// Rewrites the AST to replace one label with another.
+fn merge_labels(ast: &mut StructuredAST<Box<Expr>, Pat, Label, Stmt>, old: &Label, new: &Label) {
+    use StructuredASTKind::*;
+
+    match &mut ast.node {
+        // Rewrite labels for exits, blocks, and loops.
+        Exit(_, Some(label)) => {
+            if label == old {
+                *label = new.clone();
+            }
+        }
+        Block(label, body) | Loop(Some(label), body) => {
+            if label == old {
+                *label = new.clone();
+            }
+            merge_labels(body, old, new);
+        }
+
+        // Recurse through the rest of the AST.
+        Loop(None, body) => merge_labels(body, old, new),
+        Append(left, right) => {
+            merge_labels(left, old, new);
+            merge_labels(right, old, new);
+        }
+        Match(_, arms) => {
+            for (_, arm) in arms {
+                merge_labels(arm, old, new);
+            }
+        }
+        If(_, then, else_) => {
+            merge_labels(then, old, new);
+            merge_labels(else_, old, new);
+        }
+        GotoTable(cases, then) => {
+            for (_, case) in cases {
+                merge_labels(case, old, new);
+            }
+            merge_labels(then, old, new);
+        }
+        Exit(_, None) | Empty | Singleton(_) | Goto(_) => {}
+    }
+}
+
 /// Ways of exiting from a loop body
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExitStyle {
     /// Jumps to the beginning of the loop body
     Continue,
@@ -206,6 +291,14 @@ pub struct Spanned<T> {
     pub span: Span,
 }
 
+impl<T: PartialEq> PartialEq for Spanned<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node
+    }
+}
+
+impl<T: Eq> Eq for Spanned<T> {}
+
 pub type StructuredAST<E, P, L, S> = Spanned<StructuredASTKind<E, P, L, S>>;
 
 fn dummy_spanned<T>(inner: T) -> Spanned<T> {
@@ -217,7 +310,7 @@ fn dummy_spanned<T>(inner: T) -> Spanned<T> {
 
 /// Defunctionalized version of `StructuredStatement` trait
 #[allow(missing_docs)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum StructuredASTKind<E, P, L, S> {
     Empty,
     Singleton(S),
@@ -901,5 +994,169 @@ fn not(bool_expr: &Expr) -> Box<Expr> {
             ..
         }) => Box::new(unparen(expr).clone()),
         _ => mk().unary_expr(UnOp::Not(Default::default()), Box::new(bool_expr.clone())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type AST = StructuredAST<Box<Expr>, Pat, Label, Stmt>;
+
+    fn label(id: u64) -> Label {
+        Label::Synthetic(id)
+    }
+
+    fn check(mut input: AST, expected: AST) {
+        cleanup_labels(&mut input, &None, &mut IndexSet::new());
+        assert_eq!(input, expected);
+    }
+
+    #[test]
+    fn test_removes_label_from_exit_targeting_current_loop() {
+        // 'a: loop { break 'a; }  =>  loop { break; }
+        check(
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_exit(ExitStyle::Break, Some(label(1))),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_keeps_label_for_outer_loop_exit() {
+        // 'a: loop { loop { break 'a; } }  =>  'a: loop { loop { break 'a; } }
+        check(
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(1))),
+                ),
+            ),
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_removes_unused_loop_label() {
+        // 'a: loop { break; }  =>  loop { break; }
+        check(
+            AST::mk_loop(Some(label(1)), AST::mk_exit(ExitStyle::Break, None)),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_unlabeled_loop_with_labeled_break() {
+        // 'a: { loop { break 'a; } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_labeled_loop_merges_labels() {
+        // 'a: { 'b: loop { break 'b; } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_labeled_loop_with_outer_exit() {
+        // 'a: { 'b: loop { break 'a; } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(1))),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_loop_with_external_exit() {
+        // 'a: { 'b: loop { break 'c; } }  =>  loop { break 'c; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(3))),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(3)))),
+        );
+    }
+
+    #[test]
+    fn test_block_nested_loops_with_labeled_break() {
+        // Regression test: ensures block containing labeled loop preserves loop structure.
+        // 'a: { 'b: loop { loop { break 'b; } } }  =>  'a: loop { loop { break 'a; } }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_loop(
+                        Some(label(3)),
+                        AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                    ),
+                ),
+            ),
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_nested_blocks_merge_labels() {
+        // 'a: { 'b: { break 'b; } }  =>  'a: { break 'a; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_block(label(2), AST::mk_exit(ExitStyle::Break, Some(label(2)))),
+            ),
+            AST::mk_block(label(1), AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+        );
+    }
+
+    #[test]
+    fn test_nested_blocks_with_loop() {
+        // 'a: { 'b: { loop { break 'b; } } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_block(
+                    label(2),
+                    AST::mk_loop(
+                        Some(label(3)),
+                        AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                    ),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
     }
 }
