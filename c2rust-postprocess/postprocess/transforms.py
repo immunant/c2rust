@@ -57,13 +57,14 @@ class CommentTransfer:
     def transfer_comments(
         self,
         root_rust_source_file: Path,
+        rust_source_file: Path,
         ident_filter: str | None = None,
         update_rust: bool = True,
     ) -> None:
         pattern = re.compile(ident_filter) if ident_filter else None
 
-        rust_definitions = get_rust_definitions(root_rust_source_file)
-        c_definitions = get_c_definitions(root_rust_source_file)
+        rust_definitions = get_rust_definitions(rust_source_file)
+        c_definitions = get_c_definitions(rust_source_file)
 
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
@@ -165,3 +166,27 @@ class CommentTransfer:
                     identifier=prompt.identifier,
                     new_definition=rust_fn,
                 )
+
+    def transfer_comments_dir(
+        self,
+        root_rust_source_file: Path,
+        ident_filter: str | None = None,
+        update_rust: bool = True,
+    ):
+        """
+        Run `self.transfer_comments` on each `*.rs` in `dir`
+        with a corresponding `*.c_decls.json`.
+        """
+        root_dir = root_rust_source_file.parent
+        c_decls_json_suffix = ".c_decls.json"
+        for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
+            rs_path = c_decls_path.with_name(
+                c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
+            )
+            assert rs_path.exists()
+            self.transfer_comments(
+                root_rust_source_file=root_rust_source_file,
+                rust_source_file=rs_path,
+                ident_filter=ident_filter,
+                update_rust=update_rust,
+            )
