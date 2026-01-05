@@ -32,9 +32,11 @@ pub fn test_switch_fallthrough_no_default() {
 pub fn test_fallthrough_with_early_return() {
     use crate::fallthrough::rust_fallthrough_with_early_return;
     unsafe {
-        assert_eq!(rust_fallthrough_with_early_return(0), 10);
-        assert_eq!(rust_fallthrough_with_early_return(1), 3);
-        assert_eq!(rust_fallthrough_with_early_return(2), 3);
-        assert_eq!(rust_fallthrough_with_early_return(4), 5);
+        assert_eq!(rust_fallthrough_with_early_return(0), 6);
+        assert_eq!(rust_fallthrough_with_early_return(1), 6);
+        assert_eq!(rust_fallthrough_with_early_return(2), 5);
+        assert_eq!(rust_fallthrough_with_early_return(3), 25);
+        assert_eq!(rust_fallthrough_with_early_return(4), 22);
+        assert_eq!(rust_fallthrough_with_early_return(5), 18);
     }
 }
