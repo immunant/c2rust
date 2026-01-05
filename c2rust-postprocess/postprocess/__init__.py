@@ -52,7 +52,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--model-id",
         type=str,
         required=False,
-        default="gemini-3-pro-preview",
+        default="gemini-3-flash-preview",
         help="ID of the LLM model to use (default: gemini-3-pro-preview)",
     )
 
