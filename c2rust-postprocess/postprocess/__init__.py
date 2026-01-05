@@ -4,6 +4,7 @@ c2rust-postprocess: Transfer comments from C functions to Rust functions using L
 
 import argparse
 import logging
+from argparse import BooleanOptionalAction
 from collections.abc import Sequence
 
 from google.genai import types
@@ -63,6 +64,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Enable or disable caching of LLM responses (default: enabled)",
     )
 
+    parser.add_argument(
+        "--update-rust",
+        required=False,
+        default=True,
+        action=BooleanOptionalAction,
+        help="Update the Rust in-place",
+    )
+
     # TODO: add option to select model
     # TODO: add option to configure cache
     # TODO: add option to select what transforms to apply
@@ -105,7 +114,11 @@ def main(argv: Sequence[str] | None = None):
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
-        xform.transfer_comments(args.root_rust_source_file, args.ident_filter)
+        xform.transfer_comments(
+            root_rust_source_file=args.root_rust_source_file,
+            ident_filter=args.ident_filter,
+            update_rust=args.update_rust,
+        )
 
         return 0
     except KeyboardInterrupt:

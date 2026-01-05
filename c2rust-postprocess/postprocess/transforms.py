@@ -55,7 +55,10 @@ class CommentTransfer:
         self.model = model
 
     def transfer_comments(
-        self, root_rust_source_file: Path, ident_filter: str | None = None
+        self,
+        root_rust_source_file: Path,
+        ident_filter: str | None = None,
+        update_rust: bool = True,
     ) -> None:
         pattern = re.compile(ident_filter) if ident_filter else None
 
@@ -156,4 +159,9 @@ class CommentTransfer:
 
             print(get_highlighted_rust(rust_fn))
 
-            update_rust_definition(root_rust_source_file, prompt.identifier, rust_fn)
+            if update_rust:
+                update_rust_definition(
+                    root_rust_source_file=root_rust_source_file,
+                    identifier=prompt.identifier,
+                    new_definition=rust_fn,
+                )
