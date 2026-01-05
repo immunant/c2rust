@@ -148,6 +148,8 @@ jobs:
 
       - run: uv run ruff check
 
+      - run: uv run ty check
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Build tools/split_rust

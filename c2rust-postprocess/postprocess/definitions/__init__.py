@@ -9,7 +9,7 @@ from typing import Any
 import tree_sitter_rust as tsrust
 from pygments import lex
 from pygments.lexer import RegexLexer
-from pygments.lexers import CLexer
+from pygments.lexers.c_cpp import CLexer
 from pygments.token import Comment
 from tree_sitter import Language, Node, Parser
 

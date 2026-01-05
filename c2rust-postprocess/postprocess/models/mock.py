@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any, Never
 
 from postprocess.models import AbstractGenerativeModel
@@ -16,7 +16,7 @@ class MockGenerativeModel(AbstractGenerativeModel):
     def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
-        tools: list[Callable[..., Any]] | None = None,
+        tools: Iterable[Callable[..., Any]] = (),
         max_tool_loops: int = 5,
     ) -> Never:
         raise NotImplementedError(
