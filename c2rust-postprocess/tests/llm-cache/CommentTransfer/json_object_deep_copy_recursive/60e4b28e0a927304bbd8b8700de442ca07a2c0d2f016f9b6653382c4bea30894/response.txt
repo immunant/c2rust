@@ -1,0 +1,135 @@
+```rust
+#[c2rust::src_loc = "1413:1"]
+///
+/// The actual guts of json_object_deep_copy(), with a few additional args
+/// needed so we can keep track of where we are within the object tree.
+///
+/// Note: caller is responsible for freeing *dst if this fails and returns -1.
+///
+unsafe extern "C" fn json_object_deep_copy_recursive(
+    mut src: *mut json_object,
+    mut parent: *mut json_object,
+    mut key_in_parent: *const ::core::ffi::c_char,
+    mut index_in_parent: size_t,
+    mut dst: *mut *mut json_object,
+    mut shallow_copy: Option<json_c_shallow_copy_fn>,
+) -> ::core::ffi::c_int {
+    let mut iter: json_object_iter = json_object_iter {
+        key: ::core::ptr::null_mut::<::core::ffi::c_char>(),
+        val: ::core::ptr::null_mut::<json_object>(),
+        entry: ::core::ptr::null_mut::<lh_entry>(),
+    };
+    let mut src_array_len: size_t = 0;
+    let mut ii: size_t = 0;
+    let mut shallow_copy_rc: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    shallow_copy_rc = shallow_copy
+        .expect(
+            "non-null function pointer",
+        )(
+        src as *mut json_object,
+        parent as *mut json_object,
+        key_in_parent,
+        index_in_parent,
+        dst as *mut *mut json_object,
+    );
+    /* -1=error, 1=object created ok, 2=userdata set */
+    if shallow_copy_rc < 1 as ::core::ffi::c_int {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    if !(*dst).is_null() {} else {
+        __assert_fail(
+            b"*dst != NULL\0" as *const u8 as *const ::core::ffi::c_char,
+            b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
+            1426 as ::core::ffi::c_uint,
+            b"int json_object_deep_copy_recursive(struct json_object *, struct json_object *, const char *, size_t, struct json_object **, json_c_shallow_copy_fn *)\0"
+                as *const u8 as *const ::core::ffi::c_char,
+        );
+    }
+    'c_7255: {
+        if !(*dst).is_null() {} else {
+            __assert_fail(
+                b"*dst != NULL\0" as *const u8 as *const ::core::ffi::c_char,
+                b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
+                1426 as ::core::ffi::c_uint,
+                b"int json_object_deep_copy_recursive(struct json_object *, struct json_object *, const char *, size_t, struct json_object **, json_c_shallow_copy_fn *)\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    match (*src).o_type as ::core::ffi::c_uint {
+        4 => {
+            iter.entry = (*json_object_get_object(src)).head as *mut lh_entry;
+            while !if !iter.entry.is_null() {
+                iter.key = (*iter.entry).k as uintptr_t as *mut ::core::ffi::c_void
+                    as *mut ::core::ffi::c_char;
+                iter.val = (*iter.entry).v as uintptr_t as *mut ::core::ffi::c_void
+                    as *mut json_object as *mut json_object;
+                iter.entry
+            } else {
+                ::core::ptr::null_mut::<lh_entry>()
+            }
+                .is_null()
+            {
+                let mut jso: *mut json_object = ::core::ptr::null_mut::<json_object>();
+                /* This handles the `json_type_null` case */
+                if iter.val.is_null() {
+                    jso = ::core::ptr::null_mut::<json_object>();
+                } else if json_object_deep_copy_recursive(
+                    iter.val as *mut json_object,
+                    src,
+                    iter.key,
+                    -(1 as ::core::ffi::c_int) as size_t,
+                    &raw mut jso,
+                    shallow_copy,
+                ) < 0 as ::core::ffi::c_int
+                {
+                    json_object_put(jso);
+                    return -(1 as ::core::ffi::c_int);
+                }
+                if json_object_object_add(*dst, iter.key, jso) < 0 as ::core::ffi::c_int
+                {
+                    json_object_put(jso);
+                    return -(1 as ::core::ffi::c_int);
+                }
+                iter.entry = (*iter.entry).next as *mut lh_entry;
+            }
+        }
+        5 => {
+            src_array_len = json_object_array_length(src);
+            ii = 0 as size_t;
+            while ii < src_array_len {
+                let mut jso_0: *mut json_object = ::core::ptr::null_mut::<json_object>();
+                let mut jso1: *mut json_object = json_object_array_get_idx(src, ii);
+                /* This handles the `json_type_null` case */
+                if jso1.is_null() {
+                    jso_0 = ::core::ptr::null_mut::<json_object>();
+                } else if json_object_deep_copy_recursive(
+                    jso1,
+                    src,
+                    ::core::ptr::null::<::core::ffi::c_char>(),
+                    ii,
+                    &raw mut jso_0,
+                    shallow_copy,
+                ) < 0 as ::core::ffi::c_int
+                {
+                    json_object_put(jso_0);
+                    return -(1 as ::core::ffi::c_int);
+                }
+                if json_object_array_add(*dst, jso_0) < 0 as ::core::ffi::c_int {
+                    json_object_put(jso_0);
+                    return -(1 as ::core::ffi::c_int);
+                }
+                ii = ii.wrapping_add(1);
+            }
+        }
+        _ => {
+            /* else, nothing to do, shallow_copy already did. */
+        }
+    }
+    if shallow_copy_rc != 2 as ::core::ffi::c_int {
+        return json_object_copy_serializer_data(src, *dst);
+    }
+    return 0 as ::core::ffi::c_int;
+}
+```

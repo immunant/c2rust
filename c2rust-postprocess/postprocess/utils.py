@@ -85,18 +85,17 @@ def read_chunk(filepath: Path, start_offset: int, end_offset: int, encoding="utf
 
 
 # TODO: test
-def remove_backticks(text: str) -> str:
-    """Remove surrounding backticks from a model response."""
-    text = text.strip()
-    if text.startswith("```") and text.endswith("```"):
-        return "\n".join(text.split("\n")[1:-1])
-
-    if text.startswith("`"):
-        text = text[1:]
-    if text.endswith("`"):
-        text = text[:-1]
-
-    return text
+def extract_rust_code_from_markdown(text: str) -> str:
+    """
+    Find the (first) `rust` Markdown code block from a model response.
+    """
+    prefix = "```rust\n"
+    suffix = "\n```"
+    start = text.find(prefix)
+    assert start != -1, f"{prefix!r} not in {text}"
+    end = text.find(suffix, start)
+    assert end != -1, f"{suffix!r} not in {text[start + len(prefix) :]}"
+    return text[start + len(prefix) : end]
 
 
 def get_highlighted_c(c_code: str, bg="dark") -> str:

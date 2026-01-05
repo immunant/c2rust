@@ -1,0 +1,47 @@
+transform = "CommentTransfer"
+identifier = "json_object_to_json_string"
+model = "gemini-3-pro-preview"
+response = """```rust
+/// backwards-compatible conversion to string
+#[no_mangle]
+#[c2rust::src_loc = "356:1"]
+pub unsafe extern "C" fn json_object_to_json_string(
+    mut jso: *mut json_object,
+) -> *const ::core::ffi::c_char {
+    return json_object_to_json_string_ext(jso, JSON_C_TO_STRING_SPACED);
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments.
+
+The Rust must contain exactly the same comments as the C code did.
+This must be true even if there are C comments in conditionally-compiled code
+not present in the Rust, including comments on preprocessor directives.
+In such cases, insert the C comment (only the comment, not any C code)
+into the Rust where the Rust code should have been.
+If any C comments are not inserted into the Rust, explain why.
+
+C function:
+```c
+/* backwards-compatible conversion to string */
+
+const char* json_object_to_json_string(struct json_object *jso)
+{
+\treturn json_object_to_json_string_ext(jso, JSON_C_TO_STRING_SPACED);
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+#[c2rust::src_loc = "356:1"]
+pub unsafe extern "C" fn json_object_to_json_string(
+    mut jso: *mut json_object,
+) -> *const ::core::ffi::c_char {
+    return json_object_to_json_string_ext(jso, JSON_C_TO_STRING_SPACED);
+}```
+"""

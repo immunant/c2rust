@@ -12,7 +12,11 @@ from postprocess.definitions import (
     update_rust_definition,
 )
 from postprocess.models import AbstractGenerativeModel
-from postprocess.utils import get_highlighted_c, get_highlighted_rust, remove_backticks
+from postprocess.utils import (
+    extract_rust_code_from_markdown,
+    get_highlighted_c,
+    get_highlighted_rust,
+)
 
 # TODO: get from model
 SYSTEM_INSTRUCTION = (
@@ -107,7 +111,14 @@ class CommentTransfer:
             Transfer the comments from the following C function to the corresponding Rust function.
             Do not add any comments that are not present in the C function.
             Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
-            Respond with the Rust function definition with the transferred comments; say nothing else.
+            Respond with the Rust function definition with the transferred comments.
+
+            The Rust must contain exactly the same comments as the C code did.
+            This must be true even if there are C comments in conditionally-compiled code
+            not present in the Rust, including comments on preprocessor directives.
+            In such cases, insert the C comment (only the comment, not any C code)
+            into the Rust where the Rust code should have been.
+            If any C comments are not inserted into the Rust, explain why.
             """  # noqa: E501
             prompt_text = dedent(prompt_text).strip()
 
@@ -148,7 +159,7 @@ class CommentTransfer:
                     response=response,
                 )
 
-            rust_fn = remove_backticks(response)
+            rust_fn = extract_rust_code_from_markdown(response)
 
             c_comments = get_c_comments(prompt.c_function)
             logging.debug(f"{c_comments=}")

@@ -1,0 +1,13 @@
+```rust
+/*
+ * Copyright (c) 2012 Eric Haszlakiewicz
+ *
+ * This library is free software; you can redistribute it and/or modify
+ * it under the terms of the MIT license. See COPYING for details.
+ */
+#[no_mangle]
+#[c2rust::src_loc = "11:1"]
+pub unsafe extern "C" fn json_c_version() -> *const ::core::ffi::c_char {
+    return JSON_C_VERSION.as_ptr();
+}
+```

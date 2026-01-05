@@ -2,6 +2,7 @@ transform = "CommentTransfer"
 identifier = "partition"
 model = "gemini-3-pro-preview"
 response = """```rust
+/// 
 /// Lomuto Partition Scheme:
 /// Partitions the array so that elements < pivot are on the left, 
 /// and elements >= pivot are on the right.
@@ -40,7 +41,14 @@ role = "user"
 content = """Transfer the comments from the following C function to the corresponding Rust function.
 Do not add any comments that are not present in the C function.
 Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
-Respond with the Rust function definition with the transferred comments; say nothing else.
+Respond with the Rust function definition with the transferred comments.
+
+The Rust must contain exactly the same comments as the C code did.
+This must be true even if there are C comments in conditionally-compiled code
+not present in the Rust, including comments on preprocessor directives.
+In such cases, insert the C comment (only the comment, not any C code)
+into the Rust where the Rust code should have been.
+If any C comments are not inserted into the Rust, explain why.
 
 C function:
 ```c

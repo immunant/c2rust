@@ -1,4 +1,5 @@
 ```rust
+/// 
 /// Lomuto Partition Scheme:
 /// Partitions the array so that elements < pivot are on the left, 
 /// and elements >= pivot are on the right.
