@@ -107,8 +107,7 @@ class CommentTransfer:
             Transfer the comments from the following C function to the corresponding Rust function.
             Do not add any comments that are not present in the C function.
             Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
-            Respond with the Rust function definition with the transferred comments
-            in a Rust Markdown code block; say nothing else.
+            Respond with the Rust function definition with the transferred comments; say nothing else.
             """  # noqa: E501
             prompt_text = dedent(prompt_text).strip()
 

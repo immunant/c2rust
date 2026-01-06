@@ -1,8 +1,7 @@
 transform = "CommentTransfer"
 identifier = "partition"
 model = "gemini-3-flash-preview"
-response = """```rust
-/// Lomuto Partition Scheme:
+response = """/// Lomuto Partition Scheme:
 /// Partitions the array so that elements < pivot are on the left, 
 /// and elements >= pivot are on the right.
 #[no_mangle]
@@ -32,16 +31,14 @@ pub unsafe extern "C" fn partition(
         arr.offset(high as isize) as *mut ::core::ffi::c_int,
     );
     return i + 1 as ::core::ffi::c_int;
-}
-```"""
+}"""
 
 [[messages]]
 role = "user"
 content = """Transfer the comments from the following C function to the corresponding Rust function.
 Do not add any comments that are not present in the C function.
 Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
-Respond with the Rust function definition with the transferred comments
-in a Rust Markdown code block; say nothing else.
+Respond with the Rust function definition with the transferred comments; say nothing else.
 
 C function:
 ```c
