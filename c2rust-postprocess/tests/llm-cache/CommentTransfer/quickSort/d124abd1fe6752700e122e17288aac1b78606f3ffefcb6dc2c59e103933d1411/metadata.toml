@@ -1,6 +1,6 @@
 transform = "CommentTransfer"
 identifier = "quickSort"
-model = "gemini-3-pro-preview"
+model = "gemini-3-flash-preview"
 response = """```rust
 #[no_mangle]
 pub unsafe extern "C" fn quickSort(

@@ -1,8 +1,7 @@
 transform = "CommentTransfer"
 identifier = "partition"
-model = "gemini-3-pro-preview"
-response = """```rust
-/// Lomuto Partition Scheme:
+model = "gemini-3-flash-preview"
+response = """/// Lomuto Partition Scheme:
 /// Partitions the array so that elements < pivot are on the left, 
 /// and elements >= pivot are on the right.
 #[no_mangle]
@@ -32,8 +31,7 @@ pub unsafe extern "C" fn partition(
         arr.offset(high as isize) as *mut ::core::ffi::c_int,
     );
     return i + 1 as ::core::ffi::c_int;
-}
-```"""
+}"""
 
 [[messages]]
 role = "user"

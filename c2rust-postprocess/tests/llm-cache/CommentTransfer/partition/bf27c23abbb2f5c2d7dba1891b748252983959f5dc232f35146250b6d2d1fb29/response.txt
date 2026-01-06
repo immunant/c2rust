@@ -1,4 +1,3 @@
-```rust
 /// Lomuto Partition Scheme:
 /// Partitions the array so that elements < pivot are on the left, 
 /// and elements >= pivot are on the right.
@@ -30,4 +29,3 @@ pub unsafe extern "C" fn partition(
     );
     return i + 1 as ::core::ffi::c_int;
 }
-```
