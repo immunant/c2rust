@@ -252,3 +252,19 @@ pub unsafe extern "C" fn implicit_loop_multi_exit(mut x: ::core::ffi::c_int) -> 
     x += 4 as ::core::ffi::c_int;
     return x;
 }
+#[no_mangle]
+pub unsafe extern "C" fn ambiguous_loop_exits(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        x += 1 as ::core::ffi::c_int;
+        if x != 0 {
+            x += 2 as ::core::ffi::c_int;
+            return x;
+        }
+        x += 3 as ::core::ffi::c_int;
+        if x != 0 {
+            x += 4 as ::core::ffi::c_int;
+            return x;
+        }
+    }
+    return x;
+}
