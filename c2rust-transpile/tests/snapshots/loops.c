@@ -260,8 +260,9 @@ int ambiguous_loop_exits(int x) {
 //   when incremental relooping is enabled.
 // - Without the incremental relooper the code that's supposed to go after the
 //   loop gets pulled into the loop.
-// - We're failing to reconstruct `while` loops in both cases because of `if`
-//   branches getting merged together.
+// - We're failing to reconstruct `while` loops in both cases because of
+//   previously mentioned issue with labeled blocks and `if` branches getting
+//   merged together.
 /*
 int backwards_for_loop(int x) {
     for (int ii = 0; ii < 10; ii++) {
