@@ -227,3 +227,62 @@ redo:
     x += 4;
     return x;
 }
+
+// If there are multiple paths out of a loop, where each path is only branched
+// to once, we risk pulling extra branches into the loop. This verifies that the
+// code that supposed to be after the loop actually lands there.
+int ambiguous_loop_exits(int x) {
+    while (x) {
+        x += 1;
+        if (x) {
+            x += 2;
+            return x;
+        }
+        x += 3;
+        if (x) {
+            x += 4;
+            return x;
+        }
+    }
+
+    return x;
+}
+
+// These two cases exhibit a couple of bad behaviors, specifically related to
+// interactions between the incremental relooper and the new relooper logic:
+//
+// - We end up with a labeled block containing a loop, i.e. `'a: { loop {} }`.
+//   These are supposed to get merged, but something related to the incremental
+//   relooper is preventing that from happening.
+// - In the `for` version, initialization of `ii` is being placed inside the
+//   labeled block, i.e. `'a: { ii = 0; loop { break 'a; } }`. This also
+//   prevents us from applying the block label to the loop. This only happens
+//   when incremental relooping is enabled.
+// - Without the incremental relooper the code that's supposed to go after the
+//   loop gets pulled into the loop.
+// - We're failing to reconstruct `while` loops in both cases because of `if`
+//   branches getting merged together.
+/*
+int backwards_for_loop(int x) {
+    for (int ii = 0; ii < 10; ii++) {
+        if (x)
+            continue;
+        return x;
+    }
+
+    return -x;
+}
+
+int backwards_while_loop(int x) {
+    int ii = 0;
+    while (ii < 10) {
+        if (x) {
+            ii++;
+            continue;
+        }
+        return x;
+    }
+
+    return -x;
+}
+*/
