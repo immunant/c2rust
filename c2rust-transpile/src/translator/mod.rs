@@ -4516,6 +4516,9 @@ impl<'c> Translation<'c> {
                             Ok(WithStmts::new_unsafe_val(transmute_expr(
                                 source_ty, target_ty, x,
                             )))
+                        } else if let &CTypeKind::Enum(..) = source_ty_kind {
+                            self.convert_cast_from_enum(target_cty.ctype, x)
+                                .map(WithStmts::new_val)
                         } else {
                             Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
                         }
