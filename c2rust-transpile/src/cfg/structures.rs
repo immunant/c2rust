@@ -615,11 +615,6 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         while let Some(Multiple { branches, entries }) = root.get(i) {
             let next_entries = get_next_entries(i + 1);
 
-            eprintln!(
-                "Structure {:?}: handling followup multiple with entries {entries:?}",
-                structure.get_entries()
-            );
-
             // Generate blocks as break targets for the remaining branches.
             for (branch_idx, (entry, branch)) in branches.iter().enumerate() {
                 // Choose the next entries for the branch. For most of the branches we want to
