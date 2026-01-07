@@ -11,10 +11,10 @@ use serde_json::json;
 
 use super::compile_cmds::LinkCmd;
 use super::TranspilerConfig;
-use crate::get_module_name;
 use crate::CrateSet;
 use crate::ExternCrateDetails;
 use crate::PragmaSet;
+use crate::{get_module_name, rustfmt};
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -225,7 +225,13 @@ fn emit_build_rs(
     });
     let output = reg.render("build.rs", &json).unwrap();
     let output_path = build_dir.join("build.rs");
-    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)
+    let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
+
+    if !tcfg.disable_rustfmt {
+        rustfmt(&output_path, build_dir);
+    }
+
+    Some(path)
 }
 
 /// Emit lib.rs (main.rs) for a library (binary). Returns `Some(path)`
@@ -252,8 +258,13 @@ fn emit_lib_rs(
 
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
+    let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
 
-    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)
+    if !tcfg.disable_rustfmt {
+        rustfmt(&output_path, build_dir);
+    }
+
+    Some(path)
 }
 
 /// If we translate variadic functions, the output will only compile

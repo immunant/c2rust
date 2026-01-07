@@ -145,6 +145,10 @@ struct Args {
     #[clap(long)]
     emit_no_std: bool,
 
+    /// Disable running rustfmt after translation
+    #[clap(long)]
+    disable_rustfmt: bool,
+
     /// Disable running refactoring tool after translation
     #[clap(long)]
     disable_refactoring: bool,
@@ -232,6 +236,7 @@ fn main() {
 
         translate_const_macros: args.translate_const_macros.into(),
         translate_fn_macros: args.translate_fn_macros.into(),
+        disable_rustfmt: args.disable_rustfmt,
         disable_refactoring: args.disable_refactoring,
         preserve_unused_functions: args.preserve_unused_functions,
 
