@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 RUSTFLAGS="-Awarnings {{extra_rustflags}}" \
 RUST_BACKTRACE=1 \
 c2rust transpile \
+    --emit-c-decl-map \
     --output-dir "$SCRIPT_DIR/repo" {{binary}} \
     {{tflags}} ${EXTRA_TFLAGS:---overwrite-existing} \
     compile_commands.json \
