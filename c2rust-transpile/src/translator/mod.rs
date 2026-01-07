@@ -1723,147 +1723,15 @@ impl<'c> Translation<'c> {
                 max_field_alignment,
                 platform_byte_size,
                 ..
-            } => {
-                let name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(decl_id)
-                    .unwrap();
-
-                // Check if the last field might be a flexible array member
-                if let Some(last_id) = fields.last() {
-                    let field_decl = &self.ast_context[*last_id];
-                    if let CDeclKind::Field { typ, .. } = field_decl.kind {
-                        if self.ast_context.maybe_flexible_array(typ.ctype) {
-                            self.potential_flexible_array_members
-                                .borrow_mut()
-                                .insert(*last_id);
-                        }
-                    }
-                }
-
-                // Pre-declare all the field names, checking for duplicates
-                for &x in fields {
-                    if let CDeclKind::Field { ref name, .. } = self.ast_context.index(x).kind {
-                        self.type_converter
-                            .borrow_mut()
-                            .declare_field_name(decl_id, x, name);
-                    }
-                }
-
-                // Gather up all the field names and field types
-                let (field_entries, contains_va_list) =
-                    self.convert_struct_fields(decl_id, fields, platform_byte_size)?;
-
-                let mut derives = vec![];
-                if !contains_va_list {
-                    derives.push("Copy");
-                    derives.push("Clone");
-                };
-                let has_bitfields =
-                    fields
-                        .iter()
-                        .any(|field_id| match self.ast_context.index(*field_id).kind {
-                            CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                            _ => unreachable!("Found non-field in record field list"),
-                        });
-                if has_bitfields {
-                    derives.push("BitfieldStruct");
-                    self.use_crate(ExternCrate::C2RustBitfields);
-                }
-
-                let mut reprs = vec![mk().meta_path("C")];
-                let max_field_alignment = if is_packed {
-                    // `__attribute__((packed))` forces a max alignment of 1,
-                    // overriding `#pragma pack`; this is also what clang does
-                    Some(1)
-                } else {
-                    max_field_alignment
-                };
-                match max_field_alignment {
-                    Some(1) => reprs.push(mk().meta_path("packed")),
-                    Some(mf) if mf > 1 => reprs.push(mk().meta_list("packed", vec![mf])),
-                    _ => {}
-                }
-
-                if let Some(alignment) = manual_alignment {
-                    // This is the most complicated case: we have `align(N)` which
-                    // might be mixed with or included into a `packed` structure,
-                    // which Rust doesn't currently support; instead, we split
-                    // the structure into 2 structures like this:
-                    //   #[align(N)]
-                    //   pub struct Foo(pub Foo_Inner);
-                    //   #[packed(M)]
-                    //   pub struct Foo_Inner {
-                    //     ...fields...
-                    //   }
-                    //
-                    // TODO: right now, we always emit the pair of structures
-                    // instead, we should only split when needed, but that
-                    // would significantly complicate the implementation
-                    assert!(self.ast_context.has_inner_struct_decl(decl_id));
-                    let inner_name = self.resolve_decl_inner_name(decl_id);
-                    let inner_ty = mk().path_ty(vec![inner_name.clone()]);
-                    let inner_struct = mk()
-                        .span(span)
-                        .pub_()
-                        .call_attr("derive", derives)
-                        .call_attr("repr", reprs)
-                        .struct_item(inner_name.clone(), field_entries, false);
-
-                    let outer_ty = mk().path_ty(vec![name.clone()]);
-                    let outer_field = mk().pub_().enum_field(mk().ident_ty(inner_name));
-                    let outer_struct = mk()
-                        .span(span)
-                        .pub_()
-                        .call_attr("derive", vec!["Copy", "Clone"])
-                        .call_attr(
-                            "repr",
-                            vec![
-                                mk().meta_path("C"),
-                                mk().meta_list("align", vec![alignment]),
-                                // TODO: copy others from `reprs` above
-                            ],
-                        )
-                        .struct_item(name, vec![outer_field], true);
-
-                    // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
-                    let padding_name = self
-                        .type_converter
-                        .borrow_mut()
-                        .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
-                        .to_owned();
-                    let padding_ty = mk().path_ty(vec!["usize"]);
-                    let outer_size = self.mk_size_of_ty_expr(outer_ty)?.to_expr();
-                    let inner_size = self.mk_size_of_ty_expr(inner_ty)?.to_expr();
-                    let padding_value =
-                        mk().binary_expr(BinOp::Sub(Default::default()), outer_size, inner_size);
-                    let padding_const = mk()
-                        .span(span)
-                        .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
-                        .const_item(padding_name, padding_ty, padding_value);
-
-                    let structs = vec![outer_struct, inner_struct, padding_const];
-                    Ok(ConvertedDecl::Items(structs))
-                } else {
-                    assert!(!self.ast_context.has_inner_struct_decl(decl_id));
-                    let mut mk_ = mk()
-                        .span(span)
-                        .pub_()
-                        .call_attr("derive", derives)
-                        .call_attr("repr", reprs);
-
-                    if contains_va_list {
-                        mk_ = mk_.generic_over(mk().lt_param(mk().ident("a")))
-                    }
-
-                    Ok(ConvertedDecl::Item(mk_.struct_item(
-                        name,
-                        field_entries,
-                        false,
-                    )))
-                }
-            }
+            } => self.convert_struct(
+                decl_id,
+                span,
+                fields,
+                is_packed,
+                platform_byte_size,
+                manual_alignment,
+                max_field_alignment,
+            ),
 
             Union {
                 fields: Some(ref fields),
@@ -4895,16 +4763,13 @@ impl<'c> Translation<'c> {
                 fields: Some(ref fields),
                 platform_byte_size,
                 ..
-            } => {
-                let name = self.resolve_decl_inner_name(name_decl_id);
-                self.convert_struct_zero_initializer(
-                    name,
-                    decl_id,
-                    fields,
-                    platform_byte_size,
-                    is_static,
-                )?
-            }
+            } => self.convert_struct_zero_initializer(
+                decl_id,
+                name_decl_id,
+                fields,
+                platform_byte_size,
+                is_static,
+            )?,
 
             CDeclKind::Struct { fields: None, .. } => {
                 return Err(TranslationError::generic(
