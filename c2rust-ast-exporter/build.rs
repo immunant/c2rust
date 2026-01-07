@@ -149,8 +149,18 @@ fn build_native(llvm_info: &LLVMInfo) {
         }
     };
 
-    // Statically link against 'clangAstExporter' which requires 'tinycbor'
+    // Use a custom tinybor directory via an environment variable
+    if let Ok(tinycbor_dir) = env::var("TINYCBOR_DIR") {
+        let include_dir = Path::new(&tinycbor_dir).join("include");
+        let lib_dir = Path::new(&tinycbor_dir).join("lib");
+
+        println!("cargo:rustc-link-search=native={}", lib_dir.display());
+        println!("cargo:rerun-if-changed={}", include_dir.display());
+    }
+
     println!("cargo:rustc-link-lib=static=tinycbor");
+
+    // Statically link against 'clangAstExporter' which requires 'tinycbor'
     println!("cargo:rustc-link-lib=static=clangAstExporter");
 
     println!("cargo:rustc-link-search=native={}", llvm_lib_dir.display());
