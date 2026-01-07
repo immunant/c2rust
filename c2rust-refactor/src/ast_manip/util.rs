@@ -172,6 +172,34 @@ pub fn use_idents(tree: &UseTree) -> Vec<Ident> {
     }
 }
 
+/// Structure holding some information about a given `use`:
+/// * The identifier that import is visible as, and
+/// * The `NodeId` values for that import in all namespaces.
+#[derive(Debug)]
+pub struct UseInfo {
+    pub ident: Ident,
+    pub ids: Vec<NodeId>,
+}
+
+impl UseInfo {
+    /// Retrieve the list of Idents and their NodeIds defined by the given UseTree
+    pub fn from_use_tree(tree: &UseTree, id0: NodeId) -> Vec<Self> {
+        match &tree.kind {
+            UseTreeKind::Simple(_, id1, id2) => vec![Self {
+                ident: tree.ident(),
+                ids: vec![id0, *id1, *id2],
+            }],
+            // TODO: support globs but the AST doesn't tell us
+            // which identifiers are imported right now
+            UseTreeKind::Glob => vec![],
+            UseTreeKind::Nested(children) => children
+                .iter()
+                .flat_map(|(tree, id)| Self::from_use_tree(tree, *id))
+                .collect(),
+        }
+    }
+}
+
 /// Helper function to recursively split nested uses into simple ones
 fn split_uses_impl(
     mut item: P<Item>,
