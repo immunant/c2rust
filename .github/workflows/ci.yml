@@ -167,3 +167,38 @@ jobs:
             bear
 
       - run: uv run pytest -v
+
+  tools:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        crate:
+          - merge_rust
+          - related_decls
+          - rust_util
+          - split_ffi_entry_points
+          - split_rust
+
+    env:
+      RUSTFLAGS: "-D warnings"
+      RUSTDOCFLAGS: "-D warnings"
+
+    defaults:
+      run:
+        working-directory: tools/${{ matrix.crate }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/${{ matrix.crate }}
+
+      - run: cargo fmt --check
+
+      - run: cargo build --release
+
+      - run: cargo test --release
+
+      - run: cargo doc --document-private-items --no-deps
