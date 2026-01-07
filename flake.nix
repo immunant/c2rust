@@ -75,6 +75,7 @@
               nativeBuildInputs = with pkgs; [
                 pkg-config
                 cmake
+                uv
                 (python3.withPackages (
                   python-pkgs: with python-pkgs; [
                     "bencode-python3"
