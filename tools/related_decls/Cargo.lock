@@ -1388,6 +1388,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "related_decls"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "ra_ap_hir",
+ "ra_ap_ide_db",
+ "ra_ap_load-cargo",
+ "ra_ap_project_model",
+ "ra_ap_syntax",
+ "rust_util",
+ "syn",
+]
+
+[[package]]
 name = "rowan"
 version = "0.15.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1621,21 +1636,6 @@ checksum = "3498b0a27f93ef1402f20eefacfaa1691272ac4eca1cdc8c596cb0a245d6cbf5"
 dependencies = [
  "borsh",
  "serde_core",
-]
-
-[[package]]
-name = "split_ffi_entry_points"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "ra_ap_hir",
- "ra_ap_ide_db",
- "ra_ap_load-cargo",
- "ra_ap_project_model",
- "ra_ap_syntax",
- "rust_util",
- "syn",
 ]
 
 [[package]]
