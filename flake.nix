@@ -10,17 +10,24 @@
     };
   };
 
-  outputs = inputs@{ self, nixpkgs, utils, fenix}:
-    utils.lib.eachDefaultSystem (system:
+  outputs =
+    inputs@{
+      self,
+      nixpkgs,
+      utils,
+      fenix,
+    }:
+    utils.lib.eachDefaultSystem (
+      system:
       let
         fenixToolchain =
           let
             toml = with builtins; (fromTOML (readFile ./rust-toolchain.toml)).toolchain;
           in
-            (fenix.packages.${system}.fromToolchainName {
-              name = toml.channel;
-              sha256 = "sha256-r/8YBFuFa4hpwgE3FnME7nQA2Uc1uqj0eCE1NWmI1u0";
-            })."completeToolchain";
+          (fenix.packages.${system}.fromToolchainName {
+            name = toml.channel;
+            sha256 = "sha256-r/8YBFuFa4hpwgE3FnME7nQA2Uc1uqj0eCE1NWmI1u0";
+          })."completeToolchain";
 
         pkgs = import nixpkgs {
           inherit system;
@@ -51,38 +58,39 @@
           C2RUST_USE_NIX = 1;
           RUST_SRC_PATH = "${fenixToolchain}/lib/rustlib/src/rust/library";
         };
-      in rec {
+      in
+      rec {
         packages = {
-          default = rustPlatform.buildRustPackage (with pkgs; env // {
-            pname = "c2rust";
-            version = "0.20.0";
-            src = ./.;
-            doCheck = false; # Can use checkFlags to disable specific tests
+          default = rustPlatform.buildRustPackage (
+            with pkgs;
+            env
+            // {
+              pname = "c2rust";
+              version = "0.20.0";
+              src = ./.;
+              doCheck = false; # Can use checkFlags to disable specific tests
 
-            patches = [ ./nix-tinycbor-cmake.patch ];
+              patches = [ ./nix-tinycbor-cmake.patch ];
 
-            nativeBuildInputs =
-              with pkgs; [
+              nativeBuildInputs = with pkgs; [
                 pkg-config
                 cmake
-                (python3.withPackages
-                  (python-pkgs:
-                    with python-pkgs;
-                    [ "bencode-python3"
-                      cbor
-                      colorlog
-                      mako
-                      pip
-                      plumbum
-                      psutil
-                      pygments
-                      typing
-                      "scan-build"
-                      pyyaml
-                      toml
-                    ]
-                  )
-                )
+                (python3.withPackages (
+                  python-pkgs: with python-pkgs; [
+                    "bencode-python3"
+                    cbor
+                    colorlog
+                    mako
+                    pip
+                    plumbum
+                    psutil
+                    pygments
+                    typing
+                    "scan-build"
+                    pyyaml
+                    toml
+                  ]
+                ))
                 myStdenv.cc
                 myLLVM.libclang
                 myLLVM.clang
@@ -90,8 +98,7 @@
                 myLLVM.libllvm
               ];
 
-            buildInputs =
-              with pkgs; [
+              buildInputs = with pkgs; [
                 rustPlatform.bindgenHook
                 myStdenv.cc
                 myLLVM.libclang
@@ -104,22 +111,28 @@
                 fenixToolchain
               ];
 
-            cargoLock = {
-              lockFile = ./Cargo.lock;
-            };
-          });
+              cargoLock = {
+                lockFile = ./Cargo.lock;
+              };
+            }
+          );
         };
         defaultPackage = packages.default;
 
         devShells = {
           # Include a fixed version of clang in the development environment for testing.
-          default = pkgs.mkShell (with pkgs; env // {
-            strictDeps = true;
-            inputsFrom = [ packages.default ];
-            buildInputs = [ ];
-          });
+          default = pkgs.mkShell (
+            with pkgs;
+            env
+            // {
+              strictDeps = true;
+              inputsFrom = [ packages.default ];
+              buildInputs = [ ];
+            }
+          );
         };
 
         devShell = devShells.default;
-      });
+      }
+    );
 }
