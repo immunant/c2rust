@@ -6,10 +6,12 @@ import argparse
 import logging
 from argparse import BooleanOptionalAction
 from collections.abc import Sequence
+from pathlib import Path
 
 from google.genai import types
 
 from postprocess.cache import DirectoryCache, FrozenCache
+from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.models import api_key_from_env, get_model_by_id
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import (
@@ -46,6 +48,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         required=False,
         default=None,
         help="Regular expression to filter function identifiers to process",
+    )
+
+    parser.add_argument(
+        "--exclude-file",
+        type=Path,
+        required=False,
+        default=None,
+        help="A YAML file of file paths and identifiers within them to exclude/skip",
     )
 
     parser.add_argument(
@@ -116,6 +126,7 @@ def main(argv: Sequence[str] | None = None):
         xform = CommentTransfer(cache, model)
         xform.transfer_comments_dir(
             root_rust_source_file=args.root_rust_source_file,
+            exclude_list=IdentifierExcludeList(path=args.exclude_file),
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
         )
