@@ -18,5 +18,5 @@ pub unsafe extern "C" fn sum(mut count: ::core::ffi::c_int) -> ::core::ffi::c_in
         x += count;
         count -= 1;
     }
-    return x;
+    x
 }
