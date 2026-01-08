@@ -19,9 +19,10 @@ class Test(object):
         "make": ["make.sh", "cmake.sh"],
         "transpile": ["transpile.gen.sh", "transpile.sh"],
         "cargo.transpile": ["cargo.transpile.gen.sh", "cargo.transpile.sh"],
+        "check.transpile": ["check.transpile.sh", "test.sh"],
         "refactor": ["refactor.gen.sh", "refactor.sh"],
         "cargo.refactor": ["cargo.refactor.gen.sh", "cargo.refactor.sh"],
-        "check": ["check.sh", "test.sh"],
+        "check.refactor": ["check.refactor.sh", "test.sh"],
     }
 
     def __init__(self, directory: Path, generated_scripts: set[Path]):
