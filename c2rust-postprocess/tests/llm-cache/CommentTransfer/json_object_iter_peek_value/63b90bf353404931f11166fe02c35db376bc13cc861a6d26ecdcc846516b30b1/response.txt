@@ -1,0 +1,11 @@
+///
+/// ****************************************************************************
+///
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_peek_value(
+    mut iter: *const crate::src::json_object_iterator::json_object_iterator,
+) -> *mut crate::json_object_private_h::json_object {
+    return (*((*iter).opaque_ as *const crate::src::linkhash::lh_entry)).v as crate::stdlib::uintptr_t as *mut ::core::ffi::c_void
+        as *mut crate::json_object_private_h::json_object;
+}

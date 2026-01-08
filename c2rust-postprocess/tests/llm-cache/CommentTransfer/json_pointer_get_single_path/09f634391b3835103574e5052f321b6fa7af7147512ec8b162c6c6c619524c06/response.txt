@@ -1,0 +1,43 @@
+```rust
+unsafe extern "C" fn json_pointer_get_single_path(
+    mut obj: *mut crate::json_object_private_h::json_object,
+    mut path: *mut ::core::ffi::c_char,
+    mut value: *mut *mut crate::json_object_private_h::json_object,
+) -> ::core::ffi::c_int {
+    if crate::src::json_object::json_object_is_type(obj, crate::src::json_object::json_type_array) != 0 {
+        let mut idx: crate::stdlib::int32_t = 0;
+        if is_valid_index(obj, path, &raw mut idx) == 0 {
+            return -(1 as ::core::ffi::c_int);
+        }
+        obj = crate::src::json_object::json_object_array_get_idx(obj, idx as crate::__stddef_size_t_h::size_t);
+        if !obj.is_null() {
+            if !value.is_null() {
+                *value = obj;
+            }
+            return 0 as ::core::ffi::c_int;
+        }
+        /* Entry not found */
+        *crate::stdlib::__errno_location() = crate::stdlib::ENOENT;
+        return -(1 as ::core::ffi::c_int);
+    }
+
+    /* RFC states that we first must eval all ~1 then all ~0 */
+    string_replace_all_occurrences_with_char(
+        path,
+        b"~1\0" as *const u8 as *const ::core::ffi::c_char,
+        '/' as i32 as ::core::ffi::c_char,
+    );
+    string_replace_all_occurrences_with_char(
+        path,
+        b"~0\0" as *const u8 as *const ::core::ffi::c_char,
+        '~' as i32 as ::core::ffi::c_char,
+    );
+
+    if crate::src::json_object::json_object_object_get_ex(obj, path, value) == 0 {
+        *crate::stdlib::__errno_location() = crate::stdlib::ENOENT;
+        return -(1 as ::core::ffi::c_int);
+    }
+
+    return 0 as ::core::ffi::c_int;
+}
+```

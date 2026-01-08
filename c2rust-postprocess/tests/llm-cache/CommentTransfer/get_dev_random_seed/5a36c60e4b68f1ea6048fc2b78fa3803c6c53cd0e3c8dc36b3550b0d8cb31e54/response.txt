@@ -1,0 +1,30 @@
+/// get_dev_random_seed
+unsafe extern "C" fn get_dev_random_seed() -> ::core::ffi::c_int {
+    let mut fd: ::core::ffi::c_int = crate::stdlib::open(dev_random_file, crate::stdlib::O_RDONLY);
+    if fd < 0 as ::core::ffi::c_int {
+        crate::stdlib::fprintf(
+            crate::stdlib::stderr,
+            b"error opening %s: %s\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            crate::src::strerror_override::_json_c_strerror(*crate::stdlib::__errno_location()),
+        );
+        crate::stdlib::exit(1 as ::core::ffi::c_int);
+    }
+    let mut r: ::core::ffi::c_int = 0;
+    let mut nread: crate::stdlib::ssize_t = crate::stdlib::read(
+        fd,
+        &raw mut r as *mut ::core::ffi::c_void,
+        ::core::mem::size_of::<::core::ffi::c_int>() as crate::__stddef_size_t_h::size_t,
+    );
+    if nread as usize != ::core::mem::size_of::<::core::ffi::c_int>() as usize {
+        crate::stdlib::fprintf(
+            crate::stdlib::stderr,
+            b"error short read %s: %s\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            crate::src::strerror_override::_json_c_strerror(*crate::stdlib::__errno_location()),
+        );
+        crate::stdlib::exit(1 as ::core::ffi::c_int);
+    }
+    crate::stdlib::close(fd);
+    return r;
+}

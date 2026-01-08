@@ -1,0 +1,15 @@
+```rust
+unsafe extern "C" fn json_object_new(mut o_type: crate::src::json_object::json_type) -> *mut crate::json_object_private_h::json_object {
+    let mut jso: *mut crate::json_object_private_h::json_object = ::core::ptr::null_mut::<crate::json_object_private_h::json_object>();
+    jso = crate::stdlib::calloc(::core::mem::size_of::<crate::json_object_private_h::json_object>() as crate::__stddef_size_t_h::size_t, 1 as crate::__stddef_size_t_h::size_t) as *mut crate::json_object_private_h::json_object;
+    if jso.is_null() {
+        return ::core::ptr::null_mut::<crate::json_object_private_h::json_object>();
+    }
+    (*jso).o_type = o_type;
+    (*jso)._ref_count = 1 as crate::stdlib::uint32_t;
+    (*jso)._delete =
+        Some(json_object_generic_delete as unsafe extern "C" fn(*mut crate::json_object_private_h::json_object) -> ())
+            as Option<crate::json_object_private_h::json_object_private_delete_fn>;
+    /* REFCOUNT_DEBUG */
+    return jso;
+}```

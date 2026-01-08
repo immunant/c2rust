@@ -1,0 +1,102 @@
+/// json_object_array
+unsafe extern "C" fn json_object_array_to_json_string(
+    mut jso: *mut crate::json_object_private_h::json_object,
+    mut pb: *mut crate::src::printbuf::printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut had_children: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut ii: crate::__stddef_size_t_h::size_t = 0;
+    crate::src::printbuf::printbuf_memappend(
+        pb as *mut crate::src::printbuf::printbuf,
+        b"[\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+        crate::src::printbuf::printbuf_memappend(
+            pb as *mut crate::src::printbuf::printbuf,
+            b"\n\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    }
+    ii = 0 as crate::__stddef_size_t_h::size_t;
+    while ii < json_object_array_length(jso) {
+        let mut val: *mut crate::json_object_private_h::json_object =
+            ::core::ptr::null_mut::<crate::json_object_private_h::json_object>();
+        if had_children != 0 {
+            crate::src::printbuf::printbuf_memappend(
+                pb as *mut crate::src::printbuf::printbuf,
+                b",\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+            if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+                crate::src::printbuf::printbuf_memappend(
+                    pb as *mut crate::src::printbuf::printbuf,
+                    b"\n\0" as *const u8 as *const ::core::ffi::c_char,
+                    (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                        .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+                );
+            }
+        }
+        had_children = 1 as ::core::ffi::c_int;
+        if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0
+            && flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY == 0
+        {
+            crate::src::printbuf::printbuf_memappend(
+                pb as *mut crate::src::printbuf::printbuf,
+                b" \0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        indent(pb, level + 1 as ::core::ffi::c_int, flags);
+        val = json_object_array_get_idx(jso, ii);
+        if val.is_null() {
+            crate::src::printbuf::printbuf_memappend(
+                pb as *mut crate::src::printbuf::printbuf,
+                b"null\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 5]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        } else if (*val)._to_json_string.expect("non-null function pointer")(
+            val,
+            pb,
+            level + 1 as ::core::ffi::c_int,
+            flags,
+        ) < 0 as ::core::ffi::c_int
+        {
+            return -(1 as ::core::ffi::c_int);
+        }
+        ii = ii.wrapping_add(1);
+    }
+    if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+        if had_children != 0 {
+            crate::src::printbuf::printbuf_memappend(
+                pb as *mut crate::src::printbuf::printbuf,
+                b"\n\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        indent(pb, level, flags);
+    }
+    if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0
+        && flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY == 0
+    {
+        return crate::src::printbuf::printbuf_memappend(
+            pb as *mut crate::src::printbuf::printbuf,
+            b" ]\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 3]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    }
+    return crate::src::printbuf::printbuf_memappend(
+        pb as *mut crate::src::printbuf::printbuf,
+        b"]\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+}

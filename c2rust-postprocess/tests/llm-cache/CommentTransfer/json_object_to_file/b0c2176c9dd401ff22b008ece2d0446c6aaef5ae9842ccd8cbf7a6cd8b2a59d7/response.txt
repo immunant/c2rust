@@ -1,0 +1,8 @@
+/// backwards compatible "format and write to file" function
+#[no_mangle]
+pub unsafe extern "C" fn json_object_to_file(
+    mut filename: *const ::core::ffi::c_char,
+    mut obj: *mut crate::json_object_private_h::json_object,
+) -> ::core::ffi::c_int {
+    return json_object_to_file_ext(filename, obj, crate::src::json_object::JSON_C_TO_STRING_PLAIN);
+}

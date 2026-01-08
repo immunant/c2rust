@@ -1,0 +1,46 @@
+transform = "CommentTransfer"
+identifier = "json_c_version"
+model = "gemini-3-flash-preview"
+response = """/*
+ * Copyright (c) 2012 Eric Haszlakiewicz
+ *
+ * This library is free software; you can redistribute it and/or modify
+ * it under the terms of the MIT license. See COPYING for details.
+ */
+#[no_mangle]
+pub unsafe extern "C" fn json_c_version() -> *const ::core::ffi::c_char {
+    return crate::src::json_c_version::JSON_C_VERSION.as_ptr();
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/*
+ * Copyright (c) 2012 Eric Haszlakiewicz
+ *
+ * This library is free software; you can redistribute it and/or modify
+ * it under the terms of the MIT license. See COPYING for details.
+ */
+#include "config.h"
+
+#include "json_c_version.h"
+
+const char *json_c_version(void)
+{
+\treturn JSON_C_VERSION;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_c_version() -> *const ::core::ffi::c_char {
+    return crate::src::json_c_version::JSON_C_VERSION.as_ptr();
+}```
+"""

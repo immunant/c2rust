@@ -1,0 +1,9 @@
+/// json_c_get_random_seed
+#[no_mangle]
+
+pub unsafe extern "C" fn json_c_get_random_seed() -> ::core::ffi::c_int {
+    if has_dev_urandom() != 0 {
+        return get_dev_random_seed();
+    }
+    return get_time_seed();
+}
