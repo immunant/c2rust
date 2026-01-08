@@ -1,0 +1,98 @@
+transform = "CommentTransfer"
+identifier = "get_dev_random_seed"
+model = "gemini-3-flash-preview"
+response = """/// get_dev_random_seed
+unsafe extern "C" fn get_dev_random_seed() -> ::core::ffi::c_int {
+    let mut fd: ::core::ffi::c_int = open(dev_random_file, O_RDONLY);
+    if fd < 0 as ::core::ffi::c_int {
+        fprintf(
+            stderr,
+            b"error opening %s: %s\\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            _json_c_strerror(*__errno_location()),
+        );
+        exit(1 as ::core::ffi::c_int);
+    }
+    let mut r: ::core::ffi::c_int = 0;
+    let mut nread: ssize_t = read(
+        fd,
+        &raw mut r as *mut ::core::ffi::c_void,
+        ::core::mem::size_of::<::core::ffi::c_int>() as size_t,
+    );
+    if nread as usize != ::core::mem::size_of::<::core::ffi::c_int>() as usize {
+        fprintf(
+            stderr,
+            b"error short read %s: %s\\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            _json_c_strerror(*__errno_location()),
+        );
+        exit(1 as ::core::ffi::c_int);
+    }
+    close(fd);
+    return r;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* get_dev_random_seed */
+
+static int get_dev_random_seed(void)
+{
+    DEBUG_SEED("get_dev_random_seed");
+
+    int fd = open(dev_random_file, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "error opening %s: %s", dev_random_file, strerror(errno));
+        exit(1);
+    }
+
+    int r;
+    ssize_t nread = read(fd, &r, sizeof(r));
+    if (nread != sizeof(r)) {
+        fprintf(stderr, "error short read %s: %s", dev_random_file, strerror(errno));
+        exit(1);
+    }
+
+    close(fd);
+    return r;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn get_dev_random_seed() -> ::core::ffi::c_int {
+    let mut fd: ::core::ffi::c_int = open(dev_random_file, O_RDONLY);
+    if fd < 0 as ::core::ffi::c_int {
+        fprintf(
+            stderr,
+            b"error opening %s: %s\\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            _json_c_strerror(*__errno_location()),
+        );
+        exit(1 as ::core::ffi::c_int);
+    }
+    let mut r: ::core::ffi::c_int = 0;
+    let mut nread: ssize_t = read(
+        fd,
+        &raw mut r as *mut ::core::ffi::c_void,
+        ::core::mem::size_of::<::core::ffi::c_int>() as size_t,
+    );
+    if nread as usize != ::core::mem::size_of::<::core::ffi::c_int>() as usize {
+        fprintf(
+            stderr,
+            b"error short read %s: %s\\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            _json_c_strerror(*__errno_location()),
+        );
+        exit(1 as ::core::ffi::c_int);
+    }
+    close(fd);
+    return r;
+}```
+"""

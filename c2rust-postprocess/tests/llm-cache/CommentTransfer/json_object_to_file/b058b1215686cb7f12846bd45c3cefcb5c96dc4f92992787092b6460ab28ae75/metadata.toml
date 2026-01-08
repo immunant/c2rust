@@ -1,0 +1,39 @@
+transform = "CommentTransfer"
+identifier = "json_object_to_file"
+model = "gemini-3-flash-preview"
+response = """/// backwards compatible "format and write to file" function
+#[no_mangle]
+pub unsafe extern "C" fn json_object_to_file(
+    mut filename: *const ::core::ffi::c_char,
+    mut obj: *mut json_object,
+) -> ::core::ffi::c_int {
+    return json_object_to_file_ext(filename, obj, JSON_C_TO_STRING_PLAIN);
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+// backwards compatible "format and write to file" function
+
+int json_object_to_file(const char *filename, struct json_object *obj)
+{
+  return json_object_to_file_ext(filename, obj, JSON_C_TO_STRING_PLAIN);
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_to_file(
+    mut filename: *const ::core::ffi::c_char,
+    mut obj: *mut json_object,
+) -> ::core::ffi::c_int {
+    return json_object_to_file_ext(filename, obj, JSON_C_TO_STRING_PLAIN);
+}```
+"""

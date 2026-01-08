@@ -1,0 +1,27 @@
+```rust
+unsafe extern "C" fn lh_char_hash(mut k: *const ::core::ffi::c_void) -> ::core::ffi::c_ulong {
+    static mut random_seed: ::core::ffi::c_int = -(1 as ::core::ffi::c_int);
+    if random_seed == -(1 as ::core::ffi::c_int) {
+        let mut seed: ::core::ffi::c_int = 0;
+        /* we can't use -1 as it is the unitialized sentinel */
+        loop {
+            seed = json_c_get_random_seed();
+            if !(seed == -(1 as ::core::ffi::c_int)) {
+                break;
+            }
+        }
+        //#warning "racy random seed initializtion if used by multiple threads"
+        ::core::intrinsics::atomic_cxchg_seqcst_seqcst(
+            &raw mut random_seed,
+            -(1 as ::core::ffi::c_int),
+            seed,
+        )
+        .0; /* potentially racy */
+    }
+    return hashlittle(
+        k as *const ::core::ffi::c_char as *const ::core::ffi::c_void,
+        strlen(k as *const ::core::ffi::c_char),
+        random_seed as uint32_t,
+    ) as ::core::ffi::c_ulong;
+}
+```

@@ -1,0 +1,90 @@
+transform = "CommentTransfer"
+identifier = "array_list_new"
+model = "gemini-3-flash-preview"
+response = """```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn array_list_new(
+    mut free_fn: Option<crate::src::arraylist::array_list_free_fn>,
+) -> *mut crate::src::arraylist::array_list {
+    let mut arr: *mut crate::src::arraylist::array_list = ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    arr = calloc(1 as size_t, ::core::mem::size_of::<crate::src::arraylist::array_list>() as size_t) as *mut crate::src::arraylist::array_list;
+    if arr.is_null() {
+        return ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    }
+    (*arr).size = crate::src::arraylist::ARRAY_LIST_DEFAULT_SIZE as size_t;
+    (*arr).length = 0 as size_t;
+    (*arr).free_fn = free_fn;
+    (*arr).array = calloc(
+        ::core::mem::size_of::<*mut ::core::ffi::c_void>() as size_t,
+        (*arr).size,
+    ) as *mut *mut ::core::ffi::c_void;
+    if (*arr).array.is_null() {
+        free(arr as *mut ::core::ffi::c_void);
+        return ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    }
+    return arr;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+#elif SIZEOF_SIZE_T == SIZEOF_LONG_LONG
+#define SIZE_T_MAX ULLONG_MAX
+#else
+#error Unable to determine size of size_t
+#endif
+#endif
+
+#include "arraylist.h"
+
+struct array_list*
+array_list_new(array_list_free_fn *free_fn)
+{
+  struct array_list *arr;
+
+  arr = (struct array_list*)calloc(1, sizeof(struct array_list));
+  if(!arr) return NULL;
+  arr->size = ARRAY_LIST_DEFAULT_SIZE;
+  arr->length = 0;
+  arr->free_fn = free_fn;
+  if(!(arr->array = (void**)calloc(sizeof(void*), arr->size))) {
+    free(arr);
+    return NULL;
+  }
+  return arr;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn array_list_new(
+    mut free_fn: Option<crate::src::arraylist::array_list_free_fn>,
+) -> *mut crate::src::arraylist::array_list {
+    let mut arr: *mut crate::src::arraylist::array_list = ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    arr = calloc(1 as size_t, ::core::mem::size_of::<crate::src::arraylist::array_list>() as size_t) as *mut crate::src::arraylist::array_list;
+    if arr.is_null() {
+        return ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    }
+    (*arr).size = crate::src::arraylist::ARRAY_LIST_DEFAULT_SIZE as size_t;
+    (*arr).length = 0 as size_t;
+    (*arr).free_fn = free_fn;
+    (*arr).array = calloc(
+        ::core::mem::size_of::<*mut ::core::ffi::c_void>() as size_t,
+        (*arr).size,
+    ) as *mut *mut ::core::ffi::c_void;
+    if (*arr).array.is_null() {
+        free(arr as *mut ::core::ffi::c_void);
+        return ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    }
+    return arr;
+}```
+"""

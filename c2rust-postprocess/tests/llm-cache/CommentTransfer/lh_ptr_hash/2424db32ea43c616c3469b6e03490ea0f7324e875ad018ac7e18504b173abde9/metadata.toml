@@ -1,0 +1,35 @@
+transform = "CommentTransfer"
+identifier = "lh_ptr_hash"
+model = "gemini-3-flash-preview"
+response = """```rust
+unsafe extern "C" fn lh_ptr_hash(mut k: *const ::core::ffi::c_void) -> ::core::ffi::c_ulong {
+    /* CAW: refactored to be 64bit nice */
+    return (k as ptrdiff_t as ::core::ffi::c_ulong).wrapping_mul(crate::src::linkhash::LH_PRIME)
+        >> 4 as ::core::ffi::c_int
+        & ULONG_MAX;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+static unsigned long lh_ptr_hash(const void *k)
+{
+\t/* CAW: refactored to be 64bit nice */
+\treturn (unsigned long)((((ptrdiff_t)k * LH_PRIME) >> 4) & ULONG_MAX);
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn lh_ptr_hash(mut k: *const ::core::ffi::c_void) -> ::core::ffi::c_ulong {
+    return (k as ptrdiff_t as ::core::ffi::c_ulong).wrapping_mul(crate::src::linkhash::LH_PRIME)
+        >> 4 as ::core::ffi::c_int
+        & ULONG_MAX;
+}```
+"""

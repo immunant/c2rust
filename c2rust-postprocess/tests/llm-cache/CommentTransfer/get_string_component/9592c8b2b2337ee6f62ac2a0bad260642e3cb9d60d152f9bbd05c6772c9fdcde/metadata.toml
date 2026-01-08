@@ -1,0 +1,81 @@
+transform = "CommentTransfer"
+identifier = "get_string_component"
+model = "gemini-3-flash-preview"
+response = """/// helper for accessing the optimized string data component in json_object
+unsafe extern "C" fn get_string_component(
+    mut jso: *const json_object,
+) -> *const ::core::ffi::c_char {
+    return if (*jso).o.c_string.len < LEN_DIRECT_STRING_DATA {
+        &raw const (*jso).o.c_string.str_0.data as *const ::core::ffi::c_char
+    } else {
+        (*jso).o.c_string.str_0.ptr as *const ::core::ffi::c_char
+    };
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* ref count debugging */
+
+#ifdef REFCOUNT_DEBUG
+
+static struct lh_table *json_object_table;
+
+static void json_object_init(void) __attribute__ ((constructor));
+static void json_object_init(void) {
+\tMC_DEBUG("json_object_init: creating object table\\n");
+\tjson_object_table = lh_kptr_table_new(128, NULL);
+}
+
+static void json_object_fini(void) __attribute__ ((destructor));
+static void json_object_fini(void)
+{
+\tstruct lh_entry *ent;
+\tif (MC_GET_DEBUG())
+\t{
+\t\tif (json_object_table->count)
+\t\t{
+\t\t\tMC_DEBUG("json_object_fini: %d referenced objects at exit\\n",
+\t\t\t   json_object_table->count);
+\t\t\tlh_foreach(json_object_table, ent)
+\t\t\t{
+\t\t\t\tstruct json_object* obj =
+\t\t\t\t  (struct json_object*) lh_entry_v(ent);
+\t\t\t\tMC_DEBUG("\\t%s:%p\\n",
+\t\t\t\t\t json_type_to_name(obj->o_type), obj);
+\t\t\t}
+\t\t}
+\t}
+\tMC_DEBUG("json_object_fini: freeing object table\\n");
+\tlh_table_free(json_object_table);
+}
+#endif /* REFCOUNT_DEBUG */
+
+
+/* helper for accessing the optimized string data component in json_object
+ */
+static const char *
+get_string_component(const struct json_object *jso)
+{
+\treturn (jso->o.c_string.len < LEN_DIRECT_STRING_DATA) ?
+\t\t   jso->o.c_string.str.data : jso->o.c_string.str.ptr;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn get_string_component(
+    mut jso: *const json_object,
+) -> *const ::core::ffi::c_char {
+    return if (*jso).o.c_string.len < LEN_DIRECT_STRING_DATA {
+        &raw const (*jso).o.c_string.str_0.data as *const ::core::ffi::c_char
+    } else {
+        (*jso).o.c_string.str_0.ptr as *const ::core::ffi::c_char
+    };
+}```
+"""

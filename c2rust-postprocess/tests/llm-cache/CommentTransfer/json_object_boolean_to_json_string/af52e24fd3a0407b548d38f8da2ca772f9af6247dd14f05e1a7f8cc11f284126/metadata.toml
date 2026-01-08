@@ -1,0 +1,73 @@
+transform = "CommentTransfer"
+identifier = "json_object_boolean_to_json_string"
+model = "gemini-3-flash-preview"
+response = """/// json_object_boolean
+unsafe extern "C" fn json_object_boolean_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    if (*jso).o.c_boolean != 0 {
+        return printbuf_memappend(
+            pb as *mut printbuf,
+            b"true\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 5]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    }
+    return printbuf_memappend(
+        pb as *mut printbuf,
+        b"false\\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 6]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* json_object_boolean */
+
+static int json_object_boolean_to_json_string(struct json_object* jso,
+\t\t\t\t\t      struct printbuf *pb,
+\t\t\t\t\t      int level,
+\t\t\t\t\t      int flags)
+{
+\tif (jso->o.c_boolean)
+\t\treturn printbuf_strappend(pb, "true");
+\treturn printbuf_strappend(pb, "false");
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_object_boolean_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    if (*jso).o.c_boolean != 0 {
+        return printbuf_memappend(
+            
+            pb as *mut printbuf,
+            b"true\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 5]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    }
+    return printbuf_memappend(
+        
+        pb as *mut printbuf,
+        b"false\\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 6]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+}```
+"""

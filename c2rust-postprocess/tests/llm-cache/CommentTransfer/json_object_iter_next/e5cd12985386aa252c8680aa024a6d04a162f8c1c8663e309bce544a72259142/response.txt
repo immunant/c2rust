@@ -1,0 +1,5 @@
+/// ****************************************************************************
+#[no_mangle]
+pub unsafe extern "C" fn json_object_iter_next(mut iter: *mut crate::src::json_object_iterator::json_object_iterator) {
+    (*iter).opaque_ = (*((*iter).opaque_ as *const lh_entry)).next as *const ::core::ffi::c_void;
+}

@@ -1,0 +1,39 @@
+#[no_mangle]
+pub unsafe extern "C" fn json_object_deep_copy(
+    mut src: *mut json_object,
+    mut dst: *mut *mut json_object,
+    mut shallow_copy: Option<crate::src::json_object::json_c_shallow_copy_fn>,
+) -> ::core::ffi::c_int {
+    let mut rc: ::core::ffi::c_int = 0;
+
+    /* Check if arguments are sane ; *dst must not point to a non-NULL object */
+    if src.is_null() || dst.is_null() || !(*dst).is_null() {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    if shallow_copy.is_none() {
+        shallow_copy = Some(
+            json_c_shallow_copy_default
+                as unsafe extern "C" fn(
+                    *mut json_object,
+                    *mut json_object,
+                    *const ::core::ffi::c_char,
+                    size_t,
+                    *mut *mut json_object,
+                ) -> ::core::ffi::c_int,
+        );
+    }
+    rc = json_object_deep_copy_recursive(
+        src,
+        ::core::ptr::null_mut::<json_object>(),
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        -(1 as ::core::ffi::c_int) as size_t,
+        dst,
+        shallow_copy,
+    );
+    if rc < 0 as ::core::ffi::c_int {
+        json_object_put(*dst);
+        *dst = ::core::ptr::null_mut::<json_object>();
+    }
+    return rc;
+}

@@ -1,0 +1,76 @@
+transform = "CommentTransfer"
+identifier = "get_time_seed"
+model = "gemini-3-flash-preview"
+response = """/// get_time_seed
+unsafe extern "C" fn get_time_seed() -> ::core::ffi::c_int {
+    return time(::core::ptr::null_mut::<time_t>()) as ::core::ffi::c_int
+        * 433494437 as ::core::ffi::c_int;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+#endif
+
+
+/* get_cryptgenrandom_seed */
+
+#ifdef WIN32
+
+#define HAVE_CRYPTGENRANDOM 1
+
+#include <windows.h>
+#include <wincrypt.h>
+#ifndef __GNUC__
+#pragma comment(lib, "advapi32.lib")
+#endif
+
+static int get_cryptgenrandom_seed(void)
+{
+    HCRYPTPROV hProvider = 0;
+    int r;
+
+    DEBUG_SEED("get_cryptgenrandom_seed");
+
+    if (!CryptAcquireContextW(&hProvider, 0, 0, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT | CRYPT_SILENT)) {
+        fprintf(stderr, "error CryptAcquireContextW");
+        exit(1);
+    }
+
+    if (!CryptGenRandom(hProvider, sizeof(r), (BYTE*)&r)) {
+        fprintf(stderr, "error CryptGenRandom");
+        exit(1);
+    }
+
+    CryptReleaseContext(hProvider, 0);
+
+    return r;
+}
+
+#endif
+
+
+/* get_time_seed */
+
+#include <time.h>
+
+static int get_time_seed(void)
+{
+    DEBUG_SEED("get_time_seed");
+
+    return (int)time(NULL) * 433494437;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn get_time_seed() -> ::core::ffi::c_int {
+    return time(::core::ptr::null_mut::<time_t>()) as ::core::ffi::c_int
+        * 433494437 as ::core::ffi::c_int;
+}```
+"""

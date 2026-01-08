@@ -1,0 +1,112 @@
+transform = "CommentTransfer"
+identifier = "sprintbuf"
+model = "gemini-3-flash-preview"
+response = """#[no_mangle]
+pub unsafe extern "C" fn sprintbuf(
+    mut p: *mut crate::src::printbuf::printbuf,
+    mut msg: *const ::core::ffi::c_char,
+    mut args: ...
+) -> ::core::ffi::c_int {
+    let mut ap: ::core::ffi::VaListImpl;
+    let mut t: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut size: ::core::ffi::c_int = 0;
+    let mut buf: [::core::ffi::c_char; 128] = [0; 128];
+    /* user stack buffer first */
+    ap = args.clone();
+    size = vsnprintf(
+        &raw mut buf as *mut ::core::ffi::c_char,
+        128 as size_t,
+        msg,
+        ap.as_va_list(),
+    );
+    /* if string is greater than stack buffer, then use dynamic string
+       with vasprintf.  Note: some implementation of vsnprintf return -1
+       if output is truncated whereas some return the number of bytes that
+       would have been written - this code handles both cases. */
+    if size == -(1 as ::core::ffi::c_int) || size > 127 as ::core::ffi::c_int {
+        ap = args.clone();
+        size = vasprintf(&raw mut t, msg, ap.as_va_list());
+        if size < 0 as ::core::ffi::c_int {
+            return -(1 as ::core::ffi::c_int);
+        }
+        printbuf_memappend(p, t, size);
+        free(t as *mut ::core::ffi::c_void);
+        return size;
+    } else {
+        printbuf_memappend(p, &raw mut buf as *mut ::core::ffi::c_char, size);
+        return size;
+    };
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+int sprintbuf(struct printbuf *p, const char *msg, ...)
+{
+  va_list ap;
+  char *t;
+  int size;
+  char buf[128];
+
+  /* user stack buffer first */
+  va_start(ap, msg);
+  size = vsnprintf(buf, 128, msg, ap);
+  va_end(ap);
+  /* if string is greater than stack buffer, then use dynamic string
+     with vasprintf.  Note: some implementation of vsnprintf return -1
+     if output is truncated whereas some return the number of bytes that
+     would have been written - this code handles both cases. */
+  if(size == -1 || size > 127) {
+    va_start(ap, msg);
+    if((size = vasprintf(&t, msg, ap)) < 0) { va_end(ap); return -1; }
+    va_end(ap);
+    printbuf_memappend(p, t, size);
+    free(t);
+    return size;
+  } else {
+    printbuf_memappend(p, buf, size);
+    return size;
+  }
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn sprintbuf(
+    mut p: *mut crate::src::printbuf::printbuf,
+    mut msg: *const ::core::ffi::c_char,
+    mut args: ...
+) -> ::core::ffi::c_int {
+    let mut ap: ::core::ffi::VaListImpl;
+    let mut t: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut size: ::core::ffi::c_int = 0;
+    let mut buf: [::core::ffi::c_char; 128] = [0; 128];
+    ap = args.clone();
+    size = vsnprintf(
+        &raw mut buf as *mut ::core::ffi::c_char,
+        128 as size_t,
+        msg,
+        ap.as_va_list(),
+    );
+    if size == -(1 as ::core::ffi::c_int) || size > 127 as ::core::ffi::c_int {
+        ap = args.clone();
+        size = vasprintf(&raw mut t, msg, ap.as_va_list());
+        if size < 0 as ::core::ffi::c_int {
+            return -(1 as ::core::ffi::c_int);
+        }
+        printbuf_memappend(p, t, size);
+        free(t as *mut ::core::ffi::c_void);
+        return size;
+    } else {
+        printbuf_memappend(p, &raw mut buf as *mut ::core::ffi::c_char, size);
+        return size;
+    };
+}```
+"""

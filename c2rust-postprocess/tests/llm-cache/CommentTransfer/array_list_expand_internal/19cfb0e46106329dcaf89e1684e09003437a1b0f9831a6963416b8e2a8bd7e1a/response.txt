@@ -1,0 +1,44 @@
+```rust
+unsafe extern "C" fn array_list_expand_internal(
+    mut arr: *mut crate::src::arraylist::array_list,
+    mut max: size_t,
+) -> ::core::ffi::c_int {
+    let mut t: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
+    let mut new_size: size_t = 0;
+    if max < (*arr).size {
+        return 0 as ::core::ffi::c_int;
+    }
+    /* Avoid undefined behaviour on size_t overflow */
+    if (*arr).size >= (SIZE_T_MAX as size_t).wrapping_div(2 as size_t) {
+        new_size = max;
+    } else {
+        new_size = (*arr).size << 1 as ::core::ffi::c_int;
+        if new_size < max {
+            new_size = max;
+        }
+    }
+    if new_size
+        > (!(0 as ::core::ffi::c_int as size_t))
+            .wrapping_div(::core::mem::size_of::<*mut ::core::ffi::c_void>() as size_t)
+    {
+        return -(1 as ::core::ffi::c_int);
+    }
+    t = realloc(
+        (*arr).array as *mut ::core::ffi::c_void,
+        new_size.wrapping_mul(::core::mem::size_of::<*mut ::core::ffi::c_void>() as size_t),
+    );
+    if t.is_null() {
+        return -(1 as ::core::ffi::c_int);
+    }
+    (*arr).array = t as *mut *mut ::core::ffi::c_void;
+    memset(
+        (*arr).array.offset((*arr).size as isize) as *mut ::core::ffi::c_void,
+        0 as ::core::ffi::c_int,
+        new_size
+            .wrapping_sub((*arr).size)
+            .wrapping_mul(::core::mem::size_of::<*mut ::core::ffi::c_void>() as size_t),
+    );
+    (*arr).size = new_size;
+    return 0 as ::core::ffi::c_int;
+}
+```

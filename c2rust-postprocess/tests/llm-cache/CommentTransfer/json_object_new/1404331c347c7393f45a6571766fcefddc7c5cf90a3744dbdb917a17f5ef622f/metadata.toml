@@ -1,0 +1,61 @@
+transform = "CommentTransfer"
+identifier = "json_object_new"
+model = "gemini-3-flash-preview"
+response = """```rust
+unsafe extern "C" fn json_object_new(mut o_type: crate::src::json_object::json_type) -> *mut json_object {
+    let mut jso: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    jso = calloc(::core::mem::size_of::<json_object>() as size_t, 1 as size_t) as *mut json_object;
+    if jso.is_null() {
+        return ::core::ptr::null_mut::<json_object>();
+    }
+    (*jso).o_type = o_type;
+    (*jso)._ref_count = 1 as uint32_t;
+    (*jso)._delete =
+        Some(json_object_generic_delete as unsafe extern "C" fn(*mut json_object) -> ())
+            as Option<json_object_private_delete_fn>;
+    return jso;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+static struct json_object* json_object_new(enum json_type o_type)
+{
+\tstruct json_object *jso;
+
+\tjso = (struct json_object*)calloc(sizeof(struct json_object), 1);
+\tif (!jso)
+\t\treturn NULL;
+\tjso->o_type = o_type;
+\tjso->_ref_count = 1;
+\tjso->_delete = &json_object_generic_delete;
+#ifdef REFCOUNT_DEBUG
+\tlh_table_insert(json_object_table, jso, jso);
+\tMC_DEBUG("json_object_new_%s: %p\\n", json_type_to_name(jso->o_type), jso);
+#endif /* REFCOUNT_DEBUG */
+\treturn jso;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_object_new(mut o_type: crate::src::json_object::json_type) -> *mut json_object {
+    let mut jso: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    jso = calloc(::core::mem::size_of::<json_object>() as size_t, 1 as size_t) as *mut json_object;
+    if jso.is_null() {
+        return ::core::ptr::null_mut::<json_object>();
+    }
+    (*jso).o_type = o_type;
+    (*jso)._ref_count = 1 as uint32_t;
+    (*jso)._delete =
+        Some(json_object_generic_delete as unsafe extern "C" fn(*mut json_object) -> ())
+            as Option<json_object_private_delete_fn>;
+    return jso;
+}```
+"""

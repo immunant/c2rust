@@ -1,0 +1,111 @@
+transform = "CommentTransfer"
+identifier = "json_object_to_json_string_length"
+model = "gemini-3-flash-preview"
+response = """/// extended conversion to string
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_to_json_string_length(
+    mut jso: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+    mut length: *mut size_t,
+) -> *const ::core::ffi::c_char {
+    let mut r: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut s: size_t = 0 as size_t;
+    if jso.is_null() {
+        s = 4 as size_t;
+        r = b"null\\0" as *const u8 as *const ::core::ffi::c_char;
+    } else if !(*jso)._pb.is_null() || {
+        (*jso)._pb =  printbuf_new() as *mut printbuf;
+        !(*jso)._pb.is_null()
+    } {
+        printbuf_reset((*jso)._pb as *mut printbuf);
+        if (*jso)._to_json_string.expect("non-null function pointer")(
+            jso,
+            (*jso)._pb,
+            0 as ::core::ffi::c_int,
+            flags,
+        ) >= 0 as ::core::ffi::c_int
+        {
+            s = (*(*jso)._pb).bpos as size_t;
+            r = (*(*jso)._pb).buf;
+        }
+    }
+    if !length.is_null() {
+        *length = s;
+    }
+    return r;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* extended conversion to string */
+
+const char* json_object_to_json_string_length(struct json_object *jso, int flags, size_t *length)
+{
+\tconst char *r = NULL;
+\tsize_t s = 0;
+
+\tif (!jso)
+\t{
+\t\ts = 4;
+\t\tr = "null";
+\t}
+\telse if ((jso->_pb) || (jso->_pb = printbuf_new()))
+\t{
+\t\tprintbuf_reset(jso->_pb);
+
+\t\tif(jso->_to_json_string(jso, jso->_pb, 0, flags) >= 0)
+\t\t{
+\t\t\ts = (size_t)jso->_pb->bpos;
+\t\t\tr = jso->_pb->buf;
+\t\t}
+\t}
+
+\tif (length)
+\t\t*length = s;
+\treturn r;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_to_json_string_length(
+    mut jso: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+    mut length: *mut size_t,
+) -> *const ::core::ffi::c_char {
+    let mut r: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut s: size_t = 0 as size_t;
+    if jso.is_null() {
+        s = 4 as size_t;
+        r = b"null\\0" as *const u8 as *const ::core::ffi::c_char;
+    } else if !(*jso)._pb.is_null() || {
+        (*jso)._pb =  printbuf_new() as *mut printbuf;
+        !(*jso)._pb.is_null()
+    } {
+        printbuf_reset((*jso)._pb as *mut printbuf);
+        if (*jso)._to_json_string.expect("non-null function pointer")(
+            jso,
+            (*jso)._pb,
+            0 as ::core::ffi::c_int,
+            flags,
+        ) >= 0 as ::core::ffi::c_int
+        {
+            s = (*(*jso)._pb).bpos as size_t;
+            r = (*(*jso)._pb).buf;
+        }
+    }
+    if !length.is_null() {
+        *length = s;
+    }
+    return r;
+}```
+"""

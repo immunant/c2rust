@@ -1,0 +1,22 @@
+/// json_object_string
+unsafe extern "C" fn json_object_string_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    printbuf_memappend(
+        pb as *mut printbuf,
+        b"\"\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    json_escape_str(pb, get_string_component(jso), (*jso).o.c_string.len, flags);
+    printbuf_memappend(
+        pb as *mut printbuf,
+        b"\"\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    return 0 as ::core::ffi::c_int;
+}

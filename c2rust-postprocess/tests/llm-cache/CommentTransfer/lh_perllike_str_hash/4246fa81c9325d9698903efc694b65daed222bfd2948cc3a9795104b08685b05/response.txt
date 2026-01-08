@@ -1,0 +1,16 @@
+/// a simple hash function similiar to what perl does for strings.
+/// for good results, the string should not be excessivly large.
+unsafe extern "C" fn lh_perllike_str_hash(
+    mut k: *const ::core::ffi::c_void,
+) -> ::core::ffi::c_ulong {
+    let mut rkey: *const ::core::ffi::c_char = k as *const ::core::ffi::c_char;
+    let mut hashval: ::core::ffi::c_uint = 1 as ::core::ffi::c_uint;
+    while *rkey != 0 {
+        let fresh0 = rkey;
+        rkey = rkey.offset(1);
+        hashval = hashval
+            .wrapping_mul(33 as ::core::ffi::c_uint)
+            .wrapping_add(*fresh0 as ::core::ffi::c_uint);
+    }
+    return hashval as ::core::ffi::c_ulong;
+}

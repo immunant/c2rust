@@ -1,0 +1,151 @@
+transform = "CommentTransfer"
+identifier = "json_c_shallow_copy_default"
+model = "gemini-3-flash-preview"
+response = """/// The default shallow copy implementation.  Simply creates a new object of the same
+/// type but does *not* copy over _userdata nor retain any custom serializer.
+/// If custom serializers are in use, json_object_deep_copy() must be passed a shallow copy
+/// implementation that is aware of how to copy them.
+///
+/// This always returns -1 or 1.  It will never return 2 since it does not copy the serializer.
+#[no_mangle]
+pub unsafe extern "C" fn json_c_shallow_copy_default(
+    mut src: *mut json_object,
+    mut parent: *mut json_object,
+    mut key: *const ::core::ffi::c_char,
+    mut index: size_t,
+    mut dst: *mut *mut json_object,
+) -> ::core::ffi::c_int {
+    match (*src).o_type as ::core::ffi::c_uint {
+        1 => {
+            *dst = json_object_new_boolean((*src).o.c_boolean) as *mut json_object;
+        }
+        2 => {
+            *dst = json_object_new_double((*src).o.c_double) as *mut json_object;
+        }
+        3 => {
+            *dst = json_object_new_int64((*src).o.c_int64) as *mut json_object;
+        }
+        6 => {
+            *dst = json_object_new_string(get_string_component(src)) as *mut json_object;
+        }
+        4 => {
+            *dst = json_object_new_object() as *mut json_object;
+        }
+        5 => {
+            *dst = json_object_new_array() as *mut json_object;
+        }
+        _ => {
+            *__errno_location() = EINVAL;
+            return -(1 as ::core::ffi::c_int);
+        }
+    }
+    if (*dst).is_null() {
+        *__errno_location() = ENOMEM;
+        return -(1 as ::core::ffi::c_int);
+    }
+    (**dst)._to_json_string = (*src)._to_json_string;
+    // _userdata and _user_delete are copied later
+    return 1 as ::core::ffi::c_int;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/**
+ * The default shallow copy implementation.  Simply creates a new object of the same
+ * type but does *not* copy over _userdata nor retain any custom serializer.
+ * If custom serializers are in use, json_object_deep_copy() must be passed a shallow copy
+ * implementation that is aware of how to copy them.
+ *
+ * This always returns -1 or 1.  It will never return 2 since it does not copy the serializer.
+ */
+int json_c_shallow_copy_default(json_object *src, json_object *parent, const char *key, size_t index, json_object **dst)
+{
+\tswitch (src->o_type) {
+\tcase json_type_boolean:
+\t\t*dst = json_object_new_boolean(src->o.c_boolean);
+\t\tbreak;
+
+\tcase json_type_double:
+\t\t*dst = json_object_new_double(src->o.c_double);
+\t\tbreak;
+
+\tcase json_type_int:
+\t\t*dst = json_object_new_int64(src->o.c_int64);
+\t\tbreak;
+
+\tcase json_type_string:
+\t\t*dst = json_object_new_string(get_string_component(src));
+\t\tbreak;
+
+\tcase json_type_object:
+\t\t*dst = json_object_new_object();
+\t\tbreak;
+
+\tcase json_type_array:
+\t\t*dst = json_object_new_array();
+\t\tbreak;
+
+\tdefault:
+\t\terrno = EINVAL;
+\t\treturn -1;
+\t}
+
+\tif (!*dst) {
+\t\terrno = ENOMEM;
+\t\treturn -1;
+\t}
+\t(*dst)->_to_json_string = src->_to_json_string;
+\t// _userdata and _user_delete are copied later
+\treturn 1;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_c_shallow_copy_default(
+    mut src: *mut json_object,
+    mut parent: *mut json_object,
+    mut key: *const ::core::ffi::c_char,
+    mut index: size_t,
+    mut dst: *mut *mut json_object,
+) -> ::core::ffi::c_int {
+    match (*src).o_type as ::core::ffi::c_uint {
+        1 => {
+            *dst = json_object_new_boolean((*src).o.c_boolean) as *mut json_object;
+        }
+        2 => {
+            *dst = json_object_new_double((*src).o.c_double) as *mut json_object;
+        }
+        3 => {
+            *dst = json_object_new_int64((*src).o.c_int64) as *mut json_object;
+        }
+        6 => {
+            *dst = json_object_new_string(get_string_component(src)) as *mut json_object;
+        }
+        4 => {
+            *dst = json_object_new_object() as *mut json_object;
+        }
+        5 => {
+            *dst = json_object_new_array() as *mut json_object;
+        }
+        _ => {
+            *__errno_location() = EINVAL;
+            return -(1 as ::core::ffi::c_int);
+        }
+    }
+    if (*dst).is_null() {
+        *__errno_location() = ENOMEM;
+        return -(1 as ::core::ffi::c_int);
+    }
+    (**dst)._to_json_string = (*src)._to_json_string;
+    return 1 as ::core::ffi::c_int;
+}```
+"""

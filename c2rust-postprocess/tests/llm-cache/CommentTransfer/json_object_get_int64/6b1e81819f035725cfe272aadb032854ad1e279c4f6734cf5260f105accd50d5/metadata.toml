@@ -1,0 +1,104 @@
+transform = "CommentTransfer"
+identifier = "json_object_get_int64"
+model = "gemini-3-flash-preview"
+response = """```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_get_int64(mut jso: *const json_object) -> int64_t {
+    let mut cint: int64_t = 0;
+    if jso.is_null() {
+        return 0 as int64_t;
+    }
+    match (*jso).o_type as ::core::ffi::c_uint {
+        3 => return (*jso).o.c_int64,
+        2 => {
+            if (*jso).o.c_double >= INT64_MAX as ::core::ffi::c_double {
+                return INT64_MAX as int64_t;
+            }
+            if (*jso).o.c_double <= INT64_MIN as ::core::ffi::c_double {
+                return INT64_MIN as int64_t;
+            }
+            return (*jso).o.c_double as int64_t;
+        }
+        1 => return (*jso).o.c_boolean as int64_t,
+        6 => {
+            if json_parse_int64(get_string_component(jso), &raw mut cint) == 0 as ::core::ffi::c_int
+            {
+                return cint;
+            }
+            /* FALLTHRU */
+        }
+        _ => {}
+    }
+    return 0 as int64_t;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+int64_t json_object_get_int64(const struct json_object *jso)
+{
+\tint64_t cint;
+
+\tif (!jso)
+\t\treturn 0;
+\tswitch(jso->o_type)
+\t{
+\tcase json_type_int:
+\t\treturn jso->o.c_int64;
+\tcase json_type_double:
+\t\tif (jso->o.c_double >= INT64_MAX)
+\t\t\treturn INT64_MAX;
+\t\tif (jso->o.c_double <= INT64_MIN)
+\t\t\treturn INT64_MIN;
+\t\treturn (int64_t)jso->o.c_double;
+\tcase json_type_boolean:
+\t\treturn jso->o.c_boolean;
+\tcase json_type_string:
+\t\tif (json_parse_int64(get_string_component(jso), &cint) == 0)
+\t\t\treturn cint;
+\t\t/* FALLTHRU */
+\tdefault:
+\t\treturn 0;
+\t}
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_get_int64(mut jso: *const json_object) -> int64_t {
+    let mut cint: int64_t = 0;
+    if jso.is_null() {
+        return 0 as int64_t;
+    }
+    match (*jso).o_type as ::core::ffi::c_uint {
+        3 => return (*jso).o.c_int64,
+        2 => {
+            if (*jso).o.c_double >= INT64_MAX as ::core::ffi::c_double {
+                return INT64_MAX as int64_t;
+            }
+            if (*jso).o.c_double <= INT64_MIN as ::core::ffi::c_double {
+                return INT64_MIN as int64_t;
+            }
+            return (*jso).o.c_double as int64_t;
+        }
+        1 => return (*jso).o.c_boolean as int64_t,
+        6 => {
+            if json_parse_int64(get_string_component(jso), &raw mut cint) == 0 as ::core::ffi::c_int
+            {
+                return cint;
+            }
+        }
+        _ => {}
+    }
+    return 0 as int64_t;
+}```
+"""

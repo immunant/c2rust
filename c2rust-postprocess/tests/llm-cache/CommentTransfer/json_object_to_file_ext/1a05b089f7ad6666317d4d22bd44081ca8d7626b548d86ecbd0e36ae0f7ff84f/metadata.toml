@@ -1,0 +1,112 @@
+transform = "CommentTransfer"
+identifier = "json_object_to_file_ext"
+model = "gemini-3-flash-preview"
+response = """/// extended "format and write to file" function
+#[no_mangle]
+pub unsafe extern "C" fn json_object_to_file_ext(
+    mut filename: *const ::core::ffi::c_char,
+    mut obj: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut fd: ::core::ffi::c_int = 0;
+    let mut ret: ::core::ffi::c_int = 0;
+    let mut saved_errno: ::core::ffi::c_int = 0;
+    if obj.is_null() {
+        _json_c_set_last_err(
+            b"json_object_to_file: object is null\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+        );
+        return -(1 as ::core::ffi::c_int);
+    }
+    fd = open(
+        filename,
+        O_WRONLY | O_TRUNC | O_CREAT,
+        0o644 as ::core::ffi::c_int,
+    );
+    if fd < 0 as ::core::ffi::c_int {
+        _json_c_set_last_err(
+            b"json_object_to_file: error opening file %s: %s\\n\\0" as *const u8
+                as *const ::core::ffi::c_char,
+            filename,
+            _json_c_strerror(*__errno_location()),
+        );
+        return -(1 as ::core::ffi::c_int);
+    }
+    ret = _json_object_to_fd(fd, obj, flags, filename);
+    saved_errno = *__errno_location();
+    close(fd);
+    *__errno_location() = saved_errno;
+    return ret;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* extended "format and write to file" function */
+
+int json_object_to_file_ext(const char *filename, struct json_object *obj, int flags)
+{
+\tint fd, ret;
+\tint saved_errno;
+
+\tif (!obj) {
+\t\t_json_c_set_last_err("json_object_to_file: object is null\\n");
+\t\treturn -1;
+\t}
+
+\tif ((fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT, 0644)) < 0) {
+\t\t_json_c_set_last_err("json_object_to_file: error opening file %s: %s\\n",
+\t\t              filename, strerror(errno));
+\t\treturn -1;
+\t}
+\tret = _json_object_to_fd(fd, obj, flags, filename);
+\tsaved_errno = errno;
+\tclose(fd);
+\terrno = saved_errno;
+\treturn ret;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_to_file_ext(
+    mut filename: *const ::core::ffi::c_char,
+    mut obj: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut fd: ::core::ffi::c_int = 0;
+    let mut ret: ::core::ffi::c_int = 0;
+    let mut saved_errno: ::core::ffi::c_int = 0;
+    if obj.is_null() {
+        _json_c_set_last_err(
+            b"json_object_to_file: object is null\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+        );
+        return -(1 as ::core::ffi::c_int);
+    }
+    fd = open(
+        filename,
+        O_WRONLY | O_TRUNC | O_CREAT,
+        0o644 as ::core::ffi::c_int,
+    );
+    if fd < 0 as ::core::ffi::c_int {
+        _json_c_set_last_err(
+            b"json_object_to_file: error opening file %s: %s\\n\\0" as *const u8
+                as *const ::core::ffi::c_char,
+            filename,
+            _json_c_strerror(*__errno_location()),
+        );
+        return -(1 as ::core::ffi::c_int);
+    }
+    ret = _json_object_to_fd(fd, obj, flags, filename);
+    saved_errno = *__errno_location();
+    close(fd);
+    *__errno_location() = saved_errno;
+    return ret;
+}```
+"""

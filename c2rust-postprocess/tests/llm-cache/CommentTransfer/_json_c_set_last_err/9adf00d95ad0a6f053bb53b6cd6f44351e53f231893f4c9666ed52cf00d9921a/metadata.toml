@@ -1,0 +1,56 @@
+transform = "CommentTransfer"
+identifier = "_json_c_set_last_err"
+model = "gemini-3-flash-preview"
+response = """#[no_mangle]
+
+pub unsafe extern "C" fn _json_c_set_last_err(
+    mut err_fmt: *const ::core::ffi::c_char,
+    mut args: ...
+) {
+    let mut ap: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    // Ignore (attempted) overruns from snprintf
+    vsnprintf(
+        &raw mut _last_err as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 256]>() as size_t,
+        err_fmt,
+        ap.as_va_list(),
+    );
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+void _json_c_set_last_err(const char *err_fmt, ...)
+{
+\tva_list ap;
+\tva_start(ap, err_fmt);
+\t// Ignore (attempted) overruns from snprintf
+\t(void)vsnprintf(_last_err, sizeof(_last_err), err_fmt, ap);
+\tva_end(ap);
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn _json_c_set_last_err(
+    mut err_fmt: *const ::core::ffi::c_char,
+    mut args: ...
+) {
+    let mut ap: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    vsnprintf(
+        &raw mut _last_err as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 256]>() as size_t,
+        err_fmt,
+        ap.as_va_list(),
+    );
+}```
+"""

@@ -1,0 +1,30 @@
+/// get_dev_random_seed
+unsafe extern "C" fn get_dev_random_seed() -> ::core::ffi::c_int {
+    let mut fd: ::core::ffi::c_int = open(dev_random_file, O_RDONLY);
+    if fd < 0 as ::core::ffi::c_int {
+        fprintf(
+            stderr,
+            b"error opening %s: %s\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            _json_c_strerror(*__errno_location()),
+        );
+        exit(1 as ::core::ffi::c_int);
+    }
+    let mut r: ::core::ffi::c_int = 0;
+    let mut nread: ssize_t = read(
+        fd,
+        &raw mut r as *mut ::core::ffi::c_void,
+        ::core::mem::size_of::<::core::ffi::c_int>() as size_t,
+    );
+    if nread as usize != ::core::mem::size_of::<::core::ffi::c_int>() as usize {
+        fprintf(
+            stderr,
+            b"error short read %s: %s\0" as *const u8 as *const ::core::ffi::c_char,
+            dev_random_file,
+            _json_c_strerror(*__errno_location()),
+        );
+        exit(1 as ::core::ffi::c_int);
+    }
+    close(fd);
+    return r;
+}

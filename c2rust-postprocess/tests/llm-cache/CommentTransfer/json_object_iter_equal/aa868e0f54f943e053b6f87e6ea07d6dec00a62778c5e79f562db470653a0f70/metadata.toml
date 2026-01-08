@@ -1,0 +1,45 @@
+transform = "CommentTransfer"
+identifier = "json_object_iter_equal"
+model = "gemini-3-flash-preview"
+response = """/// ****************************************************************************
+#[no_mangle]
+pub unsafe extern "C" fn json_object_iter_equal(
+    mut iter1: *const crate::src::json_object_iterator::json_object_iterator,
+    mut iter2: *const crate::src::json_object_iterator::json_object_iterator,
+) -> json_bool {
+    return ((*iter1).opaque_ == (*iter2).opaque_) as ::core::ffi::c_int;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/**
+ * ****************************************************************************
+ */
+json_bool
+json_object_iter_equal(const struct json_object_iterator* iter1,
+                       const struct json_object_iterator* iter2)
+{
+    JASSERT(NULL != iter1);
+    JASSERT(NULL != iter2);
+
+    return (iter1->opaque_ == iter2->opaque_);
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_equal(
+    mut iter1: *const crate::src::json_object_iterator::json_object_iterator,
+    mut iter2: *const crate::src::json_object_iterator::json_object_iterator,
+) -> json_bool {
+    return ((*iter1).opaque_ == (*iter2).opaque_) as ::core::ffi::c_int;
+}```
+"""

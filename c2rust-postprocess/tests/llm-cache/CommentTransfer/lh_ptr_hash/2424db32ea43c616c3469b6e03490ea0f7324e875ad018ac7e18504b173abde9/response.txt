@@ -1,0 +1,8 @@
+```rust
+unsafe extern "C" fn lh_ptr_hash(mut k: *const ::core::ffi::c_void) -> ::core::ffi::c_ulong {
+    /* CAW: refactored to be 64bit nice */
+    return (k as ptrdiff_t as ::core::ffi::c_ulong).wrapping_mul(crate::src::linkhash::LH_PRIME)
+        >> 4 as ::core::ffi::c_int
+        & ULONG_MAX;
+}
+```

@@ -1,0 +1,5 @@
+/// get_time_seed
+unsafe extern "C" fn get_time_seed() -> ::core::ffi::c_int {
+    return time(::core::ptr::null_mut::<time_t>()) as ::core::ffi::c_int
+        * 433494437 as ::core::ffi::c_int;
+}

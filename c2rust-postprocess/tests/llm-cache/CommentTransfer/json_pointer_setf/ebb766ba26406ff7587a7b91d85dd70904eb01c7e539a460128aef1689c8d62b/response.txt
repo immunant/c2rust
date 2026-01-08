@@ -1,0 +1,59 @@
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn json_pointer_setf(
+    mut obj: *mut *mut json_object,
+    mut value: *mut json_object,
+    mut path_fmt: *const ::core::ffi::c_char,
+    mut args: ...
+) -> ::core::ffi::c_int {
+    let mut current_block: u64;
+    let mut endp: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut path_copy: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut set: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    let mut args_0: ::core::ffi::VaListImpl;
+    let mut rc: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    if obj.is_null() || path_fmt.is_null() {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    /* pass a working copy to the recursive call */
+    args_0 = args.clone();
+    rc = vasprintf(&raw mut path_copy, path_fmt, args_0.as_va_list());
+    if rc < 0 as ::core::ffi::c_int {
+        return rc;
+    }
+    if *path_copy.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int == '\0' as i32 {
+        json_object_put(*obj);
+        *obj = value;
+    } else if *path_copy.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int
+        != '/' as i32
+    {
+        *__errno_location() = EINVAL;
+        rc = -(1 as ::core::ffi::c_int);
+    } else {
+        /* If there's only 1 level to set, stop here */
+        endp = strrchr(path_copy, '/' as i32);
+        if endp == path_copy {
+            set = *obj;
+            current_block = 11653677672931389417;
+        } else {
+            *endp = '\0' as i32 as ::core::ffi::c_char;
+            rc = json_pointer_get_recursive(*obj, path_copy, &raw mut set);
+            if rc != 0 {
+                current_block = 4724740344109054664;
+            } else {
+                current_block = 11653677672931389417;
+            }
+        }
+        match current_block {
+            4724740344109054664 => {}
+            _ => {
+                endp = endp.offset(1);
+                rc = json_pointer_set_single_path(set, endp, value);
+            }
+        }
+    }
+    free(path_copy as *mut ::core::ffi::c_void);
+    return rc;
+}
+```

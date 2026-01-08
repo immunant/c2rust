@@ -1,0 +1,115 @@
+transform = "CommentTransfer"
+identifier = "json_object_deep_copy"
+model = "gemini-3-flash-preview"
+response = """#[no_mangle]
+pub unsafe extern "C" fn json_object_deep_copy(
+    mut src: *mut json_object,
+    mut dst: *mut *mut json_object,
+    mut shallow_copy: Option<crate::src::json_object::json_c_shallow_copy_fn>,
+) -> ::core::ffi::c_int {
+    let mut rc: ::core::ffi::c_int = 0;
+
+    /* Check if arguments are sane ; *dst must not point to a non-NULL object */
+    if src.is_null() || dst.is_null() || !(*dst).is_null() {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    if shallow_copy.is_none() {
+        shallow_copy = Some(
+            json_c_shallow_copy_default
+                as unsafe extern "C" fn(
+                    *mut json_object,
+                    *mut json_object,
+                    *const ::core::ffi::c_char,
+                    size_t,
+                    *mut *mut json_object,
+                ) -> ::core::ffi::c_int,
+        );
+    }
+    rc = json_object_deep_copy_recursive(
+        src,
+        ::core::ptr::null_mut::<json_object>(),
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        -(1 as ::core::ffi::c_int) as size_t,
+        dst,
+        shallow_copy,
+    );
+    if rc < 0 as ::core::ffi::c_int {
+        json_object_put(*dst);
+        *dst = ::core::ptr::null_mut::<json_object>();
+    }
+    return rc;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+int json_object_deep_copy(struct json_object *src, struct json_object **dst, json_c_shallow_copy_fn *shallow_copy)
+{
+\tint rc;
+
+\t/* Check if arguments are sane ; *dst must not point to a non-NULL object */
+\tif (!src || !dst || *dst) {
+\t\terrno = EINVAL;
+\t\treturn -1;
+\t}
+
+\tif (shallow_copy == NULL)
+\t\tshallow_copy = json_c_shallow_copy_default;
+
+\trc = json_object_deep_copy_recursive(src, NULL, NULL, -1, dst, shallow_copy);
+\tif (rc < 0) {
+\t\tjson_object_put(*dst);
+\t\t*dst = NULL;
+\t}
+
+\treturn rc;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_deep_copy(
+    mut src: *mut json_object,
+    mut dst: *mut *mut json_object,
+    mut shallow_copy: Option<crate::src::json_object::json_c_shallow_copy_fn>,
+) -> ::core::ffi::c_int {
+    let mut rc: ::core::ffi::c_int = 0;
+    if src.is_null() || dst.is_null() || !(*dst).is_null() {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    if shallow_copy.is_none() {
+        shallow_copy = Some(
+            json_c_shallow_copy_default
+                as unsafe extern "C" fn(
+                    *mut json_object,
+                    *mut json_object,
+                    *const ::core::ffi::c_char,
+                    size_t,
+                    *mut *mut json_object,
+                ) -> ::core::ffi::c_int,
+        );
+    }
+    rc = json_object_deep_copy_recursive(
+        src,
+        ::core::ptr::null_mut::<json_object>(),
+        ::core::ptr::null::<::core::ffi::c_char>(),
+        -(1 as ::core::ffi::c_int) as size_t,
+        dst,
+        shallow_copy,
+    );
+    if rc < 0 as ::core::ffi::c_int {
+        json_object_put(*dst);
+        *dst = ::core::ptr::null_mut::<json_object>();
+    }
+    return rc;
+}```
+"""

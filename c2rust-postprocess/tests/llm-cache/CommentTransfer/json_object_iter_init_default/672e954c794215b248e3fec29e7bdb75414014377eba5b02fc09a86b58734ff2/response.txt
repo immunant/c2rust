@@ -1,0 +1,15 @@
+/// ****************************************************************************
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_init_default() -> crate::src::json_object_iterator::json_object_iterator {
+    let mut iter: crate::src::json_object_iterator::json_object_iterator = crate::src::json_object_iterator::json_object_iterator {
+    opaque_:  ::core::ptr::null::<::core::ffi::c_void>(),
+};
+    /**
+     * @note Make this a negative, invalid value, such that
+     *       accidental access to it would likely be trapped by the
+     *       hardware as an invalid address.
+     */
+    iter.opaque_ = ::core::ptr::null::<::core::ffi::c_void>();
+    return iter;
+}

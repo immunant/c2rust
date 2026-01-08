@@ -1,0 +1,8 @@
+/// ****************************************************************************
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_peek_name(
+    mut iter: *const crate::src::json_object_iterator::json_object_iterator,
+) -> *const ::core::ffi::c_char {
+    return (*((*iter).opaque_ as *const lh_entry)).k as *const ::core::ffi::c_char;
+}
