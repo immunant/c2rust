@@ -10,6 +10,7 @@ requirements:
     programs:
       in_path:
         - c2rust
+        - c2rust-transpile
         - c2rust-refactor
         - make
         - cmake
