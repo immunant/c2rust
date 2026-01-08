@@ -59,7 +59,7 @@ while IFS= read -r transform; do
 
     DIFF_FILE="$ARTIFACT_DIR/${diff_idx4}_${transform}.diff"
 
-    c2rust-refactor \
+    c2rust refactor \
         ${transform} \
         --cargo --lib \
         --rewrite-mode diff \
