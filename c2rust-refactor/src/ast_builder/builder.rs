@@ -1955,26 +1955,6 @@ impl Builder {
         )
     }
 
-    pub fn use_glob_item<Pa>(self, path: Pa) -> P<Item>
-    where
-        Pa: Make<Path>,
-    {
-        let path = path.make(&self);
-        let use_tree = UseTree {
-            span: DUMMY_SP,
-            prefix: path,
-            kind: UseTreeKind::Glob,
-        };
-        Self::item(
-            Ident::empty(),
-            self.attrs,
-            self.vis,
-            self.span,
-            self.id,
-            ItemKind::Use(use_tree),
-        )
-    }
-
     pub fn foreign_items(self, items: Vec<P<ForeignItem>>) -> P<Item> {
         let fgn_mod = ForeignMod {
             unsafety: self.unsafety,
