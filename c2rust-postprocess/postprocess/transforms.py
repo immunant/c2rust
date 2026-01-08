@@ -11,6 +11,7 @@ from postprocess.definitions import (
     get_rust_definitions,
     update_rust_definition,
 )
+from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.models import AbstractGenerativeModel
 from postprocess.utils import get_highlighted_c, get_highlighted_rust, remove_backticks
 
@@ -58,10 +59,11 @@ class CommentTransfer:
         self,
         root_rust_source_file: Path,
         rust_source_file: Path,
+        exclude_list: IdentifierExcludeList,
         ident_filter: str | None = None,
         update_rust: bool = True,
     ) -> None:
-        pattern = re.compile(ident_filter) if ident_filter else None
+        ident_regex = re.compile(ident_filter) if ident_filter else None
 
         rust_definitions = get_rust_definitions(rust_source_file)
         c_definitions = get_c_definitions(rust_source_file)
@@ -71,7 +73,17 @@ class CommentTransfer:
 
         prompts: list[CommentTransferPrompt] = []
         for identifier, rust_definition in rust_definitions.items():
-            if pattern and not pattern.search(identifier):
+            if exclude_list.contains(path=rust_source_file, identifier=identifier):
+                logging.info(
+                    f"Skipping Rust fn {identifier} in {rust_source_file}"
+                    f"due to exclude file {exclude_list.src_path}"
+                )
+                continue
+            if ident_regex and not ident_regex.search(identifier):
+                logging.info(
+                    f"Skipping Rust fn {identifier} in {rust_source_file}"
+                    f"due to ident filter {ident_filter}"
+                )
                 continue
 
             rust_comments = get_rust_comments(rust_definition)
@@ -170,6 +182,7 @@ class CommentTransfer:
     def transfer_comments_dir(
         self,
         root_rust_source_file: Path,
+        exclude_list: IdentifierExcludeList,
         ident_filter: str | None = None,
         update_rust: bool = True,
     ):
@@ -187,6 +200,7 @@ class CommentTransfer:
             self.transfer_comments(
                 root_rust_source_file=root_rust_source_file,
                 rust_source_file=rs_path,
+                exclude_list=exclude_list,
                 ident_filter=ident_filter,
                 update_rust=update_rust,
             )
