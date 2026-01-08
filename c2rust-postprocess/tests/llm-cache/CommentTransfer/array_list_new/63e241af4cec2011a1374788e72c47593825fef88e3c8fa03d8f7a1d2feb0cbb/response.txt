@@ -1,0 +1,23 @@
+#[no_mangle]
+
+pub unsafe extern "C" fn array_list_new(
+    mut free_fn: Option<crate::src::arraylist::array_list_free_fn>,
+) -> *mut crate::src::arraylist::array_list {
+    let mut arr: *mut crate::src::arraylist::array_list = ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    arr = crate::stdlib::calloc(1 as crate::__stddef_size_t_h::size_t, ::core::mem::size_of::<crate::src::arraylist::array_list>() as crate::__stddef_size_t_h::size_t) as *mut crate::src::arraylist::array_list;
+    if arr.is_null() {
+        return ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    }
+    (*arr).size = crate::src::arraylist::ARRAY_LIST_DEFAULT_SIZE as crate::__stddef_size_t_h::size_t;
+    (*arr).length = 0 as crate::__stddef_size_t_h::size_t;
+    (*arr).free_fn = free_fn;
+    (*arr).array = crate::stdlib::calloc(
+        ::core::mem::size_of::<*mut ::core::ffi::c_void>() as crate::__stddef_size_t_h::size_t,
+        (*arr).size,
+    ) as *mut *mut ::core::ffi::c_void;
+    if (*arr).array.is_null() {
+        crate::stdlib::free(arr as *mut ::core::ffi::c_void);
+        return ::core::ptr::null_mut::<crate::src::arraylist::array_list>();
+    }
+    return arr;
+}
