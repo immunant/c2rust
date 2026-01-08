@@ -4,6 +4,7 @@ expression: cat tests/snapshots/os-specific/call_only_once.macos.rs
 input_file: c2rust-transpile/tests/snapshots/os-specific/call_only_once.c
 ---
 #![allow(
+    clippy::missing_safety_doc,
     dead_code,
     non_camel_case_types,
     non_snake_case,
