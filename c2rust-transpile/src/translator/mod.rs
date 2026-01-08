@@ -1246,7 +1246,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
                 }
             }
 
-            out_items.push(mk().use_glob_item(mk().abs_path(vec![&t.tcfg.crate_name()])));
+            out_items.push(mk().extern_crate_item(t.tcfg.crate_name().clone(), None));
         }
     }
     (out_attrs, out_items)
