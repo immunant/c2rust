@@ -1246,7 +1246,15 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
                 }
             }
 
-            out_items.push(mk().use_glob_item(mk().abs_path(vec![&t.tcfg.crate_name()])));
+            // TODO: switch to `#[expect(unused_imports, reason = ...)]` once
+            // we upgrade to a newer nightly (Rust 1.81) that supports it.
+            out_items.push(
+                mk().call_attr("allow", vec!["unused_imports"])
+                    .use_simple_item(
+                        mk().abs_path(vec![t.tcfg.crate_name().clone()]),
+                        None::<Ident>,
+                    ),
+            )
         }
     }
     (out_attrs, out_items)
