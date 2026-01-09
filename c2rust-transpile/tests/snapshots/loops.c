@@ -228,10 +228,7 @@ redo:
     return x;
 }
 
-// If there are multiple paths out of a loop, where each path is only branched
-// to once, we risk pulling extra branches into the loop. This verifies that the
-// code that supposed to be after the loop actually lands there.
-int ambiguous_loop_exits(int x) {
+int loop_returns(int x) {
     while (x) {
         x += 1;
         if (x) {
@@ -247,6 +244,30 @@ int ambiguous_loop_exits(int x) {
 
     return x;
 }
+
+// Same as `loop_returns` but using `goto` prevents the incremental relooper
+// from saving us.
+/*
+int loop_gotos(int x) {
+    while (x) {
+        x += 1;
+        if (x) {
+            x += 2;
+            goto exit;
+        }
+        x += 3;
+        if (x) {
+            x += 4;
+            goto exit;
+        }
+    }
+
+    return x;
+
+exit:
+    return -x;
+}
+*/
 
 // These two cases exhibit a couple of bad behaviors, specifically related to
 // interactions between the incremental relooper and the new relooper logic:
