@@ -430,6 +430,35 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 ) -> TranslationResult<S> {
     use Structure::*;
 
+    // HACK: Reorder the branches of a multiple to put all named labels at the end.
+    //
+    // From a CFG perspective there's no inherent order to the branches of a
+    // `Multiple`, and the order we choose when building the structured CFG is
+    // currently arbitrary (i.e. we don't enforce a particular ordering). However,
+    // the order we visit the branches here determines when we can fall through to
+    // the branch vs when we need to `break` to it: Only the first branch will be
+    // arrived at naturally, and all subsequent branches will be `break` targets.
+    //
+    // For the common `goto error` pattern in C code, we'll end up with a `Multiple`
+    // where some of the branches are named and some aren't, but they may appear in
+    // any order. In this case, pushing the named label(s) to the end is a
+    // reasonable heuristic because the named labels had to be `goto` targets, and
+    // therefore shouldn't be the code we flow to directly.
+    //
+    // This only papers over one part of the larger problem of how we order CFG
+    // nodes. See https://github.com/immunant/c2rust/issues/1542 for more
+    // information about how we have similar ordering problems for branches of
+    // adjacent `Multiple`s. Fixing that issue should also allow us to remove this
+    // hack.
+    fn sort_branches(branches: &IndexMap<Label, Vec<Structure<Stmt>>>) -> Vec<Label> {
+        let (named, mut rest) = branches
+            .keys()
+            .cloned()
+            .partition::<Vec<_>, _>(|lbl| matches!(lbl, Label::FromC(_, Some(_))));
+        rest.extend(named);
+        rest
+    }
+
     // Gets the followup entries for the structure at index `i`. This only considers the handled
     // branches of multiples. If we are looking past the last structure, then we use
     // `followup_entries`.
@@ -444,7 +473,9 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
             match &root[i] {
                 Simple { entries, .. } => entries.clone(),
                 Loop { entries, .. } => entries.clone(),
-                Multiple { branches, .. } => indexset! { branches.keys().next().unwrap().clone() },
+                Multiple { branches, .. } => {
+                    indexset! { sort_branches(branches).first().unwrap().clone() }
+                }
             }
         } else {
             followup_entries.clone()
@@ -612,11 +643,13 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
         i += 1;
 
         // Handle any followup multiple structures by wrapping the current structure's AST in a block.
-        while let Some(Multiple { branches, entries }) = root.get(i) {
+        while let Some(Multiple { branches, .. }) = root.get(i) {
             let next_entries = get_next_entries(i + 1);
 
             // Generate blocks as break targets for the remaining branches.
-            for (branch_idx, (entry, branch)) in branches.iter().enumerate() {
+            for (branch_idx, entry) in sort_branches(branches).iter().enumerate() {
+                let branch = &branches[entry];
+
                 // Choose the next entries for the branch. For most of the branches we want to
                 // say that there are no next entries, because we don't want one branch to flow
                 // into another. But the last branch can fall through to the next entries that

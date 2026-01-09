@@ -42,11 +42,8 @@ error:
     return x + 6;
 }
 
-// Triggers a case where we're inverting the success and error cases. We want
-// the code to be wrapped in a `'error: {}` block, but instead we're getting the
-// error return placed inside a block with a synthetic label, and then the
-// success return placed after the block.
-/*
+// Regression test for relooper 2, previously we were inverting the success and
+// error cases.
 int goto_error_minimal(int x) {
     if (x) {
         if (x)
@@ -60,7 +57,6 @@ int goto_error_minimal(int x) {
 error:
     return x + 2;
 }
-*/
 
 int multi_goto_error(int x) {
     if (x) {
