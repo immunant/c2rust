@@ -1,0 +1,32 @@
+```rust
+unsafe extern "C" fn json_pointer_set_single_path(
+    mut parent: *mut crate::json_object_private_h::json_object,
+    mut path: *const ::core::ffi::c_char,
+    mut value: *mut crate::json_object_private_h::json_object,
+) -> ::core::ffi::c_int {
+    if crate::src::json_object::json_object_is_type(parent, crate::src::json_object::json_type_array) != 0 {
+        let mut idx: crate::stdlib::int32_t = 0;
+        /* RFC (Chapter 4) states that '-' may be used to add new elements to an array */
+        if *path.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int == '-' as i32
+            && *path.offset(1 as ::core::ffi::c_int as isize) as ::core::ffi::c_int == '\0' as i32
+        {
+            return crate::src::json_object::json_object_array_add(parent, value);
+        }
+        if is_valid_index(parent, path, &raw mut idx) == 0 {
+            return -(1 as ::core::ffi::c_int);
+        }
+        return crate::src::json_object::json_object_array_put_idx(parent, idx as crate::__stddef_size_t_h::size_t, value);
+    }
+
+    /* path replacements should have been done in json_pointer_get_single_path(),
+       and we should still be good here */
+    if crate::src::json_object::json_object_is_type(parent, crate::src::json_object::json_type_object) != 0 {
+        return crate::src::json_object::json_object_object_add(parent, path, value);
+    }
+
+    /* Getting here means that we tried to "dereference" a primitive JSON type (like string, int, bool).
+       i.e. add a sub-object to it */
+    *crate::stdlib::__errno_location() = crate::stdlib::ENOENT;
+    return -(1 as ::core::ffi::c_int);
+}
+```

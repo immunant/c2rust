@@ -1,0 +1,19 @@
+/**
+ * ****************************************************************************
+ */
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_begin(mut obj: *mut crate::json_object_private_h::json_object) -> crate::src::json_object_iterator::json_object_iterator {
+    let mut iter: crate::src::json_object_iterator::json_object_iterator = crate::src::json_object_iterator::json_object_iterator {
+    opaque_:  ::core::ptr::null::<::core::ffi::c_void>(),
+};
+    let mut pTable: *mut crate::src::linkhash::lh_table = ::core::ptr::null_mut::<crate::src::linkhash::lh_table>();
+    /// @note json_object_get_object will return NULL if passed NULL
+    ///       or a non-json_type_object instance
+    pTable =  crate::src::json_object::json_object_get_object(obj as *const crate::json_object_private_h::json_object) as
+    *mut crate::src::linkhash::lh_table as *mut crate::src::linkhash::lh_table;
+    /// @note For a pair-less Object, head is NULL, which matches our
+    ///       definition of the "end" iterator
+    iter.opaque_ = (*pTable).head as *const ::core::ffi::c_void;
+    return iter;
+}

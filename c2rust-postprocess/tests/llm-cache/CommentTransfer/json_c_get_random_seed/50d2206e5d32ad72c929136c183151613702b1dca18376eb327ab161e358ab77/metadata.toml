@@ -1,0 +1,49 @@
+transform = "CommentTransfer"
+identifier = "json_c_get_random_seed"
+model = "gemini-3-flash-preview"
+response = """/// json_c_get_random_seed
+#[no_mangle]
+
+pub unsafe extern "C" fn json_c_get_random_seed() -> ::core::ffi::c_int {
+    if has_dev_urandom() != 0 {
+        return get_dev_random_seed();
+    }
+    return get_time_seed();
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* json_c_get_random_seed */
+
+int json_c_get_random_seed(void)
+{
+#if defined HAVE_RDRAND && HAVE_RDRAND
+    if (has_rdrand()) return get_rdrand_seed();
+#endif
+#if defined HAVE_DEV_RANDOM && HAVE_DEV_RANDOM
+    if (has_dev_urandom()) return get_dev_random_seed();
+#endif
+#if defined HAVE_CRYPTGENRANDOM && HAVE_CRYPTGENRANDOM
+    return get_cryptgenrandom_seed();
+#endif
+    return get_time_seed();
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_c_get_random_seed() -> ::core::ffi::c_int {
+    if has_dev_urandom() != 0 {
+        return get_dev_random_seed();
+    }
+    return get_time_seed();
+}```
+"""

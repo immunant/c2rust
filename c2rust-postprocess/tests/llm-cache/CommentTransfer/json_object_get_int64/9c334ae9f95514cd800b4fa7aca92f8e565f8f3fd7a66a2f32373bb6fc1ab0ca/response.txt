@@ -1,0 +1,30 @@
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_get_int64(mut jso: *const crate::json_object_private_h::json_object) -> crate::stdlib::int64_t {
+    let mut cint: crate::stdlib::int64_t = 0;
+    if jso.is_null() {
+        return 0 as crate::stdlib::int64_t;
+    }
+    match (*jso).o_type as ::core::ffi::c_uint {
+        3 => return (*jso).o.c_int64,
+        2 => {
+            if (*jso).o.c_double >= crate::stdlib::INT64_MAX as ::core::ffi::c_double {
+                return crate::stdlib::INT64_MAX as crate::stdlib::int64_t;
+            }
+            if (*jso).o.c_double <= crate::stdlib::INT64_MIN as ::core::ffi::c_double {
+                return crate::stdlib::INT64_MIN as crate::stdlib::int64_t;
+            }
+            return (*jso).o.c_double as crate::stdlib::int64_t;
+        }
+        1 => return (*jso).o.c_boolean as crate::stdlib::int64_t,
+        6 => {
+            if crate::src::json_util::json_parse_int64(get_string_component(jso), &raw mut cint) == 0 as ::core::ffi::c_int
+            {
+                return cint;
+            }
+            /* FALLTHRU */
+        }
+        _ => {}
+    }
+    return 0 as crate::stdlib::int64_t;
+}
