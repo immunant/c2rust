@@ -931,6 +931,8 @@ impl<'c> Translation<'c> {
 
         // Some unused unary operators (`-foo()`) may have side effects, so we need
         // to add them to stmts when name is not increment/decrement operator.
+        //
+        // `Extension` is another exception since it's a no-op around the inner expression.
         if ctx.is_unused()
             && !matches!(
                 name,
@@ -938,6 +940,7 @@ impl<'c> Translation<'c> {
                     | c_ast::UnOp::PreIncrement
                     | c_ast::UnOp::PostDecrement
                     | c_ast::UnOp::PostIncrement
+                    | c_ast::UnOp::Extension
             )
         {
             let v = unary.clone().into_value();
