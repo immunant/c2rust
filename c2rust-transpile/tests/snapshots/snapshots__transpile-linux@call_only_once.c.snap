@@ -33,15 +33,17 @@ unsafe extern "C" fn called_only_once() -> ::core::ffi::c_int {
 }
 #[no_mangle]
 pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
-    if called_only_once() != 0 {
-    } else {
-        __assert_fail(
-            b"called_only_once()\0" as *const u8 as *const ::core::ffi::c_char,
-            b"./tests/snapshots/os-specific/call_only_once.c\0"
-                as *const u8 as *const ::core::ffi::c_char,
-            12 as ::core::ffi::c_uint,
-            __ASSERT_FUNCTION.as_ptr(),
-        );
-    }
+    '_c2rust_label: {
+        if called_only_once() != 0 {
+        } else {
+            __assert_fail(
+                b"called_only_once()\0" as *const u8 as *const ::core::ffi::c_char,
+                b"./tests/snapshots/os-specific/call_only_once.c\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+                12 as ::core::ffi::c_uint,
+                __ASSERT_FUNCTION.as_ptr(),
+            );
+        }
+    };
     return called;
 }

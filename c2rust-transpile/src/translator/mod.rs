@@ -4252,13 +4252,11 @@ impl<'c> Translation<'c> {
                             // enclose block in parentheses to work around
                             // https://github.com/rust-lang/rust/issues/54482
                             let val = mk().paren_expr(block);
-                            let stmts = if ctx.is_unused() {
-                                vec![mk().semi_stmt(val.clone())]
-                            } else {
-                                Vec::new()
-                            };
-
-                            return Ok(WithStmts::new(stmts, val));
+                            return self.convert_side_effects_expr(
+                                ctx,
+                                WithStmts::new_val(val),
+                                "Compound statement expression is not supposed to be used",
+                            );
                         }
                         _ => {
                             self.use_feature("label_break_value");
@@ -4267,10 +4265,13 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let block_body = mk().block(stmts.clone());
+                let block_body = mk().block(stmts);
                 let val: Box<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
-
-                Ok(WithStmts::new(stmts, val))
+                self.convert_side_effects_expr(
+                    ctx,
+                    WithStmts::new_val(val),
+                    "Compound statement expression is not supposed to be used",
+                )
             }
             _ => {
                 if ctx.is_unused() {
