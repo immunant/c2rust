@@ -934,18 +934,19 @@ impl<'c> Translation<'c> {
         //
         // `UnOp::Extension` (`__extension__`) is another exception since
         // it's a no-op around the inner expression.
-        if ctx.is_unused()
-            && !matches!(
-                name,
-                c_ast::UnOp::PreDecrement
-                    | c_ast::UnOp::PreIncrement
-                    | c_ast::UnOp::PostDecrement
-                    | c_ast::UnOp::PostIncrement
-                    | c_ast::UnOp::Extension
-            )
-        {
-            let v = unary.clone().into_value();
-            unary.add_stmt(mk().semi_stmt(v));
+        if !matches!(
+            name,
+            c_ast::UnOp::PreDecrement
+                | c_ast::UnOp::PreIncrement
+                | c_ast::UnOp::PostDecrement
+                | c_ast::UnOp::PostIncrement
+                | c_ast::UnOp::Extension
+        ) {
+            unary = self.convert_side_effects_expr(
+                ctx,
+                unary,
+                "Unary expression is not supposed to be used",
+            )?;
         }
         Ok(unary)
     }
