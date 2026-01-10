@@ -943,8 +943,10 @@ impl<'c> Translation<'c> {
                     | c_ast::UnOp::Extension
             )
         {
-            let v = unary.clone().into_value();
-            unary.add_stmt(mk().semi_stmt(v));
+            unary = unary.and_then(|v| TranslationResult::Ok(WithStmts::new(
+                vec![mk().semi_stmt(v)],
+                self.panic_or_err("Unary expression is not supposed to be used"),
+            )))?;
         }
         Ok(unary)
     }
