@@ -2,23 +2,24 @@ from pathlib import Path
 
 import yaml
 
+from postprocess.utils import check_isinstance
+
 
 class IdentifierExcludeList:
     src_path: Path | None
     paths: dict[Path, set[str]]
 
-    def __init__(self, path: Path | None) -> None:
-        self.src_path = path
+    def __init__(self, src_path: Path | None) -> None:
+        self.src_path = src_path
         self.paths = {}
-        if path is None:
+        if src_path is None:
             return
-        data = yaml.safe_load(path.read_text())
-        assert isinstance(data, dict)
+        data = yaml.safe_load(src_path.read_text())
+        data = check_isinstance(data, dict)
         for path, identifiers in data.items():
-            assert isinstance(path, str)
-            assert isinstance(identifiers, list)
-            for identifier in identifiers:
-                assert isinstance(identifier, str)
+            path = check_isinstance(path, str)
+            identifiers = check_isinstance(identifiers, list)
+            identifiers = [check_isinstance(ident, str) for ident in identifiers]
             path = Path(path)
             existing_identifiers = self.paths.get(path)
             if existing_identifiers is None:

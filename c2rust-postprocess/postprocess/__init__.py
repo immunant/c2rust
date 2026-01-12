@@ -126,7 +126,7 @@ def main(argv: Sequence[str] | None = None):
         xform = CommentTransfer(cache, model)
         xform.transfer_comments_dir(
             root_rust_source_file=args.root_rust_source_file,
-            exclude_list=IdentifierExcludeList(path=args.exclude_file),
+            exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
         )

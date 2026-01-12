@@ -11,6 +11,8 @@ import tomlkit
 from platformdirs import user_cache_dir
 from tomlkit.items import String
 
+from postprocess.utils import check_isinstance
+
 
 class AbstractCache(ABC):
     """
@@ -94,12 +96,13 @@ def to_multiline_toml(value: TomlDict) -> str:
             return {k: convert_value(v) for k, v in value.items() if v is not None}
         elif isinstance(value, list):
             return [convert_value(e) for e in value if e is not None]
+        elif value is None:
+            raise TypeError("top-level `None` `TomlValue`s are not allowed")
         else:
-            assert value is not None
             return value
 
     converted_value = convert_value(value)
-    assert isinstance(converted_value, dict)
+    converted_value = check_isinstance(converted_value, dict)
     doc = tomlkit.document()
     for k, v in converted_value.items():
         doc[k] = v
