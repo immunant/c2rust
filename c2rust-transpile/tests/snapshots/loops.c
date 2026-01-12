@@ -260,6 +260,7 @@ int loop_gotos(int x) {
             x += 4;
             goto exit;
         }
+        // x += 5; // Adding or removing this also has interesting effects.
     }
 
     return x;
