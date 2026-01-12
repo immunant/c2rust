@@ -47,7 +47,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         required=False,
         default=None,
-        help="Regular expression to filter function identifiers to process",
+        help="Regular expression to filter function identifiers to process"
+        " (see README for more info)",
     )
 
     parser.add_argument(
@@ -55,7 +56,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         required=False,
         default=None,
-        help="A YAML file of file paths and identifiers within them to exclude/skip",
+        help="A YAML file of file paths and identifiers within them to exclude/skip"
+        " (see README for more info)",
     )
 
     parser.add_argument(
