@@ -542,10 +542,42 @@ impl RelooperState {
         // becomes an entry for the follow blocks.
         let mut follow_entries = out_edges(&body_blocks);
 
+        // Try to match an existing loop (from the initial C)
+        let mut matched_existing_loop = false;
+        if let Some(ref loop_info) = self.loop_info {
+            let must_be_in_loop = entries.iter().chain(new_returns.iter()).cloned();
+            if let Some(loop_id) = loop_info.tightest_common_loop(must_be_in_loop) {
+                // Construct the target group of labels
+                let mut desired_body: IndexSet<Label> =
+                    loop_info.get_loop_contents(loop_id).clone();
+                desired_body.retain(|l| !entries.contains(l));
+                desired_body.retain(|l| !new_returns.contains(l));
+
+                // Make copies that we can trash
+                let mut body_blocks_copy = body_blocks.clone();
+                let mut follow_blocks_copy = follow_blocks.clone();
+                let mut follow_entries_copy = follow_entries.clone();
+
+                if loops::match_loop_body(
+                    desired_body,
+                    &strict_reachable_from,
+                    &mut body_blocks_copy,
+                    &mut follow_blocks_copy,
+                    &mut follow_entries_copy,
+                ) {
+                    matched_existing_loop = true;
+
+                    body_blocks = body_blocks_copy;
+                    follow_blocks = follow_blocks_copy;
+                    follow_entries = follow_entries_copy;
+                }
+            }
+        }
+
         // If there's more than one path out of the loop, we want to try moving
         // additional nodes into the loop to avoid ending up with a multiple after the
         // loop.
-        if follow_entries.len() > 1 {
+        if !matched_existing_loop && follow_entries.len() > 1 {
             // Gather the set of follow entries that only have a single in edge. These can
             // be inlined into a branch in one of the loop body nodes, so we want to pull
             // them into the loop.
