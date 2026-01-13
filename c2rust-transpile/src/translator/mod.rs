@@ -4245,8 +4245,8 @@ impl<'c> Translation<'c> {
                     match as_semi_break_stmt(&stmt, &lbl) {
                         Some(val) => {
                             let block = mk().block_expr(match val {
-                                None => mk().block(stmts),
-                                Some(val) => WithStmts::new(stmts, val).to_block(),
+                                Some(val) if ctx.is_used() => WithStmts::new(stmts, val).to_block(),
+                                _ => mk().block(stmts),
                             });
 
                             // enclose block in parentheses to work around
