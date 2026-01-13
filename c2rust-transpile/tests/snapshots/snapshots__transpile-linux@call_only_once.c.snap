@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 102
+assertion_line: 105
 expression: cat tests/snapshots/os-specific/call_only_once.linux.rs
 input_file: c2rust-transpile/tests/snapshots/os-specific/call_only_once.c
 ---
@@ -37,7 +37,7 @@ pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
     } else {
         __assert_fail(
             b"called_only_once()\0" as *const u8 as *const ::core::ffi::c_char,
-            b"/mnt/ssd1/ahomescu/development/c2rust/galois/C2Rust/c2rust-transpile/tests/snapshots/os-specific/call_only_once.c\0"
+            b"./tests/snapshots/os-specific/call_only_once.c\0"
                 as *const u8 as *const ::core::ffi::c_char,
             12 as ::core::ffi::c_uint,
             __ASSERT_FUNCTION.as_ptr(),
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
         } else {
             __assert_fail(
                 b"called_only_once()\0" as *const u8 as *const ::core::ffi::c_char,
-                b"/mnt/ssd1/ahomescu/development/c2rust/galois/C2Rust/c2rust-transpile/tests/snapshots/os-specific/call_only_once.c\0"
+                b"./tests/snapshots/os-specific/call_only_once.c\0"
                     as *const u8 as *const ::core::ffi::c_char,
                 12 as ::core::ffi::c_uint,
                 __ASSERT_FUNCTION.as_ptr(),
