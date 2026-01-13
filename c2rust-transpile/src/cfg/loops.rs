@@ -170,30 +170,28 @@ impl<Lbl: Hash + Eq + Clone> LoopInfo<Lbl> {
         self.loops.extend(other.loops);
     }
 
-    /// Finds the smallest possible loop that contains all of the entries.
+    /// Find the smallest possible loop that contains all of the items
     pub fn tightest_common_loop<E: Iterator<Item = Lbl>>(&self, mut entries: E) -> Option<LoopId> {
-        // Start with the loop containing the first entry.
         let first = entries.next()?;
+
         let mut loop_id = *self.node_loops.get(&first)?;
 
-        // Widen the loop until it contains the all of our entries, or it can no longer
-        // be widened.
         for entry in entries {
+            // Widen the loop until it contains the `entry`, or it can no longer be widened.
             loop {
-                // NOTE: We currently bail out in the case where there is no loop data
-                // corresponding to the current loop ID, but it's unclear if that's the right
-                // thing to do. In theory we should always have loop data corresponding to a
-                // loop ID, but the `nested_goto.c` test definitely ends up with a loop ID that
-                // doesn't have corresponding info. We should investigate why that happens and
-                // determine if it's valid or not.
-                let (in_loop, parent_id) = self.loops.get(&loop_id)?;
+                match self.loops.get(&loop_id) {
+                    Some((ref in_loop, parent_id)) => {
+                        if in_loop.contains(&entry) {
+                            break;
+                        }
+                        loop_id = if let Some(i) = parent_id {
+                            *i
+                        } else {
+                            return None;
+                        };
+                    }
 
-                // If our current loop contains the entry, move on to the next entry. Otherwise
-                // move on to the next wider loop if there is one.
-                if in_loop.contains(&entry) {
-                    break;
-                } else {
-                    loop_id = parent_id.clone()?;
+                    None => return None,
                 }
             }
         }
