@@ -251,41 +251,13 @@ impl RelooperState {
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
         _disable_heuristics: bool,
     ) {
-        // --------------------------------------
-        // Base case
-
-        if entries.is_empty() {
+        // If there are no entries or blocks then we are at the end of a branch and
+        // there's nothing left to reloop.
+        if entries.is_empty() || blocks.is_empty() {
             return;
         }
 
-        // Find all labels reachable via a `GoTo` from the current set of blocks.
-        let reachable_labels: IndexSet<Label> =
-            blocks.iter().flat_map(|(_, bb)| bb.successors()).collect();
-
-        // Split the entry labels into those that some basic block may goto versus those that none can
-        // goto.
-        let (some_branch_to, none_branch_to): (IndexSet<Label>, IndexSet<Label>) = entries
-            .iter()
-            .cloned()
-            .partition(|entry| reachable_labels.contains(entry));
-
-        // Calculate predecessor and reachability information:
-        //
-        // * `predecessor_map` maps from each label to its immediate predecessors in the
-        //   current set of blocks.
-        // * `strict_reachable_from` maps each label to the set of labels that can reach
-        //   it, i.e. its direct and indirect predecessors. Entries do not count as
-        //   reaching themselves, and so an entry will only appear as a key if it is the
-        //   successor of some block (including itself, if the entry branches directly
-        //   to itself).
-        //
-        // For both of these, some keys may not correspond to any blocks in the current
-        // set, since blocks may have successors that are outside the current set. For
-        // both of these, labels in the values set will always correspond to blocks in
-        // the current set.
-        //
-        // TODO: Do we need to recalculate this every time, or would we be able to use global successor information?
-        let successor_map = blocks
+        let local_successors = blocks
             .iter()
             .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
             .collect();
@@ -293,72 +265,67 @@ impl RelooperState {
         // Map from each label to the set of labels that reach it. A label does not
         // count as reaching itself unless there is an explicit back edge to that label.
         //
-        // TODO: Do we need to recalculate this every time, or would we be able to use global successor information?
-        let strict_reachable_from = flip_edges(transitive_closure(&successor_map));
-
-        // --------------------------------------
-        // Simple cases
+        // Some keys may not correspond to any blocks in the current set, since blocks
+        // may have successors that are outside the current set. Labels in the values
+        // set will always correspond to blocks in the current set.
+        //
+        // NOTE: We need to determine reachability using the current local set of
+        // blocks. Global reachability won't work here because when we're inside a loop
+        // body we don't want to consider back edges, which we strip before processing
+        // the loop body.
+        let strict_reachable_from = flip_edges(transitive_closure(&local_successors));
 
         // Handle our simple case of only 1 entry. If there's no back edge to the entry
-        // we generate a simple structure, otherwise we make a loop.
+        // we generate a `Simple` structure, otherwise we make a loop.
         if entries.len() == 1 {
-            if some_branch_to.is_empty() {
-                let entry = none_branch_to
-                    .first()
-                    .expect("Should find exactly one entry");
+            let entry = entries.first().unwrap();
+            if !strict_reachable_from.contains_key(entry) {
+                let bb = blocks
+                    .swap_remove(entry)
+                    .expect("Entry not present in current blocks");
+                let new_entries = bb.successors();
+                let BasicBlock {
+                    body,
+                    mut terminator,
+                    live,
+                    defined,
+                    span,
+                } = bb;
 
-                // If our entry is in our current blocks, emit it as a simple block and then
-                // recurse into the rest of the blocks.
+                // Flag declarations for everything that is live going in but not already in scope.
                 //
-                // If our entry is not in our current blocks, then it was previously selected as
-                // the follow blocks of a multiple and we are at the end of that branch. In this
-                // case we emit an empty simple block that jumps to the entry.
-                if let Some(bb) = blocks.swap_remove(entry) {
-                    let new_entries = bb.successors();
-                    let BasicBlock {
-                        body,
-                        mut terminator,
-                        live,
-                        defined,
-                        span,
-                    } = bb;
-
-                    // Flag declarations for everything that is live going in but not already in scope.
-                    //
-                    // It is tempting to just place the declarations here, but it isn't that simple:
-                    // they may end up also being live but not in scope elsewhere and we should _not_
-                    // make a second declaration.
-                    for l in live {
-                        if !self.in_scope(l) {
-                            self.add_to_top_scope(l);
-                            self.lifted.insert(l);
-                        }
+                // It is tempting to just place the declarations here, but it isn't that simple:
+                // they may end up also being live but not in scope elsewhere and we should _not_
+                // make a second declaration.
+                for l in live {
+                    if !self.in_scope(l) {
+                        self.add_to_top_scope(l);
+                        self.lifted.insert(l);
                     }
-
-                    // Being into scope things that are defined here
-                    for d in defined {
-                        self.add_to_scope(d);
-                    }
-
-                    // Rewrite `GoTo`s that don't target our next blocks into `BreakTo`s so that
-                    // they correctly jump past the code that naturally follows the simple.
-                    for lbl in terminator.get_labels_mut() {
-                        if let StructureLabel::GoTo(label) = lbl {
-                            *lbl = StructureLabel::BreakTo(label.clone())
-                        }
-                    }
-
-                    result.push(Structure::Simple {
-                        entries,
-                        body,
-                        span,
-                        terminator,
-                    });
-
-                    self.relooper(new_entries, blocks, result, false);
                 }
+
+                // Being into scope things that are defined here
+                for d in defined {
+                    self.add_to_scope(d);
+                }
+
+                // Rewrite `GoTo`s that don't target our next blocks into `BreakTo`s so that
+                // they correctly jump past the code that naturally follows the simple.
+                for lbl in terminator.get_labels_mut() {
+                    if let StructureLabel::GoTo(label) = lbl {
+                        *lbl = StructureLabel::BreakTo(label.clone())
+                    }
+                }
+
+                result.push(Structure::Simple {
+                    entries,
+                    body,
+                    span,
+                    terminator,
+                });
+
+                self.relooper(new_entries, blocks, result, false);
             } else {
-                // Our only entry is branched back to, make a loop.
                 self.make_loop(&strict_reachable_from, blocks, entries, result);
             }
             return;
@@ -500,11 +467,6 @@ impl RelooperState {
             self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
             return;
         }
-
-        assert!(
-            none_branch_to.is_empty(),
-            "I think by now all entries have to be branched back to, right?"
-        );
 
         // --------------------------------------
         // Loop fallback
