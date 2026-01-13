@@ -43,7 +43,7 @@ pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
             __ASSERT_FUNCTION.as_ptr(),
         );
     }
-    'c_729: {
+    '_c2rust_label: {
         if called_only_once() != 0 {
         } else {
             __assert_fail(
