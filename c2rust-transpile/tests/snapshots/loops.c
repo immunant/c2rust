@@ -245,9 +245,11 @@ int loop_returns(int x) {
     return x;
 }
 
-// Same as `loop_returns` but using `goto` prevents the incremental relooper
-// from saving us.
-/*
+// Tests that both of the returns land outside the loop, and that we have a
+// block labeled `exit`.
+//
+// NOTE: The way the `if`s are getting turned into `if else`s is not correct,
+// but we can't test this case without also triggering that issue.
 int loop_gotos(int x) {
     while (x) {
         x += 1;
@@ -260,7 +262,36 @@ int loop_gotos(int x) {
             x += 4;
             goto exit;
         }
-        // x += 5; // Adding or removing this also has interesting effects.
+        x += 5;
+    }
+
+    return x;
+
+exit:
+    return -x;
+}
+
+int loop_early_return(int x) {
+    while (x) {
+        x += 1;
+        if (x) {
+            x += 2;
+            return x;
+        }
+    }
+
+    return -x;
+}
+
+// The `if` is getting inverted to `if !x { continue; } x +=2; break;`.
+/*
+int loop_goto_exit(int x) {
+    while (x) {
+        x += 1;
+        if (x) {
+            x += 2;
+            goto exit;
+        }
     }
 
     return x;
