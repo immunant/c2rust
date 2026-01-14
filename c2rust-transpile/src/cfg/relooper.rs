@@ -331,35 +331,15 @@ impl RelooperState {
             return;
         }
 
-        // --------------------------------------
-        // Skipping to blocks placed later
-
-        // Split the entry labels into those that are in the current blocks, and those that aren't
-        let (present, absent): (IndexSet<Label>, IndexSet<Label>) = entries
-            .iter()
-            .cloned()
-            .partition(|entry| blocks.contains_key(entry));
-
-        // Handle the case where we have entries that are not in the current set of
-        // blocks.
-        //
-        // This happens when we create a multiple where a block reachable from multiple
-        // entries gets put in the follow blocks. This means that the branches within
-        // the multiple that reach the follow block have to do nothing, since they need
-        // to exit the multiple to get to that next block. To handle this we create a
-        // multiple with no-op branches that correspond to the absent entries, and a
-        // then branch with result of relooping the present entries.
-        //
-        // If we only have absent entries, then there's no other blocks to structure and
-        // we can just exit.
-        if !absent.is_empty() {
-            if present.is_empty() {
-                return;
-            }
-        }
-
-        // --------------------------------------
-        // Multiple
+        // Sanity check that we have entries that are in our current set of blocks. We
+        // may have entries that aren't present in our current blocks when we're inside
+        // the branch of a `Multiple`, but there must always be at least one present
+        // entry.
+        assert!(
+            entries.iter().any(|entry| blocks.contains_key(entry)),
+            "No entries are in our current set of blocks, entries: {entries:?}, blocks: {:?}",
+            blocks.keys().collect::<Vec<_>>(),
+        );
 
         // Like `strict_reachable_from`, but entries also reach themselves.
         let mut reachable_from = strict_reachable_from.clone();
@@ -372,16 +352,11 @@ impl RelooperState {
 
         // Calculate which blocks are reached by only one entry (including the entries
         // themselves).
-        //
-        // For each label in `reachable_from`, filter its predecessor set to only our
-        // entries, then filter down to only the labels reachable from exactly one
-        // entry. Then flip edges to give us a map from entries to the set of labels
-        // that are only reached from that entry.
-        let singly_reached: IndexMap<Label, IndexSet<Label>> = flip_edges(
+        let singly_reached: AdjacencyList = flip_edges(
             reachable_from
                 .into_iter()
-                .map(|(lbl, reachable)| (lbl, &reachable & &entries))
-                .filter(|(_, reachable)| reachable.len() == 1)
+                .map(|(lbl, reached_from)| (lbl, &reached_from & &entries))
+                .filter(|(_, reached_from)| reached_from.len() == 1)
                 .collect(),
         );
 
@@ -394,7 +369,7 @@ impl RelooperState {
             // our current set of blocks, as we don't want branches for those entries.
             let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
                 .into_iter()
-                .filter(|(lbl, _)| present.contains(lbl))
+                .filter(|(lbl, _)| entries.contains(lbl) && blocks.contains_key(lbl))
                 .map(|(lbl, within)| {
                     let val = blocks
                         .iter()
@@ -468,10 +443,9 @@ impl RelooperState {
             return;
         }
 
-        // --------------------------------------
-        // Loop fallback
-
-        // We couldn't create a multiple, so create a loop.
+        // If we couldn't make a `Multiple`, we have multiple entries and all entries
+        // can be reached by other entries. This means irreducible control flow, which
+        // we have to process by making a loop.
         self.make_loop(&strict_reachable_from, blocks, entries, result);
     }
 
@@ -601,6 +575,7 @@ impl RelooperState {
         self.close_scope();
 
         result.push(Structure::Loop { entries, body });
+
         self.relooper(follow_entries, follow_blocks, result, false);
     }
 }
