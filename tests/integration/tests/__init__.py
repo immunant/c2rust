@@ -63,11 +63,13 @@ class Test(object):
                     assert tail.stdout is not None
                     for line in tail.stdout:
                         print(line.decode().rstrip())
+                sys.stdout.flush()
             else:
                 print(
                     "{color}Missing log file: {logf}{nocolor}".format(
                         color=Colors.WARNING, logf=logfile, nocolor=Colors.NO_COLOR
-                    )
+                    ),
+                    flush=True,
                 )
 
         script_path = os.path.join(self.dir, script)
@@ -76,7 +78,8 @@ class Test(object):
             print(
                 "{color}Missing script: {script}{nocolor}".format(
                     color=Colors.FAIL, script=script_path, nocolor=Colors.NO_COLOR
-                )
+                ),
+                flush=True,
             )
             return False
 
@@ -84,7 +87,8 @@ class Test(object):
             print(
                 "{color}Script is not executable: {script}{nocolor}".format(
                     color=Colors.FAIL, script=script_path, nocolor=Colors.NO_COLOR
-                )
+                ),
+                flush=True,
             )
             return False
 
@@ -97,8 +101,19 @@ class Test(object):
                 stage=stage,
                 script=relpath,
             )
+            fill = (75 - len(line)) * "."
         else:
             line = ""
+            fill = ""
+        start_time = perf_counter()
+
+        def print_outcome(outcome: str, color: str):
+            end_time = perf_counter()
+            elapsed_time = timedelta(seconds=end_time - start_time)
+            print(
+                f"{line}{fill} ({elapsed_time}) {color}{outcome}{Colors.NO_COLOR}",
+                flush=True,
+            )
 
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
@@ -108,10 +123,7 @@ class Test(object):
 
             if use_cached_cc_cmds:
                 if not verbose:
-                    fill = (75 - len(line)) * "."
-                    color = Colors.OKBLUE
-                    msg = "OK_CACHED"
-                    print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
+                    print_outcome(outcome="OK_CACHED", color=Colors.OKBLUE)
                 return True
             elif emsg:
                 if verbose:
@@ -124,30 +136,33 @@ class Test(object):
         # noinspection PyBroadException
         try:
             if verbose:
-                subprocess.check_call(cwd=self.dir, args=[script_path])
+                stdout = None
+                stderr = None
             else:
-                subprocess.check_call(
-                    cwd=self.dir,
-                    args=[script_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                stdout = subprocess.DEVNULL
+                stderr = subprocess.DEVNULL
+            subprocess.check_call(
+                cwd=self.dir,
+                args=[script_path],
+                stdout=stdout,
+                stderr=stderr,
+            )
+            if not verbose:
+                print_outcome(
+                    outcome="OK_XFAIL" if xfail else "OK",
+                    color=Colors.WARNING if xfail else Colors.OKGREEN,
                 )
-
-                fill = (75 - len(line)) * "."
-                color = Colors.WARNING if xfail else Colors.OKGREEN
-                msg = "OK_XFAIL" if xfail else "OK"
-                print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
             return True
         except KeyboardInterrupt:
             if not verbose:
-                print(f"{line}: {Colors.WARNING}INTERRUPT{Colors.NO_COLOR}")
+                print_outcome(outcome="INTERRUPT", color=Colors.WARNING)
             exit(1)
         except Exception:  # noqa
             if not verbose:
-                outcome = "XFAIL" if xfail else "FAIL"
-                fill = (75 - len(line)) * "."
-                color = Colors.OKBLUE if xfail else Colors.FAIL
-                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
+                print_outcome(
+                    outcome="XFAIL" if xfail else "FAIL",
+                    color=Colors.OKBLUE if xfail else Colors.FAIL,
+                )
                 print_log_tail_on_fail(script_path)
             return False
 
