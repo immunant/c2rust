@@ -170,6 +170,15 @@ struct Args {
     /// Fail when the control-flow graph generates branching constructs
     #[clap(long)]
     fail_on_multiple: bool,
+
+    #[clap(long, short = 'x')]
+    cross_checks: bool,
+
+    #[clap(long, short = 'X', multiple = true)]
+    cross_check_config: Vec<String>,
+
+    #[clap(long, value_enum, default_value_t)]
+    cross_check_backend: CrossCheckBackend,
 }
 
 // TODO Eventually move this code into `c2rust-transpile`
@@ -197,6 +206,30 @@ impl From<TranslateMacros> for c2rust_transpile::TranslateMacros {
             TranslateMacros::Conservative => c2rust_transpile::TranslateMacros::Conservative,
             TranslateMacros::Experimental => c2rust_transpile::TranslateMacros::Experimental,
         }
+    }
+}
+
+#[derive(Default, Debug, ValueEnum, Clone)]
+pub enum CrossCheckBackend {
+    DynamicDlsym,
+
+    #[default]
+    ZstdLogging,
+
+    LibclevrbufSys,
+
+    LibfakechecksSys,
+}
+
+impl From<CrossCheckBackend> for String {
+    fn from(x: CrossCheckBackend) -> String {
+        let s = match x {
+            CrossCheckBackend::DynamicDlsym => "dynamic-dlsym",
+            CrossCheckBackend::ZstdLogging => "zstd-logging",
+            CrossCheckBackend::LibclevrbufSys => "libclevrbuf-sys",
+            CrossCheckBackend::LibfakechecksSys => "libfakechecks-sys",
+        };
+        s.to_string()
     }
 }
 
@@ -228,6 +261,9 @@ fn main() {
         fail_on_multiple: args.fail_on_multiple,
         filter: args.filter,
         debug_relooper_labels: args.debug_labels,
+        cross_checks: args.cross_checks,
+        cross_check_backend: args.cross_check_backend.into(),
+        cross_check_configs: args.cross_check_config,
         prefix_function_names: args.prefix_function_names,
 
         // We used to guard asm translation with a command-line

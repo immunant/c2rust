@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "config",
+    "config-capi",
+    "derive-macros",
+    "runtime",
+    "rustc-plugin",
+    "backends/libclevrbuf-sys",
+    "backends/libfakechecks-sys",
+    "backends/dynamic-dlsym",
+    "backends/zstd-logging",
+]
+default-members = [
+    "config",
+    "derive-macros",
+    "runtime",
+    "rustc-plugin",
+    "backends/dynamic-dlsym",
+    "backends/zstd-logging",
+]
+exclude = [
+    "tests"
+]

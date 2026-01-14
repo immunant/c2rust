@@ -1,0 +1,29 @@
+[package]
+name = "c2rust-xcheck-config"
+description = "Configuration file parser for C2Rust cross-checking"
+version = "0.9.0"
+edition = "2018"
+authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
+license = "BSD-3-Clause"
+homepage = "https://c2rust.com/"
+repository = "https://github.com/immunant/c2rust"
+publish = false
+
+[features]
+parse-syn = ["syn"]
+parse-syntax = []
+with-quote = ["quote"]
+scopes = []
+
+[dependencies]
+serde = { version = "1.0", features = ["rc"] }
+serde_derive = "1.0"
+serde_yaml = "0.7"
+globset = "0.4"
+syn = { version = "0.11", features = ["full", "visit"], optional = true }
+quote = { version = "0.3", optional = true }
+failure = "0.1"
+failure_derive = "0.1"
+indexmap = { version = "1.0", features = ["serde-1"] }
+regex = "1.1"
+itertools = "0.8"

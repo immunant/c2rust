@@ -1228,6 +1228,26 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
             out_attrs.push(attr);
         }
 
+        if t.tcfg.cross_checks {
+            let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
+            for config_file in &t.tcfg.cross_check_configs {
+                let file_item = mk().meta_item(vec!["config_file"], config_file);
+                xcheck_plugin_args.push(mk().nested_meta_item(file_item));
+            }
+            let xcheck_plugin_item = mk().meta_item(
+                vec!["c2rust_xcheck_plugin"],
+                MetaItemKind::List(xcheck_plugin_args),
+            );
+            let plugin_args = vec![mk().nested_meta_item(xcheck_plugin_item)];
+            let plugin_item = mk().meta_item(vec!["plugin"], MetaItemKind::List(plugin_args));
+            for attr in mk()
+                .meta_item_attr(AttrStyle::Inner, plugin_item)
+                .as_inner_attrs()
+            {
+                s.print_attribute(&attr);
+            }
+        }
+
         if t.tcfg.emit_no_std {
             let meta = mk().meta_path("no_std");
             let attr = mk().attribute(AttrStyle::Inner(Default::default()), meta);
@@ -1245,6 +1265,26 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
                             .extern_crate_item(extern_crate.ident.clone(), None),
                     );
                 }
+            }
+
+            if t.tcfg.cross_checks {
+                out_items.push(
+                    &mk()
+                        .single_attr("macro_use")
+                        .extern_crate_item("c2rust_xcheck_derive", None),
+                );
+                out_items.push(
+                    &mk()
+                        .single_attr("macro_use")
+                        .extern_crate_item("c2rust_xcheck_runtime", None),
+                );
+                // When cross-checking, always use the system allocator
+                let sys_alloc_path = vec!["", "std", "alloc", "System"];
+                out_items.push(&mk().single_attr("global_allocator").static_item(
+                    "C2RUST_ALLOC",
+                    mk().path_ty(sys_alloc_path.clone()),
+                    mk().path_expr(sys_alloc_path),
+                ));
             }
 
             // TODO: switch to `#[expect(unused_imports, reason = ...)]` once
@@ -1432,6 +1472,10 @@ impl<'c> Translation<'c> {
                 "unused_assignments",
             ],
         )];
+        if self.tcfg.cross_checks {
+            features.append(&mut vec!["plugin"]);
+            pragmas.push(("cross_check", vec!["yes"]));
+        }
 
         if self.features.borrow().contains("register_tool") {
             pragmas.push(("register_tool", vec!["c2rust"]));
@@ -1463,6 +1507,14 @@ impl<'c> Translation<'c> {
             macro_msg,
             MacroDelimiter::Paren(Default::default()),
         ))
+    }
+
+    fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
+        if self.tcfg.cross_checks {
+            mk.call_attr("cross_check", args)
+        } else {
+            mk
+        }
     }
 
     fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>, qty: CQualTypeId) -> bool {
@@ -1660,7 +1712,8 @@ impl<'c> Translation<'c> {
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
         let fn_bare_decl = (vec![], None, fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
-        let fn_item = mk().unsafe_().extern_("C").fn_item(fn_decl, fn_block);
+        let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
+        let fn_item = fn_attributes.unsafe_().extern_("C").fn_item(fn_decl, fn_block);
 
         let static_attributes = mk()
             .single_attr("used")
@@ -2418,7 +2471,10 @@ impl<'c> Translation<'c> {
 
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
-                    mk()
+                    // Cross-check this function as if it was called `main`
+                    // FIXME: pass in a vector of NestedMetaItem elements,
+                    // but strings have to do for now
+                    self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")", "exit(djb2=\"main\")"])
                 } else if (is_global && !is_inline) || is_extern_inline {
                     mk_linkage(false, new_name, name).extern_("C").pub_()
                 } else if self.cur_file.get().is_some() {

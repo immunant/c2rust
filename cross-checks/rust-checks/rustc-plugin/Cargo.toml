@@ -1,0 +1,33 @@
+[package]
+name = "c2rust-xcheck-plugin"
+description = "rustc compiler plugin used by C2Rust cross-checking"
+version = "0.9.0"
+edition = "2018"
+authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
+license = "BSD-3-Clause"
+homepage = "https://c2rust.com/"
+repository = "https://github.com/immunant/c2rust"
+readme = "README.md"
+publish = false
+
+[lib]
+plugin = true
+
+[features]
+expand-macros = []
+c-hash-functions = []
+
+[dependencies]
+matches = "0.1"
+serde = "1.0"
+serde_yaml = "0.7"
+c2rust-ast-printer = { path = "../../../c2rust-ast-printer", version = "0.13.0" }
+
+[dependencies.c2rust-xcheck-config]
+path = "../config"
+version = "0.9.0"
+features = ["parse-syntax", "scopes"]
+
+[dev-dependencies]
+c2rust-xcheck-derive = { path = "../derive-macros", version = "0.9.0" }
+c2rust-xcheck-runtime = { path = "../runtime", version = "0.9.0" }
