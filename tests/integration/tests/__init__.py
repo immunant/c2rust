@@ -111,8 +111,8 @@ class Test(object):
             if use_cached_cc_cmds:
                 if not verbose:
                     color = Colors.OKBLUE
-                    msg = "OK_CACHED"
-                    print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
+                    outcome = "OK_CACHED"
+                    print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
                 return True
             elif emsg:
                 if verbose:
@@ -138,17 +138,19 @@ class Test(object):
             )
             if not verbose:
                 color = Colors.WARNING if xfail else Colors.OKGREEN
-                msg = "OK_XFAIL" if xfail else "OK"
-                print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
+                outcome = "OK_XFAIL" if xfail else "OK"
+                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
             return True
         except KeyboardInterrupt:
             if not verbose:
-                print(f"{line}: {Colors.WARNING}INTERRUPT{Colors.NO_COLOR}")
+                color = Colors.WARNING
+                outcome = "INTERRUPT"
+                print(f"{line}: {color}{outcome}{Colors.NO_COLOR}")
             exit(1)
         except Exception:  # noqa
             if not verbose:
-                outcome = "XFAIL" if xfail else "FAIL"
                 color = Colors.OKBLUE if xfail else Colors.FAIL
+                outcome = "XFAIL" if xfail else "FAIL"
                 print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
                 print_log_tail_on_fail(script_path)
             return False
