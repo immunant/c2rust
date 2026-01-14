@@ -344,6 +344,30 @@ impl TypedAstContext {
             // functions, because the variables will not be top-level decls. But it can occur
             // for macros defined inside functions, since all macros are top-level decls!
             let is_nested = end_loc < prev_end_loc;
+
+            // Clang emits declarations of builtins (and opaque types such as when encountering
+            // `struct undeclared *`) at their first usage site. This means that they are usually
+            // nested within another function, and (at least with how the C AST is currently
+            // exported) they have an end location with line and column zero. Fix this up before
+            // continuing to maintain the invariant that begin is not ordered after end.
+            if is_nested
+                && end_loc.line == 0
+                && end_loc.column == 0
+                && !(begin_loc.line == 0 && begin_loc.column == 0)
+            {
+                log::debug!("skipping nested decl with zero end line/col: {decl:?}");
+                continue;
+            }
+
+            // If the beginning is not ordered after the end, skip this decl and warn.
+            if begin_loc > end_loc {
+                log::warn!(
+                    "backward source range for top-level decl; skipping. source ranges for \
+                    top-level decls may be incorrect.\ndecl: {decl:?}"
+                );
+                continue;
+            }
+
             // End of the previous decl is the start of comments pertaining to the current one.
             let new_begin_loc = if is_nested { begin_loc } else { prev_end_loc };
 
