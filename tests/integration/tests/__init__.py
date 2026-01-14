@@ -97,8 +97,10 @@ class Test(object):
                 stage=stage,
                 script=relpath,
             )
+            fill = (75 - len(line)) * "."
         else:
             line = ""
+            fill = ""
 
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
@@ -108,7 +110,6 @@ class Test(object):
 
             if use_cached_cc_cmds:
                 if not verbose:
-                    fill = (75 - len(line)) * "."
                     color = Colors.OKBLUE
                     msg = "OK_CACHED"
                     print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
@@ -136,7 +137,6 @@ class Test(object):
                 stderr=stderr,
             )
             if not verbose:
-                fill = (75 - len(line)) * "."
                 color = Colors.WARNING if xfail else Colors.OKGREEN
                 msg = "OK_XFAIL" if xfail else "OK"
                 print(f"{line}{fill} {color}{msg}{Colors.NO_COLOR}")
@@ -148,7 +148,6 @@ class Test(object):
         except Exception:  # noqa
             if not verbose:
                 outcome = "XFAIL" if xfail else "FAIL"
-                fill = (75 - len(line)) * "."
                 color = Colors.OKBLUE if xfail else Colors.FAIL
                 print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
                 print_log_tail_on_fail(script_path)
