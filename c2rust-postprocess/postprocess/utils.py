@@ -13,6 +13,12 @@ from pygments.lexers.rust import RustLexer
 from requests.exceptions import JSONDecodeError
 
 
+def check_isinstance[T](value: object, typ: type[T]) -> T:
+    if not isinstance(value, typ):
+        raise TypeError(f"Expected {typ}, got {type(value)}")
+    return value
+
+
 def get_tool_path(tool_name: str) -> Path:
     """Get the path to the given tool in the system PATH."""
 

@@ -1,0 +1,35 @@
+```rust
+unsafe extern "C" fn json_object_copy_serializer_data(
+    mut src: *mut json_object,
+    mut dst: *mut json_object,
+) -> ::core::ffi::c_int {
+    if (*src)._userdata.is_null() && (*src)._user_delete.is_none() {
+        return 0 as ::core::ffi::c_int;
+    }
+    if (*dst)._to_json_string
+        == Some(
+            json_object_userdata_to_json_string
+                as unsafe extern "C" fn(
+                    *mut json_object,
+                    *mut printbuf,
+                    ::core::ffi::c_int,
+                    ::core::ffi::c_int,
+                ) -> ::core::ffi::c_int,
+        )
+    {
+        (*dst)._userdata =
+            strdup((*src)._userdata as *const ::core::ffi::c_char) as *mut ::core::ffi::c_void;
+    }
+    // else if ... other supported serializers ...
+    else {
+        _json_c_set_last_err(
+            b"json_object_deep_copy: unable to copy unknown serializer data: %p\n\0" as *const u8
+                as *const ::core::ffi::c_char,
+            (*dst)._to_json_string,
+        );
+        return -(1 as ::core::ffi::c_int);
+    }
+    (*dst)._user_delete = (*src)._user_delete;
+    return 0 as ::core::ffi::c_int;
+}
+```

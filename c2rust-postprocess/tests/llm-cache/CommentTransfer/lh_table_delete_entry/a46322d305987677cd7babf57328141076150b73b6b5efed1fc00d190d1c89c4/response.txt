@@ -1,0 +1,49 @@
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn lh_table_delete_entry(
+    mut t: *mut crate::src::linkhash::lh_table,
+    mut e: *mut crate::src::linkhash::lh_entry,
+) -> ::core::ffi::c_int {
+    let mut n: ptrdiff_t = e.offset_from((*t).table) as ::core::ffi::c_long as ptrdiff_t; /* CAW: fixed to be 64bit nice, still need the crazy negative case... */
+
+    /* CAW: this is bad, really bad, maybe stack goes other direction on this machine... */
+    if n < 0 as ptrdiff_t {
+        return -(2 as ::core::ffi::c_int);
+    }
+    if (*(*t).table.offset(n as isize)).k == crate::src::linkhash::LH_EMPTY as *const ::core::ffi::c_void
+        || (*(*t).table.offset(n as isize)).k == crate::src::linkhash::LH_FREED as *const ::core::ffi::c_void
+    {
+        return -(1 as ::core::ffi::c_int);
+    }
+    (*t).count -= 1;
+    if (*t).free_fn.is_some() {
+        (*t).free_fn.expect("non-null function pointer")(e);
+    }
+    let ref mut fresh8 = (*(*t).table.offset(n as isize)).v;
+    *fresh8 = ::core::ptr::null::<::core::ffi::c_void>();
+    let ref mut fresh9 = (*(*t).table.offset(n as isize)).k;
+    *fresh9 = crate::src::linkhash::LH_FREED;
+    if (*t).tail == (*t).table.offset(n as isize) as *mut crate::src::linkhash::lh_entry
+        && (*t).head == (*t).table.offset(n as isize) as *mut crate::src::linkhash::lh_entry
+    {
+        (*t).tail = ::core::ptr::null_mut::<crate::src::linkhash::lh_entry>();
+        (*t).head = (*t).tail;
+    } else if (*t).head == (*t).table.offset(n as isize) as *mut crate::src::linkhash::lh_entry {
+        (*(*(*t).head).next).prev = ::core::ptr::null_mut::<crate::src::linkhash::lh_entry>();
+        (*t).head = (*(*t).head).next;
+    } else if (*t).tail == (*t).table.offset(n as isize) as *mut crate::src::linkhash::lh_entry {
+        (*(*(*t).tail).prev).next = ::core::ptr::null_mut::<crate::src::linkhash::lh_entry>();
+        (*t).tail = (*(*t).tail).prev;
+    } else {
+        let ref mut fresh10 = (*(*(*t).table.offset(n as isize)).prev).next;
+        *fresh10 = (*(*t).table.offset(n as isize)).next;
+        let ref mut fresh11 = (*(*(*t).table.offset(n as isize)).next).prev;
+        *fresh11 = (*(*t).table.offset(n as isize)).prev;
+    }
+    let ref mut fresh12 = (*(*t).table.offset(n as isize)).prev;
+    *fresh12 = ::core::ptr::null_mut::<crate::src::linkhash::lh_entry>();
+    let ref mut fresh13 = (*(*t).table.offset(n as isize)).next;
+    *fresh13 = *fresh12;
+    return 0 as ::core::ffi::c_int;
+}
+```

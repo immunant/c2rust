@@ -1,0 +1,21 @@
+/// json_object_int
+unsafe extern "C" fn json_object_int_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    /* room for 19 digits, the sign char, and a null term */
+    let mut sbuf: [::core::ffi::c_char; 21] = [0; 21];
+    snprintf(
+        &raw mut sbuf as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 21]>() as size_t,
+        b"%ld\0" as *const u8 as *const ::core::ffi::c_char,
+        (*jso).o.c_int64,
+    );
+    return printbuf_memappend(
+        pb as *mut printbuf,
+        &raw mut sbuf as *mut ::core::ffi::c_char,
+        strlen(&raw mut sbuf as *mut ::core::ffi::c_char) as ::core::ffi::c_int,
+    );
+}

@@ -1,0 +1,127 @@
+transform = "CommentTransfer"
+identifier = "_json_object_to_fd"
+model = "gemini-3-flash-preview"
+response = """```rust
+unsafe extern "C" fn _json_object_to_fd(
+    mut fd: ::core::ffi::c_int,
+    mut obj: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+    mut filename: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    let mut ret: ::core::ffi::c_int = 0;
+    let mut json_str: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut wpos: ::core::ffi::c_uint = 0;
+    let mut wsize: ::core::ffi::c_uint = 0;
+    filename = if !filename.is_null() {
+        filename
+    } else {
+        b"(fd)\\0" as *const u8 as *const ::core::ffi::c_char
+    };
+    json_str = json_object_to_json_string_ext(obj, flags);
+    if json_str.is_null() {
+        return -(1 as ::core::ffi::c_int);
+    }
+    wsize = (strlen(json_str) & UINT_MAX as size_t) as ::core::ffi::c_uint; /* CAW: probably unnecessary, but the most 64bit safe */
+    wpos = 0 as ::core::ffi::c_uint;
+    while wpos < wsize {
+        ret = write(
+            fd,
+            json_str.offset(wpos as isize) as *const ::core::ffi::c_void,
+            wsize.wrapping_sub(wpos) as size_t,
+        ) as ::core::ffi::c_int;
+        if ret < 0 as ::core::ffi::c_int {
+            _json_c_set_last_err(
+                b"json_object_to_file: error writing file %s: %s\\n\\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                filename,
+                _json_c_strerror(*__errno_location()),
+            );
+            return -(1 as ::core::ffi::c_int);
+        }
+        /* because of the above check for ret < 0, we can safely cast and add */
+        wpos = wpos.wrapping_add(ret as ::core::ffi::c_uint);
+    }
+    return 0 as ::core::ffi::c_int;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+static int _json_object_to_fd(int fd, struct json_object *obj, int flags, const char *filename)
+{
+\tint ret;
+\tconst char *json_str;
+\tunsigned int wpos, wsize;
+
+\tfilename = filename ? filename : "(fd)";
+
+\tif (!(json_str = json_object_to_json_string_ext(obj,flags))) {
+\t\treturn -1;
+\t}
+
+\twsize = (unsigned int)(strlen(json_str) & UINT_MAX); /* CAW: probably unnecessary, but the most 64bit safe */
+\twpos = 0;
+\twhile(wpos < wsize) {
+\t\tif((ret = write(fd, json_str + wpos, wsize-wpos)) < 0) {
+\t\t  _json_c_set_last_err("json_object_to_file: error writing file %s: %s\\n",
+\t\t\t filename, strerror(errno));
+\t\t  return -1;
+\t\t}
+
+\t\t/* because of the above check for ret < 0, we can safely cast and add */
+\t\twpos += (unsigned int)ret;
+\t}
+
+\treturn 0;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn _json_object_to_fd(
+    mut fd: ::core::ffi::c_int,
+    mut obj: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+    mut filename: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    let mut ret: ::core::ffi::c_int = 0;
+    let mut json_str: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut wpos: ::core::ffi::c_uint = 0;
+    let mut wsize: ::core::ffi::c_uint = 0;
+    filename = if !filename.is_null() {
+        filename
+    } else {
+        b"(fd)\\0" as *const u8 as *const ::core::ffi::c_char
+    };
+    json_str = json_object_to_json_string_ext(obj, flags);
+    if json_str.is_null() {
+        return -(1 as ::core::ffi::c_int);
+    }
+    wsize = (strlen(json_str) & UINT_MAX as size_t) as ::core::ffi::c_uint;
+    wpos = 0 as ::core::ffi::c_uint;
+    while wpos < wsize {
+        ret = write(
+            fd,
+            json_str.offset(wpos as isize) as *const ::core::ffi::c_void,
+            wsize.wrapping_sub(wpos) as size_t,
+        ) as ::core::ffi::c_int;
+        if ret < 0 as ::core::ffi::c_int {
+            _json_c_set_last_err(
+                b"json_object_to_file: error writing file %s: %s\\n\\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                filename,
+                _json_c_strerror(*__errno_location()),
+            );
+            return -(1 as ::core::ffi::c_int);
+        }
+        wpos = wpos.wrapping_add(ret as ::core::ffi::c_uint);
+    }
+    return 0 as ::core::ffi::c_int;
+}```
+"""

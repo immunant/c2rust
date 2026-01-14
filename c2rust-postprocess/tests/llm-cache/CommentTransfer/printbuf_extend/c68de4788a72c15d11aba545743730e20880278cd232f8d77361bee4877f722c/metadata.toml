@@ -1,0 +1,98 @@
+transform = "CommentTransfer"
+identifier = "printbuf_extend"
+model = "gemini-3-flash-preview"
+response = """/// Extend the buffer p so it has a size of at least min_size.
+///
+/// If the current size is large enough, nothing is changed.
+///
+/// Note: this does not check the available space!  The caller
+///  is responsible for performing those calculations.
+unsafe extern "C" fn printbuf_extend(
+    mut p: *mut crate::src::printbuf::printbuf,
+    mut min_size: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut t: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut new_size: ::core::ffi::c_int = 0;
+    if (*p).size >= min_size {
+        return 0 as ::core::ffi::c_int;
+    }
+    new_size = (*p).size * 2 as ::core::ffi::c_int;
+    if new_size < min_size + 8 as ::core::ffi::c_int {
+        new_size = min_size + 8 as ::core::ffi::c_int;
+    }
+    /* PRINTBUF_DEBUG */
+    t = realloc((*p).buf as *mut ::core::ffi::c_void, new_size as size_t)
+        as *mut ::core::ffi::c_char;
+    if t.is_null() {
+        return -(1 as ::core::ffi::c_int);
+    }
+    (*p).size = new_size;
+    (*p).buf = t;
+    return 0 as ::core::ffi::c_int;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/**
+ * Extend the buffer p so it has a size of at least min_size.
+ *
+ * If the current size is large enough, nothing is changed.
+ *
+ * Note: this does not check the available space!  The caller
+ *  is responsible for performing those calculations.
+ */
+static int printbuf_extend(struct printbuf *p, int min_size)
+{
+\tchar *t;
+\tint new_size;
+
+\tif (p->size >= min_size)
+\t\treturn 0;
+
+\tnew_size = p->size * 2;
+\tif (new_size < min_size + 8)
+\t\tnew_size =  min_size + 8;
+#ifdef PRINTBUF_DEBUG
+\tMC_DEBUG("printbuf_memappend: realloc "
+\t  "bpos=%d min_size=%d old_size=%d new_size=%d\\n",
+\t  p->bpos, min_size, p->size, new_size);
+#endif /* PRINTBUF_DEBUG */
+\tif(!(t = (char*)realloc(p->buf, new_size)))
+\t\treturn -1;
+\tp->size = new_size;
+\tp->buf = t;
+\treturn 0;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn printbuf_extend(
+    mut p: *mut crate::src::printbuf::printbuf,
+    mut min_size: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut t: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut new_size: ::core::ffi::c_int = 0;
+    if (*p).size >= min_size {
+        return 0 as ::core::ffi::c_int;
+    }
+    new_size = (*p).size * 2 as ::core::ffi::c_int;
+    if new_size < min_size + 8 as ::core::ffi::c_int {
+        new_size = min_size + 8 as ::core::ffi::c_int;
+    }
+    t = realloc((*p).buf as *mut ::core::ffi::c_void, new_size as size_t)
+        as *mut ::core::ffi::c_char;
+    if t.is_null() {
+        return -(1 as ::core::ffi::c_int);
+    }
+    (*p).size = new_size;
+    (*p).buf = t;
+    return 0 as ::core::ffi::c_int;
+}```
+"""

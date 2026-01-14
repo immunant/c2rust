@@ -1,0 +1,40 @@
+```rust
+unsafe extern "C" fn json_pointer_get_recursive(
+    mut obj: *mut json_object,
+    mut path: *mut ::core::ffi::c_char,
+    mut value: *mut *mut json_object,
+) -> ::core::ffi::c_int {
+    let mut endp: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut rc: ::core::ffi::c_int = 0;
+
+    /* All paths (on each recursion level must have a leading '/' */
+    if *path.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int != '/' as i32 {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    path = path.offset(1);
+
+    endp = strchr(path, '/' as i32);
+    if !endp.is_null() {
+        *endp = '\0' as i32 as ::core::ffi::c_char;
+    }
+
+    /* If we err-ed here, return here */
+    rc = json_pointer_get_single_path(obj, path, &raw mut obj);
+    if rc != 0 {
+        return rc;
+    }
+
+    if !endp.is_null() {
+        *endp = '/' as i32 as ::core::ffi::c_char; /* Put the slash back, so that the sanity check passes on next recursion level */
+        return json_pointer_get_recursive(obj, endp, value);
+    }
+
+    /* We should be at the end of the recursion here */
+    if !value.is_null() {
+        *value = obj;
+    }
+
+    return 0 as ::core::ffi::c_int;
+}
+```

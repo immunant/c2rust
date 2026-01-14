@@ -1,0 +1,7 @@
+/// backwards-compatible conversion to string
+#[no_mangle]
+pub unsafe extern "C" fn json_object_to_json_string(
+    mut jso: *mut json_object,
+) -> *const ::core::ffi::c_char {
+    return json_object_to_json_string_ext(jso, crate::src::json_object::JSON_C_TO_STRING_SPACED);
+}

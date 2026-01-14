@@ -1,0 +1,348 @@
+transform = "CommentTransfer"
+identifier = "json_object_object_to_json_string"
+model = "gemini-3-flash-preview"
+response = """/// json_object_object
+unsafe extern "C" fn json_object_object_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut had_children: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut iter: crate::src::json_object::json_object_iter = crate::src::json_object::json_object_iter {
+        key: ::core::ptr::null_mut::<::core::ffi::c_char>(),
+        val: ::core::ptr::null_mut::<json_object>(),
+        entry: ::core::ptr::null_mut::<lh_entry>(),
+    };
+    printbuf_memappend(
+        pb as *mut printbuf,
+        b"{\\0" as *const u8 as *const ::core::ffi::c_char, /*}*/
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+        printbuf_memappend(
+            pb as *mut printbuf,
+            b"\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    }
+    iter.entry = (*json_object_get_object(jso)).head as *mut lh_entry;
+    while !if !iter.entry.is_null() {
+        iter.key =
+            (*iter.entry).k as uintptr_t as *mut ::core::ffi::c_void as *mut ::core::ffi::c_char;
+        iter.val = (*iter.entry).v as uintptr_t as *mut ::core::ffi::c_void as *mut json_object
+            as *mut json_object;
+        iter.entry
+    } else {
+        ::core::ptr::null_mut::<lh_entry>()
+    }
+    .is_null()
+    {
+        if had_children != 0 {
+            printbuf_memappend(
+                pb as *mut printbuf,
+                b",\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+            if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+                printbuf_memappend(
+                    pb as *mut printbuf,
+                    b"\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+                    (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                        .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+                );
+            }
+        }
+        had_children = 1 as ::core::ffi::c_int;
+        if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0
+            && flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY == 0
+        {
+            printbuf_memappend(
+                pb as *mut printbuf,
+                b" \\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        indent(pb, level + 1 as ::core::ffi::c_int, flags);
+        printbuf_memappend(
+            pb as *mut printbuf,
+            b"\\"\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+        json_escape_str(pb, iter.key, strlen(iter.key) as ::core::ffi::c_int, flags);
+        if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0 {
+            printbuf_memappend(
+                pb as *mut printbuf,
+                b"\\": \\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 4]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        } else {
+            printbuf_memappend(
+                pb as *mut printbuf,
+                b"\\":\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 3]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        if iter.val.is_null() {
+            printbuf_memappend(
+                pb as *mut printbuf,
+                b"null\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 5]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        } else if (*iter.val)
+            ._to_json_string
+            .expect("non-null function pointer")(
+            iter.val as *mut json_object,
+            pb,
+            level + 1 as ::core::ffi::c_int,
+            flags,
+        ) < 0 as ::core::ffi::c_int
+        {
+            return -(1 as ::core::ffi::c_int);
+        }
+        iter.entry = (*iter.entry).next as *mut lh_entry;
+    }
+    if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+        if had_children != 0 {
+            printbuf_memappend(
+                pb as *mut printbuf,
+                b"\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        indent(pb, level, flags);
+    }
+    if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0
+        && flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY == 0
+    {
+        return printbuf_memappend(
+            pb as *mut printbuf,
+            /*{*/ b" }\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 3]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    } else {
+        return printbuf_memappend(
+            pb as *mut printbuf,
+            /*{*/ b"}\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    };
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* json_object_object */
+
+static int json_object_object_to_json_string(struct json_object* jso,
+\t\t\t\t\t     struct printbuf *pb,
+\t\t\t\t\t     int level,
+\t\t\t\t\t     int flags)
+{
+\tint had_children = 0;
+\tstruct json_object_iter iter;
+
+\tprintbuf_strappend(pb, "{" /*}*/);
+\tif (flags & JSON_C_TO_STRING_PRETTY)
+\t\tprintbuf_strappend(pb, "\\n");
+\tjson_object_object_foreachC(jso, iter)
+\t{
+\t\tif (had_children)
+\t\t{
+\t\t\tprintbuf_strappend(pb, ",");
+\t\t\tif (flags & JSON_C_TO_STRING_PRETTY)
+\t\t\t\tprintbuf_strappend(pb, "\\n");
+\t\t}
+\t\thad_children = 1;
+\t\tif (flags & JSON_C_TO_STRING_SPACED && !(flags & JSON_C_TO_STRING_PRETTY))
+\t\t\tprintbuf_strappend(pb, " ");
+\t\tindent(pb, level+1, flags);
+\t\tprintbuf_strappend(pb, "\\"");
+\t\tjson_escape_str(pb, iter.key, strlen(iter.key), flags);
+\t\tif (flags & JSON_C_TO_STRING_SPACED)
+\t\t\tprintbuf_strappend(pb, "\\": ");
+\t\telse
+\t\t\tprintbuf_strappend(pb, "\\":");
+\t\tif(iter.val == NULL)
+\t\t\tprintbuf_strappend(pb, "null");
+\t\telse
+\t\t\tif (iter.val->_to_json_string(iter.val, pb, level+1,flags) < 0)
+\t\t\t\treturn -1;
+\t}
+\tif (flags & JSON_C_TO_STRING_PRETTY)
+\t{
+\t\tif (had_children)
+\t\t\tprintbuf_strappend(pb, "\\n");
+\t\tindent(pb,level,flags);
+\t}
+\tif (flags & JSON_C_TO_STRING_SPACED && !(flags & JSON_C_TO_STRING_PRETTY))
+\t\treturn printbuf_strappend(pb, /*{*/ " }");
+\telse
+\t\treturn printbuf_strappend(pb, /*{*/ "}");
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_object_object_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut had_children: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut iter: crate::src::json_object::json_object_iter = crate::src::json_object::json_object_iter {
+    key:  ::core::ptr::null_mut::<::core::ffi::c_char>(),
+    val:  ::core::ptr::null_mut::<json_object>(),
+    entry:  ::core::ptr::null_mut::<lh_entry>(),
+};
+    printbuf_memappend(
+        
+        pb as *mut printbuf,
+        b"{\\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+        printbuf_memappend(
+            
+            pb as *mut printbuf,
+            b"\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    }
+    iter.entry = (*json_object_get_object(jso)).head as *mut lh_entry;
+    while !if !iter.entry.is_null() {
+        iter.key =
+            (*iter.entry).k as uintptr_t as *mut ::core::ffi::c_void as *mut ::core::ffi::c_char;
+        iter.val = (*iter.entry).v as uintptr_t as *mut ::core::ffi::c_void as *mut json_object
+            as *mut json_object;
+        iter.entry
+    } else {
+        ::core::ptr::null_mut::<lh_entry>()
+    }
+    .is_null()
+    {
+        if had_children != 0 {
+            printbuf_memappend(
+                
+                pb as *mut printbuf,
+                b",\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+            if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+                printbuf_memappend(
+                    
+                    pb as *mut printbuf,
+                    b"\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+                    (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                        .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+                );
+            }
+        }
+        had_children = 1 as ::core::ffi::c_int;
+        if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0 && flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY == 0 {
+            printbuf_memappend(
+                
+                pb as *mut printbuf,
+                b" \\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        indent(pb, level + 1 as ::core::ffi::c_int, flags);
+        printbuf_memappend(
+            
+            pb as *mut printbuf,
+            b"\\"\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+        json_escape_str(pb, iter.key, strlen(iter.key) as ::core::ffi::c_int, flags);
+        if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0 {
+            printbuf_memappend(
+                
+                pb as *mut printbuf,
+                b"\\": \\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 4]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        } else {
+            printbuf_memappend(
+                
+                pb as *mut printbuf,
+                b"\\":\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 3]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        if iter.val.is_null() {
+            printbuf_memappend(
+                
+                pb as *mut printbuf,
+                b"null\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 5]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        } else if (*iter.val)
+            ._to_json_string
+            .expect("non-null function pointer")(
+            iter.val as *mut json_object,
+            pb,
+            level + 1 as ::core::ffi::c_int,
+            flags,
+        ) < 0 as ::core::ffi::c_int
+        {
+            return -(1 as ::core::ffi::c_int);
+        }
+        iter.entry = (*iter.entry).next as *mut lh_entry;
+    }
+    if flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY != 0 {
+        if had_children != 0 {
+            printbuf_memappend(
+                
+                pb as *mut printbuf,
+                b"\\n\\0" as *const u8 as *const ::core::ffi::c_char,
+                (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize)
+                    .wrapping_sub(1 as usize) as ::core::ffi::c_int,
+            );
+        }
+        indent(pb, level, flags);
+    }
+    if flags & crate::src::json_object::JSON_C_TO_STRING_SPACED != 0 && flags & crate::src::json_object::JSON_C_TO_STRING_PRETTY == 0 {
+        return printbuf_memappend(
+            
+            pb as *mut printbuf,
+            b" }\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 3]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    } else {
+        return printbuf_memappend(
+            
+            pb as *mut printbuf,
+            b"}\\0" as *const u8 as *const ::core::ffi::c_char,
+            (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+                as ::core::ffi::c_int,
+        );
+    };
+}```
+"""

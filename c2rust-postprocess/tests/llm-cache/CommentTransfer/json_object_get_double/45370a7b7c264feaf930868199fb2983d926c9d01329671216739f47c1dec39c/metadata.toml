@@ -1,0 +1,168 @@
+transform = "CommentTransfer"
+identifier = "json_object_get_double"
+model = "gemini-3-flash-preview"
+response = """#[no_mangle]
+
+pub unsafe extern "C" fn json_object_get_double(
+    mut jso: *const json_object,
+) -> ::core::ffi::c_double {
+    let mut cdouble: ::core::ffi::c_double = 0.;
+    let mut errPtr: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    if jso.is_null() {
+        return 0.0f64;
+    }
+    match (*jso).o_type as ::core::ffi::c_uint {
+        2 => return (*jso).o.c_double,
+        3 => return (*jso).o.c_int64 as ::core::ffi::c_double,
+        1 => return (*jso).o.c_boolean as ::core::ffi::c_double,
+        6 => {
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            cdouble = strtod(get_string_component(jso), &raw mut errPtr);
+
+            /* if conversion stopped at the first character, return 0.0 */
+            if errPtr == get_string_component(jso) as *mut ::core::ffi::c_char {
+                *__errno_location() = EINVAL;
+                return 0.0f64;
+            }
+
+            /*
+             * Check that the conversion terminated on something sensible
+             *
+             * For example, { "pay" : 123AB } would parse as 123.
+             */
+            if *errPtr as ::core::ffi::c_int != '\\0' as i32 {
+                *__errno_location() = EINVAL;
+                return 0.0f64;
+            }
+
+            /*
+             * If strtod encounters a string which would exceed the
+             * capacity of a double, it returns +/- HUGE_VAL and sets
+             * errno to ERANGE. But +/- HUGE_VAL is also a valid result
+             * from a conversion, so we need to check errno.
+             *
+             * Underflow also sets errno to ERANGE, but it returns 0 in
+             * that case, which is what we will return anyway.
+             *
+             * See CERT guideline ERR30-C
+             */
+            if (::core::f64::INFINITY == cdouble || -::core::f64::INFINITY == cdouble)
+                && ERANGE == *__errno_location()
+            {
+                cdouble = 0.0f64;
+            }
+            return cdouble;
+        }
+        _ => {
+            *__errno_location() = EINVAL;
+            return 0.0f64;
+        }
+    };
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+double json_object_get_double(const struct json_object *jso)
+{
+  double cdouble;
+  char *errPtr = NULL;
+
+  if(!jso) return 0.0;
+  switch(jso->o_type) {
+  case json_type_double:
+    return jso->o.c_double;
+  case json_type_int:
+    return jso->o.c_int64;
+  case json_type_boolean:
+    return jso->o.c_boolean;
+  case json_type_string:
+    errno = 0;
+    cdouble = strtod(get_string_component(jso), &errPtr);
+
+    /* if conversion stopped at the first character, return 0.0 */
+    if (errPtr == get_string_component(jso))
+    {
+      errno = EINVAL;
+      return 0.0;
+    }
+
+    /*
+     * Check that the conversion terminated on something sensible
+     *
+     * For example, { "pay" : 123AB } would parse as 123.
+     */
+    if (*errPtr != '\\0')
+    {
+      errno = EINVAL;
+      return 0.0;
+    }
+
+    /*
+     * If strtod encounters a string which would exceed the
+     * capacity of a double, it returns +/- HUGE_VAL and sets
+     * errno to ERANGE. But +/- HUGE_VAL is also a valid result
+     * from a conversion, so we need to check errno.
+     *
+     * Underflow also sets errno to ERANGE, but it returns 0 in
+     * that case, which is what we will return anyway.
+     *
+     * See CERT guideline ERR30-C
+     */
+    if ((HUGE_VAL == cdouble || -HUGE_VAL == cdouble) &&
+        (ERANGE == errno))
+            cdouble = 0.0;
+    return cdouble;
+  default:
+    errno = EINVAL;
+    return 0.0;
+  }
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_get_double(
+    mut jso: *const json_object,
+) -> ::core::ffi::c_double {
+    let mut cdouble: ::core::ffi::c_double = 0.;
+    let mut errPtr: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    if jso.is_null() {
+        return 0.0f64;
+    }
+    match (*jso).o_type as ::core::ffi::c_uint {
+        2 => return (*jso).o.c_double,
+        3 => return (*jso).o.c_int64 as ::core::ffi::c_double,
+        1 => return (*jso).o.c_boolean as ::core::ffi::c_double,
+        6 => {
+            *__errno_location() = 0 as ::core::ffi::c_int;
+            cdouble = strtod(get_string_component(jso), &raw mut errPtr);
+            if errPtr == get_string_component(jso) as *mut ::core::ffi::c_char {
+                *__errno_location() = EINVAL;
+                return 0.0f64;
+            }
+            if *errPtr as ::core::ffi::c_int != '\\0' as i32 {
+                *__errno_location() = EINVAL;
+                return 0.0f64;
+            }
+            if (::core::f64::INFINITY == cdouble || -::core::f64::INFINITY == cdouble)
+                && ERANGE == *__errno_location()
+            {
+                cdouble = 0.0f64;
+            }
+            return cdouble;
+        }
+        _ => {
+            *__errno_location() = EINVAL;
+            return 0.0f64;
+        }
+    };
+}```
+"""

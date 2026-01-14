@@ -1,0 +1,10 @@
+/// ****************************************************************************
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_end(mut obj: *const json_object) -> crate::src::json_object_iterator::json_object_iterator {
+    let mut iter: crate::src::json_object_iterator::json_object_iterator = crate::src::json_object_iterator::json_object_iterator {
+    opaque_:  ::core::ptr::null::<::core::ffi::c_void>(),
+};
+    iter.opaque_ = kObjectEndIterValue;
+    return iter;
+}

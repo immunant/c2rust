@@ -36,23 +36,23 @@ def test_get_rust_function_spans(transpile_qsort, pytestconfig):
         {
             "name": "swap",
             "start_line": 10,
-            "end_line": 17,
+            "end_line": 14,
             "start_byte": 154,
-            "end_byte": 327,
+            "end_byte": 316,
         },
         {
             "name": "partition",
-            "start_line": 19,
-            "end_line": 42,
-            "start_byte": 341,
-            "end_byte": 1204,
+            "start_line": 16,
+            "end_line": 39,
+            "start_byte": 330,
+            "end_byte": 1193,
         },
         {
             "name": "quickSort",
-            "start_line": 44,
-            "end_line": 54,
-            "start_byte": 1218,
-            "end_byte": 1577,
+            "start_line": 41,
+            "end_line": 51,
+            "start_byte": 1207,
+            "end_byte": 1566,
         },
     ]
 

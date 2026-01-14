@@ -1,0 +1,25 @@
+repo/src/printbuf.rs:
+  - printbuf_extend
+
+repo/src/json_c_version.rs:
+  - json_c_version
+
+repo/src/json_pointer.rs:
+  - string_replace_all_occurrences_with_char
+
+repo/src/arraylist.rs:
+  - array_list_new
+
+repo/src/random_seed.rs:
+  - get_time_seed
+
+repo/src/json_tokener.rs:
+  - json_tokener_parse_ex
+
+repo/src/linkhash.rs:
+  - hashlittle
+
+repo/src/json_object.rs:
+  - json_object_new
+  - get_string_component
+  - json_object_generic_delete

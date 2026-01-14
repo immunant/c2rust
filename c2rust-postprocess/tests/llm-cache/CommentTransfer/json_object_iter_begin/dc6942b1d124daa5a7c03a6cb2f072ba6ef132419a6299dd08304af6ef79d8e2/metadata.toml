@@ -1,0 +1,67 @@
+transform = "CommentTransfer"
+identifier = "json_object_iter_begin"
+model = "gemini-3-flash-preview"
+response = """/**
+ * ****************************************************************************
+ */
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_begin(mut obj: *mut json_object) -> crate::src::json_object_iterator::json_object_iterator {
+    let mut iter: crate::src::json_object_iterator::json_object_iterator = crate::src::json_object_iterator::json_object_iterator {
+    opaque_:  ::core::ptr::null::<::core::ffi::c_void>(),
+};
+    let mut pTable: *mut lh_table = ::core::ptr::null_mut::<lh_table>();
+    /// @note json_object_get_object will return NULL if passed NULL
+    ///       or a non-json_type_object instance
+    pTable =  json_object_get_object(obj as *const json_object) as
+    *mut lh_table as *mut lh_table;
+    /// @note For a pair-less Object, head is NULL, which matches our
+    ///       definition of the "end" iterator
+    iter.opaque_ = (*pTable).head as *const ::core::ffi::c_void;
+    return iter;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/**
+ * ****************************************************************************
+ */
+struct json_object_iterator
+json_object_iter_begin(struct json_object* obj)
+{
+    struct json_object_iterator iter;
+    struct lh_table* pTable;
+
+    /// @note json_object_get_object will return NULL if passed NULL
+    ///       or a non-json_type_object instance
+    pTable = json_object_get_object(obj);
+    JASSERT(NULL != pTable);
+
+    /// @note For a pair-less Object, head is NULL, which matches our
+    ///       definition of the "end" iterator
+    iter.opaque_ = pTable->head;
+    return iter;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_begin(mut obj: *mut json_object) -> crate::src::json_object_iterator::json_object_iterator {
+    let mut iter: crate::src::json_object_iterator::json_object_iterator = crate::src::json_object_iterator::json_object_iterator {
+    opaque_:  ::core::ptr::null::<::core::ffi::c_void>(),
+};
+    let mut pTable: *mut lh_table = ::core::ptr::null_mut::<lh_table>();
+    pTable =  json_object_get_object(obj as *const json_object) as
+    *mut lh_table as *mut lh_table;
+    iter.opaque_ = (*pTable).head as *const ::core::ffi::c_void;
+    return iter;
+}```
+"""

@@ -1,0 +1,36 @@
+#[no_mangle]
+pub unsafe extern "C" fn sprintbuf(
+    mut p: *mut crate::src::printbuf::printbuf,
+    mut msg: *const ::core::ffi::c_char,
+    mut args: ...
+) -> ::core::ffi::c_int {
+    let mut ap: ::core::ffi::VaListImpl;
+    let mut t: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut size: ::core::ffi::c_int = 0;
+    let mut buf: [::core::ffi::c_char; 128] = [0; 128];
+    /* user stack buffer first */
+    ap = args.clone();
+    size = vsnprintf(
+        &raw mut buf as *mut ::core::ffi::c_char,
+        128 as size_t,
+        msg,
+        ap.as_va_list(),
+    );
+    /* if string is greater than stack buffer, then use dynamic string
+       with vasprintf.  Note: some implementation of vsnprintf return -1
+       if output is truncated whereas some return the number of bytes that
+       would have been written - this code handles both cases. */
+    if size == -(1 as ::core::ffi::c_int) || size > 127 as ::core::ffi::c_int {
+        ap = args.clone();
+        size = vasprintf(&raw mut t, msg, ap.as_va_list());
+        if size < 0 as ::core::ffi::c_int {
+            return -(1 as ::core::ffi::c_int);
+        }
+        printbuf_memappend(p, t, size);
+        free(t as *mut ::core::ffi::c_void);
+        return size;
+    } else {
+        printbuf_memappend(p, &raw mut buf as *mut ::core::ffi::c_char, size);
+        return size;
+    };
+}

@@ -1,0 +1,14 @@
+/// type checking functions
+#[no_mangle]
+pub unsafe extern "C" fn json_object_is_type(
+    mut jso: *const json_object,
+    mut type_0: crate::src::json_object::json_type,
+) -> ::core::ffi::c_int {
+    if jso.is_null() {
+        return (type_0 as ::core::ffi::c_uint
+            == crate::src::json_object::json_type_null as ::core::ffi::c_int as ::core::ffi::c_uint)
+            as ::core::ffi::c_int;
+    }
+    return ((*jso).o_type as ::core::ffi::c_uint == type_0 as ::core::ffi::c_uint)
+        as ::core::ffi::c_int;
+}

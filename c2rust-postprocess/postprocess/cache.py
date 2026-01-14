@@ -11,6 +11,8 @@ import tomlkit
 from platformdirs import user_cache_dir
 from tomlkit.items import String
 
+from postprocess.utils import check_isinstance
+
 
 class AbstractCache(ABC):
     """
@@ -94,12 +96,13 @@ def to_multiline_toml(value: TomlDict) -> str:
             return {k: convert_value(v) for k, v in value.items() if v is not None}
         elif isinstance(value, list):
             return [convert_value(e) for e in value if e is not None]
+        elif value is None:
+            raise TypeError("top-level `None` `TomlValue`s are not allowed")
         else:
-            assert value is not None
             return value
 
     converted_value = convert_value(value)
-    assert isinstance(converted_value, dict)
+    converted_value = check_isinstance(converted_value, dict)
     doc = tomlkit.document()
     for k, v in converted_value.items():
         doc[k] = v
@@ -173,9 +176,16 @@ class DirectoryCache(AbstractCache):
         try:
             toml = cache_file.read_text()
         except FileNotFoundError:
-            logging.debug(f"Cache miss: {cache_file}: {messages}")
+            data = {
+                "transform": transform,
+                "identifier": identifier,
+                "model": model,
+                "messages": messages,
+            }
+            toml = to_multiline_toml(data)
+            logging.debug(f"Cache miss: {cache_file}:\n{toml}")
             return None
-        logging.debug(f"Cache hit: {cache_file}")
+        logging.debug(f"Cache hit: {cache_file}:\n{toml}")
         data = tomli.loads(toml)
 
         return data["response"]
@@ -206,7 +216,7 @@ class DirectoryCache(AbstractCache):
         response_path = cache_dir / "response.txt"
         metadata_path.write_text(toml)
         response_path.write_text(response)
-        logging.debug(f"Cache updated: {cache_dir}")
+        logging.debug(f"Cache updated: {cache_dir}:\n{toml}")
 
     def clear(self) -> None:
         self._path.unlink(missing_ok=True)

@@ -1,0 +1,53 @@
+transform = "CommentTransfer"
+identifier = "json_object_is_type"
+model = "gemini-3-flash-preview"
+response = """/// type checking functions
+#[no_mangle]
+pub unsafe extern "C" fn json_object_is_type(
+    mut jso: *const json_object,
+    mut type_0: crate::src::json_object::json_type,
+) -> ::core::ffi::c_int {
+    if jso.is_null() {
+        return (type_0 as ::core::ffi::c_uint
+            == crate::src::json_object::json_type_null as ::core::ffi::c_int as ::core::ffi::c_uint)
+            as ::core::ffi::c_int;
+    }
+    return ((*jso).o_type as ::core::ffi::c_uint == type_0 as ::core::ffi::c_uint)
+        as ::core::ffi::c_int;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* type checking functions */
+
+int json_object_is_type(const struct json_object *jso, enum json_type type)
+{
+\tif (!jso)
+\t\treturn (type == json_type_null);
+\treturn (jso->o_type == type);
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_is_type(
+    mut jso: *const json_object,
+    mut type_0: crate::src::json_object::json_type,
+) -> ::core::ffi::c_int {
+    if jso.is_null() {
+        return (type_0 as ::core::ffi::c_uint
+            == crate::src::json_object::json_type_null as ::core::ffi::c_int as ::core::ffi::c_uint)
+            as ::core::ffi::c_int;
+    }
+    return ((*jso).o_type as ::core::ffi::c_uint == type_0 as ::core::ffi::c_uint)
+        as ::core::ffi::c_int;
+}```
+"""

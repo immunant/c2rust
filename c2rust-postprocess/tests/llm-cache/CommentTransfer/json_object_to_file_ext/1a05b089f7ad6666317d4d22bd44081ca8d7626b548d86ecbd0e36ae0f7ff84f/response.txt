@@ -1,0 +1,36 @@
+/// extended "format and write to file" function
+#[no_mangle]
+pub unsafe extern "C" fn json_object_to_file_ext(
+    mut filename: *const ::core::ffi::c_char,
+    mut obj: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut fd: ::core::ffi::c_int = 0;
+    let mut ret: ::core::ffi::c_int = 0;
+    let mut saved_errno: ::core::ffi::c_int = 0;
+    if obj.is_null() {
+        _json_c_set_last_err(
+            b"json_object_to_file: object is null\n\0" as *const u8 as *const ::core::ffi::c_char,
+        );
+        return -(1 as ::core::ffi::c_int);
+    }
+    fd = open(
+        filename,
+        O_WRONLY | O_TRUNC | O_CREAT,
+        0o644 as ::core::ffi::c_int,
+    );
+    if fd < 0 as ::core::ffi::c_int {
+        _json_c_set_last_err(
+            b"json_object_to_file: error opening file %s: %s\n\0" as *const u8
+                as *const ::core::ffi::c_char,
+            filename,
+            _json_c_strerror(*__errno_location()),
+        );
+        return -(1 as ::core::ffi::c_int);
+    }
+    ret = _json_object_to_fd(fd, obj, flags, filename);
+    saved_errno = *__errno_location();
+    close(fd);
+    *__errno_location() = saved_errno;
+    return ret;
+}

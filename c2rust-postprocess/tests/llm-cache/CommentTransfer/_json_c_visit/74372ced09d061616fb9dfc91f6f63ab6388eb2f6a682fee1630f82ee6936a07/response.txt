@@ -1,0 +1,170 @@
+```rust
+unsafe extern "C" fn _json_c_visit(
+    mut jso: *mut json_object,
+    mut parent_jso: *mut json_object,
+    mut jso_key: *const ::core::ffi::c_char,
+    mut jso_index: *mut size_t,
+    mut userfunc: Option<crate::src::json_visit::json_c_visit_userfunc>,
+    mut userarg: *mut ::core::ffi::c_void,
+) -> ::core::ffi::c_int {
+    let mut userret: ::core::ffi::c_int = userfunc.expect("non-null function pointer")(
+        jso,
+        0 as ::core::ffi::c_int,
+        parent_jso,
+        jso_key,
+        jso_index,
+        userarg,
+    );
+    match userret {
+        crate::src::json_visit::JSON_C_VISIT_RETURN_CONTINUE => {}
+        crate::src::json_visit::JSON_C_VISIT_RETURN_SKIP
+        | crate::src::json_visit::JSON_C_VISIT_RETURN_POP
+        | crate::src::json_visit::JSON_C_VISIT_RETURN_STOP
+        | crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR => return userret,
+        _ => {
+            fprintf(
+                stderr,
+                b"ERROR: invalid return value from json_c_visit userfunc: %d\n\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                userret,
+            );
+            return crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR;
+        }
+    }
+    match json_object_get_type(jso) as ::core::ffi::c_uint {
+        0 | 1 | 2 | 3 | 6 => {
+            // we already called userfunc above, move on to the next object
+            return crate::src::json_visit::JSON_C_VISIT_RETURN_CONTINUE;
+        }
+        4 => {
+            let mut key: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+            let mut child: *mut json_object = ::core::ptr::null_mut::<json_object>();
+            let mut entrykey: *mut lh_entry =
+                (*(json_object_get_object(jso) as *mut lh_table)).head;
+            let mut entry_nextkey: *mut lh_entry = ::core::ptr::null_mut::<lh_entry>();
+            while !({
+                if !entrykey.is_null() {
+                    key = (*entrykey).k as uintptr_t as *mut ::core::ffi::c_void
+                        as *mut ::core::ffi::c_char;
+                    child = (*entrykey).v as uintptr_t as *mut ::core::ffi::c_void
+                        as *mut json_object;
+                    entry_nextkey = (*entrykey).next;
+                }
+                entrykey
+            })
+            .is_null()
+            {
+                userret = _json_c_visit(
+                    child as *mut json_object,
+                    jso,
+                    key,
+                    ::core::ptr::null_mut::<size_t>(),
+                    userfunc,
+                    userarg,
+                );
+                if userret == crate::src::json_visit::JSON_C_VISIT_RETURN_POP {
+                    break;
+                }
+                if userret == crate::src::json_visit::JSON_C_VISIT_RETURN_STOP
+                    || userret == crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR
+                {
+                    return userret;
+                }
+                if userret != crate::src::json_visit::JSON_C_VISIT_RETURN_CONTINUE
+                    && userret != crate::src::json_visit::JSON_C_VISIT_RETURN_SKIP
+                {
+                    fprintf(
+                        stderr,
+                        b"INTERNAL ERROR: _json_c_visit returned %d\n\0" as *const u8
+                            as *const ::core::ffi::c_char,
+                        userret,
+                    );
+                    return crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR;
+                }
+                entrykey = entry_nextkey;
+            }
+        }
+        5 => {
+            let mut array_len: size_t = json_object_array_length(jso);
+            let mut ii: size_t = 0;
+            ii = 0 as size_t;
+            while ii < array_len {
+                let mut child_0: *mut json_object =
+                    json_object_array_get_idx(jso, ii) as *mut json_object;
+                userret = _json_c_visit(
+                    child_0,
+                    jso,
+                    ::core::ptr::null::<::core::ffi::c_char>(),
+                    &raw mut ii,
+                    userfunc,
+                    userarg,
+                );
+                if userret == crate::src::json_visit::JSON_C_VISIT_RETURN_POP {
+                    break;
+                }
+                if userret == crate::src::json_visit::JSON_C_VISIT_RETURN_STOP
+                    || userret == crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR
+                {
+                    return userret;
+                }
+                if userret != crate::src::json_visit::JSON_C_VISIT_RETURN_CONTINUE
+                    && userret != crate::src::json_visit::JSON_C_VISIT_RETURN_SKIP
+                {
+                    fprintf(
+                        stderr,
+                        b"INTERNAL ERROR: _json_c_visit returned %d\n\0" as *const u8
+                            as *const ::core::ffi::c_char,
+                        userret,
+                    );
+                    return crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR;
+                }
+                ii = ii.wrapping_add(1);
+            }
+        }
+        _ => {
+            fprintf(
+                stderr,
+                b"INTERNAL ERROR: _json_c_visit found object of unknown type: %d\n\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                json_object_get_type(jso) as ::core::ffi::c_uint,
+            );
+            return crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR;
+        }
+    }
+
+    // Call userfunc for the second type on container types, after all
+    //  members of the container have been visited.
+    // Non-container types will have already returned before this point.
+
+    userret = userfunc.expect("non-null function pointer")(
+        jso,
+        crate::src::json_visit::JSON_C_VISIT_SECOND,
+        parent_jso,
+        jso_key,
+        jso_index,
+        userarg,
+    );
+    match userret {
+        crate::src::json_visit::JSON_C_VISIT_RETURN_SKIP
+        | crate::src::json_visit::JSON_C_VISIT_RETURN_POP
+        | crate::src::json_visit::JSON_C_VISIT_RETURN_CONTINUE => {
+            // These are not really sensible during JSON_C_VISIT_SECOND,
+            // but map them to JSON_C_VISIT_CONTINUE anyway.
+            // FALLTHROUGH
+            return crate::src::json_visit::JSON_C_VISIT_RETURN_CONTINUE;
+        }
+        crate::src::json_visit::JSON_C_VISIT_RETURN_STOP
+        | crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR => return userret,
+        _ => {
+            fprintf(
+                stderr,
+                b"ERROR: invalid return value from json_c_visit userfunc: %d\n\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                userret,
+            );
+            return crate::src::json_visit::JSON_C_VISIT_RETURN_ERROR;
+        }
+    };
+    // NOTREACHED
+}
+```

@@ -1,0 +1,146 @@
+/// string escaping
+unsafe extern "C" fn json_escape_str(
+    mut pb: *mut printbuf,
+    mut str: *const ::core::ffi::c_char,
+    mut len: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut pos: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut start_offset: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut c: ::core::ffi::c_uchar = 0;
+    loop {
+        let fresh0 = len;
+        len = len - 1;
+        if !(fresh0 != 0) {
+            break;
+        }
+        c = *str.offset(pos as isize) as ::core::ffi::c_uchar;
+        match c as ::core::ffi::c_int {
+            8 | 10 | 13 | 9 | 12 | 34 | 92 | 47 => {
+                if flags & crate::src::json_object::JSON_C_TO_STRING_NOSLASHESCAPE != 0
+                    && c as ::core::ffi::c_int == '/' as i32
+                {
+                    pos += 1;
+                } else {
+                    if pos - start_offset > 0 as ::core::ffi::c_int {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            str.offset(start_offset as isize),
+                            pos - start_offset,
+                        );
+                    }
+                    if c as ::core::ffi::c_int == '\u{8}' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\b\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    } else if c as ::core::ffi::c_int == '\n' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\n\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    } else if c as ::core::ffi::c_int == '\r' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\r\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    } else if c as ::core::ffi::c_int == '\t' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\t\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    } else if c as ::core::ffi::c_int == '\u{c}' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\f\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    } else if c as ::core::ffi::c_int == '"' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\\"\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    } else if c as ::core::ffi::c_int == '\\' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\\\\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    } else if c as ::core::ffi::c_int == '/' as i32 {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            b"\\/\0" as *const u8 as *const ::core::ffi::c_char,
+                            2 as ::core::ffi::c_int,
+                        );
+                    }
+                    pos += 1;
+                    start_offset = pos;
+                }
+            }
+            _ => {
+                if (c as ::core::ffi::c_int) < ' ' as i32 {
+                    let mut sbuf: [::core::ffi::c_char; 7] = [0; 7];
+                    if pos - start_offset > 0 as ::core::ffi::c_int {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            str.offset(start_offset as isize),
+                            pos - start_offset,
+                        );
+                    }
+                    snprintf(
+                        &raw mut sbuf as *mut ::core::ffi::c_char,
+                        ::core::mem::size_of::<[::core::ffi::c_char; 7]>() as size_t,
+                        b"\\u00%c%c\0" as *const u8 as *const ::core::ffi::c_char,
+                        *json_hex_chars
+                            .offset((c as ::core::ffi::c_int >> 4 as ::core::ffi::c_int) as isize)
+                            as ::core::ffi::c_int,
+                        *json_hex_chars
+                            .offset((c as ::core::ffi::c_int & 0xf as ::core::ffi::c_int) as isize)
+                            as ::core::ffi::c_int,
+                    );
+                    if (*pb).size - (*pb).bpos
+                        > ::core::mem::size_of::<[::core::ffi::c_char; 7]>() as ::core::ffi::c_int
+                            - 1 as ::core::ffi::c_int
+                    {
+                        memcpy(
+                            (*pb).buf.offset((*pb).bpos as isize) as *mut ::core::ffi::c_void,
+                            &raw mut sbuf as *mut ::core::ffi::c_char as *const ::core::ffi::c_void,
+                            (::core::mem::size_of::<[::core::ffi::c_char; 7]>()
+                                as ::core::ffi::c_int
+                                - 1 as ::core::ffi::c_int) as size_t,
+                        );
+                        (*pb).bpos += ::core::mem::size_of::<[::core::ffi::c_char; 7]>()
+                            as ::core::ffi::c_int
+                            - 1 as ::core::ffi::c_int;
+                        *(*pb).buf.offset((*pb).bpos as isize) = '\0' as i32 as ::core::ffi::c_char;
+                    } else {
+                        printbuf_memappend(
+                            pb as *mut printbuf,
+                            &raw mut sbuf as *mut ::core::ffi::c_char,
+                            ::core::mem::size_of::<[::core::ffi::c_char; 7]>()
+                                as ::core::ffi::c_int
+                                - 1 as ::core::ffi::c_int,
+                        );
+                    }
+                    pos += 1;
+                    start_offset = pos;
+                } else {
+                    pos += 1;
+                }
+            }
+        }
+    }
+    if pos - start_offset > 0 as ::core::ffi::c_int {
+        printbuf_memappend(
+            pb as *mut printbuf,
+            str.offset(start_offset as isize),
+            pos - start_offset,
+        );
+    }
+    return 0 as ::core::ffi::c_int;
+}

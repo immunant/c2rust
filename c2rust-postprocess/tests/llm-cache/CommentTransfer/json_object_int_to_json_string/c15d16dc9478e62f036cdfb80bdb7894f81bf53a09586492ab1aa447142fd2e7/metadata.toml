@@ -1,0 +1,70 @@
+transform = "CommentTransfer"
+identifier = "json_object_int_to_json_string"
+model = "gemini-3-flash-preview"
+response = """/// json_object_int
+unsafe extern "C" fn json_object_int_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    /* room for 19 digits, the sign char, and a null term */
+    let mut sbuf: [::core::ffi::c_char; 21] = [0; 21];
+    snprintf(
+        &raw mut sbuf as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 21]>() as size_t,
+        b"%ld\\0" as *const u8 as *const ::core::ffi::c_char,
+        (*jso).o.c_int64,
+    );
+    return printbuf_memappend(
+        pb as *mut printbuf,
+        &raw mut sbuf as *mut ::core::ffi::c_char,
+        strlen(&raw mut sbuf as *mut ::core::ffi::c_char) as ::core::ffi::c_int,
+    );
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* json_object_int */
+
+static int json_object_int_to_json_string(struct json_object* jso,
+\t\t\t\t\t  struct printbuf *pb,
+\t\t\t\t\t  int level,
+\t\t\t\t\t  int flags)
+{
+\t/* room for 19 digits, the sign char, and a null term */
+\tchar sbuf[21];
+\tsnprintf(sbuf, sizeof(sbuf), "%" PRId64, jso->o.c_int64);
+\treturn printbuf_memappend (pb, sbuf, strlen(sbuf));
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_object_int_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut sbuf: [::core::ffi::c_char; 21] = [0; 21];
+    snprintf(
+        &raw mut sbuf as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 21]>() as size_t,
+        b"%ld\\0" as *const u8 as *const ::core::ffi::c_char,
+        (*jso).o.c_int64,
+    );
+    return printbuf_memappend(
+        
+        pb as *mut printbuf,
+        &raw mut sbuf as *mut ::core::ffi::c_char,
+        strlen(&raw mut sbuf as *mut ::core::ffi::c_char) as ::core::ffi::c_int,
+    );
+}```
+"""

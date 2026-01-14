@@ -1,0 +1,184 @@
+transform = "CommentTransfer"
+identifier = "json_pointer_setf"
+model = "gemini-3-flash-preview"
+response = """```rust
+#[no_mangle]
+pub unsafe extern "C" fn json_pointer_setf(
+    mut obj: *mut *mut json_object,
+    mut value: *mut json_object,
+    mut path_fmt: *const ::core::ffi::c_char,
+    mut args: ...
+) -> ::core::ffi::c_int {
+    let mut current_block: u64;
+    let mut endp: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut path_copy: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut set: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    let mut args_0: ::core::ffi::VaListImpl;
+    let mut rc: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    if obj.is_null() || path_fmt.is_null() {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    /* pass a working copy to the recursive call */
+    args_0 = args.clone();
+    rc = vasprintf(&raw mut path_copy, path_fmt, args_0.as_va_list());
+    if rc < 0 as ::core::ffi::c_int {
+        return rc;
+    }
+    if *path_copy.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int == '\\0' as i32 {
+        json_object_put(*obj);
+        *obj = value;
+    } else if *path_copy.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int
+        != '/' as i32
+    {
+        *__errno_location() = EINVAL;
+        rc = -(1 as ::core::ffi::c_int);
+    } else {
+        /* If there's only 1 level to set, stop here */
+        endp = strrchr(path_copy, '/' as i32);
+        if endp == path_copy {
+            set = *obj;
+            current_block = 11653677672931389417;
+        } else {
+            *endp = '\\0' as i32 as ::core::ffi::c_char;
+            rc = json_pointer_get_recursive(*obj, path_copy, &raw mut set);
+            if rc != 0 {
+                current_block = 4724740344109054664;
+            } else {
+                current_block = 11653677672931389417;
+            }
+        }
+        match current_block {
+            4724740344109054664 => {}
+            _ => {
+                endp = endp.offset(1);
+                rc = json_pointer_set_single_path(set, endp, value);
+            }
+        }
+    }
+    free(path_copy as *mut ::core::ffi::c_void);
+    return rc;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+int json_pointer_setf(struct json_object **obj, struct json_object *value, const char *path_fmt, ...)
+{
+\tchar *endp;
+\tchar *path_copy = NULL;
+\tstruct json_object *set = NULL;
+\tva_list args;
+\tint rc = 0;
+
+\tif (!obj || !path_fmt) {
+\t\terrno = EINVAL;
+\t\treturn -1;
+\t}
+
+\t/* pass a working copy to the recursive call */
+\tva_start(args, path_fmt);
+\trc = vasprintf(&path_copy, path_fmt, args);
+\tva_end(args);
+
+\tif (rc < 0)
+\t\treturn rc;
+
+\tif (path_copy[0] == '\\0') {
+\t\tjson_object_put(*obj);
+\t\t*obj = value;
+\t\tgoto out;
+\t}
+
+\tif (path_copy[0] != '/') {
+\t\terrno = EINVAL;
+\t\trc = -1;
+\t\tgoto out;
+\t}
+
+\t/* If there's only 1 level to set, stop here */
+\tif ((endp = strrchr(path_copy, '/')) == path_copy) {
+\t\tset = *obj;
+\t\tgoto set_single_path;
+\t}
+
+\t*endp = '\\0';
+\trc = json_pointer_get_recursive(*obj, path_copy, &set);
+
+\tif (rc)
+\t\tgoto out;
+
+set_single_path:
+\tendp++;
+\trc = json_pointer_set_single_path(set, endp, value);
+out:
+\tfree(path_copy);
+\treturn rc;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_pointer_setf(
+    mut obj: *mut *mut json_object,
+    mut value: *mut json_object,
+    mut path_fmt: *const ::core::ffi::c_char,
+    mut args: ...
+) -> ::core::ffi::c_int {
+    let mut current_block: u64;
+    let mut endp: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut path_copy: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut set: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    let mut args_0: ::core::ffi::VaListImpl;
+    let mut rc: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    if obj.is_null() || path_fmt.is_null() {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    args_0 = args.clone();
+    rc = vasprintf(&raw mut path_copy, path_fmt, args_0.as_va_list());
+    if rc < 0 as ::core::ffi::c_int {
+        return rc;
+    }
+    if *path_copy.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int == '\\0' as i32 {
+        json_object_put(*obj);
+        *obj = value;
+    } else if *path_copy.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int
+        != '/' as i32
+    {
+        *__errno_location() = EINVAL;
+        rc = -(1 as ::core::ffi::c_int);
+    } else {
+        endp = strrchr(path_copy, '/' as i32);
+        if endp == path_copy {
+            set = *obj;
+            current_block = 11653677672931389417;
+        } else {
+            *endp = '\\0' as i32 as ::core::ffi::c_char;
+            rc = json_pointer_get_recursive(*obj, path_copy, &raw mut set);
+            if rc != 0 {
+                current_block = 4724740344109054664;
+            } else {
+                current_block = 11653677672931389417;
+            }
+        }
+        match current_block {
+            4724740344109054664 => {}
+            _ => {
+                endp = endp.offset(1);
+                rc = json_pointer_set_single_path(set, endp, value);
+            }
+        }
+    }
+    free(path_copy as *mut ::core::ffi::c_void);
+    return rc;
+}```
+"""

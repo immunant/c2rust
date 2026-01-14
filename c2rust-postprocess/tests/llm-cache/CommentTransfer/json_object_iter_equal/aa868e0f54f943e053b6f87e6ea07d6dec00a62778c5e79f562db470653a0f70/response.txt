@@ -1,0 +1,8 @@
+/// ****************************************************************************
+#[no_mangle]
+pub unsafe extern "C" fn json_object_iter_equal(
+    mut iter1: *const crate::src::json_object_iterator::json_object_iterator,
+    mut iter2: *const crate::src::json_object_iterator::json_object_iterator,
+) -> json_bool {
+    return ((*iter1).opaque_ == (*iter2).opaque_) as ::core::ffi::c_int;
+}

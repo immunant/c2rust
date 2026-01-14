@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from conftest import EXAMPLES_ROOT
 
-from postprocess.utils import existing_file, get_rust_files
+from postprocess.utils import check_isinstance, existing_file, get_rust_files
 
 
 def test_existing_file_returns_path(tmp_path: Path) -> None:
@@ -14,7 +14,7 @@ def test_existing_file_returns_path(tmp_path: Path) -> None:
     result = existing_file(str(target))
 
     assert result == target
-    assert isinstance(result, Path)
+    result = check_isinstance(result, Path)
 
 
 def test_existing_file_rejects_missing_file(tmp_path: Path) -> None:

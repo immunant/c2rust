@@ -1,0 +1,46 @@
+#[no_mangle]
+pub unsafe extern "C" fn json_object_put(mut jso: *mut json_object) -> ::core::ffi::c_int {
+    if jso.is_null() {
+        return 0 as ::core::ffi::c_int;
+    }
+    /* Avoid invalid free and crash explicitly instead of (silently)
+     * segfaulting.
+     */
+    if (*jso)._ref_count > 0 as uint32_t {
+    } else {
+        __assert_fail(
+            b"jso->_ref_count > 0\0" as *const u8 as *const ::core::ffi::c_char,
+            b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
+            192 as ::core::ffi::c_uint,
+            b"int json_object_put(struct json_object *)\0" as *const u8
+                as *const ::core::ffi::c_char,
+        );
+    }
+    'c_563: {
+        if (*jso)._ref_count > 0 as uint32_t {
+        } else {
+            __assert_fail(
+                b"jso->_ref_count > 0\0" as *const u8 as *const ::core::ffi::c_char,
+                b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
+                192 as ::core::ffi::c_uint,
+                b"int json_object_put(struct json_object *)\0" as *const u8
+                    as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    /* Note: this only allow the refcount to remain correct
+     * when multiple threads are adjusting it.  It is still an error 
+     * for a thread to decrement the refcount if it doesn't "own" it,
+     * as that can result in the thread that loses the race to 0
+     * operating on an already-freed object.
+     */
+    (*jso)._ref_count = (*jso)._ref_count.wrapping_sub(1);
+    if (*jso)._ref_count > 0 as uint32_t {
+        return 0 as ::core::ffi::c_int;
+    }
+    if (*jso)._user_delete.is_some() {
+        (*jso)._user_delete.expect("non-null function pointer")(jso, (*jso)._userdata);
+    }
+    (*jso)._delete.expect("non-null function pointer")(jso);
+    return 1 as ::core::ffi::c_int;
+}

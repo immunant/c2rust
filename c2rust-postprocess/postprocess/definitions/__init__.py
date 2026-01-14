@@ -174,6 +174,7 @@ def get_comments_text(comments: Iterable[str]) -> list[str]:
         comment_line
         for comment in comments
         for comment_line in get_comment_text(comment)
+        if comment_line
     ]
 
 

@@ -1,0 +1,120 @@
+transform = "CommentTransfer"
+identifier = "json_pointer_get_recursive"
+model = "gemini-3-flash-preview"
+response = """```rust
+unsafe extern "C" fn json_pointer_get_recursive(
+    mut obj: *mut json_object,
+    mut path: *mut ::core::ffi::c_char,
+    mut value: *mut *mut json_object,
+) -> ::core::ffi::c_int {
+    let mut endp: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut rc: ::core::ffi::c_int = 0;
+
+    /* All paths (on each recursion level must have a leading '/' */
+    if *path.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int != '/' as i32 {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    path = path.offset(1);
+
+    endp = strchr(path, '/' as i32);
+    if !endp.is_null() {
+        *endp = '\\0' as i32 as ::core::ffi::c_char;
+    }
+
+    /* If we err-ed here, return here */
+    rc = json_pointer_get_single_path(obj, path, &raw mut obj);
+    if rc != 0 {
+        return rc;
+    }
+
+    if !endp.is_null() {
+        *endp = '/' as i32 as ::core::ffi::c_char; /* Put the slash back, so that the sanity check passes on next recursion level */
+        return json_pointer_get_recursive(obj, endp, value);
+    }
+
+    /* We should be at the end of the recursion here */
+    if !value.is_null() {
+        *value = obj;
+    }
+
+    return 0 as ::core::ffi::c_int;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+static int json_pointer_get_recursive(
+\tstruct json_object *obj,
+\tchar *path,
+\tstruct json_object **value)
+{
+\tchar *endp;
+\tint rc;
+
+\t/* All paths (on each recursion level must have a leading '/' */
+\tif (path[0] != '/') {
+\t\terrno = EINVAL;
+\t\treturn -1;
+\t}
+\tpath++;
+
+\tendp = strchr(path, '/');
+\tif (endp)
+\t\t*endp = '\\0';
+
+\t/* If we err-ed here, return here */
+\tif ((rc = json_pointer_get_single_path(obj, path, &obj)))
+\t\treturn rc;
+
+\tif (endp) {
+\t\t*endp = '/'; /* Put the slash back, so that the sanity check passes on next recursion level */
+\t\treturn json_pointer_get_recursive(obj, endp, value);
+\t}
+
+\t/* We should be at the end of the recursion here */
+\tif (value)
+\t\t*value = obj;
+
+\treturn 0;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_pointer_get_recursive(
+    mut obj: *mut json_object,
+    mut path: *mut ::core::ffi::c_char,
+    mut value: *mut *mut json_object,
+) -> ::core::ffi::c_int {
+    let mut endp: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut rc: ::core::ffi::c_int = 0;
+    if *path.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int != '/' as i32 {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    path = path.offset(1);
+    endp = strchr(path, '/' as i32);
+    if !endp.is_null() {
+        *endp = '\\0' as i32 as ::core::ffi::c_char;
+    }
+    rc = json_pointer_get_single_path(obj, path, &raw mut obj);
+    if rc != 0 {
+        return rc;
+    }
+    if !endp.is_null() {
+        *endp = '/' as i32 as ::core::ffi::c_char;
+        return json_pointer_get_recursive(obj, endp, value);
+    }
+    if !value.is_null() {
+        *value = obj;
+    }
+    return 0 as ::core::ffi::c_int;
+}```
+"""

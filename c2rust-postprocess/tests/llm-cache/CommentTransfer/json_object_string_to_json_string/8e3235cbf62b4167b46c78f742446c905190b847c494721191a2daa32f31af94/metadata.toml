@@ -1,0 +1,74 @@
+transform = "CommentTransfer"
+identifier = "json_object_string_to_json_string"
+model = "gemini-3-flash-preview"
+response = """/// json_object_string
+unsafe extern "C" fn json_object_string_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    printbuf_memappend(
+        pb as *mut printbuf,
+        b"\\"\\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    json_escape_str(pb, get_string_component(jso), (*jso).o.c_string.len, flags);
+    printbuf_memappend(
+        pb as *mut printbuf,
+        b"\\"\\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    return 0 as ::core::ffi::c_int;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* json_object_string */
+
+static int json_object_string_to_json_string(struct json_object* jso,
+\t\t\t\t\t     struct printbuf *pb,
+\t\t\t\t\t     int level,
+\t\t\t\t\t     int flags)
+{
+\tprintbuf_strappend(pb, "\\"");
+\tjson_escape_str(pb, get_string_component(jso), jso->o.c_string.len, flags);
+\tprintbuf_strappend(pb, "\\"");
+\treturn 0;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_object_string_to_json_string(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    printbuf_memappend(
+        
+        pb as *mut printbuf,
+        b"\\"\\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    json_escape_str(pb, get_string_component(jso), (*jso).o.c_string.len, flags);
+    printbuf_memappend(
+        
+        pb as *mut printbuf,
+        b"\\"\\0" as *const u8 as *const ::core::ffi::c_char,
+        (::core::mem::size_of::<[::core::ffi::c_char; 2]>() as usize).wrapping_sub(1 as usize)
+            as ::core::ffi::c_int,
+    );
+    return 0 as ::core::ffi::c_int;
+}```
+"""

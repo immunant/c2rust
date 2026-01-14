@@ -1,0 +1,34 @@
+/// extended conversion to string
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_to_json_string_length(
+    mut jso: *mut json_object,
+    mut flags: ::core::ffi::c_int,
+    mut length: *mut size_t,
+) -> *const ::core::ffi::c_char {
+    let mut r: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut s: size_t = 0 as size_t;
+    if jso.is_null() {
+        s = 4 as size_t;
+        r = b"null\0" as *const u8 as *const ::core::ffi::c_char;
+    } else if !(*jso)._pb.is_null() || {
+        (*jso)._pb =  printbuf_new() as *mut printbuf;
+        !(*jso)._pb.is_null()
+    } {
+        printbuf_reset((*jso)._pb as *mut printbuf);
+        if (*jso)._to_json_string.expect("non-null function pointer")(
+            jso,
+            (*jso)._pb,
+            0 as ::core::ffi::c_int,
+            flags,
+        ) >= 0 as ::core::ffi::c_int
+        {
+            s = (*(*jso)._pb).bpos as size_t;
+            r = (*(*jso)._pb).buf;
+        }
+    }
+    if !length.is_null() {
+        *length = s;
+    }
+    return r;
+}

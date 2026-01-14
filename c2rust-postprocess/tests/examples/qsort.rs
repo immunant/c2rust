@@ -7,10 +7,7 @@
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn swap(
-    mut a: *mut ::core::ffi::c_int,
-    mut b: *mut ::core::ffi::c_int,
-) {
+pub unsafe extern "C" fn swap(mut a: *mut ::core::ffi::c_int, mut b: *mut ::core::ffi::c_int) {
     let mut t: ::core::ffi::c_int = *a;
     *a = *b;
     *b = t;

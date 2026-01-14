@@ -1,0 +1,47 @@
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn json_object_get_int(mut jso: *const json_object) -> int32_t {
+    let mut cint64: int64_t = 0;
+    let mut o_type: crate::src::json_object::json_type = crate::src::json_object::json_type_null;
+    if jso.is_null() {
+        return 0 as int32_t;
+    }
+    o_type = (*jso).o_type;
+    cint64 = (*jso).o.c_int64;
+    if o_type as ::core::ffi::c_uint
+        == crate::src::json_object::json_type_string as ::core::ffi::c_int as ::core::ffi::c_uint
+    {
+        /*
+         * Parse strings into 64-bit numbers, then use the
+         * 64-to-32-bit number handling below.
+         */
+        if json_parse_int64(get_string_component(jso), &raw mut cint64) != 0 as ::core::ffi::c_int {
+            return 0 as int32_t; /* whoops, it didn't work. */
+        }
+        o_type = crate::src::json_object::json_type_int;
+    }
+    match o_type as ::core::ffi::c_uint {
+        3 => {
+            /* Make sure we return the correct values for out of range numbers. */
+            if cint64 <= INT32_MIN as int64_t {
+                return INT32_MIN as int32_t;
+            }
+            if cint64 >= INT32_MAX as int64_t {
+                return INT32_MAX as int32_t;
+            }
+            return cint64 as int32_t;
+        }
+        2 => {
+            if (*jso).o.c_double <= INT32_MIN as ::core::ffi::c_double {
+                return INT32_MIN as int32_t;
+            }
+            if (*jso).o.c_double >= INT32_MAX as ::core::ffi::c_double {
+                return INT32_MAX as int32_t;
+            }
+            return (*jso).o.c_double as int32_t;
+        }
+        1 => return (*jso).o.c_boolean as int32_t,
+        _ => return 0 as int32_t,
+    };
+}
+```

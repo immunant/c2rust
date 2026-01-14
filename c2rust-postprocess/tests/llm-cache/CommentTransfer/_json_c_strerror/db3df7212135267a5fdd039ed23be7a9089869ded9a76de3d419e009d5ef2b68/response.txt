@@ -1,0 +1,56 @@
+#[no_mangle]
+pub unsafe extern "C" fn _json_c_strerror(
+    mut errno_in: ::core::ffi::c_int,
+) -> *mut ::core::ffi::c_char {
+    let mut start_idx: ::core::ffi::c_int = 0;
+    let mut digbuf: [::core::ffi::c_char; 20] = [0; 20];
+    let mut ii: ::core::ffi::c_int = 0;
+    let mut jj: ::core::ffi::c_int = 0;
+    if _json_c_strerror_enable == 0 {
+        return strerror(errno_in);
+    }
+
+    // Avoid standard functions, so we don't need to include any
+    // headers, or guess at signatures.
+    ii = 0 as ::core::ffi::c_int;
+    while !errno_list[ii as usize].errno_str.is_null() {
+        let mut errno_str: *const ::core::ffi::c_char = errno_list[ii as usize].errno_str;
+        if errno_list[ii as usize].errno_value != errno_in {
+            ii += 1;
+        } else {
+            start_idx = (::core::mem::size_of::<[::core::ffi::c_char; 7]>() as usize)
+                .wrapping_sub(1 as usize) as ::core::ffi::c_int;
+            jj = 0 as ::core::ffi::c_int;
+            while *errno_str.offset(jj as isize) as ::core::ffi::c_int != '\0' as i32 {
+                errno_buf[start_idx as usize] = *errno_str.offset(jj as isize);
+                jj += 1;
+                start_idx += 1;
+            }
+            errno_buf[start_idx as usize] = '\0' as i32 as ::core::ffi::c_char;
+            return &raw mut errno_buf as *mut ::core::ffi::c_char;
+        }
+    }
+
+    // It's not one of the known errno values, return the numeric value.
+    ii = 0 as ::core::ffi::c_int;
+    while errno_in > 10 as ::core::ffi::c_int {
+        digbuf[ii as usize] =
+            ::core::mem::transmute::<[u8; 11], [::core::ffi::c_char; 11]>(*b"0123456789\0")
+                [(errno_in % 10 as ::core::ffi::c_int) as usize];
+        errno_in /= 10 as ::core::ffi::c_int;
+        ii += 1;
+    }
+    digbuf[ii as usize] =
+        ::core::mem::transmute::<[u8; 11], [::core::ffi::c_char; 11]>(*b"0123456789\0")
+            [(errno_in % 10 as ::core::ffi::c_int) as usize];
+
+    // Reverse the digits
+    start_idx = (::core::mem::size_of::<[::core::ffi::c_char; 7]>() as usize)
+        .wrapping_sub(1 as usize) as ::core::ffi::c_int;
+    while ii >= 0 as ::core::ffi::c_int {
+        errno_buf[start_idx as usize] = digbuf[ii as usize];
+        ii -= 1;
+        start_idx += 1;
+    }
+    return &raw mut errno_buf as *mut ::core::ffi::c_char;
+}

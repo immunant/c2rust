@@ -1,0 +1,60 @@
+transform = "CommentTransfer"
+identifier = "lh_perllike_str_hash"
+model = "gemini-3-flash-preview"
+response = """/// a simple hash function similiar to what perl does for strings.
+/// for good results, the string should not be excessivly large.
+unsafe extern "C" fn lh_perllike_str_hash(
+    mut k: *const ::core::ffi::c_void,
+) -> ::core::ffi::c_ulong {
+    let mut rkey: *const ::core::ffi::c_char = k as *const ::core::ffi::c_char;
+    let mut hashval: ::core::ffi::c_uint = 1 as ::core::ffi::c_uint;
+    while *rkey != 0 {
+        let fresh0 = rkey;
+        rkey = rkey.offset(1);
+        hashval = hashval
+            .wrapping_mul(33 as ::core::ffi::c_uint)
+            .wrapping_add(*fresh0 as ::core::ffi::c_uint);
+    }
+    return hashval as ::core::ffi::c_ulong;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* a simple hash function similiar to what perl does for strings.
+ * for good results, the string should not be excessivly large.
+ */
+static unsigned long lh_perllike_str_hash(const void *k) 
+{
+    const char *rkey = (const char *)k;
+    unsigned hashval = 1;
+
+    while (*rkey)
+        hashval = hashval * 33 + *rkey++;
+
+    return hashval;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn lh_perllike_str_hash(
+    mut k: *const ::core::ffi::c_void,
+) -> ::core::ffi::c_ulong {
+    let mut rkey: *const ::core::ffi::c_char = k as *const ::core::ffi::c_char;
+    let mut hashval: ::core::ffi::c_uint = 1 as ::core::ffi::c_uint;
+    while *rkey != 0 {
+        let fresh0 = rkey;
+        rkey = rkey.offset(1);
+        hashval = hashval
+            .wrapping_mul(33 as ::core::ffi::c_uint)
+            .wrapping_add(*fresh0 as ::core::ffi::c_uint);
+    }
+    return hashval as ::core::ffi::c_ulong;
+}```
+"""

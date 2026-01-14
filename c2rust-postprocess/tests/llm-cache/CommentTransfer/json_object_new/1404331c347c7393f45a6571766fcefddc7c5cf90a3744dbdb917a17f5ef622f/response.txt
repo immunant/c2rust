@@ -1,0 +1,15 @@
+```rust
+unsafe extern "C" fn json_object_new(mut o_type: crate::src::json_object::json_type) -> *mut json_object {
+    let mut jso: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    jso = calloc(::core::mem::size_of::<json_object>() as size_t, 1 as size_t) as *mut json_object;
+    if jso.is_null() {
+        return ::core::ptr::null_mut::<json_object>();
+    }
+    (*jso).o_type = o_type;
+    (*jso)._ref_count = 1 as uint32_t;
+    (*jso)._delete =
+        Some(json_object_generic_delete as unsafe extern "C" fn(*mut json_object) -> ())
+            as Option<json_object_private_delete_fn>;
+    return jso;
+}
+```

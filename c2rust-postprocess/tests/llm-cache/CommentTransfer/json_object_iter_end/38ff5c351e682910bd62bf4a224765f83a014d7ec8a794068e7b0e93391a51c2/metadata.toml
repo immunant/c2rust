@@ -1,0 +1,51 @@
+transform = "CommentTransfer"
+identifier = "json_object_iter_end"
+model = "gemini-3-flash-preview"
+response = """/// ****************************************************************************
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_end(mut obj: *const json_object) -> crate::src::json_object_iterator::json_object_iterator {
+    let mut iter: crate::src::json_object_iterator::json_object_iterator = crate::src::json_object_iterator::json_object_iterator {
+    opaque_:  ::core::ptr::null::<::core::ffi::c_void>(),
+};
+    iter.opaque_ = kObjectEndIterValue;
+    return iter;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/**
+ * ****************************************************************************
+ */
+struct json_object_iterator
+json_object_iter_end(const struct json_object* obj)
+{
+    struct json_object_iterator iter;
+
+    JASSERT(NULL != obj);
+    JASSERT(json_object_is_type(obj, json_type_object));
+
+    iter.opaque_ = kObjectEndIterValue;
+
+    return iter;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_end(mut obj: *const json_object) -> crate::src::json_object_iterator::json_object_iterator {
+    let mut iter: crate::src::json_object_iterator::json_object_iterator = crate::src::json_object_iterator::json_object_iterator {
+    opaque_:  ::core::ptr::null::<::core::ffi::c_void>(),
+};
+    iter.opaque_ = kObjectEndIterValue;
+    return iter;
+}```
+"""

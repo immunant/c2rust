@@ -1,0 +1,116 @@
+transform = "CommentTransfer"
+identifier = "string_replace_all_occurrences_with_char"
+model = "gemini-3-flash-preview"
+response = """/*
+ * Copyright (c) 2016 Alexandru Ardelean.
+ *
+ * This is free software; you can redistribute it and/or modify
+ * it under the terms of the MIT license. See COPYING for details.
+ *
+ */
+
+/// JavaScript Object Notation (JSON) Pointer
+///   RFC 6901 - https://tools.ietf.org/html/rfc6901
+unsafe extern "C" fn string_replace_all_occurrences_with_char(
+    mut s: *mut ::core::ffi::c_char,
+    mut occur: *const ::core::ffi::c_char,
+    mut repl_char: ::core::ffi::c_char,
+) {
+    let mut slen: ::core::ffi::c_int = strlen(s) as ::core::ffi::c_int;
+    let mut skip: ::core::ffi::c_int =
+        strlen(occur).wrapping_sub(1 as size_t) as ::core::ffi::c_int; // length of the occurrence, minus the char we're replacing
+    let mut p: *mut ::core::ffi::c_char = s;
+    loop {
+        p = strstr(p, occur);
+        if p.is_null() {
+            break;
+        }
+        *p = repl_char;
+        p = p.offset(1);
+        slen -= skip;
+        memmove(
+            p as *mut ::core::ffi::c_void,
+            p.offset(skip as isize) as *const ::core::ffi::c_void,
+            (slen as ::core::ffi::c_long - p.offset_from(s) as ::core::ffi::c_long
+                + 1 as ::core::ffi::c_long) as size_t,
+        ); // includes null char too
+    }
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/*
+ * Copyright (c) 2016 Alexandru Ardelean.
+ *
+ * This is free software; you can redistribute it and/or modify
+ * it under the terms of the MIT license. See COPYING for details.
+ *
+ */
+
+#include "config.h"
+
+#include "strerror_override.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#include "json_pointer.h"
+#include "strdup_compat.h"
+#include "vasprintf_compat.h"
+
+/**
+ * JavaScript Object Notation (JSON) Pointer
+ *   RFC 6901 - https://tools.ietf.org/html/rfc6901
+ */
+
+static void string_replace_all_occurrences_with_char(char *s, const char *occur, char repl_char)
+{
+\tint slen = strlen(s);
+\tint skip = strlen(occur) - 1; /* length of the occurrence, minus the char we're replacing */
+\tchar *p = s;
+\twhile ((p = strstr(p, occur))) {
+\t\t*p = repl_char;
+\t\tp++;
+\t\tslen -= skip;
+\t\tmemmove(p, (p + skip), slen - (p - s) + 1); /* includes null char too */
+\t}
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn string_replace_all_occurrences_with_char(
+    mut s: *mut ::core::ffi::c_char,
+    mut occur: *const ::core::ffi::c_char,
+    mut repl_char: ::core::ffi::c_char,
+) {
+    let mut slen: ::core::ffi::c_int = strlen(s) as ::core::ffi::c_int;
+    let mut skip: ::core::ffi::c_int =
+        strlen(occur).wrapping_sub(1 as size_t) as ::core::ffi::c_int;
+    let mut p: *mut ::core::ffi::c_char = s;
+    loop {
+        p = strstr(p, occur);
+        if p.is_null() {
+            break;
+        }
+        *p = repl_char;
+        p = p.offset(1);
+        slen -= skip;
+        memmove(
+            p as *mut ::core::ffi::c_void,
+            p.offset(skip as isize) as *const ::core::ffi::c_void,
+            (slen as ::core::ffi::c_long - p.offset_from(s) as ::core::ffi::c_long
+                + 1 as ::core::ffi::c_long) as size_t,
+        );
+    }
+}```
+"""

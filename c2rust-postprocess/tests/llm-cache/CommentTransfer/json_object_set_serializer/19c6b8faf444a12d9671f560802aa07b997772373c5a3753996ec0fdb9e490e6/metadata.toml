@@ -1,0 +1,231 @@
+transform = "CommentTransfer"
+identifier = "json_object_set_serializer"
+model = "gemini-3-flash-preview"
+response = """/// set a custom conversion to string
+#[no_mangle]
+pub unsafe extern "C" fn json_object_set_serializer(
+    mut jso: *mut json_object,
+    mut to_string_func: Option<crate::src::json_object::json_object_to_json_string_fn>,
+    mut userdata: *mut ::core::ffi::c_void,
+    mut user_delete: Option<crate::src::json_object::json_object_delete_fn>,
+) {
+    json_object_set_userdata(jso, userdata, user_delete);
+    if to_string_func.is_none() {
+        // Reset to the standard serialization function
+        match (*jso).o_type as ::core::ffi::c_uint {
+            0 => {
+                (*jso)._to_json_string = None;
+            }
+            1 => {
+                (*jso)._to_json_string = Some(
+                    json_object_boolean_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            2 => {
+                (*jso)._to_json_string = Some(
+                    json_object_double_to_json_string_default
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            3 => {
+                (*jso)._to_json_string = Some(
+                    json_object_int_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            4 => {
+                (*jso)._to_json_string = Some(
+                    json_object_object_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            5 => {
+                (*jso)._to_json_string = Some(
+                    json_object_array_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            6 => {
+                (*jso)._to_json_string = Some(
+                    json_object_string_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            _ => {}
+        }
+        return;
+    }
+    (*jso)._to_json_string = to_string_func;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* set a custom conversion to string */
+
+void json_object_set_serializer(json_object *jso,
+\tjson_object_to_json_string_fn *to_string_func,
+\tvoid *userdata,
+\tjson_object_delete_fn *user_delete)
+{
+\tjson_object_set_userdata(jso, userdata, user_delete);
+
+\tif (to_string_func == NULL)
+\t{
+\t\t// Reset to the standard serialization function
+\t\tswitch(jso->o_type)
+\t\t{
+\t\tcase json_type_null:
+\t\t\tjso->_to_json_string = NULL;
+\t\t\tbreak;
+\t\tcase json_type_boolean:
+\t\t\tjso->_to_json_string = &json_object_boolean_to_json_string;
+\t\t\tbreak;
+\t\tcase json_type_double:
+\t\t\tjso->_to_json_string = &json_object_double_to_json_string_default;
+\t\t\tbreak;
+\t\tcase json_type_int:
+\t\t\tjso->_to_json_string = &json_object_int_to_json_string;
+\t\t\tbreak;
+\t\tcase json_type_object:
+\t\t\tjso->_to_json_string = &json_object_object_to_json_string;
+\t\t\tbreak;
+\t\tcase json_type_array:
+\t\t\tjso->_to_json_string = &json_object_array_to_json_string;
+\t\t\tbreak;
+\t\tcase json_type_string:
+\t\t\tjso->_to_json_string = &json_object_string_to_json_string;
+\t\t\tbreak;
+\t\t}
+\t\treturn;
+\t}
+
+\tjso->_to_json_string = to_string_func;
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_set_serializer(
+    mut jso: *mut json_object,
+    mut to_string_func: Option<crate::src::json_object::json_object_to_json_string_fn>,
+    mut userdata: *mut ::core::ffi::c_void,
+    mut user_delete: Option<crate::src::json_object::json_object_delete_fn>,
+) {
+    json_object_set_userdata(jso, userdata, user_delete);
+    if to_string_func.is_none() {
+        match (*jso).o_type as ::core::ffi::c_uint {
+            0 => {
+                (*jso)._to_json_string = None;
+            }
+            1 => {
+                (*jso)._to_json_string = Some(
+                    json_object_boolean_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            2 => {
+                (*jso)._to_json_string = Some(
+                    json_object_double_to_json_string_default
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            3 => {
+                (*jso)._to_json_string = Some(
+                    json_object_int_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            4 => {
+                (*jso)._to_json_string = Some(
+                    json_object_object_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            5 => {
+                (*jso)._to_json_string = Some(
+                    json_object_array_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            6 => {
+                (*jso)._to_json_string = Some(
+                    json_object_string_to_json_string
+                        as unsafe extern "C" fn(
+                            *mut json_object,
+                            *mut printbuf,
+                            ::core::ffi::c_int,
+                            ::core::ffi::c_int,
+                        ) -> ::core::ffi::c_int,
+                );
+            }
+            _ => {}
+        }
+        return;
+    }
+    (*jso)._to_json_string = to_string_func;
+}```
+"""

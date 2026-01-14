@@ -1,0 +1,146 @@
+transform = "CommentTransfer"
+identifier = "json_object_get_int"
+model = "gemini-3-flash-preview"
+response = """```rust
+#[no_mangle]
+pub unsafe extern "C" fn json_object_get_int(mut jso: *const json_object) -> int32_t {
+    let mut cint64: int64_t = 0;
+    let mut o_type: crate::src::json_object::json_type = crate::src::json_object::json_type_null;
+    if jso.is_null() {
+        return 0 as int32_t;
+    }
+    o_type = (*jso).o_type;
+    cint64 = (*jso).o.c_int64;
+    if o_type as ::core::ffi::c_uint
+        == crate::src::json_object::json_type_string as ::core::ffi::c_int as ::core::ffi::c_uint
+    {
+        /*
+         * Parse strings into 64-bit numbers, then use the
+         * 64-to-32-bit number handling below.
+         */
+        if json_parse_int64(get_string_component(jso), &raw mut cint64) != 0 as ::core::ffi::c_int {
+            return 0 as int32_t; /* whoops, it didn't work. */
+        }
+        o_type = crate::src::json_object::json_type_int;
+    }
+    match o_type as ::core::ffi::c_uint {
+        3 => {
+            /* Make sure we return the correct values for out of range numbers. */
+            if cint64 <= INT32_MIN as int64_t {
+                return INT32_MIN as int32_t;
+            }
+            if cint64 >= INT32_MAX as int64_t {
+                return INT32_MAX as int32_t;
+            }
+            return cint64 as int32_t;
+        }
+        2 => {
+            if (*jso).o.c_double <= INT32_MIN as ::core::ffi::c_double {
+                return INT32_MIN as int32_t;
+            }
+            if (*jso).o.c_double >= INT32_MAX as ::core::ffi::c_double {
+                return INT32_MAX as int32_t;
+            }
+            return (*jso).o.c_double as int32_t;
+        }
+        1 => return (*jso).o.c_boolean as int32_t,
+        _ => return 0 as int32_t,
+    };
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+int32_t json_object_get_int(const struct json_object *jso)
+{
+  int64_t cint64;
+  enum json_type o_type;
+
+  if(!jso) return 0;
+
+  o_type = jso->o_type;
+  cint64 = jso->o.c_int64;
+
+  if (o_type == json_type_string)
+  {
+\t/*
+\t * Parse strings into 64-bit numbers, then use the
+\t * 64-to-32-bit number handling below.
+\t */
+\tif (json_parse_int64(get_string_component(jso), &cint64) != 0)
+\t\treturn 0; /* whoops, it didn't work. */
+\to_type = json_type_int;
+  }
+
+  switch(o_type) {
+  case json_type_int:
+\t/* Make sure we return the correct values for out of range numbers. */
+\tif (cint64 <= INT32_MIN)
+\t\treturn INT32_MIN;
+\tif (cint64 >= INT32_MAX)
+\t\treturn INT32_MAX;
+\treturn (int32_t) cint64;
+  case json_type_double:
+    if (jso->o.c_double <= INT32_MIN)
+      return INT32_MIN;
+    if (jso->o.c_double >= INT32_MAX)
+      return INT32_MAX;
+    return (int32_t)jso->o.c_double;
+  case json_type_boolean:
+    return jso->o.c_boolean;
+  default:
+    return 0;
+  }
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_get_int(mut jso: *const json_object) -> int32_t {
+    let mut cint64: int64_t = 0;
+    let mut o_type: crate::src::json_object::json_type = crate::src::json_object::json_type_null;
+    if jso.is_null() {
+        return 0 as int32_t;
+    }
+    o_type = (*jso).o_type;
+    cint64 = (*jso).o.c_int64;
+    if o_type as ::core::ffi::c_uint
+        == crate::src::json_object::json_type_string as ::core::ffi::c_int as ::core::ffi::c_uint
+    {
+        if json_parse_int64(get_string_component(jso), &raw mut cint64) != 0 as ::core::ffi::c_int {
+            return 0 as int32_t;
+        }
+        o_type = crate::src::json_object::json_type_int;
+    }
+    match o_type as ::core::ffi::c_uint {
+        3 => {
+            if cint64 <= INT32_MIN as int64_t {
+                return INT32_MIN as int32_t;
+            }
+            if cint64 >= INT32_MAX as int64_t {
+                return INT32_MAX as int32_t;
+            }
+            return cint64 as int32_t;
+        }
+        2 => {
+            if (*jso).o.c_double <= INT32_MIN as ::core::ffi::c_double {
+                return INT32_MIN as int32_t;
+            }
+            if (*jso).o.c_double >= INT32_MAX as ::core::ffi::c_double {
+                return INT32_MAX as int32_t;
+            }
+            return (*jso).o.c_double as int32_t;
+        }
+        1 => return (*jso).o.c_boolean as int32_t,
+        _ => return 0 as int32_t,
+    };
+}```
+"""

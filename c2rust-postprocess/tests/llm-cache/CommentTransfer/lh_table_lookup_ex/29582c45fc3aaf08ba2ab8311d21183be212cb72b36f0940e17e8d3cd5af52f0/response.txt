@@ -1,0 +1,20 @@
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn lh_table_lookup_ex(
+    mut t: *mut crate::src::linkhash::lh_table,
+    mut k: *const ::core::ffi::c_void,
+    mut v: *mut *mut ::core::ffi::c_void,
+) -> json_bool {
+    let mut e: *mut crate::src::linkhash::lh_entry = lh_table_lookup_entry(t, k);
+    if !e.is_null() {
+        if !v.is_null() {
+            *v = (*e).v as uintptr_t as *mut ::core::ffi::c_void;
+        }
+        return 1 as json_bool; /* key found */
+    }
+    if !v.is_null() {
+        *v = NULL;
+    }
+    return 0 as json_bool; /* key not found */
+}
+```

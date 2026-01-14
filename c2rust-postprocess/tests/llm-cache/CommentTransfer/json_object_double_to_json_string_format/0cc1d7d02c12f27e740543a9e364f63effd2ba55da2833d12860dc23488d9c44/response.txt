@@ -1,0 +1,130 @@
+```rust
+unsafe extern "C" fn json_object_double_to_json_string_format(
+    mut jso: *mut json_object,
+    mut pb: *mut printbuf,
+    mut level: ::core::ffi::c_int,
+    mut flags: ::core::ffi::c_int,
+    mut format: *const ::core::ffi::c_char,
+) -> ::core::ffi::c_int {
+    let mut buf: [::core::ffi::c_char; 128] = [0; 128];
+    let mut p: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut q: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut size: ::core::ffi::c_int = 0;
+    /* Although JSON RFC does not support
+    NaN or Infinity as numeric values
+    ECMA 262 section 9.8.1 defines
+    how to handle these cases as strings */
+    if (*jso).o.c_double.is_nan() as i32 != 0 {
+        size = snprintf(
+            &raw mut buf as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 128]>() as size_t,
+            b"NaN\0" as *const u8 as *const ::core::ffi::c_char,
+        );
+    } else if if (*jso).o.c_double.is_infinite() {
+        if (*jso).o.c_double.is_sign_positive() {
+            1
+        } else {
+            -1
+        }
+    } else {
+        0
+    } != 0
+    {
+        if (*jso).o.c_double > 0 as ::core::ffi::c_int as ::core::ffi::c_double {
+            size = snprintf(
+                &raw mut buf as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 128]>() as size_t,
+                b"Infinity\0" as *const u8 as *const ::core::ffi::c_char,
+            );
+        } else {
+            size = snprintf(
+                &raw mut buf as *mut ::core::ffi::c_char,
+                ::core::mem::size_of::<[::core::ffi::c_char; 128]>() as size_t,
+                b"-Infinity\0" as *const u8 as *const ::core::ffi::c_char,
+            );
+        }
+    } else {
+        let mut std_format: *const ::core::ffi::c_char =
+            b"%.17g\0" as *const u8 as *const ::core::ffi::c_char;
+        let mut format_drops_decimals: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        if format.is_null() {
+            if !tls_serialization_float_format.is_null() {
+                format = tls_serialization_float_format;
+            } else if !global_serialization_float_format.is_null() {
+                format = global_serialization_float_format;
+            } else {
+                format = std_format;
+            }
+        }
+        size = snprintf(
+            &raw mut buf as *mut ::core::ffi::c_char,
+            ::core::mem::size_of::<[::core::ffi::c_char; 128]>() as size_t,
+            format,
+            (*jso).o.c_double,
+        );
+        if size < 0 as ::core::ffi::c_int {
+            return -(1 as ::core::ffi::c_int);
+        }
+        p = strchr(&raw mut buf as *mut ::core::ffi::c_char, ',' as i32);
+        if !p.is_null() {
+            *p = '.' as i32 as ::core::ffi::c_char;
+        } else {
+            p = strchr(&raw mut buf as *mut ::core::ffi::c_char, '.' as i32);
+        }
+        if format == std_format
+            || strstr(format, b".0f\0" as *const u8 as *const ::core::ffi::c_char).is_null()
+        {
+            format_drops_decimals = 1 as ::core::ffi::c_int;
+        }
+        if size
+            < ::core::mem::size_of::<[::core::ffi::c_char; 128]>() as ::core::ffi::c_int
+                - 2 as ::core::ffi::c_int
+            && *(*__ctype_b_loc()).offset(
+                buf[0 as ::core::ffi::c_int as usize] as ::core::ffi::c_uchar as ::core::ffi::c_int
+                    as isize,
+            ) as ::core::ffi::c_int
+                & _ISdigit as ::core::ffi::c_int as ::core::ffi::c_ushort as ::core::ffi::c_int
+                != 0 /* Looks like *some* kind of number */
+            && p.is_null() /* Has no decimal point */
+            && strchr(&raw mut buf as *mut ::core::ffi::c_char, 'e' as i32).is_null() /* Not scientific notation */
+            && format_drops_decimals != 0
+        {
+            // Ensure it looks like a float, even if snprintf didn't,
+            //  unless a custom format is set to omit the decimal.
+            strcat(
+                &raw mut buf as *mut ::core::ffi::c_char,
+                b".0\0" as *const u8 as *const ::core::ffi::c_char,
+            );
+            size += 2 as ::core::ffi::c_int;
+        }
+        if !p.is_null() && flags & crate::src::json_object::JSON_C_TO_STRING_NOZERO != 0 {
+            /* last useful digit, always keep 1 zero */
+            p = p.offset(1);
+            q = p;
+            while *q != 0 {
+                if *q as ::core::ffi::c_int != '0' as i32 {
+                    p = q;
+                }
+                q = q.offset(1);
+            }
+            /* drop trailing zeroes */
+            p = p.offset(1);
+            *p = 0 as ::core::ffi::c_char;
+            size = p.offset_from(&raw mut buf as *mut ::core::ffi::c_char) as ::core::ffi::c_long
+                as ::core::ffi::c_int;
+        }
+    }
+    // although unlikely, snprintf can fail
+    if size < 0 as ::core::ffi::c_int {
+        return -(1 as ::core::ffi::c_int);
+    }
+    if size >= ::core::mem::size_of::<[::core::ffi::c_char; 128]>() as ::core::ffi::c_int {
+        // The standard formats are guaranteed not to overrun the buffer,
+        // but if a custom one happens to do so, just silently truncate.
+        size = (::core::mem::size_of::<[::core::ffi::c_char; 128]>() as usize)
+            .wrapping_sub(1 as usize) as ::core::ffi::c_int;
+    }
+    printbuf_memappend(pb as *mut printbuf, &raw mut buf as *mut ::core::ffi::c_char, size);
+    return size;
+}
+```

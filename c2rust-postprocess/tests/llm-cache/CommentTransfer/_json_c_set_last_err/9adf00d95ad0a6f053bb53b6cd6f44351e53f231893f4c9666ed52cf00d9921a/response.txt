@@ -1,0 +1,16 @@
+#[no_mangle]
+
+pub unsafe extern "C" fn _json_c_set_last_err(
+    mut err_fmt: *const ::core::ffi::c_char,
+    mut args: ...
+) {
+    let mut ap: ::core::ffi::VaListImpl;
+    ap = args.clone();
+    // Ignore (attempted) overruns from snprintf
+    vsnprintf(
+        &raw mut _last_err as *mut ::core::ffi::c_char,
+        ::core::mem::size_of::<[::core::ffi::c_char; 256]>() as size_t,
+        err_fmt,
+        ap.as_va_list(),
+    );
+}

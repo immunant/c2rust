@@ -1,0 +1,43 @@
+transform = "CommentTransfer"
+identifier = "json_object_iter_peek_name"
+model = "gemini-3-flash-preview"
+response = """/// ****************************************************************************
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_peek_name(
+    mut iter: *const crate::src::json_object_iterator::json_object_iterator,
+) -> *const ::core::ffi::c_char {
+    return (*((*iter).opaque_ as *const lh_entry)).k as *const ::core::ffi::c_char;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/**
+ * ****************************************************************************
+ */
+const char*
+json_object_iter_peek_name(const struct json_object_iterator* iter)
+{
+    JASSERT(NULL != iter);
+    JASSERT(kObjectEndIterValue != iter->opaque_);
+
+    return (const char*)(((const struct lh_entry *)iter->opaque_)->k);
+}```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_iter_peek_name(
+    mut iter: *const crate::src::json_object_iterator::json_object_iterator,
+) -> *const ::core::ffi::c_char {
+    return (*((*iter).opaque_ as *const lh_entry)).k as *const ::core::ffi::c_char;
+}```
+"""

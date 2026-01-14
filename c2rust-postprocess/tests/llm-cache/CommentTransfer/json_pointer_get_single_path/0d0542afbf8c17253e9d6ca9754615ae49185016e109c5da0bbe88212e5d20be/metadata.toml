@@ -1,0 +1,122 @@
+transform = "CommentTransfer"
+identifier = "json_pointer_get_single_path"
+model = "gemini-3-flash-preview"
+response = """```rust
+unsafe extern "C" fn json_pointer_get_single_path(
+    mut obj: *mut json_object,
+    mut path: *mut ::core::ffi::c_char,
+    mut value: *mut *mut json_object,
+) -> ::core::ffi::c_int {
+    if json_object_is_type(obj, json_type_array) != 0 {
+        let mut idx: int32_t = 0;
+        if is_valid_index(obj, path, &raw mut idx) == 0 {
+            return -(1 as ::core::ffi::c_int);
+        }
+        obj = json_object_array_get_idx(obj, idx as size_t);
+        if !obj.is_null() {
+            if !value.is_null() {
+                *value = obj;
+            }
+            return 0 as ::core::ffi::c_int;
+        }
+        /* Entry not found */
+        *__errno_location() = ENOENT;
+        return -(1 as ::core::ffi::c_int);
+    }
+
+    /* RFC states that we first must eval all ~1 then all ~0 */
+    string_replace_all_occurrences_with_char(
+        path,
+        b"~1\\0" as *const u8 as *const ::core::ffi::c_char,
+        '/' as i32 as ::core::ffi::c_char,
+    );
+    string_replace_all_occurrences_with_char(
+        path,
+        b"~0\\0" as *const u8 as *const ::core::ffi::c_char,
+        '~' as i32 as ::core::ffi::c_char,
+    );
+    if json_object_object_get_ex(obj, path, value) == 0 {
+        *__errno_location() = ENOENT;
+        return -(1 as ::core::ffi::c_int);
+    }
+    return 0 as ::core::ffi::c_int;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+static int json_pointer_get_single_path(struct json_object *obj, char *path, struct json_object **value)
+{
+\tif (json_object_is_type(obj, json_type_array)) {
+\t\tint32_t idx;
+\t\tif (!is_valid_index(obj, path, &idx))
+\t\t\treturn -1;
+\t\tobj = json_object_array_get_idx(obj, idx);
+\t\tif (obj) {
+\t\t\tif (value)
+\t\t\t\t*value = obj;
+\t\t\treturn 0;
+\t\t}
+\t\t/* Entry not found */
+\t\terrno = ENOENT;
+\t\treturn -1;
+\t}
+
+\t/* RFC states that we first must eval all ~1 then all ~0 */
+\tstring_replace_all_occurrences_with_char(path, "~1", '/');
+\tstring_replace_all_occurrences_with_char(path, "~0", '~');
+
+\tif (!json_object_object_get_ex(obj, path, value)) {
+\t\terrno = ENOENT;
+\t\treturn -1;
+\t}
+
+\treturn 0;
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_pointer_get_single_path(
+    mut obj: *mut json_object,
+    mut path: *mut ::core::ffi::c_char,
+    mut value: *mut *mut json_object,
+) -> ::core::ffi::c_int {
+    if json_object_is_type(obj, json_type_array) != 0 {
+        let mut idx: int32_t = 0;
+        if is_valid_index(obj, path, &raw mut idx) == 0 {
+            return -(1 as ::core::ffi::c_int);
+        }
+        obj = json_object_array_get_idx(obj, idx as size_t);
+        if !obj.is_null() {
+            if !value.is_null() {
+                *value = obj;
+            }
+            return 0 as ::core::ffi::c_int;
+        }
+        *__errno_location() = ENOENT;
+        return -(1 as ::core::ffi::c_int);
+    }
+    string_replace_all_occurrences_with_char(
+        path,
+        b"~1\\0" as *const u8 as *const ::core::ffi::c_char,
+        '/' as i32 as ::core::ffi::c_char,
+    );
+    string_replace_all_occurrences_with_char(
+        path,
+        b"~0\\0" as *const u8 as *const ::core::ffi::c_char,
+        '~' as i32 as ::core::ffi::c_char,
+    );
+    if json_object_object_get_ex(obj, path, value) == 0 {
+        *__errno_location() = ENOENT;
+        return -(1 as ::core::ffi::c_int);
+    }
+    return 0 as ::core::ffi::c_int;
+}```
+"""

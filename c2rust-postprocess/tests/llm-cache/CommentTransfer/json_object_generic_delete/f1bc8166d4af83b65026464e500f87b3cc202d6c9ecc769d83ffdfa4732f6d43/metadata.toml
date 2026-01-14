@@ -1,0 +1,38 @@
+transform = "CommentTransfer"
+identifier = "json_object_generic_delete"
+model = "gemini-3-flash-preview"
+response = """/// generic object construction and destruction parts
+unsafe extern "C" fn json_object_generic_delete(mut jso: *mut json_object) {
+    printbuf_free((*jso)._pb as *mut printbuf);
+    free(jso as *mut ::core::ffi::c_void);
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* generic object construction and destruction parts */
+
+static void json_object_generic_delete(struct json_object* jso)
+{
+#ifdef REFCOUNT_DEBUG
+\tMC_DEBUG("json_object_delete_%s: %p\\n",
+\t   json_type_to_name(jso->o_type), jso);
+\tlh_table_delete(json_object_table, jso);
+#endif /* REFCOUNT_DEBUG */
+\tprintbuf_free(jso->_pb);
+\tfree(jso);
+}```
+
+Rust function:
+```rust
+unsafe extern "C" fn json_object_generic_delete(mut jso: *mut json_object) {
+    printbuf_free((*jso)._pb as *mut printbuf);
+    free(jso as *mut ::core::ffi::c_void);
+}```
+"""

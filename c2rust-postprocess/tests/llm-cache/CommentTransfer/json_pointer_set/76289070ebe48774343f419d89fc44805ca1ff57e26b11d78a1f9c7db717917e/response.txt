@@ -1,0 +1,47 @@
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn json_pointer_set(
+    mut obj: *mut *mut json_object,
+    mut path: *const ::core::ffi::c_char,
+    mut value: *mut json_object,
+) -> ::core::ffi::c_int {
+    let mut endp: *const ::core::ffi::c_char = ::core::ptr::null::<::core::ffi::c_char>();
+    let mut path_copy: *mut ::core::ffi::c_char = ::core::ptr::null_mut::<::core::ffi::c_char>();
+    let mut set: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    let mut rc: ::core::ffi::c_int = 0;
+    if obj.is_null() || path.is_null() {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    if *path.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int == '\0' as i32 {
+        json_object_put(*obj);
+        *obj = value;
+        return 0 as ::core::ffi::c_int;
+    }
+    if *path.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int != '/' as i32 {
+        *__errno_location() = EINVAL;
+        return -(1 as ::core::ffi::c_int);
+    }
+    /* If there's only 1 level to set, stop here */
+    endp = strrchr(path, '/' as i32);
+    if endp == path {
+        path = path.offset(1);
+        return json_pointer_set_single_path(*obj, path, value);
+    }
+    /* pass a working copy to the recursive call */
+    path_copy = strdup(path);
+    if path_copy.is_null() {
+        *__errno_location() = ENOMEM;
+        return -(1 as ::core::ffi::c_int);
+    }
+    *path_copy.offset(endp.offset_from(path) as ::core::ffi::c_long as isize) =
+        '\0' as i32 as ::core::ffi::c_char;
+    rc = json_pointer_get_recursive(*obj, path_copy, &raw mut set);
+    free(path_copy as *mut ::core::ffi::c_void);
+    if rc != 0 {
+        return rc;
+    }
+    endp = endp.offset(1);
+    return json_pointer_set_single_path(set, endp, value);
+}
+```
