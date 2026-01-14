@@ -145,7 +145,7 @@ class Test(object):
             if not verbose:
                 color = Colors.WARNING
                 outcome = "INTERRUPT"
-                print(f"{line}: {color}{outcome}{Colors.NO_COLOR}")
+                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
             exit(1)
         except Exception:  # noqa
             if not verbose:
