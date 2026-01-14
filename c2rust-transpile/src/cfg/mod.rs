@@ -73,9 +73,9 @@ pub enum Label {
 impl std::fmt::Display for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::FromC(_, Some(name)) => write!(f, "'_{name:?}"),
-            Self::FromC(id, None) => write!(f, "'c_{}", id.0),
-            Self::Synthetic(id) => write!(f, "'s_{id}"),
+            Self::FromC(_, Some(name)) => write!(f, "_{name}"),
+            Self::FromC(id, None) => write!(f, "c_{}", id.0),
+            Self::Synthetic(id) => write!(f, "s_{id}"),
         }
     }
 }
