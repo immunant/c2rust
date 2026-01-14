@@ -101,9 +101,12 @@ class Test(object):
         else:
             line = ""
             fill = ""
+        start_time = perf_counter()
 
         def print_outcome(outcome: str, color: str):
-            print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
+            end_time = perf_counter()
+            elapsed_time = timedelta(seconds=end_time - start_time)
+            print(f"{line}{fill} ({elapsed_time}) {color}{outcome}{Colors.NO_COLOR}")
 
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
