@@ -63,11 +63,13 @@ class Test(object):
                     assert tail.stdout is not None
                     for line in tail.stdout:
                         print(line.decode().rstrip())
+                sys.stdout.flush()
             else:
                 print(
                     "{color}Missing log file: {logf}{nocolor}".format(
                         color=Colors.WARNING, logf=logfile, nocolor=Colors.NO_COLOR
-                    )
+                    ),
+                    flush=True,
                 )
 
         script_path = os.path.join(self.dir, script)
@@ -76,7 +78,8 @@ class Test(object):
             print(
                 "{color}Missing script: {script}{nocolor}".format(
                     color=Colors.FAIL, script=script_path, nocolor=Colors.NO_COLOR
-                )
+                ),
+                flush=True,
             )
             return False
 
@@ -84,7 +87,8 @@ class Test(object):
             print(
                 "{color}Script is not executable: {script}{nocolor}".format(
                     color=Colors.FAIL, script=script_path, nocolor=Colors.NO_COLOR
-                )
+                ),
+                flush=True,
             )
             return False
 
@@ -106,7 +110,10 @@ class Test(object):
         def print_outcome(outcome: str, color: str):
             end_time = perf_counter()
             elapsed_time = timedelta(seconds=end_time - start_time)
-            print(f"{line}{fill} ({elapsed_time}) {color}{outcome}{Colors.NO_COLOR}")
+            print(
+                f"{line}{fill} ({elapsed_time}) {color}{outcome}{Colors.NO_COLOR}",
+                flush=True,
+            )
 
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
