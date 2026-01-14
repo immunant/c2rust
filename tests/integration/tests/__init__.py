@@ -124,15 +124,18 @@ class Test(object):
         # noinspection PyBroadException
         try:
             if verbose:
-                subprocess.check_call(cwd=self.dir, args=[script_path])
+                stdout = None
+                stderr = None
             else:
-                subprocess.check_call(
-                    cwd=self.dir,
-                    args=[script_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-
+                stdout = subprocess.DEVNULL
+                stderr = subprocess.DEVNULL
+            subprocess.check_call(
+                cwd=self.dir,
+                args=[script_path],
+                stdout=stdout,
+                stderr=stderr,
+            )
+            if not verbose:
                 fill = (75 - len(line)) * "."
                 color = Colors.WARNING if xfail else Colors.OKGREEN
                 msg = "OK_XFAIL" if xfail else "OK"
