@@ -18,7 +18,6 @@ from common import (
     est_parallel_link_jobs,
     invoke,
     setup_logging,
-    ensure_clang_version,
     ensure_dir,
     git_ignore_dir,
     get_ninja_build_type,
@@ -115,14 +114,6 @@ def _main():
     setup_logging()
     logging.debug("args: %s", " ".join(sys.argv))
 
-    # earlier plumbum versions are missing features such as TEE
-    if pb.__version__ < c.MIN_PLUMBUM_VERSION:
-        err = "locally installed version {} of plumbum is too old.\n" \
-            .format(pb.__version__)
-        err += "please upgrade plumbum to version {} or later." \
-            .format(c.MIN_PLUMBUM_VERSION)
-        die(err)
-
     args = _parse_args()
     if args.clean_all:
         logging.info("cleaning all dependencies and previous built files")
@@ -131,12 +122,6 @@ def _main():
         with pb.local.cwd(c.LIBFAKECHECKS_DIR):
             make('clean')
 
-
-    # clang 3.6.0 is known to work; 3.4.0 known to not work.
-    ensure_clang_version([3, 6, 0])
-    # NOTE: it seems safe to disable this check since we now
-    # that we use a rust-toolchain file for rustc versioning.
-    # ensure_rustc_version(c.CUSTOM_RUST_RUSTC_VERSION)
 
     ensure_dir(c.CLANG_XCHECK_PLUGIN_BLD)
     ensure_dir(c.BUILD_DIR)
