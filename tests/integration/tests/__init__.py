@@ -102,6 +102,9 @@ class Test(object):
             line = ""
             fill = ""
 
+        def print_outcome(outcome: str, color: str):
+            print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
+
         # if we already have `compile_commands.json`, skip the build stages
         if stage in ["autogen", "configure", "make"]:
             compile_commands = os.path.join(self.dir, "compile_commands.json")
@@ -110,9 +113,7 @@ class Test(object):
 
             if use_cached_cc_cmds:
                 if not verbose:
-                    color = Colors.OKBLUE
-                    outcome = "OK_CACHED"
-                    print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
+                    print_outcome(outcome="OK_CACHED", color=Colors.OKBLUE)
                 return True
             elif emsg:
                 if verbose:
@@ -137,21 +138,21 @@ class Test(object):
                 stderr=stderr,
             )
             if not verbose:
-                color = Colors.WARNING if xfail else Colors.OKGREEN
-                outcome = "OK_XFAIL" if xfail else "OK"
-                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
+                print_outcome(
+                    outcome="OK_XFAIL" if xfail else "OK",
+                    color=Colors.WARNING if xfail else Colors.OKGREEN,
+                )
             return True
         except KeyboardInterrupt:
             if not verbose:
-                color = Colors.WARNING
-                outcome = "INTERRUPT"
-                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
+                print_outcome(outcome="INTERRUPT", color=Colors.WARNING)
             exit(1)
         except Exception:  # noqa
             if not verbose:
-                color = Colors.OKBLUE if xfail else Colors.FAIL
-                outcome = "XFAIL" if xfail else "FAIL"
-                print(f"{line}{fill} {color}{outcome}{Colors.NO_COLOR}")
+                print_outcome(
+                    outcome="XFAIL" if xfail else "FAIL",
+                    color=Colors.OKBLUE if xfail else Colors.FAIL,
+                )
                 print_log_tail_on_fail(script_path)
             return False
 
