@@ -59,7 +59,7 @@ use crate::cfg::loops::*;
 use crate::cfg::multiples::*;
 
 /// These labels identify basic blocks in a regular CFG.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Label {
     /// Some labels come directly from the C side (namely those created from labels, cases, and
     /// defaults). For those, we just re-use the `CLabelId` of the C AST node.
@@ -70,13 +70,25 @@ pub enum Label {
     Synthetic(u64),
 }
 
+impl std::fmt::Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FromC(_, Some(name)) => write!(f, "'_{name:?}"),
+            Self::FromC(id, None) => write!(f, "'c_{}", id.0),
+            Self::Synthetic(id) => write!(f, "'s_{id}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
 impl Label {
     pub fn pretty_print(&self) -> String {
-        match self {
-            Label::FromC(_, Some(s)) => format!("_{}", s.as_ref()),
-            Label::FromC(CStmtId(label_id), None) => format!("c_{}", label_id),
-            Label::Synthetic(syn_id) => format!("s_{}", syn_id),
-        }
+        self.to_string()
     }
 
     fn debug_print(&self) -> String {
