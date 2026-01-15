@@ -1,6 +1,7 @@
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTMutationListener.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Version.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
@@ -212,8 +213,8 @@ CrossCheckInserter::build_hasher_init(const std::string &hasher_prefix,
                    {}, ctx);
     auto hasher_ty = ctx.getVariableArrayType(ctx.CharTy,
                                               hasher_size_call,
-                                              ArrayType::Normal,
-                                              0, SourceRange());
+                                              ArraySizeModifier::Normal,
+                                              0);
     auto hasher_ptr_ty = ctx.getArrayDecayedType(hasher_ty);
     auto hasher_id = &ctx.Idents.get("hasher");
     auto hasher_var =
@@ -236,8 +237,13 @@ CrossCheckInserter::build_hasher_init(const std::string &hasher_prefix,
                                  FPOptionsOverride());
     auto init_call = build_call(hasher_prefix + "_init",
                                 ctx.VoidTy,
-                                { hasher_var_ptr }, ctx);
-    return { hasher_var, hasher_var_ptr, { hasher_var_decl_stmt, init_call } };
+                                ExprVec{hasher_var_ptr}, ctx);
+
+    StmtVec init_stmts;
+    init_stmts.push_back(hasher_var_decl_stmt);
+    init_stmts.push_back(init_call);
+
+    return std::make_tuple(hasher_var, hasher_var_ptr, std::move(init_stmts));
 }
 
 template<typename BodyFn>
@@ -262,14 +268,16 @@ void CrossCheckInserter::build_generic_hash_function(const HashFunction &func,
     auto fn_body_stmts = body_fn(fn_decl);
     auto fn_body =
         CompoundStmt::Create(ctx, fn_body_stmts,
+                             FPOptionsOverride(),
                              SourceLocation(),
                              SourceLocation());
 
     // Put this function in a linkonce section, so the linker merges
     // all duplicate copies of it into one during linking
     auto fn_section = ".gnu.linkonce.t."s + full_name;
-    fn_decl->addAttr(SectionAttr::CreateImplicit(ctx, SectionAttr::GNU_section,
-                                                 fn_section));
+    fn_decl->addAttr(SectionAttr::CreateImplicit(ctx, fn_section,
+                                                 SourceRange(),
+                                                 SectionAttr::GNU_section));
     fn_decl->addAttr(VisibilityAttr::CreateImplicit(ctx, VisibilityAttr::Hidden));
     fn_decl->setInlineSpecified(true);
     fn_decl->setBody(fn_body);
@@ -427,7 +435,8 @@ void CrossCheckInserter::build_array_hash_function(const HashFunction &func,
         auto i_incr = UnaryOperator::Create(ctx, i_var_lv, UO_PostInc,
                                             i_ty, VK_PRValue, OK_Ordinary,
                                             SourceLocation(),
-                                            num_elements.isMaxValue());
+                                            num_elements.isMaxValue(),
+                                            FPOptionsOverride());
         // Loop body: __c2rust_hasher_H_update(hasher, __c2rust_hash_T(x[i]));
         assert(!element.orig_ty->isIncompleteType() &&
                "Attempting to dereference incomplete type");
@@ -608,7 +617,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
             field_decls.emplace(llvm_string_ref_to_sv(field->getName()), field);
         }
         for (auto *field : record_def->fields()) {
-            if (field->isUnnamedBitfield())
+            if (field->isUnnamedBitField())
                 continue; // Unnamed bitfields only affect layout, not contents
 
             XCheck field_xcheck{xcfg_scope_struct_field(record_cfg, field->getName())};
@@ -644,7 +653,7 @@ void CrossCheckInserter::build_record_hash_function(const HashFunction &func,
                     field_hash_args = generic_custom_args(ctx, field_decls,
                                                           args, arg_build_fn);
                 } else {
-                    std::string field_ty_name = record_name;
+                    std::string field_ty_name = record_name.str();
                     field_ty_name += "$field$";
                     field_ty_name += field->getName();
                     auto field_ty = field->getType();

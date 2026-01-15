@@ -15,6 +15,7 @@
 #include "llvm/Support/YAMLTraits.h"
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string_view>
 
@@ -93,7 +94,7 @@ FunctionDecl *CrossCheckInserter::get_function_decl(llvm::StringRef name,
             LinkageSpecDecl::Create(ctx, tu_decl,
                                     SourceLocation(),
                                     SourceLocation(),
-                                    LinkageSpecDecl::lang_c,
+                                    LinkageSpecLanguageIDs::C,
                                     false);
         tu_decl->addDecl(extern_c_decl);
         parent_decl = extern_c_decl;
@@ -148,14 +149,19 @@ CallExpr *CrossCheckInserter::build_call(llvm::StringRef fn_name, QualType resul
     auto fn_ice =
         ImplicitCastExpr::Create(ctx, fn_ptr_type,
                                  CK_FunctionToPointerDecay,
-                                 fn_ref, nullptr, VK_PRValue);
+                                 fn_ref, nullptr, VK_PRValue,
+                                 FPOptionsOverride());
 #if CLANG_VERSION_MAJOR >= 8
     return CallExpr::Create(
 #else
     return new (ctx) CallExpr(
 #endif
                               ctx, fn_ice, args, result_ty,
-                              VK_PRValue, SourceLocation());
+                              VK_PRValue, SourceLocation()
+#if CLANG_VERSION_MAJOR >= 17
+                              , FPOptionsOverride()
+#endif
+                              );
 }
 
 static inline void skip_sv_whitespace(std::string_view *sv) {
@@ -323,7 +329,7 @@ CrossCheckInserter::build_parameter_xcheck(ParmVarDecl *param,
         // By default, we just call __c2rust_hash_T(x)
         // where T is the type of the parameter
         // FIXME: include shasher/ahasher
-        std::string param_ty_name = func_name;
+        std::string param_ty_name = func_name.str();
         param_ty_name += "$arg$";
         param_ty_name += param->getName();
         auto hash_fn = get_type_hash_function(param->getOriginalType(),
@@ -393,7 +399,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                 continue;
             }
             auto func_name = fd_ident->getName();
-            if (func_name.startswith("__c2rust")) {
+            if (func_name.starts_with("__c2rust")) {
                 // Ignore our own functions
                 continue;
             }
@@ -503,11 +509,13 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
 #endif
                                      dni,
                                      fd->getType(), fd->getTypeSourceInfo(),
-                                     SC_Static, true, true,
+                                     SC_Static, false, true, true,
 #if CLANG_VERSION_MAJOR >= 9
-                                     fd->getConstexprKind());
+                                     fd->getConstexprKind(),
+                                     AssociatedConstraint());
 #else
-                                     fd->isConstexpr());
+                                     fd->isConstexpr(),
+                                     AssociatedConstraint());
 #endif
             body_fn_decl->setParams(fd->parameters());
             body_fn_decl->setBody(old_body);
@@ -588,7 +596,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                     // By default, we just call __c2rust_hash_T(x)
                     // where T is the type of the parameter
                     // FIXME: include shasher/ahasher
-                    std::string result_ty_name = func_name;
+                    std::string result_ty_name = func_name.str();
                     result_ty_name += "$result";
                     auto hash_fn = get_type_hash_function(result_ty, result_ty_name, ctx, true);
                     auto result_lv = new (ctx) DeclRefExpr(
@@ -631,6 +639,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
             auto new_body =
 #if CLANG_VERSION_MAJOR >= 6
                 CompoundStmt::Create(ctx, new_body_stmts,
+#if CLANG_VERSION_MAJOR >= 17
+                                     FPOptionsOverride(),
+#endif
 #else
                 new (ctx) CompoundStmt(ctx, new_body_stmts,
 #endif
@@ -682,44 +693,56 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
 
 enum ID {
   OPT_INVALID = 0, // This is not an option ID.
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR, VALUES)                                      \
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
+               VISIBILITY, PARAM, HELPTEXT, HELPTEXTSVARIANTS, METAVAR,        \
+               VALUES)                                                        \
   OPT_##ID,
 #include "Options.inc"
 #undef OPTION
 };
 
-#define PREFIX(NAME, VALUE) const char *const NAME[] = VALUE;
+#define OPTTABLE_STR_TABLE_CODE
 #include "Options.inc"
-#undef PREFIX
+#undef OPTTABLE_STR_TABLE_CODE
+
+#define OPTTABLE_PREFIXES_TABLE_CODE
+#include "Options.inc"
+#undef OPTTABLE_PREFIXES_TABLE_CODE
+
+#define OPTTABLE_PREFIXES_UNION_CODE
+#include "Options.inc"
+#undef OPTTABLE_PREFIXES_UNION_CODE
 
 static const OptTable::Info InfoTable[] = {
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR, VALUES)                                      \
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
+               VISIBILITY, PARAM, HELPTEXT, HELPTEXTSVARIANTS, METAVAR,        \
+               VALUES)                                                        \
 {                                                                              \
       PREFIX,      NAME,      HELPTEXT,                                        \
-      METAVAR,     OPT_##ID,  Option::KIND##Class,                             \
-      PARAM,       FLAGS,     OPT_##GROUP,                                     \
+      HELPTEXTSVARIANTS, METAVAR, OPT_##ID, Option::KIND##Class,               \
+      PARAM,       FLAGS,     VISIBILITY, OPT_##GROUP,                         \
       OPT_##ALIAS, ALIASARGS, VALUES},
 #include "Options.inc"
 #undef OPTION
 };
 
-class CrossCheckOptTable : public OptTable {
+class CrossCheckOptTable : public llvm::opt::PrecomputedOptTable {
 public:
-    CrossCheckOptTable() : OptTable(InfoTable) {}
+    CrossCheckOptTable()
+        : PrecomputedOptTable(OptionStrTable, OptionPrefixesTable, InfoTable,
+                              OptionPrefixesUnion) {}
 };
 
 class CrossCheckInsertionAction : public PluginASTAction {
 private:
     bool disable_xchecks = false;
-    std::unique_ptr<const config::Config> config{config::xcfg_config_new()};
+    std::unique_ptr<const config::Config> config_ptr{config::xcfg_config_new()};
 
 protected:
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &ci,
                                                    llvm::StringRef) override {
-        return llvm::make_unique<CrossCheckInserter>(disable_xchecks,
-                                                     std::move(config));
+        return std::make_unique<CrossCheckInserter>(disable_xchecks,
+                                                    std::move(config_ptr));
     }
 
     bool ParseArgs(const CompilerInstance &ci,
@@ -736,7 +759,7 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
                                           const std::vector<std::string> &args) {
     auto &diags = ci.getDiagnostics();
 
-    SmallVector<const char*, 8> arg_ptrs;
+    llvm::SmallVector<const char*, 8> arg_ptrs;
     for (auto &arg : args)
         arg_ptrs.push_back(arg.c_str());
 
@@ -755,9 +778,10 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
     }
 
     // Parse the default configuration
-    std::string_view default_config_sv{CrossCheckInserter::default_config};
-    auto new_config = xcfg_config_parse(config.release(), default_config_sv);
-    config.reset(new_config);
+    config::StringLenPtr default_config_slp{
+        std::string_view{CrossCheckInserter::default_config}};
+    auto new_config = xcfg_config_parse(config_ptr.release(), default_config_slp);
+    config_ptr.reset(new_config);
 
     auto config_files = parsed_args.getAllArgValues(OPT_config_files);
     for (auto &config_file : config_files) {
@@ -769,8 +793,8 @@ bool CrossCheckInsertionAction::ParseArgs(const CompilerInstance &ci,
         }
 
         config::StringLenPtr buf_slp{(*config_data)->getBuffer()};
-        auto new_config = xcfg_config_parse(config.release(), buf_slp);
-        config.reset(new_config);
+        auto new_config = xcfg_config_parse(config_ptr.release(), buf_slp);
+        config_ptr.reset(new_config);
     }
     return true;
 }
