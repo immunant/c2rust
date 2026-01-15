@@ -4,7 +4,11 @@ members = [
     "config-capi",
     "derive-macros",
     "runtime",
-    "rustc-plugin",
+    # TODO: rustc plugins are completely unsupported now,
+    # so replace it with another approach or fold it
+    # into the dynamic instrumentation wrapper. Keep the
+    # old code around for reference until that happens.
+    #"rustc-plugin",
     "backends/libclevrbuf-sys",
     "backends/libfakechecks-sys",
     "backends/dynamic-dlsym",
@@ -14,10 +18,11 @@ default-members = [
     "config",
     "derive-macros",
     "runtime",
-    "rustc-plugin",
+    #"rustc-plugin",
     "backends/dynamic-dlsym",
     "backends/zstd-logging",
 ]
 exclude = [
-    "tests"
+    "tests",
+    "rustc-plugin",
 ]
