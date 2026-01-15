@@ -155,13 +155,17 @@ struct SrcLocInclude<'a> {
     include_path: &'a [SrcLoc],
 }
 
+impl SrcLocInclude<'_> {
+    fn cmp_iter<'a>(&'a self) -> impl Iterator<Item = SrcLoc> + 'a {
+        // See docs on `Self` for why this is the right comparison.
+        let Self { loc, include_path } = *self;
+        include_path.iter().copied().chain([loc])
+    }
+}
+
 impl PartialOrd for SrcLocInclude<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let a = self;
-        let b = other;
-        let a = a.include_path.iter().copied().chain([a.loc]);
-        let b = b.include_path.iter().copied().chain([b.loc]);
-        Some(a.cmp(b))
+        Some(self.cmp_iter().cmp(other.cmp_iter()))
     }
 }
 
