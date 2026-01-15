@@ -204,8 +204,8 @@ struct XCheck {
     };
 
     XCheck() = delete;
-    XCheck(config::XCheck *xc) {
-        type = xcfg_xcheck_type(xc);
+    XCheck(config::XCheck *xc)
+        : type(xcfg_xcheck_type(xc)), data_u64(0) {
         switch (type) {
         case config::XCHECK_TYPE_FIXED:
             data_u64 = xcfg_xcheck_data_u64(xc);
