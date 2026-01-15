@@ -154,19 +154,17 @@ struct HashFunction {
         Expr *rv;
         if (by_pointer) {
             rv_ty = ctx.getPointerType(rv_ty);
-            rv = new (ctx) UnaryOperator(arg, UO_AddrOf, rv_ty,
-                                         VK_RValue, OK_Ordinary,
-#if CLANG_VERSION_MAJOR >= 7
-                                         SourceLocation(), false);
-#else
-                                         SourceLocation());
-#endif
+            rv = UnaryOperator::Create(ctx, arg, UO_AddrOf, rv_ty,
+                                       VK_PRValue, OK_Ordinary,
+                                       SourceLocation(), false,
+                                       FPOptionsOverride());
         } else {
-            rv = ImplicitCastExpr::Create(ctx, rv_ty, ck, arg, nullptr, VK_RValue);
+            rv = ImplicitCastExpr::Create(ctx, rv_ty, ck, arg, nullptr, VK_PRValue,
+                                          FPOptionsOverride());
         }
         if (rv_ty != actual_ty) {
             rv = ImplicitCastExpr::Create(ctx, actual_ty, CK_BitCast, rv,
-                                          nullptr, VK_RValue);
+                                          nullptr, VK_PRValue, FPOptionsOverride());
         }
         return rv;
     }
@@ -325,31 +323,26 @@ private:
             case CustomArg::NONE:
                 arg_ref_rv = ImplicitCastExpr::Create(ctx, arg_ref_lv->getType(),
                                                       CK_LValueToRValue,
-                                                      arg_ref_lv, nullptr, VK_RValue);
+                                                      arg_ref_lv, nullptr, VK_PRValue,
+                                                      FPOptionsOverride());
                 break;
 
             // &arg
             case CustomArg::ADDR:
-                arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_AddrOf,
-                                                     ctx.getPointerType(arg_ref_lv->getType()),
-                                                     VK_RValue, OK_Ordinary,
-#if CLANG_VERSION_MAJOR >= 7
-                                                     SourceLocation(), false);
-#else
-                                                     SourceLocation());
-#endif
+                arg_ref_rv = UnaryOperator::Create(ctx, arg_ref_lv, UO_AddrOf,
+                                                   ctx.getPointerType(arg_ref_lv->getType()),
+                                                   VK_PRValue, OK_Ordinary,
+                                                   SourceLocation(), false,
+                                                   FPOptionsOverride());
                 break;
 
             // *arg
             case CustomArg::DEREF:
-                arg_ref_rv = new (ctx) UnaryOperator(arg_ref_lv, UO_Deref,
-                                                     arg_ref_lv->getType()->getPointeeType(),
-                                                     VK_RValue, OK_Ordinary,
-#if CLANG_VERSION_MAJOR >= 7
-                                                     SourceLocation(), false);
-#else
-                                                     SourceLocation());
-#endif
+                arg_ref_rv = UnaryOperator::Create(ctx, arg_ref_lv, UO_Deref,
+                                                   arg_ref_lv->getType()->getPointeeType(),
+                                                   VK_PRValue, OK_Ordinary,
+                                                   SourceLocation(), false,
+                                                   FPOptionsOverride());
                 break;
 
             default:
@@ -393,23 +386,20 @@ private:
         auto depth = fn_decl->getParamDecl(1);
         auto depth_ty = depth->getType();
         auto depth_rv =
-            new (ctx) DeclRefExpr(
-#if CLANG_VERSION_MAJOR >= 8
-                                  ctx,
-#endif
+            new (ctx) DeclRefExpr(ctx,
                                   depth, false, depth_ty,
-                                  VK_RValue, SourceLocation());
+                                  VK_PRValue, SourceLocation());
         if (!sub1)
             return depth_rv;
 
         llvm::APInt one(ctx.getTypeSize(depth_ty), 1);
         auto one_lit = IntegerLiteral::Create(ctx, one, depth_ty,
                                                      SourceLocation());
-        return new (ctx) BinaryOperator(depth_rv, one_lit,
-                                               BO_Sub, depth_ty,
-                                               VK_RValue, OK_Ordinary,
-                                               SourceLocation(),
-                                               FPOptions{});
+        return BinaryOperator::Create(ctx, depth_rv, one_lit,
+                                      BO_Sub, depth_ty,
+                                      VK_PRValue, OK_Ordinary,
+                                      SourceLocation(),
+                                      FPOptions{});
     }
 
     Stmt *build_depth_check(FunctionDecl *fn_decl,
@@ -448,7 +438,7 @@ private:
                                    ASTContext &ctx);
 
     void build_record_hash_function(const HashFunction &func,
-                                    const std::string &record_name,
+                                    llvm::StringRef record_name,
                                     ASTContext &ctx);
 
     TinyStmtVec

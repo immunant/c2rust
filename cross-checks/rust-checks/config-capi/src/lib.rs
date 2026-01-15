@@ -32,14 +32,14 @@ const ITEM_KIND_IMPL: c_uint = 2;
 #[derive(Debug)]
 pub struct StringLenPtr {
     ptr: *const c_char,
-    len: c_uint,
+    len: u32,
 }
 
 impl StringLenPtr {
     fn from_str(s: &str) -> StringLenPtr {
         StringLenPtr {
             ptr: s.as_ptr() as *const c_char,
-            len: s.len() as c_uint,
+            len: s.len() as u32,
         }
     }
 
@@ -50,7 +50,7 @@ impl StringLenPtr {
         };
         StringLenPtr {
             ptr: ptr as *const c_char,
-            len: len as c_uint,
+            len: len as u32,
         }
     }
 
@@ -76,16 +76,16 @@ impl Default for StringLenPtr {
 #[derive(Debug)]
 pub struct VecLenPtr<T> {
     ptr: *const T,
-    elem_size: c_uint,
-    len: c_uint,
+    elem_size: u32,
+    len: u32,
 }
 
 impl<T> VecLenPtr<T> {
     fn from_slice(v: &[T]) -> VecLenPtr<T> {
         VecLenPtr {
             ptr: v.as_ptr(),
-            elem_size: mem::size_of::<T>() as c_uint,
-            len: v.len() as c_uint,
+            elem_size: mem::size_of::<T>() as u32,
+            len: v.len() as u32,
         }
     }
 
@@ -98,7 +98,7 @@ impl<T> Default for VecLenPtr<T> {
     fn default() -> VecLenPtr<T> {
         VecLenPtr {
             ptr: ptr::null(),
-            elem_size: mem::size_of::<T>() as c_uint,
+            elem_size: mem::size_of::<T>() as u32,
             len: 0,
         }
     }
@@ -137,7 +137,7 @@ pub unsafe extern "C" fn xcfg_config_destroy(cfg: *mut xcfg::Config) {
 
 // C API for cross-check types
 #[no_mangle]
-pub extern "C" fn xcfg_xcheck_type(xcheck: Option<&xcfg::XCheckType>) -> c_uint {
+pub extern "C" fn xcfg_xcheck_type(xcheck: Option<&xcfg::XCheckType>) -> u32 {
     match xcheck {
         Some(&xcfg::XCheckType::Default) => XCHECK_TYPE_DEFAULT,
         Some(&xcfg::XCheckType::None) => XCHECK_TYPE_DISABLED,
@@ -169,7 +169,7 @@ pub extern "C" fn xcfg_xcheck_data_string(xcheck: Option<&xcfg::XCheckType>) -> 
 }
 
 #[no_mangle]
-pub extern "C" fn xcfg_extra_xcheck_tag(extra_xcheck: Option<&xcfg::ExtraXCheck>) -> c_uint {
+pub extern "C" fn xcfg_extra_xcheck_tag(extra_xcheck: Option<&xcfg::ExtraXCheck>) -> u32 {
     match extra_xcheck.unwrap().tag {
         xcfg::XCheckTag::Unknown => XCHECK_TAG_UNKNOWN,
         xcfg::XCheckTag::FunctionEntry => XCHECK_TAG_FUNCTION_ENTRY,
@@ -281,7 +281,7 @@ pub extern "C" fn xcfg_scope_stack_last<'stk>(
 }
 
 #[no_mangle]
-pub extern "C" fn xcfg_scope_enabled(scope_config: Option<&xcfg::scopes::ScopeConfig>) -> c_uint {
+pub extern "C" fn xcfg_scope_enabled(scope_config: Option<&xcfg::scopes::ScopeConfig>) -> u32 {
     if scope_config.unwrap().inherited.enabled {
         1
     } else {

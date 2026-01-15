@@ -8,7 +8,7 @@
 namespace crosschecks {
 namespace config {
 
-enum XCheckType : unsigned {
+enum XCheckType : uint32_t {
     XCHECK_TYPE_DEFAULT  = 0,
     XCHECK_TYPE_DISABLED = 1,
     XCHECK_TYPE_FIXED    = 2,
@@ -17,7 +17,7 @@ enum XCheckType : unsigned {
     XCHECK_TYPE_CUSTOM   = 5,
 };
 
-enum XCheckTag : unsigned {
+enum XCheckTag : uint32_t {
     XCHECK_TAG_UNKNOWN         = 0,
     XCHECK_TAG_FUNCTION_ENTRY  = 1,
     XCHECK_TAG_FUNCTION_EXIT   = 2,
@@ -25,7 +25,7 @@ enum XCheckTag : unsigned {
     XCHECK_TAG_FUNCTION_RETURN = 4,
 };
 
-enum ItemKind : unsigned {
+enum ItemKind : uint32_t {
     ITEM_KIND_FUNCTION = 0,
     ITEM_KIND_STRUCT   = 1,
     ITEM_KIND_IMPL     = 2,
@@ -39,7 +39,7 @@ struct XCheck;
 
 struct StringLenPtr {
     const char *ptr;
-    unsigned len;
+    uint32_t len;
 
     StringLenPtr(const std::string &s)
         : ptr(s.data()), len(s.size()) {
@@ -69,23 +69,23 @@ struct StringLenPtr {
 template<typename T>
 struct VecLenPtr {
     const T *ptr;
-    unsigned elem_size;
-    unsigned len;
+    uint32_t elem_size;
+    uint32_t len;
 
     VecLenPtr() : ptr(nullptr), elem_size(sizeof(T)), len(0) {
     }
-    VecLenPtr(T *p, unsigned l) : ptr(p), elem_size(sizeof(T)), len(l) {
+    VecLenPtr(T *p, size_t l) : ptr(p), elem_size(sizeof(T)), len(l) {
     }
 
     template<typename V>
     static VecLenPtr from_vector(V &v) {
-        return VecLenPtr{&*v.begin(), std::distance(v.begin(), v.end())};
+        return VecLenPtr{&*v.begin(), v.size()};
     }
 
     class Iterator {
     public:
         Iterator() = delete;
-        Iterator(const VecLenPtr<T> &v, unsigned i) : vec(v), idx(i) {
+        Iterator(const VecLenPtr<T> &v, size_t i) : vec(v), idx(i) {
         }
 
         bool operator==(const Iterator &o) const {
@@ -111,7 +111,7 @@ struct VecLenPtr {
 
     private:
         const VecLenPtr &vec;
-        unsigned idx;
+        size_t idx;
     };
 
     Iterator begin() const {
@@ -129,10 +129,10 @@ extern "C" {
 const Config *xcfg_config_new(void);
 const Config *xcfg_config_parse(const Config*, StringLenPtr);
 void xcfg_config_destroy(Config*);
-unsigned xcfg_xcheck_type(const XCheck*);
+uint32_t xcfg_xcheck_type(const XCheck*);
 uint64_t xcfg_xcheck_data_u64(const XCheck*);
 StringLenPtr xcfg_xcheck_data_string(const XCheck*);
-unsigned xcfg_extra_xcheck_tag(const ExtraXCheck*);
+uint32_t xcfg_extra_xcheck_tag(const ExtraXCheck*);
 StringLenPtr xcfg_extra_xcheck_custom(const ExtraXCheck*);
 ScopeStack *xcfg_scope_stack_new(ScopeConfig*);
 void xcfg_scope_stack_destroy(ScopeStack*);
@@ -142,7 +142,7 @@ ScopeConfig *xcfg_scope_stack_push_item(ScopeStack*, unsigned, StringLenPtr, Str
 void xcfg_scope_stack_pop(ScopeStack*);
 void xcfg_scope_stack_pop_multi(ScopeStack*, unsigned);
 ScopeConfig *xcfg_scope_stack_last(ScopeStack*);
-unsigned xcfg_scope_enabled(const ScopeConfig*);
+uint32_t xcfg_scope_enabled(const ScopeConfig*);
 XCheck *xcfg_scope_entry_xcheck(const ScopeConfig*);
 XCheck *xcfg_scope_exit_xcheck(const ScopeConfig*);
 XCheck *xcfg_scope_all_args_xcheck(const ScopeConfig*);
@@ -197,7 +197,7 @@ private:
 // this stores a local copy of the data, so we can
 // build our own XCheck values without calling into Rust
 struct XCheck {
-    unsigned type;
+    uint32_t type;
     union {
         uint64_t data_u64;
         config::StringLenPtr data_str;
