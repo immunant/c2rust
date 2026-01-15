@@ -101,7 +101,7 @@ _Bool __c2rust_pointer_is_invalid(void *p) {
                   : "r" (p)
                   : "cc");
     // We don't need the result of the load, so discard it
-    (void*) pv;
+    (void) pv;
     return invalid;
 }
 
