@@ -148,14 +148,14 @@ CallExpr *CrossCheckInserter::build_call(llvm::StringRef fn_name, QualType resul
     auto fn_ice =
         ImplicitCastExpr::Create(ctx, fn_ptr_type,
                                  CK_FunctionToPointerDecay,
-                                 fn_ref, nullptr, VK_RValue);
+                                 fn_ref, nullptr, VK_PRValue);
 #if CLANG_VERSION_MAJOR >= 8
     return CallExpr::Create(
 #else
     return new (ctx) CallExpr(
 #endif
                               ctx, fn_ice, args, result_ty,
-                              VK_RValue, SourceLocation());
+                              VK_PRValue, SourceLocation());
 }
 
 static inline void skip_sv_whitespace(std::string_view *sv) {
@@ -534,7 +534,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                           ctx,
 #endif
                                           param, false, param_ty,
-                                          VK_RValue, SourceLocation());
+                                          VK_PRValue, SourceLocation());
                 args.push_back(param_ref_rv);
             }
             Expr *body_call = build_call(body_fn_name, result_ty, args, ctx);
@@ -567,7 +567,7 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                                ctx,
 #endif
                                                result_var, false, result_ty,
-                                               VK_RValue, SourceLocation());
+                                               VK_PRValue, SourceLocation());
             }
 
             // Add the function exit-point cross-check
