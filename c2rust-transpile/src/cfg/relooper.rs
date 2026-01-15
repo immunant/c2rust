@@ -158,7 +158,7 @@ pub fn reloop(
         domination_sets,
         global_predecessors,
     };
-    state.relooper(entries, blocks, &mut relooped_with_decls, false);
+    state.relooper(entries, blocks, &mut relooped_with_decls);
 
     // These are declarations we need to lift
     let lift_me = state.lifted;
@@ -249,7 +249,6 @@ impl RelooperState {
         entries: IndexSet<Label>,     // current entry points into the CFG
         mut blocks: StructuredBlocks, // the blocks in the sub-CFG considered
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
-        _disable_heuristics: bool,
     ) {
         // If there are no entries or blocks then we are at the end of a branch and
         // there's nothing left to reloop.
@@ -324,7 +323,7 @@ impl RelooperState {
                     terminator,
                 });
 
-                self.relooper(new_entries, blocks, result, false);
+                self.relooper(new_entries, blocks, result);
             } else {
                 self.make_loop(&strict_reachable_from, blocks, entries, result);
             }
@@ -415,31 +414,19 @@ impl RelooperState {
 
                     let mut structs = vec![];
                     self.open_scope();
-                    self.relooper(entries, blocks, &mut structs, false);
+                    self.relooper(entries, blocks, &mut structs);
                     self.close_scope();
 
                     (lbl, structs)
                 })
                 .collect();
 
-            // Disable heuristics when relooping the follow blocks if all of our entries are
-            // follow entries.
-            //
-            // This situation happens when there are back edges to all of our entries, i.e.
-            // when all of our entries are part of one or more loops. If we leave heuristics
-            // enabled in this case, we risk infinite recursion because we're relooping the
-            // same set of blocks with the same set of entries. If there are loops and we
-            // ended up here, it means that we skipped creating a loop because we matched a
-            // C multiple. Disabling heuristics means we won't try to match a C multiple,
-            // meaning we will generate a loop-match instead.
-            let disable_heuristics = follow_entries == entries;
-
             result.push(Structure::Multiple {
                 entries,
                 branches: all_handlers,
             });
 
-            self.relooper(follow_entries, follow_blocks, result, disable_heuristics);
+            self.relooper(follow_entries, follow_blocks, result);
             return;
         }
 
@@ -571,12 +558,12 @@ impl RelooperState {
 
         let mut body = vec![];
         self.open_scope();
-        self.relooper(entries.clone(), body_blocks, &mut body, false);
+        self.relooper(entries.clone(), body_blocks, &mut body);
         self.close_scope();
 
         result.push(Structure::Loop { entries, body });
 
-        self.relooper(follow_entries, follow_blocks, result, false);
+        self.relooper(follow_entries, follow_blocks, result);
     }
 }
 
