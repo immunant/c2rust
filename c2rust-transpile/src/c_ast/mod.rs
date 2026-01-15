@@ -141,6 +141,20 @@ impl<T> Located<T> {
     }
 }
 
+/// This holds a [`SrcLoc`] and its [`include_path`](TypedAstContext::include_path)
+/// such that it is naturally ordered.
+///
+/// The include path starts from where the item is first included,
+/// working its way back to the last include path,
+/// which contains the definition of the item.
+/// Thus, to compare them, we compare the include path first
+/// and then the definition's location.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct SrcLocInclude<'a> {
+    include_path: &'a [SrcLoc],
+    loc: SrcLoc,
+}
+
 impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
@@ -239,39 +253,12 @@ impl TypedAstContext {
 
     /// Compare two [`SrcLoc`]s based on their include path.
     pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
-        /// Compare without regard to `fileid`.
-        fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
-            (a.line, a.column).cmp(&(b.line, b.column))
-        }
-
-        use Ordering::*;
         let path_a = self.include_path(*a);
         let path_b = self.include_path(*b);
 
-        // Find the first include that does not match between the two
-        let common_len = path_a.len().min(path_b.len());
-        let order = path_a[..common_len].cmp(&path_b[..common_len]);
-        if order != Equal {
-            return order;
-        }
-
-        // Either all parent includes are the same, or the include paths are of different lengths
-        // because .zip() stops when one of the iterators is empty.
-        match path_a.len().cmp(&path_b.len()) {
-            Less => {
-                // a has the shorter path, which means b was included in a's file
-                // so extract that include and compare the position to a
-                let b = &path_b[path_a.len()];
-                cmp_pos(a, b)
-            }
-            Equal => a.cmp(b), // a and b have the same include path and are thus in the same file
-            Greater => {
-                // b has the shorter path, which means a was included in b's file
-                // so extract that include and compare the position to b
-                let a = &path_a[path_b.len()];
-                cmp_pos(a, b)
-            }
-        }
+        let a = path_a.iter().copied().chain([*a]);
+        let b = path_b.iter().copied().chain([*b]);
+        a.cmp(b)
     }
 
     pub fn get_file_include_line_number(&self, file: FileId) -> Option<u64> {
