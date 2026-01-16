@@ -195,7 +195,10 @@ struct RelooperState {
 
     /// The set of nodes dominated by each node in the CFG.
     ///
-    /// TODO: Maybe write some words about what "domination" means in the context of a CFG.
+    /// Node A dominates another node B if all paths to B go through A. This
+    /// information is used when building loops to determine which nodes should
+    /// go inside the loop, since it tells us which nodes can be inlined within
+    /// the branch of another node.
     domination_sets: AdjacencyList,
 
     /// Global predecessor information.
@@ -237,7 +240,7 @@ impl RelooperState {
 /// A set of basic blocks, keyed by their label.
 type StructuredBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
 
-/// An adjacency list mapping from each label to the set of labels it can reach.
+/// A mapping from one label to a set of labels.
 type AdjacencyList = IndexMap<Label, IndexSet<Label>>;
 
 impl RelooperState {
@@ -407,7 +410,7 @@ impl RelooperState {
             let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
 
             // Reloop each set of handled blocks into their own structured control flow.
-            let all_handlers: IndexMap<_, _> = handled_entries
+            let branches: IndexMap<_, _> = handled_entries
                 .into_iter()
                 .map(|(lbl, blocks)| {
                     let entries = indexset![lbl.clone()];
@@ -421,10 +424,7 @@ impl RelooperState {
                 })
                 .collect();
 
-            result.push(Structure::Multiple {
-                entries,
-                branches: all_handlers,
-            });
+            result.push(Structure::Multiple { entries, branches });
 
             self.relooper(follow_entries, follow_blocks, result);
             return;
@@ -457,9 +457,11 @@ impl RelooperState {
             .collect();
 
         // Partition blocks into those belonging in or after the loop
-        let (mut body_blocks, mut follow_blocks): (StructuredBlocks, StructuredBlocks) = blocks
+        let (mut body_blocks, mut follow_blocks) = blocks
             .into_iter()
-            .partition(|(lbl, _)| new_returns.contains(lbl) || entries.contains(lbl));
+            .partition::<StructuredBlocks, _>(|(lbl, _)| {
+                new_returns.contains(lbl) || entries.contains(lbl)
+            });
 
         // Any block that follows a body block but is not itself a body block
         // becomes an entry for the follow blocks.
@@ -523,23 +525,19 @@ impl RelooperState {
             follow_entries = out_edges(&body_blocks);
         }
 
-        // Rewrite `GoTo`s that exit the loop body to `ExitTo`s.
+        // Rewrite `GoTo`s that exit the loop body.
         //
-        // For our body blocks, rewrite terminator `GoTo` labels to `ExitTo` if they
-        // target an entry or a follow entry. These are exits from the loop body, i.e.
-        // if they branch back to an entry then it's a `continue`, and if they branch to
-        // a follow entry then it's a `break`.
+        // For our body blocks, rewrite terminator `GoTo` labels if they target an entry
+        // or a follow entry. These are exits from the loop body, i.e. if they branch
+        // back to an entry then it's a `continue`, and if they branch to a follow entry
+        // then it's a `break`. This is necessary so that when we reloop the body blocks
+        // it doesn't get tripped up by the back/out edges. Without this, the reloop
+        // pass for the loop body would see the back edges and decide to produce a loop
+        // structure, even though we've already done that.
         //
-        // This is necessary so that when we reloop the body blocks it doesn't get
-        // tripped up by the back/out edges. Without this, the reloop pass for the loop
-        // body would see the back edges and decide to produce a loop structure, even
-        // though we've already done that. Changing from `GoTo` to `ExitTo` means that
-        // the back/out edges don't show up in the list of successors when calculating
-        // predecessor and reachability information.
-        //
-        // TODO: Is picking the first entry as the loop label always correct? Is there a
-        // situation where we'd end up with nested loops with the same label? I kinda
-        // suspect no, but I'm not sure.
+        // For back edges we also track which label we're going to use to identify the
+        // loop. A loop may have multiple entries (i.e. irreducible control flow), so we
+        // need to know which label to use when generating the AST.
         let loop_label = entries.first().unwrap();
         for bb in body_blocks.values_mut() {
             for lbl in bb.terminator.get_labels_mut() {
@@ -629,9 +627,6 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
                                 }
                                 ContinueTo { loop_label, target } => {
                                     merged_continue
-                                        // TODO: It might be nice to make a struct for the key,
-                                        // because currently it's easy to confuse which label is the
-                                        // loop label and which is the target.
                                         .entry((loop_label.clone(), target.clone()))
                                         .or_insert(Vec::new())
                                         .push(pat.clone());
@@ -877,25 +872,22 @@ fn compute_dominators(entry: &Label, predecessor_map: &AdjacencyList) -> Adjacen
 mod tests {
     use super::*;
 
-    /// Helper to create a synthetic label for testing
     fn label(id: u64) -> Label {
         Label::Synthetic(id)
     }
 
-    /// Helper to build a successor adjacency list from a list of edges
     fn build_successor_map(edges: &[(u64, u64)]) -> AdjacencyList {
         let mut graph: AdjacencyList = IndexMap::new();
         for &(from, to) in edges {
             graph.entry(label(from)).or_default().insert(label(to));
         }
-        // Ensure all nodes are in the graph, even if they have no outgoing edges
+        // Ensure all nodes are in the graph, even if they have no outgoing edges.
         for &(_, to) in edges {
             graph.entry(label(to)).or_default();
         }
         graph
     }
 
-    /// Helper to build a predecessor adjacency list from a list of edges
     fn build_predecessor_map(edges: &[(u64, u64)]) -> AdjacencyList {
         flip_edges(build_successor_map(edges))
     }
@@ -907,19 +899,12 @@ mod tests {
         let entry = label(1);
         let doms = compute_dominators(&entry, &predecessors);
 
-        // Node 1 is dominated only by itself
         assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
-
-        // Node 2 is dominated by 1 and 2
         assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
-
-        // Node 3 is dominated by 1, 2, and 3
         assert_eq!(
             doms.get(&label(3)),
             Some(&indexset! { label(1), label(2), label(3) })
         );
-
-        // Node 4 is dominated by 1, 2, 3, and 4
         assert_eq!(
             doms.get(&label(4)),
             Some(&indexset! { label(1), label(2), label(3), label(4) })
@@ -938,16 +923,9 @@ mod tests {
         let entry = label(1);
         let doms = compute_dominators(&entry, &predecessors);
 
-        // Node 1 dominates itself
         assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
-
-        // Node 2 is dominated by 1 and 2
         assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
-
-        // Node 3 is dominated by 1 and 3
         assert_eq!(doms.get(&label(3)), Some(&indexset! { label(1), label(3) }));
-
-        // Node 4 is dominated by 1 and 4 (not 2 or 3, since there are two paths)
         assert_eq!(doms.get(&label(4)), Some(&indexset! { label(1), label(4) }));
     }
 
@@ -961,13 +939,8 @@ mod tests {
         let entry = label(1);
         let doms = compute_dominators(&entry, &predecessors);
 
-        // Node 1 dominates itself
         assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
-
-        // Node 2 is dominated by 1 and 2
         assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
-
-        // Node 3 is dominated by 1, 2, and 3
         assert_eq!(
             doms.get(&label(3)),
             Some(&indexset! { label(1), label(2), label(3) })
@@ -999,13 +972,11 @@ mod tests {
             doms.get(&label(5)),
             Some(&indexset! { label(1), label(3), label(5) })
         );
-        // Node 6 is only dominated by 1 and itself (join point)
         assert_eq!(doms.get(&label(6)), Some(&indexset! { label(1), label(6) }));
     }
 
     #[test]
     fn test_dominators_single_node() {
-        // Single node CFG
         let predecessors: AdjacencyList = IndexMap::new();
         let entry = label(1);
         let doms = compute_dominators(&entry, &predecessors);
@@ -1037,22 +1008,13 @@ mod tests {
         let entry = label(1);
         let doms = compute_dominators(&entry, &predecessors);
 
-        // Node 1 dominates itself
         assert_eq!(doms.get(&label(1)), Some(&indexset! { label(1) }));
-
-        // Node 2: only predecessor is 1, so Dom(2) = {1, 2}
         assert_eq!(doms.get(&label(2)), Some(&indexset! { label(1), label(2) }));
-
-        // Node 3: predecessors are 1 and 2. Dom(3) = {3} ∪ (Dom(1) ∩ Dom(2)) = {1, 3}
         assert_eq!(doms.get(&label(3)), Some(&indexset! { label(1), label(3) }));
-
-        // Node 4: predecessor is 2 only. Dom(4) = {1, 2, 4}
         assert_eq!(
             doms.get(&label(4)),
             Some(&indexset! { label(1), label(2), label(4) })
         );
-
-        // Node 5: predecessors are 3 and 4. Dom(5) = {5} ∪ (Dom(3) ∩ Dom(4)) = {1, 5}
         assert_eq!(doms.get(&label(5)), Some(&indexset! { label(1), label(5) }));
     }
 }
