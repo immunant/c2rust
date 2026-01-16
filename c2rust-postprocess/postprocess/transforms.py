@@ -31,16 +31,19 @@ class CommentTransferPrompt:
     identifier: str
 
     def __str__(self) -> str:
-        return (
-            self.prompt_text
-            + "\n\n"
-            + "C function:\n```c\n"
-            + self.c_function
-            + "```\n\n"
-            + "Rust function:\n```rust\n"
-            + self.rust_function
-            + "```\n"
-        )
+        return f"""
+{self.prompt_text}
+
+C function:
+```c
+{self.c_function}
+```
+
+Rust function:
+```rust
+{self.rust_function}
+```
+""".lstrip()
 
 
 @dataclass
