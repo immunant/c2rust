@@ -4,7 +4,7 @@ use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use std::cell::RefCell;
-use std::cmp::Ordering;
+use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display};
 use std::ops::Index;
@@ -141,6 +141,34 @@ impl<T> Located<T> {
     }
 }
 
+/// This holds a [`SrcLoc`] and its [`include_path`](TypedAstContext::include_path)
+/// such that it is naturally ordered.
+///
+/// The include path starts from where the item is first included,
+/// working its way back to the last include path,
+/// which contains the definition of the item.
+/// Thus, to compare them, we compare the include path first
+/// and then the definition's location.
+#[derive(PartialEq, Eq, Ord, Debug)]
+struct SrcLocInclude<'a> {
+    loc: SrcLoc,
+    include_path: &'a [SrcLoc],
+}
+
+impl SrcLocInclude<'_> {
+    fn cmp_iter<'a>(&'a self) -> impl Iterator<Item = SrcLoc> + 'a {
+        // See docs on `Self` for why this is the right comparison.
+        let Self { loc, include_path } = *self;
+        include_path.iter().copied().chain([loc])
+    }
+}
+
+impl PartialOrd for SrcLocInclude<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp_iter().cmp(other.cmp_iter()))
+    }
+}
+
 impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
@@ -216,6 +244,27 @@ impl TypedAstContext {
         includes
     }
 
+    /// Compare a [`SrcLoc`] based on its include path.
+    pub fn cmp_loc_include<'a>(&'a self, loc: SrcLoc) -> impl Eq + Ord + Debug + 'a {
+        SrcLocInclude {
+            loc,
+            include_path: self.include_path(loc),
+        }
+    }
+
+    /// Compare a [`SrcSpan`] based on its include path.
+    pub fn cmp_span_include<'a>(&'a self, span: &SrcSpan) -> impl Eq + Ord + Debug + 'a {
+        self.cmp_loc_include(span.begin())
+    }
+
+    /// Compare a [`Located`] based on its include path.
+    pub fn cmp_located_include<'a, T>(
+        &'a self,
+        located: &Located<T>,
+    ) -> impl Eq + Ord + Debug + 'a {
+        located.loc.map(|span| self.cmp_span_include(&span))
+    }
+
     pub fn loc_to_string(&self, loc: SrcLoc) -> String {
         let SrcLoc {
             fileid,
@@ -235,43 +284,6 @@ impl TypedAstContext {
             .chain(self.include_path(loc))
             .map(|&loc| self.loc_to_string(loc))
             .join("\n    included from ")
-    }
-
-    /// Compare two [`SrcLoc`]s based on their include path.
-    pub fn compare_src_locs(&self, a: &SrcLoc, b: &SrcLoc) -> Ordering {
-        /// Compare without regard to `fileid`.
-        fn cmp_pos(a: &SrcLoc, b: &SrcLoc) -> Ordering {
-            (a.line, a.column).cmp(&(b.line, b.column))
-        }
-
-        use Ordering::*;
-        let path_a = self.include_path(*a);
-        let path_b = self.include_path(*b);
-
-        // Find the first include that does not match between the two
-        let common_len = path_a.len().min(path_b.len());
-        let order = path_a[..common_len].cmp(&path_b[..common_len]);
-        if order != Equal {
-            return order;
-        }
-
-        // Either all parent includes are the same, or the include paths are of different lengths
-        // because .zip() stops when one of the iterators is empty.
-        match path_a.len().cmp(&path_b.len()) {
-            Less => {
-                // a has the shorter path, which means b was included in a's file
-                // so extract that include and compare the position to a
-                let b = &path_b[path_a.len()];
-                cmp_pos(a, b)
-            }
-            Equal => a.cmp(b), // a and b have the same include path and are thus in the same file
-            Greater => {
-                // b has the shorter path, which means a was included in b's file
-                // so extract that include and compare the position to b
-                let a = &path_a[path_b.len()];
-                cmp_pos(a, b)
-            }
-        }
     }
 
     pub fn get_file_include_line_number(&self, file: FileId) -> Option<u64> {
@@ -1171,17 +1183,7 @@ impl TypedAstContext {
     /// This preserves the order when we emit the converted declarations.
     pub fn sort_top_decls_for_emitting(&mut self) {
         let mut decls_top = mem::take(&mut self.c_decls_top);
-        decls_top.sort_unstable_by(|a, b| {
-            let a = self.index(*a);
-            let b = self.index(*b);
-            use Ordering::*;
-            match (&a.loc, &b.loc) {
-                (None, None) => Equal,
-                (None, _) => Less,
-                (_, None) => Greater,
-                (Some(a), Some(b)) => self.compare_src_locs(&a.begin(), &b.begin()),
-            }
-        });
+        decls_top.sort_unstable_by_key(|&decl| self.cmp_located_include(self.index(decl)));
         self.c_decls_top = decls_top;
     }
 
@@ -1249,9 +1251,10 @@ impl CommentContext {
         // Sort in REVERSE! Last element is the first in file source
         // ordering. This makes it easy to pop the next comment off.
         for comments in comments_by_file.values_mut() {
-            comments.sort_by(|a, b| {
-                ast_context.compare_src_locs(&b.loc.unwrap().begin(), &a.loc.unwrap().begin())
-            });
+            for comment in comments.iter() {
+                comment.loc.unwrap();
+            }
+            comments.sort_by_key(|comment| Reverse(ast_context.cmp_located_include(comment)));
         }
 
         let comments_by_file = comments_by_file
@@ -1275,7 +1278,10 @@ impl CommentContext {
                 .unwrap()
                 .begin_loc()
                 .expect("All comments must have a source location");
-            if ctx.compare_src_locs(&next_comment_loc, &loc) != Ordering::Less {
+
+            let loc = ctx.cmp_loc_include(loc);
+            let next_comment_loc = ctx.cmp_loc_include(next_comment_loc);
+            if next_comment_loc >= loc {
                 break;
             }
 
@@ -2723,6 +2729,8 @@ impl CTypeKind {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
+
     use super::*;
 
     #[track_caller]
@@ -2972,11 +2980,15 @@ c = {c}
 
         check_transitivity(
             locs,
-            |a, b| ctx.compare_src_locs(a, b),
+            |&a, &b| -> Ordering {
+                let a = ctx.cmp_loc_include(a);
+                let b = ctx.cmp_loc_include(b);
+                a.cmp(&b)
+            },
             |loc| format!("{loc}"),
         );
 
         // This should not panic.
-        locs.sort_unstable_by(|a, b| ctx.compare_src_locs(a, b));
+        locs.sort_unstable_by_key(|&loc| ctx.cmp_loc_include(loc));
     }
 }
