@@ -590,19 +590,17 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
             }
 
             Multiple { entries, branches } => {
-                // If we have entries that aren't one of our branches, then our then case needs
-                // to be empty so that we fall through to the next structure. Otherwise we pull
-                // off the last branch as the then case.
-                //
-                // TODO: Is there a better way to do the `entries == branches.keys()` check? Can
-                // we do this without allocating a temporary collection? In theory we could do
-                // the comparison using iterators, but then if the order of the keys is
-                // different the comparison will fail even if they have the same keys.
-                let mut branches = branches.clone();
-                let then = if entries == &branches.keys().cloned().collect::<IndexSet<_>>() {
-                    let (_, then) = branches.pop().expect("There must be at least one branch");
+                // If we have entries that aren't one of our branches, our `then` case needs to
+                // be empty so that we fall through to the next structure. Otherwise we pull off
+                // the first branch as the `then` case in order to satisfy the exhaustiveness
+                // requirement for the generated `match`.
+                let mut branch_entries = branches.keys();
+                let then = if entries.iter().all(|entry| branches.contains_key(entry)) {
+                    let then_entry = branch_entries
+                        .next()
+                        .expect("There must be at least one branch");
                     process_cfg(
-                        &then,
+                        &branches[then_entry],
                         checked_entries,
                         &next_entries,
                         loop_context,
@@ -612,17 +610,16 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
                     S::empty()
                 };
 
-                let cases = branches
-                    .iter()
-                    .map(|(lbl, body)| {
+                let cases = branch_entries
+                    .map(|entry| {
                         let stmts = process_cfg(
-                            body,
+                            &branches[entry],
                             checked_entries,
                             &next_entries,
                             loop_context,
                             break_targets,
                         )?;
-                        Ok((lbl.clone(), stmts))
+                        Ok((entry.clone(), stmts))
                     })
                     .collect::<TranslationResult<_>>()?;
 
