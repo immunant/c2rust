@@ -2553,7 +2553,8 @@ impl<'c> Translation<'c> {
             }
         }
 
-        let checked_entries = cfg::structures::find_checked_multiples(&relooped);
+        let mut checked_entries = IndexSet::new();
+        cfg::structures::find_checked_entries(&relooped, &mut checked_entries);
 
         let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
         let current_block = mk().ident_expr(&current_block_ident);

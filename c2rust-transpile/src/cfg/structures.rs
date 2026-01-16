@@ -15,7 +15,7 @@ pub fn structured_cfg(
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
-    let mut ast = forward_cfg_help(
+    let mut ast = process_cfg(
         root,
         &checked_entries,
         &IndexSet::new(),
@@ -395,37 +395,37 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 #[allow(dead_code)]
 type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 
-/// Searches the structured CFG for checked multiples and returns the set of
-/// labels that are entries to a checked multiple.
-// TODO: Do this in a more efficiently so we don't have to allocate all these
-// intermidiate sets. We probably want to pass a mutable set down the recursion
-// to populate instead.
-pub fn find_checked_multiples(root: &[Structure<Stmt>]) -> IndexSet<Label> {
-    let mut multiples = IndexSet::new();
+/// Searches the structured CFG for loops with multiple entries.
+///
+/// When building the structured AST we need to known when a branch targets a
+/// one of the entries of a loop with multiple entries, since these branches
+/// need a `Goto` node in the AST (i.e. we need to set `current_block` before
+/// branching). This function gathers the set of labels that need `Goto` within
+/// the structured CFG.
+pub fn find_checked_entries(root: &[Structure<Stmt>], checked_entries: &mut IndexSet<Label>) {
     for structure in root {
         match structure {
             Structure::Loop { entries, body } => {
                 if entries.len() > 1 {
-                    multiples.extend(entries.iter().cloned());
+                    checked_entries.extend(entries.iter().cloned());
                 }
-                multiples.extend(find_checked_multiples(body));
+                find_checked_entries(body, checked_entries);
             }
             Structure::Multiple { branches, .. } => {
-                for (_, branch) in branches {
-                    multiples.extend(find_checked_multiples(branch));
+                for branch in branches.values() {
+                    find_checked_entries(branch, checked_entries);
                 }
             }
             Structure::Simple { .. } => {}
         }
     }
-    multiples
 }
 
-fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
+fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
     root: &[Structure<Stmt>],
     checked_entries: &IndexSet<Label>,
     followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
-    loop_context: &Option<(Label, &IndexSet<Label>)>,
+    loop_context: &Option<(Label, &IndexSet<Label>)>, // The label for the loop we're currently inside of, along with the entries to the next structure after the loop.
     break_targets: &mut IndexSet<Label>, // Any labels that we've had to indirectly `break` to. This tells us when we need to generate blocks as break targets.
 ) -> TranslationResult<S> {
     use Structure::*;
@@ -506,7 +506,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                     use StructureLabel::*;
 
                     match slbl {
-                        Nested(nested) => forward_cfg_help(
+                        Nested(nested) => process_cfg(
                             nested,
                             checked_entries,
                             &next_entries,
@@ -589,7 +589,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
 
             Loop { entries, body } => {
                 let label = entries.first().expect("There must be at least one entry");
-                let body = forward_cfg_help(
+                let body = process_cfg(
                     body,
                     checked_entries,
                     entries,
@@ -611,7 +611,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let mut branches = branches.clone();
                 let then = if entries == &branches.keys().cloned().collect::<IndexSet<_>>() {
                     let (_, then) = branches.pop().expect("There must be at least one branch");
-                    forward_cfg_help(
+                    process_cfg(
                         &then,
                         checked_entries,
                         &next_entries,
@@ -625,7 +625,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                 let cases = branches
                     .iter()
                     .map(|(lbl, body)| {
-                        let stmts = forward_cfg_help(
+                        let stmts = process_cfg(
                             body,
                             checked_entries,
                             &next_entries,
@@ -661,7 +661,7 @@ fn forward_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S 
                     &empty
                 };
 
-                let branch_ast = forward_cfg_help::<S>(
+                let branch_ast = process_cfg::<S>(
                     branch,
                     checked_entries,
                     next_entries,
