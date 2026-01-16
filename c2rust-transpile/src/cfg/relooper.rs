@@ -154,7 +154,7 @@ pub fn reloop(
         scopes: vec![live_in],
         lifted: IndexSet::new(),
         loop_info,
-        multiple_info,
+        _multiple_info: multiple_info,
         domination_sets,
         global_predecessors,
     };
@@ -190,8 +190,11 @@ struct RelooperState {
     /// Information about loops
     loop_info: Option<LoopInfo<Label>>,
 
-    /// Information about multiples
-    multiple_info: Option<MultipleInfo<Label>>,
+    /// Information about branches.
+    ///
+    /// Currently unused by the new relooper logic, but we don't want to delete
+    /// this just yet because it may still have use.
+    _multiple_info: Option<MultipleInfo<Label>>,
 
     /// The set of nodes dominated by each node in the CFG.
     ///

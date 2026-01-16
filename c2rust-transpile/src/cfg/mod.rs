@@ -182,17 +182,6 @@ pub enum Structure<Stmt> {
     },
 }
 
-impl<S> Structure<S> {
-    fn get_entries(&self) -> &IndexSet<Label> {
-        use Structure::*;
-        match self {
-            Simple { entries, .. } => entries,
-            Loop { entries, .. } => entries,
-            Multiple { entries, .. } => entries,
-        }
-    }
-}
-
 impl Structure<StmtOrDecl> {
     /// Produce a new `Structure` from the existing one by replacing all `StmtOrDecl::Decl`
     /// variants with either a declaration with initializer or only an initializer.
