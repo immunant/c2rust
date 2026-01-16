@@ -23,21 +23,12 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+@dataclass
 class CommentTransferPrompt:
     c_function: str
     rust_function: str
     prompt_text: str
     identifier: str
-
-    __slots__ = ("c_function", "rust_function", "prompt_text", "identifier")
-
-    def __init__(
-        self, c_function: str, rust_function: str, prompt_text: str, identifier: str
-    ):
-        self.c_function = c_function
-        self.rust_function = rust_function
-        self.prompt_text = prompt_text
-        self.identifier = identifier
 
     def __str__(self) -> str:
         return (
