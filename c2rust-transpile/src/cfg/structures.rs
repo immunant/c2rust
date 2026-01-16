@@ -402,8 +402,8 @@ type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 /// need a `Goto` node in the AST (i.e. we need to set `current_block` before
 /// branching). This function gathers the set of labels that need `Goto` within
 /// the structured CFG.
-pub fn find_checked_entries(root: &[Structure<Stmt>], checked_entries: &mut IndexSet<Label>) {
-    for structure in root {
+pub fn find_checked_entries(structures: &[Structure<Stmt>], checked_entries: &mut IndexSet<Label>) {
+    for structure in structures {
         match structure {
             Structure::Loop { entries, body } => {
                 if entries.len() > 1 {
@@ -422,8 +422,8 @@ pub fn find_checked_entries(root: &[Structure<Stmt>], checked_entries: &mut Inde
 }
 
 fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
-    root: &[Structure<Stmt>],
-    checked_entries: &IndexSet<Label>,
+    structures: &[Structure<Stmt>],
+    checked_entries: &IndexSet<Label>, // Labels that require `current_block` to be set before traveling to them.
     followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
     loop_context: &Option<(Label, &IndexSet<Label>)>, // The label for the loop we're currently inside of, along with the entries to the next structure after the loop.
     break_targets: &mut IndexSet<Label>, // Any labels that we've had to indirectly `break` to. This tells us when we need to generate blocks as break targets.
@@ -459,18 +459,11 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
         rest
     }
 
-    // Gets the followup entries for the structure at index `i`. This only considers the handled
-    // branches of multiples. If we are looking past the last structure, then we use
-    // `followup_entries`.
-    //
-    // TODO: Do this better, the way we have to clone/allocate sets is kinda gross. Oh also this is
-    // kinda named bad and does the wrong thing because for loops it's not the next structures
-    // entries that come up next, it's the loop's entries that we'll hit when we get to the end of
-    // the loop. we're currently handling it correctly when we render the loops body, but the way
-    // we're doing it could probbby be clearer.
-    let get_next_entries = |i: usize| {
-        if i < root.len() {
-            match &root[i] {
+    // Gets the entries for the structure at index `i`. If we are looking past the
+    // last structure, then we use `followup_entries`.
+    let get_entries = |i: usize| {
+        if i < structures.len() {
+            match &structures[i] {
                 Simple { entries, .. } => entries.clone(),
                 Loop { entries, .. } => entries.clone(),
                 Multiple { branches, .. } => {
@@ -484,9 +477,9 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
 
     let mut ast = S::empty();
     let mut i = 0;
-    while i < root.len() {
-        let structure = &root[i];
-        let next_entries = get_next_entries(i + 1);
+    while i < structures.len() {
+        let structure = &structures[i];
+        let next_entries = get_entries(i + 1);
 
         // Generate the AST for the current structure.
         let mut structure_ast = match structure {
@@ -514,9 +507,6 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
                             break_targets,
                         ),
 
-                        // TODO: Maybe merge BreakTo and ContinueTo back into a
-                        // single ExitTo, but have it also hold on to an
-                        // `ExitStyle` to capture which kind of exit it is.
                         BreakTo(to) => {
                             let mut new_ast = if checked_entries.contains(to) {
                                 S::mk_goto(to.clone())
@@ -643,8 +633,8 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
         i += 1;
 
         // Handle any followup multiple structures by wrapping the current structure's AST in a block.
-        while let Some(Multiple { branches, .. }) = root.get(i) {
-            let next_entries = get_next_entries(i + 1);
+        while let Some(Multiple { branches, .. }) = structures.get(i) {
+            let next_entries = get_entries(i + 1);
 
             // Generate blocks as break targets for the remaining branches.
             for (branch_idx, entry) in sort_branches(branches).iter().enumerate() {
@@ -681,7 +671,7 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
 
         // Check for a simple or loop after the multiple. If there is one, we need to
         // also wrap the current ast in a labeled block.
-        match root.get(i) {
+        match structures.get(i) {
             Some(Simple { entries, .. }) | Some(Loop { entries, .. }) => {
                 for entry in entries {
                     if break_targets.contains(entry) {
