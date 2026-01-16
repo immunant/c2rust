@@ -1,6 +1,8 @@
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from re import Pattern
 from textwrap import dedent
 
 from postprocess.cache import AbstractCache
@@ -50,6 +52,16 @@ class CommentTransferPrompt:
         )
 
 
+@dataclass
+class CommentTransferOptions:
+    exclude_list: IdentifierExcludeList
+    ident_filter: str | None = None
+    update_rust: bool = True
+
+    def ident_regex(self) -> Pattern[str] | None:
+        return re.compile(self.ident_filter) if self.ident_filter else None
+
+
 class CommentTransfer:
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
         self.cache = cache
@@ -59,11 +71,9 @@ class CommentTransfer:
         self,
         root_rust_source_file: Path,
         rust_source_file: Path,
-        exclude_list: IdentifierExcludeList,
-        ident_filter: str | None = None,
-        update_rust: bool = True,
+        options: CommentTransferOptions,
     ) -> None:
-        ident_regex = re.compile(ident_filter) if ident_filter else None
+        ident_regex = options.ident_regex()
 
         rust_definitions = get_rust_definitions(rust_source_file)
         c_definitions = get_c_definitions(rust_source_file)
@@ -73,16 +83,18 @@ class CommentTransfer:
 
         prompts: list[CommentTransferPrompt] = []
         for identifier, rust_definition in rust_definitions.items():
-            if exclude_list.contains(path=rust_source_file, identifier=identifier):
+            if options.exclude_list.contains(
+                path=rust_source_file, identifier=identifier
+            ):
                 logging.info(
                     f"Skipping Rust fn {identifier} in {rust_source_file}"
-                    f"due to exclude file {exclude_list.src_path}"
+                    f"due to exclude file {options.exclude_list.src_path}"
                 )
                 continue
             if ident_regex and not ident_regex.search(identifier):
                 logging.info(
                     f"Skipping Rust fn {identifier} in {rust_source_file}"
-                    f"due to ident filter {ident_filter}"
+                    f"due to ident filter {options.ident_filter}"
                 )
                 continue
 
@@ -172,7 +184,7 @@ class CommentTransfer:
 
             print(get_highlighted_rust(rust_fn))
 
-            if update_rust:
+            if options.update_rust:
                 update_rust_definition(
                     root_rust_source_file=root_rust_source_file,
                     identifier=prompt.identifier,
@@ -182,9 +194,7 @@ class CommentTransfer:
     def transfer_comments_dir(
         self,
         root_rust_source_file: Path,
-        exclude_list: IdentifierExcludeList,
-        ident_filter: str | None = None,
-        update_rust: bool = True,
+        options: CommentTransferOptions,
     ):
         """
         Run `self.transfer_comments` on each `*.rs` in `dir`
@@ -200,7 +210,5 @@ class CommentTransfer:
             self.transfer_comments(
                 root_rust_source_file=root_rust_source_file,
                 rust_source_file=rs_path,
-                exclude_list=exclude_list,
-                ident_filter=ident_filter,
-                update_rust=update_rust,
+                options=options,
             )
