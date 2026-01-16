@@ -391,6 +391,9 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
         env::set_var("RUSTUP_TOOLCHAIN", toolchain_ver);
     }
 
+    // If `$RUSTC_WRAPPER` is set, an extra `rustc` arg will be set, which we don't want.
+    env::remove_var("RUSTC_WRAPPER");
+
     // Shut the compiler up while refactoring
     let mut rustflags = env::var_os("RUSTFLAGS").unwrap_or_default();
     rustflags.push(" -Awarnings");
