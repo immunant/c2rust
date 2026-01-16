@@ -18,6 +18,7 @@ from postprocess.transforms import (
     SYSTEM_INSTRUCTION,
     AbstractGenerativeModel,
     CommentTransfer,
+    CommentTransferOptions,
 )
 from postprocess.utils import existing_file
 
@@ -135,11 +136,14 @@ def main(argv: Sequence[str] | None = None):
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
-        xform.transfer_comments_dir(
-            root_rust_source_file=args.root_rust_source_file,
+        options = CommentTransferOptions(
             exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
+        )
+        xform.transfer_comments_dir(
+            root_rust_source_file=args.root_rust_source_file,
+            options=options,
         )
 
         return 0
