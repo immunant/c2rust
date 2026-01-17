@@ -1,0 +1,49 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+assertion_line: 105
+expression: cat tests/snapshots/os-specific/call_only_once.linux.rs
+input_file: c2rust-transpile/tests/snapshots/os-specific/call_only_once.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(label_break_value)]
+extern "C" {
+    fn __assert_fail(
+        __assertion: *const ::core::ffi::c_char,
+        __file: *const ::core::ffi::c_char,
+        __line: ::core::ffi::c_uint,
+        __function: *const ::core::ffi::c_char,
+    ) -> !;
+}
+pub const __ASSERT_FUNCTION: [::core::ffi::c_char; 32] = unsafe {
+    ::core::mem::transmute::<[u8; 32], [::core::ffi::c_char; 32]>(
+        *b"int assert_call_only_once(void)\0",
+    )
+};
+static mut called: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+unsafe extern "C" fn called_only_once() -> ::core::ffi::c_int {
+    called += 1;
+    return 1 as ::core::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
+    '_c2rust_label: {
+        if called_only_once() != 0 {
+        } else {
+            __assert_fail(
+                b"called_only_once()\0" as *const u8 as *const ::core::ffi::c_char,
+                b"./tests/snapshots/os-specific/call_only_once.c\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+                12 as ::core::ffi::c_uint,
+                __ASSERT_FUNCTION.as_ptr(),
+            );
+        }
+    };
+    return called;
+}

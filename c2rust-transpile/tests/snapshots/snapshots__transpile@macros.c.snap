@@ -1,5 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
+assertion_line: 105
 expression: cat tests/snapshots/macros.rs
 input_file: c2rust-transpile/tests/snapshots/macros.c
 ---
@@ -383,7 +384,6 @@ pub unsafe extern "C" fn stmt_expr_inc() -> ::core::ffi::c_int {
     ({
         *b += 1;
         *b;
-        *b
     });
     return ({
         *b += 1;

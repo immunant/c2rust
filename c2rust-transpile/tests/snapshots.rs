@@ -95,6 +95,9 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
 
+    // Replace real paths with placeholders
+    let rs = rs.replace(cwd.to_str().unwrap(), ".");
+
     let snapshot_name = match platform {
         None => "transpile".into(),
         Some(platform) => format!("transpile-{platform}"),
