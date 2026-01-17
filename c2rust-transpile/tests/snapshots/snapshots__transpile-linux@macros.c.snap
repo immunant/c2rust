@@ -22,12 +22,12 @@ extern "C" {
 pub type size_t = usize;
 #[no_mangle]
 pub unsafe extern "C" fn errno_is_error() -> bool {
-    return *__errno_location() != 0 as ::core::ffi::c_int;
+    *__errno_location() != 0 as ::core::ffi::c_int
 }
 #[no_mangle]
 pub unsafe extern "C" fn size_of_const() -> ::core::ffi::c_int {
     let mut a: [::core::ffi::c_int; 10] = [0; 10];
-    return SIZE as ::core::ffi::c_int;
+    SIZE as ::core::ffi::c_int
 }
 pub const SIZE: usize = ::core::mem::size_of::<[::core::ffi::c_int; 10]>();
 pub const POS: [::core::ffi::c_char; 3] =

@@ -35,6 +35,6 @@ pub unsafe extern "C" fn c11_atomics(mut x: ::core::ffi::c_int) -> ::core::ffi::
         ::core::intrinsics::atomic_cxchgweak_seqcst_seqcst(&raw mut x, *&raw mut expected, desired);
     *&raw mut expected = fresh1.0;
     fresh1.1;
-    return x;
+    x
 }
 pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
