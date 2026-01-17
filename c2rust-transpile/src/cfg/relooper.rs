@@ -36,12 +36,6 @@
 //! successors of the entry becoming the new entries for the rest of that
 //! portion of the CFG.
 //!
-//! If we have entries with back edges to them, then we can generate a `Loop`
-//! structure. Any nodes that can reach the entry become part of the loop body,
-//! with any remaining nodes becoming the follow blocks for the loop. The loop's
-//! contents are then relooped into the loops's body, and the follow blocks get
-//! relooped to be the logic that follows the loop.
-//!
 //! If we have more than one entry, then we can generate a `Multiple` structure.
 //! These are effectively `match` statements, with each entry becoming an arm of
 //! the `match`. Blocks that are only reachable by one of the entries (including
@@ -50,55 +44,24 @@
 //! then recursively reloop each of the branches of the multiple, and then
 //! reloop the follow blocks.
 //!
-//! Note that there are a lot of subtleties to how we choose to partition blocks
-//! into these structures. The logic in the relooper implementation contains
-//! thorough comments describing what we're doing at each step and why we are
-//! making the choices that we do. This module documentation covers some of
-//! them, but you'll need to read through the full algorithm to get all of the
-//! nuances.
+//! If we have entries with back edges to them, then we can generate a `Loop`
+//! structure. Any nodes that can reach the entry become part of the loop body,
+//! with any remaining nodes becoming the follow blocks for the loop. The loop's
+//! contents are then relooped into the loops's body, and the follow blocks get
+//! relooped to be the logic that follows the loop.
 //!
-//! # Heuristics
+//! # Simplification and Nesting
 //!
-//! When reconstructing structured control flow from a CFG, there are often
-//! multiple valid ways to structure the graph. In order to produce Rust code
-//! that is as similar to the original C as possible, we have a couple of
-//! heuristics that use information from the original C code to guide the
-//! restructuring process.
+//! After the relooper algorithm runs, we run a secondary simplification pass
+//! that moves branches of `Multiple`s directly into the terminator branches of
+//! the preceding `Simple`. This is what allows us to put code directly within
+//! the body of `if` blocks.
 //!
-//! Before creating a loop, we first try to match a `Multiple` from the original
-//! C. During transpilation we preserve information about where there are
-//! branches in the C code along with which CFG nodes are part of those
-//! branches, which we can then look up based on the current set of entries. If
-//! we find that there is a `Multiple` in the original C that matches our
-//! current entries, and the structure of the CFG allows it, we can reproduce
-//! the control-flow from the original C. Doing this before creating a loop
-//! helps in cases where we have branches with multiple disjoint loops, since
-//! the loop analysis does not recognize disjoint loops and will always produce
-//! a single loop with a `Multiple` inside of it handling the bodies of what
-//! should be separate loops.
-//!
-//! When creating loops, we also make use of a similar heuristic that tries to
-//! recreate the loops that we see in the original C. When partitioning blocks
-//! into the loop's body, we first attempt to match an existing loop from the
-//! original C. Failing that, we fall back on a heuristic that tries to keep as
-//! many blocks as possible in the loop's body, even if they don't strictly
-//! belong there according to the original C structure.
-//!
-//! # Simplification
-//!
-//! After the relooper algorithm runs, we have an optional simplification pass
-//! that attempts to reduce the complexity of the generated control flow
-//! structures. This pass can help to eliminate unnecessary nesting and make the
-//! final output more readable. It applies two main simplifications:
-//!
-//! - Merge cases in [`Switch`] terminators if they target the same label. That
-//!   means instead of having `1 => goto A, 2 => goto A, 3 => goto B`, we
-//!   instead get `1 | 2 => goto A, 3 => goto B`.
-//! - Inline `Multiple` structures into preceding `Simple` structures. When a
-//!   `Simple` structure with a `Switch` terminator is immediately followed by a
-//!   `Multiple`, the branches from the `Multiple` are inlined directly into the
-//!   `Switch` cases as `Nested` structures, eliminating the intermediate
-//!   `Multiple` and reducing nesting depth.
+//! It also applies a secondary simplification of merging cases in `switch`
+//! terminators if they target the same label. That means instead of having `1
+//! => goto A, 2 => goto A, 3 => goto B`, we instead get `1 | 2 => goto A, 3 =>
+//! goto B`. This is important for ensuring that we can also nest code inside
+//! the arms of the generated `match`.
 
 use super::*;
 
@@ -820,7 +783,7 @@ fn transitive_closure<V: Clone + Hash + Eq>(
     closure
 }
 
-/// Calculate the dominator sets for each node in the CFG.
+/// Calculates the dominator sets for each node in the CFG.
 ///
 /// A node `d` dominates node `n` if every path from the entry to `n` must pass
 /// through `d`. Every node dominates itself.
