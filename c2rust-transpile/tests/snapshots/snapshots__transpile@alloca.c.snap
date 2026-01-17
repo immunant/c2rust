@@ -18,23 +18,25 @@ pub unsafe extern "C" fn alloca_sum(
     mut val1: ::core::ffi::c_int,
     mut val2: ::core::ffi::c_int,
 ) -> ::core::ffi::c_int {
-    let mut alloca_allocations: Vec<Vec<u8>> = Vec::new();
+    let mut c2rust_alloca_allocations: Vec<Vec<u8>> = Vec::new();
     let mut alloca1: *mut ::core::ffi::c_int = ::core::ptr::null_mut::<::core::ffi::c_int>();
     let mut alloca2: *mut ::core::ffi::c_int = ::core::ptr::null_mut::<::core::ffi::c_int>();
     if TRUE != 0 {
-        alloca_allocations.push(::std::vec::from_elem(
+        c2rust_alloca_allocations.push(::std::vec::from_elem(
             0,
             ::core::mem::size_of::<::core::ffi::c_int>() as usize,
         ));
-        alloca1 = alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_int;
+        alloca1 =
+            c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_int;
         *alloca1 = val1;
     }
     if TRUE != 0 {
-        alloca_allocations.push(::std::vec::from_elem(
+        c2rust_alloca_allocations.push(::std::vec::from_elem(
             0,
             ::core::mem::size_of::<::core::ffi::c_int>() as usize,
         ));
-        alloca2 = alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_int;
+        alloca2 =
+            c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_int;
         *alloca2 = val2;
     }
     return *alloca1 + *alloca2;
