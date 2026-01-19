@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from hashlib import sha256
 from pathlib import Path
+from shutil import rmtree
 from tempfile import gettempdir
 from typing import Any, Self, Union
 
@@ -74,6 +75,13 @@ class AbstractCache(ABC):
         Not abstract because not all implementations need it.
         """
         pass
+
+    def gc_sweep(self) -> None:
+        """
+        Garbage collect everything in the cache that
+        hasn't been used by `lookup` or `update` since the last `gc_sweep`.
+        """
+        raise NotImplementedError
 
 
 TomlValue = Union[None, str, int, float, bool, "TomlList", "TomlDict"]
@@ -161,6 +169,25 @@ class DirectoryCache(AbstractCache):
         message_digest = self.get_message_digest(messages)
         return self._path / transform / identifier / message_digest
 
+    def gc_mark_file(self) -> Path:
+        """
+        `.gc`, containing paths to not be swept/deleted.
+        """
+
+        return self._path / ".gc"
+
+    def gc_mark(self, path: Path):
+        """
+        Mark a path in `.gc` to not be swept/deleted.
+        """
+
+        rel_path = path.relative_to(self._path)
+        if "\n" in str(rel_path):
+            raise ValueError(f"'\\n' cannot be in path: {rel_path}")
+        with open(self.gc_mark_file(), "a") as f:
+            f.write(f"{rel_path}\n")
+            f.flush()
+
     def lookup(
         self,
         *,
@@ -185,7 +212,9 @@ class DirectoryCache(AbstractCache):
             toml = to_multiline_toml(data)
             logging.debug(f"Cache miss: {cache_file}:\n{toml}")
             return None
+
         logging.debug(f"Cache hit: {cache_file}:\n{toml}")
+        self.gc_mark(cache_dir)
         data = tomli.loads(toml)
 
         return data["response"]
@@ -216,10 +245,37 @@ class DirectoryCache(AbstractCache):
         response_path = cache_dir / "response.txt"
         metadata_path.write_text(toml)
         response_path.write_text(response)
+
         logging.debug(f"Cache updated: {cache_dir}:\n{toml}")
+        self.gc_mark(cache_dir)
 
     def clear(self) -> None:
         self._path.unlink(missing_ok=True)
+
+    def gc_sweep(self) -> None:
+        """
+        Sweep/delete everything in the cache that is not marked in `.gc`.
+        """
+
+        # Delete everything of the form `{transform}/{identifier}/{hash}/`
+        # that's not in `.gc`.  When completely done, delete `.gc`.
+        dirs_to_keep = {
+            Path(path) for path in self.gc_mark_file().read_text().split("\n")
+        }
+        for transform_dir in self._path.iterdir():
+            if not transform_dir.is_dir():
+                continue
+            for identifier_dir in transform_dir.iterdir():
+                if not identifier_dir.is_dir():
+                    continue
+                for hash_dir in identifier_dir.iterdir():
+                    if not hash_dir.is_dir():
+                        continue
+                    rel_hash_dir = hash_dir.relative_to(self._path)
+                    if rel_hash_dir in dirs_to_keep:
+                        continue
+                    rmtree(hash_dir)
+        self.gc_mark_file().unlink()
 
 
 class FrozenCache(AbstractCache):
