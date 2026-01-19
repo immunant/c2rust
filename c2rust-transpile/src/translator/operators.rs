@@ -181,6 +181,7 @@ impl<'c> Translation<'c> {
                                 .and_then(|rhs_val| {
                                     let expr_ids = Some((lhs, rhs));
                                     self.convert_binary_operator(
+                                        ctx,
                                         op,
                                         ty,
                                         expr_type_id.ctype,
@@ -235,6 +236,7 @@ impl<'c> Translation<'c> {
             };
             let ty = self.convert_type(compute_res_type_id.ctype)?;
             let mut val = self.convert_binary_operator(
+                ctx,
                 bin_op,
                 ty,
                 compute_res_type_id.ctype,
@@ -456,6 +458,7 @@ impl<'c> Translation<'c> {
 
                             let val = if expr_or_comp_type_id.ctype == initial_lhs_type_id.ctype {
                                 self.convert_binary_operator(
+                                    ctx,
                                     op,
                                     ty,
                                     expr_type_id.ctype,
@@ -472,6 +475,7 @@ impl<'c> Translation<'c> {
                                 let lhs = mk().cast_expr(read.clone(), lhs_type);
                                 let ty = self.convert_type(result_type_id.ctype)?;
                                 let mut val = self.convert_binary_operator(
+                                    ctx,
                                     op,
                                     ty,
                                     result_type_id.ctype,
@@ -570,6 +574,7 @@ impl<'c> Translation<'c> {
     /// arguments be usable as rvalues.
     fn convert_binary_operator(
         &self,
+        ctx: ExprContext,
         op: c_ast::BinOp,
         ty: Box<Type>,
         ctype: CTypeId,
@@ -612,45 +617,27 @@ impl<'c> Translation<'c> {
             c_ast::BinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
 
             c_ast::BinOp::EqualEqual => {
-                // Using is_none method for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
-                let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
-                    let fn_eq_null = self.ast_context.is_function_pointer(lhs_type.ctype)
-                        && self.ast_context.is_null_expr(rhs_expr_id);
-                    let null_eq_fn = self.ast_context.is_function_pointer(rhs_type.ctype)
-                        && self.ast_context.is_null_expr(lhs_expr_id);
-
-                    if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_none", vec![])
-                    } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_none", vec![])
-                    } else {
-                        mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs)
+                let expr = match lhs_rhs_ids {
+                    Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
+                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, true)?
                     }
-                } else {
-                    mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs)
+                    Some((_, rhs_expr_id)) if self.ast_context.is_null_expr(rhs_expr_id) => {
+                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, true)?
+                    }
+                    _ => mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs),
                 };
 
                 bool_to_int(expr)
             }
             c_ast::BinOp::NotEqual => {
-                // Using is_some method for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
-                let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
-                    let fn_eq_null = self.ast_context.is_function_pointer(lhs_type.ctype)
-                        && self.ast_context.is_null_expr(rhs_expr_id);
-                    let null_eq_fn = self.ast_context.is_function_pointer(rhs_type.ctype)
-                        && self.ast_context.is_null_expr(lhs_expr_id);
-
-                    if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_some", vec![])
-                    } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_some", vec![])
-                    } else {
-                        mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs)
+                let expr = match lhs_rhs_ids {
+                    Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
+                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, false)?
                     }
-                } else {
-                    mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs)
+                    Some((_, rhs_expr_id)) if self.ast_context.is_null_expr(rhs_expr_id) => {
+                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, false)?
+                    }
+                    _ => mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs),
                 };
 
                 bool_to_int(expr)
