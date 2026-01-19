@@ -220,6 +220,33 @@ class CommentTransfer:
         transform = self.__class__.__name__
         model = self.model.id
 
+        if not options.fail_fast:
+            # If not failing fast, put all of the cached prompts at the beginning
+            # so that the progress is easier to follow.
+            cached_prompts = []
+            uncached_prompts = []
+            for prompt in prompts:
+                response = self.cache.lookup(
+                    transform=transform,
+                    identifier=prompt.identifier,
+                    model=model,
+                    messages=prompt.messages(),
+                )
+                if response is None:
+                    uncached_prompts.append(prompt)
+                else:
+                    cached_prompts.append(prompt)
+
+            logging.info(
+                "Transferred comments for"
+                f" {len(cached_prompts)}/{len(prompts)} cached Rust functions"
+            )
+            logging.info(
+                f"Transferring comments for"
+                f" {len(uncached_prompts)}/{len(prompts)} uncached Rust functions"
+            )
+            prompts = cached_prompts + uncached_prompts
+
         for prompt_num, prompt in enumerate(prompts):
             logging.info(
                 f"[{prompt_num}/{len(prompts)}] Transferring comments to"
