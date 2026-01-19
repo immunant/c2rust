@@ -166,6 +166,12 @@ def main(argv: Sequence[str] | None = None):
             print(f"{failure}\n\n")
 
         if failures:
+            print(f"""\
+failures exclude file:
+
+```yaml
+{CommentTransferFailure.to_exclude_file(failures)}
+```""")
             return 1
 
         return 0
