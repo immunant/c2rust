@@ -6,6 +6,8 @@ from pathlib import Path
 from re import Pattern
 from textwrap import dedent
 
+import yaml
+
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
     get_c_comments,
@@ -95,6 +97,17 @@ class CommentTransferFailure:
 
     def __str__(self) -> str:
         return f"{self.header()}\n\n{self.diff()}"
+
+    @staticmethod
+    def to_exclude_file(failures: Iterable["CommentTransferFailure"]) -> str:
+        path_to_fns: dict[str, list[str]] = {}
+        for failure in failures:
+            path = str(failure.prompt.rust_source_file)
+            fns = path_to_fns.get(path, [])
+            if not fns:
+                path_to_fns[path] = fns
+            fns.append(failure.prompt.identifier)
+        return yaml.dump(path_to_fns)
 
 
 class CommentTransfer:
