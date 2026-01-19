@@ -154,6 +154,10 @@ class CommentTransfer:
                     messages=messages,
                 )
             ):
+                logging.info(
+                    "Transferring comments to"
+                    f" Rust fn {identifier} in {rust_source_file}"
+                )
                 response = self.model.generate_with_tools(messages)
                 if response is None:
                     logging.error("Model returned no response")
