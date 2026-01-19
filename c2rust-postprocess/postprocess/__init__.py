@@ -163,7 +163,8 @@ def main(argv: Sequence[str] | None = None):
                 break
 
         for failure in failures:
-            print(f"{failure}\n")
+            failure.print()
+            print()
 
         if failures:
             print(f"""\

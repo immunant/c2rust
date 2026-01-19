@@ -8,6 +8,8 @@ from re import Pattern
 from textwrap import dedent
 
 import yaml
+from rich.console import Console
+from rich.syntax import Syntax
 
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
@@ -87,7 +89,7 @@ class CommentTransferFailure:
         )
 
     def diff(self) -> str:
-        diff = "".join(
+        return "".join(
             unified_diff(
                 a=[f"{comment}\n" for comment in self.c_comments],
                 b=[f"{comment}\n" for comment in self.rust_comments],
@@ -96,13 +98,23 @@ class CommentTransferFailure:
                 tofile=f"{self.prompt.rust_source_file}:{self.prompt.identifier}",
             )
         ).rstrip()
-        return f"""\
-```diff
-{diff}
-```"""
 
     def __str__(self) -> str:
-        return f"{self.header()}\n\n{self.diff()}"
+        return f"""\
+{self.header()}
+
+```diff
+{self.diff()}
+```"""
+
+    def print(self):
+        console = Console()
+        console.print(f"""\
+{self.header()}
+
+```diff""")
+        console.print(Syntax(self.diff(), "diff"))
+        console.print("```")
 
     @staticmethod
     def to_exclude_file(failures: Iterable["CommentTransferFailure"]) -> str:
