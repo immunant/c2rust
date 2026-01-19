@@ -1,22 +1,13 @@
+```rust
 #[no_mangle]
 pub unsafe extern "C" fn json_object_put(mut jso: *mut json_object) -> ::core::ffi::c_int {
     if jso.is_null() {
         return 0 as ::core::ffi::c_int;
     }
-    /* Avoid invalid free and crash explicitly instead of (silently)
-     * segfaulting.
-     */
-    if (*jso)._ref_count > 0 as uint32_t {
-    } else {
-        __assert_fail(
-            b"jso->_ref_count > 0\0" as *const u8 as *const ::core::ffi::c_char,
-            b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
-            192 as ::core::ffi::c_uint,
-            b"int json_object_put(struct json_object *)\0" as *const u8
-                as *const ::core::ffi::c_char,
-        );
-    }
-    'c_563: {
+    '_c2rust_label: {
+        /* Avoid invalid free and crash explicitly instead of (silently)
+         * segfaulting.
+         */
         if (*jso)._ref_count > 0 as uint32_t {
         } else {
             __assert_fail(
@@ -44,3 +35,4 @@ pub unsafe extern "C" fn json_object_put(mut jso: *mut json_object) -> ::core::f
     (*jso)._delete.expect("non-null function pointer")(jso);
     return 1 as ::core::ffi::c_int;
 }
+```

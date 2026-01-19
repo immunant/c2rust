@@ -33,17 +33,7 @@ unsafe extern "C" fn json_object_deep_copy_recursive(
         *__errno_location() = EINVAL;
         return -(1 as ::core::ffi::c_int);
     }
-    if !(*dst).is_null() {
-    } else {
-        __assert_fail(
-            b"*dst != NULL\\0" as *const u8 as *const ::core::ffi::c_char,
-            b"json_object.c\\0" as *const u8 as *const ::core::ffi::c_char,
-            1426 as ::core::ffi::c_uint,
-            b"int json_object_deep_copy_recursive(struct json_object *, struct json_object *, const char *, size_t, struct json_object **, json_c_shallow_copy_fn *)\\0"
-                as *const u8 as *const ::core::ffi::c_char,
-        );
-    }
-    'c_7255: {
+    '_c2rust_label: {
         if !(*dst).is_null() {
         } else {
             __assert_fail(
@@ -243,17 +233,7 @@ unsafe extern "C" fn json_object_deep_copy_recursive(
         *__errno_location() = EINVAL;
         return -(1 as ::core::ffi::c_int);
     }
-    if !(*dst).is_null() {
-    } else {
-        __assert_fail(
-            b"*dst != NULL\\0" as *const u8 as *const ::core::ffi::c_char,
-            b"json_object.c\\0" as *const u8 as *const ::core::ffi::c_char,
-            1426 as ::core::ffi::c_uint,
-            b"int json_object_deep_copy_recursive(struct json_object *, struct json_object *, const char *, size_t, struct json_object **, json_c_shallow_copy_fn *)\\0"
-                as *const u8 as *const ::core::ffi::c_char,
-        );
-    }
-    'c_7255: {
+    '_c2rust_label: {
         if !(*dst).is_null() {
         } else {
             __assert_fail(

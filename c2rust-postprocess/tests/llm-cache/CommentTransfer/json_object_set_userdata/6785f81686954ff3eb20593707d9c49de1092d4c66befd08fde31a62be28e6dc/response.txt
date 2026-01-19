@@ -1,0 +1,31 @@
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn json_object_set_userdata(
+    mut jso: *mut json_object,
+    mut userdata: *mut ::core::ffi::c_void,
+    mut user_delete: Option<crate::src::json_object::json_object_delete_fn>,
+) {
+    // Can't return failure, so abort if we can't perform the operation.
+    '_c2rust_label: {
+        if !jso.is_null() {
+        } else {
+            __assert_fail(
+                b"jso != NULL\0" as *const u8 as *const ::core::ffi::c_char,
+                b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
+                268 as ::core::ffi::c_uint,
+                b"void json_object_set_userdata(json_object *, void *, json_object_delete_fn *)\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    // First, clean up any previously existing user info
+    if (*jso)._user_delete.is_some() {
+        (*jso)._user_delete.expect("non-null function pointer")(
+            jso as *mut json_object,
+            (*jso)._userdata,
+        );
+    }
+    (*jso)._userdata = userdata;
+    (*jso)._user_delete = user_delete;
+}
+```
