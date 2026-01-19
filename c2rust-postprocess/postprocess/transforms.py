@@ -63,9 +63,38 @@ class CommentTransferOptions:
     exclude_list: IdentifierExcludeList
     ident_filter: str | None = None
     update_rust: bool = True
+    fail_fast: bool = True
 
     def ident_regex(self) -> Pattern[str] | None:
         return re.compile(self.ident_filter) if self.ident_filter else None
+
+
+@dataclass
+class CommentTransferFailure:
+    options: CommentTransferOptions
+    prompt: CommentTransferPrompt
+    c_comments: list[str]
+    rust_comments: list[str]
+
+    def header(self) -> str:
+        return (
+            f"comments differ"
+            f" in fn {self.prompt.identifier}"
+            f" in {self.prompt.rust_source_file}:"
+        )
+
+    def diff(self) -> str:
+        return f"""\
+    C comments:
+{"\n".join(self.c_comments)}
+
+    vs.
+
+    Rust comments:
+{"\n".join(self.rust_comments)}"""
+
+    def __str__(self) -> str:
+        return f"{self.header()}\n\n{self.diff()}"
 
 
 class CommentTransfer:
@@ -180,7 +209,7 @@ class CommentTransfer:
         self,
         prompts: Iterable[CommentTransferPrompt],
         options: CommentTransferOptions,
-    ):
+    ) -> Generator[CommentTransferFailure, None, None]:
         """
         Run all of the `CommentTransferPrompt`s.
         """
@@ -225,7 +254,13 @@ class CommentTransfer:
             rust_comments = get_rust_comments(rust_fn)
             logging.debug(f"{rust_comments=}")
 
-            assert c_comments == rust_comments
+            if c_comments != rust_comments:
+                yield CommentTransferFailure(
+                    options=options,
+                    prompt=prompt,
+                    c_comments=c_comments,
+                    rust_comments=rust_comments,
+                )
 
             logging.info(get_highlighted_rust(rust_fn))
 
@@ -241,8 +276,8 @@ class CommentTransfer:
         root_rust_source_file: Path,
         rust_source_file: Path,
         options: CommentTransferOptions,
-    ) -> None:
-        self._run_prompts(
+    ) -> Generator[CommentTransferFailure, None, None]:
+        yield from self._run_prompts(
             self._transfer_comments_prompts(
                 root_rust_source_file=root_rust_source_file,
                 rust_source_file=rust_source_file,
@@ -255,12 +290,12 @@ class CommentTransfer:
         self,
         root_rust_source_file: Path,
         options: CommentTransferOptions,
-    ):
+    ) -> Generator[CommentTransferFailure, None, None]:
         """
         Run `self.transfer_comments` on each `*.rs` in `dir`
         with a corresponding `*.c_decls.json`.
         """
-        self._run_prompts(
+        yield from self._run_prompts(
             self._transfer_comments_dir_prompts(
                 root_rust_source_file=root_rust_source_file,
                 options=options,
