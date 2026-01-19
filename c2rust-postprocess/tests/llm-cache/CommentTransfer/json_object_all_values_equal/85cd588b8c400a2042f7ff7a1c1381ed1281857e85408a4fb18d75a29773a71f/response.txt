@@ -9,20 +9,7 @@ unsafe extern "C" fn json_object_all_values_equal(
     entry:  ::core::ptr::null_mut::<lh_entry>(),
 };
     let mut sub: *mut json_object = ::core::ptr::null_mut::<json_object>();
-    if json_object_get_type(jso1) as ::core::ffi::c_uint
-        == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
-    {
-    } else {
-        __assert_fail(
-            b"json_object_get_type(jso1) == json_type_object\0" as *const u8
-                as *const ::core::ffi::c_char,
-            b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
-            1277 as ::core::ffi::c_uint,
-            b"int json_object_all_values_equal(struct json_object *, struct json_object *)\0"
-                as *const u8 as *const ::core::ffi::c_char,
-        );
-    }
-    'c_6475: {
+    '_c2rust_label: {
         if json_object_get_type(jso1) as ::core::ffi::c_uint
             == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
         {
@@ -37,20 +24,7 @@ unsafe extern "C" fn json_object_all_values_equal(
             );
         }
     };
-    if json_object_get_type(jso2) as ::core::ffi::c_uint
-        == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
-    {
-    } else {
-        __assert_fail(
-            b"json_object_get_type(jso2) == json_type_object\0" as *const u8
-                as *const ::core::ffi::c_char,
-            b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
-            1278 as ::core::ffi::c_uint,
-            b"int json_object_all_values_equal(struct json_object *, struct json_object *)\0"
-                as *const u8 as *const ::core::ffi::c_char,
-        );
-    }
-    'c_6425: {
+    '_c2rust_label_0: {
         if json_object_get_type(jso2) as ::core::ffi::c_uint
             == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
         {
@@ -117,5 +91,4 @@ unsafe extern "C" fn json_object_all_values_equal(
         iter.entry = (*iter.entry).next as *mut lh_entry;
     }
     return 1 as ::core::ffi::c_int;
-}
-```
+}```
