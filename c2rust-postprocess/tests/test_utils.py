@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from conftest import EXAMPLES_ROOT
 
+from postprocess.cache import to_multiline_toml
 from postprocess.utils import check_isinstance, existing_file, get_rust_files
 
 
@@ -58,3 +59,32 @@ def test_test_rust_files_finds_qsort_rs(transpile_qsort):
     assert len(files) == 1
     assert files[0].is_file()
     assert files[0].name == "qsort.rs"
+
+
+def test_to_multiline_toml():
+    toml_dict = {
+        "transform": "CommentTransfer",
+        "identifier": "foo",
+        "model": "gemini-3-flash-preview",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Transfer comments",
+            },
+        ],
+        "response": "fn foo() {}",
+    }
+    toml_str = to_multiline_toml(toml_dict)
+    assert (
+        toml_str
+        == """\
+transform = "CommentTransfer"
+identifier = "foo"
+model = "gemini-3-flash-preview"
+response = "fn foo() {}"
+
+[[messages]]
+role = "user"
+content = "Transfer comments"
+"""
+    )
