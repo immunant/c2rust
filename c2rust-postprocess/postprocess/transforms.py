@@ -35,7 +35,7 @@ class CommentTransferPrompt:
     rust_source_file: Path
 
     def __str__(self) -> str:
-        return f"""
+        return f"""\
 {self.prompt_text}
 
 C function:
@@ -47,7 +47,15 @@ Rust function:
 ```rust
 {self.rust_function}
 ```
-""".lstrip()
+"""
+
+    def messages(self) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "user",
+                "content": str(self),
+            },
+        ]
 
 
 @dataclass
@@ -177,33 +185,33 @@ class CommentTransfer:
         Run all of the `CommentTransferPrompt`s.
         """
 
-        for prompt in prompts:
-            messages = [
-                {"role": "user", "content": str(prompt)},
-            ]
+        prompts = list(prompts)
+        logging.info(f"Transferring comments for {len(prompts)} Rust functions")
 
-            transform = self.__class__.__name__
-            identifier = prompt.identifier
-            model = self.model.id
+        transform = self.__class__.__name__
+        model = self.model.id
+
+        for prompt_num, prompt in enumerate(prompts):
+            logging.info(
+                f"[{prompt_num}/{len(prompts)}] Transferring comments to"
+                f" fn {prompt.identifier} in {prompt.rust_source_file}"
+            )
+            messages = prompt.messages()
             if not (
                 response := self.cache.lookup(
                     transform=transform,
-                    identifier=identifier,
+                    identifier=prompt.identifier,
                     model=model,
                     messages=messages,
                 )
             ):
-                logging.info(
-                    "Transferring comments to"
-                    f" Rust fn {identifier} in {prompt.rust_source_file}"
-                )
                 response = self.model.generate_with_tools(messages)
                 if response is None:
                     logging.error("Model returned no response")
                     continue
                 self.cache.update(
                     transform=transform,
-                    identifier=identifier,
+                    identifier=prompt.identifier,
                     model=model,
                     messages=messages,
                     response=response,
