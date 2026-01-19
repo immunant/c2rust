@@ -2,6 +2,7 @@ import logging
 import re
 from collections.abc import Generator, Iterable
 from dataclasses import dataclass
+from difflib import unified_diff
 from pathlib import Path
 from re import Pattern
 from textwrap import dedent
@@ -86,14 +87,19 @@ class CommentTransferFailure:
         )
 
     def diff(self) -> str:
+        diff = "".join(
+            unified_diff(
+                a=[f"{comment}\n" for comment in self.c_comments],
+                b=[f"{comment}\n" for comment in self.rust_comments],
+                # TODO this isn't always exactly correct
+                fromfile=f"{self.prompt.rust_source_file.with_suffix('.c')}:{self.prompt.identifier}",
+                tofile=f"{self.prompt.rust_source_file}:{self.prompt.identifier}",
+            )
+        ).rstrip()
         return f"""\
-    C comments:
-{"\n".join(self.c_comments)}
-
-    vs.
-
-    Rust comments:
-{"\n".join(self.rust_comments)}"""
+```diff
+{diff}
+```"""
 
     def __str__(self) -> str:
         return f"{self.header()}\n\n{self.diff()}"
