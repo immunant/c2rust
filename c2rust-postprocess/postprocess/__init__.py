@@ -93,6 +93,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update the Rust in-place",
     )
 
+    parser.add_argument(
+        "--gc-cache",
+        required=False,
+        default=False,
+        action=BooleanOptionalAction,
+        help="Garbage collect cache entries that"
+        "have been unused since the last --gc-cache",
+    )
+
     # TODO: add option to select model
     # TODO: add option to configure cache
     # TODO: add option to select what transforms to apply
@@ -141,6 +150,9 @@ def main(argv: Sequence[str] | None = None):
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
         )
+
+        if args.gc_cache:
+            cache.gc_sweep()
 
         return 0
     except KeyboardInterrupt:
