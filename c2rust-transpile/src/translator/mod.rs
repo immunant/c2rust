@@ -4400,16 +4400,20 @@ impl<'c> Translation<'c> {
 
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
-                self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
+                self.convert_pointer_to_pointer_cast(source_cty.ctype, target_cty.ctype, val)
             }
 
             CastKind::IntegralToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, expr, val)
+                self.convert_integral_to_pointer_cast(ctx, source_cty.ctype, target_cty.ctype, val)
             }
 
-            CastKind::PointerToIntegral => {
-                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val, expr)
-            }
+            CastKind::PointerToIntegral => self.convert_pointer_to_integral_cast(
+                ctx,
+                source_cty.ctype,
+                target_cty.ctype,
+                val,
+                expr,
+            ),
 
             CastKind::IntegralCast
             | CastKind::FloatingCast

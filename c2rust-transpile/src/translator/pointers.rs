@@ -457,28 +457,28 @@ impl<'c> Translation<'c> {
 
     pub fn convert_pointer_to_pointer_cast(
         &self,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
+        source_cty: CTypeId,
+        target_cty: CTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if self.ast_context.is_function_pointer(target_cty.ctype)
-            || self.ast_context.is_function_pointer(source_cty.ctype)
+        if self.ast_context.is_function_pointer(target_cty)
+            || self.ast_context.is_function_pointer(source_cty)
         {
             let source_ty = self
                 .type_converter
                 .borrow_mut()
-                .convert(&self.ast_context, source_cty.ctype)?;
+                .convert(&self.ast_context, source_cty)?;
             let target_ty = self
                 .type_converter
                 .borrow_mut()
-                .convert(&self.ast_context, target_cty.ctype)?;
+                .convert(&self.ast_context, target_cty)?;
 
             if source_ty == target_ty {
                 return Ok(val);
             }
 
-            self.import_type(source_cty.ctype);
-            self.import_type(target_cty.ctype);
+            self.import_type(source_cty);
+            self.import_type(target_cty);
 
             val.and_then(|val| {
                 Ok(WithStmts::new_unsafe_val(transmute_expr(
@@ -487,7 +487,7 @@ impl<'c> Translation<'c> {
             })
         } else {
             // Normal case
-            let target_ty = self.convert_type(target_cty.ctype)?;
+            let target_ty = self.convert_type(target_cty)?;
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
     }
@@ -495,158 +495,77 @@ impl<'c> Translation<'c> {
     pub fn convert_integral_to_pointer_cast(
         &self,
         ctx: ExprContext,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
-        expr: Option<CExprId>,
+        source_cty: CTypeId,
+        target_cty: CTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
-        let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
+        let source_ty_kind = &self.ast_context.resolve_type(source_cty).kind;
+        let target_ty = self.convert_type(target_cty)?;
 
-        if self.ast_context.is_function_pointer(target_cty.ctype) {
-            let target_ty = self.convert_type(target_cty.ctype)?;
-            val.and_then(|x| {
-                self.use_crate(ExternCrate::Libc);
+        if self.ast_context.is_function_pointer(target_cty) {
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "cannot transmute integers to Option<fn ...> in `const` context",
+                ));
+            }
+
+            self.use_crate(ExternCrate::Libc);
+            val.and_then(|mut val| {
+                // First cast the integer to pointer size
                 let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
-                let intptr = mk().cast_expr(x, intptr_t.clone());
-                if ctx.is_const {
-                    return Err(format_translation_err!(
-                        None,
-                        "cannot transmute integers to Option<fn ...> in `const` context",
-                    ));
-                }
+                val = mk().cast_expr(val, intptr_t.clone());
+
                 Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    intptr_t, target_ty, intptr,
+                    intptr_t, target_ty, val,
                 )))
             })
+        } else if source_ty_kind.is_bool() {
+            self.use_crate(ExternCrate::Libc);
+            Ok(val.map(|mut val| {
+                // First cast the boolean to pointer size
+                val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
+                mk().cast_expr(val, target_ty)
+            }))
+        } else if let &CTypeKind::Enum(..) = source_ty_kind {
+            val.result_map(|val| self.convert_cast_from_enum(target_cty, val))
         } else {
-            let target_ty = self.convert_type(target_cty.ctype)?;
-            let source_ty = self.convert_type(source_cty.ctype)?;
-
-            if let CTypeKind::LongDouble = target_ty_kind {
-                if ctx.is_const {
-                    return Err(format_translation_err!(
-                        None,
-                        "f128 cannot be used in constants because `f128::f128::new` is not `const`",
-                    ));
-                }
-
-                self.use_crate(ExternCrate::F128);
-
-                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
-            } else if let CTypeKind::LongDouble = self.ast_context[source_cty.ctype].kind {
-                self.f128_cast_to(val, target_ty_kind)
-            } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-                // Casts targeting `enum` types...
-                let expr = expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
-                val.result_map(|val| {
-                    self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, Some(expr), val)
-                })
-            } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                val.and_then(|x| {
-                    Ok(WithStmts::new_val(mk().cast_expr(
-                        mk().cast_expr(x, mk().path_ty(vec!["u8"])),
-                        target_ty,
-                    )))
-                })
-            } else if target_ty_kind.is_pointer() && source_ty_kind.is_bool() {
-                val.and_then(|x| {
-                    self.use_crate(ExternCrate::Libc);
-                    Ok(WithStmts::new_val(mk().cast_expr(
-                        mk().cast_expr(x, mk().abs_path_ty(vec!["libc", "size_t"])),
-                        target_ty,
-                    )))
-                })
-            } else {
-                // Other numeric casts translate to Rust `as` casts,
-                // unless the cast is to a function pointer then use `transmute`.
-                val.and_then(|x| {
-                    if self.ast_context.is_function_pointer(source_cty.ctype) {
-                        Ok(WithStmts::new_unsafe_val(transmute_expr(
-                            source_ty, target_ty, x,
-                        )))
-                    } else if let &CTypeKind::Enum(..) = source_ty_kind {
-                        self.convert_cast_from_enum(target_cty.ctype, x)
-                            .map(WithStmts::new_val)
-                    } else {
-                        Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
-                    }
-                })
-            }
+            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
     }
 
     pub fn convert_pointer_to_integral_cast(
         &self,
         ctx: ExprContext,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
+        source_cty: CTypeId,
+        target_cty: CTypeId,
         val: WithStmts<Box<Expr>>,
         expr: Option<CExprId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
-        let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
-
         if ctx.is_const {
             return Err(format_translation_err!(
                 None,
                 "cannot observe pointer values in `const` context",
             ));
         }
-        let target_ty = self.convert_type(target_cty.ctype)?;
-        let source_ty = self.convert_type(source_cty.ctype)?;
 
-        if let CTypeKind::LongDouble = target_ty_kind {
-            if ctx.is_const {
-                return Err(format_translation_err!(
-                    None,
-                    "f128 cannot be used in constants because `f128::f128::new` is not `const`",
-                ));
-            }
+        let target_ty = self.convert_type(target_cty)?;
+        let source_ty = self.convert_type(source_cty)?;
+        let target_ty_kind = &self.ast_context.resolve_type(target_cty).kind;
 
-            self.use_crate(ExternCrate::F128);
-
-            let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-            Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
-        } else if let CTypeKind::LongDouble = self.ast_context[source_cty.ctype].kind {
-            self.f128_cast_to(val, target_ty_kind)
+        if self.ast_context.is_function_pointer(source_cty) {
+            val.and_then(|val| {
+                Ok(WithStmts::new_unsafe_val(transmute_expr(
+                    source_ty, target_ty, val,
+                )))
+            })
         } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            // Casts targeting `enum` types...
             let expr = expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
             val.result_map(|val| {
-                self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, Some(expr), val)
-            })
-        } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-            val.and_then(|x| {
-                Ok(WithStmts::new_val(mk().cast_expr(
-                    mk().cast_expr(x, mk().path_ty(vec!["u8"])),
-                    target_ty,
-                )))
-            })
-        } else if target_ty_kind.is_pointer() && source_ty_kind.is_bool() {
-            val.and_then(|x| {
-                self.use_crate(ExternCrate::Libc);
-                Ok(WithStmts::new_val(mk().cast_expr(
-                    mk().cast_expr(x, mk().abs_path_ty(vec!["libc", "size_t"])),
-                    target_ty,
-                )))
+                self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, Some(expr), val)
             })
         } else {
-            // Other numeric casts translate to Rust `as` casts,
-            // unless the cast is to a function pointer then use `transmute`.
-            val.and_then(|x| {
-                if self.ast_context.is_function_pointer(source_cty.ctype) {
-                    Ok(WithStmts::new_unsafe_val(transmute_expr(
-                        source_ty, target_ty, x,
-                    )))
-                } else if let &CTypeKind::Enum(..) = source_ty_kind {
-                    self.convert_cast_from_enum(target_cty.ctype, x)
-                        .map(WithStmts::new_val)
-                } else {
-                    Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
-                }
-            })
+            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
     }
 }
