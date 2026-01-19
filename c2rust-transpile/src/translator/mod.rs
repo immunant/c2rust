@@ -2607,45 +2607,44 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad condition type"))?;
 
         let null_pointer_case =
-            |negated: bool, ptr: CExprId| -> TranslationResult<WithStmts<Box<Expr>>> {
+            |ptr: CExprId, is_true: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
                 let ptr_type = self.ast_context[ptr]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
 
-                val.result_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, negated))
+                val.result_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_true))
             };
 
         match self.ast_context[cond_id].kind {
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(ptr, target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(ptr, target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(ptr, !target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(ptr, !target)
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
                 self.convert_condition(ctx, !target, subexpr_id)
             }
-
             _ => {
                 // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
                 // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
