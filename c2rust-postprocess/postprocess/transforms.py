@@ -227,7 +227,7 @@ class CommentTransfer:
 
             assert c_comments == rust_comments
 
-            print(get_highlighted_rust(rust_fn))
+            logging.info(get_highlighted_rust(rust_fn))
 
             if options.update_rust:
                 update_rust_definition(
