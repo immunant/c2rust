@@ -1,5 +1,6 @@
 import logging
 import re
+from collections.abc import Generator, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from re import Pattern
@@ -29,6 +30,9 @@ class CommentTransferPrompt:
     rust_function: str
     prompt_text: str
     identifier: str
+
+    root_rust_source_file: Path
+    rust_source_file: Path
 
     def __str__(self) -> str:
         return f"""
@@ -61,12 +65,16 @@ class CommentTransfer:
         self.cache = cache
         self.model = model
 
-    def transfer_comments(
+    def _transfer_comments_prompts(
         self,
         root_rust_source_file: Path,
         rust_source_file: Path,
         options: CommentTransferOptions,
-    ) -> None:
+    ) -> Generator[CommentTransferPrompt, None, None]:
+        """
+        Create all of the `CommentTransferPrompt`s for `rust_source_file`.
+        """
+
         ident_regex = options.ident_regex()
 
         rust_definitions = get_rust_definitions(rust_source_file)
@@ -75,7 +83,6 @@ class CommentTransfer:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
-        prompts: list[CommentTransferPrompt] = []
         for identifier, rust_definition in rust_definitions.items():
             if options.exclude_list.contains(
                 path=rust_source_file, identifier=identifier
@@ -129,14 +136,46 @@ class CommentTransfer:
             """  # noqa: E501
             prompt_text = dedent(prompt_text).strip()
 
-            prompts.append(
-                CommentTransferPrompt(
-                    c_function=c_definition,
-                    rust_function=rust_definition,
-                    prompt_text=prompt_text,
-                    identifier=identifier,
-                )
+            yield CommentTransferPrompt(
+                c_function=c_definition,
+                rust_function=rust_definition,
+                prompt_text=prompt_text,
+                identifier=identifier,
+                root_rust_source_file=root_rust_source_file,
+                rust_source_file=rust_source_file,
             )
+
+    def _transfer_comments_dir_prompts(
+        self,
+        root_rust_source_file: Path,
+        options: CommentTransferOptions,
+    ) -> Generator[CommentTransferPrompt, None, None]:
+        """
+        Create all of the `CommentTransferPrompt`s for
+        the parent directory of `root_rust_source_file`.
+        """
+
+        root_dir = root_rust_source_file.parent
+        c_decls_json_suffix = ".c_decls.json"
+        for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
+            rs_path = c_decls_path.with_name(
+                c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
+            )
+            assert rs_path.exists()
+            yield from self._transfer_comments_prompts(
+                root_rust_source_file=root_rust_source_file,
+                rust_source_file=rs_path,
+                options=options,
+            )
+
+    def _run_prompts(
+        self,
+        prompts: Iterable[CommentTransferPrompt],
+        options: CommentTransferOptions,
+    ):
+        """
+        Run all of the `CommentTransferPrompt`s.
+        """
 
         for prompt in prompts:
             messages = [
@@ -156,7 +195,7 @@ class CommentTransfer:
             ):
                 logging.info(
                     "Transferring comments to"
-                    f" Rust fn {identifier} in {rust_source_file}"
+                    f" Rust fn {identifier} in {prompt.rust_source_file}"
                 )
                 response = self.model.generate_with_tools(messages)
                 if response is None:
@@ -184,10 +223,25 @@ class CommentTransfer:
 
             if options.update_rust:
                 update_rust_definition(
-                    root_rust_source_file=root_rust_source_file,
+                    root_rust_source_file=prompt.root_rust_source_file,
                     identifier=prompt.identifier,
                     new_definition=rust_fn,
                 )
+
+    def transfer_comments(
+        self,
+        root_rust_source_file: Path,
+        rust_source_file: Path,
+        options: CommentTransferOptions,
+    ) -> None:
+        self._run_prompts(
+            self._transfer_comments_prompts(
+                root_rust_source_file=root_rust_source_file,
+                rust_source_file=rust_source_file,
+                options=options,
+            ),
+            options=options,
+        )
 
     def transfer_comments_dir(
         self,
@@ -198,15 +252,10 @@ class CommentTransfer:
         Run `self.transfer_comments` on each `*.rs` in `dir`
         with a corresponding `*.c_decls.json`.
         """
-        root_dir = root_rust_source_file.parent
-        c_decls_json_suffix = ".c_decls.json"
-        for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
-            rs_path = c_decls_path.with_name(
-                c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
-            )
-            assert rs_path.exists()
-            self.transfer_comments(
+        self._run_prompts(
+            self._transfer_comments_dir_prompts(
                 root_rust_source_file=root_rust_source_file,
-                rust_source_file=rs_path,
                 options=options,
-            )
+            ),
+            options=options,
+        )
