@@ -2,7 +2,7 @@
 
 use super::*;
 use log::warn;
-use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprReturn, ExprUnary, Stmt};
+use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprUnary, Stmt};
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
@@ -12,7 +12,6 @@ pub fn structured_cfg(
     comment_store: &mut comment_store::CommentStore,
     current_block: Box<Expr>,
     debug_labels: bool,
-    cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
     let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
@@ -21,15 +20,7 @@ pub fn structured_cfg(
         debug_labels,
         current_block,
     };
-    let (mut stmts, _span) = s.to_stmt(ast, comment_store);
-
-    // If the very last statement in the vector is a `return`, we can either cut it out or replace
-    // it with the returned value.
-    if cut_out_trailing_ret {
-        if let Some(Stmt::Expr(Expr::Return(ExprReturn { expr: None, .. }), _)) = stmts.last() {
-            stmts.pop();
-        }
-    }
+    let (stmts, _span) = s.to_stmt(ast, comment_store);
 
     Ok(stmts)
 }

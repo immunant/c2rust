@@ -60,6 +60,7 @@ pub unsafe extern "C" fn compound_literal() {
 pub unsafe extern "C" fn statement_expr() {
     '_c2rust_label: {
         puts(b"should execute\0" as *const u8 as *const ::core::ffi::c_char);
+        return;
     };
     puts(b"should be unreachable!\0" as *const u8 as *const ::core::ffi::c_char);
 }
