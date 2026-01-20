@@ -94,6 +94,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Fail on the first error (vs. collecting errors until the end)",
     )
 
+    parser.add_argument(
+        "--gc-cache",
+        required=False,
+        default=False,
+        action=BooleanOptionalAction,
+        help="Garbage collect cache entries that"
+        "have been unused since the last --gc-cache",
+    )
+
     # TODO: add option to select model
     # TODO: add option to configure cache
     # TODO: add option to select what transforms to apply
@@ -142,6 +151,7 @@ def main(argv: Sequence[str] | None = None):
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
             fail_fast=args.fail_fast,
+            gc_cache=args.gc_cache,
         )
 
         failures: list[CommentTransferFailure] = []
@@ -152,6 +162,9 @@ def main(argv: Sequence[str] | None = None):
             failures.append(failure)
             if options.fail_fast:
                 break
+
+        if options.gc_cache:
+            cache.gc_sweep()
 
         for failure in failures:
             failure.print()
