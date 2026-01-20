@@ -4,10 +4,12 @@ requirements:
       packages:
         - libtool # used by autoconf
 
-
 transpile:
   autogen: true
   tflags: --reorganize-definitions --disable-refactoring
+
+cargo.transpile:
+  autogen: true
 
 refactor:
   autogen: true
@@ -17,9 +19,6 @@ refactor:
     - shorten_imported_paths
     - remove_unused_labels
     - remove_literal_suffixes
-
-cargo.transpile:
-  autogen: true
 
 cargo.refactor:
   autogen: true

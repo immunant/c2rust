@@ -15,6 +15,9 @@ transpile:
   # tflags: --reorganize-definitions
   binary: tool_main
 
+cargo.transpile:
+  autogen: true
+
 refactor:
   autogen: true
   transforms:
@@ -22,9 +25,6 @@ refactor:
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs
-
-cargo.transpile:
-  autogen: true
 
 cargo.refactor:
   autogen: true
