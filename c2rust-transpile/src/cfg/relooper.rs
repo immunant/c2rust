@@ -74,7 +74,7 @@ pub fn reloop(
     live_in: IndexSet<CDeclId>,  // declarations we assume are live going into this graph
 ) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
     let entries: IndexSet<Label> = vec![cfg.entries.clone()].into_iter().collect();
-    let blocks: StructuredBlocks = cfg
+    let blocks: BasicBlocks = cfg
         .nodes
         .into_iter()
         .map(|(lbl, bb)| {
@@ -133,7 +133,7 @@ pub fn reloop(
         .collect();
 
     // We map over the existing structure and flatten everything to `Stmt`
-    let relooped: Vec<Structure<Stmt>> = relooped_with_decls
+    let relooped = relooped_with_decls
         .into_iter()
         .map(|s| s.place_decls(&lift_me, &mut store))
         .collect();
@@ -204,7 +204,7 @@ impl RelooperState {
 }
 
 /// A set of basic blocks, keyed by their label.
-type StructuredBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
+type BasicBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>;
 
 /// A mapping from one label to a set of labels.
 type AdjacencyList = IndexMap<Label, IndexSet<Label>>;
@@ -215,8 +215,8 @@ impl RelooperState {
     /// TODO: perhaps manually perform TCO?
     fn relooper(
         &mut self,
-        entries: IndexSet<Label>,     // current entry points into the CFG
-        mut blocks: StructuredBlocks, // the blocks in the sub-CFG considered
+        entries: IndexSet<Label>, // current entry points into the CFG
+        mut blocks: BasicBlocks, // the blocks in the sub-CFG considered
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
     ) {
         // If there are no entries or blocks then we are at the end of a branch and
@@ -335,7 +335,7 @@ impl RelooperState {
             // i.e. `singly_reached` but with the set of reachable labels replaced by the
             // corresponding blocks. We also filter out any entries that aren't present in
             // our current set of blocks, as we don't want branches for those entries.
-            let handled_entries: IndexMap<Label, StructuredBlocks> = singly_reached
+            let handled_entries: IndexMap<Label, BasicBlocks> = singly_reached
                 .into_iter()
                 .filter(|(lbl, _)| entries.contains(lbl) && blocks.contains_key(lbl))
                 .map(|(lbl, within)| {
@@ -357,7 +357,7 @@ impl RelooperState {
 
             // Gather the set of all blocks that are only reachable from one entry
             // (including the entries if they are only reachable from themselves).
-            let handled_blocks: StructuredBlocks = handled_entries
+            let handled_blocks: BasicBlocks = handled_entries
                 .values()
                 .flatten()
                 .map(|(k, v)| (k.clone(), v.clone()))
@@ -366,7 +366,7 @@ impl RelooperState {
             // Gather the unhandled blocks, i.e. any blocks that are reachable from more
             // than one entry. These become our "follow" blocks, i.e. the blocks that come
             // after the `Multiple`.
-            let follow_blocks: StructuredBlocks = blocks
+            let follow_blocks: BasicBlocks = blocks
                 .into_iter()
                 .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
                 .collect();
@@ -405,7 +405,7 @@ impl RelooperState {
     fn make_loop(
         &mut self,
         strict_reachable_from: &AdjacencyList,
-        blocks: StructuredBlocks,
+        blocks: BasicBlocks,
         entries: IndexSet<Label>,
         result: &mut Vec<Structure<StmtOrDecl>>,
     ) {
@@ -425,7 +425,7 @@ impl RelooperState {
         // Partition blocks into those belonging in or after the loop
         let (mut body_blocks, mut follow_blocks) = blocks
             .into_iter()
-            .partition::<StructuredBlocks, _>(|(lbl, _)| {
+            .partition::<BasicBlocks, _>(|(lbl, _)| {
                 new_returns.contains(lbl) || entries.contains(lbl)
             });
 
@@ -731,7 +731,7 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
 
 /// Find nodes outside the graph pointed to from nodes inside the graph. Note that `ExitTo`
 /// is not considered here - only `GoTo`.
-fn out_edges(blocks: &StructuredBlocks) -> IndexSet<Label> {
+fn out_edges(blocks: &BasicBlocks) -> IndexSet<Label> {
     blocks
         .iter()
         .flat_map(|(_, bb)| bb.successors())
