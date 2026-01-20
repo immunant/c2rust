@@ -22,3 +22,6 @@ refactor:
 
 cargo.refactor:
   autogen: true
+
+cargo.postprocess:
+  autogen: true
