@@ -1,0 +1,5 @@
+/// generic object construction and destruction parts
+unsafe extern "C" fn json_object_generic_delete(mut jso: *mut json_object) {
+    printbuf_free((*jso)._pb as *mut printbuf);
+    free(jso as *mut ::core::ffi::c_void);
+}

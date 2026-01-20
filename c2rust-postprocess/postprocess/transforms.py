@@ -152,14 +152,6 @@ class CommentTransfer:
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
         for identifier, rust_definition in rust_definitions.items():
-            if options.exclude_list.contains(
-                path=rust_source_file, identifier=identifier
-            ):
-                logging.info(
-                    f"Skipping Rust fn {identifier} in {rust_source_file}"
-                    f" due to exclude file {options.exclude_list.src_path}"
-                )
-                continue
             if ident_regex and not ident_regex.search(identifier):
                 logging.info(
                     f"Skipping Rust fn {identifier} in {rust_source_file}"
@@ -311,6 +303,18 @@ class CommentTransfer:
 
             rust_comments = get_rust_comments(rust_fn)
             logging.debug(f"{rust_comments=}")
+
+            # Do the exclusion when checking if the comment transfer was successful,
+            # but don't skip actually trying the comment transfer and caching it.
+            excluded = options.exclude_list.contains(
+                path=prompt.rust_source_file, identifier=prompt.identifier
+            )
+            if excluded:
+                logging.info(
+                    f"Skipping Rust fn {prompt.identifier} in {prompt.rust_source_file}"
+                    f" due to exclude file {options.exclude_list.src_path}"
+                )
+                continue
 
             if c_comments != rust_comments:
                 yield CommentTransferFailure(
