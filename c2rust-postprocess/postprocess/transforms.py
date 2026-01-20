@@ -154,7 +154,7 @@ class CommentTransfer:
         for identifier, rust_definition in rust_definitions.items():
             if ident_regex and not ident_regex.search(identifier):
                 logging.info(
-                    f"Skipping Rust fn {identifier} in {rust_source_file}"
+                    f"Skipping fn {identifier} in {rust_source_file}"
                     f" due to ident filter {options.ident_filter}"
                 )
                 continue
@@ -311,7 +311,7 @@ class CommentTransfer:
             )
             if excluded:
                 logging.info(
-                    f"Skipping Rust fn {prompt.identifier} in {prompt.rust_source_file}"
+                    f"Skipping fn {prompt.identifier} in {prompt.rust_source_file}"
                     f" due to exclude file {options.exclude_list.src_path}"
                 )
                 continue
