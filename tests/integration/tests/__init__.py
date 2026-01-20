@@ -23,6 +23,8 @@ class Test(object):
         "refactor": ["refactor.gen.sh", "refactor.sh"],
         "cargo.refactor": ["cargo.refactor.gen.sh", "cargo.refactor.sh"],
         "check.refactor": ["check.refactor.sh", "test.sh"],
+        "cargo.postprocess": ["cargo.postprocess.gen.sh", "cargo.postprocess.sh"],
+        "check.postprocess": ["check.postprocess.sh", "test.sh"],
     }
 
     def __init__(self, directory: Path, generated_scripts: set[Path]):
