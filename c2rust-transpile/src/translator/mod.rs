@@ -2512,8 +2512,6 @@ impl<'c> Translation<'c> {
             graph
                 .dump_json_graph(&store, format!("dumps/{name}_cfg.json"))
                 .expect("Failed to write CFG .json file");
-
-            eprintln!("Wrote CFG json for {name} to dumps/{name}_cfg.json");
         }
 
         let (lifted_stmts, mut relooped) = cfg::relooper::reloop(
@@ -2525,31 +2523,23 @@ impl<'c> Translation<'c> {
         );
 
         fn dump_structures(relooped: &[cfg::Structure<Stmt>], file_name: &str) {
-            use std::fmt::Write;
-
-            // TODO: Do this more efficiently lol
-            let mut dump = String::new();
-            for s in relooped {
-                writeln!(&mut dump, "{:#?}", s).unwrap();
-            }
-
+            use std::io::Write;
             std::fs::create_dir_all("dumps").unwrap();
-            std::fs::write(&file_name, dump).unwrap();
+            let mut file = std::fs::File::create(&file_name).unwrap();
+            write!(&mut file, "{:#?}", relooped).unwrap();
         }
 
         if self.tcfg.dump_structures {
-            let file_name = format!("dumps/{}_structures.rs", name);
+            let file_name = format!("dumps/{}_structures_initial.ron", name);
             dump_structures(&relooped, &file_name);
-            eprintln!("Wrote relooped structures for {name} to {file_name}");
         }
 
         if self.tcfg.simplify_structures {
             relooped = cfg::relooper::simplify_structure(relooped);
 
             if self.tcfg.dump_structures {
-                let file_name = format!("dumps/{}_structures_simplified.rs", name);
+                let file_name = format!("dumps/{}_structures_simplified.ron", name);
                 dump_structures(&relooped, &file_name);
-                eprintln!("Wrote simplified structures for {name} to {file_name}");
             }
         }
 
