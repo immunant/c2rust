@@ -99,7 +99,7 @@ def render_script(template: str, out_path: str, params: Dict):
     os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
 
 
-def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path, None, None]:
+def autogen_transpile(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -126,12 +126,12 @@ def autogen_transpile(conf_file, yaml: Dict) -> Generator[Path, None, None]:
                     tflags = " ".join(tflags)
                 params["tflags"] = tflags
 
-            out_path = os.path.join(os.path.dirname(conf_file), "transpile.gen.sh")
+            out_path = os.path.join(os.path.dirname(conf), "transpile.gen.sh")
             render_script(TRANSPILE_SH, out_path, params)
             yield Path(out_path)
 
 
-def autogen_refactor(conf_file, yaml: Dict) -> Generator[Path, None, None]:
+def autogen_refactor(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -157,12 +157,12 @@ def autogen_refactor(conf_file, yaml: Dict) -> Generator[Path, None, None]:
 
             # Only generate script if we have transformations
             if params["transform_lines"]:
-                out_path = os.path.join(os.path.dirname(conf_file), "refactor.gen.sh")
+                out_path = os.path.join(os.path.dirname(conf), "refactor.gen.sh")
                 render_script(REFACTOR_SH, out_path, params)
                 yield Path(out_path)
 
 
-def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path, None, None]:
+def autogen_cargo(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -188,7 +188,7 @@ def autogen_cargo(conf_file, yaml: Dict) -> Generator[Path, None, None]:
         if rustflags and isinstance(rustflags, str):
             params["extra_rustflags"] = rustflags
 
-        out_path = os.path.join(os.path.dirname(conf_file), filename)
+        out_path = os.path.join(os.path.dirname(conf), filename)
         render_script(CARGO_SH, out_path, params)
         yield Path(out_path)
 
