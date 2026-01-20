@@ -314,6 +314,12 @@ class CommentTransfer:
                     f"Skipping fn {prompt.identifier} in {prompt.rust_source_file}"
                     f" due to exclude file {options.exclude_list.src_path}"
                 )
+                if c_comments == rust_comments:
+                    logging.warning(
+                        f"Skipped fn {prompt.identifier} in {prompt.rust_source_file}"
+                        f" due to exclude file {options.exclude_list.src_path},"
+                        f" but the comments match, so exclusion is unnecessary"
+                    )
                 continue
 
             if c_comments != rust_comments:
