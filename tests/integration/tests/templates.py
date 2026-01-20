@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import stat
 from collections.abc import Mapping
-from typing import Any, Dict, Generator, List
+from typing import Any, Generator
 
 from tests.util import *
 from jinja2 import Template
@@ -91,7 +91,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 """
 
 
-def render_script(template: str, out_path: str, params: Dict):
+def render_script(template: str, out_path: str, params: dict):
     out = Template(template).render(**params)
 
     with open(out_path, "w") as fh:
@@ -99,13 +99,13 @@ def render_script(template: str, out_path: str, params: Dict):
     os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
 
 
-def autogen_transpile(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
+def autogen_transpile(conf: Config, yaml: dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
 
     transpile = yaml.get("transpile")
-    if transpile and isinstance(transpile, Dict):
+    if transpile and isinstance(transpile, dict):
         ag = transpile.get("autogen")
         if ag and isinstance(ag, bool):
             params = {"binary": "--emit-build-files", "cflags": ""}
@@ -116,13 +116,13 @@ def autogen_transpile(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
 
             cflags = transpile.get("cflags")
             if cflags:
-                if isinstance(cflags, List):
+                if isinstance(cflags, list):
                     cflags = " ".join(cflags)
                 params["cflags"] = cflags
 
             tflags = transpile.get("tflags")
             if tflags:
-                if isinstance(tflags, List):
+                if isinstance(tflags, list):
                     tflags = " ".join(tflags)
                 params["tflags"] = tflags
 
@@ -131,13 +131,13 @@ def autogen_transpile(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
             yield Path(out_path)
 
 
-def autogen_refactor(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
+def autogen_refactor(conf: Config, yaml: dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
 
     refactor = yaml.get("refactor")
-    if refactor and isinstance(refactor, Dict):
+    if refactor and isinstance(refactor, dict):
         ag = refactor.get("autogen")
         if ag and isinstance(ag, bool):
             params = {"transform_lines": ""}
@@ -162,7 +162,7 @@ def autogen_refactor(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
                 yield Path(out_path)
 
 
-def autogen_cargo(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
+def autogen_cargo(conf: Config, yaml: dict) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -183,7 +183,7 @@ def autogen_cargo(conf: Config, yaml: Dict) -> Generator[Path, None, None]:
         if not (ag and isinstance(ag, bool)):
             return
 
-        params: Dict[str, str] = {}
+        params: dict[str, str] = {}
         rustflags = stage_conf.get("rustflags")
         if rustflags and isinstance(rustflags, str):
             params["extra_rustflags"] = rustflags
