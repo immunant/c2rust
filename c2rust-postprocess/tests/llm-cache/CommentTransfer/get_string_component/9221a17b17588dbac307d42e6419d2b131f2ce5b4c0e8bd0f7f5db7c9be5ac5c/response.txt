@@ -1,0 +1,10 @@
+/// helper for accessing the optimized string data component in json_object
+unsafe extern "C" fn get_string_component(
+    mut jso: *const json_object,
+) -> *const ::core::ffi::c_char {
+    return if (*jso).o.c_string.len < LEN_DIRECT_STRING_DATA {
+        &raw const (*jso).o.c_string.str_0.data as *const ::core::ffi::c_char
+    } else {
+        (*jso).o.c_string.str_0.ptr as *const ::core::ffi::c_char
+    };
+}

@@ -1,0 +1,10 @@
+/*
+ * Copyright (c) 2012 Eric Haszlakiewicz
+ *
+ * This library is free software; you can redistribute it and/or modify
+ * it under the terms of the MIT license. See COPYING for details.
+ */
+#[no_mangle]
+pub unsafe extern "C" fn json_c_version() -> *const ::core::ffi::c_char {
+    return crate::src::json_c_version::JSON_C_VERSION.as_ptr();
+}
