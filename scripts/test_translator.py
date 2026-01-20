@@ -88,12 +88,6 @@ class CFile:
 
         # return nonzero if translation fails
         args.append("--fail-on-error")
-        args.append("--ignore-c-multiple-info")
-        args.append("--ignore-c-loop-info")
-        args.append("--ddump-structures")
-        args.append("--json-function-cfgs")
-        args.append("--no-incremental-relooper")
-        # args.append("--no-simplify-structures")
 
         if self.disable_incremental_relooper:
             args.append("--no-incremental-relooper")
@@ -121,8 +115,8 @@ class CFile:
             retcode, stdout, stderr = (transpiler[args]).run(
                 retcode=None)
 
-            logging.info("stdout:\n%s", stdout)
-            logging.info("stderr:\n%s", stderr)
+            logging.debug("stdout:\n%s", stdout)
+            logging.debug("stderr:\n%s", stderr)
 
         if retcode != 0:
             raise NonZeroReturn(stderr)
@@ -284,24 +278,15 @@ class TestDirectory:
                 filename = os.path.splitext(os.path.basename(path))[0]
 
                 if ext == ".c":
-                    logging.debug("Found C file: %s, filename: %s", path, filename)
-                    if files.search(filename):
-                        logging.debug("File matches regex: %s", filename)
-                        c_file = self._read_c_file(path)
+                    c_file = self._read_c_file(path)
 
-                        if c_file:
-                            self.c_files.append(c_file)
-                    else:
-                        logging.debug("File does not match regex: %s", filename)
+                    if c_file:
+                        self.c_files.append(c_file)
 
-                elif filename.startswith("test_") and ext == ".rs":
-                    logging.debug("Found Rust test file: %s, filename: %s", path, filename)
-                    if files.search(filename):
-                        logging.debug("Rust test file matches regex: %s", filename)
-                        rs_test_file = self._read_rust_test_file(path)
-                        self.rs_test_files.append(rs_test_file)
-                    else:
-                        logging.debug("Rust test file does not match regex: %s", filename)
+                elif (filename.startswith("test_") and ext == ".rs" and
+                      files.search(filename)):
+                    rs_test_file = self._read_rust_test_file(path)
+                    self.rs_test_files.append(rs_test_file)
 
     def _read_c_file(self, path: str) -> Optional[CFile]:
         file_config = None
@@ -572,8 +557,6 @@ class TestDirectory:
             sys.stdout.write('\n')
             sys.stdout.write(stderr)
             sys.stdout.write(stdout)
-            sys.stdout.write('\n')
-            sys.stdout.write(stderr)
         else:
             for line in stdout.split("\n"):
                 if "... ok" in line:
