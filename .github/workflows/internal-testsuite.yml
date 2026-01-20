@@ -123,7 +123,7 @@ jobs:
     - name: Run c2rust testsuite
       run: |
         find tests/integration -type f -name compile_commands.json -delete
-        export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
+        export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
         # Needs to be run from `tests/integration/` (or further inside)
