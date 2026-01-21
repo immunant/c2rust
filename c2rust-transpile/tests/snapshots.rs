@@ -1,6 +1,7 @@
 use std::env::current_dir;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
@@ -45,7 +46,12 @@ fn config() -> TranspilerConfig {
         log_level: log::LevelFilter::Warn,
         emit_build_files: false,
         binaries: Vec::new(),
-        c2rust_dir: None, // TODO
+        c2rust_dir: Some(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .to_path_buf(),
+        ),
     }
 }
 
