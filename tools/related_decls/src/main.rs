@@ -1,3 +1,4 @@
+use clap::Parser;
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use ra_ap_hir::Semantics;
@@ -6,11 +7,10 @@ use ra_ap_load_cargo::{self, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_project_model::CargoConfig;
 use ra_ap_syntax::SyntaxNode;
 use rust_util::rewrite::{FlatTokens, OutputBuffer, TokenIndex, render_output};
-use std::env;
 use std::fs;
 use std::iter;
 use std::mem;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use syn;
 use syn::spanned::Spanned;
@@ -327,9 +327,16 @@ impl ToTokens for ParsedMetaExportName {
     }
 }
 
+/// Analyze a Rust codebase to determine relations between items.
+#[derive(Parser)]
+struct Args {
+    /// Directory of Rust project to modify. `Cargo.toml` should reside inside this directory.
+    cargo_dir_path: PathBuf,
+}
+
 fn main() {
-    let cargo_dir_path = env::args().nth(1).unwrap();
-    let cargo_dir_path = Path::new(&cargo_dir_path);
+    let args = Args::parse();
+    let cargo_dir_path = Path::new(&args.cargo_dir_path);
 
     let cargo_config = CargoConfig::default();
 
