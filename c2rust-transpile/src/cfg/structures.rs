@@ -9,17 +9,18 @@ use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
     root: &[Structure<Stmt>],
-    checked_entries: &IndexSet<Label>,
+    cfg_info: &CfgInfo,
     comment_store: &mut comment_store::CommentStore,
     current_block: Box<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
+    let loop_context = LoopContext::default();
     let mut ast = process_cfg(
         root,
-        &checked_entries,
+        cfg_info,
         &IndexSet::new(),
-        &None,
+        &loop_context,
         &mut IndexSet::new(),
     )?;
 
@@ -395,38 +396,74 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 #[allow(dead_code)]
 type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 
-/// Searches the structured CFG for loops with multiple entries.
-///
-/// When building the structured AST we need to known when a branch targets a
-/// one of the entries of a loop with multiple entries, since these branches
-/// need a `Goto` node in the AST (i.e. we need to set `current_block` before
-/// branching). This function gathers the set of labels that need `Goto` within
-/// the structured CFG.
-pub fn find_checked_entries(structures: &[Structure<Stmt>], checked_entries: &mut IndexSet<Label>) {
+/// Information gathered from the structured CFG needed for AST generation.
+#[derive(Debug, Default)]
+pub struct CfgInfo {
+    /// Labels that require `current_block` to be set before traveling to them.
+    /// These are entries of loops with multiple entries.
+    pub checked_entries: IndexSet<Label>,
+
+    /// Maps loop entries to their canonical loop label (i.e., `entries.first()`).
+    /// Used to determine which label to use for `continue` statements.
+    pub entry_to_loop: IndexMap<Label, Label>,
+}
+
+/// Searches the structured CFG for loops and gathers information needed for AST
+/// generation.
+pub fn gather_cfg_info(structures: &[Structure<Stmt>], info: &mut CfgInfo) {
     for structure in structures {
         match structure {
             Structure::Loop { entries, body } => {
+                // Track checked entries for multi-entry loops
                 if entries.len() > 1 {
-                    checked_entries.extend(entries.iter().cloned());
+                    info.checked_entries.extend(entries.iter().cloned());
                 }
-                find_checked_entries(body, checked_entries);
+
+                // Map all loop entries to the canonical loop label
+                let loop_label = entries.first().expect("Loop must have at least one entry");
+                for entry in entries {
+                    info.entry_to_loop.insert(entry.clone(), loop_label.clone());
+                }
+
+                gather_cfg_info(body, info);
             }
             Structure::Multiple { branches, .. } => {
                 for branch in branches.values() {
-                    find_checked_entries(branch, checked_entries);
+                    gather_cfg_info(branch, info);
                 }
             }
-            Structure::Simple { .. } => {}
+            Structure::Simple { terminator, .. } => {
+                for label in terminator.get_labels() {
+                    if let StructureLabel::Nested(nested) = label {
+                        gather_cfg_info(nested, info);
+                    }
+                }
+            }
         }
     }
 }
 
+/// Tracks context about loops we're currently inside while processing the CFG.
+#[derive(Clone, Debug, Default)]
+struct LoopContext {
+    /// Set of all entries to loops we're currently inside.
+    /// Used to determine if an exit target is a back edge (continue) or forward edge (break).
+    current_loop_entries: IndexSet<Label>,
+
+    /// The label of the innermost loop we're in, if any.
+    innermost_loop: Option<Label>,
+
+    /// The entries to the structure following the innermost loop.
+    /// Used to optimize continues into breaks when possible.
+    innermost_loop_exits: IndexSet<Label>,
+}
+
 fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
     structures: &[Structure<Stmt>],
-    checked_entries: &IndexSet<Label>, // Labels that require `current_block` to be set before traveling to them.
-    followup_entries: &IndexSet<Label>, // The entries to the next structure after our parent structure.
-    loop_context: &Option<(Label, &IndexSet<Label>)>, // The label for the loop we're currently inside of, along with the entries to the next structure after the loop.
-    break_targets: &mut IndexSet<Label>, // Any labels that we've had to indirectly `break` to. This tells us when we need to generate blocks as break targets.
+    cfg_info: &CfgInfo,
+    followup_entries: &IndexSet<Label>,
+    loop_context: &LoopContext,
+    break_targets: &mut IndexSet<Label>,
 ) -> TranslationResult<S> {
     use Structure::*;
 
@@ -501,54 +538,53 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
                     match slbl {
                         Nested(nested) => process_cfg(
                             nested,
-                            checked_entries,
+                            cfg_info,
                             &next_entries,
                             loop_context,
                             break_targets,
                         ),
 
-                        BreakTo(to) => {
-                            let mut new_ast = if checked_entries.contains(to) {
-                                S::mk_goto(to.clone())
-                            } else {
-                                S::empty()
-                            };
-
-                            // Only generate an exit if we're not going to flow naturally into the
-                            // next structure's entries.
-                            if !next_entries.contains(to) {
-                                let label = Some(to.clone());
-                                break_targets.insert(to.clone());
-                                new_ast =
-                                    S::mk_append(new_ast, S::mk_exit(ExitStyle::Break, label));
-                            }
-                            new_ast.extend_span(*span);
-                            Ok(new_ast)
-                        }
-
-                        ContinueTo { loop_label, target } => {
-                            let mut new_ast = if checked_entries.contains(target) {
+                        ExitTo(target) => {
+                            // Check if the target is a checked entry (multi-entry loop), in which
+                            // case we need to set `current_block` before branching.
+                            let mut new_ast = if cfg_info.checked_entries.contains(target) {
                                 S::mk_goto(target.clone())
                             } else {
                                 S::empty()
                             };
 
-                            // If we can get where we're going with a `break`, prefer that over
-                            // using a `continue`. This helps us to reconstruct `while` loops in
-                            // more cases, since generating a `while` requires the AST to be
-                            // structured like `loop { if { break; } }`.
-                            if let Some((current_loop, loop_exits)) = loop_context && loop_exits.contains(loop_label) {
-                                new_ast = S::mk_append(
-                                    new_ast,
-                                    S::mk_exit(ExitStyle::Break, Some(current_loop.clone())),
+                            // Determine if this is a back edge (continue) or forward edge (break)
+                            // by checking if the target is an entry to a loop we're currently inside.
+                            let is_back_edge = loop_context.current_loop_entries.contains(target);
+
+                            let exit = if is_back_edge {
+                                let loop_label = cfg_info.entry_to_loop.get(target).expect(
+                                    "target in current_loop_entries but not in entry_to_loop",
                                 );
-                                break_targets.insert(current_loop.clone());
-                            } else if !next_entries.contains(loop_label) {
-                                new_ast = S::mk_append(
-                                    new_ast,
-                                    S::mk_exit(ExitStyle::Continue, Some(loop_label.clone())),
-                                );
-                                break_targets.insert(loop_label.clone());
+
+                                // If we can get where we're going with a `break`, prefer that over
+                                // using a `continue`. This helps us to reconstruct `while` loops in
+                                // more cases, since generating a `while` requires the AST to be
+                                // structured like `loop { if { break; } }`.
+                                if loop_context.innermost_loop_exits.contains(loop_label) {
+                                    let break_label = loop_context.innermost_loop.as_ref().expect(
+                                        "innermost_loop_exits set but innermost_loop is None",
+                                    );
+                                    Some((ExitStyle::Break, break_label.clone()))
+                                } else if !next_entries.contains(loop_label) {
+                                    Some((ExitStyle::Continue, loop_label.clone()))
+                                } else {
+                                    None
+                                }
+                            } else if !next_entries.contains(target) {
+                                Some((ExitStyle::Break, target.clone()))
+                            } else {
+                                None
+                            };
+
+                            if let Some((style, label)) = exit {
+                                break_targets.insert(label.clone());
+                                new_ast = S::mk_append(new_ast, S::mk_exit(style, Some(label)));
                             }
 
                             new_ast.extend_span(*span);
@@ -579,13 +615,20 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
 
             Loop { entries, body } => {
                 let label = entries.first().expect("There must be at least one entry");
-                let body = process_cfg(
-                    body,
-                    checked_entries,
-                    entries,
-                    &Some((label.clone(), &next_entries)),
-                    break_targets,
-                )?;
+
+                let inner_loop_context = LoopContext {
+                    current_loop_entries: loop_context
+                        .current_loop_entries
+                        .iter()
+                        .cloned()
+                        .chain(entries.iter().cloned())
+                        .collect(),
+                    innermost_loop: Some(label.clone()),
+                    innermost_loop_exits: next_entries.clone(),
+                };
+
+                let body =
+                    process_cfg(body, cfg_info, entries, &inner_loop_context, break_targets)?;
                 S::mk_loop(Some(label.clone()), body)
             }
 
@@ -601,7 +644,7 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
                         .expect("There must be at least one branch");
                     process_cfg(
                         &branches[then_entry],
-                        checked_entries,
+                        cfg_info,
                         &next_entries,
                         loop_context,
                         break_targets,
@@ -614,7 +657,7 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
                     .map(|entry| {
                         let stmts = process_cfg(
                             &branches[entry],
-                            checked_entries,
+                            cfg_info,
                             &next_entries,
                             loop_context,
                             break_targets,
@@ -648,13 +691,8 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
                     &empty
                 };
 
-                let branch_ast = process_cfg::<S>(
-                    branch,
-                    checked_entries,
-                    next_entries,
-                    loop_context,
-                    break_targets,
-                )?;
+                let branch_ast =
+                    process_cfg::<S>(branch, cfg_info, next_entries, loop_context, break_targets)?;
 
                 if break_targets.contains(entry) {
                     structure_ast = S::mk_block(entry.clone(), structure_ast);

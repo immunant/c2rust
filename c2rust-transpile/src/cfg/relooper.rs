@@ -277,11 +277,12 @@ impl RelooperState {
                     self.add_to_scope(d);
                 }
 
-                // Rewrite `GoTo`s that don't target our next blocks into `BreakTo`s so that
-                // they correctly jump past the code that naturally follows the simple.
+                // Rewrite `GoTo`s to `ExitTo`s. This isn't strictly necessary, but it
+                // simplifies things down the line to only need to worry about `ExitTo`
+                // terminators.
                 for lbl in terminator.get_labels_mut() {
                     if let StructureLabel::GoTo(label) = lbl {
-                        *lbl = StructureLabel::BreakTo(label.clone())
+                        *lbl = StructureLabel::ExitTo(label.clone())
                     }
                 }
 
@@ -494,27 +495,16 @@ impl RelooperState {
         // Rewrite `GoTo`s that exit the loop body.
         //
         // For our body blocks, rewrite terminator `GoTo` labels if they target an entry
-        // or a follow entry. These are exits from the loop body, i.e. if they branch
-        // back to an entry then it's a `continue`, and if they branch to a follow entry
-        // then it's a `break`. This is necessary so that when we reloop the body blocks
-        // it doesn't get tripped up by the back/out edges. Without this, the reloop
-        // pass for the loop body would see the back edges and decide to produce a loop
-        // structure, even though we've already done that.
-        //
-        // For back edges we also track which label we're going to use to identify the
-        // loop. A loop may have multiple entries (i.e. irreducible control flow), so we
-        // need to know which label to use when generating the AST.
-        let loop_label = entries.first().unwrap();
+        // or a follow entry. These are exits from the loop body. This is necessary so
+        // that when we reloop the body blocks it doesn't get tripped up by the back/out
+        // edges. Without this, the reloop pass for the loop body would see the back
+        // edges and decide to produce a loop structure, even though we've already done
+        // that.
         for bb in body_blocks.values_mut() {
             for lbl in bb.terminator.get_labels_mut() {
                 if let StructureLabel::GoTo(label) = lbl.clone() {
-                    if entries.contains(&label) {
-                        *lbl = StructureLabel::ContinueTo {
-                            loop_label: loop_label.clone(),
-                            target: label.clone(),
-                        };
-                    } else if follow_entries.contains(&label) {
-                        *lbl = StructureLabel::BreakTo(label.clone());
+                    if entries.contains(&label) || follow_entries.contains(&label) {
+                        *lbl = StructureLabel::ExitTo(label.clone());
                     }
                 }
             }
@@ -574,8 +564,7 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
                         // Here, we group patterns by the label they go to.
                         type Merged = IndexMap<Label, Vec<Pat>>;
                         let mut merged_goto: Merged = IndexMap::new();
-                        let mut merged_break: Merged = IndexMap::new();
-                        let mut merged_continue = IndexMap::new();
+                        let mut merged_exit: Merged = IndexMap::new();
 
                         for (pat, lbl) in cases {
                             match lbl {
@@ -585,16 +574,10 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
                                         .or_default()
                                         .push(pat.clone());
                                 }
-                                BreakTo(lbl) => {
-                                    merged_break
+                                ExitTo(lbl) => {
+                                    merged_exit
                                         .entry(lbl.clone())
                                         .or_default()
-                                        .push(pat.clone());
-                                }
-                                ContinueTo { loop_label, target } => {
-                                    merged_continue
-                                        .entry((loop_label.clone(), target.clone()))
-                                        .or_insert(Vec::new())
                                         .push(pat.clone());
                                 }
                                 _ => panic!("simplify_structure: Nested precondition violated"),
@@ -618,7 +601,7 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
                                         cases_new.push((pat, GoTo(lbl.clone())))
                                     }
                                 },
-                                BreakTo(lbl) => match merged_break.swap_remove(lbl) {
+                                ExitTo(lbl) => match merged_exit.swap_remove(lbl) {
                                     None => {}
                                     Some(mut pats) => {
                                         let pat = if pats.len() == 1 {
@@ -626,27 +609,9 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
                                         } else {
                                             mk().or_pat(pats)
                                         };
-                                        cases_new.push((pat, BreakTo(lbl.clone())))
+                                        cases_new.push((pat, ExitTo(lbl.clone())))
                                     }
                                 },
-                                ContinueTo { loop_label, target } => {
-                                    if let Some(mut pats) = merged_continue
-                                        .swap_remove(&(loop_label.clone(), target.clone()))
-                                    {
-                                        let pat = if pats.len() == 1 {
-                                            pats.pop().unwrap()
-                                        } else {
-                                            mk().or_pat(pats)
-                                        };
-                                        cases_new.push((
-                                            pat,
-                                            ContinueTo {
-                                                loop_label: loop_label.clone(),
-                                                target: target.clone(),
-                                            },
-                                        ))
-                                    }
-                                }
                                 _ => panic!("simplify_structure: Nested precondition violated"),
                             };
                         }
@@ -675,18 +640,13 @@ pub fn simplify_structure<Stmt: Clone>(structures: Vec<Structure<Stmt>>) -> Vec<
                                 }
                             }
 
-                            BreakTo(to) => {
+                            ExitTo(to) => {
                                 if let Some(branch) = branches.get(to) {
                                     Nested(branch.clone())
                                 } else {
-                                    BreakTo(to.clone())
+                                    ExitTo(to.clone())
                                 }
                             }
-
-                            ContinueTo { loop_label, target } => ContinueTo {
-                                loop_label: loop_label.clone(),
-                                target: target.clone(),
-                            },
 
                             Nested(_) => panic!("simplify_structure: Nested precondition violated"),
                         };
