@@ -1,5 +1,5 @@
 #![cfg_attr(feature = "parse-syntax", feature(rustc_private))]
-#![feature(box_patterns, is_sorted)]
+#![feature(box_patterns)]
 
 #[macro_use]
 extern crate serde_derive;
@@ -111,7 +111,7 @@ impl DefaultsConfig {
                     self.$field = other.$field.clone();
                 }
             };
-        };
+        }
         update_field!(disable_xchecks);
         update_field!(entry);
         update_field!(exit);
@@ -193,6 +193,7 @@ pub enum CustomHashFormat {
     Extern,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct CustomHashFormatError(String);
 
