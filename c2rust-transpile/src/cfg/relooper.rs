@@ -216,7 +216,7 @@ impl RelooperState {
     fn relooper(
         &mut self,
         entries: IndexSet<Label>, // current entry points into the CFG
-        mut blocks: BasicBlocks, // the blocks in the sub-CFG considered
+        mut blocks: BasicBlocks,  // the blocks in the sub-CFG considered
         result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
     ) {
         // If there are no entries or blocks then we are at the end of a branch and
@@ -424,9 +424,8 @@ impl RelooperState {
             .collect();
 
         // Partition blocks into those belonging in or after the loop
-        let (mut body_blocks, mut follow_blocks) = blocks
-            .into_iter()
-            .partition::<BasicBlocks, _>(|(lbl, _)| {
+        let (mut body_blocks, mut follow_blocks) =
+            blocks.into_iter().partition::<BasicBlocks, _>(|(lbl, _)| {
                 new_returns.contains(lbl) || entries.contains(lbl)
             });
 
