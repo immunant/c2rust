@@ -33,7 +33,11 @@ name = "{{name}}"
 {{/each}}
 [dependencies]
 {{#each dependencies}}
+{{#if this.path}}
+{{this.name}} = { version = "{{this.version}}", path = "{{this.path}}" }
+{{else}}
 {{this.name}} = "{{this.version}}"
+{{/if}}
 {{/each}}
 
 {{~/if}}

@@ -105,9 +105,12 @@ pub struct TranspilerConfig {
     // Options that control build files
     /// Emit `Cargo.toml` and `lib.rs`
     pub emit_build_files: bool,
+
     /// Names of translation units containing main functions that we should make
     /// into binaries
     pub binaries: Vec<String>,
+
+    pub c2rust_dir: Option<PathBuf>,
 }
 
 impl TranspilerConfig {
@@ -168,32 +171,51 @@ struct ExternCrateDetails {
     ident: String,
     macro_use: bool,
     version: &'static str,
+    path: Option<PathBuf>,
 }
 
 impl ExternCrateDetails {
-    fn new(name: &'static str, version: &'static str, macro_use: bool) -> Self {
+    pub fn new(
+        name: &'static str,
+        version: &'static str,
+        macro_use: bool,
+        path: Option<PathBuf>,
+    ) -> Self {
         Self {
             name,
             ident: name.replace('-', "_"),
             macro_use,
             version,
+            path,
         }
+    }
+
+    /// An external (to c2rust) dependency.
+    pub fn external(name: &'static str, version: &'static str, macro_use: bool) -> Self {
+        Self::new(name, version, macro_use, None)
+    }
+
+    /// An internal (to c2rust) dependency.
+    pub fn internal(name: &'static str, macro_use: bool, c2rust_dir: Option<&Path>) -> Self {
+        Self::new(
+            name,
+            env!("CARGO_PKG_VERSION"),
+            macro_use,
+            c2rust_dir.map(|dir| dir.join(name)),
+        )
     }
 }
 
-impl From<ExternCrate> for ExternCrateDetails {
-    fn from(extern_crate: ExternCrate) -> Self {
-        match extern_crate {
-            ExternCrate::C2RustBitfields => {
-                Self::new("c2rust-bitfields", env!("CARGO_PKG_VERSION"), true)
-            }
-            ExternCrate::C2RustAsmCasts => {
-                Self::new("c2rust-asm-casts", env!("CARGO_PKG_VERSION"), true)
-            }
-            ExternCrate::F128 => Self::new("f128", "0.2", false),
-            ExternCrate::NumTraits => Self::new("num-traits", "0.2", true),
-            ExternCrate::Memoffset => Self::new("memoffset", "0.5", true),
-            ExternCrate::Libc => Self::new("libc", "0.2", false),
+impl ExternCrate {
+    fn with_details(&self, c2rust_dir: Option<&Path>) -> ExternCrateDetails {
+        use ExternCrate::*;
+        match self {
+            C2RustBitfields => ExternCrateDetails::internal("c2rust-bitfields", true, c2rust_dir),
+            C2RustAsmCasts => ExternCrateDetails::internal("c2rust-asm-casts", true, c2rust_dir),
+            F128 => ExternCrateDetails::external("f128", "0.2", false),
+            NumTraits => ExternCrateDetails::external("num-traits", "0.2", true),
+            Memoffset => ExternCrateDetails::external("memoffset", "0.5", true),
+            Libc => ExternCrateDetails::external("libc", "0.2", false),
         }
     }
 }

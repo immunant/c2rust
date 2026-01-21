@@ -45,6 +45,7 @@ fn config() -> TranspilerConfig {
         log_level: log::LevelFilter::Warn,
         emit_build_files: false,
         binaries: Vec::new(),
+        c2rust_dir: None, // TODO
     }
 }
 

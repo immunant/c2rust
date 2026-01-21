@@ -40,7 +40,7 @@ use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
 use crate::{c_ast, format_translation_err};
 use crate::{c_ast::*, TranslateMacros};
-use crate::{ExternCrate, ExternCrateDetails, TranspilerConfig};
+use crate::{ExternCrate, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
 mod assembly;
@@ -1214,7 +1214,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
     if t.tcfg.emit_modules && !is_binary {
         for c in t.extern_crates.borrow().iter() {
             out_items.push(mk().use_simple_item(
-                mk().abs_path(vec![ExternCrateDetails::from(*c).ident]),
+                mk().abs_path(vec![c.with_details(t.tcfg.c2rust_dir.as_deref()).ident]),
                 None::<Ident>,
             ))
         }
@@ -1238,7 +1238,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
             // TODO(kkysen) shouldn't need `extern crate`
             // Add `extern crate X;` to the top of the file
             for extern_crate in t.extern_crates.borrow().iter() {
-                let extern_crate = ExternCrateDetails::from(*extern_crate);
+                let extern_crate = extern_crate.with_details(t.tcfg.c2rust_dir.as_deref());
                 if extern_crate.macro_use {
                     out_items.push(
                         mk().single_attr("macro_use")
