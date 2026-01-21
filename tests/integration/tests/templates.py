@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0" )" && pwd)"
 RUSTFLAGS="-Awarnings {{extra_rustflags}}" \
 RUST_BACKTRACE=1 \
 c2rust transpile \
+    --c2rust-dir "${C2RUST_DIR}" \
     --emit-c-decl-map \
     --output-dir "$SCRIPT_DIR/repo" {{binary}} \
     {{tflags}} ${EXTRA_TFLAGS:---overwrite-existing} \
@@ -29,11 +30,6 @@ do
         cp "$SCRIPT_DIR/$build_file" "$SCRIPT_DIR/repo/"
     fi
 done
-
-if [[ -n "$C2RUST_DIR" ]]; then
-    sed --in-place --regexp-extended "s|c2rust-bitfields = \"([0-9.]+)\"|c2rust-bitfields = { version = \"\1\", path = \"$C2RUST_DIR/c2rust-bitfields\" }|" "$SCRIPT_DIR/repo/Cargo.toml"
-    sed --in-place --regexp-extended "s|c2rust-asm-casts = \"([0-9.]+)\"|c2rust-asm-casts = { version = \"\1\", path = \"$C2RUST_DIR/c2rust-asm-casts\" }|" "$SCRIPT_DIR/repo/Cargo.toml"
-fi
 """
 
 CARGO_SH: str = r"""#!/usr/bin/env bash
