@@ -16,7 +16,7 @@ use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::{
     AttrStyle, BareVariadic, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast, ExprField,
-    ExprIndex, ExprParen, ExprUnary, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
+    ExprIndex, ExprParen, ExprUnary, Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
     ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
     ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
     ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
@@ -2529,23 +2529,26 @@ impl<'c> Translation<'c> {
             }
         }
 
-        let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
-        let current_block = mk().ident_expr(&current_block_ident);
+        let current_block_enum = self.renamer.borrow_mut().pick_name("C2Rust_CurrentBlock");
+        let current_block_labels = cfg::structures::get_current_block_labels(&relooped);
+        let current_block_variable = self.renamer.borrow_mut().pick_name("current_block");
         let mut stmts: Vec<Stmt> = lifted_stmts;
-        if cfg::structures::has_multiple(&relooped) {
+
+        if !current_block_labels.is_empty() {
             if self.tcfg.fail_on_multiple {
                 panic!("Uses of `current_block' are illegal with `--fail-on-multiple'.");
             }
 
-            let current_block_ty = if self.tcfg.debug_relooper_labels {
-                mk().ref_lt_ty("static", mk().path_ty(vec!["str"]))
-            } else {
-                mk().path_ty(vec!["u64"])
-            };
+            let variants = current_block_labels
+                .into_iter()
+                .map(|lbl| mk().variant(lbl.to_variant_ident(), Fields::Unit))
+                .collect();
+            let item = mk().enum_item(&current_block_enum, variants);
+            stmts.push(mk().item_stmt(item));
 
             let local = mk().local(
-                mk().mutbl().ident_pat(current_block_ident),
-                Some(current_block_ty),
+                mk().mutbl().ident_pat(&current_block_variable),
+                Some(mk().ident_ty(&current_block_enum)),
                 None,
             );
             stmts.push(mk().local_stmt(Box::new(local)))
@@ -2554,8 +2557,8 @@ impl<'c> Translation<'c> {
         stmts.extend(cfg::structures::structured_cfg(
             &relooped,
             &mut self.comment_store.borrow_mut(),
-            current_block,
-            self.tcfg.debug_relooper_labels,
+            mk().ident(current_block_enum),
+            mk().ident_expr(current_block_variable),
             cut_out_trailing_ret,
         )?);
         Ok(stmts)

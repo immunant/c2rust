@@ -78,7 +78,6 @@ pub struct TranspilerConfig {
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
     pub filter: Option<Regex>,
-    pub debug_relooper_labels: bool,
     pub prefix_function_names: Option<String>,
     pub translate_asm: bool,
     pub use_c_loop_info: bool,

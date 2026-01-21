@@ -85,10 +85,6 @@ struct Args {
     #[clap(long = "ddump-structures")]
     dump_structures: bool,
 
-    /// Generate readable 'current_block' values in relooper
-    #[clap(long = "ddebug-labels")]
-    debug_labels: bool,
-
     /// Path to compile_commands.json, or a list of source files
     #[clap(parse(from_os_str), multiple_values = true)]
     compile_commands: Vec<PathBuf>,
@@ -221,7 +217,6 @@ fn main() {
         fail_on_error: args.fail_on_error,
         fail_on_multiple: args.fail_on_multiple,
         filter: args.filter,
-        debug_relooper_labels: args.debug_labels,
         prefix_function_names: args.prefix_function_names,
 
         // We used to guard asm translation with a command-line
