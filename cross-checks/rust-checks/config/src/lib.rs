@@ -9,10 +9,6 @@ extern crate serde_yaml;
 
 extern crate globset;
 
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-
 extern crate indexmap;
 
 pub mod attr;
@@ -22,6 +18,7 @@ pub mod scopes;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use regex::RegexSet;
+use thiserror::Error;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -525,10 +522,10 @@ impl Config {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum ParseError {
-    #[fail(display = "YAML parse error")]
-    YAML(#[cause] serde_yaml::Error),
+    #[error("YAML parse error")]
+    YAML(#[from] serde_yaml::Error),
 }
 
 pub fn parse_string(s: &str) -> Result<Config, ParseError> {
