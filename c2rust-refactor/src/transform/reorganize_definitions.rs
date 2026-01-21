@@ -1199,7 +1199,7 @@ impl<'a, 'tcx> Extend<MovedDecl> for HeaderDeclarations<'a, 'tcx> {
     fn extend<T: IntoIterator<Item = MovedDecl>>(&mut self, iter: T) {
         for item in iter {
             let ident = item.ident();
-            if ident.as_str().contains("C2RustUnnamed") {
+            if ident.as_str().contains("C2Rust_Unnamed") {
                 self.unnamed_items[item.namespace].push(item);
             } else {
                 self.idents[item.namespace].entry(ident).or_default().push(item);
@@ -1303,7 +1303,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             // contents.
 
             _ => {
-                let unnamed = ident.as_str().contains("C2RustUnnamed");
+                let unnamed = ident.as_str().contains("C2Rust_Unnamed");
                 let def_id_mapping = match self.find_item(&item, namespace.unwrap()) {
                     ContainsDecl::NotContained => {
                         let new_item = MovedDecl::new(item, new_def_id, namespace.unwrap(), parent_header);
@@ -1358,7 +1358,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         let new_def_id = self.cx.node_def_id(item.id);
         let ident = item.ident;
         let namespace = self.cx.foreign_item_namespace(&item).unwrap();
-        let unnamed = ident.as_str().contains("C2RustUnnamed");
+        let unnamed = ident.as_str().contains("C2Rust_Unnamed");
         let def_id_mapping = match self.find_foreign_item(&item, abi) {
             ContainsDecl::NotContained => {
                 let new_item = MovedDecl::new(
@@ -1494,7 +1494,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         };
         assert!(ident.name != kw::Empty);
 
-        if ident.as_str().contains("C2RustUnnamed") {
+        if ident.as_str().contains("C2Rust_Unnamed") {
             for existing_decl in self.unnamed_items[namespace].iter_mut() {
                 match &existing_decl.kind {
                     DeclKind::Item(existing_item) => match &existing_item.kind {

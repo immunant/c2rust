@@ -15,10 +15,10 @@ input_file: c2rust-transpile/tests/snapshots/exprs.c
 extern "C" {
     fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }
-pub type C2RustUnnamed = ::core::ffi::c_uint;
-pub const C: C2RustUnnamed = 2;
-pub const B: C2RustUnnamed = 1;
-pub const A: C2RustUnnamed = 0;
+pub type C2Rust_Unnamed = ::core::ffi::c_uint;
+pub const C: C2Rust_Unnamed = 2;
+pub const B: C2Rust_Unnamed = 1;
+pub const A: C2Rust_Unnamed = 0;
 unsafe extern "C" fn side_effect() -> ::core::ffi::c_int {
     puts(b"the return of side effect\0" as *const u8 as *const ::core::ffi::c_char);
     return 10 as ::core::ffi::c_int;
