@@ -458,14 +458,16 @@ struct LoopContext {
     innermost_loop_exits: IndexSet<Label>,
 }
 
-fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
+fn process_cfg(
     structures: &[Structure<Stmt>],
     cfg_info: &CfgInfo,
     followup_entries: &IndexSet<Label>,
     loop_context: &LoopContext,
     break_targets: &mut IndexSet<Label>,
-) -> TranslationResult<S> {
+) -> TranslationResult<StructuredAST<Box<Expr>, Pat, Label, Stmt>> {
     use Structure::*;
+
+    type S = StructuredAST<Box<Expr>, Pat, Label, Stmt>;
 
     // HACK: Reorder the branches of a multiple to put all named labels at the end.
     //
@@ -692,7 +694,7 @@ fn process_cfg<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stm
                 };
 
                 let branch_ast =
-                    process_cfg::<S>(branch, cfg_info, next_entries, loop_context, break_targets)?;
+                    process_cfg(branch, cfg_info, next_entries, loop_context, break_targets)?;
 
                 if break_targets.contains(entry) {
                     structure_ast = S::mk_block(entry.clone(), structure_ast);
