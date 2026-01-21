@@ -108,7 +108,7 @@ fn cleanup_labels(
                     inner_labels.clear();
                     cleanup_labels(body, &None, &mut inner_labels);
 
-                    *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+                    *ast = std::mem::take(&mut *body);
                 }
 
                 // If the block's body is a labeled loop or a block, then exiting either takes
@@ -300,6 +300,15 @@ impl<T: PartialEq> PartialEq for Spanned<T> {
 
 impl<T: Eq> Eq for Spanned<T> {}
 
+impl<T: Default> Default for Spanned<T> {
+    fn default() -> Self {
+        Self {
+            node: Default::default(),
+            span: Span::dummy(),
+        }
+    }
+}
+
 pub type StructuredAST<E, P, L, S> = Spanned<StructuredASTKind<E, P, L, S>>;
 
 fn dummy_spanned<T>(inner: T) -> Spanned<T> {
@@ -333,6 +342,13 @@ pub enum StructuredASTKind<E, P, L, S> {
     Loop(Option<L>, Box<StructuredAST<E, P, L, S>>),
     Block(L, Box<StructuredAST<E, P, L, S>>),
     Exit(ExitStyle, Option<L>),
+}
+
+// Custom impl so that we don't require the generic args to impl `Default`.
+impl<E, P, L, S> Default for StructuredASTKind<E, P, L, S> {
+    fn default() -> Self {
+        Self::Empty
+    }
 }
 
 impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {

@@ -73,7 +73,7 @@ pub fn reloop(
     use_c_multiple_info: bool,   // use the multiple information in the CFG (slower, but better)
     live_in: IndexSet<CDeclId>,  // declarations we assume are live going into this graph
 ) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
-    let entries: IndexSet<Label> = vec![cfg.entries.clone()].into_iter().collect();
+    let entries = indexset![cfg.entries.clone()];
     let blocks: BasicBlocks = cfg
         .nodes
         .into_iter()
@@ -304,11 +304,12 @@ impl RelooperState {
         // may have entries that aren't present in our current blocks when we're inside
         // the branch of a `Multiple`, but there must always be at least one present
         // entry.
-        assert!(
-            entries.iter().any(|entry| blocks.contains_key(entry)),
-            "No entries are in our current set of blocks, entries: {entries:?}, blocks: {:?}",
-            blocks.keys().collect::<Vec<_>>(),
-        );
+        if !entries.iter().any(|entry| blocks.contains_key(entry)) {
+            panic!(
+                "No entries are in our current set of blocks, entries: {entries:?}, blocks: {:?}",
+                blocks.keys().collect::<Vec<_>>(),
+            );
+        }
 
         // Like `strict_reachable_from`, but entries also reach themselves.
         let mut reachable_from = strict_reachable_from.clone();
