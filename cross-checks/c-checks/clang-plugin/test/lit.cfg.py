@@ -31,6 +31,7 @@ clang_xcheck_Xclang_args = [
         "-add-plugin", "crosschecks"
         ]
 clang_xcheck_args = " " + " ".join("-Xclang " + x for x in clang_xcheck_Xclang_args)
+clang_xcheck_args += " " # Add an empty space after the args
 clang_xcheck_args += "-std=c11 "
 clang_xcheck_args += "-I{} ".format(xcheck_include_path)
 clang_xcheck_args += "-ffunction-sections "
