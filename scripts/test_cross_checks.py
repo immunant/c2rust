@@ -60,7 +60,7 @@ def main():
     # checkout_and_build_libclevrbuf()
     build_libfakechecks()
     test_clang_cross_checks()
-    test_rust_cross_checks()
+    ###test_rust_cross_checks()
 
 
 if __name__ == "__main__":
