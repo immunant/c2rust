@@ -201,8 +201,14 @@ fn convert_module_list(
     res
 }
 
-fn convert_dependencies_list(crates: CrateSet) -> Vec<ExternCrateDetails> {
-    crates.into_iter().map(|dep| dep.into()).collect()
+fn convert_dependencies_list(
+    crates: CrateSet,
+    c2rust_dir: Option<&Path>,
+) -> Vec<ExternCrateDetails> {
+    crates
+        .into_iter()
+        .map(|dep| dep.with_details(c2rust_dir))
+        .collect()
 }
 
 fn get_lib_rs_file_name(tcfg: &TranspilerConfig) -> &str {
@@ -245,7 +251,7 @@ fn emit_lib_rs(
     crates: &CrateSet,
 ) -> Option<PathBuf> {
     let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
-    let crates = convert_dependencies_list(crates.clone());
+    let crates = convert_dependencies_list(crates.clone(), tcfg.c2rust_dir.as_deref());
     let file_name = get_lib_rs_file_name(tcfg);
     let json = json!({
         "lib_rs_file": file_name,
@@ -296,7 +302,8 @@ fn emit_cargo_toml<'lcmd>(
             ccfg.modules.to_owned(),
             ModuleSubset::Binaries,
         );
-        let dependencies = convert_dependencies_list(ccfg.crates.clone());
+        let dependencies =
+            convert_dependencies_list(ccfg.crates.clone(), tcfg.c2rust_dir.as_deref());
         let crate_json = json!({
             "crate_name": ccfg.crate_name,
             "crate_rust_name": ccfg.crate_name.replace('-', "_"),

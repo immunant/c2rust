@@ -105,6 +105,12 @@ struct Args {
     #[clap(short = 'e', long)]
     emit_build_files: bool,
 
+    /// If building from the c2rust repo, the path to it.
+    /// This is needed to use relative paths for up-to-date dependencies
+    /// (as opposed to what is published on crates.io).
+    #[clap(long)]
+    c2rust_dir: Option<PathBuf>,
+
     /// Path to output directory. Rust sources will be emitted in DIR/src/ and build files will be emitted in DIR/.
     #[clap(short = 'o', long, value_name = "DIR")]
     output_dir: Option<PathBuf>,
@@ -248,6 +254,7 @@ fn main() {
         reorganize_definitions: args.reorganize_definitions,
         emit_modules: args.emit_modules,
         emit_build_files: args.emit_build_files,
+        c2rust_dir: args.c2rust_dir,
         output_dir: args.output_dir,
         binaries: args.binary.unwrap_or_default(),
         panic_on_translator_failure: args.invalid_code == InvalidCodes::Panic,
