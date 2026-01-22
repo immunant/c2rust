@@ -199,13 +199,19 @@ private:
 struct XCheck {
     uint32_t type;
     union {
-        uint64_t data_u64;
+        struct {
+            uint64_t data_u64;
+            // Add explicit padding that overlaps StringLenPtr::len
+            // and zero-initialize it so the compiler doesn't warn
+            // about uninitialized values in len
+            uint32_t padding1;
+        };
         config::StringLenPtr data_str;
     };
 
     XCheck() = delete;
     XCheck(config::XCheck *xc)
-        : type(xcfg_xcheck_type(xc)), data_u64(0) {
+        : type(xcfg_xcheck_type(xc)), data_u64(0), padding1(0) {
         switch (type) {
         case config::XCHECK_TYPE_FIXED:
             data_u64 = xcfg_xcheck_data_u64(xc);
