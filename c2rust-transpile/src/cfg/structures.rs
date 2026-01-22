@@ -10,16 +10,16 @@ use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 pub fn structured_cfg(
     root: &[Structure<Stmt>],
     comment_store: &mut comment_store::CommentStore,
-    current_block: Box<Expr>,
-    debug_labels: bool,
+    current_block_enum: Ident,
+    current_block_variable: Box<Expr>,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
     let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
         structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
 
     let s = StructureState {
-        debug_labels,
-        current_block,
+        current_block_enum,
+        current_block_variable,
     };
     let (mut stmts, _span) = s.to_stmt(ast, comment_store);
 
@@ -348,28 +348,31 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
     Ok(rest)
 }
 
-/// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
-/// `current_block` variable.
-pub fn has_multiple<Stmt>(root: &[Structure<Stmt>]) -> bool {
-    use Structure::*;
-    root.iter().any(|structure| match structure {
-        Simple { terminator, .. } => {
-            terminator
-                .get_labels()
-                .into_iter()
-                .any(|structure_label| match structure_label {
-                    StructureLabel::Nested(nested) => has_multiple(nested),
-                    _ => false,
-                })
+/// Gets the labels (entries) from any `Multiple` structures in the tree.
+/// Only if there are any, will there be any need for a `current_block` variable.
+pub fn get_current_block_labels(root: &[Structure<Stmt>]) -> IndexSet<Label> {
+    let mut labels = IndexSet::new();
+
+    for structure in root {
+        match structure {
+            Structure::Simple { terminator, .. } => {
+                for structure_label in terminator.get_labels() {
+                    if let StructureLabel::Nested(nested) = structure_label {
+                        labels.extend(get_current_block_labels(nested));
+                    }
+                }
+            }
+            Structure::Loop { body, .. } => labels.extend(get_current_block_labels(body)),
+            Structure::Multiple { entries, .. } => labels.extend(entries.iter().cloned()),
         }
-        Multiple { .. } => true,
-        Loop { body, .. } => has_multiple(body),
-    })
+    }
+
+    labels
 }
 
 struct StructureState {
-    debug_labels: bool,
-    current_block: Box<Expr>,
+    current_block_enum: Ident,
+    current_block_variable: Box<Expr>,
 }
 
 /// Returns a `Span` between the beginning of `span` or `other`, whichever is
@@ -470,14 +473,10 @@ impl StructureState {
 
             Goto(to) => {
                 // Assign to `current_block` the next label we want to go to.
-
-                let lbl_expr = if self.debug_labels {
-                    to.to_string_expr()
-                } else {
-                    to.to_num_expr()
-                };
-                mk().span(span)
-                    .semi_stmt(mk().assign_expr(self.current_block.clone(), lbl_expr))
+                let path = vec![self.current_block_enum.clone(), to.to_variant_ident()];
+                let expr =
+                    mk().assign_expr(self.current_block_variable.clone(), mk().path_expr(path));
+                mk().span(span).semi_stmt(expr)
             }
 
             Match(cond, cases) => {
@@ -569,13 +568,13 @@ impl StructureState {
                     .into_iter()
                     .map(|(lbl, stmts)| -> Arm {
                         let (stmts, stmts_span) = self.to_stmt(stmts, comment_store);
-
-                        let lbl_lit = if self.debug_labels {
-                            lbl.to_string_lit()
-                        } else {
-                            lbl.to_int_lit()
+                        let pat = {
+                            let path = mk().path(vec![
+                                self.current_block_enum.clone(),
+                                lbl.to_variant_ident(),
+                            ]);
+                            mk().path_pat(path, None)
                         };
-                        let pat = mk().lit_pat(lbl_lit);
                         let body = mk().block_expr(mk().span(stmts_span).block(stmts));
                         mk().arm(pat, None, body)
                     })
@@ -589,7 +588,7 @@ impl StructureState {
                     mk().block_expr(mk().span(then_span).block(then)),
                 ));
 
-                let e = mk().match_expr(self.current_block.clone(), arms);
+                let e = mk().match_expr(self.current_block_variable.clone(), arms);
 
                 mk().span(span).expr_stmt(e)
             }

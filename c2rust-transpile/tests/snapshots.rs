@@ -21,7 +21,6 @@ fn config() -> TranspilerConfig {
         incremental_relooper: true,
         fail_on_multiple: false,
         filter: None,
-        debug_relooper_labels: false,
         prefix_function_names: None,
         translate_asm: true,
         use_c_loop_info: true,

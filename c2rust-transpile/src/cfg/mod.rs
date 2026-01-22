@@ -21,17 +21,14 @@ use crate::diagnostics::TranslationResult;
 use crate::rust_ast::SpanExt;
 use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::hash::Hash;
-use std::hash::Hasher;
 use std::io;
 use std::io::Write;
 use std::ops::Deref;
 use std::ops::Index;
-use syn::Lit;
-use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
+use syn::{spanned::Spanned, Arm, Expr, Ident, Pat, Stmt};
 
 use failure::format_err;
 use indexmap::indexset;
@@ -82,27 +79,12 @@ impl Label {
         String::from(self.pretty_print().trim_start_matches('\''))
     }
 
-    fn to_num_expr(&self) -> Box<Expr> {
-        let mut s = DefaultHasher::new();
-        self.hash(&mut s);
-        let as_num = s.finish();
-
-        mk().lit_expr(as_num as u128)
-    }
-
-    fn to_string_expr(&self) -> Box<Expr> {
-        mk().lit_expr(self.debug_print())
-    }
-
-    fn to_int_lit(&self) -> Lit {
-        let mut s = DefaultHasher::new();
-        self.hash(&mut s);
-        let as_num = s.finish();
-        mk().int_lit(as_num as u128, "")
-    }
-
-    fn to_string_lit(&self) -> Lit {
-        mk().str_lit(&self.debug_print())
+    pub fn to_variant_ident(&self) -> Ident {
+        mk().ident(match self {
+            Label::FromC(_, Some(s)) => format!("{}", s.as_ref()),
+            Label::FromC(CStmtId(label_id), None) => format!("C_{}", label_id),
+            Label::Synthetic(syn_id) => format!("S_{}", syn_id),
+        })
     }
 }
 
