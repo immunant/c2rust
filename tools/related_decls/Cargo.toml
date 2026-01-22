@@ -6,13 +6,14 @@ edition = "2024"
 [dependencies]
 rust_util = { path = "../rust_util" }
 
-syn = { version = "2.0.108", features = ["full", "visit-mut", "visit"] }
-proc-macro2 = { version = "1", features = ["span-locations"] }
-quote = "1"
 clap = { version = "4.5", features = ["derive"] }
+log = "=0.4.28"
 
 ra_ap_hir = "=0.0.301"
+ra_ap_hir_def = "=0.0.301"
 ra_ap_ide_db = "=0.0.301"
 ra_ap_load-cargo = "=0.0.301"
 ra_ap_project_model = "=0.0.301"
 ra_ap_syntax = "=0.0.301"
+env_logger = {version = "0.11.8", features = ["color", "auto-color"]}
+itertools = "0.14.0"
