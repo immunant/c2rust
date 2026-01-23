@@ -80,6 +80,40 @@ pub unsafe extern "C" fn continue_while(mut x: ::core::ffi::c_int) -> ::core::ff
     return x;
 }
 #[no_mangle]
+pub unsafe extern "C" fn trivial_nested_while(mut x: ::core::ffi::c_int) {
+    while x != 0 {
+        while x != 0 {
+            while x != 0 {
+                x += 1 as ::core::ffi::c_int;
+            }
+        }
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn nested_while(mut x: ::core::ffi::c_int) {
+    while x != 0 {
+        while x != 0 {
+            while x != 0 {
+                x += 1 as ::core::ffi::c_int;
+            }
+            x += 2 as ::core::ffi::c_int;
+        }
+        x += 3 as ::core::ffi::c_int;
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn nested_for(mut x: ::core::ffi::c_int) {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 5 as ::core::ffi::c_int {
+        let mut j: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while j < 5 as ::core::ffi::c_int {
+            x += 1;
+            j += 1;
+        }
+        i += 1;
+    }
+}
+#[no_mangle]
 pub unsafe extern "C" fn exit_nested_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     '_break_outer: while x != 0 {
         while x != 0 {

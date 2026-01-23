@@ -62,6 +62,38 @@ int continue_while(int x) {
     return x;
 }
 
+// Simple nested loops.
+
+void trivial_nested_while(int x) {
+    while (x) {
+        while (x) {
+            while (x) {
+                x += 1;
+            }
+        }
+    }
+}
+
+void nested_while(int x) {
+    while (x) {
+        while (x) {
+            while (x) {
+                x += 1;
+            }
+            x += 2;
+        }
+        x += 3;
+    }
+}
+
+void nested_for(int x) {
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            x++;
+        }
+    }
+}
+
 // Multi-level break and continue.
 
 int exit_nested_loops(int x) {
