@@ -121,16 +121,12 @@
         defaultPackage = packages.default;
 
         devShells = {
-          # Include a fixed version of clang in the development environment for testing.
-          default = pkgs.mkShell.override { stdenv = myStdenv; } (
-            with pkgs;
-            env
-            // {
-              strictDeps = true;
-              inputsFrom = [ packages.default ];
-              buildInputs = [ ];
-            }
-          );
+          default = pkgs.mkShell.override { stdenv = myStdenv; } {
+            inherit env;
+            strictDeps = true;
+            inputsFrom = [ packages.default ];
+            buildInputs = [ ];
+          };
         };
 
         devShell = devShells.default;
