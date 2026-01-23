@@ -455,7 +455,7 @@ pub fn emit_c_decl_map(
     converted_decls: &HashMap<CDeclId, ConvertedDecl>,
     decl_source_ranges: IndexMap<CDeclId, (SrcLoc, SrcLoc)>,
 ) -> DeclMap {
-    let mut path_to_c_source_range: HashMap<&Ident, (SrcLoc, SrcLoc)> = Default::default();
+    let mut path_to_c_source_range: IndexMap<&Ident, _> = Default::default();
     for (decl, source_range) in decl_source_ranges {
         match converted_decls.get(&decl) {
             Some(ConvertedDecl::ForeignItem(item)) => {
