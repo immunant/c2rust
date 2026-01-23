@@ -1,7 +1,7 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/irreducible.rs
-input_file: c2rust-transpile/tests/snapshots/irreducible.c
+expression: cat tests/snapshots/os-specific/irreducible.linux.rs
+input_file: c2rust-transpile/tests/snapshots/os-specific/irreducible.c
 ---
 #![allow(
     dead_code,
