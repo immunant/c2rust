@@ -1,6 +1,3 @@
-[submodule "ReMon"]
-	path = cross-checks/ReMon
-	url = https://github.com/stijn-volckaert/ReMon.git
 [submodule "examples/snudown/repo"]
 	path = examples/snudown/repo
 	url = https://github.com/immunant/snudown.git
