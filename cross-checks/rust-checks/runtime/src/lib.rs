@@ -1,5 +1,4 @@
 #![feature(never_type)]
-#![feature(asm)]
 #![cfg_attr(feature = "xcheck-with-dlsym", feature(const_fn))]
 #![cfg_attr(feature = "xcheck-with-dlsym", feature(const_ptr_null_mut))]
 #![cfg_attr(feature = "xcheck-with-dlsym", feature(libc))]
