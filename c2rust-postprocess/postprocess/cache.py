@@ -1,9 +1,10 @@
 import json
 import logging
 from abc import ABC, abstractmethod
+from contextlib import suppress
+from errno import ENOTEMPTY
 from hashlib import sha256
 from pathlib import Path
-from shutil import rmtree
 from tempfile import gettempdir
 from typing import Any, Self, Union
 
@@ -75,6 +76,12 @@ class AbstractCache(ABC):
         Not abstract because not all implementations need it.
         """
         pass
+
+    def gc_init(self) -> None:
+        """
+        Initialize garbage collection.
+        """
+        raise NotImplementedError
 
     def gc_sweep(self) -> None:
         """
@@ -178,15 +185,10 @@ class DirectoryCache(AbstractCache):
 
     def gc_mark(self, path: Path):
         """
-        Mark a path in `.gc` to not be swept/deleted.
+        Mark paths to not be swept/deleted by updating their mtime.
         """
 
-        rel_path = path.relative_to(self._path)
-        if "\n" in str(rel_path):
-            raise ValueError(f"'\\n' cannot be in path: {rel_path}")
-        with open(self.gc_mark_file(), "a") as f:
-            f.write(f"{rel_path}\n")
-            f.flush()
+        path.touch()
 
     def lookup(
         self,
@@ -199,9 +201,10 @@ class DirectoryCache(AbstractCache):
         cache_dir = self.cache_dir(
             transform=transform, identifier=identifier, messages=messages
         )
-        cache_file = cache_dir / "metadata.toml"
+        metadata_path = cache_dir / "metadata.toml"
+        response_path = cache_dir / "response.txt"
         try:
-            toml = cache_file.read_text()
+            toml = metadata_path.read_text()
         except FileNotFoundError:
             data = {
                 "transform": transform,
@@ -210,11 +213,12 @@ class DirectoryCache(AbstractCache):
                 "messages": messages,
             }
             toml = to_multiline_toml(data)
-            logging.debug(f"Cache miss: {cache_file}:\n{toml}")
+            logging.debug(f"Cache miss: {metadata_path}:\n{toml}")
             return None
 
-        logging.debug(f"Cache hit: {cache_file}:\n{toml}")
-        self.gc_mark(cache_dir)
+        logging.debug(f"Cache hit: {metadata_path}:\n{toml}")
+        self.gc_mark(metadata_path)
+        self.gc_mark(response_path)
         data = tomli.loads(toml)
 
         return data["response"]
@@ -247,35 +251,79 @@ class DirectoryCache(AbstractCache):
         response_path.write_text(response)
 
         logging.debug(f"Cache updated: {cache_dir}:\n{toml}")
-        self.gc_mark(cache_dir)
+        # The `.write_text`s above updated the mtimes already,
+        # so no need to call `self.gc_mark`.
 
     def clear(self) -> None:
         self._path.unlink(missing_ok=True)
 
+    def gc_init(self) -> None:
+        """
+        Initialize garbage collection by
+        creating the `.gc` file if it doesn't exist yet.
+        """
+        # Create/touch `.gc` only if it doesn't exist yet.
+        # This allows multiple postprocess CLI runs
+        # and then `--gc-cache` on the last one to work.
+        with suppress(FileExistsError):
+            self.gc_mark_file().touch(exist_ok=False)
+
     def gc_sweep(self) -> None:
         """
-        Sweep/delete everything in the cache that is not marked in `.gc`.
+        Sweep/delete everything in the cache with an mtime older than `.gc`'s mtime.
+        `.gc` should have only been created and never modified/touched again.
         """
 
-        # Delete everything of the form `{transform}/{identifier}/{hash}/`
-        # that's not in `.gc`.  When completely done, delete `.gc`.
-        dirs_to_keep = {
-            Path(path) for path in self.gc_mark_file().read_text().split("\n")
-        }
-        for transform_dir in self._path.iterdir():
-            if not transform_dir.is_dir():
-                continue
-            for identifier_dir in transform_dir.iterdir():
-                if not identifier_dir.is_dir():
-                    continue
-                for hash_dir in identifier_dir.iterdir():
-                    if not hash_dir.is_dir():
-                        continue
-                    rel_hash_dir = hash_dir.relative_to(self._path)
-                    if rel_hash_dir in dirs_to_keep:
-                        continue
-                    rmtree(hash_dir)
-        self.gc_mark_file().unlink()
+        gc_mark_file = self.gc_mark_file()
+        oldest_allowed = gc_mark_file.stat().st_mtime_ns
+
+        def walk(dir: Path) -> bool:
+            """
+            Walk `dir`, removing any files older than `oldest_allowed`.
+            If `dir` wasn't empty before and is now empty, remove it, too.
+            Return if `dir` was removed or not.
+            """
+
+            # First remove all files in the dir and recurse into subdirs.
+            removed_any = False
+            for path in dir.iterdir():
+                if path.is_dir():
+                    if walk(path):
+                        removed_any = True
+                else:
+                    if path.stat().st_mtime_ns < oldest_allowed:
+                        try:
+                            path.unlink()
+                            removed_any = True
+                        except OSError as e:
+                            logging.warning(f"gc_sweep: failed to unlink {path}: {e}")
+
+            # If we haven't removed anything in the dir,
+            # then there's no reason to remove it, even if it's empty.
+            if not removed_any:
+                return False
+
+            # If we have removed something, try to delete the dir.
+            # This only succeeds if the dir is empty, which is what we want.
+            try:
+                dir.rmdir()
+                return True
+            except OSError as e:
+                if e.errno == ENOTEMPTY:
+                    pass
+                else:
+                    logging.warning(f"gc_sweep: failed to rmdir {dir}: {e}")
+                return False
+
+        walk(self._path)
+
+        # Shouldn't have been unlinked above,
+        # as its mtime isn't older itself.
+        # Similarly, because this wasn't deleted,
+        # the cache dir shouldn't have been deleted either.
+        # Delete this at the end, so that if the sweep is interrupted,
+        # we still have the mtime to try again.
+        gc_mark_file.unlink()
 
 
 class FrozenCache(AbstractCache):

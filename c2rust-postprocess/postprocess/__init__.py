@@ -142,6 +142,8 @@ def main(argv: Sequence[str] | None = None):
 
         model = get_model(args.model_id)
 
+        cache.gc_init()
+
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
         xform.transfer_comments_dir(
