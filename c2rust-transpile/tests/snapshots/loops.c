@@ -372,3 +372,93 @@ int backwards_while_loop(int x) {
     return -x;
 }
 */
+
+// Multiple loops in separate branches.
+
+void if_else_loops(int x) {
+    if (x) {
+        while (x) {
+            x += 1;
+        }
+    } else {
+        while (x) {
+            x += 2;
+        }
+    }
+}
+
+int goto_loops(int x) {
+A:
+    if (x) {
+        goto B;
+    } else {
+        goto C;
+    }
+
+B:
+    x += 1;
+    if (x) {
+        goto B;
+    } else {
+        goto D;
+    }
+
+C:
+    x += 2;
+    if (x) {
+        goto C;
+    } else {
+        goto D;
+    }
+
+D:
+    return x;
+}
+
+void goto_into_loops(int x) {
+A:
+    if (x) {
+        goto B;
+    } else {
+        goto C;
+    }
+
+    while (x) {
+B:
+        x += 1;
+    }
+    goto D;
+
+    while (x) {
+C:
+        x += 2;
+    }
+    goto D;
+
+D:
+    return;
+}
+
+void goto_separate_loops(int x) {
+A:
+    if (x) {
+        goto B;
+    } else {
+        goto C;
+    }
+
+B:
+    do {
+        x += 1;
+    } while (x);
+    goto D;
+
+C:
+    do {
+        x += 2;
+    } while (x);
+    goto D;
+
+D:
+    return;
+}

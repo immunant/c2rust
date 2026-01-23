@@ -335,3 +335,74 @@ pub unsafe extern "C" fn loop_early_return(mut x: ::core::ffi::c_int) -> ::core:
     }
     return -x;
 }
+#[no_mangle]
+pub unsafe extern "C" fn if_else_loops(mut x: ::core::ffi::c_int) {
+    if x != 0 {
+        while x != 0 {
+            x += 1 as ::core::ffi::c_int;
+        }
+    } else {
+        while x != 0 {
+            x += 2 as ::core::ffi::c_int;
+        }
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_D: {
+        if x != 0 {
+            loop {
+                x += 1 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        } else {
+            loop {
+                x += 2 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_into_loops(mut x: ::core::ffi::c_int) {
+    '_D: {
+        if x != 0 {
+            loop {
+                x += 1 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        } else {
+            loop {
+                x += 2 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        }
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_separate_loops(mut x: ::core::ffi::c_int) {
+    if x != 0 {
+        loop {
+            x += 1 as ::core::ffi::c_int;
+            if !(x != 0) {
+                break;
+            }
+        }
+    } else {
+        loop {
+            x += 2 as ::core::ffi::c_int;
+            if !(x != 0) {
+                break;
+            }
+        }
+    };
+}
