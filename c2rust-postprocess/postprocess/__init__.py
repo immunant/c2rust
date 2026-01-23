@@ -160,7 +160,6 @@ def main(argv: Sequence[str] | None = None):
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
             fail_fast=args.fail_fast,
-            gc_cache=args.gc_cache,
         )
 
         failures: list[CommentTransferFailure] = []
@@ -172,7 +171,7 @@ def main(argv: Sequence[str] | None = None):
             if options.fail_fast:
                 break
 
-        if options.gc_cache:
+        if args.gc_cache:
             cache.gc_sweep()
 
         for failure in failures:

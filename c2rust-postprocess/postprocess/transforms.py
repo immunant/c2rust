@@ -69,7 +69,6 @@ class CommentTransferOptions:
     ident_filter: str | None = None
     update_rust: bool = True
     fail_fast: bool = True
-    gc_cache: bool = False
 
     def ident_regex(self) -> Pattern[str] | None:
         return re.compile(self.ident_filter) if self.ident_filter else None
