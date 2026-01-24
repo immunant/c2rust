@@ -516,7 +516,7 @@ pub fn emit_c_decl_map(
     let byte_offset_of = |loc| src_loc_to_byte_offset(&line_end_offsets, loc);
 
     // Slice into the source file, fixing up the ends to account for Clang AST quirks.
-    let slice_decl_with_fixups = |begin: SrcLoc, end: SrcLoc| -> &[u8] {
+    let slice_decl_with_fixups = |begin: SrcLoc, strict_begin: SrcLoc, end: SrcLoc| -> &[u8] {
         assert!(begin.line <= end.line, "{} <= {}", begin.line, end.line);
         let mut begin_offset = byte_offset_of(begin);
         let mut end_offset = byte_offset_of(end);
@@ -544,9 +544,12 @@ pub fn emit_c_decl_map(
         .into_iter()
         .map(|(ident, range)| {
             let path = ident.to_string();
-            let c_src =
-                std::str::from_utf8(slice_decl_with_fixups(range.earliest_begin, range.end))
-                    .unwrap();
+            let c_src = std::str::from_utf8(slice_decl_with_fixups(
+                range.earliest_begin,
+                range.strict_begin,
+                range.end,
+            ))
+            .unwrap();
             (path, c_src.to_owned())
         })
         .collect();

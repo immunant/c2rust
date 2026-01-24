@@ -180,6 +180,9 @@ impl PartialOrd for SrcLocInclude<'_> {
 pub struct CDeclSrcRange {
     /// The earliest position where this declaration or its documentation might start.
     pub earliest_begin: SrcLoc,
+    /// A position by which this declaration itself is known to have begun.
+    /// Attributes or return type may possibly precede this position.
+    pub strict_begin: SrcLoc,
     /// The end of the declaration, except for possible trailing semicolon.
     pub end: SrcLoc,
 }
@@ -401,6 +404,7 @@ impl TypedAstContext {
             {
                 let entry = CDeclSrcRange {
                     earliest_begin: earliest_begin_loc,
+                    strict_begin: begin_loc,
                     end: end_loc,
                 };
                 name_loc_map.insert(*decl_id, entry);
