@@ -1269,18 +1269,16 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
 
             if t.tcfg.cross_checks {
                 out_items.push(
-                    &mk()
-                        .single_attr("macro_use")
+                    mk().single_attr("macro_use")
                         .extern_crate_item("c2rust_xcheck_derive", None),
                 );
                 out_items.push(
-                    &mk()
-                        .single_attr("macro_use")
+                    mk().single_attr("macro_use")
                         .extern_crate_item("c2rust_xcheck_runtime", None),
                 );
                 // When cross-checking, always use the system allocator
                 let sys_alloc_path = vec!["", "std", "alloc", "System"];
-                out_items.push(&mk().single_attr("global_allocator").static_item(
+                out_items.push(mk().single_attr("global_allocator").static_item(
                     "C2RUST_ALLOC",
                     mk().path_ty(sys_alloc_path.clone()),
                     mk().path_expr(sys_alloc_path),
