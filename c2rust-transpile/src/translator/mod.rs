@@ -516,8 +516,6 @@ pub fn emit_c_decl_map(
             end_offset += 1;
         }
 
-        assert!(begin_offset <= end_offset);
-
         &file_content[begin_offset..end_offset]
     };
 
