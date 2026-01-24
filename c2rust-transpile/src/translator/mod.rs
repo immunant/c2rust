@@ -450,6 +450,35 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&Path
     file_path
 }
 
+/// Convert a source location line/column into a byte offset, given the positions of each newline in the file.
+fn src_loc_to_byte_offset(line_end_offsets: &[usize], loc: SrcLoc) -> usize {
+    let line_offset = loc
+        .line
+        .checked_sub(2) // lines are 1-indexed, and we want end of the previous line
+        .and_then(|line| line_end_offsets.get(line as usize))
+        .map(|x| x + 1) // increment end of the prev line to find start of this one
+        .unwrap_or(0); // if we indexed out of bounds (e.g. for line 1), start at byte 0
+    line_offset + (loc.column as usize).saturating_sub(1)
+}
+
+#[test]
+fn test_src_loc_to_byte_offset() {
+    let loc = |l, c| SrcLoc {
+        fileid: 0,
+        line: l,
+        column: c,
+    };
+
+    assert_eq!(src_loc_to_byte_offset(&[0, 1, 2, 3], loc(1, 1)), 0);
+    assert_eq!(src_loc_to_byte_offset(&[0, 1, 2, 3], loc(2, 1)), 1);
+    assert_eq!(src_loc_to_byte_offset(&[0, 1, 2, 3], loc(3, 1)), 2);
+    assert_eq!(src_loc_to_byte_offset(&[0, 1, 2, 3], loc(4, 1)), 3);
+    assert_eq!(src_loc_to_byte_offset(&[0, 1, 2, 3], loc(4, 1001)), 1003);
+    assert_eq!(src_loc_to_byte_offset(&[30, 50], loc(1, 1)), 0);
+    assert_eq!(src_loc_to_byte_offset(&[30, 50], loc(2, 1)), 31);
+    assert_eq!(src_loc_to_byte_offset(&[30, 50], loc(2, 10)), 40);
+}
+
 pub fn emit_c_decl_map(
     t: &Translation,
     converted_decls: &HashMap<CDeclId, ConvertedDecl>,
@@ -483,22 +512,13 @@ pub fn emit_c_decl_map(
                 file_content.iter().positions(|c| *c == b'\n')
                 .collect::<Vec<_>>();
 
-    /// Convert a source location line/column into a byte offset, given the positions of each newline in the file.
-    fn src_loc_to_byte_offset(line_end_offsets: &[usize], loc: SrcLoc) -> usize {
-        let line_offset = loc
-            .line
-            .checked_sub(2) // lines are 1-indexed, and we want end of the previous line
-            .and_then(|line| line_end_offsets.get(line as usize))
-            .map(|x| x + 1) // increment end of the prev line to find start of this one
-            .unwrap_or(0); // if we indexed out of bounds (e.g. for line 1), start at byte 0
-        line_offset + (loc.column as usize).saturating_sub(1)
-    }
+    let byte_offset_of = |loc| src_loc_to_byte_offset(&line_end_offsets, loc);
 
     // Slice into the source file, fixing up the ends to account for Clang AST quirks.
     let slice_decl_with_fixups = |begin: SrcLoc, end: SrcLoc| -> &[u8] {
         assert!(begin.line <= end.line, "{} <= {}", begin.line, end.line);
-        let mut begin_offset = src_loc_to_byte_offset(&line_end_offsets, begin);
-        let mut end_offset = src_loc_to_byte_offset(&line_end_offsets, end);
+        let mut begin_offset = byte_offset_of(begin);
+        let mut end_offset = byte_offset_of(end);
         assert!(begin_offset <= end_offset);
         const VT: u8 = 11; // Vertical Tab
                            // Skip whitespace and any trailing semicolons after the previous decl.
