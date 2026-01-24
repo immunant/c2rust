@@ -1705,7 +1705,10 @@ impl<'c> Translation<'c> {
         let fn_bare_decl = (vec![], None, fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
         let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
-        let fn_item = fn_attributes.unsafe_().extern_("C").fn_item(fn_decl, fn_block);
+        let fn_item = fn_attributes
+            .unsafe_()
+            .extern_("C")
+            .fn_item(fn_decl, fn_block);
 
         let static_attributes = mk()
             .single_attr("used")
