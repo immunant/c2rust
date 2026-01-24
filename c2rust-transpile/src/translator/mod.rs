@@ -451,6 +451,35 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&Path
     file_path
 }
 
+// TODO: also remove/ignore /**/ comments?
+/// Identify the preprocessor directive that starts a line of C source code.
+/// For example, `define`, `ifdef`, `if`, etc., without leading `#` or trailing arguments.
+fn preprocessor_directive(mut line: &[u8]) -> Option<&[u8]> {
+    assert!(!line.contains(&b'\n') || line.ends_with(b"\n"));
+    while !line.is_empty() && line[0].is_ascii_whitespace() {
+        line = &line[1..];
+    }
+    if line.starts_with(b"#") {
+        line = &line[1..];
+        while !line.is_empty() && line[0].is_ascii_whitespace() {
+            line = &line[1..];
+        }
+        // Return prefix up to next whitespace
+        return line.split(u8::is_ascii_whitespace).next();
+    }
+    None
+}
+
+#[test]
+fn test_preprocessor_directive() {
+    assert_eq!(
+        preprocessor_directive(b" \t # \t define foo bar"),
+        Some("define".as_bytes())
+    );
+    assert_eq!(preprocessor_directive(b"#ifdef"), Some("ifdef".as_bytes()));
+    assert_eq!(preprocessor_directive(b"\t#if X"), Some("if".as_bytes()));
+}
+
 /// Convert a source location line/column into a byte offset, given the positions of each newline in the file.
 fn src_loc_to_byte_offset(line_end_offsets: &[usize], loc: SrcLoc) -> usize {
     let line_offset = loc
@@ -516,11 +545,49 @@ pub fn emit_c_decl_map(
     let byte_offset_of = |loc| src_loc_to_byte_offset(&line_end_offsets, loc);
 
     // Slice into the source file, fixing up the ends to account for Clang AST quirks.
-    let slice_decl_with_fixups = |begin: SrcLoc, strict_begin: SrcLoc, end: SrcLoc| -> &[u8] {
-        assert!(begin.line <= end.line, "{} <= {}", begin.line, end.line);
+    let slice_decl_with_fixups = |begin: SrcLoc, mid: SrcLoc, end: SrcLoc| -> &[u8] {
+        assert!(begin.line <= mid.line, "{} <= {}", begin.line, mid.line);
+        assert!(mid.line <= end.line, "{} <= {}", mid.line, end.line);
+
         let mut begin_offset = byte_offset_of(begin);
+        let mid_offset = byte_offset_of(mid);
         let mut end_offset = byte_offset_of(end);
-        assert!(begin_offset <= end_offset);
+        assert!(begin_offset <= mid_offset);
+        assert!(mid_offset <= end_offset);
+
+        // Remove any preceding lines prior to a final #else/#elif/#endif, as long as
+        // we don't see a different preprocessor directive first. This avoids us
+        // attaching an entire preceding `#ifdef`'d-out declaration to this one.
+
+        let line_loc = |line| SrcLoc {
+            column: 1,
+            line,
+            fileid: begin.fileid,
+        };
+
+        let nth_line_contents = |n| -> &[u8] {
+            let line_start_offset = byte_offset_of(line_loc(n));
+            let line_end_offset = byte_offset_of(line_loc(n + 1));
+
+            &file_content[line_start_offset..line_end_offset]
+        };
+
+        // Start at a position where we know the decl has begun and look backwards for a
+        // preprocessor directive.
+        let mut preproc_line = mid.line - 1;
+        while preproc_line > begin.line {
+            match preprocessor_directive(nth_line_contents(preproc_line)) {
+                Some(b"endif" | b"else" | b"elif") => {
+                    begin_offset = byte_offset_of(line_loc(preproc_line + 1)).max(begin_offset);
+                    break;
+                }
+                Some(_) => break,
+                None => {}
+            }
+            preproc_line -= 1;
+        }
+
+        // Shrink range by moving begin offset towards end of file.
         const VT: u8 = 11; // Vertical Tab
                            // Skip whitespace and any trailing semicolons after the previous decl.
         while let Some(b'\t' | b'\n' | &VT | b'\r' | b' ' | b';') = file_content.get(begin_offset) {
