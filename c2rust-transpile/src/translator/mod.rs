@@ -1229,23 +1229,17 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
         }
 
         if t.tcfg.cross_checks {
-            let mut xcheck_plugin_args: Vec<NestedMetaItem> = vec![];
-            for config_file in &t.tcfg.cross_check_configs {
-                let file_item = mk().meta_item(vec!["config_file"], config_file);
-                xcheck_plugin_args.push(mk().nested_meta_item(file_item));
-            }
-            let xcheck_plugin_item = mk().meta_item(
-                vec!["c2rust_xcheck_plugin"],
-                MetaItemKind::List(xcheck_plugin_args),
-            );
-            let plugin_args = vec![mk().nested_meta_item(xcheck_plugin_item)];
-            let plugin_item = mk().meta_item(vec!["plugin"], MetaItemKind::List(plugin_args));
-            for attr in mk()
-                .meta_item_attr(AttrStyle::Inner, plugin_item)
-                .as_inner_attrs()
-            {
-                s.print_attribute(&attr);
-            }
+            let xcheck_plugin_args = t
+                .tcfg
+                .cross_check_configs
+                .iter()
+                .map(|config_file| mk().meta_namevalue("config_file", mk().str_lit(config_file)))
+                .collect::<Vec<_>>();
+            let xcheck_plugin_item = mk().meta_list("c2rust_xcheck_plugin", xcheck_plugin_args);
+            let plugin_args = vec![xcheck_plugin_item];
+            let plugin_item = mk().meta_list("plugin", plugin_args);
+            let attr = mk().attribute(AttrStyle::Inner(Default::default()), plugin_item);
+            out_attrs.push(attr);
         }
 
         if t.tcfg.emit_no_std {
