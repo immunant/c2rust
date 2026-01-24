@@ -557,33 +557,37 @@ pub fn emit_c_decl_map(
         // Remove any preceding lines prior to a final #else/#elif/#endif, as long as
         // we don't see a different preprocessor directive first. This avoids us
         // attaching an entire preceding `#ifdef`'d-out declaration to this one.
+        if let Some(preproc_offset) = 'find_directive: {
+            let line_loc = |line| SrcLoc {
+                column: 1,
+                line,
+                fileid: begin.fileid,
+            };
 
-        let line_loc = |line| SrcLoc {
-            column: 1,
-            line,
-            fileid: begin.fileid,
-        };
+            let nth_line_contents = |n| -> &[u8] {
+                let line_start_offset = byte_offset_of(line_loc(n));
+                let line_end_offset = byte_offset_of(line_loc(n + 1));
 
-        let nth_line_contents = |n| -> &[u8] {
-            let line_start_offset = byte_offset_of(line_loc(n));
-            let line_end_offset = byte_offset_of(line_loc(n + 1));
+                &file_content[line_start_offset..line_end_offset]
+            };
 
-            &file_content[line_start_offset..line_end_offset]
-        };
-
-        // Start at a position where we know the decl has begun and look backwards for a
-        // preprocessor directive.
-        let mut preproc_line = mid.line - 1;
-        while preproc_line > begin.line {
-            match preprocessor_directive(nth_line_contents(preproc_line)) {
-                Some(b"endif" | b"else" | b"elif") => {
-                    begin_offset = byte_offset_of(line_loc(preproc_line + 1)).max(begin_offset);
-                    break;
+            // Start at a position where we know the decl has begun and look backwards for a
+            // preprocessor directive.
+            let mut preproc_line = mid.line - 1;
+            while preproc_line > begin.line {
+                match preprocessor_directive(nth_line_contents(preproc_line)) {
+                    Some(b"endif" | b"else" | b"elif") => {
+                        break 'find_directive Some(byte_offset_of(line_loc(preproc_line + 1)));
+                    }
+                    Some(_) => break,
+                    None => {}
                 }
-                Some(_) => break,
-                None => {}
+                preproc_line -= 1;
             }
-            preproc_line -= 1;
+            None
+        } {
+            // Limit the beginning of this decl by the found preprocessor directive.
+            begin_offset = preproc_offset.max(begin_offset);
         }
 
         // Shrink range by moving begin offset towards end of file.
