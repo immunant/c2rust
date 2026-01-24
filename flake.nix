@@ -122,7 +122,7 @@
         defaultPackage = packages.default;
 
         devShells = {
-          default = pkgs.mkShell.override { stdenv = myStdenv; } {
+          default = pkgs.mkShell {
             inherit env;
             strictDeps = true;
             inputsFrom = [ packages.default ];
