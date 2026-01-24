@@ -110,6 +110,7 @@
                 openssl
                 zlib
                 fenixToolchain
+                z3.dev
               ];
 
               cargoLock = {
