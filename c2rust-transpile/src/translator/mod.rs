@@ -482,7 +482,7 @@ fn test_src_loc_to_byte_offset() {
 pub fn emit_c_decl_map(
     t: &Translation,
     converted_decls: &HashMap<CDeclId, ConvertedDecl>,
-    decl_source_ranges: IndexMap<CDeclId, (SrcLoc, SrcLoc)>,
+    decl_source_ranges: IndexMap<CDeclId, CDeclSrcRange>,
 ) -> DeclMap {
     let mut path_to_c_source_range: IndexMap<&Ident, _> = Default::default();
     for (decl, source_range) in decl_source_ranges {
@@ -541,9 +541,11 @@ pub fn emit_c_decl_map(
 
     let item_path_to_c_source: IndexMap<_, _> = path_to_c_source_range
         .into_iter()
-        .map(|(ident, (begin, end))| {
+        .map(|(ident, range)| {
             let path = ident.to_string();
-            let c_src = std::str::from_utf8(slice_decl_with_fixups(begin, end)).unwrap();
+            let c_src =
+                std::str::from_utf8(slice_decl_with_fixups(range.earliest_begin, range.end))
+                    .unwrap();
             (path, c_src.to_owned())
         })
         .collect();
