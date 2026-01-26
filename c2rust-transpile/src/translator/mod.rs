@@ -600,10 +600,10 @@ pub fn emit_c_decl_map(
 
         assert!(begin_offset <= end_offset);
 
-        // Extend to include a single trailing semicolon if this decl is not a block
+        // Extend to include a single trailing semicolon or comma if this decl is not a block
         // (e.g., a variable declaration).
         if file_content.get(end_offset - 1) != Some(&b'}')
-            && file_content.get(end_offset) == Some(&b';')
+            && matches!(file_content.get(end_offset), Some(&b';' | &b','))
         {
             end_offset += 1;
         }
