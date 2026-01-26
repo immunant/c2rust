@@ -23,5 +23,8 @@ refactor:
 cargo.refactor:
   autogen: true
 
+postprocess:
+  autogen: true
+
 cargo.postprocess:
   autogen: true
