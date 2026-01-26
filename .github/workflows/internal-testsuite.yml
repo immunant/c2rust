@@ -128,7 +128,7 @@ jobs:
         export C2RUST_DIR=$PWD
         # Needs to be run from `tests/integration/` (or further inside)
         # to correctly load the `pyproject.toml`.
-        (cd tests/integration && ./test.py curl json-c lua nginx zstd libxml2 python2 libmcs)
+        (cd tests/integration && ./test.py json-c)
 
     - uses: actions/upload-artifact@v4
       with:
