@@ -450,6 +450,7 @@ fn clean_path(mod_names: &RefCell<IndexMap<String, PathBuf>>, path: Option<&Path
     file_path
 }
 
+// TODO: rewrite when we update to Rust 1.80
 // TODO: also remove/ignore /**/ comments?
 /// Identify the preprocessor directive that starts a line of C source code.
 /// For example, `define`, `ifdef`, `if`, etc., without leading `#` or trailing arguments.
