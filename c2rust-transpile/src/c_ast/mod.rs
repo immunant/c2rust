@@ -404,6 +404,14 @@ impl TypedAstContext {
             if self.c_decls_top.contains(decl_id)
                 && self.get_source_path(decl) == Some(&self.main_file)
             {
+                // For multiple decls, e.g. `int a, b;`, `begin_loc` is shared, in which case it is
+                // earlier than `earliest_begin_loc` for decls after the first; to maintain their
+                // relative order we must either move `earliest_begin_loc` earlier or move
+                // `begin_loc` later.
+                // For now, we move `begin_loc` later, so that the range used by each variable from
+                // a multiple decl does not overlap the others. If other tooling would benefit more
+                // from maximal but overlapping ranges, we could go the other way.
+                let begin_loc = begin_loc.max(earliest_begin_loc);
                 let entry = CDeclSrcRange {
                     earliest_begin: earliest_begin_loc,
                     strict_begin: begin_loc,
