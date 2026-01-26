@@ -105,30 +105,34 @@ def autogen_transpile(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, 
     """
 
     transpile = yaml.get("transpile")
-    if transpile and isinstance(transpile, dict):
-        ag = transpile.get("autogen")
-        if ag and isinstance(ag, bool):
-            params = {"binary": "--emit-build-files", "cflags": ""}
+    if not (transpile and isinstance(transpile, dict)):
+        return
+    
+    ag = transpile.get("autogen")
+    if not (ag and isinstance(ag, bool)):
+        return
+    
+    params = {"binary": "--emit-build-files", "cflags": ""}
 
-            binary = transpile.get("binary")
-            if binary:
-                params["binary"] = f"--binary {binary}"
+    binary = transpile.get("binary")
+    if binary:
+        params["binary"] = f"--binary {binary}"
 
-            cflags = transpile.get("cflags")
-            if cflags:
-                if isinstance(cflags, list):
-                    cflags = " ".join(cflags)
-                params["cflags"] = cflags
+    cflags = transpile.get("cflags")
+    if cflags:
+        if isinstance(cflags, list):
+            cflags = " ".join(cflags)
+        params["cflags"] = cflags
 
-            tflags = transpile.get("tflags")
-            if tflags:
-                if isinstance(tflags, list):
-                    tflags = " ".join(tflags)
-                params["tflags"] = tflags
+    tflags = transpile.get("tflags")
+    if tflags:
+        if isinstance(tflags, list):
+            tflags = " ".join(tflags)
+        params["tflags"] = tflags
 
-            out_path = os.path.join(os.path.dirname(conf), "transpile.gen.sh")
-            render_script(TRANSPILE_SH, out_path, params)
-            yield Path(out_path)
+    out_path = os.path.join(os.path.dirname(conf), "transpile.gen.sh")
+    render_script(TRANSPILE_SH, out_path, params)
+    yield Path(out_path)
 
 
 def autogen_refactor(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, None]:
@@ -137,29 +141,33 @@ def autogen_refactor(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, N
     """
 
     refactor = yaml.get("refactor")
-    if refactor and isinstance(refactor, dict):
-        ag = refactor.get("autogen")
-        if ag and isinstance(ag, bool):
-            params = {"transform_lines": ""}
+    if not (refactor and isinstance(refactor, dict)):
+        return
+    
+    ag = refactor.get("autogen")
+    if not (ag and isinstance(ag, bool)):
+        return
+    
+    params = {"transform_lines": ""}
 
-            # Get list of transformations from config
-            transforms = refactor.get("transforms")
-            if transforms and isinstance(transforms, list):
-                lines = [
-                    t.strip() for t in transforms if isinstance(t, str) and t.strip()
-                ]
-                if lines:
-                    params["transform_lines"] = "\n".join(lines)
-            elif transforms and isinstance(transforms, str):
-                stripped = transforms.strip()
-                if stripped:
-                    params["transform_lines"] = stripped
+    # Get list of transformations from config
+    transforms = refactor.get("transforms")
+    if transforms and isinstance(transforms, list):
+        lines = [
+            t.strip() for t in transforms if isinstance(t, str) and t.strip()
+        ]
+        if lines:
+            params["transform_lines"] = "\n".join(lines)
+    elif transforms and isinstance(transforms, str):
+        stripped = transforms.strip()
+        if stripped:
+            params["transform_lines"] = stripped
 
-            # Only generate script if we have transformations
-            if params["transform_lines"]:
-                out_path = os.path.join(os.path.dirname(conf), "refactor.gen.sh")
-                render_script(REFACTOR_SH, out_path, params)
-                yield Path(out_path)
+    # Only generate script if we have transformations
+    if params["transform_lines"]:
+        out_path = os.path.join(os.path.dirname(conf), "refactor.gen.sh")
+        render_script(REFACTOR_SH, out_path, params)
+        yield Path(out_path)
 
 
 def autogen_cargo(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, None]:
