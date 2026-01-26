@@ -99,7 +99,7 @@ def render_script(template: str, out_path: str, params: dict):
     os.chmod(out_path, stat.S_IREAD | stat.S_IWRITE | stat.S_IEXEC)
 
 
-def autogen_transpile(conf: Config, yaml: dict) -> Generator[Path, None, None]:
+def autogen_transpile(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -131,7 +131,7 @@ def autogen_transpile(conf: Config, yaml: dict) -> Generator[Path, None, None]:
             yield Path(out_path)
 
 
-def autogen_refactor(conf: Config, yaml: dict) -> Generator[Path, None, None]:
+def autogen_refactor(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -162,7 +162,7 @@ def autogen_refactor(conf: Config, yaml: dict) -> Generator[Path, None, None]:
                 yield Path(out_path)
 
 
-def autogen_cargo(conf: Config, yaml: dict) -> Generator[Path, None, None]:
+def autogen_cargo(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
