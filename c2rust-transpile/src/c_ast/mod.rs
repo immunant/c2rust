@@ -402,7 +402,7 @@ impl TypedAstContext {
             {
                 let entry = CDeclSrcRange {
                     earliest_begin: earliest_begin_loc,
-                    strict_begin: begin_loc,
+                    strict_begin: begin_loc.max(earliest_begin_loc),
                     end: end_loc,
                 };
                 name_loc_map.insert(*decl_id, entry);
