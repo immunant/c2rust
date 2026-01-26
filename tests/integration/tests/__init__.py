@@ -6,7 +6,6 @@ from pathlib import Path
 import sys
 import subprocess
 from time import perf_counter
-from typing import List  # , Set, Dict, Tuple, Optional
 
 from tests.util import *
 from tests.requirements import *
@@ -23,6 +22,7 @@ class Test(object):
         "refactor": ["refactor.gen.sh", "refactor.sh"],
         "cargo.refactor": ["cargo.refactor.gen.sh", "cargo.refactor.sh"],
         "check.refactor": ["check.refactor.sh", "test.sh"],
+        "postprocess": ["postprocess.gen.sh", "postprocess.sh"],
         "cargo.postprocess": ["cargo.postprocess.gen.sh", "cargo.postprocess.sh"],
         "check.postprocess": ["check.postprocess.sh", "test.sh"],
     }
