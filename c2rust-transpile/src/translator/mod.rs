@@ -557,7 +557,7 @@ pub fn emit_c_decl_map(
         // Remove any preceding lines prior to a final #else/#elif/#endif, as long as
         // we don't see a different preprocessor directive first. This avoids us
         // attaching an entire preceding `#ifdef`'d-out declaration to this one.
-        if let Some(preproc_offset) = 'find_directive: {
+        if let Some(preproc_offset) = || -> Option<usize> {
             let line_loc = |line| SrcLoc {
                 column: 1,
                 line,
@@ -577,7 +577,7 @@ pub fn emit_c_decl_map(
             while preproc_line > begin.line {
                 match preprocessor_directive(nth_line_contents(preproc_line)) {
                     Some(b"endif" | b"else" | b"elif") => {
-                        break 'find_directive Some(byte_offset_of(line_loc(preproc_line + 1)));
+                        return Some(byte_offset_of(line_loc(preproc_line + 1)));
                     }
                     Some(_) => break,
                     None => {}
@@ -585,7 +585,7 @@ pub fn emit_c_decl_map(
                 preproc_line -= 1;
             }
             None
-        } {
+        }() {
             // Limit the beginning of this decl by the found preprocessor directive.
             begin_offset = preproc_offset.max(begin_offset);
         }
