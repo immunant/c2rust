@@ -339,7 +339,9 @@ impl TypedAstContext {
         // Sort decls by source location so we can reason about the possibly comment-containing gaps
         // between them.
         let mut decls_sorted = self.c_decls_top.clone();
-        decls_sorted.sort_by_key(|decl| self.c_decls[decl].begin_loc());
+        // Break ties in `begin_loc` (e.g. from `int a, b;`) using `end_loc`.
+        decls_sorted
+            .sort_by_key(|decl| (self.c_decls[decl].begin_loc(), self.c_decls[decl].end_loc()));
         for decl_id in &decls_sorted {
             let decl = &self.c_decls[decl_id];
             let begin_loc: SrcLoc = decl.begin_loc().expect("no begin loc for top-level decl");
