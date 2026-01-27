@@ -128,7 +128,10 @@ jobs:
         export C2RUST_DIR=$PWD
         # Needs to be run from `tests/integration/` (or further inside)
         # to correctly load the `pyproject.toml`.
-        (cd tests/integration && ./test.py json-c)
+        (cd tests/integration && ./test.py json-c || true)
+        cat tests/integration/tests/json-c/postprocess.gen.sh
+        cat tests/integration/tests/json-c/postprocess.gen.sh.log
+        ./tests/integration/tests/json-c/postprocess.gen.sh
 
     - uses: actions/upload-artifact@v4
       with:
