@@ -114,6 +114,11 @@ jobs:
         export LLVM_CONFIG_PATH=/usr/bin/llvm-config-${{ matrix.clang-version }}
         cargo build --release
 
+    - name: Build tools
+      run: |
+        (cd tools/split_rust && cargo build --release)
+        (cd tools/merge_rust && cargo build --release)
+
     # TODO(pl): figure out why compile_commands.json may cause json-c to fail
     - name: Run c2rust testsuite
       run: |
