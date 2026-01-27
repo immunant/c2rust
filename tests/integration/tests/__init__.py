@@ -6,7 +6,6 @@ from pathlib import Path
 import sys
 import subprocess
 from time import perf_counter
-from typing import List  # , Set, Dict, Tuple, Optional
 
 from tests.util import *
 from tests.requirements import *
@@ -23,6 +22,9 @@ class Test(object):
         "refactor": ["refactor.gen.sh", "refactor.sh"],
         "cargo.refactor": ["cargo.refactor.gen.sh", "cargo.refactor.sh"],
         "check.refactor": ["check.refactor.sh", "test.sh"],
+        "postprocess": ["postprocess.gen.sh", "postprocess.sh"],
+        "cargo.postprocess": ["cargo.postprocess.gen.sh", "cargo.postprocess.sh"],
+        "check.postprocess": ["check.postprocess.sh", "test.sh"],
     }
 
     def __init__(self, directory: Path, generated_scripts: set[Path]):
@@ -259,5 +261,5 @@ def run_tests(conf: Config, generated_scripts: set[Path]):
     for result in results:
         print(f"{result.test.name} took {result.time}")
     if not all(result.passed for result in results):
-        print(f"projects failed: {' '.join(result.test.name for result in results)}")
+        print(f"projects failed: {' '.join(result.test.name for result in results if not result.passed)}")
         exit(1)
