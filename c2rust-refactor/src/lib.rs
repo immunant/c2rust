@@ -248,7 +248,20 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     use cargo_util::ProcessBuilder;
     use std::sync::Mutex;
 
-    let config = Config::default().unwrap();
+    let mut config = Config::default().unwrap();
+    config
+        .configure(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            &Default::default(),
+            Default::default(),
+            Default::default(),
+        )
+        .unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
     let mode = CompileMode::Check { test: false };
     let mut compile_opts = CompileOptions::new(&config, mode).unwrap();
