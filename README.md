@@ -26,6 +26,8 @@ required to lift unsafe Rust into safe Rust types.
 However, we are building a [refactoring tool](c2rust-refactor) that reduces the tedium of doing so.
 This work is still in the early stages; please get in touch if you're interested!
 
+You can also [cross-check](cross-checks) the translated code against the original ([tutorial](docs/cross-check-tutorial.md)).
+
 Here's the big picture:
 
 ![C2Rust overview](docs/c2rust-overview.png "C2Rust overview")
