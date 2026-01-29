@@ -16,7 +16,7 @@ unsafe fn main_0(
     mut argv: *mut *mut ::core::ffi::c_char,
     mut envp: *mut *mut ::core::ffi::c_char,
 ) -> ::core::ffi::c_int {
-    return 0 as ::core::ffi::c_int;
+    0 as ::core::ffi::c_int
 }
 pub fn main() {
     let mut args_strings: Vec<Vec<u8>> = ::std::env::args()

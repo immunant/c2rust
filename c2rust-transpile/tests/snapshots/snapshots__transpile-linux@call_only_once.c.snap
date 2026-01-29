@@ -29,7 +29,7 @@ pub const __ASSERT_FUNCTION: [::core::ffi::c_char; 32] = unsafe {
 static mut called: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 unsafe extern "C" fn called_only_once() -> ::core::ffi::c_int {
     called += 1;
-    return 1 as ::core::ffi::c_int;
+    1 as ::core::ffi::c_int
 }
 #[no_mangle]
 pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
@@ -45,5 +45,5 @@ pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
             );
         }
     };
-    return called;
+    called
 }
