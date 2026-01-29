@@ -1,0 +1,191 @@
+transform = "CommentTransfer"
+identifier = "json_object_object_add_ex"
+model = "gemini-3-flash-preview"
+response = """```rust
+#[no_mangle]
+pub unsafe extern "C" fn json_object_object_add_ex(
+    mut jso: *mut json_object,
+    key: *const ::core::ffi::c_char,
+    val: *mut json_object,
+    opts: ::core::ffi::c_uint,
+) -> ::core::ffi::c_int {
+    let mut existing_value: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    let mut existing_entry: *mut lh_entry = ::core::ptr::null_mut::<lh_entry>();
+    let mut hash: ::core::ffi::c_ulong = 0;
+    '_c2rust_label: {
+        if json_object_get_type(jso) as ::core::ffi::c_uint
+            == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
+        {
+        } else {
+            __assert_fail(
+                b"json_object_get_type(jso) == json_type_object\\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                b"json_object.c\\0" as *const u8 as *const ::core::ffi::c_char,
+                479 as ::core::ffi::c_uint,
+                b"int json_object_object_add_ex(struct json_object *, const char *const, struct json_object *const, const unsigned int)\\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+            );
+        }
+    };
+
+    // We lookup the entry and replace the value, rather than just deleting
+    // and re-adding it, so the existing key remains valid.
+    hash = lh_get_hash((*jso).o.c_object, key as *const ::core::ffi::c_void);
+    existing_entry = if opts & crate::src::json_object::JSON_C_OBJECT_ADD_KEY_IS_NEW as ::core::ffi::c_uint != 0 {
+        ::core::ptr::null_mut::<lh_entry>()
+    } else {
+        
+        lh_table_lookup_entry_w_hash((*jso).o.c_object as *mut lh_table, key as *const ::core::ffi::c_void, hash) as
+    *mut lh_entry
+    };
+
+    // The caller must avoid creating loops in the object tree, but do a
+    // quick check anyway to make sure we're not creating a trivial loop.
+    if jso == val {
+        return -(1 as ::core::ffi::c_int);
+    }
+    if existing_entry.is_null() {
+        let k: *const ::core::ffi::c_void =
+            if opts & crate::src::json_object::JSON_C_OBJECT_KEY_IS_CONSTANT as ::core::ffi::c_uint != 0 {
+                key as *const ::core::ffi::c_void
+            } else {
+                strdup(key) as *const ::core::ffi::c_void
+            };
+        if k.is_null() {
+            return -(1 as ::core::ffi::c_int);
+        }
+        return lh_table_insert_w_hash(
+            
+            (*jso).o.c_object as *mut lh_table,
+            k,
+            val as *const ::core::ffi::c_void,
+            hash,
+            opts,
+        );
+    }
+    existing_value = (*existing_entry).v as uintptr_t as *mut ::core::ffi::c_void
+        as *mut json_object as *mut json_object;
+    if !existing_value.is_null() {
+        json_object_put(existing_value);
+    }
+    (*existing_entry).v = val as *const ::core::ffi::c_void;
+    return 0 as ::core::ffi::c_int;
+}
+```"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+int json_object_object_add_ex(struct json_object* jso,
+\tconst char *const key,
+\tstruct json_object *const val,
+\tconst unsigned opts)
+{
+\tstruct json_object *existing_value = NULL;
+\tstruct lh_entry *existing_entry;
+\tunsigned long hash;
+
+\tassert(json_object_get_type(jso) == json_type_object);
+
+\t// We lookup the entry and replace the value, rather than just deleting
+\t// and re-adding it, so the existing key remains valid.
+\thash = lh_get_hash(jso->o.c_object, (const void *)key);
+\texisting_entry = (opts & JSON_C_OBJECT_ADD_KEY_IS_NEW) ? NULL : 
+\t\t\t      lh_table_lookup_entry_w_hash(jso->o.c_object,
+\t\t\t\t\t\t\t   (const void *)key, hash);
+
+\t// The caller must avoid creating loops in the object tree, but do a
+\t// quick check anyway to make sure we're not creating a trivial loop.
+\tif (jso == val)
+\t\treturn -1;
+
+\tif (!existing_entry)
+\t{
+\t\tconst void *const k = (opts & JSON_C_OBJECT_KEY_IS_CONSTANT) ?
+\t\t\t\t\t(const void *)key : strdup(key);
+\t\tif (k == NULL)
+\t\t\treturn -1;
+\t\treturn lh_table_insert_w_hash(jso->o.c_object, k, val, hash, opts);
+\t}
+\texisting_value = (json_object *) lh_entry_v(existing_entry);
+\tif (existing_value)
+\t\tjson_object_put(existing_value);
+\texisting_entry->v = val;
+\treturn 0;
+}
+```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_object_add_ex(
+    mut jso: *mut json_object,
+    key: *const ::core::ffi::c_char,
+    val: *mut json_object,
+    opts: ::core::ffi::c_uint,
+) -> ::core::ffi::c_int {
+    let mut existing_value: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    let mut existing_entry: *mut lh_entry = ::core::ptr::null_mut::<lh_entry>();
+    let mut hash: ::core::ffi::c_ulong = 0;
+    '_c2rust_label: {
+        if json_object_get_type(jso) as ::core::ffi::c_uint
+            == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
+        {
+        } else {
+            __assert_fail(
+                b"json_object_get_type(jso) == json_type_object\\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                b"json_object.c\\0" as *const u8 as *const ::core::ffi::c_char,
+                479 as ::core::ffi::c_uint,
+                b"int json_object_object_add_ex(struct json_object *, const char *const, struct json_object *const, const unsigned int)\\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    hash = lh_get_hash((*jso).o.c_object, key as *const ::core::ffi::c_void);
+    existing_entry = if opts & crate::src::json_object::JSON_C_OBJECT_ADD_KEY_IS_NEW as ::core::ffi::c_uint != 0 {
+        ::core::ptr::null_mut::<lh_entry>()
+    } else {
+        
+        lh_table_lookup_entry_w_hash((*jso).o.c_object as *mut lh_table, key as *const ::core::ffi::c_void, hash) as
+    *mut lh_entry
+    };
+    if jso == val {
+        return -(1 as ::core::ffi::c_int);
+    }
+    if existing_entry.is_null() {
+        let k: *const ::core::ffi::c_void =
+            if opts & crate::src::json_object::JSON_C_OBJECT_KEY_IS_CONSTANT as ::core::ffi::c_uint != 0 {
+                key as *const ::core::ffi::c_void
+            } else {
+                strdup(key) as *const ::core::ffi::c_void
+            };
+        if k.is_null() {
+            return -(1 as ::core::ffi::c_int);
+        }
+        return lh_table_insert_w_hash(
+            
+            (*jso).o.c_object as *mut lh_table,
+            k,
+            val as *const ::core::ffi::c_void,
+            hash,
+            opts,
+        );
+    }
+    existing_value = (*existing_entry).v as uintptr_t as *mut ::core::ffi::c_void
+        as *mut json_object as *mut json_object;
+    if !existing_value.is_null() {
+        json_object_put(existing_value);
+    }
+    (*existing_entry).v = val as *const ::core::ffi::c_void;
+    return 0 as ::core::ffi::c_int;
+}
+```
+"""

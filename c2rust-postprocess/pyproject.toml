@@ -9,6 +9,7 @@ dependencies = [
     "platformdirs>=4.5.1",
     "pygments>=2.19.2",
     "pyyaml>=6.0.3",
+    "rich>=14.2.0",
     "tomli>=2.3.0",
     "tomlkit>=0.13.3",
     "tree-sitter>=0.25.2",

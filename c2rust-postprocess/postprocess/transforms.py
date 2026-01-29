@@ -1,7 +1,15 @@
 import logging
 import re
+from collections.abc import Generator, Iterable
+from dataclasses import dataclass
+from difflib import unified_diff
 from pathlib import Path
+from re import Pattern
 from textwrap import dedent
+
+import yaml
+from rich.console import Console
+from rich.syntax import Syntax
 
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
@@ -21,33 +29,103 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+@dataclass
 class CommentTransferPrompt:
     c_function: str
     rust_function: str
     prompt_text: str
     identifier: str
 
-    __slots__ = ("c_function", "rust_function", "prompt_text", "identifier")
-
-    def __init__(
-        self, c_function: str, rust_function: str, prompt_text: str, identifier: str
-    ):
-        self.c_function = c_function
-        self.rust_function = rust_function
-        self.prompt_text = prompt_text
-        self.identifier = identifier
+    root_rust_source_file: Path
+    rust_source_file: Path
 
     def __str__(self) -> str:
+        return f"""\
+{self.prompt_text}
+
+C function:
+```c
+{self.c_function}
+```
+
+Rust function:
+```rust
+{self.rust_function}
+```
+"""
+
+    def messages(self) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "user",
+                "content": str(self),
+            },
+        ]
+
+
+@dataclass
+class CommentTransferOptions:
+    exclude_list: IdentifierExcludeList
+    ident_filter: str | None = None
+    update_rust: bool = True
+    fail_fast: bool = True
+
+    def ident_regex(self) -> Pattern[str] | None:
+        return re.compile(self.ident_filter) if self.ident_filter else None
+
+
+@dataclass
+class CommentTransferFailure:
+    options: CommentTransferOptions
+    prompt: CommentTransferPrompt
+    c_comments: list[str]
+    rust_comments: list[str]
+
+    def header(self) -> str:
         return (
-            self.prompt_text
-            + "\n\n"
-            + "C function:\n```c\n"
-            + self.c_function
-            + "```\n\n"
-            + "Rust function:\n```rust\n"
-            + self.rust_function
-            + "```\n"
+            f"comments differ"
+            f" in fn {self.prompt.identifier}"
+            f" in {self.prompt.rust_source_file}:"
         )
+
+    def diff(self) -> str:
+        return "".join(
+            unified_diff(
+                a=[f"{comment}\n" for comment in self.c_comments],
+                b=[f"{comment}\n" for comment in self.rust_comments],
+                # TODO this isn't always exactly correct
+                fromfile=f"{self.prompt.rust_source_file.with_suffix('.c')}:{self.prompt.identifier}",
+                tofile=f"{self.prompt.rust_source_file}:{self.prompt.identifier}",
+            )
+        ).rstrip()
+
+    def __str__(self) -> str:
+        return f"""\
+{self.header()}
+
+```diff
+{self.diff()}
+```"""
+
+    def print(self):
+        console = Console()
+        console.print(f"""\
+{self.header()}
+
+```diff""")
+        console.print(Syntax(self.diff(), "diff"))
+        console.print("```")
+
+    @staticmethod
+    def to_exclude_file(failures: Iterable["CommentTransferFailure"]) -> str:
+        path_to_fns: dict[str, list[str]] = {}
+        for failure in failures:
+            path = str(failure.prompt.rust_source_file)
+            fns = path_to_fns.get(path, [])
+            if not fns:
+                path_to_fns[path] = fns
+            fns.append(failure.prompt.identifier)
+        return yaml.dump(path_to_fns)
 
 
 class CommentTransfer:
@@ -55,15 +133,17 @@ class CommentTransfer:
         self.cache = cache
         self.model = model
 
-    def transfer_comments(
+    def _transfer_comments_prompts(
         self,
         root_rust_source_file: Path,
         rust_source_file: Path,
-        exclude_list: IdentifierExcludeList,
-        ident_filter: str | None = None,
-        update_rust: bool = True,
-    ) -> None:
-        ident_regex = re.compile(ident_filter) if ident_filter else None
+        options: CommentTransferOptions,
+    ) -> Generator[CommentTransferPrompt, None, None]:
+        """
+        Create all of the `CommentTransferPrompt`s for `rust_source_file`.
+        """
+
+        ident_regex = options.ident_regex()
 
         rust_definitions = get_rust_definitions(rust_source_file)
         c_definitions = get_c_definitions(rust_source_file)
@@ -71,18 +151,19 @@ class CommentTransfer:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
-        prompts: list[CommentTransferPrompt] = []
         for identifier, rust_definition in rust_definitions.items():
-            if exclude_list.contains(path=rust_source_file, identifier=identifier):
+            if options.exclude_list.contains(
+                path=rust_source_file, identifier=identifier
+            ):
                 logging.info(
                     f"Skipping Rust fn {identifier} in {rust_source_file}"
-                    f"due to exclude file {exclude_list.src_path}"
+                    f" due to exclude file {options.exclude_list.src_path}"
                 )
                 continue
             if ident_regex and not ident_regex.search(identifier):
                 logging.info(
                     f"Skipping Rust fn {identifier} in {rust_source_file}"
-                    f"due to ident filter {ident_filter}"
+                    f" due to ident filter {options.ident_filter}"
                 )
                 continue
 
@@ -123,27 +204,90 @@ class CommentTransfer:
             """  # noqa: E501
             prompt_text = dedent(prompt_text).strip()
 
-            prompts.append(
-                CommentTransferPrompt(
-                    c_function=c_definition,
-                    rust_function=rust_definition,
-                    prompt_text=prompt_text,
-                    identifier=identifier,
-                )
+            yield CommentTransferPrompt(
+                c_function=c_definition,
+                rust_function=rust_definition,
+                prompt_text=prompt_text,
+                identifier=identifier,
+                root_rust_source_file=root_rust_source_file,
+                rust_source_file=rust_source_file,
             )
 
-        for prompt in prompts:
-            messages = [
-                {"role": "user", "content": str(prompt)},
-            ]
+    def _transfer_comments_dir_prompts(
+        self,
+        root_rust_source_file: Path,
+        options: CommentTransferOptions,
+    ) -> Generator[CommentTransferPrompt, None, None]:
+        """
+        Create all of the `CommentTransferPrompt`s for
+        the parent directory of `root_rust_source_file`.
+        """
 
-            transform = self.__class__.__name__
-            identifier = prompt.identifier
-            model = self.model.id
+        root_dir = root_rust_source_file.parent
+        c_decls_json_suffix = ".c_decls.json"
+        for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
+            rs_path = c_decls_path.with_name(
+                c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
+            )
+            assert rs_path.exists()
+            yield from self._transfer_comments_prompts(
+                root_rust_source_file=root_rust_source_file,
+                rust_source_file=rs_path,
+                options=options,
+            )
+
+    def _run_prompts(
+        self,
+        prompts: Iterable[CommentTransferPrompt],
+        options: CommentTransferOptions,
+    ) -> Generator[CommentTransferFailure, None, None]:
+        """
+        Run all of the `CommentTransferPrompt`s.
+        """
+
+        prompts = list(prompts)
+        logging.info(f"Transferring comments for {len(prompts)} Rust functions")
+
+        transform = self.__class__.__name__
+        model = self.model.id
+
+        if not options.fail_fast:
+            # If not failing fast, put all of the cached prompts at the beginning
+            # so that the progress is easier to follow.
+            cached_prompts = []
+            uncached_prompts = []
+            for prompt in prompts:
+                response = self.cache.lookup(
+                    transform=transform,
+                    identifier=prompt.identifier,
+                    model=model,
+                    messages=prompt.messages(),
+                )
+                if response is None:
+                    uncached_prompts.append(prompt)
+                else:
+                    cached_prompts.append(prompt)
+
+            logging.info(
+                "Transferred comments for"
+                f" {len(cached_prompts)}/{len(prompts)} cached Rust functions"
+            )
+            logging.info(
+                f"Transferring comments for"
+                f" {len(uncached_prompts)}/{len(prompts)} uncached Rust functions"
+            )
+            prompts = cached_prompts + uncached_prompts
+
+        for prompt_num, prompt in enumerate(prompts):
+            logging.info(
+                f"[{prompt_num}/{len(prompts)}] Transferring comments to"
+                f" fn {prompt.identifier} in {prompt.rust_source_file}"
+            )
+            messages = prompt.messages()
             if not (
                 response := self.cache.lookup(
                     transform=transform,
-                    identifier=identifier,
+                    identifier=prompt.identifier,
                     model=model,
                     messages=messages,
                 )
@@ -154,7 +298,7 @@ class CommentTransfer:
                     continue
                 self.cache.update(
                     transform=transform,
-                    identifier=identifier,
+                    identifier=prompt.identifier,
                     model=model,
                     messages=messages,
                     response=response,
@@ -168,39 +312,51 @@ class CommentTransfer:
             rust_comments = get_rust_comments(rust_fn)
             logging.debug(f"{rust_comments=}")
 
-            assert c_comments == rust_comments
+            if c_comments != rust_comments:
+                yield CommentTransferFailure(
+                    options=options,
+                    prompt=prompt,
+                    c_comments=c_comments,
+                    rust_comments=rust_comments,
+                )
 
-            print(get_highlighted_rust(rust_fn))
+            logging.info(get_highlighted_rust(rust_fn))
 
-            if update_rust:
+            if options.update_rust:
                 update_rust_definition(
-                    root_rust_source_file=root_rust_source_file,
+                    root_rust_source_file=prompt.root_rust_source_file,
                     identifier=prompt.identifier,
                     new_definition=rust_fn,
                 )
 
+    def transfer_comments(
+        self,
+        root_rust_source_file: Path,
+        rust_source_file: Path,
+        options: CommentTransferOptions,
+    ) -> Generator[CommentTransferFailure, None, None]:
+        yield from self._run_prompts(
+            self._transfer_comments_prompts(
+                root_rust_source_file=root_rust_source_file,
+                rust_source_file=rust_source_file,
+                options=options,
+            ),
+            options=options,
+        )
+
     def transfer_comments_dir(
         self,
         root_rust_source_file: Path,
-        exclude_list: IdentifierExcludeList,
-        ident_filter: str | None = None,
-        update_rust: bool = True,
-    ):
+        options: CommentTransferOptions,
+    ) -> Generator[CommentTransferFailure, None, None]:
         """
         Run `self.transfer_comments` on each `*.rs` in `dir`
         with a corresponding `*.c_decls.json`.
         """
-        root_dir = root_rust_source_file.parent
-        c_decls_json_suffix = ".c_decls.json"
-        for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
-            rs_path = c_decls_path.with_name(
-                c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
-            )
-            assert rs_path.exists()
-            self.transfer_comments(
+        yield from self._run_prompts(
+            self._transfer_comments_dir_prompts(
                 root_rust_source_file=root_rust_source_file,
-                rust_source_file=rs_path,
-                exclude_list=exclude_list,
-                ident_filter=ident_filter,
-                update_rust=update_rust,
-            )
+                options=options,
+            ),
+            options=options,
+        )
