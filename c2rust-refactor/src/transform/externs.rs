@@ -187,6 +187,13 @@ fn make_cast<'a, 'tcx>(
 
     if needs_transmute {
         mk().call_expr(mk().path_expr(vec!["", "core", "mem", "transmute"]), vec![expr])
+    } else if ty.is_unit() {
+        // `{ let _ = expr; }` since the context expects a unit tuple.
+        // `let` is technically a statement but its value is `()` which
+        // is exactly what we need.
+        mk().block_expr(mk().block(vec![
+            mk().local_stmt(P(mk().local(mk().wild_pat(), None::<P<ast::Ty>>, Some(expr)))),
+        ]))
     } else {
         let expr = if let ExprKind::AddrOf(_, mutability, _) = expr.kind {
             // We have to cast to *T where &T is the type of expr before casting
