@@ -14,24 +14,24 @@ input_file: c2rust-transpile/tests/snapshots/arrays.c
 #![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2RustUnnamed {
+pub struct C2Rust_Unnamed {
     pub y: ::core::ffi::c_int,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2RustUnnamed_0 {
+pub struct C2Rust_Unnamed_0 {
     pub x: *mut ::core::ffi::c_char,
     pub y: ::core::ffi::c_int,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2RustUnnamed_1 {
+pub struct C2Rust_Unnamed_1 {
     pub x: ::core::ffi::c_short,
     pub y: ::core::ffi::c_int,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2RustUnnamed_2 {
+pub struct C2Rust_Unnamed_2 {
     pub x: ::core::ffi::c_short,
     pub y: ::core::ffi::c_int,
 }
@@ -56,12 +56,12 @@ pub unsafe extern "C" fn entry() {
     let mut int_zero: [::core::ffi::c_int; 0] = [0; 0];
     let mut int_too_short: [::core::ffi::c_int; 16] = [0 as ::core::ffi::c_int; 16];
     int_too_short[15 as ::core::ffi::c_int as usize] += 9 as ::core::ffi::c_int;
-    let mut struct_init_too_short: [C2RustUnnamed_0; 1] = [C2RustUnnamed_0 {
+    let mut struct_init_too_short: [C2Rust_Unnamed_0; 1] = [C2Rust_Unnamed_0 {
         x: ::core::ptr::null_mut::<::core::ffi::c_char>(),
         y: 0,
     }; 1];
     struct_init_too_short[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
-    let mut struct_init_too_long: [C2RustUnnamed; 1] = [C2RustUnnamed {
+    let mut struct_init_too_long: [C2Rust_Unnamed; 1] = [C2Rust_Unnamed {
         y: 1 as ::core::ffi::c_int,
     }];
     struct_init_too_long[0 as ::core::ffi::c_int as usize].y += 9 as ::core::ffi::c_int;
@@ -111,16 +111,16 @@ pub unsafe extern "C" fn short_initializer() {
     let mut excess_elements_1: [::core::ffi::c_int; 2] =
         [1 as ::core::ffi::c_int, 2 as ::core::ffi::c_int];
     let mut excess_elements_2: [::core::ffi::c_int; 0] = [0; 0];
-    let mut single_struct: [C2RustUnnamed_2; 1] = [C2RustUnnamed_2 {
+    let mut single_struct: [C2Rust_Unnamed_2; 1] = [C2Rust_Unnamed_2 {
         x: 1 as ::core::ffi::c_short,
         y: 2 as ::core::ffi::c_int,
     }];
-    let mut many_struct: [C2RustUnnamed_1; 3] = [
-        C2RustUnnamed_1 {
+    let mut many_struct: [C2Rust_Unnamed_1; 3] = [
+        C2Rust_Unnamed_1 {
             x: 1 as ::core::ffi::c_short,
             y: 2 as ::core::ffi::c_int,
         },
-        C2RustUnnamed_1 { x: 0, y: 0 },
-        C2RustUnnamed_1 { x: 0, y: 0 },
+        C2Rust_Unnamed_1 { x: 0, y: 0 },
+        C2Rust_Unnamed_1 { x: 0, y: 0 },
     ];
 }
