@@ -27,6 +27,54 @@ namespace crosschecks {
 using namespace llvm::opt;
 using namespace std::literals;
 
+class CrossCheckValueVisitor
+    : public RecursiveASTVisitor<CrossCheckValueVisitor> {
+public:
+  CrossCheckValueVisitor() = delete;
+  CrossCheckValueVisitor(CrossCheckInserter &cci_, ASTContext &ctx_)
+      : cci(cci_), ctx(ctx_) {}
+
+  bool VisitCallExpr(CallExpr *E) {
+    auto *Callee = E->getCallee()->IgnoreParenImpCasts();
+    if (auto *DR = dyn_cast<DeclRefExpr>(Callee)) {
+      auto DeclName = DR->getDecl()->getDeclName();
+      if (DeclName.getAsString() == "c2rust_cross_check_value") {
+        // Replace c2rust_cross_check_value with a direct rb_xcheck call
+        auto *rb_xcheck = cci.get_function_decl(
+            "rb_xcheck", ctx.VoidTy, {ctx.UnsignedCharTy, ctx.UnsignedLongTy},
+            SC_Extern, ctx);
+        DR->setDecl(rb_xcheck);
+
+        // Rewrite the second argument: `x => __c2rust_hash_T(x)`
+        auto *arg1 = E->getArg(1);
+        auto arg1_candidate_name =
+            llvm::formatv("__c2rust_cross_check_value_{0}", TypeCounter++)
+                .str();
+        auto hash_fn = cci.get_type_hash_function(
+            arg1->getType(), arg1_candidate_name, ctx, true);
+
+        auto hash_depth = cci.build_max_hash_depth(ctx);
+        // TODO: pass PODs by value, non-PODs by pointer???
+        auto new_arg1 =
+            cci.build_call(hash_fn.name.full_name(), ctx.UnsignedLongTy,
+                           {arg1, hash_depth}, ctx);
+        E->setArg(1, new_arg1);
+        E->computeDependence();
+      }
+    }
+
+    return true;
+  }
+
+private:
+  CrossCheckInserter &cci;
+  ASTContext &ctx;
+
+  static uint32_t TypeCounter;
+};
+
+uint32_t CrossCheckValueVisitor::TypeCounter = 0;
+
 uint32_t djb2_hash(llvm::StringRef str) {
     uint32_t hash = 5381;
     for (auto c : str.bytes())
@@ -408,6 +456,9 @@ bool CrossCheckInserter::HandleTopLevelDecl(DeclGroupRef dg) {
                                             "disabling for '%0'", func_name);
                 continue;
             }
+
+            CrossCheckValueVisitor ccvv{*this, ctx};
+            ccvv.TraverseDecl(d);
 
             auto pre_xcfg_strings = build_xcfg_yaml(func_name, "function",
                                                     d, "args", fd->parameters());
