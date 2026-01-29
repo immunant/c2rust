@@ -1,6 +1,9 @@
 # The `update = none`s are to avoid cargo cloning
 # all submodules for git dependencies on c2rust.
-# See <https://github.com/rust-lang/cargo/pull/10717>.
+# It's unclear if cargo should be doing this
+# (see <https://github.com/rust-lang/cargo/issues/4247>),
+# but it is right now, so `update = none` is the only workaround
+# (see <https://github.com/rust-lang/cargo/pull/10717>).
 # This means that other users of submodules need to update them manually:
 # `git submodule update --init --checkout`.
 
