@@ -22,6 +22,8 @@ namespace crosschecks {
 
 using namespace clang;
 
+class CrossCheckValueVisitor;
+
 // Helper function for report_clang_error
 // that inserts each argument into the given stream
 template<typename Stream>
@@ -471,7 +473,9 @@ private:
         ASTContext &ctx;
     };
 
-public:
+    friend class CrossCheckValueVisitor;
+
+  public:
     CrossCheckInserter() = delete;
     CrossCheckInserter(bool dx, std::unique_ptr<const config::Config> cfg)
             : disable_xchecks(dx), config(std::move(cfg)),
