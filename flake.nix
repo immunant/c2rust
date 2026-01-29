@@ -37,15 +37,14 @@
           };
         };
 
-        myLLVM = pkgs.llvmPackages_18;
-        myStdenv = pkgs.clang18Stdenv;
+        myLLVM = pkgs.llvmPackages;
+        myStdenv = pkgs.clangStdenv;
 
         rustPlatform = pkgs.makeRustPlatform {
           cargo = fenixToolchain;
           rustc = fenixToolchain;
         };
-        env = with pkgs; {
-          LIBCLANG_PATH = "${myLLVM.libclang.lib}/lib";
+        env = {
           CMAKE_LLVM_DIR = "${myLLVM.libllvm.dev}/lib/cmake/llvm";
           CMAKE_CLANG_DIR = "${myLLVM.libclang.dev}/lib/cmake/clang";
           LLVM_CONFIG_PATH = "${myLLVM.libllvm.dev}/bin/llvm-config";
@@ -100,6 +99,7 @@
               ];
 
               buildInputs = with pkgs; [
+                curl.dev
                 rustPlatform.bindgenHook
                 myStdenv.cc
                 myLLVM.libclang
@@ -110,6 +110,7 @@
                 openssl
                 zlib
                 fenixToolchain
+                z3.dev
               ];
 
               cargoLock = {
@@ -121,16 +122,12 @@
         defaultPackage = packages.default;
 
         devShells = {
-          # Include a fixed version of clang in the development environment for testing.
-          default = pkgs.mkShell (
-            with pkgs;
-            env
-            // {
-              strictDeps = true;
-              inputsFrom = [ packages.default ];
-              buildInputs = [ ];
-            }
-          );
+          default = pkgs.mkShell {
+            inherit env;
+            strictDeps = true;
+            inputsFrom = [ packages.default ];
+            buildInputs = [ ];
+          };
         };
 
         devShell = devShells.default;
