@@ -169,6 +169,18 @@ impl PartialOrd for SrcLocInclude<'_> {
     }
 }
 
+/// The range of source code locations for a C declaration.
+#[derive(Copy, Clone)]
+pub struct CDeclSrcRange {
+    /// The earliest position where this declaration or its documentation might start.
+    pub earliest_begin: SrcLoc,
+    /// A position by which this declaration itself is known to have begun.
+    /// Attributes or return type may possibly precede this position.
+    pub strict_begin: SrcLoc,
+    /// The end of the declaration, except for possible trailing semicolon.
+    pub end: SrcLoc,
+}
+
 impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
@@ -314,7 +326,7 @@ impl TypedAstContext {
     }
 
     /// Construct a map from top-level decls in the main file to their source ranges.
-    pub fn top_decl_locs(&self) -> IndexMap<CDeclId, (SrcLoc, SrcLoc)> {
+    pub fn top_decl_locs(&self) -> IndexMap<CDeclId, CDeclSrcRange> {
         let mut name_loc_map = IndexMap::new();
         let mut prev_end_loc = SrcLoc {
             fileid: 0,
@@ -324,7 +336,8 @@ impl TypedAstContext {
         // Sort decls by source location so we can reason about the possibly comment-containing gaps
         // between them.
         let mut decls_sorted = self.c_decls_top.clone();
-        decls_sorted.sort_by_key(|decl| self.c_decls[decl].begin_loc());
+        decls_sorted
+            .sort_by_key(|decl| (self.c_decls[decl].begin_loc(), self.c_decls[decl].end_loc()));
         for decl_id in &decls_sorted {
             let decl = &self.c_decls[decl_id];
             let begin_loc: SrcLoc = decl.begin_loc().expect("no begin loc for top-level decl");
@@ -381,13 +394,17 @@ impl TypedAstContext {
             }
 
             // End of the previous decl is the start of comments pertaining to the current one.
-            let new_begin_loc = if is_nested { begin_loc } else { prev_end_loc };
+            let earliest_begin_loc = if is_nested { begin_loc } else { prev_end_loc };
 
             // Include only decls from the main file.
             if self.c_decls_top.contains(decl_id)
                 && self.get_source_path(decl) == Some(&self.main_file)
             {
-                let entry = (new_begin_loc, end_loc);
+                let entry = CDeclSrcRange {
+                    earliest_begin: earliest_begin_loc,
+                    strict_begin: begin_loc.max(earliest_begin_loc),
+                    end: end_loc,
+                };
                 name_loc_map.insert(*decl_id, entry);
             }
             if !is_nested {
