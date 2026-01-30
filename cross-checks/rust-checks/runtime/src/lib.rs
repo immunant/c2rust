@@ -4,7 +4,7 @@
 #![cfg_attr(feature = "xcheck-with-dlsym", feature(libc))]
 #![cfg_attr(feature = "xcheck-with-weak", feature(linkage))]
 #![cfg_attr(feature = "libc-hash", feature(libc))]
-#![cfg_attr(feature = "djb2-ssse3", feature(portable_simd))]
+#![cfg_attr(target_feature = "ssse3", feature(portable_simd))]
 #![no_std]
 
 #[cfg(feature = "libc-hash")]

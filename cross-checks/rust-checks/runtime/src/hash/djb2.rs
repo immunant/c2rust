@@ -24,7 +24,7 @@ impl Hasher for Djb2Hasher {
         self.0.into()
     }
 
-    #[cfg(feature = "djb2-ssse3")]
+    #[cfg(target_feature = "ssse3")]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         use core::simd::u32x4;
@@ -54,7 +54,7 @@ impl Hasher for Djb2Hasher {
         }
     }
 
-    #[cfg(not(feature = "djb2-ssse3"))]
+    #[cfg(not(target_feature = "ssse3"))]
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
         self.0 = bytes

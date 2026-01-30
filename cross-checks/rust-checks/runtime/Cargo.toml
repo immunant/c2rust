@@ -13,7 +13,6 @@ publish = false
 [features]
 xcheck-with-dlsym = []
 xcheck-with-weak = []
-djb2-ssse3 = []
 libc-hash = ["libc"]
 fixed-length-array-hash = []
 
