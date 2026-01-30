@@ -25,4 +25,3 @@ features = ["parse-syn", "with-quote"]
 
 [dev-dependencies]
 c2rust-xcheck-runtime = { path = "../runtime", version = "0.9.0" }
-c2rust-bitfields = { path = "../../../c2rust-bitfields", version = "0.3" }

@@ -214,17 +214,19 @@ fn try_pointer<'a, T: ?Sized>(p: *const T) -> Option<&'a T> {
     let mut invalid: u8 = 0;
     unsafe {
         // Same implementation as clang-plugin/runtime/hash.c
-        asm!("   jmp 1f
-                 .word 2f - 1f
-                 .ascii \"C2RUST_INVPTR\\0\"
-              1: movb ($2), $0
-                 jmp 3f
-              2: incb $1
-              3:"
-             : "=r" (_pv), "+r" (invalid)
-             : "r" (p)
-             : "cc"
-             : "volatile");
+        core::arch::asm!(
+            "jmp 1f",
+            ".word 2f - 1f",
+            ".asciz \"C2RUST_INVPTR\"",
+            "1: movb ({0}), {1}",
+            "jmp 3f",
+            "2: incb {2}",
+            "3:",
+            in(reg) p.cast::<u8>(),
+            out(reg_byte) _pv,
+            inout(reg_byte) invalid,
+            options(att_syntax),
+        );
         if invalid == 0 {
             Some(&*p)
         } else {

@@ -47,7 +47,6 @@ unsafe fn rb_xcheck(tag: u8, val: u64) {
 // This is the only approach that requires that libclevrbuf.so is linked in
 #[cfg(not(any(feature = "xcheck-with-dlsym", feature = "xcheck-with-weak")))]
 extern "C" {
-    #[no_mangle]
     fn rb_xcheck(tag: u8, val: u64);
 }
 
