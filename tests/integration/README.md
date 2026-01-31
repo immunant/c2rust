@@ -19,13 +19,24 @@
 
 ## Adding new tests as git submodules
 
-    $ cd path/to/tests/$PROJ
-    $ git submodule add --depth 10  $PROJ_URL repo
+```sh
+cd path/to/tests/$PROJ
+git submodule add --depth 10 $PROJ_URL repo
+```
 
-To track a specific branch ($SUBMOD_NAME can be found in `.gitmodules`):
+To track a specific branch (`$SUBMOD_NAME` can be found in `.gitmodules`):
 
-    $ git config -f .gitmodules submodule.$SUBMOD_NAME.branch $BRANCH_NAME
-    $ git submodule update --remote repo
+```sh
+git config -f .gitmodules submodule.$SUBMOD_NAME.branch $BRANCH_NAME
+git submodule update --remote repo
+```
+
+Make sure to set `update = none` in `.gitmodules`, too,
+or else `cargo` git dependencies on `c2rust` will clone them, too.
+
+```sh
+git config -f .gitmodules submodule.$SUBMOD_NAME.update none
+```
 
 ## Adding test steps
 

@@ -1,74 +1,103 @@
+# The `update = none`s are to avoid cargo cloning
+# all submodules for git dependencies on c2rust.
+# It's unclear if cargo should be doing this
+# (see <https://github.com/rust-lang/cargo/issues/4247>),
+# but it is right now, so `update = none` is the only workaround
+# (see <https://github.com/rust-lang/cargo/pull/10717>).
+# This means that other users of submodules need to update them manually:
+# `git submodule update --init --checkout`.
+
 [submodule "examples/snudown/repo"]
 	path = examples/snudown/repo
 	url = https://github.com/immunant/snudown.git
+	update = none
 [submodule "examples/xzoom/xzoom"]
 	path = examples/xzoom/repo
 	url = git://r-36.net/xzoom
+	update = none
 [submodule "examples/grabc/repo"]
 	path = examples/grabc/repo
 	url = https://github.com/immunant/grabc.git
+	update = none
 [submodule "examples/urlparser/repo"]
 	path = examples/urlparser/repo
 	url = https://github.com/jwerle/url.h.git
+	update = none
 [submodule "examples/genann/repo"]
 	path = examples/genann/repo
 	url = https://github.com/codeplea/genann.git
+	update = none
 [submodule "examples/lil/repo"]
 	path = examples/lil/repo
 	url = https://github.com/immunant/lil.git
+	update = none
 [submodule "examples/libxml2/repo"]
 	path = examples/libxml2/repo
 	url = https://github.com/immunant/libxml2-rs.git
+	update = none
 [submodule "examples/tmux/repo"]
 	path = examples/tmux/repo
 	url = https://github.com/immunant/tmux-rs.git
+	update = none
 [submodule "examples/tinycc/repo"]
 	path = examples/tinycc/repo
 	url = https://github.com/immunant/tinycc-rs.git
+	update = none
 [submodule "tests/integration/tests/lua"]
 	path = tests/integration/tests/lua/repo
 	url = https://github.com/immunant/lua.git
 	branch = c2rust
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/zstd"]
 	path = tests/integration/tests/zstd/repo
 	url = https://github.com/facebook/zstd
 	branch = dev
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/ruby"]
 	path = tests/integration/tests/ruby/repo
 	url = https://github.com/ruby/ruby
 	branch = ruby_2_6
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/python2"]
 	path = tests/integration/tests/python2/repo
 	url = https://github.com/python/cpython.git
 	branch = 2.7
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/json-c"]
 	path = tests/integration/tests/json-c/repo
 	url = https://github.com/json-c/json-c.git
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/curl/repo"]
 	path = tests/integration/tests/curl/repo
 	url = https://github.com/curl/curl.git
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/nginx/repo"]
 	path = tests/integration/tests/nginx/repo
 	url = https://github.com/nginx/nginx.git
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/libxml2/repo"]
 	path = tests/integration/tests/libxml2/repo
 	url = https://github.com/GNOME/libxml2.git
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/redis/repo"]
 	path = tests/integration/tests/redis/repo
 	url = https://github.com/antirez/redis.git
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/snudown/repo"]
 	path = tests/integration/tests/snudown/repo
 	url = https://github.com/reddit/snudown.git
 	ignore = all
+	update = none
 [submodule "tests/integration/tests/libmcs/repo"]
 	path = tests/integration/tests/libmcs/repo
 	url = https://gitlab.com/gtd-gmbh/libmcs
+	update = none

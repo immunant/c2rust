@@ -4,7 +4,7 @@
 
 In `path/to/examples/tinycc`, initialize the git submodule:
 
-`git submodule update --init repo`
+`git submodule update --init --checkout repo`
 
 ## Create a Makefile
 
