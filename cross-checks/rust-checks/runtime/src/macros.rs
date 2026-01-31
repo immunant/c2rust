@@ -9,15 +9,15 @@ macro_rules! cross_check_iter {
 #[macro_export]
 macro_rules! cross_check_raw {
     ($item:expr) => {
-        cross_check_raw!(UNKNOWN_TAG, $item)
+        $crate::cross_check_raw!(UNKNOWN_TAG, $item)
     };
     ($tag:ident, $item:expr) => {{
         use core::iter::once;
-        cross_check_iter!(once(($crate::xcheck::$tag, $item as u64)))
+        $crate::cross_check_iter!(once(($crate::xcheck::$tag, $item as u64)))
     }};
     (=$tag:expr, $item:expr) => {{
         use core::iter::once;
-        cross_check_iter!(once(($tag, $item as u64)))
+        $crate::cross_check_iter!(once(($tag, $item as u64)))
     }};
 }
 
@@ -48,13 +48,13 @@ macro_rules! cross_check_value {
     ($tag:ident, $value:expr, $ahasher:ty, $shasher:ty) => {{
         use $crate::hash::CrossCheckHash as XCH;
         if let Some(hash) = XCH::cross_check_hash::<$ahasher, $shasher>(&$value) {
-            cross_check_raw!($tag, hash)
+            $crate::cross_check_raw!($tag, hash)
         }
     }};
     (=$tag:expr, $value:expr, $ahasher:ty, $shasher:ty) => {{
         use $crate::hash::CrossCheckHash as XCH;
         if let Some(hash) = XCH::cross_check_hash::<$ahasher, $shasher>(&$value) {
-            cross_check_raw!(=$tag, hash)
+            $crate::cross_check_raw!(=$tag, hash)
         }
     }};
 }
