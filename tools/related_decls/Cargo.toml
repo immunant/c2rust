@@ -16,4 +16,3 @@ ra_ap_load-cargo = "=0.0.301"
 ra_ap_project_model = "=0.0.301"
 ra_ap_syntax = "=0.0.301"
 env_logger = {version = "0.11.8", features = ["color", "auto-color"]}
-itertools = "0.14.0"
