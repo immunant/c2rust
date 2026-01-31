@@ -22,6 +22,7 @@ def wrap_cc():
 
     cc_args = [
         "-I", os.path.join(c.CLANG_XCHECK_PLUGIN_SRC, "include"),
+        "-DC2RUST_CROSS_CHECK_VALUE_REAL",
         "-Xclang=-load", f"-Xclang={plugin_so}",
         "-Xclang=-add-plugin", "-Xclang=crosschecks",
         "-Xclang=-plugin-arg-crosschecks", "-Xclang=--disable-xchecks",
