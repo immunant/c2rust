@@ -1604,7 +1604,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "env_logger",
- "itertools 0.14.0",
  "log",
  "ra_ap_hir",
  "ra_ap_hir_def",

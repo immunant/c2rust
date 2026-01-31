@@ -1,11 +1,10 @@
 use clap::Parser;
-use itertools::Itertools;
 use ra_ap_hir::{
-    DefWithBody, EditionedFileId, Function, HasCrate, Module, ModuleDef, ModuleDefId, Name,
-    Semantics, db::DefDatabase,
+    DefWithBody, EditionedFileId, Function, HasCrate, HasSource, InFile, Module, ModuleDef,
+    ModuleDefId, Name, Semantics, db::DefDatabase,
 };
 use ra_ap_hir_def::{hir::generics::TypeOrConstParamData, signatures::FunctionSignature};
-use ra_ap_ide_db::search::ReferenceCategory;
+use ra_ap_ide_db::search::FileReferenceNode;
 use ra_ap_ide_db::{FileId, RootDatabase, defs::Definition};
 use ra_ap_load_cargo::{self, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_project_model::CargoConfig;
@@ -53,23 +52,63 @@ struct Args {
     item_path: String,
 }
 
+/// Obtain the textual range of a given item
+fn module_def_source(
+    sema: &Semantics<RootDatabase>,
+    module_def: ModuleDef,
+) -> Option<InFile<TextRange>> {
+    fn source_text_range<Def: HasSource>(
+        sema: &Semantics<RootDatabase>,
+        def: Def,
+    ) -> Option<InFile<TextRange>>
+    where
+        <Def as HasSource>::Ast: AstNode,
+    {
+        sema.source(def)
+            .map(|infile_node| infile_node.map(|node| node.syntax().text_range()))
+    }
+
+    match module_def {
+        ModuleDef::Module(m) => Some(m.definition_source_range(sema.db)),
+        ModuleDef::Function(x) => source_text_range(sema, x),
+        ModuleDef::Adt(x) => source_text_range(sema, x),
+        ModuleDef::Variant(x) => source_text_range(sema, x),
+        ModuleDef::Const(x) => source_text_range(sema, x),
+        ModuleDef::Static(x) => source_text_range(sema, x),
+        ModuleDef::Trait(x) => source_text_range(sema, x),
+        ModuleDef::TypeAlias(x) => source_text_range(sema, x),
+        ModuleDef::TraitAlias(x) => source_text_range(sema, x),
+        ModuleDef::BuiltinType(_) => return None, // Builtins are not defined in source code
+        ModuleDef::Macro(x) => source_text_range(sema, x),
+    }
+}
+
 /// Find all references to an item
 fn item_uses(
-    def: Definition,
     sema: &Semantics<RootDatabase>,
-) -> HashMap<FileId, Vec<(TextRange, ReferenceCategory)>> {
+    items_by_range: &[(InFile<TextRange>, ModuleDef)],
+    def: Definition,
+) -> HashSet<ModuleDef> {
     let usages = def.usages(sema).include_self_refs().all();
 
-    let references: HashMap<FileId, Vec<(TextRange, ReferenceCategory)>> = usages
+    // Find the innermost item containing the text range of each usage occurrence
+    let references = usages
         .into_iter()
-        .map(|(file_id, refs)| {
-            (
-                file_id.file_id(sema.db),
-                refs.into_iter()
-                    .map(|file_ref| (file_ref.range, file_ref.category))
-                    .unique()
-                    .collect(),
-            )
+        .flat_map(|(file_id, refs)| {
+            refs.into_iter().filter_map(move |file_ref| {
+                let range = match file_ref.name {
+                    FileReferenceNode::Name(name) => name.syntax().text_range(),
+                    FileReferenceNode::NameRef(name_ref) => name_ref.syntax().text_range(),
+                    FileReferenceNode::Lifetime(_lt) => return None, // lifetimes will not reference items
+                    FileReferenceNode::FormatStringEntry(_s, range) => range,
+                };
+                items_by_range
+                    .iter()
+                    .find(|(item_range, _item)| {
+                        item_range.file_id == file_id && item_range.value.contains_range(range)
+                    })
+                    .map(|(_item_range, item)| item.clone())
+            })
         })
         .collect();
     references
@@ -212,11 +251,7 @@ fn append_module_path_to_string(
 }
 
 /// Returns the paths of all items used by the given item.
-fn items_used_by(
-    db: &RootDatabase,
-    sema: &Semantics<RootDatabase>,
-    module_def: ModuleDef,
-) -> HashSet<String> {
+fn items_used_by(sema: &Semantics<RootDatabase>, module_def: ModuleDef) -> HashSet<ModuleDef> {
     let dwb = module_def.as_def_with_body().unwrap();
     let func = match dwb {
         DefWithBody::Function(f) => f,
@@ -248,7 +283,6 @@ fn items_used_by(
         .filter_map(|decl| {
             // Skip non-item definitions like locals, labels, builtins, etc.
             definition_source(decl)
-                .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
         })
         .collect()
 }
@@ -343,6 +377,25 @@ fn main() -> Result<(), ()> {
         }
     }
 
+    // Construct map of the text ranges of each item in every file
+    let file_ids: Vec<FileId> = files.iter().map(|(id, _, _)| id.file_id(&db)).collect();
+    let mut items_by_range = Vec::new();
+    for &file_id in &file_ids {
+        ra_ap_ide_db::helpers::visit_file_defs(&sema, file_id, &mut |defn: Definition| {
+            if let Some(module_def) = definition_source(defn) {
+                if let Some(text_range) = module_def_source(&sema, module_def) {
+                    log::trace!(
+                        "range map: {text_range:?} -> {:?}",
+                        module_def.name(sema.db)
+                    );
+                    items_by_range.push((text_range, module_def));
+                }
+            }
+        });
+    }
+    // Sort shorter ranges first, so that we examine inner items before their parents
+    items_by_range.sort_by_key(|(text_range, _item)| text_range.value.len());
+
     // Currently we accept a single item path, but to amortize indexing
     // we may want to accept multiple ones later
     let mut unfound_paths: HashSet<_> = [args.item_path.clone()].into_iter().collect();
@@ -365,31 +418,49 @@ fn main() -> Result<(), ()> {
         return Err(());
     }
 
+    println!("{{");
     for (path, module_def) in found_items {
+        println!("\"{path}\": {{");
+        let mut first = true;
         for query in [Query::Uses, Query::UsedItems, Query::FnSignature] {
+            log::info!("processing {path}");
+            if !first {
+                print!(",");
+            } else {
+                first = false;
+            }
             match query {
                 Query::Uses => {
-                    eprintln!("looking up {path}");
                     let def = Definition::try_from(module_def).expect(&format!(
                         "could not convert `ModuleDef` to `Definition` for {path}"
                     ));
-                    let uses = item_uses(def, &sema);
-                    dbg!(uses);
+                    let using_items = item_uses(&sema, &items_by_range, def);
+                    let paths = using_items
+                        .into_iter()
+                        .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
+                        .collect::<Vec<_>>();
+                    println!("\"uses\": {paths:?}");
                 }
                 Query::UsedItems => {
-                    let used_defn_paths = items_used_by(&db, &sema, module_def);
-                    println!("{path} => {used_defn_paths:#?}");
+                    let used_items = items_used_by(&sema, module_def);
+                    let paths = used_items
+                        .into_iter()
+                        .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
+                        .collect::<Vec<_>>();
+                    println!("\"used_items\": {paths:?}");
                 }
                 Query::FnSignature => {
                     let id: Option<ModuleDefId> = module_def.try_into().ok();
                     if let Some(ModuleDefId::FunctionId(func_id)) = id {
                         let sig = db.function_signature(func_id);
-                        println!("{}", pp_function_signature(&db, &*sig));
+                        println!("\"signature\": {:?}", pp_function_signature(&db, &*sig));
                     }
                 }
             }
         }
+        println!("}}");
     }
+    println!("}}");
 
     Ok(())
 }
