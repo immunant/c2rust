@@ -15,6 +15,10 @@ macro_rules! cross_check_raw {
         use core::iter::once;
         cross_check_iter!(once(($crate::xcheck::$tag, $item as u64)))
     }};
+    (=$tag:expr, $item:expr) => {{
+        use core::iter::once;
+        cross_check_iter!(once(($tag, $item as u64)))
+    }};
 }
 
 #[macro_export]
@@ -30,6 +34,14 @@ macro_rules! cross_check_value {
             $crate::hash::simple::SimpleHasher
         );
     };
+    (=$tag:expr, $value:expr) => {
+        cross_check_value!(
+            =$tag,
+            $value,
+            $crate::hash::jodyhash::JodyHasher,
+            $crate::hash::simple::SimpleHasher
+        );
+    };
     // This form allows the user to pick the hashers, where:
     //   $ahasher == the hasher to use for aggregate/derived values
     //   $shasher == the hasher to use for simple values
@@ -37,6 +49,12 @@ macro_rules! cross_check_value {
         use $crate::hash::CrossCheckHash as XCH;
         if let Some(hash) = XCH::cross_check_hash::<$ahasher, $shasher>(&$value) {
             cross_check_raw!($tag, hash)
+        }
+    }};
+    (=$tag:expr, $value:expr, $ahasher:ty, $shasher:ty) => {{
+        use $crate::hash::CrossCheckHash as XCH;
+        if let Some(hash) = XCH::cross_check_hash::<$ahasher, $shasher>(&$value) {
+            cross_check_raw!(=$tag, hash)
         }
     }};
 }
