@@ -13,6 +13,10 @@
 #define CUSTOM_XCHECK(x)        CROSS_CHECK("{ custom: \"" x "\" }")
 #define CUSTOM_HASH_XCHECK(x)   CROSS_CHECK("{ custom_hash: \"" x "\" }")
 
+#ifdef C2RUST_CROSS_CHECK_VALUE_REAL
 extern void c2rust_cross_check_value(uint8_t tag, ...);
+#else
+static void c2rust_cross_check_value(uint8_t tag, ...) { __builtin_unreachable(); }
+#endif
 
 #endif // CROSS_CHECKS_H
