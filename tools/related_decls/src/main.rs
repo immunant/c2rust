@@ -1,7 +1,7 @@
 use clap::Parser;
 use ra_ap_hir::{
-    DefWithBody, EditionedFileId, Function, HasCrate, HasSource, InFile, Module, ModuleDef,
-    ModuleDefId, Name, Semantics, db::DefDatabase,
+    DefWithBody, Function, HasCrate, HasSource, InFile, Module, ModuleDef, ModuleDefId, Name,
+    Semantics, db::DefDatabase,
 };
 use ra_ap_hir_def::{hir::generics::TypeOrConstParamData, signatures::FunctionSignature};
 use ra_ap_ide_db::search::FileReferenceNode;
@@ -290,51 +290,6 @@ fn items_used_by(sema: &Semantics<RootDatabase>, module_def: ModuleDef) -> HashS
         .collect()
 }
 
-/// Find definitions in this file of any items whose canonical paths are in `to_find`.
-///
-/// Inserts found definitions into the `found_items` map.
-fn find_items(
-    db: &RootDatabase,
-    sema: &Semantics<RootDatabase>,
-    file_id: EditionedFileId,
-    to_find: &mut HashSet<String>,
-    found_items: &mut HashMap<String, ModuleDef>,
-    edition: Edition,
-) {
-    // Recursive helper to search a single module
-    fn find_module_items(
-        db: &RootDatabase,
-        module: Module,
-        to_find: &mut HashSet<String>,
-        found_items: &mut HashMap<String, ModuleDef>,
-        edition: Edition,
-    ) {
-        for decl in module.declarations(db) {
-            log::trace!(
-                "traversal saw item {:?}",
-                decl.name(db).as_ref().map(Name::as_str)
-            );
-            to_find.retain(|path| {
-                if decl.canonical_path(db, edition).as_ref() == Some(path)
-                    || absolute_item_path(db, decl, edition) == *path
-                {
-                    log::debug!("item traversal found queried path: {path}");
-                    found_items.insert(path.to_owned(), decl);
-                    return false;
-                }
-                true
-            })
-        }
-        for child_mod in module.children(db) {
-            find_module_items(db, child_mod, to_find, found_items, edition);
-        }
-    }
-
-    for module_def in sema.hir_file_to_module_defs(file_id.clone()) {
-        find_module_items(db, module_def, to_find, found_items, edition);
-    }
-}
-
 fn main() -> Result<(), String> {
     env_logger::init();
 
@@ -378,12 +333,33 @@ fn main() -> Result<(), String> {
         }
     }
 
-    // Construct map of the text ranges of each item in every file
+    // Iterate all items, constructing map of their text ranges and finding any in `args.item_paths`
+    let mut unfound_paths: HashSet<_> = args.item_paths.into_iter().collect();
+    let mut found_items: HashMap<_, _> = Default::default();
+
     let mut items_by_range = Vec::new();
     for file in &files {
         let db = &db;
         ra_ap_ide_db::helpers::visit_file_defs(&sema, file.file_id(db), &mut |defn: Definition| {
             if let Some(module_def) = definition_source(defn) {
+                log::trace!(
+                    "traversal saw item {:?}",
+                    module_def.name(db).as_ref().map(Name::as_str)
+                );
+
+                // Mark this item as found if its path matches one we're looking for
+                let abs_path = absolute_item_path(db, module_def, file.edition(db));
+                let canonical_path = module_def.canonical_path(db, file.edition(db));
+                unfound_paths.retain(|path| {
+                    if canonical_path.as_ref() == Some(path) || abs_path == *path {
+                        log::debug!("item traversal found queried path: {path}");
+                        found_items.insert(path.to_owned(), module_def);
+                        return false;
+                    }
+                    true
+                });
+
+                // Save source range
                 if let Some(text_range) = module_def_source(&sema, module_def) {
                     log::trace!(
                         "range map: {text_range:?} -> {:?}",
@@ -396,19 +372,6 @@ fn main() -> Result<(), String> {
     }
     // Sort shorter ranges first, so that we examine inner items before their parents
     items_by_range.sort_by_key(|(text_range, _item)| text_range.value.len());
-
-    let mut unfound_paths: HashSet<_> = args.item_paths.into_iter().collect();
-    let mut found_items: HashMap<_, _> = Default::default();
-    for file_id in &files {
-        find_items(
-            &db,
-            &sema,
-            file_id.clone(),
-            &mut unfound_paths,
-            &mut found_items,
-            Edition::DEFAULT,
-        );
-    }
 
     for path in &unfound_paths {
         eprintln!("did not find item {path} in crate");
