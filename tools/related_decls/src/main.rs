@@ -420,17 +420,11 @@ fn main() -> Result<(), ()> {
         return Err(());
     }
 
-    println!("{{");
+    let mut output = serde_json::Map::new();
     for (path, module_def) in found_items {
+        let mut path_info = serde_json::Map::new();
         log::info!("processing {path}");
-        println!("\"{path}\": {{");
-        let mut first = true;
         for query in [Query::Uses, Query::UsedItems, Query::FnSignature] {
-            if !first {
-                print!(",");
-            } else {
-                first = false;
-            }
             match query {
                 Query::Uses => {
                     let using_items = item_uses(&sema, &items_by_range, module_def);
@@ -438,7 +432,7 @@ fn main() -> Result<(), ()> {
                         .into_iter()
                         .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
                         .collect::<Vec<_>>();
-                    println!("\"uses\": {paths:?}");
+                    path_info.insert("uses".to_owned(), paths.into());
                 }
                 Query::UsedItems => {
                     let used_items = items_used_by(&sema, module_def);
@@ -446,20 +440,25 @@ fn main() -> Result<(), ()> {
                         .into_iter()
                         .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
                         .collect::<Vec<_>>();
-                    println!("\"used_items\": {paths:?}");
+                    path_info.insert("used_items".to_owned(), paths.into());
                 }
                 Query::FnSignature => {
                     let id: Option<ModuleDefId> = module_def.try_into().ok();
                     if let Some(ModuleDefId::FunctionId(func_id)) = id {
                         let sig = db.function_signature(func_id);
-                        println!("\"signature\": {:?}", pp_function_signature(&db, &*sig));
+                        path_info.insert(
+                            "signature".to_owned(),
+                            pp_function_signature(&db, &*sig).into(),
+                        );
                     }
                 }
             }
         }
-        println!("}}");
+        output.insert(path, path_info.into());
     }
-    println!("}}");
+    let mut stdout = std::io::stdout().lock();
+    serde_json::to_writer(&mut stdout, &output)
+        .map_err(|e| eprintln!("error writing output: {e}"))?;
 
     Ok(())
 }

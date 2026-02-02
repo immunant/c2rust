@@ -1612,6 +1612,7 @@ dependencies = [
  "ra_ap_project_model",
  "ra_ap_syntax",
  "rust_util",
+ "serde_json",
 ]
 
 [[package]]
