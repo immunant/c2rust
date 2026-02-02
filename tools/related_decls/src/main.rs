@@ -116,6 +116,26 @@ fn item_uses(
     references
 }
 
+/// Return the function's signature as written in the source
+///
+/// Referenced paths will be expressed as written, which is usually not absolute and may require
+/// scope context to resolve.
+fn function_signature_as_written(sema: &Semantics<RootDatabase>, func: Function) -> Option<String> {
+    let source_node = sema.source(func)?;
+    let text = source_node.value.syntax().text();
+
+    let Some(body) = source_node.value.body() else {
+        return Some(text.to_string());
+    };
+    let end_pos = u32::from(text.len() - body.syntax().text_range().len());
+    let range = TextRange::new(0.into(), end_pos.into());
+    let mut signature = text.slice(range).to_string();
+
+    // Drop any whitespace between signature and body
+    signature.truncate(signature.trim_end().len());
+    Some(signature)
+}
+
 /// Pretty-print a function signature to a string
 fn pp_function_signature(db: &RootDatabase, sig: &FunctionSignature) -> String {
     let mut out = String::new();
@@ -409,6 +429,10 @@ fn main() -> Result<(), String> {
                         path_info.insert(
                             "signature".to_owned(),
                             pp_function_signature(&db, &*sig).into(),
+                        );
+                        path_info.insert(
+                            "written_signature".to_owned(),
+                            function_signature_as_written(&sema, func_id.into()).into(),
                         );
                     }
                 }
