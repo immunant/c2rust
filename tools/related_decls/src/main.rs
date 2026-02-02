@@ -87,8 +87,9 @@ fn module_def_source(
 fn item_uses(
     sema: &Semantics<RootDatabase>,
     items_by_range: &[(InFile<TextRange>, ModuleDef)],
-    def: Definition,
+    def: ModuleDef,
 ) -> HashSet<ModuleDef> {
+    let def = Definition::from(def);
     let usages = def.usages(sema).include_self_refs().all();
 
     // Find the innermost item containing the text range of each usage occurrence
@@ -432,10 +433,7 @@ fn main() -> Result<(), ()> {
             }
             match query {
                 Query::Uses => {
-                    let def = Definition::try_from(module_def).expect(&format!(
-                        "could not convert `ModuleDef` to `Definition` for {path}"
-                    ));
-                    let using_items = item_uses(&sema, &items_by_range, def);
+                    let using_items = item_uses(&sema, &items_by_range, module_def);
                     let paths = using_items
                         .into_iter()
                         .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
