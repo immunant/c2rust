@@ -5,7 +5,7 @@ use ra_ap_hir::{
 };
 use ra_ap_hir_def::{hir::generics::TypeOrConstParamData, signatures::FunctionSignature};
 use ra_ap_ide_db::search::FileReferenceNode;
-use ra_ap_ide_db::{FileId, RootDatabase, defs::Definition};
+use ra_ap_ide_db::{RootDatabase, defs::Definition};
 use ra_ap_load_cargo::{self, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_project_model::CargoConfig;
 use ra_ap_syntax::{AstNode, Edition, NodeOrToken, TextRange, WalkEvent};
@@ -368,23 +368,21 @@ fn main() -> Result<(), String> {
 
     let mut files = Vec::new();
     for m in krate.modules(&db) {
-        let src = m.definition_source(&db);
-        let node = src.value.node();
         if let Some(editioned_file_id) = m.as_source_file_id(&db) {
             sema.parse(editioned_file_id);
             let file_id = editioned_file_id.file_id(&db);
             let vfs_path = vfs.file_path(file_id);
-            if let Some(path) = vfs_path.as_path() {
-                files.push((editioned_file_id, path.to_path_buf(), node));
+            if let Some(_path) = vfs_path.as_path() {
+                files.push(editioned_file_id);
             }
         }
     }
 
     // Construct map of the text ranges of each item in every file
-    let file_ids: Vec<FileId> = files.iter().map(|(id, _, _)| id.file_id(&db)).collect();
     let mut items_by_range = Vec::new();
-    for &file_id in &file_ids {
-        ra_ap_ide_db::helpers::visit_file_defs(&sema, file_id, &mut |defn: Definition| {
+    for file in &files {
+        let db = &db;
+        ra_ap_ide_db::helpers::visit_file_defs(&sema, file.file_id(db), &mut |defn: Definition| {
             if let Some(module_def) = definition_source(defn) {
                 if let Some(text_range) = module_def_source(&sema, module_def) {
                     log::trace!(
@@ -401,7 +399,7 @@ fn main() -> Result<(), String> {
 
     let mut unfound_paths: HashSet<_> = args.item_paths.into_iter().collect();
     let mut found_items: HashMap<_, _> = Default::default();
-    for (file_id, _, _) in &files {
+    for file_id in &files {
         find_items(
             &db,
             &sema,
