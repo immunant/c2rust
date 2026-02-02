@@ -209,7 +209,7 @@ def get_host_triplet() -> str:
 
 def update_or_init_submodule(submodule_path: str) -> None:
     git = get_cmd_or_die("git")
-    invoke_quietly(git, "submodule", "update", "--init", submodule_path)
+    invoke_quietly(git, "submodule", "update", "--init", "--checkout", submodule_path)
     logging.debug("updated submodule %s", submodule_path)
 
 

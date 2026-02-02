@@ -1,5 +1,6 @@
 # Snudown
-To build snudown with the C2Rust translator and/or cross-checks, initialize the git submodule by running `git submodule update --init path/to/repo`.
+To build snudown with the C2Rust translator and/or cross-checks, initialize the git submodule by running
+`git submodule update --init --checkout path/to/repo`.
 
 Make sure to build the `derive-macros`, `runtime` and `rustc-plugin` projects in the `cross-checks` folder beforehand.
 The `runtime` project must be built with the `libc-hash` feature (e.g. `cargo build --features libc-hash`).

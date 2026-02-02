@@ -76,7 +76,7 @@ class Test:
         if self.args.regex_examples.fullmatch(self.project_name):
             print_blue("Initializing {}...".format(self.project_name))
             with pb.local.cwd(self.example_dir):
-                invoke(git, ['submodule', 'update', '--init', 'repo'])
+                invoke(git, ['submodule', 'update', '--init', "--checkout", 'repo'])
 
     def deinit_submodule(self) -> None:
         if self.args.regex_examples.fullmatch(self.project_name) and self.args.deinit:

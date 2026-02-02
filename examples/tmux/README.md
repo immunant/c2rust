@@ -6,7 +6,7 @@ Only linux is supported at the moment, but OSX might work with some tweaks.
 
 In `path/to/examples/tmux`, initialize the git submodule:
 
-`git submodule update --init repo`
+`git submodule update --init --checkout repo`
 
 ## Create a Makefile
 
