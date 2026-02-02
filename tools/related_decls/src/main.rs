@@ -277,7 +277,8 @@ fn items_used_by(sema: &Semantics<RootDatabase>, module_def: ModuleDef) -> HashS
             }
         }
     }
-    // Obtain path for each used defn
+
+    // Convert jump-to-defn `Definition`s into item `ModuleDef`s
     used_defns
         .into_iter()
         .filter_map(|decl| {
@@ -420,10 +421,10 @@ fn main() -> Result<(), ()> {
 
     println!("{{");
     for (path, module_def) in found_items {
+        log::info!("processing {path}");
         println!("\"{path}\": {{");
         let mut first = true;
         for query in [Query::Uses, Query::UsedItems, Query::FnSignature] {
-            log::info!("processing {path}");
             if !first {
                 print!(",");
             } else {
