@@ -48,8 +48,9 @@ struct Args {
     cargo_dir_path: PathBuf,
     // /// Kind of relationships to obtain
     // mode: Query,
-    /// Path to Rust item to start from.
-    item_path: String,
+    #[arg(required = true)]
+    /// Paths to Rust item to analyze.
+    item_paths: Vec<String>,
 }
 
 /// Obtain the textual range of a given item
@@ -334,7 +335,7 @@ fn find_items(
     }
 }
 
-fn main() -> Result<(), ()> {
+fn main() -> Result<(), String> {
     env_logger::init();
 
     let args = Args::parse();
@@ -398,9 +399,7 @@ fn main() -> Result<(), ()> {
     // Sort shorter ranges first, so that we examine inner items before their parents
     items_by_range.sort_by_key(|(text_range, _item)| text_range.value.len());
 
-    // Currently we accept a single item path, but to amortize indexing
-    // we may want to accept multiple ones later
-    let mut unfound_paths: HashSet<_> = [args.item_path.clone()].into_iter().collect();
+    let mut unfound_paths: HashSet<_> = args.item_paths.into_iter().collect();
     let mut found_items: HashMap<_, _> = Default::default();
     for (file_id, _, _) in &files {
         find_items(
@@ -417,7 +416,7 @@ fn main() -> Result<(), ()> {
         eprintln!("did not find item {path} in crate");
     }
     if !unfound_paths.is_empty() {
-        return Err(());
+        return Err("not all paths were found in the crate".into());
     }
 
     let mut output = serde_json::Map::new();
@@ -458,7 +457,7 @@ fn main() -> Result<(), ()> {
     }
     let mut stdout = std::io::stdout().lock();
     serde_json::to_writer(&mut stdout, &output)
-        .map_err(|e| eprintln!("error writing output: {e}"))?;
+        .map_err(|e| format!("error writing output: {e}"))?;
 
     Ok(())
 }
