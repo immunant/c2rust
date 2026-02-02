@@ -120,7 +120,7 @@ impl<K: Hash + Eq> ArgList<K> {
         self.0.get(key)
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&K, &ArgValue<K>)> + 'a {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a ArgValue<K>)> + 'a {
         self.0.iter()
     }
 }

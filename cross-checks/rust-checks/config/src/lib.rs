@@ -1,5 +1,5 @@
 #![cfg_attr(feature = "parse-syntax", feature(rustc_private))]
-#![feature(box_patterns, is_sorted)]
+#![feature(box_patterns)]
 
 #[macro_use]
 extern crate serde_derive;
@@ -8,10 +8,6 @@ extern crate serde;
 extern crate serde_yaml;
 
 extern crate globset;
-
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
 
 extern crate indexmap;
 
@@ -22,6 +18,7 @@ pub mod scopes;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use regex::RegexSet;
+use thiserror::Error;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -111,7 +108,7 @@ impl DefaultsConfig {
                     self.$field = other.$field.clone();
                 }
             };
-        };
+        }
         update_field!(disable_xchecks);
         update_field!(entry);
         update_field!(exit);
@@ -193,6 +190,7 @@ pub enum CustomHashFormat {
     Extern,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct CustomHashFormatError(String);
 
@@ -524,10 +522,10 @@ impl Config {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum ParseError {
-    #[fail(display = "YAML parse error")]
-    YAML(#[cause] serde_yaml::Error),
+    #[error("YAML parse error")]
+    YAML(#[from] serde_yaml::Error),
 }
 
 pub fn parse_string(s: &str) -> Result<Config, ParseError> {
