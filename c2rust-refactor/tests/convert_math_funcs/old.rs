@@ -25,19 +25,15 @@ extern "C" {
 
 fn main() {
     unsafe {
-        let angle = 3.14159 / 2.0;
+        let angle = 3.14159f64 / 2.0f64;
         let result = sin(angle);
         println!("sin({}) = {}", angle, result);
 
-        let x = 1.5;
-        let y = sin(x);
-        println!("sin({}) = {}", x, y);
-
         // Multiple calls in one expression
-        let z = sin(0.0) + sin(1.0);
+        let z = sin(0.0f64) + sin(1.0f64);
 
         // Nested call
-        let w = sin(sin(0.5));
+        let w = sin(sin(0.5f64));
 
         // Test sinf (f32 variant)
         let angle_f32: f32 = 1.5;
@@ -45,20 +41,20 @@ fn main() {
         println!("sinf({}) = {}", angle_f32, result_f32);
 
         // Test sinl (long double variant)
-        let angle_ld = 2.0;
+        let angle_ld = 2.0f64;
         let result_ld = sinl(angle_ld);
         println!("sinl({}) = {}", angle_ld, result_ld);
 
         // Mixed calls
-        let mixed = sin(1.0) + sinf(1.0) as f64 + sinl(1.0);
+        let mixed = sin(1.0f64) + sinf(1.0f32) as f64 + sinl(1.0f64);
 
         // Additional math functions
-        let c = cos(0.25);
-        let t = tan(0.25);
-        let s = sqrt(4.0);
-        let p = pow(2.0, 3.0);
-        let l = log(2.0);
-        let e = exp(1.0);
-        let a = fabs(-1.0);
+        let c = cos(0.25f64);
+        let t = tan(0.25f64);
+        let s = sqrt(4.0f64);
+        let p = pow(2.0f64, 3.0f64);
+        let l = log(2.0f64);
+        let e = exp(1.0f64);
+        let a = fabs(-1.0f64);
     }
 }
