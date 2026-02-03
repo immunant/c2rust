@@ -66,7 +66,9 @@ mod bindings;
 mod impls;
 mod subst;
 
-pub use self::bindings::{parse_bindings, BindingTypes, Bindings, Type as BindingType};
+pub use self::bindings::{
+    parse_bindings, BindingTypes, Bindings, Type as BindingType, Value as BindingValue,
+};
 pub use self::subst::Subst;
 
 pub type Result<T> = result::Result<T, Error>;
