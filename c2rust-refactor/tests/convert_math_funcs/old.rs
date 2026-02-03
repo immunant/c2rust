@@ -7,6 +7,20 @@ extern "C" {
     fn sinf(x: f32) -> f32;
     #[no_mangle]
     fn sinl(x: f64) -> f64;
+    #[no_mangle]
+    fn cos(x: f64) -> f64;
+    #[no_mangle]
+    fn tan(x: f64) -> f64;
+    #[no_mangle]
+    fn sqrt(x: f64) -> f64;
+    #[no_mangle]
+    fn pow(x: f64, y: f64) -> f64;
+    #[no_mangle]
+    fn log(x: f64) -> f64;
+    #[no_mangle]
+    fn exp(x: f64) -> f64;
+    #[no_mangle]
+    fn fabs(x: f64) -> f64;
 }
 
 fn main() {
@@ -37,5 +51,14 @@ fn main() {
 
         // Mixed calls
         let mixed = sin(1.0) + sinf(1.0) as f64 + sinl(1.0);
+
+        // Additional math functions
+        let c = cos(0.25);
+        let t = tan(0.25);
+        let s = sqrt(4.0);
+        let p = pow(2.0, 3.0);
+        let l = log(2.0);
+        let e = exp(1.0);
+        let a = fabs(-1.0);
     }
 }

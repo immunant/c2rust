@@ -2,7 +2,7 @@ use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir::def_id::DefId;
 use rustc_span::sym;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::{visit_nodes, MutVisitNodes};
@@ -24,9 +24,14 @@ use crate::RefactorCtxt;
 /// is actually calling the libc functions.
 ///
 /// Currently supports:
-/// - `sin(x)` -> `x.sin()`
-/// - `sinf(x)` -> `x.sin()` (for f32)
-/// - `sinl(x)` -> `x.sin()` (for long double/f64)
+/// - `sin(x)` / `sinf(x)` / `sinl(x)` -> `x.sin()`
+/// - `cos(x)` / `cosf(x)` / `cosl(x)` -> `x.cos()`
+/// - `tan(x)` / `tanf(x)` / `tanl(x)` -> `x.tan()`
+/// - `sqrt(x)` / `sqrtf(x)` / `sqrtl(x)` -> `x.sqrt()`
+/// - `log(x)` / `logf(x)` / `logl(x)` -> `x.ln()`
+/// - `exp(x)` / `expf(x)` / `expl(x)` -> `x.exp()`
+/// - `fabs(x)` / `fabsf(x)` / `fabsl(x)` -> `x.abs()`
+/// - `pow(x, y)` / `powf(x, y)` / `powl(x, y)` -> `x.powf(y)`
 ///
 /// Example:
 ///
@@ -45,52 +50,74 @@ pub struct ConvertMath;
 
 impl Transform for ConvertMath {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        // Track all sin variants (sin, sinf, sinl)
-        let mut sin_defs = HashSet::<DefId>::new();
-        let mut sinf_defs = HashSet::<DefId>::new();
-        let mut sinl_defs = HashSet::<DefId>::new();
+        // Track unary and binary math function variants by DefId
+        let mut unary_defs: HashMap<DefId, &'static str> = HashMap::new();
+        let mut binary_defs: HashMap<DefId, &'static str> = HashMap::new();
 
         visit_nodes(krate, |fi: &ForeignItem| {
             if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
-                match (&*fi.ident.as_str(), &fi.kind) {
-                    ("sin", ForeignItemKind::Fn(_)) => {
-                        sin_defs.insert(cx.node_def_id(fi.id));
+                if let ForeignItemKind::Fn(_) = fi.kind {
+                    let def_id = cx.node_def_id(fi.id);
+                    match &*fi.ident.as_str() {
+                        "sin" | "sinf" | "sinl" => {
+                            unary_defs.insert(def_id, "sin");
+                        }
+                        "cos" | "cosf" | "cosl" => {
+                            unary_defs.insert(def_id, "cos");
+                        }
+                        "tan" | "tanf" | "tanl" => {
+                            unary_defs.insert(def_id, "tan");
+                        }
+                        "sqrt" | "sqrtf" | "sqrtl" => {
+                            unary_defs.insert(def_id, "sqrt");
+                        }
+                        "log" | "logf" | "logl" => {
+                            unary_defs.insert(def_id, "ln");
+                        }
+                        "exp" | "expf" | "expl" => {
+                            unary_defs.insert(def_id, "exp");
+                        }
+                        "fabs" | "fabsf" | "fabsl" => {
+                            unary_defs.insert(def_id, "abs");
+                        }
+                        "pow" | "powf" | "powl" => {
+                            binary_defs.insert(def_id, "powf");
+                        }
+                        _ => {}
                     }
-                    ("sinf", ForeignItemKind::Fn(_)) => {
-                        sinf_defs.insert(cx.node_def_id(fi.id));
-                    }
-                    ("sinl", ForeignItemKind::Fn(_)) => {
-                        sinl_defs.insert(cx.node_def_id(fi.id));
-                    }
-                    _ => {}
                 }
             }
         });
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            match e.kind {
-                ExprKind::Call(ref f, ref args) => {
-                    if args.len() != 1 {
-                        return;
-                    }
+            let ExprKind::Call(ref f, ref args) = e.kind else {
+                return;
+            };
 
-                    // Check if this is a call to sin(), sinf(), or sinl()
-                    if let Some(def_id) = cx.try_resolve_expr(f) {
-                        if sin_defs.contains(&def_id)
-                            || sinf_defs.contains(&def_id)
-                            || sinl_defs.contains(&def_id)
-                        {
-                            // Convert sin(x)/sinf(x)/sinl(x) to x.sin()
-                            let receiver = args[0].clone();
-                            *e = mk().span(e.span).method_call_expr(
-                                receiver,
-                                "sin",
-                                Vec::<P<Expr>>::new(),
-                            );
-                        }
-                    }
+            let Some(def_id) = cx.try_resolve_expr(f) else {
+                return;
+            };
+
+            if let Some(&method) = unary_defs.get(&def_id) {
+                if args.len() != 1 {
+                    return;
                 }
-                _ => {}
+                let receiver = args[0].clone();
+                *e = mk().span(e.span).method_call_expr(
+                    receiver,
+                    method,
+                    Vec::<P<Expr>>::new(),
+                );
+                return;
+            }
+
+            if let Some(&method) = binary_defs.get(&def_id) {
+                if args.len() != 2 {
+                    return;
+                }
+                let receiver = args[0].clone();
+                let method_args = vec![args[1].clone()];
+                *e = mk().span(e.span).method_call_expr(receiver, method, method_args);
             }
         })
     }
