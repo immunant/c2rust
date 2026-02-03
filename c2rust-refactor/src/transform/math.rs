@@ -25,29 +25,42 @@ use crate::RefactorCtxt;
 ///
 /// Currently supports:
 /// - `sin(x)` -> `x.sin()`
+/// - `sinf(x)` -> `x.sin()` (for f32)
+/// - `sinl(x)` -> `x.sin()` (for long double/f64)
 ///
 /// Example:
 ///
 /// ```ignore
 /// let result = sin(angle);
+/// let result_f32 = sinf(angle_f32);
 /// ```
 ///
 /// gets converted to:
 ///
 /// ```ignore
 /// let result = angle.sin();
+/// let result_f32 = angle_f32.sin();
 /// ```
 pub struct ConvertMath;
 
 impl Transform for ConvertMath {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
+        // Track all sin variants (sin, sinf, sinl)
         let mut sin_defs = HashSet::<DefId>::new();
+        let mut sinf_defs = HashSet::<DefId>::new();
+        let mut sinl_defs = HashSet::<DefId>::new();
 
         visit_nodes(krate, |fi: &ForeignItem| {
             if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
                 match (&*fi.ident.as_str(), &fi.kind) {
                     ("sin", ForeignItemKind::Fn(_)) => {
                         sin_defs.insert(cx.node_def_id(fi.id));
+                    }
+                    ("sinf", ForeignItemKind::Fn(_)) => {
+                        sinf_defs.insert(cx.node_def_id(fi.id));
+                    }
+                    ("sinl", ForeignItemKind::Fn(_)) => {
+                        sinl_defs.insert(cx.node_def_id(fi.id));
                     }
                     _ => {}
                 }
@@ -61,10 +74,13 @@ impl Transform for ConvertMath {
                         return;
                     }
 
-                    // Check if this is a call to sin()
+                    // Check if this is a call to sin(), sinf(), or sinl()
                     if let Some(def_id) = cx.try_resolve_expr(f) {
-                        if sin_defs.contains(&def_id) {
-                            // Convert sin(x) to x.sin()
+                        if sin_defs.contains(&def_id)
+                            || sinf_defs.contains(&def_id)
+                            || sinl_defs.contains(&def_id)
+                        {
+                            // Convert sin(x)/sinf(x)/sinl(x) to x.sin()
                             let receiver = args[0].clone();
                             *e = mk().span(e.span).method_call_expr(
                                 receiver,
