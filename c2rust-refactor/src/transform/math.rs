@@ -69,7 +69,6 @@ pub struct ConvertMath;
 
 impl Transform for ConvertMath {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        // Track unary and binary math function variants by DefId
         let mut unary_defs = HashMap::new();
         let mut binary_defs = HashMap::new();
 
