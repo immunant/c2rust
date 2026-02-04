@@ -223,11 +223,6 @@ impl Transform for ConvertMath {
             }
         });
     }
-
-    fn min_phase(&self) -> crate::driver::Phase {
-        // Most transforms should run on expanded code.
-        crate::driver::Phase::Phase2
-    }
 }
 
 pub fn register_commands(reg: &mut Registry) {
