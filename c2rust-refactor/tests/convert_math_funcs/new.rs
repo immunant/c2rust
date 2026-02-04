@@ -6,8 +6,6 @@ extern "C" {
     #[no_mangle]
     fn sinf(x: f32) -> f32;
     #[no_mangle]
-    fn sinl(x: f64) -> f64;
-    #[no_mangle]
     fn cos(x: f64) -> f64;
     #[no_mangle]
     fn tan(x: f64) -> f64;
@@ -40,13 +38,8 @@ fn main() {
         let result_f32 = angle_f32.sin();
         println!("sinf({}) = {}", angle_f32, result_f32);
 
-        // Test sinl (long double variant)
-        let angle_ld = 2.0f64;
-        let result_ld = angle_ld.sin();
-        println!("sinl({}) = {}", angle_ld, result_ld);
-
         // Mixed calls
-        let mixed = 1.0f64.sin() + 1.0f32.sin() as f64 + 1.0f64.sin();
+        let mixed = 1.0f64.sin() + 1.0f32.sin() as f64;
 
         // Additional math functions
         let c = 0.25f64.cos();

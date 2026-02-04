@@ -1,6 +1,5 @@
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_hir::def_id::DefId;
 use rustc_hir::Node;
 use rustc_span::sym;
 use std::collections::HashMap;
@@ -52,8 +51,8 @@ pub struct ConvertMath;
 impl Transform for ConvertMath {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         // Track unary and binary math function variants by DefId
-        let mut unary_defs: HashMap<DefId, &'static str> = HashMap::new();
-        let mut binary_defs: HashMap<DefId, &'static str> = HashMap::new();
+        let mut unary_defs = HashMap::new();
+        let mut binary_defs = HashMap::new();
 
         visit_nodes(krate, |fi: &ForeignItem| {
             if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
@@ -105,7 +104,7 @@ impl Transform for ConvertMath {
             if def_id.is_local() {
                 match cx.hir_map().get_if_local(def_id) {
                     Some(Node::ForeignItem(_)) => {}
-                    Some(_) | None => return,
+                    _ => return,
                 }
             }
 
@@ -114,21 +113,18 @@ impl Transform for ConvertMath {
                     return;
                 }
                 let receiver = args[0].clone();
-                *e = mk().span(e.span).method_call_expr(
-                    receiver,
-                    method,
-                    Vec::<P<Expr>>::new(),
-                );
-                return;
-            }
-
-            if let Some(&method) = binary_defs.get(&def_id) {
+                *e = mk()
+                    .span(e.span)
+                    .method_call_expr(receiver, method, Vec::<P<Expr>>::new());
+            } else if let Some(&method) = binary_defs.get(&def_id) {
                 if args.len() != 2 {
                     return;
                 }
                 let receiver = args[0].clone();
                 let method_args = vec![args[1].clone()];
-                *e = mk().span(e.span).method_call_expr(receiver, method, method_args);
+                *e = mk()
+                    .span(e.span)
+                    .method_call_expr(receiver, method, method_args);
             }
         })
     }
