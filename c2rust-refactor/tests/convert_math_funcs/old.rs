@@ -19,6 +19,24 @@ extern "C" {
     fn exp(x: f64) -> f64;
     #[no_mangle]
     fn fabs(x: f64) -> f64;
+    #[no_mangle]
+    fn abs(x: i32) -> i32;
+    #[no_mangle]
+    fn labs(x: i64) -> i64;
+    #[no_mangle]
+    fn llabs(x: i64) -> i64;
+    #[no_mangle]
+    fn floor(x: f64) -> f64;
+    #[no_mangle]
+    fn floorf(x: f32) -> f32;
+    #[no_mangle]
+    fn ceil(x: f64) -> f64;
+    #[no_mangle]
+    fn ceilf(x: f32) -> f32;
+    #[no_mangle]
+    fn trunc(x: f64) -> f64;
+    #[no_mangle]
+    fn truncf(x: f32) -> f32;
 }
 
 fn main() {
@@ -49,5 +67,18 @@ fn main() {
         let l = log(2.0f64);
         let e = exp(1.0f64);
         let a = fabs(-1.0f64);
+
+        // Integer absolute value functions
+        let i = abs(-42i32);
+        let j = labs(-123456789i64);
+        let k = llabs(-987654321i64);
+
+        // Rounding functions
+        let fl = floor(3.7f64);
+        let flf = floorf(3.7f32);
+        let ce = ceil(3.2f64);
+        let cef = ceilf(3.2f32);
+        let tr = trunc(3.9f64);
+        let trf = truncf(3.9f32);
     }
 }

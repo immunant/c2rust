@@ -23,7 +23,6 @@ use crate::RefactorCtxt;
 /// using `extern "C"` and marked `#[no_mangle]`, to ensure the caller
 /// is actually calling the libc functions.
 ///
-/// Currently supports:
 /// - `sin(x)` / `sinf(x)` / `sinl(x)` -> `x.sin()`
 /// - `cos(x)` / `cosf(x)` / `cosl(x)` -> `x.cos()`
 /// - `tan(x)` / `tanf(x)` / `tanl(x)` -> `x.tan()`
@@ -31,6 +30,10 @@ use crate::RefactorCtxt;
 /// - `log(x)` / `logf(x)` / `logl(x)` -> `x.ln()`
 /// - `exp(x)` / `expf(x)` / `expl(x)` -> `x.exp()`
 /// - `fabs(x)` / `fabsf(x)` / `fabsl(x)` -> `x.abs()`
+/// - `abs(x)` / `labs(x)` / `llabs(x)` -> `x.abs()`
+/// - `floor(x)` / `floorf(x)` / `floorl(x)` -> `x.floor()`
+/// - `ceil(x)` / `ceilf(x)` / `ceill(x)` -> `x.ceil()`
+/// - `trunc(x)` / `truncf(x)` / `truncl(x)` -> `x.trunc()`
 /// - `pow(x, y)` / `powf(x, y)` / `powl(x, y)` -> `x.powf(y)`
 ///
 /// Example:
@@ -79,6 +82,18 @@ impl Transform for ConvertMath {
                         }
                         "fabs" | "fabsf" | "fabsl" => {
                             unary_defs.insert(def_id, "abs");
+                        }
+                        "abs" | "labs" | "llabs" => {
+                            unary_defs.insert(def_id, "abs");
+                        }
+                        "floor" | "floorf" | "floorl" => {
+                            unary_defs.insert(def_id, "floor");
+                        }
+                        "ceil" | "ceilf" | "ceill" => {
+                            unary_defs.insert(def_id, "ceil");
+                        }
+                        "trunc" | "truncf" | "truncl" => {
+                            unary_defs.insert(def_id, "trunc");
                         }
                         "pow" | "powf" | "powl" => {
                             binary_defs.insert(def_id, "powf");
