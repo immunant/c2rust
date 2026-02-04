@@ -26,15 +26,31 @@ use crate::RefactorCtxt;
 /// - `sin(x)` / `sinf(x)` / `sinl(x)` -> `x.sin()`
 /// - `cos(x)` / `cosf(x)` / `cosl(x)` -> `x.cos()`
 /// - `tan(x)` / `tanf(x)` / `tanl(x)` -> `x.tan()`
+/// - `asin(x)` / `asinf(x)` / `asinl(x)` -> `x.asin()`
+/// - `acos(x)` / `acosf(x)` / `acosl(x)` -> `x.acos()`
+/// - `atan(x)` / `atanf(x)` / `atanl(x)` -> `x.atan()`
+/// - `sinh(x)` / `sinhf(x)` / `sinhl(x)` -> `x.sinh()`
+/// - `cosh(x)` / `coshf(x)` / `coshl(x)` -> `x.cosh()`
+/// - `tanh(x)` / `tanhf(x)` / `tanhl(x)` -> `x.tanh()`
+/// - `asinh(x)` / `asinhf(x)` / `asinhl(x)` -> `x.asinh()`
+/// - `acosh(x)` / `acoshf(x)` / `acoshl(x)` -> `x.acosh()`
+/// - `atanh(x)` / `atanhf(x)` / `atanhl(x)` -> `x.atanh()`
 /// - `sqrt(x)` / `sqrtf(x)` / `sqrtl(x)` -> `x.sqrt()`
+/// - `cbrt(x)` / `cbrtf(x)` / `cbrtl(x)` -> `x.cbrt()`
 /// - `log(x)` / `logf(x)` / `logl(x)` -> `x.ln()`
 /// - `exp(x)` / `expf(x)` / `expl(x)` -> `x.exp()`
 /// - `fabs(x)` / `fabsf(x)` / `fabsl(x)` -> `x.abs()`
 /// - `abs(x)` / `labs(x)` / `llabs(x)` -> `x.abs()`
 /// - `floor(x)` / `floorf(x)` / `floorl(x)` -> `x.floor()`
 /// - `ceil(x)` / `ceilf(x)` / `ceill(x)` -> `x.ceil()`
+/// - `round(x)` / `roundf(x)` / `roundl(x)` -> `x.round()`
 /// - `trunc(x)` / `truncf(x)` / `truncl(x)` -> `x.trunc()`
 /// - `pow(x, y)` / `powf(x, y)` / `powl(x, y)` -> `x.powf(y)`
+/// - `atan2(y, x)` / `atan2f(y, x)` / `atan2l(y, x)` -> `y.atan2(x)`
+/// - `hypot(x, y)` / `hypotf(x, y)` / `hypotl(x, y)` -> `x.hypot(y)`
+/// - `copysign(x, y)` / `copysignf(x, y)` / `copysignl(x, y)` -> `x.copysign(y)`
+/// - `fmin(x, y)` / `fminf(x, y)` / `fminl(x, y)` -> `x.min(y)`
+/// - `fmax(x, y)` / `fmaxf(x, y)` / `fmaxl(x, y)` -> `x.max(y)`
 ///
 /// Example:
 ///
@@ -71,8 +87,38 @@ impl Transform for ConvertMath {
                         "tan" | "tanf" | "tanl" => {
                             unary_defs.insert(def_id, "tan");
                         }
+                        "asin" | "asinf" | "asinl" => {
+                            unary_defs.insert(def_id, "asin");
+                        }
+                        "acos" | "acosf" | "acosl" => {
+                            unary_defs.insert(def_id, "acos");
+                        }
+                        "atan" | "atanf" | "atanl" => {
+                            unary_defs.insert(def_id, "atan");
+                        }
+                        "sinh" | "sinhf" | "sinhl" => {
+                            unary_defs.insert(def_id, "sinh");
+                        }
+                        "cosh" | "coshf" | "coshl" => {
+                            unary_defs.insert(def_id, "cosh");
+                        }
+                        "tanh" | "tanhf" | "tanhl" => {
+                            unary_defs.insert(def_id, "tanh");
+                        }
+                        "asinh" | "asinhf" | "asinhl" => {
+                            unary_defs.insert(def_id, "asinh");
+                        }
+                        "acosh" | "acoshf" | "acoshl" => {
+                            unary_defs.insert(def_id, "acosh");
+                        }
+                        "atanh" | "atanhf" | "atanhl" => {
+                            unary_defs.insert(def_id, "atanh");
+                        }
                         "sqrt" | "sqrtf" | "sqrtl" => {
                             unary_defs.insert(def_id, "sqrt");
+                        }
+                        "cbrt" | "cbrtf" | "cbrtl" => {
+                            unary_defs.insert(def_id, "cbrt");
                         }
                         "log" | "logf" | "logl" => {
                             unary_defs.insert(def_id, "ln");
@@ -92,11 +138,29 @@ impl Transform for ConvertMath {
                         "ceil" | "ceilf" | "ceill" => {
                             unary_defs.insert(def_id, "ceil");
                         }
+                        "round" | "roundf" | "roundl" => {
+                            unary_defs.insert(def_id, "round");
+                        }
                         "trunc" | "truncf" | "truncl" => {
                             unary_defs.insert(def_id, "trunc");
                         }
                         "pow" | "powf" | "powl" => {
                             binary_defs.insert(def_id, "powf");
+                        }
+                        "atan2" | "atan2f" | "atan2l" => {
+                            binary_defs.insert(def_id, "atan2");
+                        }
+                        "hypot" | "hypotf" | "hypotl" => {
+                            binary_defs.insert(def_id, "hypot");
+                        }
+                        "copysign" | "copysignf" | "copysignl" => {
+                            binary_defs.insert(def_id, "copysign");
+                        }
+                        "fmin" | "fminf" | "fminl" => {
+                            binary_defs.insert(def_id, "min");
+                        }
+                        "fmax" | "fmaxf" | "fmaxl" => {
+                            binary_defs.insert(def_id, "max");
                         }
                         _ => {}
                     }
@@ -141,7 +205,7 @@ impl Transform for ConvertMath {
                     .span(e.span)
                     .method_call_expr(receiver, method, method_args);
             }
-        })
+        });
     }
 }
 

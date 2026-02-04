@@ -10,6 +10,18 @@ extern "C" {
     #[no_mangle]
     fn tan(x: f64) -> f64;
     #[no_mangle]
+    fn asin(x: f64) -> f64;
+    #[no_mangle]
+    fn acos(x: f64) -> f64;
+    #[no_mangle]
+    fn atan(x: f64) -> f64;
+    #[no_mangle]
+    fn sinh(x: f64) -> f64;
+    #[no_mangle]
+    fn cosh(x: f64) -> f64;
+    #[no_mangle]
+    fn tanh(x: f64) -> f64;
+    #[no_mangle]
     fn sqrt(x: f64) -> f64;
     #[no_mangle]
     fn pow(x: f64, y: f64) -> f64;
@@ -34,9 +46,17 @@ extern "C" {
     #[no_mangle]
     fn ceilf(x: f32) -> f32;
     #[no_mangle]
+    fn round(x: f64) -> f64;
+    #[no_mangle]
     fn trunc(x: f64) -> f64;
     #[no_mangle]
     fn truncf(x: f32) -> f32;
+    #[no_mangle]
+    fn atan2(y: f64, x: f64) -> f64;
+    #[no_mangle]
+    fn hypot(x: f64, y: f64) -> f64;
+    #[no_mangle]
+    fn fmax(x: f64, y: f64) -> f64;
 }
 
 fn main() {
@@ -62,6 +82,12 @@ fn main() {
         // Additional math functions
         let c = cos(0.25f64);
         let t = tan(0.25f64);
+        let asn = asin(0.5f64);
+        let acs = acos(0.5f64);
+        let atn = atan(1.0f64);
+        let snh = sinh(1.0f64);
+        let csh = cosh(1.0f64);
+        let tnh = tanh(1.0f64);
         let s = sqrt(4.0f64);
         let p = pow(2.0f64, 3.0f64);
         let l = log(2.0f64);
@@ -78,7 +104,13 @@ fn main() {
         let flf = floorf(3.7f32);
         let ce = ceil(3.2f64);
         let cef = ceilf(3.2f32);
+        let rnd = round(3.5f64);
         let tr = trunc(3.9f64);
         let trf = truncf(3.9f32);
+
+        // Binary functions
+        let at2 = atan2(1.0f64, 1.0f64);
+        let hyp = hypot(3.0f64, 4.0f64);
+        let mx = fmax(1.0f64, 2.0f64);
     }
 }
