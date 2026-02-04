@@ -1,4 +1,4 @@
-#![feature(rustc_private)]
+#![allow(unused)]
 
 extern "C" {
     #[no_mangle]
