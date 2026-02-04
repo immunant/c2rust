@@ -2,7 +2,7 @@ use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir::Node;
 use rustc_span::sym;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast_builder::mk;
 use crate::ast_manip::{visit_nodes, MutVisitNodes};
@@ -19,9 +19,9 @@ use crate::RefactorCtxt;
 /// Converts calls to libc math functions into calls to the corresponding
 /// Rust standard library methods. For example, converts `sin(x)` to `x.sin()`.
 ///
-/// This command checks that the callees are foreign functions imported
-/// using `extern "C"` and marked `#[no_mangle]`, to ensure the caller
-/// is actually calling the libc functions.
+/// This command checks that the callees are foreign functions imported using
+/// `extern "C"` and marked `#[no_mangle]`, and are not defined in the current
+/// crate, to ensure the caller is actually calling the libc functions.
 ///
 /// - `sin(x)` / `sinf(x)` / `sinl(x)` -> `x.sin()`
 /// - `cos(x)` / `cosf(x)` / `cosl(x)` -> `x.cos()`
@@ -72,10 +72,37 @@ impl Transform for ConvertMath {
         let mut unary_defs = HashMap::new();
         let mut binary_defs = HashMap::new();
 
+        // Collect all locally defined `no_mangle` function names. This ensures
+        // that we don't rewrite custom math functions with the same name as the
+        // libc version.
+        let mut local_no_mangle_names = HashSet::new();
+        visit_nodes(krate, |item: &Item| {
+            if let ItemKind::Fn(_) = item.kind {
+                if crate::util::contains_name(&item.attrs, sym::no_mangle) {
+                    local_no_mangle_names.insert(item.ident.name);
+                }
+            }
+        });
+
         visit_nodes(krate, |fi: &ForeignItem| {
             if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
                 if let ForeignItemKind::Fn(_) = fi.kind {
                     let def_id = cx.node_def_id(fi.id);
+
+                    // Ignore functions that are defined locally, either directly or as
+                    // indirect `extern "C"` imports, since those have to be custom math
+                    // functions. We only want to translate calls to the foreign libc
+                    // math functions.
+                    if local_no_mangle_names.contains(&fi.ident.name) {
+                        return;
+                    }
+                    if def_id.is_local() {
+                        match cx.hir_map().get_if_local(def_id) {
+                            Some(Node::ForeignItem(_)) => {}
+                            _ => return,
+                        }
+                    }
+
                     match &*fi.ident.as_str() {
                         "sin" | "sinf" | "sinl" => {
                             unary_defs.insert(def_id, "sin");
@@ -176,16 +203,6 @@ impl Transform for ConvertMath {
                 return;
             };
 
-            // Ignore functions that are defined locally since that has to be a
-            // custom math function. We only want to translate calls to the libc
-            // math functions.
-            if def_id.is_local() {
-                match cx.hir_map().get_if_local(def_id) {
-                    Some(Node::ForeignItem(_)) => {}
-                    _ => return,
-                }
-            }
-
             if let Some(&method) = unary_defs.get(&def_id) {
                 if args.len() != 1 {
                     return;
@@ -205,6 +222,11 @@ impl Transform for ConvertMath {
                     .method_call_expr(receiver, method, method_args);
             }
         });
+    }
+
+    fn min_phase(&self) -> crate::driver::Phase {
+        // Most transforms should run on expanded code.
+        crate::driver::Phase::Phase2
     }
 }
 
