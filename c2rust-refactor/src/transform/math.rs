@@ -1,6 +1,7 @@
 use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir::def_id::DefId;
+use rustc_hir::Node;
 use rustc_span::sym;
 use std::collections::HashMap;
 
@@ -97,6 +98,16 @@ impl Transform for ConvertMath {
             let Some(def_id) = cx.try_resolve_expr(f) else {
                 return;
             };
+
+            // Ignore functions that are defined locally since that has to be a
+            // custom math function. We only want to translate calls to the libc
+            // math functions.
+            if def_id.is_local() {
+                match cx.hir_map().get_if_local(def_id) {
+                    Some(Node::ForeignItem(_)) => {}
+                    Some(_) | None => return,
+                }
+            }
 
             if let Some(&method) = unary_defs.get(&def_id) {
                 if args.len() != 1 {
