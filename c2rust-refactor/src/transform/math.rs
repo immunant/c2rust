@@ -101,10 +101,9 @@ impl Transform for ConvertMath {
             if local_no_mangle_names.contains(&fi.ident.name) {
                 return;
             }
-            match cx.hir_map().get_if_local(def_id) {
-                Some(Node::ForeignItem(_)) => {}
-                _ => return,
-            }
+            let Some(Node::ForeignItem(_)) = cx.hir_map().get_if_local(def_id) else {
+                return;
+            };
 
             match &*fi.ident.as_str() {
                 "sin" | "sinf" | "sinl" => {
