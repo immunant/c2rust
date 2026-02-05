@@ -39,34 +39,37 @@ impl Transform for ConvertExits {
 
         let mut exit_defs = HashMap::new();
         visit_nodes(krate, |fi: &ForeignItem| {
-            if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
-                if let ForeignItemKind::Fn(_) = fi.kind {
-                    let def_id = cx.node_def_id(fi.id);
+            if !crate::util::contains_name(&fi.attrs, sym::no_mangle) {
+                return;
+            }
+            let ForeignItemKind::Fn(_) = fi.kind else {
+                return;
+            };
 
-                    // Ignore functions that are defined locally, either directly or as
-                    // indirect `extern "C"` imports, since those have to be custom
-                    // functions. We only want to translate calls to the foreign libc
-                    // functions.
-                    if local_no_mangle_names.contains(&fi.ident.name) {
-                        return;
-                    }
-                    if def_id.is_local() {
-                        match cx.hir_map().get_if_local(def_id) {
-                            Some(Node::ForeignItem(_)) => {}
-                            _ => return,
-                        }
-                    }
+            let def_id = cx.node_def_id(fi.id);
 
-                    match &*fi.ident.as_str() {
-                        "abort" => {
-                            exit_defs.insert(def_id, "abort");
-                        }
-                        "exit" => {
-                            exit_defs.insert(def_id, "exit");
-                        }
-                        _ => {}
-                    }
+            // Ignore functions that are defined locally, either directly or as
+            // indirect `extern "C"` imports, since those have to be custom
+            // functions. We only want to translate calls to the foreign libc
+            // functions.
+            if local_no_mangle_names.contains(&fi.ident.name) {
+                return;
+            }
+            if def_id.is_local() {
+                match cx.hir_map().get_if_local(def_id) {
+                    Some(Node::ForeignItem(_)) => {}
+                    _ => return,
                 }
+            }
+
+            match &*fi.ident.as_str() {
+                "abort" => {
+                    exit_defs.insert(def_id, "abort");
+                }
+                "exit" => {
+                    exit_defs.insert(def_id, "exit");
+                }
+                _ => {}
             }
         });
 
