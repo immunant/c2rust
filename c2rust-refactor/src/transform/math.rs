@@ -204,22 +204,19 @@ impl Transform for ConvertMath {
             };
 
             if let Some(&method) = unary_defs.get(&def_id) {
-                if args.len() != 1 {
+                let [receiver] = args.as_slice() else {
                     return;
-                }
-                let receiver = args[0].clone();
+                };
                 *e = mk()
                     .span(e.span)
                     .method_call_expr(receiver, method, Vec::<P<Expr>>::new());
             } else if let Some(&method) = binary_defs.get(&def_id) {
-                if args.len() != 2 {
+                let [receiver, arg] = args.as_slice() else {
                     return;
-                }
-                let receiver = args[0].clone();
-                let method_args = vec![args[1].clone()];
+                };
                 *e = mk()
                     .span(e.span)
-                    .method_call_expr(receiver, method, method_args);
+                    .method_call_expr(receiver, method, vec![arg]);
             }
         });
     }
