@@ -478,7 +478,7 @@ pub fn emit_c_decl_map(
         }
     }
 
-    let file_content = std::fs::read(&t.ast_context.get_file_path(t.main_file).unwrap()).unwrap();
+    let file_content = std::fs::read(t.ast_context.get_file_path(t.main_file).unwrap()).unwrap();
     let line_end_offsets = //memchr::memchr_iter(file_content, '\n')
                 file_content.iter().positions(|c| *c == b'\n')
                 .collect::<Vec<_>>();
@@ -1004,7 +1004,7 @@ impl<'a> IdentsOrGlob<'a> {
             (Glob, _) => Glob,
             (_, Glob) => Glob,
             (Idents(mut own), Idents(other)) => Idents({
-                own.extend(other.into_iter());
+                own.extend(other);
                 own
             }),
         }

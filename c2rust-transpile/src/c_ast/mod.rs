@@ -251,7 +251,7 @@ impl TypedAstContext {
     }
 
     /// Compare a [`SrcLoc`] based on its include path.
-    pub fn cmp_loc_include(&self, loc: SrcLoc) -> impl Eq + Ord + Debug + '_ {
+    pub fn cmp_loc_include(&self, loc: SrcLoc) -> impl Ord + Debug + '_ {
         SrcLocInclude {
             loc,
             include_path: self.include_path(loc),
@@ -259,15 +259,12 @@ impl TypedAstContext {
     }
 
     /// Compare a [`SrcSpan`] based on its include path.
-    pub fn cmp_span_include<'a>(&'a self, span: &SrcSpan) -> impl Eq + Ord + Debug + 'a {
+    pub fn cmp_span_include<'a>(&'a self, span: &SrcSpan) -> impl Ord + Debug + 'a {
         self.cmp_loc_include(span.begin())
     }
 
     /// Compare a [`Located`] based on its include path.
-    pub fn cmp_located_include<'a, T>(
-        &'a self,
-        located: &Located<T>,
-    ) -> impl Eq + Ord + Debug + 'a {
+    pub fn cmp_located_include<'a, T>(&'a self, located: &Located<T>) -> impl Ord + Debug + 'a {
         located.loc.map(|span| self.cmp_span_include(&span))
     }
 
