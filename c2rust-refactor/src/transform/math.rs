@@ -85,112 +85,115 @@ impl Transform for ConvertMath {
         });
 
         visit_nodes(krate, |fi: &ForeignItem| {
-            if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
-                if let ForeignItemKind::Fn(_) = fi.kind {
-                    let def_id = cx.node_def_id(fi.id);
+            if !crate::util::contains_name(&fi.attrs, sym::no_mangle) {
+                return;
+            }
+            let ForeignItemKind::Fn(_) = fi.kind else {
+                return;
+            };
 
-                    // Ignore functions that are defined locally, either directly or as
-                    // indirect `extern "C"` imports, since those have to be custom math
-                    // functions. We only want to translate calls to the foreign libc
-                    // math functions.
-                    if local_no_mangle_names.contains(&fi.ident.name) {
-                        return;
-                    }
-                    if def_id.is_local() {
-                        match cx.hir_map().get_if_local(def_id) {
-                            Some(Node::ForeignItem(_)) => {}
-                            _ => return,
-                        }
-                    }
+            let def_id = cx.node_def_id(fi.id);
 
-                    match &*fi.ident.as_str() {
-                        "sin" | "sinf" | "sinl" => {
-                            unary_defs.insert(def_id, "sin");
-                        }
-                        "cos" | "cosf" | "cosl" => {
-                            unary_defs.insert(def_id, "cos");
-                        }
-                        "tan" | "tanf" | "tanl" => {
-                            unary_defs.insert(def_id, "tan");
-                        }
-                        "asin" | "asinf" | "asinl" => {
-                            unary_defs.insert(def_id, "asin");
-                        }
-                        "acos" | "acosf" | "acosl" => {
-                            unary_defs.insert(def_id, "acos");
-                        }
-                        "atan" | "atanf" | "atanl" => {
-                            unary_defs.insert(def_id, "atan");
-                        }
-                        "sinh" | "sinhf" | "sinhl" => {
-                            unary_defs.insert(def_id, "sinh");
-                        }
-                        "cosh" | "coshf" | "coshl" => {
-                            unary_defs.insert(def_id, "cosh");
-                        }
-                        "tanh" | "tanhf" | "tanhl" => {
-                            unary_defs.insert(def_id, "tanh");
-                        }
-                        "asinh" | "asinhf" | "asinhl" => {
-                            unary_defs.insert(def_id, "asinh");
-                        }
-                        "acosh" | "acoshf" | "acoshl" => {
-                            unary_defs.insert(def_id, "acosh");
-                        }
-                        "atanh" | "atanhf" | "atanhl" => {
-                            unary_defs.insert(def_id, "atanh");
-                        }
-                        "sqrt" | "sqrtf" | "sqrtl" => {
-                            unary_defs.insert(def_id, "sqrt");
-                        }
-                        "cbrt" | "cbrtf" | "cbrtl" => {
-                            unary_defs.insert(def_id, "cbrt");
-                        }
-                        "log" | "logf" | "logl" => {
-                            unary_defs.insert(def_id, "ln");
-                        }
-                        "exp" | "expf" | "expl" => {
-                            unary_defs.insert(def_id, "exp");
-                        }
-                        "fabs" | "fabsf" | "fabsl" => {
-                            unary_defs.insert(def_id, "abs");
-                        }
-                        "abs" | "labs" | "llabs" => {
-                            unary_defs.insert(def_id, "abs");
-                        }
-                        "floor" | "floorf" | "floorl" => {
-                            unary_defs.insert(def_id, "floor");
-                        }
-                        "ceil" | "ceilf" | "ceill" => {
-                            unary_defs.insert(def_id, "ceil");
-                        }
-                        "round" | "roundf" | "roundl" => {
-                            unary_defs.insert(def_id, "round");
-                        }
-                        "trunc" | "truncf" | "truncl" => {
-                            unary_defs.insert(def_id, "trunc");
-                        }
-                        "pow" | "powf" | "powl" => {
-                            binary_defs.insert(def_id, "powf");
-                        }
-                        "atan2" | "atan2f" | "atan2l" => {
-                            binary_defs.insert(def_id, "atan2");
-                        }
-                        "hypot" | "hypotf" | "hypotl" => {
-                            binary_defs.insert(def_id, "hypot");
-                        }
-                        "copysign" | "copysignf" | "copysignl" => {
-                            binary_defs.insert(def_id, "copysign");
-                        }
-                        "fmin" | "fminf" | "fminl" => {
-                            binary_defs.insert(def_id, "min");
-                        }
-                        "fmax" | "fmaxf" | "fmaxl" => {
-                            binary_defs.insert(def_id, "max");
-                        }
-                        _ => {}
-                    }
+            // Ignore functions that are defined locally, either directly or as
+            // indirect `extern "C"` imports, since those have to be custom math
+            // functions. We only want to translate calls to the foreign libc
+            // math functions.
+            if local_no_mangle_names.contains(&fi.ident.name) {
+                return;
+            }
+            if def_id.is_local() {
+                match cx.hir_map().get_if_local(def_id) {
+                    Some(Node::ForeignItem(_)) => {}
+                    _ => return,
                 }
+            }
+
+            match &*fi.ident.as_str() {
+                "sin" | "sinf" | "sinl" => {
+                    unary_defs.insert(def_id, "sin");
+                }
+                "cos" | "cosf" | "cosl" => {
+                    unary_defs.insert(def_id, "cos");
+                }
+                "tan" | "tanf" | "tanl" => {
+                    unary_defs.insert(def_id, "tan");
+                }
+                "asin" | "asinf" | "asinl" => {
+                    unary_defs.insert(def_id, "asin");
+                }
+                "acos" | "acosf" | "acosl" => {
+                    unary_defs.insert(def_id, "acos");
+                }
+                "atan" | "atanf" | "atanl" => {
+                    unary_defs.insert(def_id, "atan");
+                }
+                "sinh" | "sinhf" | "sinhl" => {
+                    unary_defs.insert(def_id, "sinh");
+                }
+                "cosh" | "coshf" | "coshl" => {
+                    unary_defs.insert(def_id, "cosh");
+                }
+                "tanh" | "tanhf" | "tanhl" => {
+                    unary_defs.insert(def_id, "tanh");
+                }
+                "asinh" | "asinhf" | "asinhl" => {
+                    unary_defs.insert(def_id, "asinh");
+                }
+                "acosh" | "acoshf" | "acoshl" => {
+                    unary_defs.insert(def_id, "acosh");
+                }
+                "atanh" | "atanhf" | "atanhl" => {
+                    unary_defs.insert(def_id, "atanh");
+                }
+                "sqrt" | "sqrtf" | "sqrtl" => {
+                    unary_defs.insert(def_id, "sqrt");
+                }
+                "cbrt" | "cbrtf" | "cbrtl" => {
+                    unary_defs.insert(def_id, "cbrt");
+                }
+                "log" | "logf" | "logl" => {
+                    unary_defs.insert(def_id, "ln");
+                }
+                "exp" | "expf" | "expl" => {
+                    unary_defs.insert(def_id, "exp");
+                }
+                "fabs" | "fabsf" | "fabsl" => {
+                    unary_defs.insert(def_id, "abs");
+                }
+                "abs" | "labs" | "llabs" => {
+                    unary_defs.insert(def_id, "abs");
+                }
+                "floor" | "floorf" | "floorl" => {
+                    unary_defs.insert(def_id, "floor");
+                }
+                "ceil" | "ceilf" | "ceill" => {
+                    unary_defs.insert(def_id, "ceil");
+                }
+                "round" | "roundf" | "roundl" => {
+                    unary_defs.insert(def_id, "round");
+                }
+                "trunc" | "truncf" | "truncl" => {
+                    unary_defs.insert(def_id, "trunc");
+                }
+                "pow" | "powf" | "powl" => {
+                    binary_defs.insert(def_id, "powf");
+                }
+                "atan2" | "atan2f" | "atan2l" => {
+                    binary_defs.insert(def_id, "atan2");
+                }
+                "hypot" | "hypotf" | "hypotl" => {
+                    binary_defs.insert(def_id, "hypot");
+                }
+                "copysign" | "copysignf" | "copysignl" => {
+                    binary_defs.insert(def_id, "copysign");
+                }
+                "fmin" | "fminf" | "fminl" => {
+                    binary_defs.insert(def_id, "min");
+                }
+                "fmax" | "fmaxf" | "fmaxl" => {
+                    binary_defs.insert(def_id, "max");
+                }
+                _ => {}
             }
         });
 
