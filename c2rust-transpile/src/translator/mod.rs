@@ -246,6 +246,8 @@ struct MacroExpansion {
     ty: CTypeId,
 }
 
+type ZeroInits = IndexMap<CDeclId, (WithStmts<Box<Expr>>, IndexSet<Import>)>;
+
 pub struct Translation<'c> {
     // Translation environment
     pub ast_context: TypedAstContext,
@@ -259,7 +261,7 @@ pub struct Translation<'c> {
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
-    zero_inits: RefCell<IndexMap<CDeclId, (WithStmts<Box<Expr>>, IndexSet<Import>)>>,
+    zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
     macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
@@ -1010,7 +1012,7 @@ impl<'a> IdentsOrGlob<'a> {
 }
 
 /// Extract the set of names made visible by a `use`.
-fn use_idents<'a>(i: &'a UseTree) -> IdentsOrGlob<'a> {
+fn use_idents(i: &UseTree) -> IdentsOrGlob<'_> {
     use UseTree::*;
     match i {
         Path(up) => use_idents(&up.tree),

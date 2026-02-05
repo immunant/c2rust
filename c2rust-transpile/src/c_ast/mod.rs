@@ -156,7 +156,7 @@ struct SrcLocInclude<'a> {
 }
 
 impl SrcLocInclude<'_> {
-    fn cmp_iter<'a>(&'a self) -> impl Iterator<Item = SrcLoc> + 'a {
+    fn cmp_iter(&self) -> impl Iterator<Item = SrcLoc> + '_ {
         // See docs on `Self` for why this is the right comparison.
         let Self { loc, include_path } = *self;
         include_path.iter().copied().chain([loc])
@@ -245,7 +245,7 @@ impl TypedAstContext {
     }
 
     /// Compare a [`SrcLoc`] based on its include path.
-    pub fn cmp_loc_include<'a>(&'a self, loc: SrcLoc) -> impl Eq + Ord + Debug + 'a {
+    pub fn cmp_loc_include(&self, loc: SrcLoc) -> impl Eq + Ord + Debug + '_ {
         SrcLocInclude {
             loc,
             include_path: self.include_path(loc),
