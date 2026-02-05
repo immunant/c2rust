@@ -458,14 +458,14 @@ pub fn emit_c_decl_map(
         match converted_decls.get(&decl) {
             Some(ConvertedDecl::ForeignItem(item)) => {
                 path_to_c_source_range
-                    .insert(foreign_item_ident_vis(&*item).unwrap().0, source_range);
+                    .insert(foreign_item_ident_vis(item).unwrap().0, source_range);
             }
             Some(ConvertedDecl::Item(item)) => {
-                path_to_c_source_range.insert(item_ident(&*item).unwrap(), source_range);
+                path_to_c_source_range.insert(item_ident(item).unwrap(), source_range);
             }
             Some(ConvertedDecl::Items(items)) => {
                 for item in items {
-                    path_to_c_source_range.insert(item_ident(&*item).unwrap(), source_range);
+                    path_to_c_source_range.insert(item_ident(item).unwrap(), source_range);
                 }
             }
             Some(ConvertedDecl::NoItem) => {}
@@ -1020,7 +1020,7 @@ fn use_idents<'a>(i: &'a UseTree) -> IdentsOrGlob<'a> {
         Group(ugr) => ugr
             .items
             .iter()
-            .map(|tree| use_idents(tree))
+            .map(use_idents)
             .reduce(IdentsOrGlob::join)
             .unwrap_or(IdentsOrGlob::Idents(vec![])),
     }
@@ -1283,10 +1283,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
             // we upgrade to a newer nightly (Rust 1.81) that supports it.
             out_items.push(
                 mk().call_attr("allow", vec!["unused_imports"])
-                    .use_simple_item(
-                        mk().abs_path(vec![t.tcfg.crate_name().clone()]),
-                        None::<Ident>,
-                    ),
+                    .use_simple_item(mk().abs_path(vec![t.tcfg.crate_name()]), None::<Ident>),
             )
         }
     }
@@ -5133,7 +5130,7 @@ impl<'c> Translation<'c> {
             ident_name,
         } in imports
         {
-            self.add_import(*decl_id, &ident_name)
+            self.add_import(*decl_id, ident_name)
         }
     }
 
