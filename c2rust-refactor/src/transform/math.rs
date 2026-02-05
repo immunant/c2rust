@@ -1,5 +1,5 @@
 use rustc_ast::ptr::P;
-use rustc_ast::*;
+use rustc_ast::{Crate, Expr, ExprKind, ForeignItem, ForeignItemKind, Item, ItemKind};
 use rustc_hir::Node;
 use rustc_span::sym;
 use std::collections::{HashMap, HashSet};
