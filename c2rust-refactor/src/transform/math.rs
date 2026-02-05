@@ -101,11 +101,9 @@ impl Transform for ConvertMath {
             if local_no_mangle_names.contains(&fi.ident.name) {
                 return;
             }
-            if def_id.is_local() {
-                match cx.hir_map().get_if_local(def_id) {
-                    Some(Node::ForeignItem(_)) => {}
-                    _ => return,
-                }
+            match cx.hir_map().get_if_local(def_id) {
+                Some(Node::ForeignItem(_)) => {}
+                _ => return,
             }
 
             match &*fi.ident.as_str() {
