@@ -149,7 +149,7 @@ impl<T> Located<T> {
 /// which contains the definition of the item.
 /// Thus, to compare them, we compare the include path first
 /// and then the definition's location.
-#[derive(PartialEq, Eq, Ord, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 struct SrcLocInclude<'a> {
     loc: SrcLoc,
     include_path: &'a [SrcLoc],
@@ -163,9 +163,15 @@ impl SrcLocInclude<'_> {
     }
 }
 
+impl Ord for SrcLocInclude<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cmp_iter().cmp(other.cmp_iter())
+    }
+}
+
 impl PartialOrd for SrcLocInclude<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp_iter().cmp(other.cmp_iter()))
+        Some(self.cmp(other))
     }
 }
 
