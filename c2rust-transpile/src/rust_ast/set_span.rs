@@ -156,7 +156,7 @@ impl SetSpan for Expr {
 
 impl SetSpan for Path {
     fn set_span(&mut self, s: Span) {
-        if let Some(mut tok) = self.leading_colon {
+        if let Some(tok) = &mut self.leading_colon {
             tok.spans[0] = s;
         } else if let Some(tok) = self.segments.first_mut() {
             tok.ident.set_span(s)
