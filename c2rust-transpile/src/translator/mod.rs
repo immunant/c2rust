@@ -246,6 +246,8 @@ struct MacroExpansion {
     ty: CTypeId,
 }
 
+type ZeroInits = IndexMap<CDeclId, (WithStmts<Box<Expr>>, IndexSet<Import>)>;
+
 pub struct Translation<'c> {
     // Translation environment
     pub ast_context: TypedAstContext,
@@ -259,7 +261,7 @@ pub struct Translation<'c> {
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
     renamer: RefCell<Renamer<CDeclId>>,
-    zero_inits: RefCell<IndexMap<CDeclId, (WithStmts<Box<Expr>>, IndexSet<Import>)>>,
+    zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
     macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
@@ -458,14 +460,14 @@ pub fn emit_c_decl_map(
         match converted_decls.get(&decl) {
             Some(ConvertedDecl::ForeignItem(item)) => {
                 path_to_c_source_range
-                    .insert(foreign_item_ident_vis(&*item).unwrap().0, source_range);
+                    .insert(foreign_item_ident_vis(item).unwrap().0, source_range);
             }
             Some(ConvertedDecl::Item(item)) => {
-                path_to_c_source_range.insert(item_ident(&*item).unwrap(), source_range);
+                path_to_c_source_range.insert(item_ident(item).unwrap(), source_range);
             }
             Some(ConvertedDecl::Items(items)) => {
                 for item in items {
-                    path_to_c_source_range.insert(item_ident(&*item).unwrap(), source_range);
+                    path_to_c_source_range.insert(item_ident(item).unwrap(), source_range);
                 }
             }
             Some(ConvertedDecl::NoItem) => {}
@@ -476,7 +478,7 @@ pub fn emit_c_decl_map(
         }
     }
 
-    let file_content = std::fs::read(&t.ast_context.get_file_path(t.main_file).unwrap()).unwrap();
+    let file_content = std::fs::read(t.ast_context.get_file_path(t.main_file).unwrap()).unwrap();
     let line_end_offsets = //memchr::memchr_iter(file_content, '\n')
                 file_content.iter().positions(|c| *c == b'\n')
                 .collect::<Vec<_>>();
@@ -1002,7 +1004,7 @@ impl<'a> IdentsOrGlob<'a> {
             (Glob, _) => Glob,
             (_, Glob) => Glob,
             (Idents(mut own), Idents(other)) => Idents({
-                own.extend(other.into_iter());
+                own.extend(other);
                 own
             }),
         }
@@ -1010,7 +1012,7 @@ impl<'a> IdentsOrGlob<'a> {
 }
 
 /// Extract the set of names made visible by a `use`.
-fn use_idents<'a>(i: &'a UseTree) -> IdentsOrGlob<'a> {
+fn use_idents(i: &UseTree) -> IdentsOrGlob<'_> {
     use UseTree::*;
     match i {
         Path(up) => use_idents(&up.tree),
@@ -1020,7 +1022,7 @@ fn use_idents<'a>(i: &'a UseTree) -> IdentsOrGlob<'a> {
         Group(ugr) => ugr
             .items
             .iter()
-            .map(|tree| use_idents(tree))
+            .map(use_idents)
             .reduce(IdentsOrGlob::join)
             .unwrap_or(IdentsOrGlob::Idents(vec![])),
     }
@@ -1283,10 +1285,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
             // we upgrade to a newer nightly (Rust 1.81) that supports it.
             out_items.push(
                 mk().call_attr("allow", vec!["unused_imports"])
-                    .use_simple_item(
-                        mk().abs_path(vec![t.tcfg.crate_name().clone()]),
-                        None::<Ident>,
-                    ),
+                    .use_simple_item(mk().abs_path(vec![t.tcfg.crate_name()]), None::<Ident>),
             )
         }
     }
@@ -5133,7 +5132,7 @@ impl<'c> Translation<'c> {
             ident_name,
         } in imports
         {
-            self.add_import(*decl_id, &ident_name)
+            self.add_import(*decl_id, ident_name)
         }
     }
 

@@ -136,9 +136,9 @@ impl SetSpan for Expr {
             Expr::Match(e) => e.match_token.span = s,
             Expr::MethodCall(e) => e.dot_token.span = s,
             Expr::Path(e) => e.path.set_span(s),
-            Expr::Range(e) => match e.limits {
-                RangeLimits::Closed(mut r) => r.spans[0] = s,
-                RangeLimits::HalfOpen(mut r) => r.spans[0] = s,
+            Expr::Range(e) => match &mut e.limits {
+                RangeLimits::Closed(r) => r.spans[0] = s,
+                RangeLimits::HalfOpen(r) => r.spans[0] = s,
             },
             Expr::RawAddr(e) => e.and_token.span = s,
             Expr::Reference(e) => e.and_token.span = s,
@@ -156,7 +156,7 @@ impl SetSpan for Expr {
 
 impl SetSpan for Path {
     fn set_span(&mut self, s: Span) {
-        if let Some(mut tok) = self.leading_colon {
+        if let Some(tok) = &mut self.leading_colon {
             tok.spans[0] = s;
         } else if let Some(tok) = self.segments.first_mut() {
             tok.ident.set_span(s)

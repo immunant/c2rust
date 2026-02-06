@@ -260,7 +260,7 @@ fn emit_lib_rs(
     let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
     let crates = convert_dependencies_list(crates.clone(), tcfg.c2rust_dir.as_deref());
     let file_name = get_lib_rs_file_name(tcfg);
-    let rs_xcheck_backend = tcfg.cross_check_backend.replace("-", "_");
+    let rs_xcheck_backend = tcfg.cross_check_backend.replace('-', "_");
     let json = json!({
         "lib_rs_file": file_name,
         "reorganize_definitions": tcfg.reorganize_definitions,

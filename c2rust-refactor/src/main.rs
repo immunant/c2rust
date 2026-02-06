@@ -41,7 +41,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
     };
 
     // Parse cursors
-    let cursor_strs = args.values_of_lossy("cursor").unwrap_or(vec![]);
+    let cursor_strs = args.values_of_lossy("cursor").unwrap_or_default();
     let mut cursors = Vec::with_capacity(cursor_strs.len());
     for s in &cursor_strs {
         let mut parts = s.split(':');
@@ -79,7 +79,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
         };
 
         let label = match parts.next() {
-            Some(s) if s.len() > 0 => Some(s.to_owned()),
+            Some(s) if !s.is_empty() => Some(s.to_owned()),
             _ => None,
         };
 
@@ -94,7 +94,7 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
     }
 
     // Parse marks
-    let mark_strs = args.values_of_lossy("mark").unwrap_or(vec![]);
+    let mark_strs = args.values_of_lossy("mark").unwrap_or_default();
     let mut marks = Vec::with_capacity(mark_strs.len());
     for s in &mark_strs {
         let mut parts = s.split(':');
@@ -122,8 +122,8 @@ fn parse_opts(args: &ArgMatches) -> Option<Options> {
     }
 
     // Get plugin options
-    let plugins = args.values_of_lossy("plugin-name").unwrap_or(vec![]);
-    let plugin_dirs = args.values_of_lossy("plugin-dir").unwrap_or(vec![]);
+    let plugins = args.values_of_lossy("plugin-name").unwrap_or_default();
+    let plugin_dirs = args.values_of_lossy("plugin-dir").unwrap_or_default();
 
     // Handle --cargo and rustc-args
     let rustc_args = match args.values_of_lossy("rustc-args") {

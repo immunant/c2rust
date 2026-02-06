@@ -53,9 +53,9 @@ fn main() {
     );
 
     println!("cargo:rerun-if-changed=gen/");
-    for entry in fs::read_dir(&"gen").unwrap() {
+    for entry in fs::read_dir("gen").unwrap() {
         let name = entry.unwrap().file_name().into_string().unwrap();
-        if name.starts_with(".") {
+        if name.starts_with('.') {
             continue;
         }
         println!("cargo:rerun-if-changed=gen/{}", name);

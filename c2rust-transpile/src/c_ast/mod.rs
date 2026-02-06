@@ -149,23 +149,29 @@ impl<T> Located<T> {
 /// which contains the definition of the item.
 /// Thus, to compare them, we compare the include path first
 /// and then the definition's location.
-#[derive(PartialEq, Eq, Ord, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 struct SrcLocInclude<'a> {
     loc: SrcLoc,
     include_path: &'a [SrcLoc],
 }
 
 impl SrcLocInclude<'_> {
-    fn cmp_iter<'a>(&'a self) -> impl Iterator<Item = SrcLoc> + 'a {
+    fn cmp_iter(&self) -> impl Iterator<Item = SrcLoc> + '_ {
         // See docs on `Self` for why this is the right comparison.
         let Self { loc, include_path } = *self;
         include_path.iter().copied().chain([loc])
     }
 }
 
+impl Ord for SrcLocInclude<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cmp_iter().cmp(other.cmp_iter())
+    }
+}
+
 impl PartialOrd for SrcLocInclude<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp_iter().cmp(other.cmp_iter()))
+        Some(self.cmp(other))
     }
 }
 
@@ -245,7 +251,7 @@ impl TypedAstContext {
     }
 
     /// Compare a [`SrcLoc`] based on its include path.
-    pub fn cmp_loc_include<'a>(&'a self, loc: SrcLoc) -> impl Eq + Ord + Debug + 'a {
+    pub fn cmp_loc_include(&self, loc: SrcLoc) -> impl Ord + Debug + '_ {
         SrcLocInclude {
             loc,
             include_path: self.include_path(loc),
@@ -253,15 +259,12 @@ impl TypedAstContext {
     }
 
     /// Compare a [`SrcSpan`] based on its include path.
-    pub fn cmp_span_include<'a>(&'a self, span: &SrcSpan) -> impl Eq + Ord + Debug + 'a {
+    pub fn cmp_span_include<'a>(&'a self, span: &SrcSpan) -> impl Ord + Debug + 'a {
         self.cmp_loc_include(span.begin())
     }
 
     /// Compare a [`Located`] based on its include path.
-    pub fn cmp_located_include<'a, T>(
-        &'a self,
-        located: &Located<T>,
-    ) -> impl Eq + Ord + Debug + 'a {
+    pub fn cmp_located_include<'a, T>(&'a self, located: &Located<T>) -> impl Ord + Debug + 'a {
         located.loc.map(|span| self.cmp_span_include(&span))
     }
 
