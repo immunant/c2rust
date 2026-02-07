@@ -37,6 +37,11 @@ impl Transform for ConvertExits {
             }
         });
 
+        enum ExitFn {
+            Abort,
+            Exit,
+        }
+
         let mut exit_defs = HashMap::new();
         visit_nodes(krate, |fi: &ForeignItem| {
             if !crate::util::contains_name(&fi.attrs, sym::no_mangle) {
@@ -64,10 +69,10 @@ impl Transform for ConvertExits {
 
             match &*fi.ident.as_str() {
                 "abort" => {
-                    exit_defs.insert(def_id, "abort");
+                    exit_defs.insert(def_id, ExitFn::Abort);
                 }
                 "exit" => {
-                    exit_defs.insert(def_id, "exit");
+                    exit_defs.insert(def_id, ExitFn::Exit);
                 }
                 _ => {}
             }
@@ -82,15 +87,15 @@ impl Transform for ConvertExits {
                 return;
             };
 
-            if let Some(&func_name) = exit_defs.get(&def_id) {
-                match func_name {
-                    "abort" => {
+            if let Some(func) = exit_defs.get(&def_id) {
+                match func {
+                    ExitFn::Abort => {
                         *e = mk().span(e.span).call_expr(
                             mk().path_expr(vec!["std", "process", "abort"]),
                             Vec::<P<Expr>>::new(),
                         );
                     }
-                    "exit" => {
+                    ExitFn::Exit => {
                         if args.len() != 1 {
                             return;
                         }
@@ -100,7 +105,6 @@ impl Transform for ConvertExits {
                             vec![status],
                         );
                     }
-                    _ => {}
                 }
             }
         });
