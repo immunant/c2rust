@@ -96,10 +96,9 @@ impl Transform for ConvertExits {
                         );
                     }
                     ExitFn::Exit => {
-                        if args.len() != 1 {
+                        let [status] = args.as_slice() else {
                             return;
-                        }
-                        let status = args[0].clone();
+                        };
                         *e = mk().span(e.span).call_expr(
                             mk().path_expr(vec!["std", "process", "exit"]),
                             vec![status],
