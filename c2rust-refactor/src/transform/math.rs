@@ -105,93 +105,40 @@ impl Transform for ConvertMath {
                 return;
             };
 
-            match &*fi.ident.as_str() {
-                "sin" | "sinf" | "sinl" => {
-                    unary_defs.insert(def_id, "sin");
-                }
-                "cos" | "cosf" | "cosl" => {
-                    unary_defs.insert(def_id, "cos");
-                }
-                "tan" | "tanf" | "tanl" => {
-                    unary_defs.insert(def_id, "tan");
-                }
-                "asin" | "asinf" | "asinl" => {
-                    unary_defs.insert(def_id, "asin");
-                }
-                "acos" | "acosf" | "acosl" => {
-                    unary_defs.insert(def_id, "acos");
-                }
-                "atan" | "atanf" | "atanl" => {
-                    unary_defs.insert(def_id, "atan");
-                }
-                "sinh" | "sinhf" | "sinhl" => {
-                    unary_defs.insert(def_id, "sinh");
-                }
-                "cosh" | "coshf" | "coshl" => {
-                    unary_defs.insert(def_id, "cosh");
-                }
-                "tanh" | "tanhf" | "tanhl" => {
-                    unary_defs.insert(def_id, "tanh");
-                }
-                "asinh" | "asinhf" | "asinhl" => {
-                    unary_defs.insert(def_id, "asinh");
-                }
-                "acosh" | "acoshf" | "acoshl" => {
-                    unary_defs.insert(def_id, "acosh");
-                }
-                "atanh" | "atanhf" | "atanhl" => {
-                    unary_defs.insert(def_id, "atanh");
-                }
-                "sqrt" | "sqrtf" | "sqrtl" => {
-                    unary_defs.insert(def_id, "sqrt");
-                }
-                "cbrt" | "cbrtf" | "cbrtl" => {
-                    unary_defs.insert(def_id, "cbrt");
-                }
-                "log" | "logf" | "logl" => {
-                    unary_defs.insert(def_id, "ln");
-                }
-                "exp" | "expf" | "expl" => {
-                    unary_defs.insert(def_id, "exp");
-                }
-                "fabs" | "fabsf" | "fabsl" => {
-                    unary_defs.insert(def_id, "abs");
-                }
-                "abs" | "labs" | "llabs" => {
-                    unary_defs.insert(def_id, "abs");
-                }
-                "floor" | "floorf" | "floorl" => {
-                    unary_defs.insert(def_id, "floor");
-                }
-                "ceil" | "ceilf" | "ceill" => {
-                    unary_defs.insert(def_id, "ceil");
-                }
-                "round" | "roundf" | "roundl" => {
-                    unary_defs.insert(def_id, "round");
-                }
-                "trunc" | "truncf" | "truncl" => {
-                    unary_defs.insert(def_id, "trunc");
-                }
-                "pow" | "powf" | "powl" => {
-                    binary_defs.insert(def_id, "powf");
-                }
-                "atan2" | "atan2f" | "atan2l" => {
-                    binary_defs.insert(def_id, "atan2");
-                }
-                "hypot" | "hypotf" | "hypotl" => {
-                    binary_defs.insert(def_id, "hypot");
-                }
-                "copysign" | "copysignf" | "copysignl" => {
-                    binary_defs.insert(def_id, "copysign");
-                }
-                "fmin" | "fminf" | "fminl" => {
-                    binary_defs.insert(def_id, "min");
-                }
-                "fmax" | "fmaxf" | "fmaxl" => {
-                    binary_defs.insert(def_id, "max");
-                }
-                _ => {}
-            }
+            let unary_defs = &mut unary_defs;
+            let binary_defs = &mut binary_defs;
+            let (defs, name) = match fi.ident.as_str() {
+                "sin" | "sinf" | "sinl" => (unary_defs, "sin"),
+                "cos" | "cosf" | "cosl" => (unary_defs, "cos"),
+                "tan" | "tanf" | "tanl" => (unary_defs, "tan"),
+                "asin" | "asinf" | "asinl" => (unary_defs, "asin"),
+                "acos" | "acosf" | "acosl" => (unary_defs, "acos"),
+                "atan" | "atanf" | "atanl" => (unary_defs, "atan"),
+                "sinh" | "sinhf" | "sinhl" => (unary_defs, "sinh"),
+                "cosh" | "coshf" | "coshl" => (unary_defs, "cosh"),
+                "tanh" | "tanhf" | "tanhl" => (unary_defs, "tanh"),
+                "asinh" | "asinhf" | "asinhl" => (unary_defs, "asinh"),
+                "acosh" | "acoshf" | "acoshl" => (unary_defs, "acosh"),
+                "atanh" | "atanhf" | "atanhl" => (unary_defs, "atanh"),
+                "sqrt" | "sqrtf" | "sqrtl" => (unary_defs, "sqrt"),
+                "cbrt" | "cbrtf" | "cbrtl" => (unary_defs, "cbrt"),
+                "log" | "logf" | "logl" => (unary_defs, "ln"),
+                "exp" | "expf" | "expl" => (unary_defs, "exp"),
+                "fabs" | "fabsf" | "fabsl" => (unary_defs, "abs"),
+                "abs" | "labs" | "llabs" => (unary_defs, "abs"),
+                "floor" | "floorf" | "floorl" => (unary_defs, "floor"),
+                "ceil" | "ceilf" | "ceill" => (unary_defs, "ceil"),
+                "round" | "roundf" | "roundl" => (unary_defs, "round"),
+                "trunc" | "truncf" | "truncl" => (unary_defs, "trunc"),
+                "pow" | "powf" | "powl" => (binary_defs, "powf"),
+                "atan2" | "atan2f" | "atan2l" => (binary_defs, "atan2"),
+                "hypot" | "hypotf" | "hypotl" => (binary_defs, "hypot"),
+                "copysign" | "copysignf" | "copysignl" => (binary_defs, "copysign"),
+                "fmin" | "fminf" | "fminl" => (binary_defs, "min"),
+                "fmax" | "fmaxf" | "fmaxl" => (binary_defs, "max"),
+                _ => return,
+            };
+            defs.insert(def_id, name);
         });
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
