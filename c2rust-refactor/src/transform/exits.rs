@@ -86,7 +86,7 @@ impl Transform for ConvertExits {
                 match func_name {
                     "abort" => {
                         *e = mk().span(e.span).call_expr(
-                            mk().path_expr(vec!["", "std", "process", "abort"]),
+                            mk().path_expr(vec!["std", "process", "abort"]),
                             Vec::<P<Expr>>::new(),
                         );
                     }
@@ -96,7 +96,7 @@ impl Transform for ConvertExits {
                         }
                         let status = args[0].clone();
                         *e = mk().span(e.span).call_expr(
-                            mk().path_expr(vec!["", "std", "process", "exit"]),
+                            mk().path_expr(vec!["std", "process", "exit"]),
                             vec![status],
                         );
                     }
