@@ -244,8 +244,7 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
-fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
+fn cargo_config() -> Config {
     let mut config = Config::default().unwrap();
     config
         .configure(
@@ -261,6 +260,10 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
         )
         .unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
+    config
+}
+
+fn setup_cargo<'cfg>(config: &'cfg Config) -> (CompileOptions, Workspace<'cfg>) {
     let mode = CompileMode::Check { test: false };
     let mut compile_opts = CompileOptions::new(&config, mode).unwrap();
 
@@ -271,6 +274,14 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 
     let manifest_path = find_root_manifest_for_wd(config.cwd()).unwrap();
     let ws = Workspace::new(&manifest_path, &config).unwrap();
+
+    (compile_opts, ws)
+}
+
+#[cfg_attr(feature = "profile", flame)]
+fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
+    let config = cargo_config();
+    let (compile_opts, ws) = setup_cargo(&config);
 
     struct LoggingExecutor {
         default: DefaultExecutor,
