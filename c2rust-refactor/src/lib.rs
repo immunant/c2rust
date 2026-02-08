@@ -82,8 +82,15 @@ pub mod transform;
 
 mod context;
 
-use cargo::core::TargetKind;
+use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
+use cargo::core::{PackageId, Target, TargetKind, Verbosity, Workspace};
+use cargo::ops;
+use cargo::ops::CompileOptions;
+use cargo::util::errors::CargoResult;
+use cargo::util::important_paths::find_root_manifest_for_wd;
+use cargo::Config;
 use cargo_util::paths;
+use cargo_util::ProcessBuilder;
 use log::info;
 use rustc_ast::NodeId;
 use rustc_interface::interface;
@@ -92,6 +99,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::ast_builder::IntoSymbol;
 
@@ -238,16 +246,6 @@ fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
 
 #[cfg_attr(feature = "profile", flame)]
 fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
-    use cargo::core::compiler::{CompileMode, Context, DefaultExecutor, Executor, Unit};
-    use cargo::core::{PackageId, Target, Verbosity, Workspace};
-    use cargo::ops;
-    use cargo::ops::CompileOptions;
-    use cargo::util::errors::CargoResult;
-    use cargo::util::important_paths::find_root_manifest_for_wd;
-    use cargo::Config;
-    use cargo_util::ProcessBuilder;
-    use std::sync::Mutex;
-
     let mut config = Config::default().unwrap();
     config
         .configure(
@@ -375,13 +373,6 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 }
 
 fn rebuild() {
-    use cargo::core::compiler::CompileMode;
-    use cargo::core::{Verbosity, Workspace};
-    use cargo::ops;
-    use cargo::ops::CompileOptions;
-    use cargo::util::important_paths::find_root_manifest_for_wd;
-    use cargo::Config;
-
     let config = Config::default().unwrap();
     config.shell().set_verbosity(Verbosity::Quiet);
     let mode = CompileMode::Check { test: false };
