@@ -384,13 +384,8 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
 }
 
 fn rebuild() {
-    let config = Config::default().unwrap();
-    config.shell().set_verbosity(Verbosity::Quiet);
-    let mode = CompileMode::Check { test: false };
-    let compile_opts = CompileOptions::new(&config, mode).unwrap();
-
-    let manifest_path = find_root_manifest_for_wd(config.cwd()).unwrap();
-    let ws = Workspace::new(&manifest_path, &config).unwrap();
+    let config = cargo_config();
+    let (compile_opts, ws) = setup_cargo(&config);
     ops::compile(&ws, &compile_opts).expect("Could not rebuild crate");
 }
 
