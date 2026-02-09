@@ -13,6 +13,7 @@ from postprocess.definitions import (
 )
 from postprocess.models import AbstractGenerativeModel, api_key_from_env
 from postprocess.transforms.base import AbstractTransform, TransformError
+from postprocess.transforms.trim import TrimTransform
 from postprocess.utils import get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -77,6 +78,7 @@ class CommentsTransform(AbstractTransform):
         super().__init__(SYSTEM_INSTRUCTION)
         self.cache = cache
         self.model = model
+        self.trim_transform = TrimTransform(cache, model)
 
     def apply_ident(
         self,
@@ -99,6 +101,34 @@ class CommentsTransform(AbstractTransform):
         if not c_comments:
             logging.info(f"Skipping C function without comments: {identifier}")
             return
+
+        match self.trim_transform.apply_ident(
+            rust_source_file=rust_source_file,
+            rust_definition=rust_definition,
+            c_definition=c_definition,
+            identifier=identifier,
+            update_rust=False,  # nothing to update here
+        ):
+            case None:
+                logging.info(
+                    f"Trim transform produced no trimmed C definition for "
+                    f"{identifier}; continuing with the original definition"
+                )
+            case str() as trimmed_c_definition:
+                # TODO: consider trimming both the definition and the preprocessed
+                #       definition instead of possibly replacing the original
+                #       definition with the trimmed and preprocessed one.
+                c_definition = CDefinition(
+                    definition=trimmed_c_definition, preprocessed_definition=None
+                )
+                c_comments = _get_transferable_c_comments(c_definition)
+                if not c_comments:
+                    logging.info(f"Skipping C function without comments: {identifier}")
+                    return
+            case _:
+                raise AssertionError(
+                    "Unexpected return type from trim transform: expected None or str"
+                )
 
         # TODO: make this function take a model and get prompt from model
         prompt_text = """

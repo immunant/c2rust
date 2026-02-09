@@ -36,7 +36,7 @@ class AbstractTransform(ABC):
         c_definition: CDefinition,
         identifier: str,
         update_rust: bool = True,
-    ) -> None:
+    ) -> str | None:
         """
         Implementations should apply transform to a single Rust definition
         with the given identifier.
