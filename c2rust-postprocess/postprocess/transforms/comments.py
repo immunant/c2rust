@@ -11,6 +11,7 @@ from postprocess.definitions import (
 )
 from postprocess.models import AbstractGenerativeModel
 from postprocess.transforms.base import AbstractTransform
+from postprocess.transforms.trim import TrimTransform
 from postprocess.utils import get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -53,6 +54,7 @@ class CommentsTransform(AbstractTransform):
         super().__init__(SYSTEM_INSTRUCTION)
         self.cache = cache
         self.model = model
+        self.trim_transform = TrimTransform(cache, model)
 
     # TODO: it is unclear what kind of output is most useful to a given model
     #       we probably want a per-model validation function and a way to figure
@@ -120,6 +122,26 @@ class CommentsTransform(AbstractTransform):
         if not c_comments:
             logging.info(f"Skipping C function without comments: {identifier}")
             return
+
+        match self.trim_transform.apply_item(
+            rust_source_file=rust_source_file,
+            rust_definition=rust_definition,
+            c_definition=c_definition,
+            identifier=identifier,
+            update_rust=False,  # nothing to update here
+        ):
+            case None:
+                logging.error(
+                    f"Trim transform failed for {identifier}, "
+                    "skipping comments transfer"
+                )
+                return
+            case str() as trimmed_c_definition:
+                c_definition = trimmed_c_definition
+            case _:
+                raise AssertionError(
+                    "Unexpected return type from trim transform: expected None or str"
+                )
 
         # TODO: make this function take a model and get prompt from model
         prompt_text = """

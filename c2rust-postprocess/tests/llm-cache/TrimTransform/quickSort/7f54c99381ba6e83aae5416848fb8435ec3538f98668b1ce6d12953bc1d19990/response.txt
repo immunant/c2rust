@@ -1,0 +1,11 @@
+void quickSort(int arr[], int low, int high)
+{
+    if (low < high) {
+        /* pi is the partitioning index; arr[pi] is now at the right place */
+        int pi = partition(arr, low, high);
+
+        /* Recursively sort elements before and after partition */
+        quickSort(arr, low, pi - 1);
+        quickSort(arr, pi + 1, high);
+    }
+}

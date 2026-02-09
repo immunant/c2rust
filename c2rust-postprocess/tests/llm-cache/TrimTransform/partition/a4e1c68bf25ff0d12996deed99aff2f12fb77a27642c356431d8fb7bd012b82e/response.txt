@@ -1,0 +1,17 @@
+int partition (int arr[], int low, int high)
+{
+    // Partition the subarray around the last element as pivot and return pivot's final index.
+    int pivot = arr[high];
+    int i = low - 1;
+
+    for (int j = low; j <= high - 1; j++) {
+        if (arr[j] <= pivot) {
+            i++;
+            // Move elements <= pivot into the left partition.
+            swap(&arr[i], &arr[j]);
+        }
+    }
+    // Place pivot just after the final element of the left partition.
+    swap(&arr[i + 1], &arr[high]);
+    return i + 1;
+}
