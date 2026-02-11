@@ -1,6 +1,6 @@
 [project]
 name = "c2rust-testsuite"
-version = "0.22.0"
+version = "0.22.1"
 requires-python = ">=3.12"
 dependencies = [
     "distro>=1.9.0",

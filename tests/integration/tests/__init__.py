@@ -259,5 +259,5 @@ def run_tests(conf: Config, generated_scripts: set[Path]):
     for result in results:
         print(f"{result.test.name} took {result.time}")
     if not all(result.passed for result in results):
-        print(f"projects failed: {' '.join(result.test.name for result in results)}")
+        print(f"projects failed: {' '.join(result.test.name for result in results if not result.passed)}")
         exit(1)

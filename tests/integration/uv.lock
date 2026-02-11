@@ -4,7 +4,7 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "c2rust-testsuite"
-version = "0.22.0"
+version = "0.22.1"
 source = { virtual = "." }
 dependencies = [
     { name = "distro" },
