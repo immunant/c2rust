@@ -25,7 +25,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.22.0"
+version = "0.22.1"
 authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 edition = "2021"
 rust-version = "1.65"

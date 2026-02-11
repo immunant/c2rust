@@ -271,7 +271,7 @@ checksum = "6c58ec36aac5066d5ca17df51b3e70279f5670a72102f5752cb7e7c856adfc70"
 
 [[package]]
 name = "c2rust"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "anyhow",
  "c2rust-build-paths",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-analysis-rt"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "bincode",
  "crossbeam-queue",
@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-analyze"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -326,11 +326,11 @@ dependencies = [
 
 [[package]]
 name = "c2rust-asm-casts"
-version = "0.22.0"
+version = "0.22.1"
 
 [[package]]
 name = "c2rust-ast-builder"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "itertools",
  "proc-macro2",
@@ -339,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-ast-exporter"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "bindgen 0.69.5",
  "c2rust-build-paths",
@@ -353,7 +353,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-ast-printer"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "log",
  "prettyplease",
@@ -363,14 +363,14 @@ dependencies = [
 
 [[package]]
 name = "c2rust-bitfields"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "c2rust-bitfields-derive",
 ]
 
 [[package]]
 name = "c2rust-bitfields-derive"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -380,14 +380,14 @@ dependencies = [
 
 [[package]]
 name = "c2rust-build-paths"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "print_bytes",
 ]
 
 [[package]]
 name = "c2rust-instrument"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -408,7 +408,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-macros"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -417,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-pdg"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
@@ -437,7 +437,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-refactor"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
@@ -470,7 +470,7 @@ dependencies = [
 
 [[package]]
 name = "c2rust-transpile"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "c2rust-ast-builder",
  "c2rust-ast-exporter",
