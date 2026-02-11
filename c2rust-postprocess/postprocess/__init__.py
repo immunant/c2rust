@@ -77,6 +77,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--cache-scope",
+        type=str,
+        required=False,
+        default="repo",  # TODO: change default to user
+        choices=["repo", "user", "system"],
+        help="Scope for cache location (default: repo)",
+    )
+
+    parser.add_argument(
         "--update-rust",
         required=False,
         default=True,
@@ -118,7 +127,7 @@ def main(argv: Sequence[str] | None = None):
 
         logging.basicConfig(level=logging.getLevelName(args.log_level.upper()))
 
-        cache = DirectoryCache.repo()
+        cache = getattr(DirectoryCache, args.cache_scope)()
         if not args.update_cache:
             cache = FrozenCache(cache)
 
