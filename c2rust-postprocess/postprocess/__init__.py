@@ -98,7 +98,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         required=False,
         action="append",
-        default=["comments"],
+        default=["asserts", "comments"],
         help=(
             "Transform to apply; pass multiple times to apply multiple transforms "
             "in sorted order (default: comments)"
@@ -151,6 +151,7 @@ def main(argv: Sequence[str] | None = None):
             for transform_id in set(args.transform)
             if transform_id.strip()
         )
+
         transforms = [
             get_transform_by_id(transform_id, cache=cache, model=model)
             for transform_id in transform_ids
