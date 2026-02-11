@@ -2,7 +2,8 @@
 
 use super::*;
 use log::warn;
-use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprReturn, ExprUnary, Stmt};
+use proc_macro2::TokenStream;
+use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprReturn, ExprUnary, MacroDelimiter, Stmt};
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
@@ -82,7 +83,8 @@ pub trait StructuredStatement: Sized {
     /// Make a `goto` table
     fn mk_goto_table(
         cases: Vec<(Self::L, Self)>, // entries in the goto table
-        then: Self,                  // default case of the goto table
+        then_lbls: Vec<Self::L>,     // labels for the default case of the goto table
+        then_body: Self,             // default case of the goto table
     ) -> Self;
 
     /// Make some sort of loop
@@ -129,10 +131,11 @@ pub enum StructuredASTKind<E, P, L, S> {
         Box<StructuredAST<E, P, L, S>>,
         Box<StructuredAST<E, P, L, S>>,
     ),
-    GotoTable(
-        Vec<(L, StructuredAST<E, P, L, S>)>,
-        Box<StructuredAST<E, P, L, S>>,
-    ),
+    GotoTable {
+        cases: Vec<(L, StructuredAST<E, P, L, S>)>,
+        then_lbls: Vec<L>,
+        then_body: Box<StructuredAST<E, P, L, S>>,
+    },
     Loop(Option<L>, Box<StructuredAST<E, P, L, S>>),
     Exit(ExitStyle, Option<L>),
 }
@@ -167,8 +170,16 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
         dummy_spanned(StructuredASTKind::If(cond, Box::new(then), Box::new(else_)))
     }
 
-    fn mk_goto_table(cases: Vec<(Self::L, Self)>, then: Self) -> Self {
-        dummy_spanned(StructuredASTKind::GotoTable(cases, Box::new(then)))
+    fn mk_goto_table(
+        cases: Vec<(Self::L, Self)>,
+        then_lbls: Vec<Self::L>,
+        then_body: Self,
+    ) -> Self {
+        dummy_spanned(StructuredASTKind::GotoTable {
+            cases,
+            then_lbls,
+            then_body: Box::new(then_body),
+        })
     }
 
     fn mk_loop(lbl: Option<Self::L>, body: Self) -> Self {
@@ -294,7 +305,11 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
                 );
             }
 
-            Multiple { branches, then, .. } => {
+            Multiple {
+                entries,
+                branches,
+                then,
+            } => {
                 let cases = branches
                     .iter()
                     .map(|(lbl, body)| {
@@ -304,9 +319,15 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
                     })
                     .collect::<TranslationResult<_>>()?;
 
-                let then: S = structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
+                let then_lbls = entries
+                    .iter()
+                    .filter(|&lbl| !branches.contains_key(lbl))
+                    .cloned()
+                    .collect();
+                let then_body: S =
+                    structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
 
-                new_rest = S::mk_append(new_rest, S::mk_goto_table(cases, then));
+                new_rest = S::mk_append(new_rest, S::mk_goto_table(cases, then_lbls, then_body));
             }
 
             Loop { body, entries } => {
@@ -562,32 +583,45 @@ impl StructureState {
                 if_stmt
             }
 
-            GotoTable(cases, then) => {
+            GotoTable {
+                cases,
+                then_lbls,
+                then_body,
+            } => {
                 // Dispatch based on the next `current_block` value.
+
+                let mk_lbl_pat = |lbl: Label| -> Pat {
+                    let lbl_lit = if self.debug_labels {
+                        lbl.to_string_lit()
+                    } else {
+                        lbl.to_int_lit()
+                    };
+                    mk().lit_pat(lbl_lit)
+                };
 
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
-                    .map(|(lbl, stmts)| -> Arm {
-                        let (stmts, stmts_span) = self.to_stmt(stmts, comment_store);
-
-                        let lbl_lit = if self.debug_labels {
-                            lbl.to_string_lit()
-                        } else {
-                            lbl.to_int_lit()
-                        };
-                        let pat = mk().lit_pat(lbl_lit);
+                    .map(|(lbl, body)| -> Arm {
+                        let (stmts, stmts_span) = self.to_stmt(body, comment_store);
+                        let pat = mk_lbl_pat(lbl);
                         let body = mk().block_expr(mk().span(stmts_span).block(stmts));
                         mk().arm(pat, None, body)
                     })
                     .collect();
 
-                let (then, then_span) = self.to_stmt(*then, comment_store);
-
+                let (stmts, stmts_span) = self.to_stmt(*then_body, comment_store);
                 arms.push(mk().arm(
-                    mk().wild_pat(),
+                    mk().or_pat(then_lbls.into_iter().map(mk_lbl_pat).collect()),
                     None,
-                    mk().block_expr(mk().span(then_span).block(then)),
+                    mk().block_expr(mk().span(stmts_span).block(stmts)),
                 ));
+
+                let unreachable_call = mk().mac_expr(mk().mac(
+                    mk().path(vec!["unreachable"]),
+                    TokenStream::new(),
+                    MacroDelimiter::Paren(Default::default()),
+                ));
+                arms.push(mk().arm(mk().wild_pat(), None, unreachable_call));
 
                 let e = mk().match_expr(self.current_block.clone(), arms);
 
