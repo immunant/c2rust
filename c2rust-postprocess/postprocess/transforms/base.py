@@ -1,6 +1,6 @@
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -119,6 +119,7 @@ class AbstractTransform:
         identifier: str,
         messages: list[dict[str, Any]],
         check: Callable[[str], str],
+        tools: Iterable[Callable[..., Any]] = (),
     ) -> str | None:
         """
         Model call with caching, validation, and retries. `check` returns the
@@ -154,7 +155,7 @@ class AbstractTransform:
 
         for attempt in range(self.max_attempts):
             try:
-                response = self.model.generate_with_tools(messages)
+                response = self.model.generate_with_tools(messages, tools=tools)
                 if response is None:
                     raise TransformError(f"model returned no response for {identifier}")
                 result = check(response)
