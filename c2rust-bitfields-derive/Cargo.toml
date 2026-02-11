@@ -12,10 +12,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# nightly-2022-08-08 requires these exact versions
+# nightly-2022-08-08 (1.65) and nightly-2023-04-15 (1.70) require these exact versions.
 proc-macro2 = "=1.0.103"
 syn = { version = "=2.0.106", features = ["full"] }
 quote = "=1.0.40"
+# There are not directly depended on, but are transitive dependencies that we need to pin.
+# This should be an exhaustive list of transitive dependencies.
 unicode-ident = "=1.0.22"
 
 [lib]
