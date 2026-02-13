@@ -29,5 +29,5 @@ pub unsafe extern "C" fn ZSTD_dParam_getBounds(mut dParam: ZSTD_dParameter) -> :
         }
         _ => {}
     }
-    return bounds;
+    bounds
 }
