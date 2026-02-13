@@ -12,6 +12,7 @@ requirements:
         - c2rust
         - c2rust-transpile
         - c2rust-refactor
+        - c2rust-postprocess
         - make
         - cmake
         - cargo
