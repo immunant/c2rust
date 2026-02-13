@@ -1,16 +1,13 @@
-transform = "CommentTransfer"
+transform = "CommentsTransform"
 identifier = "partition"
 model = "gemini-3-flash-preview"
-response = """/// Lomuto Partition Scheme:
-/// Partitions the array so that elements < pivot are on the left, 
-/// and elements >= pivot are on the right.
+response = """/// Partition the subarray around the last element as pivot and return pivot's final index.
 #[no_mangle]
 pub unsafe extern "C" fn partition(
     mut arr: *mut ::core::ffi::c_int,
     mut low: ::core::ffi::c_int,
     mut high: ::core::ffi::c_int,
 ) -> ::core::ffi::c_int {
-    // Partition the subarray around the last element as pivot and return pivot's final index.
     let mut pivot: ::core::ffi::c_int = *arr.offset(high as isize);
     let mut i: ::core::ffi::c_int = low - 1 as ::core::ffi::c_int;
     let mut j: ::core::ffi::c_int = low;
@@ -42,11 +39,6 @@ Respond with the Rust function definition with the transferred comments; say not
 
 C function:
 ```c
-/* 
- * Lomuto Partition Scheme:
- * Partitions the array so that elements < pivot are on the left, 
- * and elements >= pivot are on the right.
- */
 int partition (int arr[], int low, int high)
 {
     // Partition the subarray around the last element as pivot and return pivot's final index.
