@@ -1,5 +1,6 @@
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
 use rustc_hir::def_id::DefId;
 use rustc_type_ir::sty::TyKind;
 use rustc_ast::ast;
@@ -11,7 +12,10 @@ use rustc_span::symbol::Ident;
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_builder::{mk, IntoSymbol};
-use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules, visit_nodes, MutVisit};
+use crate::ast_manip::{
+    collect_comments, gather_comments, CommentMap, FlatMapNodes, MutVisitNodes, MutVisit,
+    fold_modules, visit_nodes,
+};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
 use crate::{expect, match_or, unpack};
@@ -286,25 +290,92 @@ pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |b: &mut P<Block>| {
-            if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
-                let hir_id = cx.hir_map().node_to_hir_id(b.id);
-                let parent = cx.hir_map().get_parent_item(hir_id);
-                let result = cx.ty_ctxt().unsafety_check_result(parent);
-                let unused = result
-                    .unused_unsafes
-                    .as_deref()
-                    .unwrap_or_default()
-                    .iter()
-                    .any(|&(id, _)| {
-                        // TODO: do we need to check the UnusedUnsafe argument?
-                        id == cx.hir_map().node_to_hir_id(b.id)
-                    });
-                if unused {
-                    b.rules = BlockCheckMode::Default;
+        let comment_map = {
+            let source_map = cx.session().source_map();
+            let mut comments = Vec::new();
+            for file in source_map.files().iter() {
+                if let Some(src) = &file.src {
+                    let mut new_comments =
+                        gather_comments(&cx.session().parse_sess, file.name.clone(), src.deref().clone());
+                    for c in &mut new_comments {
+                        c.pos = c.pos + file.start_pos;
+                    }
+                    comments.append(&mut new_comments);
                 }
             }
-        });
+            collect_comments(krate, &comments)
+        };
+
+        struct FixUnusedUnsafeFolder<'a, 'tcx> {
+            cx: &'a RefactorCtxt<'a, 'tcx>,
+            comment_map: &'a CommentMap,
+        }
+
+        impl<'a, 'tcx> FixUnusedUnsafeFolder<'a, 'tcx> {
+            fn is_unused_unsafe_block(&self, b: &Block) -> bool {
+                if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
+                    let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
+                    let parent = self.cx.hir_map().get_parent_item(hir_id);
+                    let result = self.cx.ty_ctxt().unsafety_check_result(parent);
+                    return result
+                        .unused_unsafes
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .any(|&(id, _)| {
+                            // TODO: do we need to check the UnusedUnsafe argument?
+                            id == self.cx.hir_map().node_to_hir_id(b.id)
+                        });
+                }
+
+                false
+            }
+
+            fn has_attached_comments(&self, ids: &[NodeId]) -> bool {
+                ids.iter().any(|id| {
+                    self.comment_map
+                        .get(id)
+                        .map_or(false, |comments| !comments.is_empty())
+                })
+            }
+        }
+
+        impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
+            fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
+                match &mut stmt.kind {
+                    StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
+                        let expr_id = expr.id;
+                        if let ExprKind::Block(ref mut block, _) = expr.kind {
+                            if self.is_unused_unsafe_block(block) {
+                                if block.stmts.is_empty() {
+                                    let block_id = block.id;
+                                    let has_comments = self
+                                        .has_attached_comments(&[stmt.id, expr_id, block_id]);
+                                    if !has_comments {
+                                        return smallvec![];
+                                    }
+                                }
+
+                                block.rules = BlockCheckMode::Default;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
+                mut_visit::noop_flat_map_stmt(stmt, self)
+            }
+
+            fn visit_block(&mut self, b: &mut P<Block>) {
+                if self.is_unused_unsafe_block(b) {
+                    b.rules = BlockCheckMode::Default;
+                }
+
+                mut_visit::noop_visit_block(b, self)
+            }
+        }
+
+        krate.visit(&mut FixUnusedUnsafeFolder { cx, comment_map: &comment_map });
     }
 
     fn min_phase(&self) -> Phase {
