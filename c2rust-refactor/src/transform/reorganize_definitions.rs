@@ -1131,9 +1131,7 @@ impl MovedDecl {
 impl ToString for MovedDecl {
     fn to_string(&self) -> String {
         match &self.kind {
-            DeclKind::ForeignItem(item, _) => pprust::to_string(|s| {
-                s.foreign_item_to_string(item);
-            }),
+            DeclKind::ForeignItem(item, _) => pprust::State::new().foreign_item_to_string(item),
             DeclKind::Item(item) => item_to_string(item),
         }
     }
