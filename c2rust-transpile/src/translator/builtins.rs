@@ -372,7 +372,9 @@ impl<'c> Translation<'c> {
                     let mut fn_ctx = self.function_context.borrow_mut();
                     let alloca_allocations_name =
                         &*fn_ctx.alloca_allocations_name.get_or_insert_with(|| {
-                            self.renamer.borrow_mut().pick_name("alloca_allocations")
+                            self.renamer
+                                .borrow_mut()
+                                .pick_name("c2rust_alloca_allocations")
                         });
 
                     // alloca_allocations.push(std::vec::from_elem(0, count));

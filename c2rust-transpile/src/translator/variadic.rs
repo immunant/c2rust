@@ -236,7 +236,7 @@ impl<'c> Translation<'c> {
     pub fn register_va_decls(&self, body: CStmtId) -> String {
         self.use_feature("c_variadic");
 
-        let va_list_arg_name = self.renamer.borrow_mut().pick_name("args");
+        let va_list_arg_name = self.renamer.borrow_mut().pick_name("c2rust_args");
 
         // collect `va_list` variables that are `va_start`ed, `va_end`ed, or `va_copied`.
         let mut va_list_decl_ids: IndexSet<CDeclId> = IndexSet::new();
