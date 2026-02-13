@@ -666,9 +666,7 @@ fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
     T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
-    let new_string = new.to_string();
-    eprintln!("rewrite_at_impl: string: {new_string:?}");
-    let printed = add_comments(new_string.clone(), new, &rcx);
+    let printed = add_comments(new.to_string(), new, &rcx);
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
