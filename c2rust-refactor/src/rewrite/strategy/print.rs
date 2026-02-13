@@ -102,9 +102,7 @@ impl PrintParse for Stmt {
         // nodes.
         match self.kind {
             StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
-            _ => pprust::to_string(|s| {
-                s.stmt_to_string(self);
-            }),
+            _ => pprust::State::new().stmt_to_string(self),
         }
     }
 
@@ -129,9 +127,7 @@ impl PrintParse for Item {
 
 impl PrintParse for ForeignItem {
     fn to_string(&self) -> String {
-        pprust::to_string(|s| {
-            s.foreign_item_to_string(self);
-        })
+        pprust::State::new().foreign_item_to_string(self)
     }
 
     type Parsed = P<ForeignItem>;
@@ -142,9 +138,7 @@ impl PrintParse for ForeignItem {
 
 impl PrintParse for Block {
     fn to_string(&self) -> String {
-        pprust::to_string(|s| {
-            s.block_to_string(self);
-        })
+        pprust::State::new().block_to_string(self)
     }
 
     type Parsed = P<Block>;
@@ -155,9 +149,7 @@ impl PrintParse for Block {
 
 impl PrintParse for Param {
     fn to_string(&self) -> String {
-        pprust::to_string(|s| {
-            s.param_to_string(self);
-        })
+        pprust::State::new().param_to_string(self)
     }
 
     type Parsed = Param;
@@ -674,7 +666,9 @@ fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
     T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
-    let printed = add_comments(new.to_string(), new, &rcx);
+    let new_string = new.to_string();
+    eprintln!("rewrite_at_impl: string: {new_string:?}");
+    let printed = add_comments(new_string.clone(), new, &rcx);
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
