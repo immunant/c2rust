@@ -1,6 +1,5 @@
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
 use rustc_hir::def_id::DefId;
 use rustc_type_ir::sty::TyKind;
 use rustc_ast::ast;
@@ -13,8 +12,8 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{
-    collect_comments, gather_comments, CommentMap, FlatMapNodes, MutVisitNodes, MutVisit,
-    fold_modules, visit_nodes,
+    collect_comments, CommentMap, FlatMapNodes, MutVisitNodes, MutVisit, fold_modules,
+    visit_nodes,
 };
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
@@ -290,21 +289,11 @@ pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        let comment_map = {
-            let source_map = cx.session().source_map();
-            let mut comments = Vec::new();
-            for file in source_map.files().iter() {
-                if let Some(src) = &file.src {
-                    let mut new_comments =
-                        gather_comments(&cx.session().parse_sess, file.name.clone(), src.deref().clone());
-                    for c in &mut new_comments {
-                        c.pos = c.pos + file.start_pos;
-                    }
-                    comments.append(&mut new_comments);
-                }
-            }
-            collect_comments(krate, &comments)
-        };
+        let comment_map = collect_comments(
+            krate,
+            cx.session().source_map(),
+            &cx.session().parse_sess,
+        );
 
         struct FixUnusedUnsafeFolder<'a, 'tcx> {
             cx: &'a RefactorCtxt<'a, 'tcx>,
