@@ -1,7 +1,7 @@
 use rustc_ast::*;
 use std::collections::HashMap;
 use std::iter::Peekable;
-use std::ops::Index;
+use std::ops::{Deref, Index};
 use std::slice;
 // use rustc_ast::util::comments::Comment as LexComment;
 use rustc_ast::visit::*;
@@ -39,15 +39,25 @@ impl Index<&NodeId> for CommentMap {
     }
 }
 
-pub fn collect_comments<T>(ast: &T, comments: &[Comment]) -> CommentMap
-where
-    T: Visit,
-{
+pub fn collect_comments<T: Visit>(ast: &T, source_map: &SourceMap, sess: &ParseSess) -> CommentMap {
+    // Gather comments in the source map and convert the file-relative locations
+    // to their global positions.
+    let mut comments = vec![];
+    for file in source_map.files().iter() {
+        if let Some(src) = &file.src {
+            let mut new_comments = gather_comments(sess, file.name.clone(), src.deref().clone());
+            for c in &mut new_comments {
+                c.pos = c.pos + file.start_pos;
+            }
+            comments.append(&mut new_comments);
+        }
+    }
+
+    // Walk the AST and map nodes to their associated comments.
     let mut collector = CommentCollector {
         comment_map: CommentMap::default(),
         cur_comment: comments.iter().peekable(),
     };
-
     ast.visit(&mut collector);
 
     collector.comment_map
