@@ -3305,6 +3305,37 @@ impl<'c> Translation<'c> {
         Ok(WithStmts::new_val(call))
     }
 
+    pub fn compute_count_of_type(
+        &self,
+        mut type_id: CTypeId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        type_id = self.variable_array_base_type(type_id);
+
+        let ty = self.convert_type(type_id)?;
+       // let tys = vec![ty];
+       // let mut path = vec![mk().path_segment("core")];
+
+        match &*ty {
+            Type::Array(a) => {
+                        Ok(WithStmts::new_val(Box::new(a.len.clone())))
+
+            },
+            _ => todo!(),
+        }
+
+
+        // if preferred {
+        //     self.use_feature("core_intrinsics");
+        //     path.push(mk().path_segment("intrinsics"));
+        //     path.push(mk().path_segment_with_args("pref_align_of", mk().angle_bracketed_args(tys)));
+        // } else {
+        //     path.push(mk().path_segment("mem"));
+        //     path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
+        // }
+        // let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
+        // Ok(WithStmts::new_val(call))
+    }
+
     /// Convert multiple expressions (while collecting a context of statements) given either all or
     /// none of their expected types
     #[allow(clippy::vec_box/*, reason = "not worth a substantial refactor"*/)]
@@ -3431,7 +3462,7 @@ impl<'c> Translation<'c> {
                     },
                     UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype, false)?,
                     UnTypeOp::PreferredAlignOf => self.compute_align_of_type(arg_ty.ctype, true)?,
-                };
+                    UnTypeOp::CountOf => self.compute_count_of_type(arg_ty.ctype)?,                };
 
                 Ok(result)
             }

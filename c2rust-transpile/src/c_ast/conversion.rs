@@ -1632,6 +1632,7 @@ impl ConversionContext {
                         "sizeof" => UnTypeOp::SizeOf,
                         "alignof" => UnTypeOp::AlignOf,
                         "preferredalignof" => UnTypeOp::PreferredAlignOf,
+                        "countof" => UnTypeOp::CountOf,
                         str => panic!("Unsupported operation: {}", str),
                     };
 

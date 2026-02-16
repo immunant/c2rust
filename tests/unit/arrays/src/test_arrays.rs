@@ -18,6 +18,9 @@ extern "C" {
     fn alloca_arrays(_: *mut c_int);
 
     fn check_some_ints() -> bool;
+
+    fn count_of_7() -> c_size_t;
+    fn count_of_12() -> c_size_t;
 }
 
 #[no_mangle]
@@ -118,5 +121,13 @@ pub fn test_alloca_arrays() {
     for index in 0..BUFFER_SIZEV {
         assert_eq!(buffer[index], expected_buffer[index], "index: {}", index);
         assert_eq!(buffer[index], rust_buffer[index], "index: {}", index);
+    }
+}
+
+#[test]
+pub fn test_array_counts() {
+    unsafe {
+        assert_eq!(count_of_7(), rust_count_of_7());
+        assert_eq!(count_of_12(), rust_count_of_12());
     }
 }

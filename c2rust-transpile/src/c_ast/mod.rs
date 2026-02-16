@@ -1156,6 +1156,7 @@ impl TypedAstContext {
                             UnTypeOp::SizeOf => CTypeKind::Size,
                             UnTypeOp::AlignOf => CTypeKind::Size,
                             UnTypeOp::PreferredAlignOf => CTypeKind::Size,
+                            UnTypeOp::CountOf => CTypeKind::Size,
                         };
                         let ty = self
                             .ast_context
@@ -1837,6 +1838,7 @@ pub enum UnTypeOp {
     SizeOf,
     AlignOf,
     PreferredAlignOf,
+    CountOf,
 }
 
 impl UnTypeOp {
@@ -1846,6 +1848,7 @@ impl UnTypeOp {
             SizeOf => "sizeof",
             AlignOf => "alignof",
             PreferredAlignOf => "__alignof",
+            CountOf => "countof"
         }
     }
 }

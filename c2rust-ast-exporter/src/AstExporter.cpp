@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <clang/AST/Type.h>
+#include <clang/Basic/TypeTraits.h>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -1489,6 +1490,10 @@ class TranslateASTVisitor final
                         cbor_encode_text_stringz(extras, "preferredalignof");
                     else
                         cbor_encode_text_stringz(extras, "alignof");
+                    break;
+                }
+                case UETT_CountOf: {
+                    cbor_encode_text_stringz(extras, "countof");
                     break;
                 }
 #endif // CLANG_VERSION_MAJOR
