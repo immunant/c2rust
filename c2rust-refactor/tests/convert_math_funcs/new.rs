@@ -69,7 +69,7 @@ fn main() {
         let z = 0.0f64.sin() + 1.0f64.sin();
 
         // Nested call
-        let w = 0.5f64.sin().sin();
+        let w = 0.5f64.cos().sin();
 
         // Test sinf (f32 variant)
         let angle_f32: f32 = 1.5;
