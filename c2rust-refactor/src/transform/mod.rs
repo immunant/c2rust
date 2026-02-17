@@ -64,6 +64,7 @@ transform_modules! {
     //lifetime_analysis,
     linkage,
     literals,
+    math,
     reorganize_definitions,
     ownership,
     paths,

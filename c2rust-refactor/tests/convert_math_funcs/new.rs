@@ -1,0 +1,116 @@
+#![allow(unused)]
+
+extern "C" {
+    #[no_mangle]
+    fn sin(x: f64) -> f64;
+    #[no_mangle]
+    fn sinf(x: f32) -> f32;
+    #[no_mangle]
+    fn cos(x: f64) -> f64;
+    #[no_mangle]
+    fn tan(x: f64) -> f64;
+    #[no_mangle]
+    fn asin(x: f64) -> f64;
+    #[no_mangle]
+    fn acos(x: f64) -> f64;
+    #[no_mangle]
+    fn atan(x: f64) -> f64;
+    #[no_mangle]
+    fn sinh(x: f64) -> f64;
+    #[no_mangle]
+    fn cosh(x: f64) -> f64;
+    #[no_mangle]
+    fn tanh(x: f64) -> f64;
+    #[no_mangle]
+    fn sqrt(x: f64) -> f64;
+    #[no_mangle]
+    fn pow(x: f64, y: f64) -> f64;
+    #[no_mangle]
+    fn log(x: f64) -> f64;
+    #[no_mangle]
+    fn exp(x: f64) -> f64;
+    #[no_mangle]
+    fn fabs(x: f64) -> f64;
+    #[no_mangle]
+    fn abs(x: i32) -> i32;
+    #[no_mangle]
+    fn labs(x: i64) -> i64;
+    #[no_mangle]
+    fn llabs(x: i64) -> i64;
+    #[no_mangle]
+    fn floor(x: f64) -> f64;
+    #[no_mangle]
+    fn floorf(x: f32) -> f32;
+    #[no_mangle]
+    fn ceil(x: f64) -> f64;
+    #[no_mangle]
+    fn ceilf(x: f32) -> f32;
+    #[no_mangle]
+    fn round(x: f64) -> f64;
+    #[no_mangle]
+    fn trunc(x: f64) -> f64;
+    #[no_mangle]
+    fn truncf(x: f32) -> f32;
+    #[no_mangle]
+    fn atan2(y: f64, x: f64) -> f64;
+    #[no_mangle]
+    fn hypot(x: f64, y: f64) -> f64;
+    #[no_mangle]
+    fn fmax(x: f64, y: f64) -> f64;
+}
+
+fn main() {
+    unsafe {
+        let angle = 3.14159f64 / 2.0f64;
+        let result = angle.sin();
+        println!("sin({}) = {}", angle, result);
+
+        // Multiple calls in one expression
+        let z = 0.0f64.sin() + 1.0f64.sin();
+
+        // Nested call
+        let w = 0.5f64.cos().sin();
+
+        // Test sinf (f32 variant)
+        let angle_f32: f32 = 1.5;
+        let result_f32 = angle_f32.sin();
+        println!("sinf({}) = {}", angle_f32, result_f32);
+
+        // Mixed calls
+        let mixed = 1.0f64.sin() + 1.0f32.sin() as f64;
+
+        // Additional math functions
+        let c = 0.25f64.cos();
+        let t = 0.25f64.tan();
+        let asn = 0.5f64.asin();
+        let acs = 0.5f64.acos();
+        let atn = 1.0f64.atan();
+        let snh = 1.0f64.sinh();
+        let csh = 1.0f64.cosh();
+        let tnh = 1.0f64.tanh();
+        let s = 4.0f64.sqrt();
+        let p = 2.0f64.powf(3.0f64);
+        let l = 2.0f64.ln();
+        let e = 1.0f64.exp();
+        let a = (-1.0f64).abs();
+
+        // Integer absolute value functions
+        let i = (-42i32).abs();
+        let j = (-123456789i64).abs();
+        let k = (-987654321i64).abs();
+
+        // Rounding functions
+        let fl = 3.7f64.floor();
+        let flf = 3.7f32.floor();
+        let ce = 3.2f64.ceil();
+        let cef = 3.2f32.ceil();
+        let rnd = 3.5f64.round();
+        let tr = 3.9f64.trunc();
+        let trf = 3.9f32.trunc();
+
+        // Binary functions
+        let at2 = 1.0f64.atan2(1.0f64);
+        let hyp = 3.0f64.hypot(4.0f64);
+        let mx = 1.0f64.max(2.0f64);
+    }
+}
