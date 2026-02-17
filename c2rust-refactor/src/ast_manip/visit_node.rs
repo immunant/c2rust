@@ -1,8 +1,13 @@
 //! Helper function for visiting only one type of AST node.
 use rustc_ast::visit::{self, Visitor};
 use rustc_ast::*;
+use rustc_hir::def_id::DefId;
+use rustc_hir::Node;
+use rustc_span::sym;
+use std::collections::HashSet;
 
 use crate::ast_manip::Visit;
+use crate::RefactorCtxt;
 
 /// Trait for AST node types that can be visited.
 pub trait VisitNode {
@@ -160,4 +165,50 @@ where
     F: FnMut(&N),
 {
     N::visit_nodes(target, callback)
+}
+
+/// Visit non-local foreign functions.
+///
+/// "Non-local" here means that the function isn't defined elsewhere in the
+/// crate. This is primarily intended for transforming calls to extern
+/// functions, e.g. the libc functions. Functions must be defined in an `extern
+/// "C"` block and be marked `no_mangle` in order to ensure that we only visit
+/// foreign functions.
+pub fn visit_foreign_fns<T, F>(target: &T, cx: &RefactorCtxt, mut callback: F)
+where
+    T: Visit,
+    F: FnMut(&ForeignItem, DefId),
+{
+    // Collect all locally defined `no_mangle` function names.
+    let mut local_no_mangle_names = HashSet::new();
+    visit_nodes(target, |item: &Item| {
+        if let ItemKind::Fn(_) = item.kind {
+            if crate::util::contains_name(&item.attrs, sym::no_mangle) {
+                local_no_mangle_names.insert(item.ident.name);
+            }
+        }
+    });
+
+    visit_nodes(target, |fi: &ForeignItem| {
+        if !crate::util::contains_name(&fi.attrs, sym::no_mangle) {
+            return;
+        }
+        let ForeignItemKind::Fn(_) = fi.kind else {
+            return;
+        };
+
+        let def_id = cx.node_def_id(fi.id);
+
+        // Ignore functions that are defined locally, either directly or as
+        // indirect `extern "C"` imports, since those have to be custom
+        // functions. We only want to translate calls to foreign libc functions.
+        if local_no_mangle_names.contains(&fi.ident.name) {
+            return;
+        }
+        let Some(Node::ForeignItem(_)) = cx.hir_map().get_if_local(def_id) else {
+            return;
+        };
+
+        callback(fi, def_id);
+    });
 }

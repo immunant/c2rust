@@ -1,11 +1,9 @@
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_hir::Node;
-use rustc_span::sym;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::ast_builder::mk;
-use crate::ast_manip::{visit_nodes, MutVisitNodes};
+use crate::ast_manip::{visit_foreign_fns, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
@@ -26,56 +24,20 @@ pub struct ConvertExits;
 
 impl Transform for ConvertExits {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        // Collect names of locally-defined #[no_mangle] functions that might
-        // shadow libc functions.
-        let mut local_no_mangle_names = HashSet::new();
-        visit_nodes(krate, |item: &Item| {
-            if let ItemKind::Fn(_) = item.kind {
-                if crate::util::contains_name(&item.attrs, sym::no_mangle) {
-                    local_no_mangle_names.insert(item.ident.name);
-                }
-            }
-        });
-
         enum ExitFn {
             Abort,
             Exit,
         }
 
         let mut exit_defs = HashMap::new();
-        visit_nodes(krate, |fi: &ForeignItem| {
-            if !crate::util::contains_name(&fi.attrs, sym::no_mangle) {
-                return;
+        visit_foreign_fns(krate, cx, |fi, def_id| match fi.ident.as_str() {
+            "abort" => {
+                exit_defs.insert(def_id, ExitFn::Abort);
             }
-            let ForeignItemKind::Fn(_) = fi.kind else {
-                return;
-            };
-
-            let def_id = cx.node_def_id(fi.id);
-
-            // Ignore functions that are defined locally, either directly or as
-            // indirect `extern "C"` imports, since those have to be custom
-            // functions. We only want to translate calls to the foreign libc
-            // functions.
-            if local_no_mangle_names.contains(&fi.ident.name) {
-                return;
+            "exit" => {
+                exit_defs.insert(def_id, ExitFn::Exit);
             }
-            if def_id.is_local() {
-                match cx.hir_map().get_if_local(def_id) {
-                    Some(Node::ForeignItem(_)) => {}
-                    _ => return,
-                }
-            }
-
-            match &*fi.ident.as_str() {
-                "abort" => {
-                    exit_defs.insert(def_id, ExitFn::Abort);
-                }
-                "exit" => {
-                    exit_defs.insert(def_id, ExitFn::Exit);
-                }
-                _ => {}
-            }
+            _ => {}
         });
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
