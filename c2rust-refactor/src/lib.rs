@@ -98,8 +98,8 @@ use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
-use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::{Arc, Once};
 
 use crate::ast_builder::IntoSymbol;
 
@@ -389,11 +389,8 @@ fn rebuild() {
     ops::compile(&ws, &compile_opts).expect("Could not rebuild crate");
 }
 
-#[cfg_attr(feature = "profile", flame)]
-pub fn lib_main(opts: Options) -> interface::Result<()> {
+fn init() {
     env_logger::init();
-    rustc_driver::install_ice_hook();
-    info!("Begin refactoring");
 
     // Make sure we compile with the toolchain version that the refactoring tool
     // is built against.
@@ -409,6 +406,14 @@ pub fn lib_main(opts: Options) -> interface::Result<()> {
     rustflags.push(" -Awarnings");
     env::set_var("RUSTFLAGS", rustflags);
 
+    rustc_driver::install_ice_hook();
+}
+
+static INIT: Once = Once::new();
+
+#[cfg_attr(feature = "profile", flame)]
+pub fn lib_main(opts: Options) -> interface::Result<()> {
+    INIT.call_once(init);
     rustc_driver::catch_fatal_errors(move || main_impl(opts)).and_then(|x| x)
 }
 
