@@ -292,7 +292,7 @@ dependencies = [
  "crossbeam-queue",
  "crossbeam-utils",
  "enum_dispatch",
- "fs-err 2.9.0",
+ "fs-err",
  "once_cell",
  "serde",
 ]
@@ -310,7 +310,7 @@ dependencies = [
  "c2rust-pdg",
  "clap 4.2.7",
  "env_logger 0.10.0",
- "fs-err 2.9.0",
+ "fs-err",
  "indexmap",
  "itertools",
  "libc",
@@ -395,7 +395,7 @@ dependencies = [
  "c2rust-build-paths",
  "clap 3.2.25",
  "env_logger 0.10.0",
- "fs-err 2.9.0",
+ "fs-err",
  "fs2",
  "indexmap",
  "itertools",
@@ -425,7 +425,7 @@ dependencies = [
  "clap 3.2.25",
  "color-eyre",
  "env_logger 0.10.0",
- "fs-err 2.9.0",
+ "fs-err",
  "indexed_vec",
  "indexmap",
  "insta",
@@ -453,7 +453,7 @@ dependencies = [
  "failure",
  "flame",
  "flamer",
- "fs-err 3.3.0",
+ "fs-err",
  "indexmap",
  "insta",
  "json",
@@ -1205,12 +1205,6 @@ dependencies = [
  "matches",
  "percent-encoding",
 ]
-
-[[package]]
-name = "fs-err"
-version = "2.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0845fa252299212f0389d64ba26f34fa32cfe41588355f21ed507c59a0f64541"
 
 [[package]]
 name = "fs-err"
