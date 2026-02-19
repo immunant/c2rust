@@ -57,3 +57,9 @@ fn test_refactor(command: &str) {
 fn test_rename_unnamed() {
     test_refactor("rename_unnamed");
 }
+
+#[cfg(target_os = "linux")] // `statvfs` and `statfs64` are Linux only.
+#[test]
+fn test_reorganize_definitions() {
+    test_refactor("reorganize_definitions");
+}

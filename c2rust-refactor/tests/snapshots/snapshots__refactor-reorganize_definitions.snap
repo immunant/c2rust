@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/reorganize_definitions/old.rs --edition 2021 -Awarnings
+---
 #![feature(extern_types)]
 #![feature(rustc_private)]
 #![feature(register_tool)]
@@ -32,7 +36,7 @@ pub mod bar {
     // Test relative paths
     use crate::outside;
     //test2
-    use libc;
+    use ::libc;
     // Import both the statfs64 type and function declaration from
     // libc exactly as they are defined in that crate. However, since
     // both definitions have a private field, the transform shouldn't
