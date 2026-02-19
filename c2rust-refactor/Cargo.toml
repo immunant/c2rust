@@ -43,6 +43,8 @@ c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.22.1" }
 z3 = "0.12.0"
 quickcheck = "0.9.0"
 rand = "0.7"
+fs-err = "3.3.0"
+insta = "1.46.3"
 
 [features]
 default = []

@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor rename_unnamed --rewrite-mode alongside -- tests/rename_unnamed/old.rs --edition 2021 -Awarnings
+---
 #![feature(extern_types)]
 #![register_tool(c2rust)]
 #![allow(non_upper_case_globals)]

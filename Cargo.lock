@@ -292,7 +292,7 @@ dependencies = [
  "crossbeam-queue",
  "crossbeam-utils",
  "enum_dispatch",
- "fs-err",
+ "fs-err 2.9.0",
  "once_cell",
  "serde",
 ]
@@ -310,7 +310,7 @@ dependencies = [
  "c2rust-pdg",
  "clap 4.2.7",
  "env_logger 0.10.0",
- "fs-err",
+ "fs-err 2.9.0",
  "indexmap",
  "itertools",
  "libc",
@@ -395,7 +395,7 @@ dependencies = [
  "c2rust-build-paths",
  "clap 3.2.25",
  "env_logger 0.10.0",
- "fs-err",
+ "fs-err 2.9.0",
  "fs2",
  "indexmap",
  "itertools",
@@ -425,7 +425,7 @@ dependencies = [
  "clap 3.2.25",
  "color-eyre",
  "env_logger 0.10.0",
- "fs-err",
+ "fs-err 2.9.0",
  "indexed_vec",
  "indexmap",
  "insta",
@@ -453,7 +453,9 @@ dependencies = [
  "failure",
  "flame",
  "flamer",
+ "fs-err 3.3.0",
  "indexmap",
+ "insta",
  "json",
  "kstring",
  "libc",
@@ -1211,6 +1213,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0845fa252299212f0389d64ba26f34fa32cfe41588355f21ed507c59a0f64541"
 
 [[package]]
+name = "fs-err"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73fde052dbfc920003cfd2c8e2c6e6d4cc7c1091538c3a24226cec0665ab08c0"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "fs2"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1477,14 +1488,15 @@ dependencies = [
 
 [[package]]
 name = "insta"
-version = "1.43.2"
+version = "1.46.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46fdb647ebde000f43b5b53f773c30cf9b0cb4300453208713fa38b2c70935a0"
+checksum = "e82db8c87c7f1ccecb34ce0c24399b8a73081427f3c7c50a5d597925356115e4"
 dependencies = [
  "console",
  "globset",
  "once_cell",
  "similar",
+ "tempfile",
  "walkdir",
 ]
 
