@@ -54,6 +54,11 @@ fn test_refactor(command: &str) {
 }
 
 #[test]
+fn test_remove_unused_labels() {
+    test_refactor("remove_unused_labels");
+}
+
+#[test]
 fn test_rename_unnamed() {
     test_refactor("rename_unnamed");
 }
