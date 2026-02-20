@@ -137,6 +137,13 @@ fn test_test_f_plus_one() {
     test_refactor("test_f_plus_one");
 }
 
+/// TODO Broken
+/// `2` doesn't become `1 + 1`.
+#[test]
+fn test_test_one_plus_one() {
+    test_refactor("test_one_plus_one");
+}
+
 #[test]
 fn test_uninit_to_default() {
     test_refactor("uninit_to_default");
