@@ -105,3 +105,8 @@ fn test_sink_lets() {
 fn test_struct_assign_to_update() {
     test_refactor("struct_assign_to_update");
 }
+
+#[test]
+fn test_struct_merge_updates() {
+    test_refactor("struct_merge_updates");
+}
