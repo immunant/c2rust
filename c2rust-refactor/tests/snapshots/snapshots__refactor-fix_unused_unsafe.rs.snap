@@ -10,11 +10,11 @@ fn main() {
         let _safe_val = *ptr;
     }
 
-    unsafe {
+    {
         let x = 42;
     }
 
-    unsafe {}
+    {}
 
-    let _ = unsafe { 5 + 5 };
+    let _ = { 5 + 5 };
 }

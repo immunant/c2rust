@@ -17,7 +17,7 @@ fn test_refactor_named(command: &str, path: &str) {
     let edition = "2021";
 
     let old_path = old_path.to_str().unwrap();
-    let rustc_args = [old_path, "--edition", edition, "-Awarnings"];
+    let rustc_args = [old_path, "--edition", edition];
 
     lib_main(Options {
         rewrite_modes: vec![OutputMode::Alongside],
