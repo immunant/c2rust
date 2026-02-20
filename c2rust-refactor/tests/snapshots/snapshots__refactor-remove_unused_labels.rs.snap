@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor remove_unused_labels --rewrite-mode alongside -- tests/remove_unused_labels/old.rs --edition 2021 -Awarnings
+expression: c2rust-refactor remove_unused_labels --rewrite-mode alongside -- tests/snapshots/remove_unused_labels.rs --edition 2021 -Awarnings
 ---
 fn main() {
     loop {

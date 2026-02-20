@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor struct_assign_to_update --rewrite-mode alongside -- tests/struct_assign_to_update/old.rs --edition 2021 -Awarnings
+expression: c2rust-refactor struct_assign_to_update --rewrite-mode alongside -- tests/snapshots/struct_assign_to_update.rs --edition 2021 -Awarnings
 ---
 struct S {
     x: u32,

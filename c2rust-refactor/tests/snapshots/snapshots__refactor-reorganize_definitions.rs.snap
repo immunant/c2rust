@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/reorganize_definitions/old.rs --edition 2021 -Awarnings
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_definitions.rs --edition 2021 -Awarnings
 ---
 #![feature(extern_types)]
 #![feature(rustc_private)]
