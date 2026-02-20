@@ -68,6 +68,11 @@ fn test_convert_math_funcs() {
 /// TODO Broken
 /// `unsafe`s are not actually removed.
 #[test]
+fn test_convert_math_skip() {
+    test_refactor_named("convert_math_funcs", "convert_math_skip.rs");
+}
+
+#[test]
 fn test_fix_unused_unsafe() {
     test_refactor("fix_unused_unsafe");
 }
