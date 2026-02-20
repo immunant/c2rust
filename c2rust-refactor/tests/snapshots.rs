@@ -66,6 +66,11 @@ fn test_fix_unused_unsafe() {
 }
 
 #[test]
+fn test_fold_let_assign() {
+    test_refactor("fold_let_assign");
+}
+
+#[test]
 fn test_remove_unused_labels() {
     test_refactor("remove_unused_labels");
 }
