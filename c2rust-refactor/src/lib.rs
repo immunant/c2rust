@@ -389,6 +389,23 @@ fn rebuild() {
     ops::compile(&ws, &compile_opts).expect("Could not rebuild crate");
 }
 
+/// This can only be called once.
+///
+/// Things like [`env_logger::init`] can only be called once.
+///
+/// Other things like [`env::set_var`] and [`env::remove_var`]
+/// are unsound to call on non-Windows in any multithreaded contexts.
+///
+/// So when using multiple threads, such as when running `cargo test`,
+/// this should be wrapped in a [`Once`].
+/// This solves calling things like [`env_logger::init`],
+/// but does not make [`env::set_var`], etc. sound to use.
+/// In practice, this mostly works, but is unsound.
+/// This can be fixed by using `cargo test --test-threads 1`,
+/// but this runs all of the tests sequentially, which is very slow.
+/// A better alternative would be something like `cargo nextest`,
+/// which runs tests in parallel but in separate processes,
+/// which is exactly what we want.
 fn init() {
     env_logger::init();
 
