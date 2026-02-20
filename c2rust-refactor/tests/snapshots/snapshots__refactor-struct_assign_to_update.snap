@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor struct_assign_to_update --rewrite-mode alongside -- tests/struct_assign_to_update/old.rs --edition 2021 -Awarnings
+---
 struct S {
     x: u32,
     y: u32,
@@ -5,14 +9,18 @@ struct S {
 
 fn main() {
     let mut s = S { x: 0, y: 0 };
+
     s = crate::S { x: 1, ..s };
+
     s = crate::S { y: 2, ..s };
 }
 
 mod m {
     fn g() {
         let mut r = 0..10;
+
         r = ::std::ops::Range { start: 2, ..r };
+
         r = ::std::ops::Range { end: 8, ..r };
     }
 }

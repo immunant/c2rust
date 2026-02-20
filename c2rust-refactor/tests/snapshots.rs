@@ -100,3 +100,8 @@ fn test_reorganize_definitions() {
 fn test_sink_lets() {
     test_refactor("sink_lets");
 }
+
+#[test]
+fn test_struct_assign_to_update() {
+    test_refactor("struct_assign_to_update");
+}
