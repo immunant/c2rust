@@ -55,6 +55,8 @@ jobs:
             --profile minimal --component rustfmt,rustc-dev
           rustup toolchain install nightly-2023-04-15 \
             --profile minimal --component rustfmt
+      
+      - uses: taiki-e/install-action@nextest
 
       - name: cargo fmt --check
         run: |
@@ -115,11 +117,11 @@ jobs:
           # Don't build with `--all-features` as `--all-features` includes `--features llvm-static`,
           # which we don't want to test here (see https://github.com/immunant/c2rust/issues/500).
           cargo build --release
-      - name: cargo test --release --workspace
+      - name: cargo nextest run --release --workspace
         run: |
           export RUSTFLAGS="$RUSTFLAGS -D warnings"
           export RUSTDOCFLAGS="-D warnings"
-          cargo test --release --workspace
+          cargo nextest run --release --workspace
       - name: Test translator
         run: |
           # `test_translator.py` compiles translated code,
@@ -194,11 +196,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: tools/${{ matrix.crate }}
+      
+      - uses: taiki-e/install-action@nextest
 
       - run: cargo fmt --check
 
       - run: cargo build --release
 
-      - run: cargo test --release
+      - run: cargo nextest run --release --no-tests warn
 
       - run: cargo doc --document-private-items --no-deps
