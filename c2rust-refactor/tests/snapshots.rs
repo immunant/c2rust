@@ -110,3 +110,8 @@ fn test_struct_assign_to_update() {
 fn test_struct_merge_updates() {
     test_refactor("struct_merge_updates");
 }
+
+#[test]
+fn test_uninit_to_default() {
+    test_refactor("uninit_to_default");
+}
