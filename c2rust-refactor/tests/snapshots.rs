@@ -92,6 +92,13 @@ fn test_reconstruct_while() {
     test_refactor("reconstruct_while");
 }
 
+/// TODO Broken
+/// Suffixes are not actually removed.
+#[test]
+fn test_remove_literal_suffixes() {
+    test_refactor("remove_literal_suffixes");
+}
+
 #[test]
 fn test_remove_unused_labels() {
     test_refactor("remove_unused_labels");
