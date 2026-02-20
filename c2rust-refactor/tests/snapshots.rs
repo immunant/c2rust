@@ -130,6 +130,13 @@ fn test_struct_merge_updates() {
     test_refactor("struct_merge_updates");
 }
 
+/// TODO Broken
+/// `f(x)` doesn't become `x + 1`.
+#[test]
+fn test_test_f_plus_one() {
+    test_refactor("test_f_plus_one");
+}
+
 #[test]
 fn test_uninit_to_default() {
     test_refactor("uninit_to_default");
