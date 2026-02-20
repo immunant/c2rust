@@ -172,8 +172,8 @@ where
 /// "Non-local" here means that the function isn't defined elsewhere in the
 /// crate. This is primarily intended for transforming calls to extern
 /// functions, e.g. the libc functions. Functions must be defined in an `extern
-/// "C"` block and be marked `no_mangle` in order to ensure that we only visit
-/// foreign functions.
+/// "C"` block and be marked `#[no_mangle]` in order to ensure that we only
+/// visit foreign functions.
 pub fn visit_foreign_fns<T, F>(target: &T, cx: &RefactorCtxt, mut callback: F)
 where
     T: Visit,
