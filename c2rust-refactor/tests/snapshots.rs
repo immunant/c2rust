@@ -71,6 +71,11 @@ fn test_fold_let_assign() {
 }
 
 #[test]
+fn test_let_x_uninitialized() {
+    test_refactor("let_x_uninitialized");
+}
+
+#[test]
 fn test_remove_unused_labels() {
     test_refactor("remove_unused_labels");
 }
