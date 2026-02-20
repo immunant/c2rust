@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor remove_unused_labels --rewrite-mode alongside -- tests/remove_unused_labels/old.rs --edition 2021 -Awarnings
+---
 fn main() {
     loop {
         println!("a");
@@ -9,7 +13,6 @@ fn main() {
         println!("b");
     }
 
-
     while true {
         println!("a");
     }
@@ -20,7 +23,6 @@ fn main() {
         println!("b");
     }
 
-
     while let Some(_) = Some(()) {
         println!("a");
     }
@@ -30,7 +32,6 @@ fn main() {
         break 'b;
         println!("b");
     }
-
 
     for i in 0..10 {
         println!("a");

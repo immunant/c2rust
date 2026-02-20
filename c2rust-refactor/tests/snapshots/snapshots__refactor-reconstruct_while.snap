@@ -1,0 +1,11 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reconstruct_while --rewrite-mode alongside -- tests/reconstruct_while/old.rs --edition 2021 -Awarnings
+---
+fn main() {
+    let mut i = 0;
+    'a: while i < 10 {
+        println!("{}", i);
+        i = i + 1;
+    }
+}

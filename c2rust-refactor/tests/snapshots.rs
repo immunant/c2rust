@@ -54,6 +54,38 @@ fn test_refactor(command: &str) {
 }
 
 #[test]
+fn test_convert_math_funcs() {
+    test_refactor("convert_math_funcs");
+}
+
+/// TODO Broken
+/// `unsafe`s are not actually removed.
+#[test]
+fn test_fix_unused_unsafe() {
+    test_refactor("fix_unused_unsafe");
+}
+
+#[test]
+fn test_fold_let_assign() {
+    test_refactor("fold_let_assign");
+}
+
+#[test]
+fn test_let_x_uninitialized() {
+    test_refactor("let_x_uninitialized");
+}
+
+#[test]
+fn test_reconstruct_while() {
+    test_refactor("reconstruct_while");
+}
+
+#[test]
+fn test_remove_unused_labels() {
+    test_refactor("remove_unused_labels");
+}
+
+#[test]
 fn test_rename_unnamed() {
     test_refactor("rename_unnamed");
 }
@@ -62,4 +94,24 @@ fn test_rename_unnamed() {
 #[test]
 fn test_reorganize_definitions() {
     test_refactor("reorganize_definitions");
+}
+
+#[test]
+fn test_sink_lets() {
+    test_refactor("sink_lets");
+}
+
+#[test]
+fn test_struct_assign_to_update() {
+    test_refactor("struct_assign_to_update");
+}
+
+#[test]
+fn test_struct_merge_updates() {
+    test_refactor("struct_merge_updates");
+}
+
+#[test]
+fn test_uninit_to_default() {
+    test_refactor("uninit_to_default");
 }
