@@ -10,9 +10,7 @@ fn main() {
         let _safe_val = *ptr;
     }
 
-    {
-        let x = 42;
-    }
+    let x = 42;
 
     let _ = { 5 + 5 };
 }
