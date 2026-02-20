@@ -60,6 +60,8 @@ fn test_refactor(command: &str) {
     test_refactor_named(command, &format!("{command}.rs"));
 }
 
+// NOTE: Tests should be listed in alphabetical order.
+
 #[test]
 fn test_convert_exits() {
     test_refactor("convert_exits");
