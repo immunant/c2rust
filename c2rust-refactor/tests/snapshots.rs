@@ -76,6 +76,11 @@ fn test_let_x_uninitialized() {
 }
 
 #[test]
+fn test_reconstruct_while() {
+    test_refactor("reconstruct_while");
+}
+
+#[test]
 fn test_remove_unused_labels() {
     test_refactor("remove_unused_labels");
 }
