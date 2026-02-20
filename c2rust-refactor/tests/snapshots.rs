@@ -54,6 +54,11 @@ fn test_refactor(command: &str) {
 }
 
 #[test]
+fn test_convert_math_funcs() {
+    test_refactor("convert_math_funcs");
+}
+
+#[test]
 fn test_remove_unused_labels() {
     test_refactor("remove_unused_labels");
 }
