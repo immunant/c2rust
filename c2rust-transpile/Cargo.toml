@@ -44,4 +44,4 @@ tempfile = "3.5.0"
 llvm-static = ["c2rust-ast-exporter/llvm-static"]
 
 [dev-dependencies]
-insta = { version = "1.43.2", features = ["glob"] }
+insta = { version = "1.46.3", features = ["glob"] }
