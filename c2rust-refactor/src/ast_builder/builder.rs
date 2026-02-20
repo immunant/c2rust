@@ -360,6 +360,21 @@ pub struct Builder {
 
 #[allow(dead_code)]
 impl Builder {
+    /// Pick the span we should attach to a freshly minted statement.
+    ///
+    /// We want new statements produced by transforms such as `sink_lets` or
+    /// `fold_let_assign` to retain the source span of the code they were cloned
+    /// from so that later pretty-print/reparse passes can recover the original
+    /// text instead of seeing an empty buffer from a `DUMMY_SP`.
+    #[inline]
+    fn stmt_span(&self, fallback: Span) -> Span {
+        if self.span == DUMMY_SP {
+            fallback
+        } else {
+            self.span
+        }
+    }
+
     pub fn new() -> Builder {
         Builder {
             vis: Visibility {
@@ -1552,10 +1567,11 @@ impl Builder {
         L: Make<P<Local>>,
     {
         let local = local.make(&self);
+        let stmt_span = self.stmt_span(local.span);
         Stmt {
             id: self.id,
             kind: StmtKind::Local(local),
-            span: self.span,
+            span: stmt_span,
         }
     }
 
@@ -1564,10 +1580,11 @@ impl Builder {
         E: Make<P<Expr>>,
     {
         let expr = expr.make(&self);
+        let stmt_span = self.stmt_span(expr.span);
         Stmt {
             id: self.id,
             kind: StmtKind::Expr(expr),
-            span: self.span,
+            span: stmt_span,
         }
     }
 
@@ -1576,10 +1593,11 @@ impl Builder {
         E: Make<P<Expr>>,
     {
         let expr = expr.make(&self);
+        let stmt_span = self.stmt_span(expr.span);
         Stmt {
             id: self.id,
             kind: StmtKind::Semi(expr),
-            span: self.span,
+            span: stmt_span,
         }
     }
 
@@ -1588,10 +1606,11 @@ impl Builder {
         I: Make<P<Item>>,
     {
         let item = item.make(&self);
+        let stmt_span = self.stmt_span(item.span);
         Stmt {
             id: self.id,
             kind: StmtKind::Item(item),
-            span: self.span,
+            span: stmt_span,
         }
     }
 
