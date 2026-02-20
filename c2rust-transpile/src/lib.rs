@@ -733,7 +733,16 @@ fn rustfmt(output_path: &Path, build_dir: &Path) {
         .current_dir(build_dir)
         .status();
 
-    if !status.map_or(false, |status| status.success()) {
-        warn!("rustfmt failed, code may not be well-formatted");
+    // TODO Rust 1.65 use let else
+    let status = match status {
+        Ok(status) => status,
+        Err(e) => {
+            warn!("rustfmt not found; code may not be well-formatted: {e}");
+            return;
+        }
+    };
+
+    if !status.success() {
+        warn!("rustfmt failed; code may not be well-formatted: {status}");
     }
 }
