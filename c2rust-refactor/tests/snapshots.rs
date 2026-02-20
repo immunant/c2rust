@@ -95,3 +95,8 @@ fn test_rename_unnamed() {
 fn test_reorganize_definitions() {
     test_refactor("reorganize_definitions");
 }
+
+#[test]
+fn test_sink_lets() {
+    test_refactor("sink_lets");
+}
