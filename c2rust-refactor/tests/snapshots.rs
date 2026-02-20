@@ -61,16 +61,6 @@ fn test_refactor(command: &str) {
 }
 
 #[test]
-fn test_convert_math_funcs() {
-    test_refactor("convert_math_funcs");
-}
-
-#[test]
-fn test_convert_math_skip() {
-    test_refactor_named("convert_math_funcs", "convert_math_skip.rs");
-}
-
-#[test]
 fn test_convert_exits() {
     test_refactor("convert_exits");
 }
@@ -78,6 +68,16 @@ fn test_convert_exits() {
 #[test]
 fn test_convert_exits_skip() {
     test_refactor_named("convert_exits", "convert_exits_skip.rs");
+}
+
+#[test]
+fn test_convert_math_funcs() {
+    test_refactor("convert_math_funcs");
+}
+
+#[test]
+fn test_convert_math_skip() {
+    test_refactor_named("convert_math_funcs", "convert_math_skip.rs");
 }
 
 #[test]
