@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor convert_exits --rewrite-mode alongside -- tests/snapshots/convert_exits.rs --edition 2021 -Awarnings
+---
 #![allow(unused)]
 
 extern "C" {
