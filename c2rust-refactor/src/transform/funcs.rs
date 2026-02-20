@@ -328,6 +328,23 @@ impl Transform for FixUnusedUnsafe {
                         .map_or(false, |comments| !comments.is_empty())
                 })
             }
+
+            fn block_has_drop(&self, block: &Block) -> bool {
+                let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
+                let parent = self.cx.hir_map().get_parent_item(hir_id);
+                let param_env = self.cx.ty_ctxt().param_env(parent);
+
+                block.stmts.iter().any(|stmt| match stmt.kind {
+                    StmtKind::Local(ref local) => {
+                        let ty = self
+                            .cx
+                            .opt_node_type(local.id)
+                            .or_else(|| self.cx.opt_node_type(local.pat.id));
+                        ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
+                    }
+                    _ => false,
+                })
+            }
         }
 
         impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
@@ -340,7 +357,10 @@ impl Transform for FixUnusedUnsafe {
                                 let block_id = block.id;
                                 let has_comments = self
                                     .has_attached_comments(&[stmt.id, expr_id, block_id]);
-                                if !has_comments && label.is_none() {
+                                let should_inline = !has_comments
+                                    && label.is_none()
+                                    && !self.block_has_drop(block);
+                                if should_inline {
                                     if block.stmts.is_empty() {
                                         return smallvec![];
                                     }
@@ -348,8 +368,6 @@ impl Transform for FixUnusedUnsafe {
                                     let stmts = mem::take(&mut block.stmts);
                                     return SmallVec::from_vec(stmts);
                                 }
-
-                                block.rules = BlockCheckMode::Default;
                             }
                         }
                     }
