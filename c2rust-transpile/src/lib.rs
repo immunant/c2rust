@@ -724,12 +724,12 @@ fn get_output_path(
     }
 }
 
-fn rustfmt(output_path: &Path) {
+fn rustfmt(rs_path: &Path) {
     let edition = "2021";
 
     let status = Command::new("rustfmt")
         .args(["--edition", edition])
-        .arg(output_path)
+        .arg(rs_path)
         .status();
 
     // TODO Rust 1.65 use let else
