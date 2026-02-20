@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor test_reflect --rewrite-mode alongside -- tests/snapshots/test_reflect.rs --edition 2021 -Awarnings
+---
 #![feature(type_ascription)]
 
 struct S<T>(T);
@@ -28,14 +32,20 @@ fn main() {
         ): (i32, crate::S<::std::option::Option<i32>>),
     ): crate::S<(i32, crate::S<::std::option::Option<i32>>)>;
 
-    let mut v = (::std::vec::Vec::<i32>::new: _)(): ::std::vec::Vec<i32>;
-    (v: ::std::vec::Vec<i32>).push(123: i32): ();
-    let f = ::std::vec::Vec::<i32>::pop: _;
-    (::std::vec::Vec::<i32>::pop: _)(&mut (v: ::std::vec::Vec<i32>): &mut ::std::vec::Vec<i32>):
-        ::std::option::Option<i32>;
-    (::std::vec::Vec::<i32>::drain::<::std::ops::RangeFull>: _)(
-        &mut (v: ::std::vec::Vec<i32>): &mut ::std::vec::Vec<i32>,
-        ::std::ops::RangeFull: ::std::ops::RangeFull,
-    ): ::std::vec::Drain<i32>;
+    let mut v = (::std::vec::Vec::<i32, ::std::alloc::Global>::new: _)():
+        ::std::vec::Vec<i32, ::std::alloc::Global>;
 
+    (v: ::std::vec::Vec<i32, ::std::alloc::Global>).push(123: i32): ();
+    let f = ::std::vec::Vec::<i32, ::std::alloc::Global>::pop: _;
+
+    (::std::vec::Vec::<i32, ::std::alloc::Global>::pop: _)(
+        &mut (v: ::std::vec::Vec<i32, ::std::alloc::Global>):
+            &mut ::std::vec::Vec<i32, ::std::alloc::Global>,
+    ): ::std::option::Option<i32>;
+
+    (::std::vec::Vec::<i32, ::std::alloc::Global>::drain::<::std::ops::RangeFull>: _)(
+        &mut (v: ::std::vec::Vec<i32, ::std::alloc::Global>):
+            &mut ::std::vec::Vec<i32, ::std::alloc::Global>,
+        (..): ::std::ops::RangeFull,
+    ): ::std::vec::Drain<i32, ::std::alloc::Global>;
 }

@@ -145,6 +145,11 @@ fn test_test_one_plus_one() {
 }
 
 #[test]
+fn test_test_reflect() {
+    test_refactor("test_reflect");
+}
+
+#[test]
 fn test_uninit_to_default() {
     test_refactor("uninit_to_default");
 }
