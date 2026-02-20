@@ -39,7 +39,7 @@ pub use self::span_maps::{
     child_slot, AstSpanMaps, NodeContextKey, NodeSpan, SpanNodeKind, StructuralContext,
 };
 pub use self::visit::Visit;
-pub use self::visit_node::{visit_nodes, visit_nodes_post, VisitNode};
+pub use self::visit_node::{visit_foreign_fns, visit_nodes, visit_nodes_post, VisitNode};
 
 // Modules with more complex APIs are left as `pub`.
 pub mod comments;

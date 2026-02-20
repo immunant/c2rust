@@ -53,6 +53,7 @@ transform_modules! {
     casts,
     char_literals,
     control_flow,
+    exits,
     externs,
     format,
     funcs,
