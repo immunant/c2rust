@@ -1,5 +1,6 @@
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
+use std::mem;
 use rustc_hir::def_id::DefId;
 use rustc_type_ir::sty::TyKind;
 use rustc_ast::ast;
@@ -334,15 +335,18 @@ impl Transform for FixUnusedUnsafe {
                 match &mut stmt.kind {
                     StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
                         let expr_id = expr.id;
-                        if let ExprKind::Block(ref mut block, _) = expr.kind {
+                        if let ExprKind::Block(ref mut block, ref label) = expr.kind {
                             if self.is_unused_unsafe_block(block) {
-                                if block.stmts.is_empty() {
-                                    let block_id = block.id;
-                                    let has_comments = self
-                                        .has_attached_comments(&[stmt.id, expr_id, block_id]);
-                                    if !has_comments {
+                                let block_id = block.id;
+                                let has_comments = self
+                                    .has_attached_comments(&[stmt.id, expr_id, block_id]);
+                                if !has_comments && label.is_none() {
+                                    if block.stmts.is_empty() {
                                         return smallvec![];
                                     }
+
+                                    let stmts = mem::take(&mut block.stmts);
+                                    return SmallVec::from_vec(stmts);
                                 }
 
                                 block.rules = BlockCheckMode::Default;
