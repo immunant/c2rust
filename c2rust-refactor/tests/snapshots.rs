@@ -7,18 +7,17 @@ use insta::assert_snapshot;
 use std::path::Path;
 use std::process::Command;
 
-fn test_refactor(command: &str) {
-    let tests_dir = Path::new("tests");
-    let dir = tests_dir.join(command);
-    let old_rs_path = dir.join("old.rs");
-    let new_path = dir.join("old.new"); // Output from `alongside`.
+fn test_refactor_named(command: &str, path: &str) {
+    let tests_dir = Path::new("tests/snapshots");
+    let old_path = tests_dir.join(path);
+    let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
     // TODO Make sure `c2rust-transpile` and `c2rust-refactor` use the same edition.
     // Refactor it into a `const`.
     let edition = "2021";
 
-    let old_rs_path = old_rs_path.to_str().unwrap();
-    let rustc_args = [old_rs_path, "--edition", edition, "-Awarnings"];
+    let old_path = old_path.to_str().unwrap();
+    let rustc_args = [old_path, "--edition", edition, "-Awarnings"];
 
     lib_main(Options {
         rewrite_modes: vec![OutputMode::Alongside],
@@ -46,11 +45,19 @@ fn test_refactor(command: &str) {
 
     let new_rs = fs_err::read_to_string(&new_path).unwrap();
 
-    let snapshot_name = format!("refactor-{command}");
+    let snapshot_name = if Some(command) == path.strip_suffix(".rs") {
+        format!("refactor-{path}")
+    } else {
+        format!("refactor-{command}-{path}")
+    };
     let rustc_args = shlex::try_join(rustc_args).unwrap();
     let debug_expr = format!("c2rust-refactor {command} --rewrite-mode alongside -- {rustc_args}");
 
     assert_snapshot!(snapshot_name, new_rs, &debug_expr);
+}
+
+fn test_refactor(command: &str) {
+    test_refactor_named(command, &format!("{command}.rs"));
 }
 
 #[test]
@@ -60,6 +67,11 @@ fn test_convert_math_funcs() {
 
 /// TODO Broken
 /// `unsafe`s are not actually removed.
+#[test]
+fn test_convert_math_skip() {
+    test_refactor_named("convert_math_funcs", "convert_math_skip.rs");
+}
+
 #[test]
 fn test_fix_unused_unsafe() {
     test_refactor("fix_unused_unsafe");
@@ -78,6 +90,13 @@ fn test_let_x_uninitialized() {
 #[test]
 fn test_reconstruct_while() {
     test_refactor("reconstruct_while");
+}
+
+/// TODO Broken
+/// Suffixes are not actually removed.
+#[test]
+fn test_remove_literal_suffixes() {
+    test_refactor("remove_literal_suffixes");
 }
 
 #[test]
@@ -109,6 +128,25 @@ fn test_struct_assign_to_update() {
 #[test]
 fn test_struct_merge_updates() {
     test_refactor("struct_merge_updates");
+}
+
+/// TODO Broken
+/// `f(x)` doesn't become `x + 1`.
+#[test]
+fn test_test_f_plus_one() {
+    test_refactor("test_f_plus_one");
+}
+
+/// TODO Broken
+/// `2` doesn't become `1 + 1`.
+#[test]
+fn test_test_one_plus_one() {
+    test_refactor("test_one_plus_one");
+}
+
+#[test]
+fn test_test_reflect() {
+    test_refactor("test_reflect");
 }
 
 #[test]

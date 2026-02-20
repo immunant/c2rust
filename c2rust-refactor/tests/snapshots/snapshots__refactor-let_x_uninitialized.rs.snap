@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor let_x_uninitialized --rewrite-mode alongside -- tests/let_x_uninitialized/old.rs --edition 2021 -Awarnings
+expression: c2rust-refactor let_x_uninitialized --rewrite-mode alongside -- tests/snapshots/let_x_uninitialized.rs --edition 2021 -Awarnings
 ---
 fn main() {
     let x = ::std::mem::uninitialized();

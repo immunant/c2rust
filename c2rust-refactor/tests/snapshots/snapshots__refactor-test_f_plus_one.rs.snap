@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor test_f_plus_one --rewrite-mode alongside -- tests/snapshots/test_f_plus_one.rs --edition 2021 -Awarnings
+---
 /// Test case for checking the rewriter's handling of operator precedence.  The `test_one_plus_one`
 /// and `test_f_plus_one` rewrites should both be semantics-preserving on this program.
 
@@ -6,7 +10,7 @@ fn f(x: i32) -> i32 {
 }
 
 fn main() {
-    println!("f(2) = {}", 2 + 1);
+    println!("f(2) = {}", f(2));
 
     println!("2 + 10 = {}", 2 + 10);
     println!("10 + 2 = {}", 10 + 2);
@@ -18,7 +22,7 @@ fn main() {
     println!("2 << 3 = {}", 2 << 3);
     println!("3 << 2 = {}", 3 << 2);
 
-    println!("f(2 + 3) = {}", 2 + 3 + 1);
-    println!("f(2 * 3) = {}", 2 * 3 + 1);
-    println!("f(2 << 3) = {}", (2 << 3) + 1);
+    println!("f(2 + 3) = {}", f(2 + 3));
+    println!("f(2 * 3) = {}", f(2 * 3));
+    println!("f(2 << 3) = {}", f(2 << 3));
 }
