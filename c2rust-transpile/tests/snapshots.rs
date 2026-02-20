@@ -148,6 +148,9 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
 
 #[test]
 fn transpile_all() {
+    // TODO parallelize these `insta::glob!`s across multiple `#[test]`s
+    // now that we use `cargo nextest`.
+
     insta::glob!("snapshots/*.c", |x| transpile(None, x));
 
     // Some things transpile differently on Linux vs. macOS,
