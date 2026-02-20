@@ -1,5 +1,5 @@
 use rustc_ast::ptr::P;
-use rustc_ast::*;
+use rustc_ast::{Crate, Expr, ExprKind};
 use std::collections::HashMap;
 
 use crate::ast_builder::mk;
@@ -41,7 +41,7 @@ impl Transform for ConvertExits {
         });
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let ExprKind::Call(ref f, ref args) = e.kind else {
+            let ExprKind::Call(f, args) = &e.kind else {
                 return;
             };
 
