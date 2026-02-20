@@ -58,6 +58,13 @@ fn test_convert_math_funcs() {
     test_refactor("convert_math_funcs");
 }
 
+/// TODO Broken
+/// `unsafe`s are not actually removed.
+#[test]
+fn test_fix_unused_unsafe() {
+    test_refactor("fix_unused_unsafe");
+}
+
 #[test]
 fn test_remove_unused_labels() {
     test_refactor("remove_unused_labels");
