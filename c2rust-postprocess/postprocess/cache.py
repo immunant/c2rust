@@ -277,6 +277,11 @@ class DirectoryCache(AbstractCache):
         gc_mark_file = self.gc_mark_file()
         oldest_allowed = gc_mark_file.stat().st_mtime_ns
 
+        cwd = Path.cwd()
+
+        def rel_path(path: Path) -> Path:
+            return path.resolve().relative_to(cwd)
+
         def walk(dir: Path) -> bool:
             """
             Walk `dir`, removing any files older than `oldest_allowed`.
@@ -294,6 +299,7 @@ class DirectoryCache(AbstractCache):
                     if path.stat().st_mtime_ns < oldest_allowed:
                         try:
                             path.unlink()
+                            logging.info(f"rm {rel_path(path)}")
                             removed_any = True
                         except OSError as e:
                             logging.warning(f"gc_sweep: failed to unlink {path}: {e}")
@@ -307,6 +313,7 @@ class DirectoryCache(AbstractCache):
             # This only succeeds if the dir is empty, which is what we want.
             try:
                 dir.rmdir()
+                logging.info(f"rmdir {rel_path(dir)}")
                 return True
             except OSError as e:
                 if e.errno == ENOTEMPTY:
