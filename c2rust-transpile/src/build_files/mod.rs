@@ -234,7 +234,7 @@ fn emit_build_rs(
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path, build_dir);
+        rustfmt(&output_path);
     }
 
     Some(path)
@@ -278,7 +278,7 @@ fn emit_lib_rs(
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path, build_dir);
+        rustfmt(&output_path);
     }
 
     Some(path)

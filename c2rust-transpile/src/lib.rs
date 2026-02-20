@@ -673,7 +673,7 @@ fn transpile_single(
     };
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path, build_dir);
+        rustfmt(&output_path);
     }
 
     Ok((output_path, pragmas, crates))
@@ -724,13 +724,12 @@ fn get_output_path(
     }
 }
 
-fn rustfmt(output_path: &Path, build_dir: &Path) {
+fn rustfmt(output_path: &Path) {
     let edition = "2021";
 
     let status = Command::new("rustfmt")
         .args(["--edition", edition])
         .arg(output_path)
-        .current_dir(build_dir)
         .status();
 
     // TODO Rust 1.65 use let else
