@@ -56,7 +56,39 @@ fn run_rustfmt(rs_path: &Path, check: bool) {
     }
 }
 
-pub fn rustc(rs_path: &Path, crate_name: &str) {
+#[must_use]
+pub struct Rustc<'a> {
+    rs_path: &'a Path,
+    crate_name: Option<&'a str>,
+}
+
+impl<'a> Rustc<'a> {
+    pub fn crate_name(self, crate_name: &'a str) -> Self {
+        Self {
+            crate_name: Some(crate_name),
+            ..self
+        }
+    }
+
+    pub fn run(self) {
+        let Self {
+            rs_path,
+            crate_name,
+        } = self;
+        let crate_name =
+            crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
+        run_rustc(rs_path, crate_name);
+    }
+}
+
+pub fn rustc(rs_path: &Path) -> Rustc {
+    Rustc {
+        rs_path,
+        crate_name: None,
+    }
+}
+
+fn run_rustc(rs_path: &Path, crate_name: &str) {
     // There's no good way to not create an output with `rustc`,
     // so just create an `.rlib` and then delete it immediately.
     let rlib_path = rs_path.with_file_name(format!("lib{crate_name}.rlib"));

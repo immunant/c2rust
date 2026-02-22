@@ -60,11 +60,10 @@ fn refactor(command: &str) -> RefactorTest {
 fn test_refactor(command: &str, path: &str, check_compile_old: bool) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
-    let crate_name = old_path.file_stem().unwrap().to_str().unwrap();
 
     rustfmt(&old_path).check(true).run();
     if check_compile_old {
-        rustc(&old_path, crate_name);
+        rustc(&old_path).run();
     }
 
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
