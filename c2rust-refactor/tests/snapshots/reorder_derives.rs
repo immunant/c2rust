@@ -13,8 +13,7 @@ pub struct S0 {}
 
 #[derive(Clone)]
 #[repr(u8)]
-#[derive(Copy)]
-#[derive(Debug)]
+#[derive(Copy, Debug)]
 pub struct S1 {}
 
 #[cfg(not(test))]

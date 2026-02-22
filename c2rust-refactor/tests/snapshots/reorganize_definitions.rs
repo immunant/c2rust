@@ -2,7 +2,6 @@
 #![feature(rustc_private)]
 #![feature(register_tool)]
 #![register_tool(c2rust)]
-
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -83,16 +82,10 @@ pub mod bar {
 
         extern "C" {
             #[c2rust::src_loc = "5:0"]
-            pub fn statvfs(
-                path: *const libc::c_char,
-                buf: *mut statvfs,
-            ) -> libc::c_int;
+            pub fn statvfs(path: *const libc::c_char, buf: *mut statvfs) -> libc::c_int;
 
             #[c2rust::src_loc = "4:0"]
-            pub fn statfs64(
-                path: *const libc::c_char,
-                buf: *mut statfs64,
-            ) -> libc::c_int;
+            pub fn statfs64(path: *const libc::c_char, buf: *mut statfs64) -> libc::c_int;
         }
 
         use super::libc;
@@ -177,16 +170,10 @@ pub mod foo {
             pub static mut Bar: bar_t;
 
             #[c2rust::src_loc = "5:0"]
-            pub fn statvfs(
-                path: *const libc::c_char,
-                buf: *mut statvfs,
-            ) -> libc::c_int;
+            pub fn statvfs(path: *const libc::c_char, buf: *mut statvfs) -> libc::c_int;
 
             #[c2rust::src_loc = "4:0"]
-            pub fn statfs64(
-                path: *const libc::c_char,
-                buf: *mut statfs64,
-            ) -> libc::c_int;
+            pub fn statfs64(path: *const libc::c_char, buf: *mut statfs64) -> libc::c_int;
         }
     }
 
@@ -196,7 +183,7 @@ pub mod foo {
             pub y: libc::c_char,
         }
     }
-    use bar_h::{Bar, bar_t};
+    use bar_h::{bar_t, Bar};
     use compat_h::conflicting;
 
     // Comment on foo_t

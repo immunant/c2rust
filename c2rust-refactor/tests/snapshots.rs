@@ -4,6 +4,7 @@ use c2rust_refactor::Command as RefactorCommand;
 use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
 use c2rust_rust_tools::rustfmt;
+use c2rust_rust_tools::rustfmt_check;
 use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use std::path::Path;
@@ -11,6 +12,9 @@ use std::path::Path;
 fn test_refactor_named(command: &str, path: &str) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
+
+    rustfmt_check(&old_path);
+
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
     let old_path = old_path.to_str().unwrap();
