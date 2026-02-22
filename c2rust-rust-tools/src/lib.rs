@@ -116,10 +116,12 @@ fn run_rustc(rs_path: &Path, crate_name: &str, expect_error: bool) {
     ]);
     cmd.args([&rlib_path, rs_path]);
     let status = cmd.status().unwrap();
+    if status.success() {
+        fs_err::remove_file(&rlib_path).unwrap();
+    }
     if expect_error {
         assert!(!status.success(), "expected error, but succeeded: {cmd:?}");
     } else {
         assert!(status.success(), "failed with {status}: {cmd:?}");
-        fs_err::remove_file(&rlib_path).unwrap();
     }
 }
