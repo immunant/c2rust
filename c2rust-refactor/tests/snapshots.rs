@@ -9,7 +9,41 @@ use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use std::path::Path;
 
-fn test_refactor_named(command: &str, path: &str) {
+struct RefactorTest<'a> {
+    command: &'a str,
+    path: Option<&'a str>,
+}
+
+impl<'a> RefactorTest<'a> {
+    pub fn named(self, path: &'a str) -> Self {
+        Self {
+            path: Some(path),
+            ..self
+        }
+    }
+
+    pub fn test(self) {
+        let Self { command, path } = self;
+        let path_buf;
+        let path = match path {
+            Some(path) => path,
+            None => {
+                path_buf = format!("{command}.rs");
+                &path_buf
+            }
+        };
+        test_refactor(command, path);
+    }
+}
+
+fn refactor(command: &str) -> RefactorTest {
+    RefactorTest {
+        command,
+        path: None,
+    }
+}
+
+fn test_refactor(command: &str, path: &str) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
 
@@ -51,115 +85,115 @@ fn test_refactor_named(command: &str, path: &str) {
     assert_snapshot!(snapshot_name, new_rs, &debug_expr);
 }
 
-fn test_refactor(command: &str) {
-    test_refactor_named(command, &format!("{command}.rs"));
-}
-
 // NOTE: Tests should be listed in alphabetical order.
 
 #[test]
 fn test_convert_exits() {
-    test_refactor("convert_exits");
+    refactor("convert_exits").test();
 }
 
 #[test]
 fn test_convert_exits_skip() {
-    test_refactor_named("convert_exits", "convert_exits_skip.rs");
+    refactor("convert_exits")
+        .named("convert_exits_skip.rs")
+        .test();
 }
 
 #[test]
 fn test_convert_math_funcs() {
-    test_refactor("convert_math_funcs");
+    refactor("convert_math_funcs").test();
 }
 
 #[test]
 fn test_convert_math_skip() {
-    test_refactor_named("convert_math_funcs", "convert_math_skip.rs");
+    refactor("convert_math_funcs")
+        .named("convert_math_skip.rs")
+        .test();
 }
 
 #[test]
 fn test_fix_unused_unsafe() {
-    test_refactor("fix_unused_unsafe");
+    refactor("fix_unused_unsafe").test();
 }
 
 #[test]
 fn test_fold_let_assign() {
-    test_refactor("fold_let_assign");
+    refactor("fold_let_assign").test();
 }
 
 #[test]
 fn test_let_x_uninitialized() {
-    test_refactor("let_x_uninitialized");
+    refactor("let_x_uninitialized").test();
 }
 
 #[test]
 fn test_reconstruct_while() {
-    test_refactor("reconstruct_while");
+    refactor("reconstruct_while").test();
 }
 
 /// TODO Broken
 /// Suffixes are not actually removed.
 #[test]
 fn test_remove_literal_suffixes() {
-    test_refactor("remove_literal_suffixes");
+    refactor("remove_literal_suffixes").test();
 }
 
 #[test]
 fn test_remove_unused_labels() {
-    test_refactor("remove_unused_labels");
+    refactor("remove_unused_labels").test();
 }
 
 #[test]
 fn test_rename_unnamed() {
-    test_refactor("rename_unnamed");
+    refactor("rename_unnamed").test();
 }
 
 #[test]
 fn test_reorder_derives() {
-    test_refactor_named("noop", "reorder_derives.rs");
+    refactor("noop").named("reorder_derives.rs").test();
 }
 
 #[cfg(target_os = "linux")] // `statvfs` and `statfs64` are Linux only.
 #[test]
 fn test_reorganize_definitions() {
-    test_refactor("reorganize_definitions");
+    refactor("reorganize_definitions").test();
 }
 
 #[test]
 fn test_sink_lets() {
-    test_refactor("sink_lets");
+    refactor("sink_lets").test();
 }
 
 #[test]
 fn test_struct_assign_to_update() {
-    test_refactor("struct_assign_to_update");
+    refactor("struct_assign_to_update").test();
 }
 
 #[test]
 fn test_struct_merge_updates() {
-    test_refactor("struct_merge_updates");
+    refactor("struct_merge_updates").test();
 }
 
 /// TODO Broken
 /// `f(x)` doesn't become `x + 1`.
 #[test]
 fn test_test_f_plus_one() {
-    test_refactor("test_f_plus_one");
+    refactor("test_f_plus_one").test();
 }
 
 /// TODO Broken
 /// `2` doesn't become `1 + 1`.
 #[test]
 fn test_test_one_plus_one() {
-    test_refactor("test_one_plus_one");
+    refactor("test_one_plus_one").test();
 }
 
 #[test]
 fn test_test_reflect() {
-    test_refactor("test_reflect");
+    refactor("test_reflect").test();
 }
 
 #[test]
 fn test_uninit_to_default() {
-    test_refactor("uninit_to_default");
+    refactor("uninit_to_default").test();
 }
