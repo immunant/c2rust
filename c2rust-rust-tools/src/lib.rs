@@ -11,6 +11,13 @@ pub struct Rustfmt<'a> {
     check: bool,
 }
 
+pub fn rustfmt(rs_path: &Path) -> Rustfmt {
+    Rustfmt {
+        rs_path,
+        check: false,
+    }
+}
+
 impl<'a> Rustfmt<'a> {
     pub fn check(self, check: bool) -> Self {
         Self { check, ..self }
@@ -19,13 +26,6 @@ impl<'a> Rustfmt<'a> {
     pub fn run(self) {
         let Self { rs_path, check } = self;
         run_rustfmt(rs_path, check)
-    }
-}
-
-pub fn rustfmt(rs_path: &Path) -> Rustfmt {
-    Rustfmt {
-        rs_path,
-        check: false,
     }
 }
 
@@ -63,6 +63,14 @@ pub struct Rustc<'a> {
     expect_error: bool,
 }
 
+pub fn rustc(rs_path: &Path) -> Rustc {
+    Rustc {
+        rs_path,
+        crate_name: None,
+        expect_error: false,
+    }
+}
+
 impl<'a> Rustc<'a> {
     pub fn crate_name(self, crate_name: &'a str) -> Self {
         Self {
@@ -87,14 +95,6 @@ impl<'a> Rustc<'a> {
         let crate_name =
             crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
         run_rustc(rs_path, crate_name, expect_error);
-    }
-}
-
-pub fn rustc(rs_path: &Path) -> Rustc {
-    Rustc {
-        rs_path,
-        crate_name: None,
-        expect_error: false,
     }
 }
 

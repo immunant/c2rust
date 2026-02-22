@@ -17,6 +17,15 @@ struct RefactorTest<'a> {
     new_expect_compile_error: bool,
 }
 
+fn refactor(command: &str) -> RefactorTest {
+    RefactorTest {
+        command,
+        path: None,
+        old_expect_compile_error: false,
+        new_expect_compile_error: false,
+    }
+}
+
 impl<'a> RefactorTest<'a> {
     pub fn named(self, path: &'a str) -> Self {
         Self {
@@ -65,15 +74,6 @@ impl<'a> RefactorTest<'a> {
             old_expect_compile_error,
             new_expect_compile_error,
         );
-    }
-}
-
-fn refactor(command: &str) -> RefactorTest {
-    RefactorTest {
-        command,
-        path: None,
-        old_expect_compile_error: false,
-        new_expect_compile_error: false,
     }
 }
 
