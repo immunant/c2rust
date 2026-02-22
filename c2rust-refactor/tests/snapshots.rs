@@ -135,9 +135,7 @@ fn test_fix_unused_unsafe() {
 
 #[test]
 fn test_fold_let_assign() {
-    refactor("fold_let_assign")
-        .old_expect_compile_error(true)
-        .test();
+    refactor("fold_let_assign").test();
 }
 
 #[test]
