@@ -3,9 +3,9 @@ use c2rust_refactor::lib_main;
 use c2rust_refactor::Command as RefactorCommand;
 use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
+use c2rust_rust_tools::rustfmt;
 use insta::assert_snapshot;
 use std::path::Path;
-use std::process::Command;
 
 fn test_refactor_named(command: &str, path: &str) {
     let tests_dir = Path::new("tests/snapshots");
@@ -35,13 +35,7 @@ fn test_refactor_named(command: &str, path: &str) {
 
     // TODO Run `rustfmt` by default as part of `c2rust-refactor`
     // with the same `--disable-rustfmt` flag that `c2rust-transpile` has.
-    // Then import `fn rustfmt` from `c2rust_transpile` to do this.
-    let status = Command::new("rustfmt")
-        .args(["--edition", edition])
-        .arg(&new_path)
-        .status()
-        .unwrap();
-    assert!(status.success());
+    rustfmt(&new_path);
 
     let new_rs = fs_err::read_to_string(&new_path).unwrap();
 

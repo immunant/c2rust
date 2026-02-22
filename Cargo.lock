@@ -443,6 +443,7 @@ dependencies = [
  "c2rust-analysis-rt",
  "c2rust-build-paths",
  "c2rust-macros",
+ "c2rust-rust-tools",
  "cargo",
  "cargo-util",
  "clap 2.34.0",
