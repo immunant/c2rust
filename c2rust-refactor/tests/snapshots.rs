@@ -185,7 +185,7 @@ fn test_reorganize_definitions() {
 
 #[test]
 fn test_sink_lets() {
-    refactor("sink_lets").old_expect_compile_error(true).test();
+    refactor("sink_lets").test();
 }
 
 #[test]

@@ -1,3 +1,8 @@
+#[inline(never)]
+fn foo() -> i32 {
+    3
+}
+
 fn f() {
     {
         let mut x;
