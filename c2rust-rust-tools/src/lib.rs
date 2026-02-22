@@ -2,11 +2,12 @@ use log::warn;
 use std::path::Path;
 use std::process::Command;
 
-pub fn rustfmt(rs_path: &Path) {
-    let edition = "2021";
+/// The Rust edition used by code emitted by `c2rust`.
+pub const EDITION: &str = "2021";
 
+pub fn rustfmt(rs_path: &Path) {
     let status = Command::new("rustfmt")
-        .args(["--edition", edition])
+        .args(["--edition", EDITION])
         .arg(rs_path)
         .status();
 

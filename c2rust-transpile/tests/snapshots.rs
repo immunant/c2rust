@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use c2rust_rust_tools::EDITION;
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
 
 fn config() -> TranspilerConfig {
@@ -100,8 +101,6 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
         }
     };
 
-    let edition = "2021";
-
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
 
@@ -133,7 +132,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
             "--crate-type",
             "lib",
             "--edition",
-            edition,
+            EDITION,
             "--crate-name",
             crate_name,
             "-o",

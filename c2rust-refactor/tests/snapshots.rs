@@ -4,6 +4,7 @@ use c2rust_refactor::Command as RefactorCommand;
 use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
 use c2rust_rust_tools::rustfmt;
+use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use std::path::Path;
 
@@ -12,12 +13,8 @@ fn test_refactor_named(command: &str, path: &str) {
     let old_path = tests_dir.join(path);
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
-    // TODO Make sure `c2rust-transpile` and `c2rust-refactor` use the same edition.
-    // Refactor it into a `const`.
-    let edition = "2021";
-
     let old_path = old_path.to_str().unwrap();
-    let rustc_args = [old_path, "--edition", edition];
+    let rustc_args = [old_path, "--edition", EDITION];
 
     lib_main(Options {
         rewrite_modes: vec![OutputMode::Alongside],
