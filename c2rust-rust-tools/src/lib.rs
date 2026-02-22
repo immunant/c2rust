@@ -5,6 +5,30 @@ use std::process::Command;
 /// The Rust edition used by code emitted by `c2rust`.
 pub const EDITION: &str = "2021";
 
+#[must_use]
+pub struct Rustfmt<'a> {
+    rs_path: &'a Path,
+    check: bool,
+}
+
+impl<'a> Rustfmt<'a> {
+    pub fn check(self, check: bool) -> Self {
+        Self { check, ..self }
+    }
+
+    pub fn run(self) {
+        let Self { rs_path, check } = self;
+        run_rustfmt(rs_path, check)
+    }
+}
+
+pub fn rustfmt(rs_path: &Path) -> Rustfmt {
+    Rustfmt {
+        rs_path,
+        check: false,
+    }
+}
+
 fn run_rustfmt(rs_path: &Path, check: bool) {
     let mut cmd = Command::new("rustfmt");
     cmd.args(["--edition", EDITION]);
@@ -30,14 +54,6 @@ fn run_rustfmt(rs_path: &Path, check: bool) {
             warn!("rustfmt failed; code may not be well-formatted: {status}");
         }
     }
-}
-
-pub fn rustfmt(rs_path: &Path) {
-    run_rustfmt(rs_path, false);
-}
-
-pub fn rustfmt_check(rs_path: &Path) {
-    run_rustfmt(rs_path, true);
 }
 
 pub fn rustc(rs_path: &Path, crate_name: &str) {

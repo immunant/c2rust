@@ -674,7 +674,7 @@ fn transpile_single(
     };
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path);
+        rustfmt(&output_path).run();
     }
 
     Ok((output_path, pragmas, crates))

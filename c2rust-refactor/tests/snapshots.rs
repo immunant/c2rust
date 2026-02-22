@@ -5,7 +5,6 @@ use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
 use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::rustfmt;
-use c2rust_rust_tools::rustfmt_check;
 use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use std::path::Path;
@@ -63,7 +62,7 @@ fn test_refactor(command: &str, path: &str, check_compile_old: bool) {
     let old_path = tests_dir.join(path);
     let crate_name = old_path.file_stem().unwrap().to_str().unwrap();
 
-    rustfmt_check(&old_path);
+    rustfmt(&old_path).check(true).run();
     if check_compile_old {
         rustc(&old_path, crate_name);
     }
@@ -89,7 +88,7 @@ fn test_refactor(command: &str, path: &str, check_compile_old: bool) {
 
     // TODO Run `rustfmt` by default as part of `c2rust-refactor`
     // with the same `--disable-rustfmt` flag that `c2rust-transpile` has.
-    rustfmt(&new_path);
+    rustfmt(&new_path).run();
 
     let new_rs = fs_err::read_to_string(&new_path).unwrap();
 
