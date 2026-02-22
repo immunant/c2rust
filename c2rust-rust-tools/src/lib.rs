@@ -5,11 +5,14 @@ use std::process::Command;
 /// The Rust edition used by code emitted by `c2rust`.
 pub const EDITION: &str = "2021";
 
-pub fn rustfmt(rs_path: &Path) {
-    let status = Command::new("rustfmt")
-        .args(["--edition", EDITION])
-        .arg(rs_path)
-        .status();
+fn run_rustfmt(rs_path: &Path, check: bool) {
+    let mut cmd = Command::new("rustfmt");
+    cmd.args(["--edition", EDITION]);
+    cmd.arg(rs_path);
+    if check {
+        cmd.arg("--check");
+    }
+    let status = cmd.status();
 
     // TODO Rust 1.65 use let else
     let status = match status {
@@ -21,8 +24,20 @@ pub fn rustfmt(rs_path: &Path) {
     };
 
     if !status.success() {
-        warn!("rustfmt failed; code may not be well-formatted: {status}");
+        if check {
+            panic!("rustfmt failed; code not properly formatted: {status}");
+        } else {
+            warn!("rustfmt failed; code may not be well-formatted: {status}");
+        }
     }
+}
+
+pub fn rustfmt(rs_path: &Path) {
+    run_rustfmt(rs_path, false);
+}
+
+pub fn rustfmt_check(rs_path: &Path) {
+    run_rustfmt(rs_path, true);
 }
 
 pub fn rustc(rs_path: &Path, crate_name: &str) {
