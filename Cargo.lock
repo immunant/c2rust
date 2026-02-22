@@ -471,6 +471,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "c2rust-rust-tools"
+version = "0.22.1"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "c2rust-transpile"
 version = "0.22.1"
 dependencies = [
@@ -478,6 +485,7 @@ dependencies = [
  "c2rust-ast-exporter",
  "c2rust-ast-printer",
  "c2rust-bitfields",
+ "c2rust-rust-tools",
  "colored 2.0.0",
  "dtoa",
  "failure",
@@ -1678,12 +1686,9 @@ checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
 
 [[package]]
 name = "log"
-version = "0.4.17"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
-dependencies = [
- "cfg-if",
-]
+checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "log-reroute"
