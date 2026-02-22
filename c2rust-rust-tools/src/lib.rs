@@ -115,8 +115,9 @@ fn run_rustc(rs_path: &Path, crate_name: &str, expect_error: bool) {
             "-o",
         ])
         .args([&rlib_path, rs_path])
-        .status();
-    assert_eq!(!expect_error, status.unwrap().success());
+        .status()
+        .unwrap();
+    assert_eq!(!expect_error, status.success());
     if !expect_error {
         fs_err::remove_file(&rlib_path).unwrap();
     }
