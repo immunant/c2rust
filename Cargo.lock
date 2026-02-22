@@ -475,6 +475,7 @@ dependencies = [
 name = "c2rust-rust-tools"
 version = "0.22.1"
 dependencies = [
+ "fs-err",
  "log",
 ]
 

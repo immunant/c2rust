@@ -12,4 +12,5 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+fs-err = "3.3.0"
 log = "=0.4.28" # "0.4.29" requires Rust 1.68

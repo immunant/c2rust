@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-use c2rust_rust_tools::EDITION;
+use c2rust_rust_tools::rustc;
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
 
 fn config() -> TranspilerConfig {
@@ -124,25 +124,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
         return;
     }
 
-    // Don't need to worry about platform clashes here, as this is immediately deleted.
-    let rlib_path = format!("lib{crate_name}.rlib");
-    let status = Command::new("rustc")
-        .args([
-            "+nightly-2023-04-15",
-            "--crate-type",
-            "lib",
-            "--edition",
-            EDITION,
-            "--crate-name",
-            crate_name,
-            "-o",
-            &rlib_path,
-            "-Awarnings", // Disable warnings.
-        ])
-        .arg(&rs_path)
-        .status();
-    assert!(status.unwrap().success());
-    fs::remove_file(&rlib_path).unwrap();
+    rustc(&rs_path, crate_name);
 }
 
 #[test]
