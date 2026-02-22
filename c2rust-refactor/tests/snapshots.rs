@@ -3,15 +3,18 @@ use c2rust_refactor::lib_main;
 use c2rust_refactor::Command as RefactorCommand;
 use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
+use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::rustfmt;
 use c2rust_rust_tools::rustfmt_check;
 use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use std::path::Path;
 
+#[must_use]
 struct RefactorTest<'a> {
     command: &'a str,
     path: Option<&'a str>,
+    check_compile_old: bool,
 }
 
 impl<'a> RefactorTest<'a> {
@@ -22,8 +25,19 @@ impl<'a> RefactorTest<'a> {
         }
     }
 
+    pub fn check_compile_old(self, check: bool) -> Self {
+        Self {
+            check_compile_old: check,
+            ..self
+        }
+    }
+
     pub fn test(self) {
-        let Self { command, path } = self;
+        let Self {
+            command,
+            path,
+            check_compile_old,
+        } = self;
         let path_buf;
         let path = match path {
             Some(path) => path,
@@ -32,7 +46,7 @@ impl<'a> RefactorTest<'a> {
                 &path_buf
             }
         };
-        test_refactor(command, path);
+        test_refactor(command, path, check_compile_old);
     }
 }
 
@@ -40,14 +54,19 @@ fn refactor(command: &str) -> RefactorTest {
     RefactorTest {
         command,
         path: None,
+        check_compile_old: true,
     }
 }
 
-fn test_refactor(command: &str, path: &str) {
+fn test_refactor(command: &str, path: &str, check_compile_old: bool) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
+    let crate_name = old_path.file_stem().unwrap().to_str().unwrap();
 
     rustfmt_check(&old_path);
+    if check_compile_old {
+        rustc(&old_path, crate_name);
+    }
 
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
@@ -118,12 +137,14 @@ fn test_fix_unused_unsafe() {
 
 #[test]
 fn test_fold_let_assign() {
-    refactor("fold_let_assign").test();
+    refactor("fold_let_assign").check_compile_old(false).test();
 }
 
 #[test]
 fn test_let_x_uninitialized() {
-    refactor("let_x_uninitialized").test();
+    refactor("let_x_uninitialized")
+        .check_compile_old(false)
+        .test();
 }
 
 #[test]
@@ -145,12 +166,15 @@ fn test_remove_unused_labels() {
 
 #[test]
 fn test_rename_unnamed() {
-    refactor("rename_unnamed").test();
+    refactor("rename_unnamed").check_compile_old(false).test();
 }
 
 #[test]
 fn test_reorder_derives() {
-    refactor("noop").named("reorder_derives.rs").test();
+    refactor("noop")
+        .named("reorder_derives.rs")
+        .check_compile_old(false)
+        .test();
 }
 
 #[cfg(target_os = "linux")] // `statvfs` and `statfs64` are Linux only.
@@ -161,7 +185,7 @@ fn test_reorganize_definitions() {
 
 #[test]
 fn test_sink_lets() {
-    refactor("sink_lets").test();
+    refactor("sink_lets").check_compile_old(false).test();
 }
 
 #[test]
