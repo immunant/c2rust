@@ -13,7 +13,7 @@ use std::path::Path;
 struct RefactorTest<'a> {
     command: &'a str,
     path: Option<&'a str>,
-    check_compile_old: bool,
+    old_expect_compile_error: bool,
 }
 
 impl<'a> RefactorTest<'a> {
@@ -24,9 +24,9 @@ impl<'a> RefactorTest<'a> {
         }
     }
 
-    pub fn check_compile_old(self, check: bool) -> Self {
+    pub fn old_expect_compile_error(self, expect_error: bool) -> Self {
         Self {
-            check_compile_old: check,
+            old_expect_compile_error: expect_error,
             ..self
         }
     }
@@ -35,7 +35,7 @@ impl<'a> RefactorTest<'a> {
         let Self {
             command,
             path,
-            check_compile_old,
+            old_expect_compile_error,
         } = self;
         let path_buf;
         let path = match path {
@@ -45,7 +45,7 @@ impl<'a> RefactorTest<'a> {
                 &path_buf
             }
         };
-        test_refactor(command, path, check_compile_old);
+        test_refactor(command, path, old_expect_compile_error);
     }
 }
 
@@ -53,18 +53,18 @@ fn refactor(command: &str) -> RefactorTest {
     RefactorTest {
         command,
         path: None,
-        check_compile_old: true,
+        old_expect_compile_error: false,
     }
 }
 
-fn test_refactor(command: &str, path: &str, check_compile_old: bool) {
+fn test_refactor(command: &str, path: &str, old_expect_compile_error: bool) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
 
     rustfmt(&old_path).check(true).run();
-    if check_compile_old {
-        rustc(&old_path).run();
-    }
+    rustc(&old_path)
+        .expect_error(old_expect_compile_error)
+        .run();
 
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
@@ -135,13 +135,15 @@ fn test_fix_unused_unsafe() {
 
 #[test]
 fn test_fold_let_assign() {
-    refactor("fold_let_assign").check_compile_old(false).test();
+    refactor("fold_let_assign")
+        .old_expect_compile_error(true)
+        .test();
 }
 
 #[test]
 fn test_let_x_uninitialized() {
     refactor("let_x_uninitialized")
-        .check_compile_old(false)
+        .old_expect_compile_error(true)
         .test();
 }
 
@@ -164,14 +166,16 @@ fn test_remove_unused_labels() {
 
 #[test]
 fn test_rename_unnamed() {
-    refactor("rename_unnamed").check_compile_old(false).test();
+    refactor("rename_unnamed")
+        .old_expect_compile_error(true)
+        .test();
 }
 
 #[test]
 fn test_reorder_derives() {
     refactor("noop")
         .named("reorder_derives.rs")
-        .check_compile_old(false)
+        .old_expect_compile_error(true)
         .test();
 }
 
@@ -183,7 +187,7 @@ fn test_reorganize_definitions() {
 
 #[test]
 fn test_sink_lets() {
-    refactor("sink_lets").check_compile_old(false).test();
+    refactor("sink_lets").old_expect_compile_error(true).test();
 }
 
 #[test]

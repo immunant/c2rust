@@ -60,6 +60,7 @@ fn run_rustfmt(rs_path: &Path, check: bool) {
 pub struct Rustc<'a> {
     rs_path: &'a Path,
     crate_name: Option<&'a str>,
+    expect_error: bool,
 }
 
 impl<'a> Rustc<'a> {
@@ -70,14 +71,22 @@ impl<'a> Rustc<'a> {
         }
     }
 
+    pub fn expect_error(self, expect_error: bool) -> Self {
+        Self {
+            expect_error,
+            ..self
+        }
+    }
+
     pub fn run(self) {
         let Self {
             rs_path,
             crate_name,
+            expect_error,
         } = self;
         let crate_name =
             crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
-        run_rustc(rs_path, crate_name);
+        run_rustc(rs_path, crate_name, expect_error);
     }
 }
 
@@ -85,10 +94,11 @@ pub fn rustc(rs_path: &Path) -> Rustc {
     Rustc {
         rs_path,
         crate_name: None,
+        expect_error: false,
     }
 }
 
-fn run_rustc(rs_path: &Path, crate_name: &str) {
+fn run_rustc(rs_path: &Path, crate_name: &str, expect_error: bool) {
     // There's no good way to not create an output with `rustc`,
     // so just create an `.rlib` and then delete it immediately.
     let rlib_path = rs_path.with_file_name(format!("lib{crate_name}.rlib"));
@@ -106,6 +116,8 @@ fn run_rustc(rs_path: &Path, crate_name: &str) {
         ])
         .args([&rlib_path, rs_path])
         .status();
-    assert!(status.unwrap().success());
-    fs_err::remove_file(&rlib_path).unwrap();
+    assert_eq!(!expect_error, status.unwrap().success());
+    if !expect_error {
+        fs_err::remove_file(&rlib_path).unwrap();
+    }
 }
