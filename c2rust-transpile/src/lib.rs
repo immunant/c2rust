@@ -673,7 +673,7 @@ fn transpile_single(
     };
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path, build_dir);
+        rustfmt(&output_path);
     }
 
     Ok((output_path, pragmas, crates))
@@ -724,16 +724,24 @@ fn get_output_path(
     }
 }
 
-fn rustfmt(output_path: &Path, build_dir: &Path) {
+fn rustfmt(rs_path: &Path) {
     let edition = "2021";
 
     let status = Command::new("rustfmt")
         .args(["--edition", edition])
-        .arg(output_path)
-        .current_dir(build_dir)
+        .arg(rs_path)
         .status();
 
-    if !status.map_or(false, |status| status.success()) {
-        warn!("rustfmt failed, code may not be well-formatted");
+    // TODO Rust 1.65 use let else
+    let status = match status {
+        Ok(status) => status,
+        Err(e) => {
+            warn!("rustfmt not found; code may not be well-formatted: {e}");
+            return;
+        }
+    };
+
+    if !status.success() {
+        warn!("rustfmt failed; code may not be well-formatted: {status}");
     }
 }
