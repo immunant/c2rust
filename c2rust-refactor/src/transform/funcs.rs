@@ -303,75 +303,65 @@ impl Transform for FixUnusedUnsafe {
 
         impl<'a, 'tcx> FixUnusedUnsafeFolder<'a, 'tcx> {
             fn is_unused_unsafe_block(&self, b: &Block) -> bool {
-                if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
-                    let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
-                    let parent = self.cx.hir_map().get_parent_item(hir_id);
-                    let result = self.cx.ty_ctxt().unsafety_check_result(parent);
-                    return result
-                        .unused_unsafes
-                        .as_deref()
-                        .unwrap_or_default()
-                        .iter()
-                        .any(|&(id, _)| {
-                            // TODO: do we need to check the UnusedUnsafe argument?
-                            id == self.cx.hir_map().node_to_hir_id(b.id)
-                        });
-                }
+                let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules else {
+                    return false;
+                };
 
-                false
-            }
-
-            fn has_attached_comments(&self, ids: &[NodeId]) -> bool {
-                ids.iter().any(|id| {
-                    self.comment_map
-                        .get(id)
-                        .map_or(false, |comments| !comments.is_empty())
-                })
-            }
-
-            fn block_has_drop(&self, block: &Block) -> bool {
-                let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
+                let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
                 let parent = self.cx.hir_map().get_parent_item(hir_id);
-                let param_env = self.cx.ty_ctxt().param_env(parent);
-
-                block.stmts.iter().any(|stmt| match stmt.kind {
-                    StmtKind::Local(ref local) => {
-                        let ty = self
-                            .cx
-                            .opt_node_type(local.id)
-                            .or_else(|| self.cx.opt_node_type(local.pat.id));
-                        ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
-                    }
-                    _ => false,
-                })
+                let result = self.cx.ty_ctxt().unsafety_check_result(parent);
+                result
+                    .unused_unsafes
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
             }
         }
 
         impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
-                match &mut stmt.kind {
-                    StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
-                        let expr_id = expr.id;
-                        if let ExprKind::Block(ref mut block, ref label) = expr.kind {
-                            if self.is_unused_unsafe_block(block) {
-                                let block_id = block.id;
-                                let has_comments = self
-                                    .has_attached_comments(&[stmt.id, expr_id, block_id]);
-                                let should_inline = !has_comments
-                                    && label.is_none()
-                                    && !self.block_has_drop(block);
-                                if should_inline {
-                                    if block.stmts.is_empty() {
-                                        return smallvec![];
-                                    }
+                'noop: {
+                    let (StmtKind::Expr(expr) | StmtKind::Semi(expr)) = &mut stmt.kind else {
+                        break 'noop;
+                    };
 
-                                    let stmts = mem::take(&mut block.stmts);
-                                    return SmallVec::from_vec(stmts);
-                                }
-                            }
-                        }
+                    let expr_id = expr.id;
+                    let ExprKind::Block(block, label) = &mut expr.kind else {
+                        break 'noop;
+                    };
+
+                    if !self.is_unused_unsafe_block(block) {
+                        break 'noop;
                     }
-                    _ => {}
+
+                    let block_id = block.id;
+                    let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
+                    let parent = self.cx.hir_map().get_parent_item(hir_id);
+                    let param_env = self.cx.ty_ctxt().param_env(parent);
+
+                    let has_comments = [stmt.id, expr_id, block_id].iter().any(|id| {
+                        self.comment_map
+                            .get(id)
+                            .map_or(false, |comments| !comments.is_empty())
+                    });
+
+                    let has_drop = block.stmts.iter().any(|stmt| match stmt.kind {
+                        StmtKind::Local(ref local) => {
+                            let ty = self
+                                .cx
+                                .opt_node_type(local.id)
+                                .or_else(|| self.cx.opt_node_type(local.pat.id));
+                            ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
+                        }
+                        _ => false,
+                    });
+
+                    // Remove the block if there's nothing preventing us from doing so.
+                    if label.is_none() && !has_comments && !has_drop {
+                        let stmts = mem::take(&mut block.stmts);
+                        return SmallVec::from_vec(stmts);
+                    }
                 }
 
                 mut_visit::noop_flat_map_stmt(stmt, self)
