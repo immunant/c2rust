@@ -279,7 +279,9 @@ impl Transform for ToMethod {
 ///
 /// Usage: `fix_unused_unsafe`
 ///
-/// Find unused `unsafe` blocks and turn them into ordinary blocks.
+/// Find unused `unsafe` blocks and turn them into ordinary blocks. This relies
+/// on the compiler's `#[warn(unused_unsafe)]` warnings, and will not work with warnings
+/// suppressed.
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
