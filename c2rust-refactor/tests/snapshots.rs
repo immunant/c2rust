@@ -199,7 +199,6 @@ fn test_rename_unnamed() {
 fn test_reorder_derives() {
     refactor("noop")
         .named("reorder_derives.rs")
-        .expect_compile_error(true)
         .test();
 }
 

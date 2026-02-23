@@ -14,12 +14,16 @@ pub struct S0 {}
 #[derive(Clone)]
 #[repr(u8)]
 #[derive(Copy, Debug)]
-pub struct S1 {}
+pub enum E1 {
+    A,
+}
 
 #[cfg(not(test))]
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
-pub struct S2 {}
+pub enum E2 {
+    A,
+}
 
 #[derive(Debug)]
 pub struct S3 {}
