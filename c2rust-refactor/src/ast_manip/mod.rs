@@ -26,9 +26,7 @@ pub use self::ast_map::{
 };
 pub use self::ast_names::AstName;
 pub use self::ast_node::{AstNode, AstNodeRef};
-pub use self::comments::{
-    collect_comments, gather_comments, Comment, CommentMap, CommentStyle,
-};
+pub use self::comments::{collect_comments, gather_comments, Comment, CommentMap, CommentStyle};
 pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes, WalkAst};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
