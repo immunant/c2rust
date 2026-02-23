@@ -283,9 +283,16 @@ impl Transform for ToMethod {
 ///
 /// Usage: `fix_unused_unsafe`
 ///
-/// Find unused `unsafe` blocks and turn them into ordinary blocks. This relies
-/// on the compiler's `#[warn(unused_unsafe)]` warnings, and will not work with warnings
+/// Find unused `unsafe` blocks and turn them into ordinary blocks, removing the
+/// block entirely where possible. This relies on the compiler's
+/// `#[warn(unused_unsafe)]` warnings, and will not work with warnings
 /// suppressed.
+///
+/// Blocks are removed entirely (preserving their contents) if:
+///
+/// - The block is unlabeled.
+/// - There are no comments on the block.
+/// - There are no values in the block that require drop.
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
