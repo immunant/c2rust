@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor test_one_plus_one --rewrite-mode alongside -- tests/snapshots/test_one_plus_one.rs --edition 2021 -Awarnings
+expression: c2rust-refactor test_one_plus_one --rewrite-mode alongside -- tests/snapshots/test_one_plus_one.rs --edition 2021
 ---
 /// Test case for checking the rewriter's handling of operator precedence.  The `test_one_plus_one`
 /// and `test_f_plus_one` rewrites should both be semantics-preserving on this program.

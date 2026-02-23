@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor fold_let_assign --rewrite-mode alongside -- tests/snapshots/fold_let_assign.rs --edition 2021 -Awarnings
+expression: c2rust-refactor fold_let_assign --rewrite-mode alongside -- tests/snapshots/fold_let_assign.rs --edition 2021
 ---
 fn main() {
     {

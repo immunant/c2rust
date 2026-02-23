@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor remove_literal_suffixes --rewrite-mode alongside -- tests/snapshots/remove_literal_suffixes.rs --edition 2021 -Awarnings
+expression: c2rust-refactor remove_literal_suffixes --rewrite-mode alongside -- tests/snapshots/remove_literal_suffixes.rs --edition 2021
 ---
 // Regression input for the token-stream mismatch caused by editing vec! literals.
 

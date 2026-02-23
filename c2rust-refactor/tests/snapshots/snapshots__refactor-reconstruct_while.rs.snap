@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor reconstruct_while --rewrite-mode alongside -- tests/snapshots/reconstruct_while.rs --edition 2021 -Awarnings
+expression: c2rust-refactor reconstruct_while --rewrite-mode alongside -- tests/snapshots/reconstruct_while.rs --edition 2021
 ---
 fn main() {
     let mut i = 0;
