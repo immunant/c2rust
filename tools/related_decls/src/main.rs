@@ -418,7 +418,8 @@ fn main() -> Result<(), String> {
     let args = Args::parse();
     let cargo_dir_path = Path::new(&args.cargo_dir_path);
 
-    let cargo_config = CargoConfig::default();
+    let mut cargo_config = CargoConfig::default();
+    cargo_config.sysroot = Some(ra_ap_project_model::RustLibSource::Discover);
 
     let load_cargo_config: LoadCargoConfig = LoadCargoConfig {
         load_out_dirs_from_check: true,
@@ -436,8 +437,13 @@ fn main() -> Result<(), String> {
 
     log::info!("loaded crate");
 
-    // Assume the first file in `vfs` is the crate root.
-    let (first_file_id, _) = vfs.iter().next().unwrap();
+    let cargo_dir_vfspath: ra_ap_vfs::VfsPath =
+        ra_ap_vfs::AbsPathBuf::assert_utf8(cargo_dir_path.to_owned()).into();
+    // Find the first file in `vfs` under the cargo dir, which we use to find the target crate
+    let (first_file_id, _) = vfs
+        .iter()
+        .find(|(_id, path)| path.starts_with(&cargo_dir_vfspath))
+        .expect("could not find first file in crate");
 
     let sema = Semantics::new(&db);
 
