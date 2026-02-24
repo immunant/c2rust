@@ -304,7 +304,7 @@ impl Transform for FixUnusedUnsafe {
         // keyword from blocks that still need it, so we bail out in that case
         // instead of corrupting the code.
         if cx.session().diagnostic().has_errors().is_some() {
-            eprintln!("WARNING: Skipping fix_unused_unsafe transform due to compilation errors");
+            warn!("Skipping fix_unused_unsafe transform due to compilation errors");
             return;
         }
 
