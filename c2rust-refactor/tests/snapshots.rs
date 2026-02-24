@@ -202,11 +202,13 @@ fn test_refactor(
         .flatten()
         .join("-");
     let snapshot_name = sanitize_file_name(&snapshot_name);
-    let command_args = shlex::try_join(command_args.iter().copied()).unwrap();
-    let rustc_args = shlex::try_join(rustc_args).unwrap();
-    let debug_expr = format!(
-        "c2rust-refactor {command} {command_args} --rewrite-mode alongside -- {rustc_args}"
-    );
+    let cli_args = [
+        &["c2rust-refactor", command],
+        command_args,
+        &["--rewrite-mode", "alongside", "--"],
+        &rustc_args,
+    ];
+    let debug_expr = shlex::try_join(cli_args.into_iter().flatten().copied()).unwrap();
 
     assert_snapshot!(snapshot_name, new_rs, &debug_expr);
 }
