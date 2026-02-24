@@ -423,10 +423,7 @@ fn items_used_by(sema: &Semantics<RootDatabase>, module_def: ModuleDef) -> HashS
     used_module_defs
 }
 
-fn main() -> Result<(), String> {
-    env_logger::init();
-
-    let args = Args::parse();
+fn find_related_decls(args: Args) -> Result<serde_json::Map<String, serde_json::Value>, String> {
     let cargo_dir_path = Path::new(&args.cargo_dir_path);
 
     let mut cargo_config = CargoConfig::default();
@@ -568,6 +565,13 @@ fn main() -> Result<(), String> {
         }
         output.insert(path, path_info.into());
     }
+    Ok(output)
+}
+
+fn main() -> Result<(), String> {
+    env_logger::init();
+
+    let output = find_related_decls(Args::parse())?;
     let mut stdout = std::io::stdout().lock();
     serde_json::to_writer(&mut stdout, &output)
         .map_err(|e| format!("error writing output: {e}"))?;
