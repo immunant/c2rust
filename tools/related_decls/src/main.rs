@@ -1,8 +1,8 @@
 use clap::Parser;
 use itertools::Itertools;
 use ra_ap_hir::{
-    DefWithBody, Function, HasCrate, HasSource, InFile, Module, ModuleDef, ModuleDefId, Name,
-    Semantics, db::DefDatabase,
+    Adt, Function, HasCrate, HasSource, InFile, Module, ModuleDef, ModuleDefId, Name, Semantics,
+    db::DefDatabase,
 };
 use ra_ap_hir_def::{hir::generics::TypeOrConstParamData, signatures::FunctionSignature};
 use ra_ap_ide_db::search::FileReferenceNode;
@@ -83,6 +83,27 @@ fn module_def_source(
         ModuleDef::BuiltinType(_) => return None, // Builtins are not defined in source code
         ModuleDef::Macro(x) => source_text_range(sema, x),
     }
+}
+
+/// Visit all items mentioned by a type
+fn type_visit_items(
+    db: &dyn ra_ap_hir::db::HirDatabase,
+    ty: ra_ap_hir::Type,
+    mut callback: impl FnMut(ModuleDef),
+) {
+    log::debug!("walking ty {ty:?}");
+    ty.walk(db, |ty| {
+        log::debug!("walk encountered ty {ty:?}");
+        if let Some(adt) = ty.as_adt() {
+            log::trace!("adt!");
+            callback(adt.into())
+        } else if let Some(tr) = ty.as_dyn_trait() {
+            log::trace!("dyn trait!");
+            callback(tr.into())
+        } else if let Some(_builtin) = ty.as_builtin() {
+            // We may want to map these to libstd primitives or not...
+        }
+    });
 }
 
 /// Find all references to an item
@@ -293,40 +314,102 @@ fn append_module_path_to_string(
 
 /// Returns the paths of all items used by the given item.
 fn items_used_by(sema: &Semantics<RootDatabase>, module_def: ModuleDef) -> HashSet<ModuleDef> {
-    let dwb = module_def.as_def_with_body().unwrap();
-    let func = match dwb {
-        DefWithBody::Function(f) => f,
-        _ => panic!("not function!"),
+    let mut used_module_defs: HashSet<_> = Default::default();
+    let mut use_type_components = |ty| {
+        type_visit_items(sema.db, ty, |item| {
+            used_module_defs.insert(item);
+        })
     };
 
-    // Obtain body definition as token sequence
-    let fn_ast = sema.source::<Function>(func).expect("def no source").value;
-    let body_ast = fn_ast.body().expect("function has no body");
-    let syntax_node = body_ast.syntax();
+    let syntax_node = match module_def {
+        ModuleDef::Function(func) => {
+            // iterate all params including self, as if we called this as an assoc fn
+            for param in func.assoc_fn_params(sema.db) {
+                use_type_components(param.ty().clone());
+            }
+            use_type_components(func.ret_type(sema.db));
+
+            let fn_ast = sema
+                .source::<Function>(func)
+                .expect("def without source")
+                .value;
+            // Obtain body definition as token sequence
+            fn_ast
+                .body()
+                .expect("function has no body")
+                .syntax()
+                .to_owned()
+        }
+        ModuleDef::Static(s) => {
+            use_type_components(s.ty(sema.db));
+            let static_ast = sema.source::<_>(s).expect("def without source").value;
+            static_ast.body().expect("body").syntax().to_owned()
+        }
+        ModuleDef::Const(c) => {
+            use_type_components(c.ty(sema.db));
+            let const_ast = sema.source::<_>(c).expect("def without source").value;
+            const_ast.body().expect("const value").syntax().to_owned()
+        }
+        ModuleDef::Variant(v) => {
+            for f in v.fields(sema.db) {
+                use_type_components(f.ty(sema.db))
+            }
+            let variant_ast = sema.source(v).expect("def without source").value;
+            match variant_ast.expr() {
+                Some(body) => body.syntax().to_owned(),
+                None => return used_module_defs,
+            }
+        }
+        ModuleDef::Module(_m) => return used_module_defs, // Code doesn't depend on modules directly, only their contained items.
+        // We don't have a separate item type for struct/union field mentions, so consider their
+        // fields' types to also be mentioned.
+        ModuleDef::Adt(adt) => {
+            match adt {
+                Adt::Struct(s) => {
+                    for f in s.fields(sema.db) {
+                        use_type_components(f.ty(sema.db))
+                    }
+                }
+                Adt::Union(u) => {
+                    for f in u.fields(sema.db) {
+                        use_type_components(f.ty(sema.db))
+                    }
+                }
+                Adt::Enum(_e) => {}
+            };
+            return used_module_defs;
+        }
+        // References to a trait don't necessarily need to know about its full signature;
+        // individual method references should cover the relevant portions.
+        ModuleDef::Trait(_tr) => return used_module_defs,
+        ModuleDef::TraitAlias(_tra) => return used_module_defs,
+        ModuleDef::TypeAlias(ta) => {
+            use_type_components(ta.ty(sema.db));
+            return used_module_defs;
+        }
+        ModuleDef::BuiltinType(_bt) => return used_module_defs, /* builtin types do not reference other definitions */
+        ModuleDef::Macro(_mac) => return used_module_defs, /* we don't need to handle macro definitions for now */
+    };
 
     // Query which definition each token refers to
-    let mut used_defns: HashSet<_> = Default::default();
     for event in syntax_node.preorder_with_tokens() {
         if let WalkEvent::Enter(e) = event {
             match e {
                 NodeOrToken::Node(_n) => {}
                 NodeOrToken::Token(token) => {
                     if let Some(defn) = ra_ap_ide_db::helpers::get_definition(&sema, token) {
-                        used_defns.insert(defn);
+                        // Convert jump-to-defn `Definition` into item `ModuleDef`.
+                        // Skips non-item definitions like locals, labels, builtins, etc.
+                        if let Some(module_def) = definition_source(defn) {
+                            used_module_defs.insert(module_def);
+                        }
                     }
                 }
             }
         }
     }
 
-    // Convert jump-to-defn `Definition`s into item `ModuleDef`s
-    used_defns
-        .into_iter()
-        .filter_map(|decl| {
-            // Skip non-item definitions like locals, labels, builtins, etc.
-            definition_source(decl)
-        })
-        .collect()
+    used_module_defs
 }
 
 fn main() -> Result<(), String> {
