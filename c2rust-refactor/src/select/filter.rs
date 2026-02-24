@@ -79,8 +79,8 @@ impl<'ast> AnyNode<'ast> {
             },
             AnyNode::Pat(p) => match p.kind {
                 PatKind::Ident(mode, _, _) => match mode {
-                    BindingMode::ByRef(mutbl) => Some(mutbl),
-                    BindingMode::ByValue(mutbl) => Some(mutbl),
+                    BindingAnnotation(ByRef::Yes, mutbl) => Some(mutbl),
+                    BindingAnnotation(ByRef::No, mutbl) => Some(mutbl),
                 },
                 _ => None,
             },

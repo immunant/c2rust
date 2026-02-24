@@ -102,7 +102,7 @@ struct AssocItem { id, ident, #[match=ignore] attrs, vis, kind, span, #[equiv_mo
 enum AssocItemKind {
     Const(defaultness, ty, init),
     Fn(fn),
-    TyAlias(ta),
+    Type(ta),
     MacCall(mac),
 }
 
@@ -148,7 +148,7 @@ enum WherePredicate {
 
 struct WhereBoundPredicate { span, bounded_ty, bounds, bound_generic_params }
 struct WhereRegionPredicate { span, lifetime, bounds }
-struct WhereEqPredicate { id, span, lhs_ty, rhs_ty }
+struct WhereEqPredicate { span, lhs_ty, rhs_ty }
 
 enum TraitBoundModifier {
     None,
@@ -163,7 +163,7 @@ struct Visibility { kind, span, #[equiv_mode=ignore] #[match=ignore] #[rewrite_i
 #[match=ignore]
 enum VisibilityKind {
     Public,
-    Restricted { path, id },
+    Restricted { path, id, shorthand },
     Inherited,
 }
 
@@ -292,7 +292,7 @@ enum ExprKind {
     Array(#[mac_table_seq] elems),
     ConstBlock(anon_const),
     Call(#[prec=POSTFIX] #[prec_special=Callee] func, #[mac_table_seq] args),
-    MethodCall(path_seg, #[prec_first=POSTFIX] #[mac_table_seq] args, span),
+    MethodCall(path_seg, #[prec=POSTFIX] receiver, #[prec_first=POSTFIX] #[mac_table_seq] args, span),
     Tup(#[mac_table_seq] elems),
     Binary(op, #[prec_left_of_binop=op] a, #[prec_right_of_binop=op] b),
     Unary(op, #[prec=PREFIX] a),
@@ -423,7 +423,7 @@ enum PatKind {
 }
 
 #[match=custom]
-struct Lit { token, kind, span }
+struct Lit { token_lit, kind, span }
 
 struct StrLit { style, symbol, suffix, span, symbol_unescaped }
 
@@ -435,7 +435,7 @@ enum LitKind {
     Int(x, ty),
     Float(sym, ty),
     Bool(x),
-    Err(sym),
+    Err,
 }
 
 enum LitFloatType {
@@ -507,10 +507,11 @@ enum RangeSyntax {
     DotDotDot,
     DotDotEq,
 }
-enum BindingMode {
-    ByRef(mutbl),
-    ByValue(mutbl),
+enum ByRef {
+    Yes,
+    No,
 }
+struct BindingAnnotation(by_ref, mutbl);
 enum CaptureBy {
     Value,
     Ref,
@@ -535,8 +536,9 @@ enum RangeLimits {
 
 #[no_node_id] #[rewrite_print] #[rewrite_custom=SeqItem]
 struct Attribute { kind, id, style, span }
+struct NormalAttr { item, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum AttrKind {
-    Normal(item, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens),
+    Normal(attr),
     DocComment(kind, symbol),
 }
 struct AttrItem { path, args, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
@@ -587,7 +589,7 @@ enum MacStmtStyle {
 #[equiv_mode=ignore]
 flag TokenStream;
 #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore]
-flag LazyTokenStream;
+flag LazyAttrTokenStream;
 struct MacroDef { body, macro_rules }
 
 enum MacArgs {

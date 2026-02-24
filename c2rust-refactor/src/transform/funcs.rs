@@ -142,8 +142,10 @@ impl Transform for ToMethod {
             let self_kind = {
                 if pat_ty == self_ty {
                     match mode {
-                        BindingMode::ByValue(mutbl) => Some(SelfKind::Value(mutbl)),
-                        BindingMode::ByRef(mutbl) => Some(SelfKind::Region(None, mutbl)),
+                        BindingAnnotation(ByRef::No, mutbl) => Some(SelfKind::Value(mutbl)),
+                        BindingAnnotation(ByRef::Yes, mutbl) => {
+                            Some(SelfKind::Region(None, mutbl))
+                        }
                     }
                 } else {
                     match pat_ty.kind() {
@@ -488,7 +490,7 @@ impl Transform for WrapExtern {
                     let arg_names = f.decl.inputs.iter().enumerate().map(|(idx, arg)| {
                         // TODO: match_arg("__i: __t", arg).ident("__i")
                         match arg.pat.kind {
-                            PatKind::Ident(BindingMode::ByValue(Mutability::Not),
+                            PatKind::Ident(BindingAnnotation(ByRef::No, _),
                                            ident,
                                            None) => {
                                 ident

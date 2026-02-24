@@ -26,8 +26,7 @@ impl PatternSymbol for Ident {
 impl PatternSymbol for Lit {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
-            // FIXME: can this conflict with regular Err literals???
-            LitKind::Err(ref sym) => Some(*sym),
+            LitKind::Err => Some(self.token_lit.symbol),
             _ => None,
         }
     }
@@ -73,7 +72,7 @@ impl PatternSymbol for Stmt {
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
-            PatKind::Ident(BindingMode::ByValue(Mutability::Not), ref i, None) => {
+            PatKind::Ident(BindingAnnotation(ByRef::No, _), ref i, None) => {
                 i.pattern_symbol()
             }
             _ => None,

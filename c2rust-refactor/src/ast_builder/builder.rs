@@ -7,7 +7,7 @@ use rustc_ast::ptr::P;
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_ast::ThinVec;
+use thin_vec::ThinVec;
 use rustc_middle::ty;
 use rustc_span::source_map::{dummy_spanned, Spanned};
 use rustc_span::symbol::Ident;
@@ -1276,7 +1276,7 @@ impl Builder {
         let name = name.make(&self);
         P(Pat {
             id: self.id,
-            kind: PatKind::Ident(BindingMode::ByValue(self.mutbl), name, None),
+            kind: PatKind::Ident(BindingAnnotation(ByRef::No, Mutability::Not), name, None),
             span: self.span,
             tokens: None,
         })
@@ -1350,7 +1350,7 @@ impl Builder {
         let name = name.make(&self);
         P(Pat {
             id: self.id,
-            kind: PatKind::Ident(BindingMode::ByRef(self.mutbl), name, None),
+            kind: PatKind::Ident(BindingAnnotation(ByRef::Yes, self.mutbl), name, None),
             span: self.span,
             tokens: None,
         })

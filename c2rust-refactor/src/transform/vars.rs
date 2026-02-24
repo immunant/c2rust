@@ -66,7 +66,7 @@ impl Transform for SinkLets {
 
         let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
-            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.kind {
+            if let PatKind::Ident(BindingAnnotation(ByRef::No, _), _, None) = l.pat.kind {
                 let l_init = get_local_init(&l.kind);
                 if l_init.is_none() || !expr_has_side_effects(cx, l_init.unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
@@ -299,7 +299,7 @@ impl Transform for FoldLetAssign {
 
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
-            if let PatKind::Ident(BindingMode::ByValue(_), _, None) = l.pat.kind {
+            if let PatKind::Ident(BindingAnnotation(ByRef::No, _), _, None) = l.pat.kind {
                 let l_init = get_local_init(&l.kind);
                 if l_init.is_none() || !expr_has_side_effects(cx, l_init.unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);

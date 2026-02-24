@@ -27,7 +27,6 @@ use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
 use rustc_session::config::Input;
 use rustc_session::config::Options as SessionOptions;
-use rustc_session::config::DiagnosticOutput;
 use rustc_session::{self, Session};
 use rustc_span::def_id::LocalDefId;
 use rustc_span::edition::Edition;
@@ -236,7 +235,7 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
         output_file: config.output_file.clone(),
         output_dir: config.output_dir.clone(),
         file_loader: None,
-        diagnostic_output: DiagnosticOutput::Default,
+        diagnostic_output: Default::default(),
         lint_caps: config.lint_caps.clone(),
         parse_sess_created: None,
         register_lints: None,
@@ -272,7 +271,7 @@ pub fn create_config(args: &[String]) -> interface::Config {
         output_file,
         output_dir,
         file_loader: None,
-        diagnostic_output: DiagnosticOutput::Default,
+        diagnostic_output: Default::default(),
         lint_caps: Default::default(),
         parse_sess_created: None,
         register_lints: None,
@@ -315,8 +314,10 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    let state = RefactorState::new(config, cmd_reg, file_io, marks);
-    f(state)
+    util::run_in_thread_pool_with_globals(Edition::Edition2021, 1, move || {
+        let state = RefactorState::new(config, cmd_reg, file_io, marks);
+        f(state)
+    })
 }
 
 #[allow(dead_code)]
@@ -484,7 +485,7 @@ fn build_session(
         in_path,
         None,
         descriptions,
-        DiagnosticOutput::Default,
+        Default::default(),
         Default::default(),
         None,
         target_override,
@@ -631,15 +632,9 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     // `parse_arg` is private, so we make do with `parse_attribute`,
     // `parse_pat`, & `parse_ty`.
-    const INNER_ATTR_FORBIDDEN: InnerAttrPolicy = InnerAttrPolicy::Forbidden {
-        reason: "inner attributes not allowed in function arguments",
-        saw_doc_comment: false,
-        prev_outer_attr_sp: None,
-    };
-
     let mut attrs: Vec<ast::Attribute> = Vec::new();
     while let token::Pound = p.token.kind {
-        attrs.push(p.parse_attribute(INNER_ATTR_FORBIDDEN).unwrap());
+        attrs.push(p.parse_attribute(InnerAttrPolicy::Forbidden(None)).unwrap());
     }
     let pat = p.parse_pat_no_top_alt(None)?;
     p.expect(&TokenKind::Colon)?;

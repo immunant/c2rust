@@ -20,7 +20,7 @@ use rustc_ast::util::parser;
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_data_structures::sync::Lrc;
-use rustc_ast::ThinVec;
+use thin_vec::ThinVec;
 use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_session::Session;
 use rustc_span::hygiene::SyntaxContext;
