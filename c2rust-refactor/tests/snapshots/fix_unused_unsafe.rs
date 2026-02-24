@@ -39,4 +39,11 @@ fn main() {
             let y = 99;
         }
     }
+
+    // Trailing expr in an unsafe block used as a statement, make sure we don't
+    // just remove the block since that would turn the statement into an
+    // expression.
+    unsafe {
+        1 + 2
+    };
 }
