@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor test_reflect --rewrite-mode alongside -- tests/snapshots/test_reflect.rs --edition 2021 -Awarnings
+expression: c2rust-refactor test_reflect --rewrite-mode alongside -- tests/snapshots/test_reflect.rs --edition 2021
 ---
 #![feature(type_ascription)]
 

@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use c2rust_rust_tools::rustfmt;
 use handlebars::Handlebars;
 use pathdiff::diff_paths;
 use serde_derive::Serialize;
@@ -11,10 +12,10 @@ use serde_json::json;
 
 use super::compile_cmds::LinkCmd;
 use super::TranspilerConfig;
+use crate::get_module_name;
 use crate::CrateSet;
 use crate::ExternCrateDetails;
 use crate::PragmaSet;
-use crate::{get_module_name, rustfmt};
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {

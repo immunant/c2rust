@@ -45,6 +45,7 @@ quickcheck = "0.9.0"
 rand = "0.7"
 fs-err = "3.3.0"
 insta = "1.46.3"
+c2rust-rust-tools = { path = "../c2rust-rust-tools", version = "0.22.1" }
 
 [features]
 default = []

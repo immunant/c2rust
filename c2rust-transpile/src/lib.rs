@@ -20,6 +20,7 @@ use std::process::Command;
 use std::{env, io};
 
 use crate::compile_cmds::CompileCmd;
+use c2rust_rust_tools::rustfmt;
 use failure::Error;
 use itertools::Itertools;
 use log::{info, warn};
@@ -721,27 +722,5 @@ fn get_output_path(
         output_path
     } else {
         input_path
-    }
-}
-
-fn rustfmt(rs_path: &Path) {
-    let edition = "2021";
-
-    let status = Command::new("rustfmt")
-        .args(["--edition", edition])
-        .arg(rs_path)
-        .status();
-
-    // TODO Rust 1.65 use let else
-    let status = match status {
-        Ok(status) => status,
-        Err(e) => {
-            warn!("rustfmt not found; code may not be well-formatted: {e}");
-            return;
-        }
-    };
-
-    if !status.success() {
-        warn!("rustfmt failed; code may not be well-formatted: {status}");
     }
 }

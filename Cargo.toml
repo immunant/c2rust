@@ -13,6 +13,7 @@ members = [
     "c2rust-build-paths",
     "c2rust-macros",
     "c2rust-refactor",
+    "c2rust-rust-tools",
     "c2rust-transpile",
     "dynamic_instrumentation",
     "pdg",

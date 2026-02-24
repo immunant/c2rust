@@ -3,21 +3,18 @@ use c2rust_refactor::lib_main;
 use c2rust_refactor::Command as RefactorCommand;
 use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
+use c2rust_rust_tools::rustfmt;
+use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use std::path::Path;
-use std::process::Command;
 
 fn test_refactor_named(command: &str, path: &str) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
-    // TODO Make sure `c2rust-transpile` and `c2rust-refactor` use the same edition.
-    // Refactor it into a `const`.
-    let edition = "2021";
-
     let old_path = old_path.to_str().unwrap();
-    let rustc_args = [old_path, "--edition", edition];
+    let rustc_args = [old_path, "--edition", EDITION];
 
     lib_main(Options {
         rewrite_modes: vec![OutputMode::Alongside],
@@ -35,13 +32,7 @@ fn test_refactor_named(command: &str, path: &str) {
 
     // TODO Run `rustfmt` by default as part of `c2rust-refactor`
     // with the same `--disable-rustfmt` flag that `c2rust-transpile` has.
-    // Then import `fn rustfmt` from `c2rust_transpile` to do this.
-    let status = Command::new("rustfmt")
-        .args(["--edition", edition])
-        .arg(&new_path)
-        .status()
-        .unwrap();
-    assert!(status.success());
+    rustfmt(&new_path);
 
     let new_rs = fs_err::read_to_string(&new_path).unwrap();
 
