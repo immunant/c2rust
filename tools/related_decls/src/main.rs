@@ -17,6 +17,17 @@ use std::path::{Path, PathBuf};
 
 /// example module for testing
 mod another {
+    pub const MAX: usize = usize::MAX;
+    pub struct X {
+        field1: usize,
+        field2: std::path::PathBuf,
+    }
+    pub enum EnumWithBodiedVariant {
+        Variant = isize::MIN,
+    }
+    pub enum EnumWithFieldedVariant {
+        Variant(X),
+    }
     pub mod foo {
         pub const CONSTANT: &str = "someconstant";
         pub const OTHER_CONSTANT: &str = "otherconstant";
@@ -24,6 +35,11 @@ mod another {
     pub mod bar {
         pub const CONSTANT: &str = "barconst";
     }
+}
+
+#[allow(unused)]
+fn returns_pathbuf() -> std::path::PathBuf {
+    PathBuf::new() //unimplemented!()
 }
 
 #[allow(unused)]
@@ -41,6 +57,9 @@ enum Query {
     UsedItems,
     FnSignature,
 }
+
+static ERR: std::io::ErrorKind = std::io::ErrorKind::NotFound;
+static EDITION: Edition = Edition::Edition2021;
 
 /// Analyze a Rust codebase to determine relations between items.
 #[derive(Parser)]
