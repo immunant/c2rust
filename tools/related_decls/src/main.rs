@@ -497,14 +497,13 @@ fn main() -> Result<(), String> {
             let abs_path = absolute_item_path(db, module_def, file.edition(db));
             let canonical_path = canonical_item_path(&module_def, db, file.edition(db));
 
-            unfound_paths.retain(|path| {
-                if canonical_path.as_ref() == Some(path) || abs_path == *path {
-                    log::debug!("item traversal found queried path: {path}");
-                    found_items.insert(path.to_owned(), module_def);
-                    return false;
-                }
-                true
-            });
+            if let Some(path) = canonical_path
+                .and_then(|path| unfound_paths.take(&path))
+                .or_else(|| unfound_paths.take(&abs_path))
+            {
+                log::debug!("item traversal found queried path: {path}");
+                found_items.insert(path.to_owned(), module_def);
+            }
 
             // Save source range
             if let Some(text_range) = module_def_source(&sema, module_def) {
