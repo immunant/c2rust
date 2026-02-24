@@ -226,7 +226,7 @@ fn test_remove_unused_labels() {
 
 #[test]
 fn test_rename_unnamed() {
-    refactor("rename_unnamed").expect_compile_error(true).test();
+    refactor("rename_unnamed").test();
 }
 
 #[test]

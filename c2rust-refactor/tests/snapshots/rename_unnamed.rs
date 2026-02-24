@@ -1,14 +1,4 @@
-#![feature(extern_types)]
-#![register_tool(c2rust)]
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(dead_code)]
-#![allow(mutable_transmutes)]
-#![allow(unused_mut)]
-
 pub mod bar {
-    #[header_src = "/home/user/some/workspace/foobar/bar.h"]
     pub mod bar_h {
         #[derive(Copy, Clone)]
         #[repr(C)]
@@ -33,7 +23,6 @@ pub mod bar {
 }
 
 pub mod foo {
-    #[header_src = "/home/user/some/workspace/foobar/foo.h"]
     pub mod foo_h {
         #[derive(Copy, Clone)]
         #[repr(C)]
