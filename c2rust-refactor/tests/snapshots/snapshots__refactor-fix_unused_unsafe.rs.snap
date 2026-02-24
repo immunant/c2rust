@@ -24,4 +24,11 @@ fn main() {
 
     // Block expression should stay.
     let _ = { 5 + 5 };
+
+    {
+        // Nested unsafe blocks. Not that hard to handle, but also not a
+        // case that we need to cover since c2rust doesn't generate code
+        // like this and later refactoring is unlikely to introduce it.
+        let y = 99;
+    }
 }
