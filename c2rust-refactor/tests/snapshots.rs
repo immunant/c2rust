@@ -7,11 +7,13 @@ use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::rustfmt;
 use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
+use itertools::Itertools;
 use std::path::Path;
 
 #[must_use]
 struct RefactorTest<'a> {
     command: &'a str,
+    command_args: &'a [&'a str],
     path: Option<&'a str>,
     old_expect_format_error: bool,
     new_expect_format_error: bool,
@@ -22,6 +24,7 @@ struct RefactorTest<'a> {
 fn refactor(command: &str) -> RefactorTest {
     RefactorTest {
         command,
+        command_args: &[],
         path: None,
         old_expect_format_error: false,
         new_expect_format_error: false,
@@ -31,6 +34,14 @@ fn refactor(command: &str) -> RefactorTest {
 }
 
 impl<'a> RefactorTest<'a> {
+    #[allow(unused)] // TODO remove, will be used soon
+    pub fn command_args(self, command_args: &'a [&'a str]) -> Self {
+        Self {
+            command_args,
+            ..self
+        }
+    }
+
     pub fn named(self, path: &'a str) -> Self {
         Self {
             path: Some(path),
@@ -80,6 +91,7 @@ impl<'a> RefactorTest<'a> {
         let Self {
             command,
             path,
+            command_args,
             old_expect_format_error,
             new_expect_format_error,
             old_expect_compile_error,
@@ -95,6 +107,7 @@ impl<'a> RefactorTest<'a> {
         };
         test_refactor(
             command,
+            command_args,
             path,
             old_expect_format_error,
             new_expect_format_error,
@@ -106,6 +119,7 @@ impl<'a> RefactorTest<'a> {
 
 fn test_refactor(
     command: &str,
+    command_args: &[&str],
     path: &str,
     old_expect_format_error: bool,
     new_expect_format_error: bool,
@@ -132,7 +146,11 @@ fn test_refactor(
         rewrite_modes: vec![OutputMode::Alongside],
         commands: vec![RefactorCommand {
             name: command.to_owned(),
-            args: vec![],
+            args: command_args
+                .iter()
+                .copied()
+                .map(|arg| arg.to_owned())
+                .collect(),
         }],
         rustc_args: RustcArgSource::CmdLine(rustc_args.map(|arg| arg.to_owned()).to_vec()),
         cursors: Default::default(),
@@ -153,13 +171,24 @@ fn test_refactor(
 
     let new_rs = fs_err::read_to_string(&new_path).unwrap();
 
-    let snapshot_name = if Some(command) == path.strip_suffix(".rs") {
-        format!("refactor-{path}")
+    let snapshot_parts_no_cmd;
+    let snapshot_parts_with_cmd;
+    let snapshot_name_parts = if Some(command) == path.strip_suffix(".rs") {
+        snapshot_parts_no_cmd = ["refactor", path];
+        &snapshot_parts_no_cmd[..]
     } else {
-        format!("refactor-{command}-{path}")
+        snapshot_parts_with_cmd = ["refactor", command, path];
+        &snapshot_parts_with_cmd[..]
     };
+    let snapshot_name = [snapshot_name_parts, command_args]
+        .into_iter()
+        .flatten()
+        .join("-");
+    let command_args = shlex::try_join(command_args.iter().copied()).unwrap();
     let rustc_args = shlex::try_join(rustc_args).unwrap();
-    let debug_expr = format!("c2rust-refactor {command} --rewrite-mode alongside -- {rustc_args}");
+    let debug_expr = format!(
+        "c2rust-refactor {command} {command_args} --rewrite-mode alongside -- {rustc_args}"
+    );
 
     assert_snapshot!(snapshot_name, new_rs, &debug_expr);
 }

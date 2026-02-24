@@ -187,7 +187,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cexpr",
  "clang-sys",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static 1.4.0",
  "lazycell",
  "log",
@@ -312,7 +312,7 @@ dependencies = [
  "env_logger 0.10.0",
  "fs-err",
  "indexmap",
- "itertools",
+ "itertools 0.10.5",
  "libc",
  "log",
  "polonius-engine",
@@ -332,7 +332,7 @@ version = "0.22.1"
 name = "c2rust-ast-builder"
 version = "0.22.1"
 dependencies = [
- "itertools",
+ "itertools 0.10.5",
  "proc-macro2",
  "syn 2.0.106",
 ]
@@ -398,7 +398,7 @@ dependencies = [
  "fs-err",
  "fs2",
  "indexmap",
- "itertools",
+ "itertools 0.10.5",
  "log",
  "once_cell",
  "rand 0.8.5",
@@ -429,7 +429,7 @@ dependencies = [
  "indexed_vec",
  "indexmap",
  "insta",
- "itertools",
+ "itertools 0.10.5",
  "linked_hash_set",
  "log",
  "serde",
@@ -457,6 +457,7 @@ dependencies = [
  "fs-err",
  "indexmap",
  "insta",
+ "itertools 0.14.0",
  "json",
  "kstring",
  "libc",
@@ -495,7 +496,7 @@ dependencies = [
  "handlebars",
  "indexmap",
  "insta",
- "itertools",
+ "itertools 0.10.5",
  "log",
  "log-reroute",
  "pathdiff",
@@ -542,7 +543,7 @@ dependencies = [
  "ignore",
  "im-rc",
  "indexmap",
- "itertools",
+ "itertools 0.10.5",
  "jobserver",
  "lazy_static 1.4.0",
  "lazycell",
@@ -1541,6 +1542,15 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
@@ -2635,7 +2645,7 @@ checksum = "5376256e44f2443f8896ac012507c19a012df0fe8758b55246ae51a2279db51f"
 dependencies = [
  "combine",
  "indexmap",
- "itertools",
+ "itertools 0.10.5",
  "kstring",
  "serde",
 ]
