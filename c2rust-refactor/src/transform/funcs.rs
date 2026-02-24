@@ -297,6 +297,17 @@ pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
+        // HACK: Check if there have been compilation errors before running the
+        // transformation. When there are errors, rustc's unsafe checker can produce
+        // incorrect results, incorrectly marking blocks with actual unsafe
+        // operations as "unused". This would cause us to remove the `unsafe`
+        // keyword from blocks that still need it, so we bail out in that case
+        // instead of corrupting the code.
+        if cx.session().diagnostic().has_errors().is_some() {
+            eprintln!("WARNING: Skipping fix_unused_unsafe transform due to compilation errors");
+            return;
+        }
+
         let comment_map = collect_comments(
             krate,
             cx.session().source_map(),
