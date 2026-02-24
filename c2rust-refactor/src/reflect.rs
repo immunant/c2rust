@@ -8,7 +8,7 @@ use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::definitions::DefPathData;
 use rustc_hir::Node;
 use rustc_middle::hir::map::Map as HirMap;
-use rustc_middle::ty::{self, DefIdTree, EarlyBinder, GenericParamDefKind, Subst, TyCtxt};
+use rustc_middle::ty::{self, DefIdTree, EarlyBinder, GenericParamDefKind, TyCtxt};
 use rustc_span::source_map::DUMMY_SP;
 use rustc_span::symbol::kw;
 use rustc_type_ir::sty::TyKind as IrTyKind;

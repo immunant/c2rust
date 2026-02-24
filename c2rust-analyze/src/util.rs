@@ -9,7 +9,7 @@ use rustc_middle::mir::{
     Body, Constant, Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{
-    self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, Subst, SubstsRef, Ty, TyCtxt,
+    self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, SubstsRef, Ty, TyCtxt,
     TyKind, UintTy,
 };
 use rustc_span::symbol::{sym, Symbol};
@@ -252,7 +252,11 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     }
 }
 
-fn builtin_callee<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, substs: SubstsRef<'tcx>) -> Option<Callee> {
+fn builtin_callee<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    did: DefId,
+    substs: SubstsRef<'tcx>,
+) -> Option<Callee<'tcx>> {
     let name = tcx.item_name(did);
 
     match name.as_str() {
@@ -434,6 +438,7 @@ pub fn lty_project<'tcx, L: Debug>(
         }
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
+        ProjectionElem::OpaqueCast(_) => lty,
     }
 }
 
@@ -576,7 +581,7 @@ pub fn has_test_attr(tcx: TyCtxt, ldid: LocalDefId, attr: TestAttr) -> bool {
 
     for attr in tcx.get_attrs_unchecked(ldid.to_def_id()) {
         let path = match attr.kind {
-            AttrKind::Normal(ref item, _) => &item.path,
+            AttrKind::Normal(ref item) => &item.item.path,
             AttrKind::DocComment(..) => continue,
         };
         let (a, b) = match &path.segments[..] {

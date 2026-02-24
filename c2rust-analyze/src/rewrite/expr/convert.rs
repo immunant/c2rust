@@ -71,7 +71,13 @@ impl<'tcx> ConvertVisitor<'tcx> {
             (&Box(e), 0) => e,
             (&Array(es), i) => &es[i],
             (&Call(_, args), i) => &args[i],
-            (&MethodCall(_, args, _), i) => &args[i],
+            (&MethodCall(_, recv, args, _), i) => {
+                if i == 0 {
+                    recv
+                } else {
+                    &args[i - 1]
+                }
+            }
             (&Tup(es), i) => &es[i],
             (&Binary(_, x, _), 0) => x,
             (&Binary(_, _, y), 1) => y,
@@ -728,6 +734,7 @@ fn apply_adjustment<'tcx>(
             Rewrite::Cast(Box::new(rw), Box::new(ty_rw))
         }
         Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
+        Adjust::DynStar => todo!("Adjust::DynStar"),
     }
 }
 

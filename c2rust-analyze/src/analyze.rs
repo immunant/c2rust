@@ -175,7 +175,7 @@ fn label_string_literals<'tcx>(
 }
 
 fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             let (_, rv) = match &stmt.kind {
                 StatementKind::Assign(x) => &**x,
@@ -214,7 +214,7 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 Rvalue::Cast(_, _, ty) => {
                     acx.assign_pointer_ids_with_info(*ty, PointerInfo::ANNOTATED)
                 }
-                Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c, loc) {
+                Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c.as_ref(), loc) {
                     Some(lty) => lty,
                     None => continue,
                 },
@@ -242,7 +242,7 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
     let mut write_count = HashMap::with_capacity(mir.local_decls.len());
     let mut rhs_is_ref = HashSet::new();
 
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             let (pl, rv) = match &stmt.kind {
                 StatementKind::Assign(x) => &**x,
@@ -296,7 +296,7 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
     for ty in tcx
         .hir_crate_items(())
         .foreign_items()
-        .map(|item| item.def_id.to_def_id())
+        .map(|item| item.owner_id.def_id.to_def_id())
         .filter_map(|did| match tcx.def_kind(did) {
             DefKind::Fn | DefKind::AssocFn => Some(tcx.mk_fn_ptr(tcx.fn_sig(did))),
             DefKind::Static(_) => Some(tcx.type_of(did)),
@@ -1708,7 +1708,7 @@ fn assign_pointer_ids<'tcx>(
     for did in tcx
         .hir_crate_items(())
         .foreign_items()
-        .map(|item| item.def_id.to_def_id())
+        .map(|item| item.owner_id.def_id.to_def_id())
         .filter(|did| matches!(tcx.def_kind(did), DefKind::Fn | DefKind::AssocFn))
     {
         let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did));

@@ -4,7 +4,7 @@ use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::hir::place::PlaceWithHirId;
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::ty::{self, ParamEnv};
-use rustc_typeck::expr_use_visitor::*;
+use rustc_hir_typeck::expr_use_visitor::*;
 use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
 use rustc_ast::ptr::P;
 

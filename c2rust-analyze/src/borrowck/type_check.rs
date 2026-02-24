@@ -647,7 +647,7 @@ pub fn visit_body<'tcx>(
         static_origin,
     };
 
-    for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (block, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (idx, stmt) in bb_data.statements.iter().enumerate() {
             let loc = Location {
                 block,

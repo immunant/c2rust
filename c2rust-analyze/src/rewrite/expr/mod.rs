@@ -108,7 +108,7 @@ fn debug_print_unlower_map<'tcx>(
     };
 
     eprintln!("unlowering for {:?}:", mir.source);
-    for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
+    for (bb_id, bb) in mir.basic_blocks.iter_enumerated() {
         eprintln!("  block {bb_id:?}:");
         for (i, stmt) in bb.statements.iter().enumerate() {
             let loc = Location {

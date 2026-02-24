@@ -15,9 +15,9 @@
 //! `[T]` implementation.
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_data_structures::thin_vec::ThinVec;
+use rustc_ast::ThinVec;
 use rustc_span::source_map::{Span, SyntaxContext};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;

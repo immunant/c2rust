@@ -18,7 +18,7 @@ use rustc_errors::PResult;
 use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
 use rustc_index::vec::IndexVec;
 use rustc_interface::interface;
-use rustc_interface::util::{get_codegen_backend, run_in_thread_pool_with_globals};
+use rustc_interface::util::{get_codegen_backend};
 use rustc_interface::{util, Config};
 use rustc_lint::LintStore;
 use rustc_middle::hir::map as hir_map;
@@ -27,7 +27,8 @@ use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
 use rustc_session::config::Input;
 use rustc_session::config::Options as SessionOptions;
-use rustc_session::{self, DiagnosticOutput, Session};
+use rustc_session::config::DiagnosticOutput;
+use rustc_session::{self, Session};
 use rustc_span::def_id::LocalDefId;
 use rustc_span::edition::Edition;
 use rustc_span::hygiene::SyntaxContext;
@@ -314,10 +315,8 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    run_in_thread_pool_with_globals(Edition::Edition2021, 1, move || {
-        let state = RefactorState::new(config, cmd_reg, file_io, marks);
-        f(state)
-    })
+    let state = RefactorState::new(config, cmd_reg, file_io, marks);
+    f(state)
 }
 
 #[allow(dead_code)]
@@ -632,7 +631,7 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     // `parse_arg` is private, so we make do with `parse_attribute`,
     // `parse_pat`, & `parse_ty`.
-    const INNER_ATTR_FORBIDDEN: InnerAttrPolicy<'_> = InnerAttrPolicy::Forbidden {
+    const INNER_ATTR_FORBIDDEN: InnerAttrPolicy = InnerAttrPolicy::Forbidden {
         reason: "inner attributes not allowed in function arguments",
         saw_doc_comment: false,
         prev_outer_attr_sp: None,

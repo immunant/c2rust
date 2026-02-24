@@ -5,9 +5,9 @@
 use rustc_ast::attr::mk_attr_inner;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Token, TokenKind};
-use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenStreamBuilder, TokenTree};
+use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_data_structures::thin_vec::ThinVec;
+use rustc_ast::ThinVec;
 use rustc_middle::ty;
 use rustc_span::source_map::{dummy_spanned, Spanned};
 use rustc_span::symbol::Ident;
@@ -516,22 +516,34 @@ impl Builder {
         let func: Path = vec![func].make(&self);
 
         let args = MacArgs::Delimited(DelimSpan::dummy(), MacDelimiter::Parenthesis, {
-            let mut builder = TokenStreamBuilder::new();
+            let mut tokens = Vec::new();
 
             let mut is_first = true;
             for argument in arguments {
                 if is_first {
                     is_first = false;
                 } else {
-                    builder.push(TokenStream::token_alone(TokenKind::Comma, DUMMY_SP));
+                    tokens.push(TokenTree::Token(
+                        Token {
+                            kind: TokenKind::Comma,
+                            span: DUMMY_SP,
+                        },
+                        Spacing::Alone,
+                    ));
                 }
 
                 let argument: Ident = argument.make(&self);
                 let token_kind = TokenKind::Ident(argument.name, argument.is_raw_guess());
-                builder.push(TokenStream::token_alone(token_kind, DUMMY_SP));
+                tokens.push(TokenTree::Token(
+                    Token {
+                        kind: token_kind,
+                        span: DUMMY_SP,
+                    },
+                    Spacing::Alone,
+                ));
             }
 
-            builder.build()
+            TokenStream::new(tokens)
         });
 
         let mut attrs = std::mem::take(&mut self.attrs);

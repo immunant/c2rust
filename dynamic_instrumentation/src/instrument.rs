@@ -269,10 +269,10 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
         // terminators with a destination to the address-taken local, or drop and replace
         // statements, put the address-taking statement in the first statement of the successor
         // block
-        for (bid, block) in body.basic_blocks().iter_enumerated().rev() {
+        for (bid, block) in body.basic_blocks.iter_enumerated().rev() {
             for (sid, statement) in block.statements.iter().enumerate().rev() {
                 if let StatementKind::Assign(stmt) = &statement.kind {
-                    let (ref place, _) = **stmt;
+                    let (place, _) = &**stmt;
                     if place
                         .as_local()
                         .filter(|local| self.address_taken.contains(local))
@@ -594,7 +594,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 // TODO: this is a hack that places the store_addr_taken_fn
                 // after the instrumentation for taking the address of that local,
                 // which must be in place prior to this instrumentation.
-                let num_statements = self.body.basic_blocks()[location.block].statements.len();
+                let num_statements = self.body.basic_blocks[location.block].statements.len();
                 let store_addr_taken_loc = Location {
                     block: location.block,
                     // +1 to ensure `dest` is in scope
@@ -876,7 +876,7 @@ fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'t
 
     let mut return_blocks = vec![];
     let mut resume_blocks = vec![];
-    for (block, block_data) in body.basic_blocks().iter_enumerated() {
+    for (block, block_data) in body.basic_blocks.iter_enumerated() {
         match &block_data.terminator().kind {
             TerminatorKind::Return => {
                 return_blocks.push(block);
