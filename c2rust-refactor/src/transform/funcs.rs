@@ -251,13 +251,13 @@ impl Transform for ToMethod {
             // function's `FnRefInfo`.
 
             if let Some(arg_idx) = info.arg_idx {
-                // Move the `self` argument into the first position.
+                // Move the `self` argument into the method receiver position.
                 let mut args = args;
-                let self_arg = args.remove(arg_idx);
-                args.insert(0, self_arg);
+                let recv = args.remove(arg_idx);
 
                 e.kind = ExprKind::MethodCall(
                     mk().path_segment(&info.ident),
+                    recv,
                     args,
                     DUMMY_SP,
                 );

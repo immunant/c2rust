@@ -173,7 +173,13 @@ impl PrintParse for Attribute {
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_doc_comment(kind, style, s, span);
+                    let attr = attr::mk_doc_comment(
+                        &sess.parse_sess.attr_id_generator,
+                        kind,
+                        style,
+                        s,
+                        span,
+                    );
                     p.bump();
                     return Ok(attr);
                 }
@@ -752,7 +758,8 @@ fn create_file_for_module(
                             )),
                             DUMMY_SP,
                         );
-                        path_attr = Some(attr::mk_attr_outer(path_item));
+                        path_attr =
+                            Some(attr::mk_attr_outer(&sess.parse_sess.attr_id_generator, path_item));
                     }
                 } else {
                     if path.file_name().unwrap() == "mod.rs" {

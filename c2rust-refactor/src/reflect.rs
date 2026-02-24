@@ -102,7 +102,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     mk().infer_ty() // TODO higher-rank lifetimes (for<'a> fn(...) -> ...)
                 }
             }
-            IrTyKind::Dynamic(_, _) => mk().infer_ty(), // TODO (dyn Trait)
+            IrTyKind::Dynamic(..) => mk().infer_ty(), // TODO (dyn Trait)
             IrTyKind::Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
@@ -369,6 +369,8 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::Lifetime(_)
         // TODO: return true here?
         | Node::Infer(_)
+        | Node::ExprField(_)
+        | Node::PatField(_)
         | Node::Crate(_) => false,
     }
 }

@@ -369,7 +369,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
             }
         }
 
-        visit::walk_fn(self, kind, span);
+        visit::walk_fn(self, kind);
     }
 
     fn visit_field_def(&mut self, x: &'ast FieldDef) {

@@ -79,9 +79,29 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
         match &x.kind {
             ExprKind::Array(elements)
             | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements, _)
             | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
+            }
+            ExprKind::MethodCall(_, receiver, elements, _) => {
+                let mut history = Vec::with_capacity(elements.len() + 1);
+                for n in std::iter::once(receiver).chain(elements.iter()) {
+                    let id = n.get_node_id();
+                    if self.table.empty_invocs.contains_key(&id) {
+                        let origins = n
+                            .list_node_ids()
+                            .into_iter()
+                            .map(|id| self.node_map.save_origin(id))
+                            .collect();
+                        self.deleted.push(DeletedNode {
+                            parent: x.id,
+                            preds: history.clone(),
+                            node: n.as_mac_node_ref(),
+                            saved_origins: origins,
+                        });
+                    } else {
+                        history.push(id);
+                    }
+                }
             }
             _ => {}
         }
@@ -256,9 +276,16 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
         match &mut expr.kind {
             ExprKind::Array(elements)
             | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements, _)
             | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
+            }
+            ExprKind::MethodCall(_, receiver, elements, _) => {
+                let mut all = Vec::with_capacity(elements.len() + 1);
+                all.push(receiver.clone());
+                all.extend(std::mem::take(elements).into_iter());
+                self.restore_seq(id, &mut all);
+                *receiver = all.remove(0);
+                *elements = all;
             }
             _ => {}
         }

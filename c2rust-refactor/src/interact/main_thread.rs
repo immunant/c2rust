@@ -375,7 +375,7 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
                 self.spans.insert(arg.id, arg.pat.span.to(arg.ty.span));
             }
         }
-        visit::walk_fn(self, kind, span);
+        visit::walk_fn(self, kind);
     }
 }
 

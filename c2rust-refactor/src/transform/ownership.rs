@@ -87,7 +87,7 @@ fn do_annotate(st: &CommandState,
                 .map(|fr| build_constraints_attr(&fr.cset))
         }
 
-        fn push_mono_attrs_for(&self, id: NodeId, dest: &mut Vec<Attribute>) {
+        fn push_mono_attrs_for(&self, id: NodeId, dest: &mut AttrVec) {
             if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id_from_node_id(id)
                     .map(|def_id| (def_id, self.ana.fn_results(def_id.to_def_id()))) {
                 if fr.num_sig_vars == 0 {
@@ -106,7 +106,7 @@ fn do_annotate(st: &CommandState,
             }
         }
 
-        fn clean_attrs(&self, attrs: &mut Vec<Attribute>) {
+        fn clean_attrs(&self, attrs: &mut AttrVec) {
             attrs.retain(|a| {
                 match &*a.name_or_empty().as_str() {
                     "ownership_mono" |
@@ -161,13 +161,12 @@ fn do_annotate(st: &CommandState,
                 return mut_visit::noop_flat_map_field_def(fd, self);
             }
 
-            // fd.attrs is a ThinVec<Attribute> so we need to convert it to a Vec
-            let mut attrs = std::mem::take(&mut fd.attrs).into();
+            let mut attrs = std::mem::take(&mut fd.attrs);
             self.clean_attrs(&mut attrs);
             if let Some(attr) = self.static_attr_for(fd.id) {
                 attrs.push(attr);
             }
-            fd.attrs = attrs.into();
+            fd.attrs = attrs;
 
             mut_visit::noop_flat_map_field_def(fd, self)
         }
@@ -290,11 +289,14 @@ fn make_attr(name: &str, args: MacArgs) -> Attribute {
     Attribute {
         id: AttrId::from_u32(0),
         style: AttrStyle::Outer,
-        kind: AttrKind::Normal(AttrItem {
-            path: mk().path(vec![name]),
-            args: args,
+        kind: AttrKind::Normal(P(NormalAttr {
+            item: AttrItem {
+                path: mk().path(vec![name]),
+                args: args,
+                tokens: None,
+            },
             tokens: None,
-        }, None),
+        })),
         span: DUMMY_SP,
     }
 }
@@ -467,7 +469,7 @@ fn rename_callee(e: &mut P<Expr>, new_name: &str) {
             seg.ident = mk().ident(new_name);
         },
 
-        ExprKind::MethodCall(ref mut seg, _, _) => {
+        ExprKind::MethodCall(ref mut seg, _, _, _) => {
             seg.ident = mk().ident(new_name);
         },
 

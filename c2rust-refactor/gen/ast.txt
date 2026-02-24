@@ -192,6 +192,7 @@ enum TyKind {
 
 enum TraitObjectSyntax {
     Dyn,
+    DynStar,
     None,
 }
 

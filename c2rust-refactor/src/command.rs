@@ -512,7 +512,6 @@ impl RefactorState {
             None,
             descriptions,
             Default::default(),
-            Default::default(),
             None,
             target_override,
         );

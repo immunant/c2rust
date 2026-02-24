@@ -117,7 +117,8 @@ impl PatternSymbol for AssocItem {
 }
 
 pub fn is_c2rust_attr(attr: &Attribute, name: &str) -> bool {
-    if let AttrKind::Normal(item, _) = &attr.kind {
+    if let AttrKind::Normal(item) = &attr.kind {
+        let item = &item.item;
         item.path.segments.len() == 2
             && item.path.segments[0].ident.as_str() == "c2rust"
             && item.path.segments[1].ident.as_str() == name
@@ -261,10 +262,14 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
             Macro(..) => Some(Namespace::MacroNS),
 
             ExternCrate | Use | ForeignMod | AnonConst | InlineConst | OpaqueTy | Field
-            | LifetimeParam | GlobalAsm | Impl | Closure | Generator => None,
+            | LifetimeParam | GlobalAsm | Impl | Closure | Generator | ImplTraitPlaceholder => {
+                None
+            }
         },
 
-        Res::PrimTy(..) | Res::SelfTy { .. } | Res::ToolMod => Some(Namespace::TypeNS),
+        Res::PrimTy(..) | Res::SelfTyParam { .. } | Res::SelfTyAlias { .. } | Res::ToolMod => {
+            Some(Namespace::TypeNS)
+        }
 
         Res::SelfCtor(..) | Res::Local(..) => Some(Namespace::ValueNS),
 
@@ -288,6 +293,7 @@ pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> Visibili
                 Restricted {
                     path: P(Path::from_ident(Ident::new(kw::Crate, DUMMY_SP))),
                     id: DUMMY_NODE_ID,
+                    shorthand: false,
                 }
             }
         }

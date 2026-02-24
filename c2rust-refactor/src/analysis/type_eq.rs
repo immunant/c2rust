@@ -267,7 +267,7 @@ impl<'lty, 'tcx> LabelTysSource<'lty, 'tcx> {
             .tcx
             .hir()
             .get_parent_item(self.hir_map.node_to_hir_id(id));
-        let parent_body = self.tcx.hir().body_owned_by(parent);
+        let parent_body = self.tcx.hir().body_owned_by(parent.def_id);
         self.tcx.typeck_body(parent_body)
     }
 
@@ -545,7 +545,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn get_tables(&self, id: HirId) -> &'tcx TypeckResults<'tcx> {
         let parent = self.tcx.hir().get_parent_item(id);
-        let parent_body = self.tcx.hir().body_owned_by(parent);
+        let parent_body = self.tcx.hir().body_owned_by(parent.def_id);
         self.tcx.typeck_body(parent_body)
     }
 
@@ -650,10 +650,11 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 self.ltt.unify(rty, self.fn_output(func_lty));
             }
 
-            ExprKind::MethodCall(_, ref args, _) => {
+            ExprKind::MethodCall(_, ref recv, ref args, _) => {
                 let sig = self.method_sig(e);
+                self.ltt.unify(sig.inputs[0], self.expr_lty(recv));
                 for (i, arg) in args.iter().enumerate() {
-                    self.ltt.unify(sig.inputs[i], self.expr_lty(arg));
+                    self.ltt.unify(sig.inputs[i + 1], self.expr_lty(arg));
                 }
                 self.ltt.unify(rty, sig.output);
             }
@@ -828,6 +829,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                     }
                     Adjust::Pointer(PointerCast::Unsize) => {} // TODO
                     Adjust::Pointer(PointerCast::ArrayToPointer) => {} // TODO
+                    Adjust::DynStar => {} // TODO
                 }
 
                 prev_ty = rty;
@@ -859,12 +861,12 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
             PatKind::Path(..) => {} // TODO
 
-            PatKind::Tuple(ref ps, None) => {
+            PatKind::Tuple(ref ps, dotdot) if dotdot.as_opt_usize().is_none() => {
                 for (expected, p) in rty.args.iter().zip(ps.iter()) {
                     self.ltt.unify(expected, self.pat_lty(p));
                 }
             }
-            PatKind::Tuple(ref _ps, Some(_dotdot_idx)) => {} // TODO
+            PatKind::Tuple(ref _ps, _dotdot) => {} // TODO
 
             PatKind::Box(ref p) => {
                 self.ltt.unify(rty.args[0], self.pat_lty(p));
@@ -933,7 +935,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         self.ltt.unify(out_lty, self.expr_lty(&body.value));
         self.ltt.unify(out_lty, sig.output);
 
-        intravisit::walk_fn(self, kind, decl, body_id, span, id);
+        intravisit::walk_fn(self, kind, decl, body_id, id);
     }
 
     fn visit_field_def(&mut self, field: &'hir FieldDef) {

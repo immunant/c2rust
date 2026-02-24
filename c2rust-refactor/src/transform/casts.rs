@@ -356,9 +356,9 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         let new_lit = Lit {
             kind: LitKind::Int(i, ty),
             span: lit.span,
-            token: token::Lit {
+            token_lit: token::Lit {
                 kind: token::LitKind::Integer,
-                symbol: lit.token.symbol,
+                symbol: lit.token_lit.symbol,
                 suffix: new_suffix,
             },
         };
@@ -370,7 +370,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         Some(Lit {
             kind: LitKind::Float(fsym, LitFloatType::Suffixed(ty)),
             span: lit.span,
-            token: token::Lit {
+            token_lit: token::Lit {
                 kind: sym_token_kind(fsym),
                 symbol: fsym,
                 suffix: Some(Symbol::intern(ty.name_str())),

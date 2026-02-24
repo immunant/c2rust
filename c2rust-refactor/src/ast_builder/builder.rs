@@ -2,7 +2,6 @@
 //!
 //! This is a fork of c2rust-ast-builder, since that one switched to
 //! the syn crate while this copy uses the old internal rustc AST.
-use rustc_ast::attr::mk_attr_inner;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenTree};
@@ -62,10 +61,12 @@ impl<'a> Make<Visibility> for &'a str {
             "pub(crate)" => VisibilityKind::Restricted {
                 path: P(mk().path("crate")),
                 id: DUMMY_NODE_ID,
+                shorthand: true,
             },
             "pub(super)" => VisibilityKind::Restricted {
                 path: P(mk().path("super")),
                 id: DUMMY_NODE_ID,
+                shorthand: true,
             },
             _ => panic!("unrecognized string for Visibility: {:?}", self),
         };
@@ -204,11 +205,7 @@ impl Make<FloatTy> for ty::FloatTy {
 
 impl Make<Lit> for rustc_hir::Lit {
     fn make(self, _mk: &Builder) -> Lit {
-        Lit {
-            token: self.node.to_lit_token(),
-            kind: self.node,
-            span: self.span,
-        }
+        Lit::from_lit_kind(self.node, self.span)
     }
 }
 
@@ -463,8 +460,8 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId::from_u32(0),
             style: AttrStyle::Outer,
-            kind: AttrKind::Normal(
-                AttrItem {
+            kind: AttrKind::Normal(P(NormalAttr {
+                item: AttrItem {
                     path: key,
                     args: MacArgs::Eq(
                         DUMMY_SP,
@@ -472,8 +469,8 @@ impl Builder {
                     ),
                     tokens: None,
                 },
-                None,
-            ),
+                tokens: None,
+            })),
             span: DUMMY_SP,
         });
         Builder {
@@ -492,14 +489,14 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId::from_u32(0),
             style: AttrStyle::Outer,
-            kind: AttrKind::Normal(
-                AttrItem {
+            kind: AttrKind::Normal(P(NormalAttr {
+                item: AttrItem {
                     path: key,
                     args: MacArgs::Empty,
                     tokens: None,
                 },
-                None,
-            ),
+                tokens: None,
+            })),
             span: DUMMY_SP,
         });
         Builder {
@@ -550,14 +547,14 @@ impl Builder {
         attrs.push(Attribute {
             id: AttrId::from_u32(0),
             style: AttrStyle::Outer,
-            kind: AttrKind::Normal(
-                AttrItem {
+            kind: AttrKind::Normal(P(NormalAttr {
+                item: AttrItem {
                     path: func,
                     args,
                     tokens: None,
                 },
-                None,
-            ),
+                tokens: None,
+            })),
             span: DUMMY_SP,
         });
         Builder {
@@ -726,15 +723,11 @@ impl Builder {
         let expr = expr.make(&self);
         let seg = seg.make(&self);
 
-        let mut all_args = Vec::with_capacity(args.len() + 1);
-        all_args.push(expr);
-        for arg in args {
-            all_args.push(arg.make(&self));
-        }
+        let args = args.into_iter().map(|arg| arg.make(&self)).collect();
 
         P(Expr {
             id: self.id,
-            kind: ExprKind::MethodCall(seg, all_args, DUMMY_SP),
+            kind: ExprKind::MethodCall(seg, expr, args, DUMMY_SP),
             span: self.span,
             attrs: self.attrs.into(),
             tokens: None,
@@ -1006,7 +999,7 @@ impl Builder {
         let mac = mac.make(&self);
         P(Expr {
             id: self.id,
-            kind: ExprKind::MacCall(mac),
+            kind: ExprKind::MacCall(P(mac)),
             span: self.span,
             attrs: self.attrs.into(),
             tokens: None,
@@ -1337,7 +1330,7 @@ impl Builder {
         let mac = mac.make(&self);
         P(Pat {
             id: self.id,
-            kind: PatKind::MacCall(mac),
+            kind: PatKind::MacCall(P(mac)),
             span: self.span,
             tokens: None,
         })
@@ -1542,7 +1535,7 @@ impl Builder {
         let mac = mac.make(&self);
         P(Ty {
             id: self.id,
-            kind: TyKind::MacCall(mac),
+            kind: TyKind::MacCall(P(mac)),
             span: self.span,
             tokens: None,
         })
@@ -1615,7 +1608,7 @@ impl Builder {
         Stmt {
             id: self.id,
             kind: StmtKind::MacCall(P(MacCallStmt {
-                mac,
+                mac: P(mac),
                 style: MacStmtStyle::Semicolon,
                 attrs: ThinVec::new(),
                 tokens: None,
@@ -1636,7 +1629,7 @@ impl Builder {
     ) -> P<Item> {
         P(Item {
             ident: name,
-            attrs: attrs.to_vec(),
+            attrs,
             id: id,
             kind: kind,
             vis: vis,
@@ -1805,7 +1798,7 @@ impl Builder {
         M: Make<MacCall>,
     {
         let mac = mac.make(&self);
-        let kind = ItemKind::MacCall(mac);
+        let kind = ItemKind::MacCall(P(mac));
         Self::item(
             Ident::empty(),
             self.attrs,
@@ -1998,7 +1991,7 @@ impl Builder {
         kind: AssocItemKind,
     ) -> P<AssocItem> {
         P(AssocItem {
-            attrs: attrs.to_vec(),
+            attrs,
             id,
             span,
             vis,
@@ -2013,7 +2006,7 @@ impl Builder {
         M: Make<MacCall>,
     {
         let mac = mac.make(&self);
-        let kind = AssocItemKind::MacCall(mac);
+        let kind = AssocItemKind::MacCall(P(mac));
         Self::impl_item_(
             Ident::empty(),
             self.attrs,
@@ -2036,7 +2029,7 @@ impl Builder {
         kind: AssocItemKind,
     ) -> P<AssocItem> {
         P(AssocItem {
-            attrs: attrs.to_vec(),
+            attrs,
             id,
             span,
             vis,
@@ -2051,7 +2044,7 @@ impl Builder {
         M: Make<MacCall>,
     {
         let mac = mac.make(&self);
-        let kind = AssocItemKind::MacCall(mac);
+        let kind = AssocItemKind::MacCall(P(mac));
         Self::trait_item_(
             Ident::empty(),
             self.attrs,
@@ -2074,7 +2067,7 @@ impl Builder {
     ) -> P<ForeignItem> {
         P(ForeignItem {
             ident: name,
-            attrs: attrs.to_vec(),
+            attrs,
             id: id,
             kind: kind,
             vis: vis,
@@ -2127,7 +2120,7 @@ impl Builder {
         M: Make<MacCall>,
     {
         let mac = mac.make(&self);
-        let kind = ForeignItemKind::MacCall(mac);
+        let kind = ForeignItemKind::MacCall(P(mac));
         Self::foreign_item(
             Ident::empty(),
             self.attrs,
@@ -2279,22 +2272,32 @@ impl Builder {
         Attribute {
             id: AttrId::from_u32(0),
             style,
-            kind: AttrKind::Normal(
-                AttrItem {
+            kind: AttrKind::Normal(P(NormalAttr {
+                item: AttrItem {
                     path,
                     args,
                     tokens: None,
                 },
-                None,
-            ),
+                tokens: None,
+            })),
             span: self.span,
         }
     }
 
     pub fn meta_item_attr(mut self, style: AttrStyle, meta_item: MetaItem) -> Self {
-        let mut attr = mk_attr_inner(meta_item);
-        attr.style = style;
-        self.attrs.push(attr);
+        self.attrs.push(Attribute {
+            id: AttrId::from_u32(0),
+            style,
+            kind: AttrKind::Normal(P(NormalAttr {
+                item: AttrItem {
+                    path: meta_item.path,
+                    args: meta_item.kind.mac_args(meta_item.span),
+                    tokens: None,
+                },
+                tokens: None,
+            })),
+            span: meta_item.span,
+        });
         self
     }
 

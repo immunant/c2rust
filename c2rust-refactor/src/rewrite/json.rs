@@ -152,7 +152,7 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
             };
             self.encode_inner("arg", arg.id, name);
         }
-        visit::walk_fn(self, kind, span);
+        visit::walk_fn(self, kind);
     }
 
     fn visit_field_def(&mut self, x: &'ast FieldDef) {

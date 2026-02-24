@@ -211,7 +211,7 @@ impl ItemLikeKind {
         match i.kind {
             AssocItemKind::Const(..) => ItemLikeKind::Const,
             AssocItemKind::Fn(..) => ItemLikeKind::Fn,
-            AssocItemKind::TyAlias(..) => ItemLikeKind::Ty,
+            AssocItemKind::Type(..) => ItemLikeKind::Ty,
             AssocItemKind::MacCall(..) => ItemLikeKind::Mac,
         }
     }
@@ -463,7 +463,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
             (self.func)(AnyNode::Param(arg));
         }
         // `walk` call handles the return type.
-        visit::walk_fn(self, kind, span);
+        visit::walk_fn(self, kind);
     }
 
     fn visit_field_def(&mut self, x: &'ast FieldDef) {
