@@ -52,12 +52,6 @@ fn synthetic_usages() {
     let indirect = bar::CONSTANT;
 }
 
-enum Query {
-    Uses,
-    UsedItems,
-    FnSignature,
-}
-
 static ERR: std::io::ErrorKind = std::io::ErrorKind::NotFound;
 static EDITION: Edition = Edition::Edition2021;
 
@@ -66,8 +60,6 @@ static EDITION: Edition = Edition::Edition2021;
 struct Args {
     /// Directory of Rust project to analyze. `Cargo.toml` should reside inside this directory.
     cargo_dir_path: PathBuf,
-    // /// Kind of relationships to obtain
-    // mode: Query,
     #[arg(required = true)]
     /// Paths to Rust item to analyze.
     item_paths: Vec<String>,
@@ -541,38 +533,37 @@ fn main() -> Result<(), String> {
     for (path, module_def) in found_items {
         let mut path_info = serde_json::Map::new();
         log::info!("processing {path}");
-        for query in [Query::Uses, Query::UsedItems, Query::FnSignature] {
-            match query {
-                Query::Uses => {
-                    let using_items = item_uses(&sema, &items_by_range, module_def);
-                    let paths = using_items
-                        .into_iter()
-                        .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
-                        .collect::<Vec<_>>();
-                    path_info.insert("uses".to_owned(), paths.into());
-                }
-                Query::UsedItems => {
-                    let used_items = items_used_by(&sema, module_def);
-                    let paths = used_items
-                        .into_iter()
-                        .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
-                        .collect::<Vec<_>>();
-                    path_info.insert("used_items".to_owned(), paths.into());
-                }
-                Query::FnSignature => {
-                    let id: Option<ModuleDefId> = module_def.try_into().ok();
-                    if let Some(ModuleDefId::FunctionId(func_id)) = id {
-                        let sig = db.function_signature(func_id);
-                        path_info.insert(
-                            "signature".to_owned(),
-                            pp_function_signature(&db, &*sig).into(),
-                        );
-                        path_info.insert(
-                            "written_signature".to_owned(),
-                            function_signature_as_written(&sema, func_id.into()).into(),
-                        );
-                    }
-                }
+        // Find uses of the item
+        {
+            let using_items = item_uses(&sema, &items_by_range, module_def);
+            let paths = using_items
+                .into_iter()
+                .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
+                .collect::<Vec<_>>();
+            path_info.insert("uses".to_owned(), paths.into());
+        }
+        // Find used items
+        {
+            let used_items = items_used_by(&sema, module_def);
+            let paths = used_items
+                .into_iter()
+                .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
+                .collect::<Vec<_>>();
+            path_info.insert("used_items".to_owned(), paths.into());
+        }
+        // Output signature for functions
+        {
+            let id: Option<ModuleDefId> = module_def.try_into().ok();
+            if let Some(ModuleDefId::FunctionId(func_id)) = id {
+                let sig = db.function_signature(func_id);
+                path_info.insert(
+                    "signature".to_owned(),
+                    pp_function_signature(&db, &*sig).into(),
+                );
+                path_info.insert(
+                    "written_signature".to_owned(),
+                    function_signature_as_written(&sema, func_id.into()).into(),
+                );
             }
         }
         output.insert(path, path_info.into());
