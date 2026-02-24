@@ -293,7 +293,7 @@ enum ExprKind {
     Array(#[mac_table_seq] elems),
     ConstBlock(anon_const),
     Call(#[prec=POSTFIX] #[prec_special=Callee] func, #[mac_table_seq] args),
-    MethodCall(path_seg, #[prec=POSTFIX] receiver, #[prec_first=POSTFIX] #[mac_table_seq] args, span),
+    MethodCall(path_seg, #[prec=POSTFIX] receiver, #[mac_table_seq] args, span),
     Tup(#[mac_table_seq] elems),
     Binary(op, #[prec_left_of_binop=op] a, #[prec_right_of_binop=op] b),
     Unary(op, #[prec=PREFIX] a),
