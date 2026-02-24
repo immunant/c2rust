@@ -30,7 +30,7 @@ mod another {
 fn synthetic_usages() {
     let _ = main;
     use another::bar;
-    eprintln!("{}", another::foo::OTHER_CONSTANT); //XXX: usage is not found here
+    eprintln!("{}", another::foo::OTHER_CONSTANT);
     let c = another::foo::CONSTANT;
     let alsomain = crate::main;
     let indirect = bar::CONSTANT;
