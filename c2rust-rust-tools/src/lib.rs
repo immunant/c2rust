@@ -9,12 +9,14 @@ pub const EDITION: &str = "2021";
 pub struct Rustfmt<'a> {
     rs_path: &'a Path,
     check: bool,
+    expect_error: bool,
 }
 
 pub fn rustfmt(rs_path: &Path) -> Rustfmt {
     Rustfmt {
         rs_path,
         check: false,
+        expect_error: false,
     }
 }
 
@@ -23,13 +25,27 @@ impl<'a> Rustfmt<'a> {
         Self { check, ..self }
     }
 
+    pub fn expect_error(self, expect_error: bool) -> Self {
+        Self {
+            expect_error,
+            ..self
+        }
+    }
+
     pub fn run(self) {
-        let Self { rs_path, check } = self;
-        run_rustfmt(rs_path, check)
+        let Self {
+            rs_path,
+            check,
+            expect_error,
+        } = self;
+        let check = if expect_error { true } else { check };
+        run_rustfmt(rs_path, check, expect_error)
     }
 }
 
-fn run_rustfmt(rs_path: &Path, check: bool) {
+fn run_rustfmt(rs_path: &Path, check: bool, expect_error: bool) {
+    assert!(!expect_error || check);
+
     let mut cmd = Command::new("rustfmt");
     cmd.args(["--edition", EDITION]);
     cmd.arg(rs_path);
@@ -47,12 +63,17 @@ fn run_rustfmt(rs_path: &Path, check: bool) {
         }
     };
 
-    if !status.success() {
-        if check {
-            panic!("rustfmt failed; code not properly formatted: {status}");
+    if check {
+        if expect_error {
+            assert!(
+                !status.success(),
+                "expected error, but rustfmt succeeded: {cmd:?}"
+            );
         } else {
-            warn!("rustfmt failed; code may not be well-formatted: {status}");
+            assert!(status.success(), "rustfmt failed with {status}: {cmd:?}");
         }
+    } else if !status.success() {
+        warn!("rustfmt failed with {status}; code may not be well-formatted: {cmd:?}");
     }
 }
 
@@ -120,8 +141,11 @@ fn run_rustc(rs_path: &Path, crate_name: &str, expect_error: bool) {
         fs_err::remove_file(&rlib_path).unwrap();
     }
     if expect_error {
-        assert!(!status.success(), "expected error, but succeeded: {cmd:?}");
+        assert!(
+            !status.success(),
+            "expected error, but rustc succeeded: {cmd:?}"
+        );
     } else {
-        assert!(status.success(), "failed with {status}: {cmd:?}");
+        assert!(status.success(), "rustc failed with {status}: {cmd:?}");
     }
 }

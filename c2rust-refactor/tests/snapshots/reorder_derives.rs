@@ -13,7 +13,8 @@ pub struct S0 {}
 
 #[derive(Clone)]
 #[repr(u8)]
-#[derive(Copy, Debug)]
+#[derive(Copy)]
+#[derive(Debug)]
 pub enum E1 {
     A,
 }

@@ -13,6 +13,8 @@ use std::path::Path;
 struct RefactorTest<'a> {
     command: &'a str,
     path: Option<&'a str>,
+    old_expect_format_error: bool,
+    new_expect_format_error: bool,
     old_expect_compile_error: bool,
     new_expect_compile_error: bool,
 }
@@ -21,6 +23,8 @@ fn refactor(command: &str) -> RefactorTest {
     RefactorTest {
         command,
         path: None,
+        old_expect_format_error: false,
+        new_expect_format_error: false,
         old_expect_compile_error: false,
         new_expect_compile_error: false,
     }
@@ -32,6 +36,25 @@ impl<'a> RefactorTest<'a> {
             path: Some(path),
             ..self
         }
+    }
+
+    pub fn old_expect_format_error(self, expect_error: bool) -> Self {
+        Self {
+            old_expect_format_error: expect_error,
+            ..self
+        }
+    }
+
+    pub fn new_expect_format_error(self, expect_error: bool) -> Self {
+        Self {
+            new_expect_format_error: expect_error,
+            ..self
+        }
+    }
+
+    pub fn expect_format_error(self, expect_error: bool) -> Self {
+        self.old_expect_format_error(expect_error)
+            .new_expect_format_error(expect_error)
     }
 
     pub fn old_expect_compile_error(self, expect_error: bool) -> Self {
@@ -57,6 +80,8 @@ impl<'a> RefactorTest<'a> {
         let Self {
             command,
             path,
+            old_expect_format_error,
+            new_expect_format_error,
             old_expect_compile_error,
             new_expect_compile_error,
         } = self;
@@ -71,6 +96,8 @@ impl<'a> RefactorTest<'a> {
         test_refactor(
             command,
             path,
+            old_expect_format_error,
+            new_expect_format_error,
             old_expect_compile_error,
             new_expect_compile_error,
         );
@@ -80,13 +107,18 @@ impl<'a> RefactorTest<'a> {
 fn test_refactor(
     command: &str,
     path: &str,
+    old_expect_format_error: bool,
+    new_expect_format_error: bool,
     old_expect_compile_error: bool,
     new_expect_compile_error: bool,
 ) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
 
-    rustfmt(&old_path).check(true).run();
+    rustfmt(&old_path)
+        .check(true)
+        .expect_error(old_expect_format_error)
+        .run();
     rustc(&old_path)
         .expect_error(old_expect_compile_error)
         .run();
@@ -112,7 +144,9 @@ fn test_refactor(
 
     // TODO Run `rustfmt` by default as part of `c2rust-refactor`
     // with the same `--disable-rustfmt` flag that `c2rust-transpile` has.
-    rustfmt(&new_path).run();
+    rustfmt(&new_path)
+        .expect_error(new_expect_format_error)
+        .run();
     rustc(&new_path)
         .expect_error(new_expect_compile_error)
         .run();
@@ -199,6 +233,7 @@ fn test_rename_unnamed() {
 fn test_reorder_derives() {
     refactor("noop")
         .named("reorder_derives.rs")
+        .expect_format_error(true)
         .test();
 }
 
