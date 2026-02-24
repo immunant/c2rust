@@ -15,46 +15,6 @@ use std::fmt::Write;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
 
-/// example module for testing
-mod another {
-    pub const MAX: usize = usize::MAX;
-    pub struct X {
-        field1: usize,
-        field2: std::path::PathBuf,
-    }
-    pub enum EnumWithBodiedVariant {
-        Variant = isize::MIN,
-    }
-    pub enum EnumWithFieldedVariant {
-        Variant(X),
-    }
-    pub mod foo {
-        pub const CONSTANT: &str = "someconstant";
-        pub const OTHER_CONSTANT: &str = "otherconstant";
-    }
-    pub mod bar {
-        pub const CONSTANT: &str = "barconst";
-    }
-}
-
-#[allow(unused)]
-fn returns_pathbuf() -> std::path::PathBuf {
-    PathBuf::new() //unimplemented!()
-}
-
-#[allow(unused)]
-fn synthetic_usages() {
-    let _ = main;
-    use another::bar;
-    eprintln!("{}", another::foo::OTHER_CONSTANT);
-    let c = another::foo::CONSTANT;
-    let alsomain = crate::main;
-    let indirect = bar::CONSTANT;
-}
-
-static ERR: std::io::ErrorKind = std::io::ErrorKind::NotFound;
-static EDITION: Edition = Edition::Edition2021;
-
 /// Analyze a Rust codebase to determine relations between items.
 #[derive(Parser)]
 struct Args {
@@ -533,19 +493,21 @@ fn find_related_decls(args: Args) -> Result<serde_json::Map<String, serde_json::
         // Find uses of the item
         {
             let using_items = item_uses(&sema, &items_by_range, module_def);
-            let paths = using_items
+            let mut paths = using_items
                 .into_iter()
                 .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
                 .collect::<Vec<_>>();
+            paths.sort();
             path_info.insert("uses".to_owned(), paths.into());
         }
         // Find used items
         {
             let used_items = items_used_by(&sema, module_def);
-            let paths = used_items
+            let mut paths = used_items
                 .into_iter()
                 .map(|module_def| absolute_item_path(&db, module_def, Edition::DEFAULT))
                 .collect::<Vec<_>>();
+            paths.sort();
             path_info.insert("used_items".to_owned(), paths.into());
         }
         // Output signature for functions
@@ -577,4 +539,48 @@ fn main() -> Result<(), String> {
         .map_err(|e| format!("error writing output: {e}"))?;
 
     Ok(())
+}
+
+#[test]
+fn test_example_input() {
+    let info = find_related_decls(Args {
+        cargo_dir_path: std::env::current_dir().unwrap().join("example-input"),
+        item_paths: vec![
+            "main".into(),
+            "another::bar::CONSTANT".into(),
+            "synthetic_usages".into(),
+            "TGE".into(),
+        ],
+    })
+    .unwrap();
+
+    assert_eq!(
+        info["main"]["uses"].as_array().unwrap(),
+        &vec![serde_json::Value::from("::example_input::synthetic_usages")]
+    );
+
+    assert_eq!(
+        info["another::bar::CONSTANT"]["uses"].as_array().unwrap(),
+        &vec![serde_json::Value::from("::example_input::synthetic_usages")]
+    );
+
+    assert_eq!(
+        info["synthetic_usages"]["used_items"].as_array().unwrap(),
+        &vec![
+            serde_json::Value::from("::core"),
+            serde_json::Value::from("::example_input::another"),
+            serde_json::Value::from("::example_input::another::bar"),
+            serde_json::Value::from("::example_input::another::bar::CONSTANT"),
+            serde_json::Value::from("::example_input::another::foo"),
+            serde_json::Value::from("::example_input::another::foo::CONSTANT"),
+            serde_json::Value::from("::example_input::another::foo::OTHER_CONSTANT"),
+            serde_json::Value::from("::example_input::main"),
+            serde_json::Value::from("::std::macros::eprintln"),
+        ]
+    );
+
+    assert_eq!(
+        info["TGE"]["used_items"].as_array().unwrap(),
+        &vec![serde_json::Value::from("::bytes::TryGetError")]
+    );
 }
