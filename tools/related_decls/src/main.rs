@@ -1,4 +1,5 @@
 use clap::Parser;
+use itertools::Itertools;
 use ra_ap_hir::{
     DefWithBody, Function, HasCrate, HasSource, InFile, Module, ModuleDef, ModuleDefId, Name,
     Semantics, db::DefDatabase,
@@ -230,6 +231,24 @@ fn definition_source(d: Definition) -> Option<ModuleDef> {
     }
 }
 
+/// Prefer over `ModuleDef::canonical_path`.
+pub fn canonical_item_path(
+    item: &ModuleDef,
+    db: &dyn ra_ap_hir::db::HirDatabase,
+    edition: Edition,
+) -> Option<String> {
+    let mut segments = vec![item.name(db)?];
+    // Include type before enum variants
+    if let ModuleDef::Variant(variant) = item {
+        segments.push(variant.parent_enum(db).name(db))
+    }
+    for m in item.module(db)?.path_to_root(db) {
+        segments.extend(m.name(db))
+    }
+    segments.reverse();
+    Some(segments.iter().map(|it| it.display(db, edition)).join("::"))
+}
+
 /// Generate a string representation of an item's full path.
 fn absolute_item_path(db: &RootDatabase, item: ModuleDef, edition: Edition) -> String {
     let mut out = String::new();
@@ -360,33 +379,44 @@ fn main() -> Result<(), String> {
     let mut items_by_range = Vec::new();
     for file in &files {
         let db = &db;
+        let mut observe_def = |module_def: ModuleDef| {
+            log::trace!(
+                "traversal saw item {:?}",
+                module_def.name(db).as_ref().map(Name::as_str)
+            );
+
+            // Mark this item as found if its path matches one we're looking for
+            let abs_path = absolute_item_path(db, module_def, file.edition(db));
+            let canonical_path = canonical_item_path(&module_def, db, file.edition(db));
+
+            unfound_paths.retain(|path| {
+                if canonical_path.as_ref() == Some(path) || abs_path == *path {
+                    log::debug!("item traversal found queried path: {path}");
+                    found_items.insert(path.to_owned(), module_def);
+                    return false;
+                }
+                true
+            });
+
+            // Save source range
+            if let Some(text_range) = module_def_source(&sema, module_def) {
+                log::trace!(
+                    "range map: {text_range:?} -> {:?}",
+                    module_def.name(sema.db)
+                );
+                items_by_range.push((text_range, module_def));
+            }
+        };
         ra_ap_ide_db::helpers::visit_file_defs(&sema, file.file_id(db), &mut |defn: Definition| {
             if let Some(module_def) = definition_source(defn) {
-                log::trace!(
-                    "traversal saw item {:?}",
-                    module_def.name(db).as_ref().map(Name::as_str)
-                );
-
-                // Mark this item as found if its path matches one we're looking for
-                let abs_path = absolute_item_path(db, module_def, file.edition(db));
-                let canonical_path = module_def.canonical_path(db, file.edition(db));
-                unfound_paths.retain(|path| {
-                    if canonical_path.as_ref() == Some(path) || abs_path == *path {
-                        log::debug!("item traversal found queried path: {path}");
-                        found_items.insert(path.to_owned(), module_def);
-                        return false;
+                // Despite its documentation, `visit_file_defs` does not visit enum variants
+                if let ModuleDef::Adt(ra_ap_hir::Adt::Enum(e)) = module_def {
+                    log::trace!("traversing enum");
+                    for v in e.variants(db) {
+                        observe_def(ModuleDef::Variant(v));
                     }
-                    true
-                });
-
-                // Save source range
-                if let Some(text_range) = module_def_source(&sema, module_def) {
-                    log::trace!(
-                        "range map: {text_range:?} -> {:?}",
-                        module_def.name(sema.db)
-                    );
-                    items_by_range.push((text_range, module_def));
                 }
+                observe_def(module_def);
             }
         });
     }
