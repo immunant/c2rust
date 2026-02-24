@@ -117,6 +117,22 @@ impl<'a> RefactorTest<'a> {
     }
 }
 
+/// Replace all non-alphanumeric characters and `-_.` with `_`s
+/// so that we have a sanitized, idiomatic file name that excludes weird characters,
+/// even if they're technically allowed in a file name.
+fn sanitize_file_name(file_name: &str) -> String {
+    file_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 fn test_refactor(
     command: &str,
     command_args: &[&str],
@@ -180,10 +196,12 @@ fn test_refactor(
         snapshot_parts_with_cmd = ["refactor", command, path];
         &snapshot_parts_with_cmd[..]
     };
+
     let snapshot_name = [snapshot_name_parts, command_args]
         .into_iter()
         .flatten()
         .join("-");
+    let snapshot_name = sanitize_file_name(&snapshot_name);
     let command_args = shlex::try_join(command_args.iter().copied()).unwrap();
     let rustc_args = shlex::try_join(rustc_args).unwrap();
     let debug_expr = format!(
