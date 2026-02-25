@@ -247,7 +247,9 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
 
 pub fn create_config(args: &[String]) -> interface::Config {
     let matches = rustc_driver::handle_options(args).expect("rustc arg parsing failed");
-    let sopts = rustc_session::config::build_session_options(&matches);
+    let mut sopts = rustc_session::config::build_session_options(&matches);
+    // Print human readable error (the default).
+    sopts.error_format = Default::default();
     let cfg = interface::parse_cfgspecs(matches.opt_strs("cfg"));
     let check_cfg = interface::parse_check_cfg(matches.opt_strs("check-cfg"));
     let sopts = maybe_set_sysroot(sopts, args);
