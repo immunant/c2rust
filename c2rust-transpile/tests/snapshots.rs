@@ -59,9 +59,10 @@ fn config() -> TranspilerConfig {
     }
 }
 
-/// `platform` can be any platform-specific string.
+/// Transpile one input and compare output against the corresponding snapshot.
+/// For outputs that vary in different environments, `platform` can be any platform-specific string.
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile(platform: Option<&str>, c_path: &Path) {
+fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     let status = Command::new("clang")
         .args([
             "-c",
@@ -128,11 +129,11 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
 }
 
 #[test]
-fn transpile_all() {
+fn transpile_all_snapshots() {
     // TODO parallelize these `insta::glob!`s across multiple `#[test]`s
     // now that we use `cargo nextest`.
 
-    insta::glob!("snapshots/*.c", |x| transpile(None, x));
+    insta::glob!("snapshots/*.c", |x| transpile_snapshot(None, x));
 
     // Some things transpile differently on Linux vs. macOS,
     // as they use `unsigned long` and `unsigned long long` differently for builtins.
@@ -162,14 +163,14 @@ fn transpile_all() {
     let arch_os = format!("{}-{}", arch, os);
 
     insta::with_settings!({snapshot_suffix => os}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| transpile(Some(os), path));
+        insta::glob!("snapshots/os-specific/*.c", |path| transpile_snapshot(Some(os), path));
     });
 
     insta::with_settings!({snapshot_suffix => arch}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(Some(arch), path));
+        insta::glob!("snapshots/arch-specific/*.c", |path| transpile_snapshot(Some(arch), path));
     });
 
     insta::with_settings!({snapshot_suffix => arch_os.as_str()}, {
-        insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile(Some(arch_os.as_str()), path));
+        insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile_snapshot(Some(arch_os.as_str()), path));
     });
 }
