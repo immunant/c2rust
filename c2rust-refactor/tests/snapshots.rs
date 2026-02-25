@@ -217,6 +217,13 @@ fn test_refactor(
 // NOTE: Tests should be listed in alphabetical order.
 
 #[test]
+fn test_bitcast_retype() {
+    refactor("bitcast_retype")
+        .command_args(&["i32", "u32"])
+        .test();
+}
+
+#[test]
 fn test_convert_exits() {
     refactor("convert_exits").test();
 }
@@ -248,6 +255,24 @@ fn test_fix_unused_unsafe() {
 #[test]
 fn test_fold_let_assign() {
     refactor("fold_let_assign").test();
+}
+
+#[test]
+fn test_matcher_def() {
+    refactor("rewrite_expr")
+        .command_args(&["def!(crate::f)()", "crate::f2()"])
+        .named("matcher_def.rs")
+        .test()
+}
+
+/// TODO Broken.
+/// `b: u16` is not replaced with `1000u16`.
+#[test]
+fn test_matcher_typed() {
+    refactor("rewrite_expr")
+        .command_args(&["typed!($i:Ident, u16)", "1000u16"])
+        .named("matcher_typed.rs")
+        .test();
 }
 
 #[test]
