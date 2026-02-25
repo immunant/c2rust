@@ -224,6 +224,13 @@ fn test_bitcast_retype() {
 }
 
 #[test]
+fn test_collapse_cfg() {
+    refactor("test_one_plus_one")
+        .named("collapse_cfg.rs")
+        .test();
+}
+
+#[test]
 fn test_collapse_cfg_attr() {
     refactor("test_one_plus_one")
         .named("collapse_cfg_attr.rs")
