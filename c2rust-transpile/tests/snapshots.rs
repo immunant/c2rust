@@ -59,10 +59,8 @@ fn config() -> TranspilerConfig {
     }
 }
 
-/// Transpile one input and compare output against the corresponding snapshot.
-/// For outputs that vary in different environments, `platform` can be any platform-specific string.
-/// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
+/// Validate that the given C file compiles, then transpile it with the given config.
+fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
     let status = Command::new("clang")
         .args([
             "-c",
@@ -77,12 +75,19 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     let (_temp_dir, temp_path) =
         c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
     c2rust_transpile::transpile(
-        config(),
+        config,
         &temp_path,
         &[
             "-w", // Disable warnings.
         ],
     );
+}
+
+/// Transpile one input and compare output against the corresponding snapshot.
+/// For outputs that vary in different environments, `platform` can be any platform-specific string.
+/// It could be the `target_arch`, `target_os`, some combination, or something else.
+fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
+    compile_and_transpile_file(c_path, config());
     let cwd = current_dir().unwrap();
     let c_path = c_path.strip_prefix(&cwd).unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
@@ -173,4 +178,26 @@ fn transpile_all_snapshots() {
     insta::with_settings!({snapshot_suffix => arch_os.as_str()}, {
         insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile_snapshot(Some(arch_os.as_str()), path));
     });
+}
+
+#[test]
+fn check_c_decl_map() {
+    insta::glob!("c_decls_snapshots/*.c", transpile_with_c_decl_map_snapshot);
+}
+
+fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
+    compile_and_transpile_file(
+        c_path,
+        TranspilerConfig {
+            emit_c_decl_map: true,
+            ..config()
+        },
+    );
+
+    let c_decls_path = c_path.with_extension("c_decls.json");
+    let snapshot_name = format!("c_decls-{}", c_path.file_name().unwrap().to_str().unwrap());
+    let debug_expr = format!("cat {}", c_decls_path.display());
+    let json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&c_decls_path).unwrap()).unwrap();
+    insta::assert_json_snapshot!(snapshot_name, json, &debug_expr);
 }

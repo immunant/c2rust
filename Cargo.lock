@@ -1499,6 +1499,7 @@ dependencies = [
  "console",
  "globset",
  "once_cell",
+ "serde",
  "similar",
  "tempfile",
  "walkdir",
