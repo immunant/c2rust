@@ -559,6 +559,7 @@ fn reorganize_definitions(
     Ok(())
 }
 
+/// Transpile one input C file, writing transpilation output to the filesystem.
 fn transpile_single(
     tcfg: &TranspilerConfig,
     input_path: &Path,
