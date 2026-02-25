@@ -4,13 +4,13 @@ use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, T
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use thin_vec::ThinVec;
 use rustc_span::hygiene::SyntaxContext;
 use rustc_span::source_map::{Span, Spanned};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::convert::TryInto;
 use std::rc::Rc;
+use thin_vec::ThinVec;
 
 use crate::ast_manip::util::{macro_name, PatternSymbol};
 use crate::ast_manip::AstNode;

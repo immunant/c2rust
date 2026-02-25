@@ -829,7 +829,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                     }
                     Adjust::Pointer(PointerCast::Unsize) => {} // TODO
                     Adjust::Pointer(PointerCast::ArrayToPointer) => {} // TODO
-                    Adjust::DynStar => {} // TODO
+                    Adjust::DynStar => {}                      // TODO
                 }
 
                 prev_ty = rty;

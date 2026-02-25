@@ -72,9 +72,7 @@ impl PatternSymbol for Stmt {
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
-            PatKind::Ident(BindingAnnotation(ByRef::No, _), ref i, None) => {
-                i.pattern_symbol()
-            }
+            PatKind::Ident(BindingAnnotation(ByRef::No, _), ref i, None) => i.pattern_symbol(),
             _ => None,
         }
     }
@@ -262,9 +260,7 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
             Macro(..) => Some(Namespace::MacroNS),
 
             ExternCrate | Use | ForeignMod | AnonConst | InlineConst | OpaqueTy | Field
-            | LifetimeParam | GlobalAsm | Impl | Closure | Generator | ImplTraitPlaceholder => {
-                None
-            }
+            | LifetimeParam | GlobalAsm | Impl | Closure | Generator | ImplTraitPlaceholder => None,
         },
 
         Res::PrimTy(..) | Res::SelfTyParam { .. } | Res::SelfTyAlias { .. } | Res::ToolMod => {

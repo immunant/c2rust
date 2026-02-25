@@ -331,10 +331,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
 /// to reverse those specific effects on `new.attrs`.
 fn restore_attrs(new_attrs: &mut AttrVec, old_attrs: &[Attribute]) {
     fn same_attr(a: &Attribute, b: &Attribute) -> bool {
-        Iterator::eq(
-            a.tokens().into_trees(),
-            b.tokens().into_trees(),
-        )
+        Iterator::eq(a.tokens().into_trees(), b.tokens().into_trees())
     }
 
     // If the original item had `#[derive]` or `#[cfg]` attrs, transfer them to the new one.

@@ -734,7 +734,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 op = rhs_op;
                                 continue;
                             }
-                            Rvalue::Cast(CastKind::PtrToPtr | CastKind::FnPtrToPtr, ref rhs_op, _) => {
+                            Rvalue::Cast(
+                                CastKind::PtrToPtr | CastKind::FnPtrToPtr,
+                                ref rhs_op,
+                                _,
+                            ) => {
                                 // Allow casting from `usize` to `size_t`, for example.
                                 //
                                 // Note: we currently don't check that the cast preserves the

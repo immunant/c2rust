@@ -77,9 +77,7 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
 impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, x: &'ast Expr) {
         match &x.kind {
-            ExprKind::Array(elements)
-            | ExprKind::Call(_, elements)
-            | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
             }
             ExprKind::MethodCall(_, receiver, elements, _) => {
@@ -274,9 +272,7 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, expr: &mut P<Expr>) {
         let id = expr.id;
         match &mut expr.kind {
-            ExprKind::Array(elements)
-            | ExprKind::Call(_, elements)
-            | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
             }
             ExprKind::MethodCall(_, receiver, elements, _) => {

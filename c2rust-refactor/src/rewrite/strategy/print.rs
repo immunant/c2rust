@@ -20,7 +20,6 @@ use rustc_ast::util::parser;
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_data_structures::sync::Lrc;
-use thin_vec::ThinVec;
 use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_session::Session;
 use rustc_span::hygiene::SyntaxContext;
@@ -32,6 +31,7 @@ use std::fmt::Debug;
 use std::fs;
 use std::path;
 use std::rc::Rc;
+use thin_vec::ThinVec;
 
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::NodeTable;
@@ -758,8 +758,10 @@ fn create_file_for_module(
                             )),
                             DUMMY_SP,
                         );
-                        path_attr =
-                            Some(attr::mk_attr_outer(&sess.parse_sess.attr_id_generator, path_item));
+                        path_attr = Some(attr::mk_attr_outer(
+                            &sess.parse_sess.attr_id_generator,
+                            path_item,
+                        ));
                     }
                 } else {
                     if path.file_name().unwrap() == "mod.rs" {

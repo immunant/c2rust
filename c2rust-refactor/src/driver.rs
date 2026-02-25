@@ -18,7 +18,7 @@ use rustc_errors::PResult;
 use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
 use rustc_index::vec::IndexVec;
 use rustc_interface::interface;
-use rustc_interface::util::{get_codegen_backend};
+use rustc_interface::util::get_codegen_backend;
 use rustc_interface::{util, Config};
 use rustc_lint::LintStore;
 use rustc_middle::hir::map as hir_map;

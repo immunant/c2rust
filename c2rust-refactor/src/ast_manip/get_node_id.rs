@@ -4,12 +4,12 @@ use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, T
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use thin_vec::ThinVec;
 use rustc_span::hygiene::SyntaxContext;
 use rustc_span::source_map::{Span, Spanned};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
+use thin_vec::ThinVec;
 
 /// Trait for obtaining the `NodeId` of a generic AST node.
 pub trait GetNodeId {

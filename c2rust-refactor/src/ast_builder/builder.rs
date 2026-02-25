@@ -6,7 +6,6 @@ use rustc_ast::ptr::P;
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use thin_vec::ThinVec;
 use rustc_middle::ty;
 use rustc_span::source_map::{dummy_spanned, Spanned};
 use rustc_span::symbol::Ident;
@@ -14,6 +13,7 @@ use rustc_span::{Span, DUMMY_SP};
 use rustc_target::spec::abi::{self, Abi};
 use std::rc::Rc;
 use std::str;
+use thin_vec::ThinVec;
 
 use super::IntoSymbol;
 

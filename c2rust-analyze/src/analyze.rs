@@ -214,10 +214,12 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
                 Rvalue::Cast(_, _, ty) => {
                     acx.assign_pointer_ids_with_info(*ty, PointerInfo::ANNOTATED)
                 }
-                Rvalue::Use(Operand::Constant(c)) => match label_string_literals(acx, c.as_ref(), loc) {
-                    Some(lty) => lty,
-                    None => continue,
-                },
+                Rvalue::Use(Operand::Constant(c)) => {
+                    match label_string_literals(acx, c.as_ref(), loc) {
+                        Some(lty) => lty,
+                        None => continue,
+                    }
+                }
                 _ => continue,
             };
 

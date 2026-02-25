@@ -9,8 +9,8 @@ use rustc_middle::mir::{
     Body, Constant, Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{
-    self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, SubstsRef, Ty, TyCtxt,
-    TyKind, UintTy,
+    self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, SubstsRef, Ty, TyCtxt, TyKind,
+    UintTy,
 };
 use rustc_span::symbol::{sym, Symbol};
 use rustc_type_ir::IntTy;
