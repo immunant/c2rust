@@ -265,6 +265,16 @@ fn test_matcher_def() {
         .test()
 }
 
+/// TODO Broken.
+/// `b: u16` is not replaced with `1000u16`.
+#[test]
+fn test_matcher_typed() {
+    refactor("rewrite_expr")
+        .command_args(&["typed!($i:Ident, u16)", "1000u16"])
+        .named("matcher_typed.rs")
+        .test();
+}
+
 #[test]
 fn test_reconstruct_while() {
     refactor("reconstruct_while").test();
