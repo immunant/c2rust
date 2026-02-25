@@ -226,6 +226,15 @@ fn test_autoretype_array() {
 }
 
 #[test]
+fn test_autoretype_method() {
+    refactor("rewrite_expr")
+        .command_args(&["1 + 1", "2"])
+        .named("autoretype_method.rs")
+        .test();
+    refactor("autoretype").named("autoretype_method.new").test();
+}
+
+#[test]
 fn test_bitcast_retype() {
     refactor("bitcast_retype")
         .command_args(&["i32", "u32"])
