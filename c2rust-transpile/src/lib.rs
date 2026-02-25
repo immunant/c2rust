@@ -507,30 +507,29 @@ fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
     let refactor = env::current_exe()
         .expect("Cannot get current executable path")
         .with_file_name("c2rust-refactor");
-    let args = [
-        "--cargo",
-        "--rewrite-mode",
-        "inplace",
-        "rename_unnamed",
-        ";",
-        "reorganize_definitions",
-    ];
-    let status = Command::new(&refactor)
-        .args(args)
-        .current_dir(build_dir)
-        .status()
-        .map_err(|e| {
-            let refactor = refactor.display();
-            failure::format_err!("unable to run {refactor}: {e}\nNote that c2rust-refactor must be installed separately from c2rust and c2rust-transpile.")
-        })?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(failure::format_err!(
-            "Refactoring failed. Please fix errors above and re-run:\n    c2rust refactor {}",
-            args.join(" "),
-        ))
+
+    // TODO: we could use `commit` to invoke the refactorer only once
+    // with all transforms, but that command is currently broken,
+    // see https://github.com/immunant/c2rust/issues/1605.
+    for transform in ["rename_unnamed", "reorganize_definitions"] {
+        let args = ["--cargo", "--rewrite-mode", "inplace", transform];
+        let status = Command::new(&refactor)
+            .args(args)
+            .current_dir(build_dir)
+            .status()
+            .map_err(|e| {
+                let refactor = refactor.display();
+                failure::format_err!("unable to run {refactor}: {e}\nNote that c2rust-refactor must be installed separately from c2rust and c2rust-transpile.")
+            })?;
+        if !status.success() {
+            return Err(failure::format_err!(
+                "Refactoring failed. Please fix errors above and re-run:\n    c2rust refactor {}",
+                args.join(" "),
+            ));
+        }
     }
+
+    Ok(())
 }
 
 fn reorganize_definitions(
