@@ -217,6 +217,13 @@ fn test_refactor(
 // NOTE: Tests should be listed in alphabetical order.
 
 #[test]
+fn test_bitcast_retype() {
+    refactor("bitcast_retype")
+        .command_args(&["i32", "u32"])
+        .test();
+}
+
+#[test]
 fn test_convert_exits() {
     refactor("convert_exits").test();
 }
