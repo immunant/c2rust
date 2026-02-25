@@ -217,6 +217,15 @@ fn test_refactor(
 // NOTE: Tests should be listed in alphabetical order.
 
 #[test]
+fn test_autoretype_array() {
+    refactor("rewrite_expr")
+        .command_args(&["1 + 1", "2"])
+        .named("autoretype_array.rs")
+        .test();
+    refactor("autoretype").named("autoretype_array.new").test();
+}
+
+#[test]
 fn test_bitcast_retype() {
     refactor("bitcast_retype")
         .command_args(&["i32", "u32"])

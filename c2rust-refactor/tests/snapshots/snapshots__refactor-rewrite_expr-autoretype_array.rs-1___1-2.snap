@@ -1,0 +1,10 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: "c2rust-refactor rewrite_expr '1 + 1' 2 --rewrite-mode alongside -- tests/snapshots/autoretype_array.rs --edition 2021"
+---
+static S: [u8; 2] = [1, 2];
+
+fn main() {
+    // Something to rewrite, to force generation of old.new
+    2;
+}
