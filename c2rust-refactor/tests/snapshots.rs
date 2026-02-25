@@ -258,6 +258,14 @@ fn test_fold_let_assign() {
 }
 
 #[test]
+fn test_matcher_def() {
+    refactor("rewrite_expr")
+        .command_args(&["def!(crate::f)()", "crate::f2()"])
+        .named("matcher_def.rs")
+        .test()
+}
+
+#[test]
 fn test_reconstruct_while() {
     refactor("reconstruct_while").test();
 }
