@@ -302,6 +302,13 @@ fn test_remove_literal_suffixes() {
 }
 
 #[test]
+fn test_remove_paren() {
+    refactor("test_one_plus_one")
+        .named("remove_paren.rs")
+        .test();
+}
+
+#[test]
 fn test_remove_unused_labels() {
     refactor("remove_unused_labels").test();
 }
