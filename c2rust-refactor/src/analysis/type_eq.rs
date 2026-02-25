@@ -903,7 +903,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         kind: intravisit::FnKind<'hir>,
         decl: &'hir FnDecl,
         body_id: BodyId,
-        span: Span,
+        _span: Span,
         id: HirId,
     ) {
         if let intravisit::FnKind::Closure = kind {

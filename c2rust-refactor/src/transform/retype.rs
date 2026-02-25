@@ -1264,7 +1264,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
             }
             (
-                ExprKind::MethodCall(ref path, ref recv, ref arguments, _),
+                ExprKind::MethodCall(ref path, ref recv, ref _arguments, _),
                 TyKind::RawPtr(ty::TypeAndMut{ty: ref inner_ty, ref mutbl}),
             ) if (path.ident.name.as_str() == "as_mut_ptr"
                   || path.ident.name.as_str() == "as_ptr") => {

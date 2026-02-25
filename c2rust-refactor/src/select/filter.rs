@@ -458,7 +458,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, _span: Span, _id: NodeId) {
         for arg in &kind.decl().inputs {
             (self.func)(AnyNode::Param(arg));
         }

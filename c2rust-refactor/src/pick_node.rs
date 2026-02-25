@@ -140,7 +140,7 @@ impl<'a> Visitor<'a> for PickVisitor {
     }
 
     // There's no `visit_arg`, unfortunately, so we have to do this instead.
-    fn visit_fn(&mut self, fk: FnKind<'a>, s: Span, _id: NodeId) {
+    fn visit_fn(&mut self, fk: FnKind<'a>, _s: Span, _id: NodeId) {
         visit::walk_fn(self, fk);
 
         if self.node_info.is_none() && self.kind.contains(NodeKind::Param) {
