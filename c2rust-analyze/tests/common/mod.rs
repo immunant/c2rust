@@ -207,6 +207,9 @@ impl Analyze {
                 "--edition",
                 &crate_options.edition.to_string(),
             ])
+            // FileCheck tests assert against debug diagnostics from c2rust-analyze.
+            // Force a stable log level regardless of the outer test runner environment.
+            .env("RUST_LOG", "debug")
             .stdout(output_stdout)
             .stderr(output_stderr);
         cmd.envs(args.env.iter().map(|EnvVar { var, value }| (var, value)));
