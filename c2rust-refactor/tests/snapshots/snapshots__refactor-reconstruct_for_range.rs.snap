@@ -1,6 +1,10 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reconstruct_for_range --rewrite-mode alongside -- tests/snapshots/reconstruct_for_range.rs --edition 2021
+---
 fn main() {
     let (mut i, mut j, mut k);
-    
+
     'a: for i in 0..10 {
         println!("{}", i);
     }
