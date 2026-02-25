@@ -1,3 +1,8 @@
+#[inline(never)]
+fn foo() -> i32 {
+    3
+}
+
 fn f() {
     {
         let mut x;
@@ -8,8 +13,12 @@ fn f() {
 
     {
         let mut x;
-        { x = 1; }
-        { x = 2; }
+        {
+            x = 1;
+        }
+        {
+            x = 2;
+        }
     }
 
     {
@@ -31,8 +40,12 @@ fn f() {
     {
         let mut x;
         {
-            { x = 1; }
-            { x = 2; }
+            {
+                x = 1;
+            }
+            {
+                x = 2;
+            }
         }
     }
 
@@ -52,16 +65,23 @@ fn f() {
         };
     }
 
-
     {
         let mut x;
         {
-            { x = 1; }
-            { x = 2; }
+            {
+                x = 1;
+            }
+            {
+                x = 2;
+            }
         }
         {
-            { x = 1; }
-            { x = 2; }
+            {
+                x = 1;
+            }
+            {
+                x = 2;
+            }
         }
     }
 
@@ -70,12 +90,20 @@ fn f() {
         // Initialized `let`s can't sink, because the initializer might have side effects.
         let mut y = foo();
         {
-            { x = 1; }
-            { x = 2; }
+            {
+                x = 1;
+            }
+            {
+                x = 2;
+            }
         }
         {
-            { y = 1; }
-            { y = 2; }
+            {
+                y = 1;
+            }
+            {
+                y = 2;
+            }
         }
     }
 }

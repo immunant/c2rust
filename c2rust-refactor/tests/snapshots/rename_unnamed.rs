@@ -1,15 +1,4 @@
-#![feature(extern_types)]
-#![register_tool(c2rust)]
-
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(dead_code)]
-#![allow(mutable_transmutes)]
-#![allow(unused_mut)]
-
 pub mod bar {
-    #[header_src = "/home/user/some/workspace/foobar/bar.h"]
     pub mod bar_h {
         #[derive(Copy, Clone)]
         #[repr(C)]
@@ -34,7 +23,6 @@ pub mod bar {
 }
 
 pub mod foo {
-    #[header_src = "/home/user/some/workspace/foobar/foo.h"]
     pub mod foo_h {
         #[derive(Copy, Clone)]
         #[repr(C)]
@@ -47,7 +35,7 @@ pub mod foo {
         pub struct C2RustUnnamed_0 {
             c: usize,
         }
-        
+
         #[derive(Copy, Clone)]
         #[repr(C)]
         pub struct foo_t {
@@ -55,8 +43,8 @@ pub mod foo {
         }
     }
 
-    use self::foo_h::{C2RustUnnamed, foo_t};
     use self::foo_h::C2RustUnnamed_0;
+    use self::foo_h::{foo_t, C2RustUnnamed};
     #[derive(Copy, Clone)]
     #[repr(C)]
     pub struct foo_bar {
@@ -66,18 +54,15 @@ pub mod foo {
 }
 
 pub mod test {
-    pub mod C2RustUnnamed {
-    }
+    pub mod C2RustUnnamed {}
 }
 
 struct C2RustUnnamed {
-    d: u32, 
+    d: u32,
 }
 
 fn main() {
-    let u = C2RustUnnamed {
-        d: 0
-    };
+    let u = C2RustUnnamed { d: 0 };
 
     println!("{}", u.d);
 }

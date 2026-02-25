@@ -9,7 +9,6 @@ fn main() {
         println!("b");
     }
 
-
     'a: while true {
         println!("a");
     }
@@ -19,7 +18,6 @@ fn main() {
         break 'b;
         println!("b");
     }
-
 
     'a: while let Some(_) = Some(()) {
         println!("a");
@@ -31,12 +29,11 @@ fn main() {
         println!("b");
     }
 
-
-    'a: for i in 0 .. 10 {
+    'a: for i in 0..10 {
         println!("a");
     }
 
-    'b: for i in 0 .. 10 {
+    'b: for i in 0..10 {
         println!("b");
         break 'b;
         println!("b");

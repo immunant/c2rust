@@ -124,7 +124,7 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
         return;
     }
 
-    rustc(&rs_path, crate_name);
+    rustc(&rs_path).crate_name(crate_name).run();
 }
 
 #[test]

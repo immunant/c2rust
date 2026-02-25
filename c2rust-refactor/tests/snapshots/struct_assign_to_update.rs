@@ -11,7 +11,7 @@ fn main() {
 
 mod m {
     fn g() {
-        let mut r = 0 .. 10;
+        let mut r = 0..10;
         r.start = 2;
         r.end = 8;
     }

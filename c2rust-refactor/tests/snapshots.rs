@@ -3,14 +3,126 @@ use c2rust_refactor::lib_main;
 use c2rust_refactor::Command as RefactorCommand;
 use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
+use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::rustfmt;
 use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use std::path::Path;
 
-fn test_refactor_named(command: &str, path: &str) {
+#[must_use]
+struct RefactorTest<'a> {
+    command: &'a str,
+    path: Option<&'a str>,
+    old_expect_format_error: bool,
+    new_expect_format_error: bool,
+    old_expect_compile_error: bool,
+    new_expect_compile_error: bool,
+}
+
+fn refactor(command: &str) -> RefactorTest {
+    RefactorTest {
+        command,
+        path: None,
+        old_expect_format_error: false,
+        new_expect_format_error: false,
+        old_expect_compile_error: false,
+        new_expect_compile_error: false,
+    }
+}
+
+impl<'a> RefactorTest<'a> {
+    pub fn named(self, path: &'a str) -> Self {
+        Self {
+            path: Some(path),
+            ..self
+        }
+    }
+
+    pub fn old_expect_format_error(self, expect_error: bool) -> Self {
+        Self {
+            old_expect_format_error: expect_error,
+            ..self
+        }
+    }
+
+    pub fn new_expect_format_error(self, expect_error: bool) -> Self {
+        Self {
+            new_expect_format_error: expect_error,
+            ..self
+        }
+    }
+
+    pub fn expect_format_error(self, expect_error: bool) -> Self {
+        self.old_expect_format_error(expect_error)
+            .new_expect_format_error(expect_error)
+    }
+
+    pub fn old_expect_compile_error(self, expect_error: bool) -> Self {
+        Self {
+            old_expect_compile_error: expect_error,
+            ..self
+        }
+    }
+
+    pub fn new_expect_compile_error(self, expect_error: bool) -> Self {
+        Self {
+            new_expect_compile_error: expect_error,
+            ..self
+        }
+    }
+
+    pub fn expect_compile_error(self, expect_error: bool) -> Self {
+        self.old_expect_compile_error(expect_error)
+            .new_expect_compile_error(expect_error)
+    }
+
+    pub fn test(self) {
+        let Self {
+            command,
+            path,
+            old_expect_format_error,
+            new_expect_format_error,
+            old_expect_compile_error,
+            new_expect_compile_error,
+        } = self;
+        let path_buf;
+        let path = match path {
+            Some(path) => path,
+            None => {
+                path_buf = format!("{command}.rs");
+                &path_buf
+            }
+        };
+        test_refactor(
+            command,
+            path,
+            old_expect_format_error,
+            new_expect_format_error,
+            old_expect_compile_error,
+            new_expect_compile_error,
+        );
+    }
+}
+
+fn test_refactor(
+    command: &str,
+    path: &str,
+    old_expect_format_error: bool,
+    new_expect_format_error: bool,
+    old_expect_compile_error: bool,
+    new_expect_compile_error: bool,
+) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
+
+    rustfmt(&old_path)
+        .check(true)
+        .expect_error(old_expect_format_error)
+        .run();
+    rustc(&old_path)
+        .expect_error(old_expect_compile_error)
+        .run();
+
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
     let old_path = old_path.to_str().unwrap();
@@ -32,7 +144,12 @@ fn test_refactor_named(command: &str, path: &str) {
 
     // TODO Run `rustfmt` by default as part of `c2rust-refactor`
     // with the same `--disable-rustfmt` flag that `c2rust-transpile` has.
-    rustfmt(&new_path);
+    rustfmt(&new_path)
+        .expect_error(new_expect_format_error)
+        .run();
+    rustc(&new_path)
+        .expect_error(new_expect_compile_error)
+        .run();
 
     let new_rs = fs_err::read_to_string(&new_path).unwrap();
 
@@ -47,115 +164,126 @@ fn test_refactor_named(command: &str, path: &str) {
     assert_snapshot!(snapshot_name, new_rs, &debug_expr);
 }
 
-fn test_refactor(command: &str) {
-    test_refactor_named(command, &format!("{command}.rs"));
-}
-
 // NOTE: Tests should be listed in alphabetical order.
 
 #[test]
 fn test_convert_exits() {
-    test_refactor("convert_exits");
+    refactor("convert_exits").test();
 }
 
 #[test]
 fn test_convert_exits_skip() {
-    test_refactor_named("convert_exits", "convert_exits_skip.rs");
+    refactor("convert_exits")
+        .named("convert_exits_skip.rs")
+        .test();
 }
 
 #[test]
 fn test_convert_math_funcs() {
-    test_refactor("convert_math_funcs");
+    refactor("convert_math_funcs").test();
 }
 
 #[test]
 fn test_convert_math_skip() {
-    test_refactor_named("convert_math_funcs", "convert_math_skip.rs");
+    refactor("convert_math_funcs")
+        .named("convert_math_skip.rs")
+        .test();
 }
 
 #[test]
 fn test_fix_unused_unsafe() {
-    test_refactor("fix_unused_unsafe");
+    refactor("fix_unused_unsafe").test();
 }
 
 #[test]
 fn test_fold_let_assign() {
-    test_refactor("fold_let_assign");
+    refactor("fold_let_assign").test();
 }
 
 #[test]
 fn test_let_x_uninitialized() {
-    test_refactor("let_x_uninitialized");
+    refactor("let_x_uninitialized")
+        .expect_compile_error(true)
+        .test();
 }
 
 #[test]
 fn test_reconstruct_while() {
-    test_refactor("reconstruct_while");
+    refactor("reconstruct_while").test();
 }
 
 /// TODO Broken
 /// Suffixes are not actually removed.
 #[test]
 fn test_remove_literal_suffixes() {
-    test_refactor("remove_literal_suffixes");
+    refactor("remove_literal_suffixes").test();
 }
 
 #[test]
 fn test_remove_unused_labels() {
-    test_refactor("remove_unused_labels");
+    refactor("remove_unused_labels").test();
 }
 
 #[test]
 fn test_rename_unnamed() {
-    test_refactor("rename_unnamed");
+    refactor("rename_unnamed").test();
 }
 
 #[test]
 fn test_reorder_derives() {
-    test_refactor_named("noop", "reorder_derives.rs");
+    refactor("noop")
+        .named("reorder_derives.rs")
+        .expect_format_error(true)
+        .test();
 }
 
 #[cfg(target_os = "linux")] // `statvfs` and `statfs64` are Linux only.
 #[test]
 fn test_reorganize_definitions() {
-    test_refactor("reorganize_definitions");
+    refactor("reorganize_definitions")
+        .new_expect_compile_error(true)
+        .test();
 }
 
 #[test]
 fn test_sink_lets() {
-    test_refactor("sink_lets");
+    refactor("sink_lets").test();
 }
 
 #[test]
 fn test_struct_assign_to_update() {
-    test_refactor("struct_assign_to_update");
+    refactor("struct_assign_to_update").test();
 }
 
 #[test]
 fn test_struct_merge_updates() {
-    test_refactor("struct_merge_updates");
+    refactor("struct_merge_updates")
+        .new_expect_compile_error(true)
+        .test();
 }
 
 /// TODO Broken
 /// `f(x)` doesn't become `x + 1`.
 #[test]
 fn test_test_f_plus_one() {
-    test_refactor("test_f_plus_one");
+    refactor("test_f_plus_one").test();
 }
 
 /// TODO Broken
 /// `2` doesn't become `1 + 1`.
 #[test]
 fn test_test_one_plus_one() {
-    test_refactor("test_one_plus_one");
+    refactor("test_one_plus_one").test();
 }
 
 #[test]
 fn test_test_reflect() {
-    test_refactor("test_reflect");
+    refactor("test_reflect")
+        .new_expect_compile_error(true)
+        .test();
 }
 
 #[test]
 fn test_uninit_to_default() {
-    test_refactor("uninit_to_default");
+    refactor("uninit_to_default").test();
 }
