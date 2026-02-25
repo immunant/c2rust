@@ -15,32 +15,10 @@ use crate::ast_manip::{MutVisit, MutVisitNodes, fold_blocks, visit_nodes};
 use crate::command::{CommandState, DriverCommand, Registry};
 use crate::driver::{Phase};
 use crate::match_or;
-use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with, replace_stmts};
+use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with};
 use crate::reflect::reflect_tcx_ty;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-
-
-/// # `let_x_uninitialized` Command
-///
-/// Obsolete - the translator now does this automatically.
-///
-/// Usage: `let_x_uninitialized`
-///
-/// For each local variable that is uninitialized (`let x;`), add
-/// `mem::uninitialized()` as an initializer expression.
-pub struct LetXUninitialized;
-
-impl Transform for LetXUninitialized {
-    fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        replace_stmts(st, cx, krate,
-                                  "let __pat;",
-                                  "let __pat = ::std::mem::uninitialized();");
-        replace_stmts(st, cx, krate,
-                                  "let __pat: __ty;",
-                                  "let __pat: __ty = ::std::mem::uninitialized();");
-    }
-}
 
 
 /// # `sink_lets` Command
@@ -570,7 +548,6 @@ fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("let_x_uninitialized", |_args| mk(LetXUninitialized));
     reg.register("sink_lets", |_args| mk(SinkLets));
     reg.register("fold_let_assign", |_args| mk(FoldLetAssign));
     reg.register("uninit_to_default", |_args| mk(UninitToDefault));

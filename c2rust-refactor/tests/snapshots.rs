@@ -82,6 +82,7 @@ impl<'a> RefactorTest<'a> {
         }
     }
 
+    #[allow(unused)] // TODO remove when used
     pub fn expect_compile_error(self, expect_error: bool) -> Self {
         self.old_expect_compile_error(expect_error)
             .new_expect_compile_error(expect_error)
@@ -247,13 +248,6 @@ fn test_fix_unused_unsafe() {
 #[test]
 fn test_fold_let_assign() {
     refactor("fold_let_assign").test();
-}
-
-#[test]
-fn test_let_x_uninitialized() {
-    refactor("let_x_uninitialized")
-        .expect_compile_error(true)
-        .test();
 }
 
 #[test]
