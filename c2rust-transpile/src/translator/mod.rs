@@ -60,8 +60,8 @@ pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
 use crate::CrateSet;
 use crate::PragmaVec;
 
-pub const INNER_SUFFIX: &str = "_Inner";
-pub const PADDING_SUFFIX: &str = "_PADDING";
+pub const INNER_SUFFIX: &str = "Inner";
+pub const PADDING_SUFFIX: &str = "PADDING";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct Import {
@@ -684,7 +684,7 @@ pub fn translate(
                 Name::Anonymous => {
                     t.type_converter
                         .borrow_mut()
-                        .declare_decl_name(decl_id, "C2RustUnnamed");
+                        .declare_decl_name(decl_id, "C2Rust_Unnamed");
                 }
                 Name::Type(name) => {
                     t.type_converter
@@ -1698,7 +1698,7 @@ impl<'c> Translation<'c> {
         let fn_name = self
             .renamer
             .borrow_mut()
-            .pick_name("run_static_initializers");
+            .pick_name("c2rust_run_static_initializers");
         let fn_ty = ReturnType::Default;
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
         let fn_bare_decl = (vec![], None, fn_ty);
@@ -2096,7 +2096,7 @@ impl<'c> Translation<'c> {
 
                     let mut init = init?.to_expr();
 
-                    let comment = String::from("// Initialized in run_static_initializers");
+                    let comment = String::from("// Initialized in c2rust_run_static_initializers");
                     let comment_pos = if span.is_dummy() {
                         None
                     } else {
@@ -2434,7 +2434,7 @@ impl<'c> Translation<'c> {
                     .alloca_allocations_name
                     .take()
                 {
-                    // let mut alloca_allocations: Vec<Vec<u8>> = Vec::new();
+                    // let mut c2rust_alloca_allocations: Vec<Vec<u8>> = Vec::new();
                     let inner_vec = mk().path_ty(vec![mk().path_segment_with_args(
                         "Vec",
                         mk().angle_bracketed_args(vec![mk().ident_ty("u8")]),
@@ -2579,12 +2579,12 @@ impl<'c> Translation<'c> {
             }
         }
 
-        let current_block_ident = self.renamer.borrow_mut().pick_name("current_block");
+        let current_block_ident = self.renamer.borrow_mut().pick_name("c2rust_current_block");
         let current_block = mk().ident_expr(&current_block_ident);
         let mut stmts: Vec<Stmt> = lifted_stmts;
         if cfg::structures::has_multiple(&relooped) {
             if self.tcfg.fail_on_multiple {
-                panic!("Uses of `current_block' are illegal with `--fail-on-multiple'.");
+                panic!("Uses of `c2rust_current_block' are illegal with `--fail-on-multiple'.");
             }
 
             let current_block_ty = if self.tcfg.debug_relooper_labels {
@@ -2764,7 +2764,7 @@ impl<'c> Translation<'c> {
                 let ConvertedVariable { ty, mutbl: _, init } =
                     self.convert_variable(ctx.static_(), initializer, typ)?;
                 let default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
-                let comment = String::from("// Initialized in run_static_initializers");
+                let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
                     .borrow_mut()

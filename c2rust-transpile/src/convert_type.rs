@@ -182,13 +182,9 @@ impl TypeConverter {
     pub fn resolve_decl_suffix_name(&mut self, decl_id: CDeclId, suffix: &'static str) -> &str {
         let key = (decl_id, suffix);
         self.suffix_names.entry(key).or_insert_with(|| {
-            let mut suffix_name = self
-                .renamer
-                .get(&decl_id)
-                .unwrap_or_else(|| "C2RustUnnamed".to_string());
-            suffix_name += suffix;
-
-            self.renamer.pick_name(&suffix_name)
+            let name = self.renamer.get(&decl_id);
+            let name = name.as_deref().unwrap_or("Unnamed");
+            self.renamer.pick_name(&format!("C2Rust_{name}_{suffix}"))
         })
     }
 

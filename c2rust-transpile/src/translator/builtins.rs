@@ -372,10 +372,12 @@ impl<'c> Translation<'c> {
                     let mut fn_ctx = self.function_context.borrow_mut();
                     let alloca_allocations_name =
                         &*fn_ctx.alloca_allocations_name.get_or_insert_with(|| {
-                            self.renamer.borrow_mut().pick_name("alloca_allocations")
+                            self.renamer
+                                .borrow_mut()
+                                .pick_name("c2rust_alloca_allocations")
                         });
 
-                    // alloca_allocations.push(std::vec::from_elem(0, count));
+                    // c2rust_alloca_allocations.push(std::vec::from_elem(0, count));
                     let init_expr = vec_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
                         cast_int(count, "usize", false),
@@ -386,7 +388,7 @@ impl<'c> Translation<'c> {
                         vec![init_expr],
                     ));
 
-                    // alloca_allocations.last_mut().unwrap().as_mut_ptr()
+                    // c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr()
                     let last_mut_expr = mk().method_call_expr(
                         mk().ident_expr(alloca_allocations_name),
                         "last_mut",

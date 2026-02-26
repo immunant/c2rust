@@ -105,12 +105,14 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     }
 
     pub fn pick_name(&mut self, basename: &str) -> String {
+        check_c2rust_name(basename);
         self.pick_name_in_scope(basename, None)
     }
 
     /// Permanently assign a name that doesn't collide with anything
     /// currently in scope, and also never goes out of scope
     pub fn pick_name_root(&mut self, basename: &str) -> String {
+        check_c2rust_name(basename);
         self.pick_name_in_scope(basename, Some(0))
     }
 
@@ -174,8 +176,12 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     pub fn fresh(&mut self) -> String {
         let fresh = self.next_fresh;
         self.next_fresh += 1;
-        self.pick_name(&format!("fresh{}", fresh))
+        self.pick_name(&format!("c2rust_fresh{fresh}"))
     }
+}
+
+fn check_c2rust_name(basename: &str) {
+    assert!(basename.starts_with("c2rust_") || basename.starts_with("C2Rust_"));
 }
 
 #[cfg(test)]
