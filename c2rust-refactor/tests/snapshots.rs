@@ -289,6 +289,18 @@ fn test_matcher_typed() {
         .test();
 }
 
+/// TODO Broken.
+/// This panics with the error:
+///
+/// ```shell
+///     thread 'rustc' panicked at 'Could not find an HIR id for NodeId NodeId(61); span=Some(NodeSpan { span: Span { lo: BytePos(237), hi: BytePos(325), ctxt: #0 }, kind: Stmt }), context=Some(NodeContextKey { stmt_index: Some(6), child_path: [], symbol: None, owner: Some(NodeId(8)) })', c2rust-refactor/src/context.rs:927:13
+/// ```
+#[should_panic]
+#[test]
+fn test_reconstruct_for_range() {
+    refactor("reconstruct_for_range").test();
+}
+
 #[test]
 fn test_reconstruct_while() {
     refactor("reconstruct_while").test();
