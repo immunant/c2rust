@@ -20,6 +20,7 @@ use rustc_span::symbol::{Ident, kw};
 use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_span::{BytePos, DUMMY_SP, Symbol};
 use smallvec::smallvec;
+use thin_vec::ThinVec;
 
 use crate::ast_manip::util::{is_relative_path, join_visibility, namespace, split_uses, is_exported, is_c2rust_attr};
 use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
@@ -1153,7 +1154,7 @@ impl HasAttrs for DeclKind {
         }
     }
 
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut Vec<Attribute>)) {
+    fn visit_attrs(&mut self, f: impl FnOnce(&mut ThinVec<Attribute>)) {
         match self {
             DeclKind::Item(i) => i.visit_attrs(f),
             DeclKind::ForeignItem(i, _) => i.visit_attrs(f),

@@ -271,7 +271,7 @@ fn calc_recent_writes(mir: &Body) -> RecentWrites {
 /// Initial phase of `calc_recent_writes`: scan each block and record any writes and any address-of
 /// operations found within that block.
 fn scan_blocks(mir: &Body, rw: &mut RecentWrites) {
-    for (block, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (block, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (statement_index, stmt) in bb_data.statements.iter().enumerate() {
             let loc = Location {
                 block,

@@ -113,9 +113,9 @@ fn build_format_macro(
             ExprKind::Cast(ref e, _) |
             ExprKind::Type(ref e, _) => ep = &*e,
             // `e.as_ptr()` or `e.as_mut_ptr()` => e
-            ExprKind::MethodCall(ref ps, ref args, _) if args.len() == 1 &&
+            ExprKind::MethodCall(ref ps, ref recv, ref args, _) if args.is_empty() &&
                 (ps.ident.as_str() == "as_ptr" ||
-                 ps.ident.as_str() == "as_mut_ptr") => ep = &args[0],
+                 ps.ident.as_str() == "as_mut_ptr") => ep = recv,
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
         }
     };

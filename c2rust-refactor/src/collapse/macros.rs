@@ -172,17 +172,9 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                 InvocKind::Attrs(attrs) => {
                     trace!("Attrs: return original: {:?}", s);
                     match &mut s.kind {
-                        StmtKind::Local(l) => {
-                            let mut new_attrs = l.attrs.to_vec();
-                            restore_attrs(&mut new_attrs, attrs);
-                            l.attrs = new_attrs.into();
-                        }
+                        StmtKind::Local(l) => restore_attrs(&mut l.attrs, attrs),
                         StmtKind::Item(i) => restore_attrs(&mut i.attrs, attrs),
-                        StmtKind::Expr(e) | StmtKind::Semi(e) => {
-                            let mut new_attrs = e.attrs.to_vec();
-                            restore_attrs(&mut new_attrs, attrs);
-                            e.attrs = new_attrs.into();
-                        }
+                        StmtKind::Expr(e) | StmtKind::Semi(e) => restore_attrs(&mut e.attrs, attrs),
                         StmtKind::MacCall(..) => {}
                         StmtKind::Empty => {}
                     }
@@ -337,12 +329,9 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
 /// transform, we can't just copy `old.attrs`.  Instead, we look through `old.attrs` for attributes
 /// with known effects (such as `#[cfg]`, which removes itself when the condition is met) and tries
 /// to reverse those specific effects on `new.attrs`.
-fn restore_attrs(new_attrs: &mut Vec<Attribute>, old_attrs: &[Attribute]) {
+fn restore_attrs(new_attrs: &mut AttrVec, old_attrs: &[Attribute]) {
     fn same_attr(a: &Attribute, b: &Attribute) -> bool {
-        Iterator::eq(
-            a.tokens().to_tokenstream().into_trees(),
-            b.tokens().to_tokenstream().into_trees(),
-        )
+        Iterator::eq(a.tokens().into_trees(), b.tokens().into_trees())
     }
 
     // If the original item had `#[derive]` or `#[cfg]` attrs, transfer them to the new one.

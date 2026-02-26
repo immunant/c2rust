@@ -14,13 +14,12 @@ use rustc_ast::attr;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::util::comments::CommentStyle;
 use rustc_ast::util::parser;
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, PrintState};
 use rustc_data_structures::sync::Lrc;
-use rustc_data_structures::thin_vec::ThinVec;
 use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_session::Session;
 use rustc_span::hygiene::SyntaxContext;
@@ -32,6 +31,7 @@ use std::fmt::Debug;
 use std::fs;
 use std::path;
 use std::rc::Rc;
+use thin_vec::ThinVec;
 
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::NodeTable;
@@ -173,7 +173,13 @@ impl PrintParse for Attribute {
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_doc_comment(kind, style, s, span);
+                    let attr = attr::mk_doc_comment(
+                        &sess.parse_sess.attr_id_generator,
+                        kind,
+                        style,
+                        s,
+                        span,
+                    );
                     p.bump();
                     return Ok(attr);
                 }
@@ -752,7 +758,10 @@ fn create_file_for_module(
                             )),
                             DUMMY_SP,
                         );
-                        path_attr = Some(attr::mk_attr_outer(path_item));
+                        path_attr = Some(attr::mk_attr_outer(
+                            &sess.parse_sess.attr_id_generator,
+                            path_item,
+                        ));
                     }
                 } else {
                     if path.file_name().unwrap() == "mod.rs" {

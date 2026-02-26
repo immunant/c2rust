@@ -9,7 +9,7 @@ use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
 use rustc_interface::util;
 use rustc_middle::ty::TyCtxt;
-use rustc_session::{self, DiagnosticOutput, Session};
+use rustc_session::{self, Session};
 use rustc_span::source_map::SourceMap;
 use rustc_span::symbol::Symbol;
 use std::cell::{self, Cell, RefCell};
@@ -511,7 +511,6 @@ impl RefactorState {
             old_session.local_crate_source_file.clone(),
             None,
             descriptions,
-            DiagnosticOutput::Default,
             Default::default(),
             None,
             target_override,

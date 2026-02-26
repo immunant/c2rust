@@ -30,7 +30,7 @@ pub struct FnLike {
     pub span: Span,
     pub decl: P<FnDecl>,
     pub body: Option<P<Block>>,
-    pub attrs: Vec<Attribute>,
+    pub attrs: AttrVec,
     // TODO: This should probably include `generics`, and maybe some kind of "parent generics" for
     // impl and trait items.
     // TODO: Also unsafety, constness, and abi (these should be much easier to add)

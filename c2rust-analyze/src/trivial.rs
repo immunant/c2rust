@@ -1,5 +1,5 @@
 use log::debug;
-use rustc_middle::ty::{self, Binder, EarlyBinder, FnSig, GenSig, Subst, Ty, TyCtxt};
+use rustc_middle::ty::{self, Binder, EarlyBinder, FnSig, GenSig, Ty, TyCtxt};
 
 pub trait IsTrivial<'tcx> {
     /// Something [`is_trivial`] if it has no effect on pointer permissions,
@@ -84,7 +84,7 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             }
 
             // don't know, as `dyn Trait` could be anything
-            ty::Dynamic(trait_ty, _reg) => {
+            ty::Dynamic(trait_ty, _reg, _) => {
                 debug!("unsure how to check `dyn Trait` for accessible pointers, so assuming non-trivial: ty = {self:?}, trait_ty = {trait_ty:?}");
                 false
             }

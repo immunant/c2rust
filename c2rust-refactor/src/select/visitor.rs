@@ -362,14 +362,14 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, _span: Span, _id: NodeId) {
         for arg in &kind.decl().inputs {
             if self.old.contains(&arg.id) && self.matches(AnyNode::Param(arg)) {
                 self.new.insert(arg.id);
             }
         }
 
-        visit::walk_fn(self, kind, span);
+        visit::walk_fn(self, kind);
     }
 
     fn visit_field_def(&mut self, x: &'ast FieldDef) {

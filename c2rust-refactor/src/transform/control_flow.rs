@@ -4,7 +4,7 @@ use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::hir::place::PlaceWithHirId;
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::ty::{self, ParamEnv};
-use rustc_typeck::expr_use_visitor::*;
+use rustc_hir_typeck::expr_use_visitor::*;
 use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
 use rustc_ast::ptr::P;
 
@@ -127,11 +127,9 @@ impl Transform for ReconstructForRange {
                                            Some(x) => x; return);
             let parent_body = hir_map.body(parent_body_id);
             let tables = tcx.typeck_body(parent_body_id);
-            tcx.infer_ctxt().enter(|infcx| {
-                ExprUseVisitor::new(&mut delegate, &infcx, parent_did,
-                                    ParamEnv::empty(), tables)
-                    .consume_body(&parent_body);
-            });
+            let infcx = tcx.infer_ctxt().build();
+            ExprUseVisitor::new(&mut delegate, &infcx, parent_did, ParamEnv::empty(), tables)
+                .consume_body(&parent_body);
             assert!(delegate.writes_inside_loop > 0);
             debug!("Loop variable '{:?}' writes:{} reads:{}",
                    var_expr,

@@ -597,7 +597,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             StatementKind::Retag(..) => {}
             StatementKind::AscribeUserType(..) => {}
             StatementKind::Coverage(..) => {}
-            StatementKind::CopyNonOverlapping(..) => todo!("statement {:?}", stmt),
+            StatementKind::Intrinsic(..) => todo!("statement {:?}", stmt),
             StatementKind::Nop => {}
         }
     }
@@ -1268,6 +1268,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 });
             }
             PlaceElem::Downcast(_, _) => {}
+            PlaceElem::OpaqueCast(_) => {}
         }
     }
 
@@ -2089,7 +2090,7 @@ pub fn gen_mir_rewrites<'tcx>(
 
     let mut v = ExprRewriteVisitor::new(acx, asn, pointee_types, last_use, &mut out, mir);
 
-    for (bb_id, bb) in mir.basic_blocks().iter_enumerated() {
+    for (bb_id, bb) in mir.basic_blocks.iter_enumerated() {
         for (i, stmt) in bb.statements.iter().enumerate() {
             let loc = Location {
                 block: bb_id,

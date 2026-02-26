@@ -494,7 +494,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                         .map_or(false, |ty| ty.is_unsafe_ptr());
                     if let Some(init) = &mut local.init {
                         if is_unsafe_ptr {
-                            if let ast::BindingMode::ByRef(_) = binding {
+                            if let ast::BindingAnnotation(ast::ByRef::Yes, _) = binding {
                                 // We can only handle taking a reference to a
                                 // directly dereferenced value for now. As this
                                 // is the only kind of reference the translator

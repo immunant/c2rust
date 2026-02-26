@@ -325,7 +325,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             let tokens1_stream = tokens1
                 .as_ref()
                 .unwrap()
-                .create_token_stream()
+                .to_attr_token_stream()
                 .to_tokenstream();
             let (old_args_tokens, old_args_span) =
                 find_fn_header_arg_list(tokens1_stream, generics1.span)

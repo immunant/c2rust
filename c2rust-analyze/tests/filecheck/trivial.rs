@@ -56,19 +56,19 @@ pub fn main() {
         f!(i32); // CHECK: fn(i32) {main::f} is trivial: true
         f!(usize); // CHECK: fn(usize) {main::f} is trivial: true
         f!(f64); // CHECK: fn(f64) {main::f} is trivial: true
-        f!(&str); // CHECK: for<'r> fn(&'r str) {main::f} is trivial: true
+        f!(&str); // CHECK: for<'{{[a-z0-9]+}}> fn(&'{{[a-z0-9]+}} str) {main::f} is trivial: true
 
-        f!((&str, i32)); // CHECK: for<'r> fn((&'r str, i32)) {main::f} is trivial: true
+        f!((&str, i32)); // CHECK: for<'{{[a-z0-9]+}}> fn((&'{{[a-z0-9]+}} str, i32)) {main::f} is trivial: true
         f!([usize; 0]); // CHECK: fn([usize; 0]) {main::f} is trivial: true
         f!([char; 3]); // CHECK: fn([char; 3]) {main::f} is trivial: true
         f!(&[u8; 3]); // for<'r> fn(&'r [u8; 3]) {main::f} is trivial: true
 
-        f!(&Path); // CHECK: for<'r> fn(&'r std::path::Path) {main::f} is trivial: true
+        f!(&Path); // CHECK: for<'{{[a-z0-9]+}}> fn(&'{{[a-z0-9]+}} std::path::Path) {main::f} is trivial: true
         f!(Cell<()>); // CHECK: fn(std::cell::Cell<()>) {main::f} is trivial: true
         f!(RefCell<()>); // CHECK: fn(std::cell::RefCell<()>) {main::f} is trivial: true
         f!(AtomicBool); // CHECK: fn(std::sync::atomic::AtomicBool) {main::f} is trivial: true
 
-        f!(Trivial); // CHECK: for<'r> fn(Trivial<'r>) {main::f} is trivial: true
+        f!(Trivial); // CHECK: for<'{{[a-z0-9]+}}> fn(Trivial<'{{[a-z0-9]+}}>) {main::f} is trivial: true
 
         // TODO(kkysen) Test self-referential/recursive types through references (see #834).
         // Since transpiled types shouldn't have references, only pointers,

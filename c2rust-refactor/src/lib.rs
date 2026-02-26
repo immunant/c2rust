@@ -10,8 +10,6 @@
     box_patterns,
     generator_trait,
     drain_filter,
-    label_break_value,
-    let_else,
     never_type
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
@@ -26,6 +24,7 @@ extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_hash;
 extern crate rustc_hir;
+extern crate rustc_hir_typeck;
 extern crate rustc_incremental;
 extern crate rustc_index;
 extern crate rustc_infer;
@@ -40,8 +39,8 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_type_ir;
-extern crate rustc_typeck;
 extern crate smallvec;
+extern crate thin_vec;
 
 mod ast_builder;
 mod macros;

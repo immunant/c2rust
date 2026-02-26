@@ -200,11 +200,7 @@ impl ActionsBuilder {
             StatementKind::Retag(..) => panic!("unexpected StatementKind::Retag"),
             StatementKind::AscribeUserType(..) => {}
             StatementKind::Coverage(..) => {}
-            StatementKind::CopyNonOverlapping(ref cno) => {
-                self.push_operand(&cno.src, loc, WhichPlace::Operand(0));
-                self.push_operand(&cno.dst, loc, WhichPlace::Operand(0));
-                self.push_operand(&cno.count, loc, WhichPlace::Operand(0));
-            }
+            StatementKind::Intrinsic(..) => {}
             StatementKind::Nop => {}
         }
     }

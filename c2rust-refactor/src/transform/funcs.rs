@@ -142,8 +142,10 @@ impl Transform for ToMethod {
             let self_kind = {
                 if pat_ty == self_ty {
                     match mode {
-                        BindingMode::ByValue(mutbl) => Some(SelfKind::Value(mutbl)),
-                        BindingMode::ByRef(mutbl) => Some(SelfKind::Region(None, mutbl)),
+                        BindingAnnotation(ByRef::No, mutbl) => Some(SelfKind::Value(mutbl)),
+                        BindingAnnotation(ByRef::Yes, mutbl) => {
+                            Some(SelfKind::Region(None, mutbl))
+                        }
                     }
                 } else {
                     match pat_ty.kind() {
@@ -249,13 +251,13 @@ impl Transform for ToMethod {
             // function's `FnRefInfo`.
 
             if let Some(arg_idx) = info.arg_idx {
-                // Move the `self` argument into the first position.
+                // Move the `self` argument into the method receiver position.
                 let mut args = args;
-                let self_arg = args.remove(arg_idx);
-                args.insert(0, self_arg);
+                let recv = args.remove(arg_idx);
 
                 e.kind = ExprKind::MethodCall(
                     mk().path_segment(&info.ident),
+                    recv,
                     args,
                     DUMMY_SP,
                 );
@@ -488,7 +490,7 @@ impl Transform for WrapExtern {
                     let arg_names = f.decl.inputs.iter().enumerate().map(|(idx, arg)| {
                         // TODO: match_arg("__i: __t", arg).ident("__i")
                         match arg.pat.kind {
-                            PatKind::Ident(BindingMode::ByValue(Mutability::Not),
+                            PatKind::Ident(BindingAnnotation(ByRef::No, _),
                                            ident,
                                            None) => {
                                 ident

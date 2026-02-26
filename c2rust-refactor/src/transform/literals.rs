@@ -50,7 +50,7 @@ impl Transform for ByteStrToStr {
                         LitKind::ByteStr(ref bs) => {
                             let s = String::from_utf8(bs.to_vec()).unwrap();
                             l.kind = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
-                            l.token.kind = token::LitKind::Str;
+                            l.token_lit.kind = token::LitKind::Str;
                         }
                         _ => {}
                     }
@@ -96,7 +96,7 @@ impl Transform for RemoveNullTerminator {
                             if let Some((last, rest)) = ms.split_last_mut() {
                                 if *last == 0 {
                                     *ms = rest;
-                                    strip_null(&mut l.token.symbol);
+                                    strip_null(&mut l.token_lit.symbol);
                                 }
                             }
                         }
@@ -127,14 +127,20 @@ pub struct RemoveLiteralSuffixes;
 fn remove_suffix(lit: &Lit) -> Option<Lit> {
     match lit.kind {
         LitKind::Int(x, _) => Some(Lit {
-            token: token::Lit { suffix: None, ..lit.token },
+            token_lit: token::Lit {
+                suffix: None,
+                ..lit.token_lit
+            },
             kind: LitKind::Int(x, LitIntType::Unsuffixed),
             span: lit.span,
         }),
 
         LitKind::Float(sym, _) => match sym_token_kind(sym) {
             token::LitKind::Float => Some(Lit {
-                token: token::Lit { suffix: None, ..lit.token },
+                token_lit: token::Lit {
+                    suffix: None,
+                    ..lit.token_lit
+                },
                 kind: LitKind::Float(sym, LitFloatType::Unsuffixed),
                 span: lit.span,
             }),
@@ -396,7 +402,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // We don't want to unify with `Self`
-            Res::SelfTy { .. } => self.new_empty_node(),
+            Res::SelfTyParam { .. } | Res::SelfTyAlias { .. } => self.new_empty_node(),
 
             Res::Local(id) => {
                 // This is a local variable that may have a type,
@@ -592,7 +598,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 }
             }
 
-            ExprKind::MethodCall(ref segment, ref args, ref _span) => {
+            ExprKind::MethodCall(ref segment, ref recv, ref args, ref _span) => {
                 let hir_id = self.cx.hir_map().node_to_hir_id(ex.id);
                 let parent = self.cx.hir_map().get_parent_item(hir_id);
                 let body = self.cx.hir_map().body_owned_by(parent);
@@ -608,13 +614,14 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     ch[0].set(LitTyKeyNode::Empty);
                 }
 
-                self.visit_path_segment(ex.span, segment);
+                self.visit_path_segment(segment);
                 if let Some(&[ref input_key_trees @ .., output_key_tree]) = callee_key_tree.get().children() {
-                    for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
+                    for (arg_expr, arg_key_tree) in std::iter::once(recv).chain(args.iter()).zip(input_key_trees.iter()) {
                         self.visit_expr_unify(arg_expr, arg_key_tree);
                     }
                     self.unify_key_trees(kt, output_key_tree);
                 } else {
+                    self.visit_expr(recv);
                     for arg in args {
                         self.visit_expr(arg);
                     }
