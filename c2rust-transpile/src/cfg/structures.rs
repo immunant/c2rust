@@ -9,13 +9,24 @@ use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
     root: &[Structure<Stmt>],
+    cfg_info: &CfgInfo,
     comment_store: &mut comment_store::CommentStore,
     current_block: Box<Expr>,
     debug_labels: bool,
     cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
-    let ast: StructuredAST<Box<Expr>, Pat, Label, Stmt> =
-        structured_cfg_help(vec![], &IndexSet::new(), root, &mut IndexSet::new())?;
+    let loop_context = LoopContext::default();
+    let mut ast = process_cfg(
+        root,
+        cfg_info,
+        &IndexSet::new(),
+        &loop_context,
+        &mut IndexSet::new(),
+    )?;
+
+    // TODO: It would be good to be able to spit out the AST before label cleanup
+    // for debugging purposes.
+    cleanup_labels(&mut ast, &None, &mut IndexSet::new());
 
     let s = StructureState {
         debug_labels,
@@ -34,8 +45,184 @@ pub fn structured_cfg(
     Ok(stmts)
 }
 
+/// Simplifies the relooped AST by removing labels from exits and moving block
+/// labels to loop labels.
+///
+/// This is an optimization pass on the relooped AST. When building the AST from
+/// the structured CFG, it's easier and less error-prone to always label all
+/// loops and exits. But doing so makes the resulting code more verbose and gets
+/// in the way of our ability to generate `while` loops, which relies on `loop {
+/// if cond { break; } }` being in the AST.
+///
+/// This function walks the AST, keeping track of when we're allowed to use
+/// unlabeled exits (i.e. when we're in a loop and NOT inside a labeled block),
+/// and removes labels from exits that don't need them. We then also remove
+/// labels from loops if there aren't any exits that need the label.
+///
+/// We also simplify the structure of the AST by removing blocks that contain an
+/// unlabeled loop by moving the label to the loop.
+fn cleanup_labels(
+    ast: &mut StructuredAST<Box<Expr>, Pat, Label, Stmt>,
+    current_loop: &Option<Label>,
+    encountered_labels: &mut IndexSet<Label>,
+) {
+    use StructuredASTKind::*;
+
+    match &mut ast.node {
+        // Remove the label if an exit targets the loop it's directly inside of. If we
+        // can't remove the label, track it in `encountered_labels` so we can later
+        // decide if the loop needs its label.
+        Exit(_, label) => {
+            if label == current_loop {
+                *label = None;
+            } else if let Some(label) = label {
+                encountered_labels.insert(label.clone());
+            }
+        }
+
+        // Recurse through loops and blocks, tracking if we're directly inside a loop
+        // and cleaning up labels where possible.
+        Loop(label_place, body) => {
+            let mut inner_labels = IndexSet::new();
+            cleanup_labels(body, label_place, &mut inner_labels);
+
+            // Remove the loop's label if it's never used in the loop's body.
+            if let Some(label) = label_place && !inner_labels.contains(label) {
+                *label_place = None;
+            }
+
+            encountered_labels.extend(inner_labels);
+        }
+        Block(label, body) => {
+            let mut inner_labels = IndexSet::new();
+            cleanup_labels(body, &None, &mut inner_labels);
+
+            match &mut body.node {
+                // If, after cleaning up labels in the block's body, the block's only contents
+                // are an unlabeled loop, remove the block and apply the label to the loop
+                // instead. After doing this we must then re-process the block's contents to see
+                // if we can remove more labels from the loop's body.
+                Loop(loop_label @ None, _) => {
+                    *loop_label = Some(label.clone());
+
+                    inner_labels.clear();
+                    cleanup_labels(body, &None, &mut inner_labels);
+
+                    *ast = std::mem::take(&mut *body);
+                }
+
+                // If the block's body is a labeled loop or a block, then exiting either takes
+                // us to the same place. In that case we can merge the two labels together and
+                // then replace the block with its contents.
+                //
+                // NOTE: In the future we may want to be a bit smarter about which label we
+                // choose to use. Currently we always replaces the inner label with the outer
+                // label, but it's possible that the inner label might have a more meaningful
+                // name. The names of labels are either taken from `goto` labels in the original
+                // C, or are synthetic, numeric names. At time of writing, when we do generate
+                // an AST like this (i.e. a block containing a labeled loop), the inner loop
+                // will have a synthetic label and the outer block will have the `goto` label
+                // from the original C (this comes from the fact that the original C has to use
+                // a `goto` to exit nested loops).
+                //
+                // In theory the smarter approach is to look at both labels, and if one of them
+                // is a named label then choose that one, preferring the outer label if both are
+                // named. However the current approach is simpler and does the right thing for
+                // now.
+                Loop(Some(inner_label), _) => {
+                    // Clone the label to avoid borrowing `body` while we modify it.
+                    let inner_label = inner_label.clone();
+                    merge_labels(body, &inner_label, label);
+
+                    // The loop's label has changed, re-process it to see if any more labels can be
+                    // removed.
+                    inner_labels.clear();
+                    cleanup_labels(body, &None, &mut inner_labels);
+
+                    *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+                }
+                Block(inner_label, _) => {
+                    // Clone the label to avoid borrowing `body` while we modify it.
+                    let inner_label = inner_label.clone();
+                    merge_labels(body, &inner_label, label);
+                    *ast = std::mem::replace(&mut *body, dummy_spanned(StructuredASTKind::Empty));
+                }
+
+                _ => {}
+            }
+
+            encountered_labels.extend(inner_labels);
+        }
+
+        // Recurse through the rest of the AST.
+        Append(left, right) => {
+            cleanup_labels(left, current_loop, encountered_labels);
+            cleanup_labels(right, current_loop, encountered_labels);
+        }
+        Match(_, arms) => {
+            for (_, arm) in arms {
+                cleanup_labels(arm, current_loop, encountered_labels);
+            }
+        }
+        If(_, then, else_) => {
+            cleanup_labels(then, current_loop, encountered_labels);
+            cleanup_labels(else_, current_loop, encountered_labels);
+        }
+        GotoTable(cases, then) => {
+            for (_, case) in cases {
+                cleanup_labels(case, current_loop, encountered_labels);
+            }
+            cleanup_labels(then, current_loop, encountered_labels);
+        }
+        Empty | Singleton(_) | Goto(_) => {}
+    }
+}
+
+/// Rewrites the AST to replace one label with another.
+fn merge_labels(ast: &mut StructuredAST<Box<Expr>, Pat, Label, Stmt>, old: &Label, new: &Label) {
+    use StructuredASTKind::*;
+
+    match &mut ast.node {
+        // Rewrite labels for exits, blocks, and loops.
+        Exit(_, Some(label)) => {
+            if label == old {
+                *label = new.clone();
+            }
+        }
+        Block(label, body) | Loop(Some(label), body) => {
+            if label == old {
+                *label = new.clone();
+            }
+            merge_labels(body, old, new);
+        }
+
+        // Recurse through the rest of the AST.
+        Loop(None, body) => merge_labels(body, old, new),
+        Append(left, right) => {
+            merge_labels(left, old, new);
+            merge_labels(right, old, new);
+        }
+        Match(_, arms) => {
+            for (_, arm) in arms {
+                merge_labels(arm, old, new);
+            }
+        }
+        If(_, then, else_) => {
+            merge_labels(then, old, new);
+            merge_labels(else_, old, new);
+        }
+        GotoTable(cases, then) => {
+            for (_, case) in cases {
+                merge_labels(case, old, new);
+            }
+            merge_labels(then, old, new);
+        }
+        Exit(_, None) | Empty | Singleton(_) | Goto(_) => {}
+    }
+}
+
 /// Ways of exiting from a loop body
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ExitStyle {
     /// Jumps to the beginning of the loop body
     Continue,
@@ -88,6 +275,8 @@ pub trait StructuredStatement: Sized {
     /// Make some sort of loop
     fn mk_loop(lbl: Option<Self::L>, body: Self) -> Self;
 
+    fn mk_block(lbl: Self::L, body: Self) -> Self;
+
     /// Make an exit from a loop
     fn mk_exit(
         exit_style: ExitStyle,  // `break` or a `continue`
@@ -103,6 +292,23 @@ pub struct Spanned<T> {
     pub span: Span,
 }
 
+impl<T: PartialEq> PartialEq for Spanned<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node
+    }
+}
+
+impl<T: Eq> Eq for Spanned<T> {}
+
+impl<T: Default> Default for Spanned<T> {
+    fn default() -> Self {
+        Self {
+            node: Default::default(),
+            span: Span::dummy(),
+        }
+    }
+}
+
 pub type StructuredAST<E, P, L, S> = Spanned<StructuredASTKind<E, P, L, S>>;
 
 fn dummy_spanned<T>(inner: T) -> Spanned<T> {
@@ -114,7 +320,7 @@ fn dummy_spanned<T>(inner: T) -> Spanned<T> {
 
 /// Defunctionalized version of `StructuredStatement` trait
 #[allow(missing_docs)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum StructuredASTKind<E, P, L, S> {
     Empty,
     Singleton(S),
@@ -134,7 +340,15 @@ pub enum StructuredASTKind<E, P, L, S> {
         Box<StructuredAST<E, P, L, S>>,
     ),
     Loop(Option<L>, Box<StructuredAST<E, P, L, S>>),
+    Block(L, Box<StructuredAST<E, P, L, S>>),
     Exit(ExitStyle, Option<L>),
+}
+
+// Custom impl so that we don't require the generic args to impl `Default`.
+impl<E, P, L, S> Default for StructuredASTKind<E, P, L, S> {
+    fn default() -> Self {
+        Self::Empty
+    }
 }
 
 impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
@@ -175,6 +389,10 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
         dummy_spanned(StructuredASTKind::Loop(lbl, Box::new(body)))
     }
 
+    fn mk_block(lbl: Self::L, body: Self) -> Self {
+        dummy_spanned(StructuredASTKind::Block(lbl, Box::new(body)))
+    }
+
     fn mk_exit(exit_style: ExitStyle, label: Option<Self::L>) -> Self {
         dummy_spanned(StructuredASTKind::Exit(exit_style, label))
     }
@@ -191,93 +409,212 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
     }
 }
 
+#[allow(dead_code)]
 type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 
-/// Recursive helper for `structured_cfg`
-///
-/// TODO: move this into `structured_cfg`?
-fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label, S = Stmt>>(
-    exits: Vec<Exit>,
-    next: &IndexSet<Label>,
-    root: &[Structure<Stmt>],
-    used_loop_labels: &mut IndexSet<Label>,
-) -> TranslationResult<S> {
-    let mut next: &IndexSet<Label> = next;
-    let mut rest: S = S::empty();
+/// Information gathered from the structured CFG needed for AST generation.
+#[derive(Debug, Default)]
+pub struct CfgInfo {
+    /// Labels that require `current_block` to be set before traveling to them.
+    /// These are entries of loops with multiple entries.
+    pub checked_entries: IndexSet<Label>,
 
-    for structure in root.iter().rev() {
-        let mut new_rest: S = S::empty();
+    /// Maps loop entries to their canonical loop label (i.e., `entries.first()`).
+    /// Used to determine which label to use for `continue` statements.
+    pub entry_to_loop: IndexMap<Label, Label>,
+}
 
-        use Structure::*;
+/// Searches the structured CFG for loops and gathers information needed for AST
+/// generation.
+pub fn gather_cfg_info(structures: &[Structure<Stmt>], info: &mut CfgInfo) {
+    for structure in structures {
         match structure {
+            Structure::Loop { entries, body } => {
+                // Track checked entries for multi-entry loops
+                if entries.len() > 1 {
+                    info.checked_entries.extend(entries.iter().cloned());
+                }
+
+                // Map all loop entries to the canonical loop label
+                let loop_label = entries.first().expect("Loop must have at least one entry");
+                for entry in entries {
+                    info.entry_to_loop.insert(entry.clone(), loop_label.clone());
+                }
+
+                gather_cfg_info(body, info);
+            }
+            Structure::Multiple { branches, .. } => {
+                for branch in branches.values() {
+                    gather_cfg_info(branch, info);
+                }
+            }
+            Structure::Simple { terminator, .. } => {
+                for label in terminator.get_labels() {
+                    if let StructureLabel::Nested(nested) = label {
+                        gather_cfg_info(nested, info);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Tracks context about loops we're currently inside while processing the CFG.
+#[derive(Clone, Debug, Default)]
+struct LoopContext {
+    /// Set of all entries to loops we're currently inside.
+    /// Used to determine if an exit target is a back edge (continue) or forward edge (break).
+    current_loop_entries: IndexSet<Label>,
+
+    /// The label of the innermost loop we're in, if any.
+    innermost_loop: Option<Label>,
+
+    /// The entries to the structure following the innermost loop.
+    /// Used to optimize continues into breaks when possible.
+    innermost_loop_exits: IndexSet<Label>,
+}
+
+fn process_cfg(
+    structures: &[Structure<Stmt>],
+    cfg_info: &CfgInfo,
+    followup_entries: &IndexSet<Label>,
+    loop_context: &LoopContext,
+    break_targets: &mut IndexSet<Label>,
+) -> TranslationResult<StructuredAST<Box<Expr>, Pat, Label, Stmt>> {
+    use Structure::*;
+
+    type S = StructuredAST<Box<Expr>, Pat, Label, Stmt>;
+
+    // HACK: Reorder the branches of a multiple to put all named labels at the end.
+    //
+    // From a CFG perspective there's no inherent order to the branches of a
+    // `Multiple`, and the order we choose when building the structured CFG is
+    // currently arbitrary (i.e. we don't enforce a particular ordering). However,
+    // the order we visit the branches here determines when we can fall through to
+    // the branch vs when we need to `break` to it: Only the first branch will be
+    // arrived at naturally, and all subsequent branches will be `break` targets.
+    //
+    // For the common `goto error` pattern in C code, we'll end up with a `Multiple`
+    // where some of the branches are named and some aren't, but they may appear in
+    // any order. In this case, pushing the named label(s) to the end is a
+    // reasonable heuristic because the named labels had to be `goto` targets, and
+    // therefore shouldn't be the code we flow to directly.
+    //
+    // This only papers over one part of the larger problem of how we order CFG
+    // nodes. See https://github.com/immunant/c2rust/issues/1542 for more
+    // information about how we have similar ordering problems for branches of
+    // adjacent `Multiple`s. Fixing that issue should also allow us to remove this
+    // hack.
+    fn sort_branches(branches: &IndexMap<Label, Vec<Structure<Stmt>>>) -> Vec<Label> {
+        let (named, mut rest) = branches
+            .keys()
+            .cloned()
+            .partition::<Vec<_>, _>(|lbl| matches!(lbl, Label::FromC(_, Some(_))));
+        rest.extend(named);
+        rest
+    }
+
+    // Gets the entries for the structure at index `i`. If we are looking past the
+    // last structure, then we use `followup_entries`.
+    let get_entries = |i: usize| {
+        if i < structures.len() {
+            match &structures[i] {
+                Simple { entries, .. } => entries.clone(),
+                Loop { entries, .. } => entries.clone(),
+                Multiple { branches, .. } => {
+                    indexset! { sort_branches(branches).first().unwrap().clone() }
+                }
+            }
+        } else {
+            followup_entries.clone()
+        }
+    };
+
+    let mut ast = S::empty();
+    let mut i = 0;
+    while i < structures.len() {
+        let structure = &structures[i];
+        let next_entries = get_entries(i + 1);
+
+        // Generate the AST for the current structure.
+        let mut structure_ast = match structure {
             Simple {
                 body,
-                terminator,
                 span,
+                terminator,
                 ..
             } => {
+                let mut body_ast: S = S::empty();
                 for s in body.clone() {
-                    new_rest = S::mk_append(new_rest, S::mk_singleton(s));
+                    body_ast = S::mk_append(body_ast, S::mk_singleton(s));
                 }
-                new_rest.extend_span(*span);
-
-                let insert_goto = |to: Label, target: &IndexSet<Label>| -> S {
-                    if target.len() == 1 {
-                        S::empty()
-                    } else {
-                        S::mk_goto(to)
-                    }
-                };
+                body_ast.extend_span(*span);
 
                 let mut branch = |slbl: &StructureLabel<Stmt>| -> TranslationResult<S> {
                     use StructureLabel::*;
+
                     match slbl {
-                        Nested(ref nested) => {
-                            structured_cfg_help(exits.clone(), next, nested, used_loop_labels)
-                        }
+                        Nested(nested) => process_cfg(
+                            nested,
+                            cfg_info,
+                            &next_entries,
+                            loop_context,
+                            break_targets,
+                        ),
 
-                        GoTo(to) | ExitTo(to) if next.contains(to) => {
-                            Ok(insert_goto(to.clone(), next))
-                        }
+                        ExitTo(target) => {
+                            // Check if the target is a checked entry (multi-entry loop), in which
+                            // case we need to set `current_block` before branching.
+                            let mut new_ast = if cfg_info.checked_entries.contains(target) {
+                                S::mk_goto(target.clone())
+                            } else {
+                                S::empty()
+                            };
 
-                        ExitTo(to) => {
-                            let mut immediate = true;
-                            for (label, local) in &exits {
-                                if let Some(&(ref follow, exit_style)) = local.get(to) {
-                                    let lbl = if immediate {
-                                        None
-                                    } else {
-                                        used_loop_labels.insert(label.clone());
-                                        Some(label.clone())
-                                    };
+                            // Determine if this is a back edge (continue) or forward edge (break)
+                            // by checking if the target is an entry to a loop we're currently inside.
+                            let is_back_edge = loop_context.current_loop_entries.contains(target);
 
-                                    let mut new_cfg = S::mk_append(
-                                        insert_goto(to.clone(), follow),
-                                        S::mk_exit(exit_style, lbl),
+                            let exit = if is_back_edge {
+                                let loop_label = cfg_info.entry_to_loop.get(target).expect(
+                                    "target in current_loop_entries but not in entry_to_loop",
+                                );
+
+                                // If we can get where we're going with a `break`, prefer that over
+                                // using a `continue`. This helps us to reconstruct `while` loops in
+                                // more cases, since generating a `while` requires the AST to be
+                                // structured like `loop { if { break; } }`.
+                                if loop_context.innermost_loop_exits.contains(loop_label) {
+                                    let break_label = loop_context.innermost_loop.as_ref().expect(
+                                        "innermost_loop_exits set but innermost_loop is None",
                                     );
-                                    new_cfg.extend_span(*span);
-                                    return Ok(new_cfg);
+                                    Some((ExitStyle::Break, break_label.clone()))
+                                } else if !next_entries.contains(loop_label) {
+                                    Some((ExitStyle::Continue, loop_label.clone()))
+                                } else {
+                                    None
                                 }
-                                immediate = false;
+                            } else if !next_entries.contains(target) {
+                                Some((ExitStyle::Break, target.clone()))
+                            } else {
+                                None
+                            };
+
+                            if let Some((style, label)) = exit {
+                                break_targets.insert(label.clone());
+                                new_ast = S::mk_append(new_ast, S::mk_exit(style, Some(label)));
                             }
 
-                            Err(
-                                format_err!("Not a valid exit: {:?} has nothing to exit to", to)
-                                    .into(),
-                            )
+                            new_ast.extend_span(*span);
+                            Ok(new_ast)
                         }
 
-                        GoTo(to) => Err(format_err!(
-                            "Not a valid exit: {:?} (GoTo isn't falling through to {:?})",
-                            to,
-                            next
-                        )
-                        .into()),
+                        GoTo(to) => panic!("Encountered GoTo({to:?}) in structured AST"),
                     }
                 };
 
-                new_rest = S::mk_append(
-                    new_rest,
+                S::mk_append(
+                    body_ast,
                     match terminator {
                         End => S::empty(),
                         Jump(to) => branch(to)?,
@@ -291,80 +628,122 @@ fn structured_cfg_help<S: StructuredStatement<E = Box<Expr>, P = Pat, L = Label,
                             S::mk_match(expr.clone(), branched_cases)
                         }
                     },
-                );
+                )
             }
 
-            Multiple { branches, then, .. } => {
-                let cases = branches
-                    .iter()
-                    .map(|(lbl, body)| {
-                        let stmts =
-                            structured_cfg_help(exits.clone(), next, body, used_loop_labels)?;
-                        Ok((lbl.clone(), stmts))
+            Loop { entries, body } => {
+                let label = entries.first().expect("There must be at least one entry");
+
+                let inner_loop_context = LoopContext {
+                    current_loop_entries: loop_context
+                        .current_loop_entries
+                        .iter()
+                        .cloned()
+                        .chain(entries.iter().cloned())
+                        .collect(),
+                    innermost_loop: Some(label.clone()),
+                    innermost_loop_exits: next_entries.clone(),
+                };
+
+                let body =
+                    process_cfg(body, cfg_info, entries, &inner_loop_context, break_targets)?;
+                S::mk_loop(Some(label.clone()), body)
+            }
+
+            Multiple { entries, branches } => {
+                // If we have entries that aren't one of our branches, our `then` case needs to
+                // be empty so that we fall through to the next structure. Otherwise we pull off
+                // the first branch as the `then` case in order to satisfy the exhaustiveness
+                // requirement for the generated `match`.
+                let mut branch_entries = branches.keys();
+                let then = if entries.iter().all(|entry| branches.contains_key(entry)) {
+                    let then_entry = branch_entries
+                        .next()
+                        .expect("There must be at least one branch");
+                    process_cfg(
+                        &branches[then_entry],
+                        cfg_info,
+                        &next_entries,
+                        loop_context,
+                        break_targets,
+                    )?
+                } else {
+                    S::empty()
+                };
+
+                let cases = branch_entries
+                    .map(|entry| {
+                        let stmts = process_cfg(
+                            &branches[entry],
+                            cfg_info,
+                            &next_entries,
+                            loop_context,
+                            break_targets,
+                        )?;
+                        Ok((entry.clone(), stmts))
                     })
                     .collect::<TranslationResult<_>>()?;
 
-                let then: S = structured_cfg_help(exits.clone(), next, then, used_loop_labels)?;
-
-                new_rest = S::mk_append(new_rest, S::mk_goto_table(cases, then));
+                S::mk_goto_table(cases, then)
             }
+        };
 
-            Loop { body, entries } => {
-                let label = entries
-                    .iter()
-                    .next()
-                    .ok_or_else(|| format_err!("The loop {:?} has no entry", structure))?;
+        i += 1;
 
-                let mut these_exits = IndexMap::new();
-                these_exits.extend(
-                    entries
-                        .iter()
-                        .map(|e| (e.clone(), (entries.clone(), ExitStyle::Continue))),
-                );
-                these_exits.extend(
-                    next.iter()
-                        .map(|e| (e.clone(), (next.clone(), ExitStyle::Break))),
-                );
+        // Handle any followup multiple structures by wrapping the current structure's AST in a block.
+        while let Some(Multiple { branches, .. }) = structures.get(i) {
+            let next_entries = get_entries(i + 1);
 
-                let mut exits_new = vec![(label.clone(), these_exits)];
-                exits_new.extend(exits.clone());
+            // Generate blocks as break targets for the remaining branches.
+            for (branch_idx, entry) in sort_branches(branches).iter().enumerate() {
+                let branch = &branches[entry];
 
-                let body = structured_cfg_help(exits_new, entries, body, used_loop_labels)?;
-                let loop_lbl = if used_loop_labels.contains(label) {
-                    Some(label.clone())
+                // Choose the next entries for the branch. For most of the branches we want to
+                // say that there are no next entries, because we don't want one branch to flow
+                // into another. But the last branch can fall through to the next entries that
+                // follow this multiple.
+                let empty = IndexSet::new();
+                let next_entries = if branch_idx == branches.len() - 1 {
+                    &next_entries
                 } else {
-                    None
+                    &empty
                 };
-                new_rest = S::mk_append(new_rest, S::mk_loop(loop_lbl, body));
+
+                let branch_ast =
+                    process_cfg(branch, cfg_info, next_entries, loop_context, break_targets)?;
+
+                if break_targets.contains(entry) {
+                    structure_ast = S::mk_block(entry.clone(), structure_ast);
+                }
+
+                structure_ast = S::mk_append(structure_ast, branch_ast);
             }
+
+            i += 1;
         }
 
-        new_rest = S::mk_append(new_rest, rest);
+        // Check for a simple or loop after the multiple. If there is one, we need to
+        // also wrap the current ast in a labeled block.
+        match structures.get(i) {
+            Some(Simple { entries, .. }) | Some(Loop { entries, .. }) => {
+                for entry in entries {
+                    if break_targets.contains(entry) {
+                        structure_ast = S::mk_block(entry.clone(), structure_ast);
+                    }
+                }
+            }
 
-        rest = new_rest;
-        next = structure.get_entries();
+            Some(Multiple { .. }) => {
+                unreachable!("We should have already handled followup multiples");
+            }
+
+            None => {}
+        }
+
+        ast = S::mk_append(ast, structure_ast);
     }
 
-    Ok(rest)
-}
-
-/// Checks if there are any `Multiple` structures anywhere. Only if so will there be any need for a
-/// `current_block` variable.
-pub fn has_multiple<Stmt>(root: &[Structure<Stmt>]) -> bool {
-    use Structure::*;
-    root.iter().any(|structure| match structure {
-        Simple { terminator, .. } => {
-            terminator
-                .get_labels()
-                .into_iter()
-                .any(|structure_label| match structure_label {
-                    StructureLabel::Nested(nested) => has_multiple(nested),
-                    _ => false,
-                })
-        }
-        Multiple { .. } => true,
-        Loop { body, .. } => has_multiple(body),
-    })
+    Ok(ast)
 }
 
 struct StructureState {
@@ -645,6 +1024,17 @@ impl StructureState {
                 mk().span(span).expr_stmt(e)
             }
 
+            Block(lbl, body) => {
+                // Make a labeled block.
+
+                let (body, body_span) = self.to_stmt(*body, comment_store);
+
+                let e =
+                    mk().labelled_block_expr(mk().span(body_span).block(body), lbl.pretty_print());
+
+                mk().span(span).expr_stmt(e)
+            }
+
             Exit(exit_style, lbl) => {
                 // Make a (possibly labelled) `break` or `continue`.
 
@@ -675,5 +1065,169 @@ fn not(bool_expr: &Expr) -> Box<Expr> {
             ..
         }) => Box::new(unparen(expr).clone()),
         _ => mk().unary_expr(UnOp::Not(Default::default()), Box::new(bool_expr.clone())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type AST = StructuredAST<Box<Expr>, Pat, Label, Stmt>;
+
+    fn label(id: u64) -> Label {
+        Label::Synthetic(id)
+    }
+
+    fn check(mut input: AST, expected: AST) {
+        cleanup_labels(&mut input, &None, &mut IndexSet::new());
+        assert_eq!(input, expected);
+    }
+
+    #[test]
+    fn test_removes_label_from_exit_targeting_current_loop() {
+        // 'a: loop { break 'a; }  =>  loop { break; }
+        check(
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_exit(ExitStyle::Break, Some(label(1))),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_keeps_label_for_outer_loop_exit() {
+        // 'a: loop { loop { break 'a; } }  =>  'a: loop { loop { break 'a; } }
+        check(
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(1))),
+                ),
+            ),
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_removes_unused_loop_label() {
+        // 'a: loop { break; }  =>  loop { break; }
+        check(
+            AST::mk_loop(Some(label(1)), AST::mk_exit(ExitStyle::Break, None)),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_unlabeled_loop_with_labeled_break() {
+        // 'a: { loop { break 'a; } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_labeled_loop_merges_labels() {
+        // 'a: { 'b: loop { break 'b; } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_labeled_loop_with_outer_exit() {
+        // 'a: { 'b: loop { break 'a; } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(1))),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
+    }
+
+    #[test]
+    fn test_block_loop_with_external_exit() {
+        // 'a: { 'b: loop { break 'c; } }  =>  loop { break 'c; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_exit(ExitStyle::Break, Some(label(3))),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(3)))),
+        );
+    }
+
+    #[test]
+    fn test_block_nested_loops_with_labeled_break() {
+        // Regression test: ensures block containing labeled loop preserves loop structure.
+        // 'a: { 'b: loop { loop { break 'b; } } }  =>  'a: loop { loop { break 'a; } }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_loop(
+                    Some(label(2)),
+                    AST::mk_loop(
+                        Some(label(3)),
+                        AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                    ),
+                ),
+            ),
+            AST::mk_loop(
+                Some(label(1)),
+                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_nested_blocks_merge_labels() {
+        // 'a: { 'b: { break 'b; } }  =>  'a: { break 'a; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_block(label(2), AST::mk_exit(ExitStyle::Break, Some(label(2)))),
+            ),
+            AST::mk_block(label(1), AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+        );
+    }
+
+    #[test]
+    fn test_nested_blocks_with_loop() {
+        // 'a: { 'b: { loop { break 'b; } } }  =>  loop { break; }
+        check(
+            AST::mk_block(
+                label(1),
+                AST::mk_block(
+                    label(2),
+                    AST::mk_loop(
+                        Some(label(3)),
+                        AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                    ),
+                ),
+            ),
+            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+        );
     }
 }

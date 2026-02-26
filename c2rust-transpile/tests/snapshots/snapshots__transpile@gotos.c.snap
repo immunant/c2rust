@@ -20,3 +20,109 @@ pub unsafe extern "C" fn sum(mut count: ::core::ffi::c_int) -> ::core::ffi::c_in
     }
     return x;
 }
+#[no_mangle]
+pub unsafe extern "C" fn goto_error_simple(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_error: {
+        if x != 0 {
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                x += 2 as ::core::ffi::c_int;
+                break '_error;
+            }
+        } else {
+            x += 3 as ::core::ffi::c_int;
+            if x != 0 {
+                x += 4 as ::core::ffi::c_int;
+                break '_error;
+            }
+        }
+        return x + 5 as ::core::ffi::c_int;
+    }
+    return x + 6 as ::core::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_error_minimal(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_error: {
+        if x != 0 {
+            if x != 0 {
+                break '_error;
+            }
+        } else if x != 0 {
+            break '_error;
+        }
+        return x + 1 as ::core::ffi::c_int;
+    }
+    return x + 2 as ::core::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn multi_goto_error(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_also_bad: {
+        '_bad: {
+            if x != 0 {
+                x += 1 as ::core::ffi::c_int;
+                if x != 0 {
+                    if x != 0 {
+                        break '_bad;
+                    }
+                }
+                x += 2 as ::core::ffi::c_int;
+                if x != 0 {
+                    break '_also_bad;
+                }
+            }
+            if x != 0 {
+                x += 3 as ::core::ffi::c_int;
+                if x != 0 {
+                    if x != 0 {
+                        break '_bad;
+                    }
+                }
+                x += 4 as ::core::ffi::c_int;
+                if x != 0 {
+                    break '_also_bad;
+                }
+            }
+            return x;
+        }
+        return x + 10 as ::core::ffi::c_int;
+    }
+    return x + 20 as ::core::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn multi_goto_error_common(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_common: {
+        '_also_bad: {
+            '_bad: {
+                if x != 0 {
+                    x += 1 as ::core::ffi::c_int;
+                    if x != 0 {
+                        if x != 0 {
+                            break '_bad;
+                        }
+                    }
+                    x += 2 as ::core::ffi::c_int;
+                    if x != 0 {
+                        break '_also_bad;
+                    }
+                }
+                if x != 0 {
+                    x += 3 as ::core::ffi::c_int;
+                    if x != 0 {
+                        if x != 0 {
+                            break '_bad;
+                        }
+                    }
+                    x += 4 as ::core::ffi::c_int;
+                    if x != 0 {
+                        break '_also_bad;
+                    }
+                }
+                return x;
+            }
+            x += 5 as ::core::ffi::c_int;
+            break '_common;
+        }
+        x += 6 as ::core::ffi::c_int;
+    }
+    return x + 10 as ::core::ffi::c_int;
+}

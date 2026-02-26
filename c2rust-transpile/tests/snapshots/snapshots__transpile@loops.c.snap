@@ -1,0 +1,408 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/loops.rs
+input_file: c2rust-transpile/tests/snapshots/loops.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#[no_mangle]
+pub unsafe extern "C" fn while_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        x += 1 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn for_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 10 as ::core::ffi::c_int {
+        x += 1 as ::core::ffi::c_int;
+        i += 1;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn infinite_loop(mut x: ::core::ffi::c_int) {
+    loop {
+        x += 1 as ::core::ffi::c_int;
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        x += 1 as ::core::ffi::c_int;
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn do_while_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        x += 1 as ::core::ffi::c_int;
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn break_while(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        if x != 0 {
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                break;
+            }
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn continue_while(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        if x != 0 {
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                continue;
+            }
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn trivial_nested_while(mut x: ::core::ffi::c_int) {
+    while x != 0 {
+        while x != 0 {
+            while x != 0 {
+                x += 1 as ::core::ffi::c_int;
+            }
+        }
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn nested_while(mut x: ::core::ffi::c_int) {
+    while x != 0 {
+        while x != 0 {
+            while x != 0 {
+                x += 1 as ::core::ffi::c_int;
+            }
+            x += 2 as ::core::ffi::c_int;
+        }
+        x += 3 as ::core::ffi::c_int;
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn nested_for(mut x: ::core::ffi::c_int) {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 5 as ::core::ffi::c_int {
+        let mut j: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        while j < 5 as ::core::ffi::c_int {
+            x += 1;
+            j += 1;
+        }
+        i += 1;
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn exit_nested_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_break_outer: while x != 0 {
+        while x != 0 {
+            if x != 0 {
+                break '_break_outer;
+            }
+            x += 1;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn continue_nested_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    's_28: while x != 0 {
+        while x != 0 {
+            if x != 0 {
+                continue 's_28;
+            }
+            x += 1;
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn break_and_continue_nested_loops(
+    mut x: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    '_break_outer: while x != 0 {
+        while x != 0 {
+            if x != 0 {
+                break '_break_outer;
+            }
+            if x != 0 {
+                continue '_break_outer;
+            }
+            x += 1;
+        }
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn for_loop_single_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 10 as ::core::ffi::c_int {
+        's_4: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_4;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+        }
+        i += 1;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn for_loop_multi_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    while i < 10 as ::core::ffi::c_int {
+        's_4: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_4;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                if x != 0 {
+                    break 's_4;
+                }
+            }
+            x += 2 as ::core::ffi::c_int;
+        }
+        i += 1;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn do_loop_single_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        's_2: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_2;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+        }
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn do_loop_multi_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        's_2: {
+            if x != 0 {
+                if x != 0 {
+                    break 's_2;
+                }
+            }
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                if x != 0 {
+                    break 's_2;
+                }
+            }
+            x += 2 as ::core::ffi::c_int;
+        }
+        if !(x != 0) {
+            break;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn explicit_loop_multi_exit(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        match x {
+            1 => {
+                x += 1 as ::core::ffi::c_int;
+            }
+            2 => {
+                x += 2 as ::core::ffi::c_int;
+                if x != 0 {
+                    x += 3 as ::core::ffi::c_int;
+                } else {
+                    x += 4 as ::core::ffi::c_int;
+                }
+                x += 5 as ::core::ffi::c_int;
+                break;
+            }
+            _ => {
+                x += 6 as ::core::ffi::c_int;
+                break;
+            }
+        }
+    }
+    x += 4 as ::core::ffi::c_int;
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn implicit_loop_multi_exit(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    loop {
+        match x {
+            1 => {
+                x += 1 as ::core::ffi::c_int;
+            }
+            2 => {
+                x += 2 as ::core::ffi::c_int;
+                if x != 0 {
+                    x += 3 as ::core::ffi::c_int;
+                } else {
+                    x += 4 as ::core::ffi::c_int;
+                }
+                x += 5 as ::core::ffi::c_int;
+                break;
+            }
+            _ => {
+                x += 6 as ::core::ffi::c_int;
+                break;
+            }
+        }
+    }
+    x += 4 as ::core::ffi::c_int;
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn loop_returns(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        x += 1 as ::core::ffi::c_int;
+        if x != 0 {
+            x += 2 as ::core::ffi::c_int;
+            return x;
+        }
+        x += 3 as ::core::ffi::c_int;
+        if x != 0 {
+            x += 4 as ::core::ffi::c_int;
+            return x;
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn loop_gotos(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_exit: {
+        while x != 0 {
+            x += 1 as ::core::ffi::c_int;
+            if x != 0 {
+                x += 2 as ::core::ffi::c_int;
+                break '_exit;
+            } else {
+                x += 3 as ::core::ffi::c_int;
+                if x != 0 {
+                    x += 4 as ::core::ffi::c_int;
+                    break '_exit;
+                } else {
+                    x += 5 as ::core::ffi::c_int;
+                }
+            }
+        }
+        return x;
+    }
+    return -x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn loop_early_return(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    while x != 0 {
+        x += 1 as ::core::ffi::c_int;
+        if x != 0 {
+            x += 2 as ::core::ffi::c_int;
+            return x;
+        }
+    }
+    return -x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn if_else_loops(mut x: ::core::ffi::c_int) {
+    if x != 0 {
+        while x != 0 {
+            x += 1 as ::core::ffi::c_int;
+        }
+    } else {
+        while x != 0 {
+            x += 2 as ::core::ffi::c_int;
+        }
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    '_D: {
+        if x != 0 {
+            loop {
+                x += 1 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        } else {
+            loop {
+                x += 2 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        }
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_into_loops(mut x: ::core::ffi::c_int) {
+    '_D: {
+        if x != 0 {
+            loop {
+                x += 1 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        } else {
+            loop {
+                x += 2 as ::core::ffi::c_int;
+                if !(x != 0) {
+                    break '_D;
+                }
+            }
+        }
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn goto_separate_loops(mut x: ::core::ffi::c_int) {
+    if x != 0 {
+        loop {
+            x += 1 as ::core::ffi::c_int;
+            if !(x != 0) {
+                break;
+            }
+        }
+    } else {
+        loop {
+            x += 2 as ::core::ffi::c_int;
+            if !(x != 0) {
+                break;
+            }
+        }
+    };
+}

@@ -14,6 +14,7 @@
 //!   - simplify that sequence of `Structure<Stmt>`s into another such sequence
 //!   - convert the `Vec<Structure<Stmt>>` back into a `Vec<Stmt>`
 //!
+//! See the [`relooper`] module for more details about the Relooper algorithm.
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
@@ -58,7 +59,7 @@ use crate::cfg::loops::*;
 use crate::cfg::multiples::*;
 
 /// These labels identify basic blocks in a regular CFG.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Label {
     /// Some labels come directly from the C side (namely those created from labels, cases, and
     /// defaults). For those, we just re-use the `CLabelId` of the C AST node.
@@ -69,13 +70,25 @@ pub enum Label {
     Synthetic(u64),
 }
 
+impl std::fmt::Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FromC(_, Some(name)) => write!(f, "_{name}"),
+            Self::FromC(id, None) => write!(f, "c_{}", id.0),
+            Self::Synthetic(id) => write!(f, "s_{id}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
 impl Label {
     pub fn pretty_print(&self) -> String {
-        match self {
-            Label::FromC(_, Some(s)) => format!("_{}", s.as_ref()),
-            Label::FromC(CStmtId(label_id), None) => format!("c_{}", label_id),
-            Label::Synthetic(syn_id) => format!("s_{}", syn_id),
-        }
+        self.to_string()
     }
 
     fn debug_print(&self) -> String {
@@ -162,19 +175,7 @@ pub enum Structure<Stmt> {
     Multiple {
         entries: IndexSet<Label>,
         branches: IndexMap<Label, Vec<Structure<Stmt>>>,
-        then: Vec<Structure<Stmt>>,
     },
-}
-
-impl<S> Structure<S> {
-    fn get_entries(&self) -> &IndexSet<Label> {
-        use Structure::*;
-        match self {
-            Simple { entries, .. } => entries,
-            Loop { entries, .. } => entries,
-            Multiple { entries, .. } => entries,
-        }
-    }
 }
 
 impl Structure<StmtOrDecl> {
@@ -211,11 +212,7 @@ impl Structure<StmtOrDecl> {
                     .collect();
                 Structure::Loop { entries, body }
             }
-            Structure::Multiple {
-                entries,
-                branches,
-                then,
-            } => {
+            Structure::Multiple { entries, branches } => {
                 let branches = branches
                     .into_iter()
                     .map(|(lbl, vs)| {
@@ -227,15 +224,7 @@ impl Structure<StmtOrDecl> {
                         )
                     })
                     .collect();
-                let then = then
-                    .into_iter()
-                    .map(|s| s.place_decls(lift_me, store))
-                    .collect();
-                Structure::Multiple {
-                    entries,
-                    branches,
-                    then,
-                }
+                Structure::Multiple { entries, branches }
             }
         }
     }
@@ -2172,7 +2161,7 @@ impl Cfg<Label, StmtOrDecl> {
         let cfg_mapped = self.map_stmts(|sd: &StmtOrDecl| -> Vec<String> { sd.to_string(store) });
 
         let file = File::create(file_path)?;
-        serde_json::to_writer(file, &cfg_mapped)?;
+        serde_json::to_writer_pretty(file, &cfg_mapped)?;
 
         Ok(())
     }

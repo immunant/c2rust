@@ -72,53 +72,6 @@ pub fn match_loop_body(
         })
 }
 
-/// Use heuristics to decide which blocks to move into the loop body.
-///
-///  1. Don't do anything if `follow_entries` is zero or one (since that means whatever
-///     follows the loop will be nice looking).
-///  2. Otherwise, recursively push into the loop `follow_entries` as long as they have no
-///     more than 1 successor (the hope is that some of the chains will join).
-///
-/// This always succeeds.
-pub fn heuristic_loop_body(
-    predecessor_map: &IndexMap<Label, IndexSet<Label>>,
-    body_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
-    follow_blocks: &mut IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOrDecl>>,
-    follow_entries: &mut IndexSet<Label>,
-) {
-    if follow_entries.len() > 1 {
-        for follow_entry in follow_entries.clone().iter() {
-            let mut following: Label = follow_entry.clone();
-
-            loop {
-                // If this block might have come from 2 places, give up
-                if predecessor_map[&following].len() != 1 {
-                    break;
-                }
-
-                // Otherwise, move it into the loop
-                let bb = if let Some(bb) = follow_blocks.swap_remove(&following) {
-                    bb
-                } else {
-                    break;
-                };
-                let succs = bb.successors();
-
-                body_blocks.insert(following.clone(), bb);
-                follow_entries.swap_remove(&following);
-                follow_entries.extend(succs.clone());
-
-                // If it has more than one successor, don't try following the successor
-                if succs.len() != 1 {
-                    break;
-                }
-
-                following = succs.iter().next().unwrap().clone();
-            }
-        }
-    }
-}
-
 /// These IDs identify groups of basic blocks corresponding to loops in a CFG.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct LoopId(u64);
