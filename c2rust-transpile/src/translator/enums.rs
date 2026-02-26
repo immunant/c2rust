@@ -93,16 +93,13 @@ impl<'c> Translation<'c> {
         target_ty: Box<Type>,
     ) -> WithStmts<Box<Expr>> {
         // Extract the IDs of the `EnumConstant` decls underlying the enum.
-        let variants = match self.ast_context.index(enum_id).kind {
-            CDeclKind::Enum { ref variants, .. } => variants,
-            _ => panic!("{:?} does not point to an `enum` declaration", enum_id),
-        };
-
         match self.ast_context.index(expr).kind {
             // This is the case of finding a variable which is an `EnumConstant` of the same enum
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
-            CExprKind::DeclRef(_, enum_constant_id, _) if variants.contains(&enum_constant_id) => {
+            CExprKind::DeclRef(_, enum_constant_id, _)
+                if self.is_variant_of_enum(enum_id, enum_constant_id) =>
+            {
                 return val.map(|x| match *unparen(&x) {
                     Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
                     // If this DeclRef expanded to a const macro, we actually need to insert a cast,
@@ -143,12 +140,8 @@ impl<'c> Translation<'c> {
             _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
         };
 
-        let (variants, underlying_type_id) = match self.ast_context[enum_id].kind {
-            CDeclKind::Enum {
-                ref variants,
-                integral_type,
-                ..
-            } => (variants, integral_type),
+        let variants = match self.ast_context[enum_id].kind {
+            CDeclKind::Enum { ref variants, .. } => variants,
             _ => panic!("{:?} does not point to an `enum` declaration", enum_id),
         };
 
@@ -167,8 +160,7 @@ impl<'c> Translation<'c> {
             }
         }
 
-        let underlying_type_id =
-            underlying_type_id.expect("Attempt to construct value of forward declared enum");
+        let underlying_type_id = self.enum_integral_type(enum_id);
         let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
             CTypeKind::UInt => mk().lit_expr(mk().int_unsuffixed_lit((value as u32) as u128)),
             CTypeKind::ULong => mk().lit_expr(mk().int_unsuffixed_lit((value as u64) as u128)),
@@ -177,5 +169,27 @@ impl<'c> Translation<'c> {
 
         let target_ty = self.convert_type(enum_type_id).unwrap();
         mk().cast_expr(value, target_ty)
+    }
+
+    fn is_variant_of_enum(&self, enum_id: CEnumId, enum_constant_id: CEnumConstantId) -> bool {
+        let variants = match self.ast_context[enum_id].kind {
+            CDeclKind::Enum { ref variants, .. } => variants,
+            _ => panic!("{:?} does not point to an `enum` declaration", enum_id),
+        };
+
+        variants.contains(&enum_constant_id)
+    }
+
+    fn enum_integral_type(&self, enum_id: CEnumId) -> CQualTypeId {
+        match self.ast_context[enum_id].kind {
+            CDeclKind::Enum {
+                integral_type: Some(integral_type),
+                ..
+            } => integral_type,
+            _ => panic!(
+                "{:?} does not point to an integral `enum` declaration",
+                enum_id
+            ),
+        }
     }
 }
