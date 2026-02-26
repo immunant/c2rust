@@ -47,6 +47,7 @@ mod assembly;
 mod atomics;
 mod builtins;
 mod comments;
+mod enums;
 mod literals;
 mod main_function;
 mod named_references;
@@ -1852,42 +1853,9 @@ impl<'c> Translation<'c> {
             Enum {
                 integral_type: Some(integral_type),
                 ..
-            } => {
-                let enum_name = &self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(decl_id)
-                    .expect("Enums should already be renamed");
-                let ty = self.convert_type(integral_type.ctype)?;
-                Ok(ConvertedDecl::Item(
-                    mk().span(span).pub_().type_item(enum_name, ty),
-                ))
-            }
+            } => self.convert_enum(decl_id, span, integral_type),
 
-            EnumConstant { value, .. } => {
-                let name = self
-                    .renamer
-                    .borrow_mut()
-                    .get(&decl_id)
-                    .expect("Enum constant not named");
-                let enum_id = self.ast_context.parents[&decl_id];
-                let enum_name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(enum_id)
-                    .expect("Enums should already be renamed");
-                self.add_import(enum_id, &enum_name);
-
-                let ty = mk().path_ty(vec![enum_name]);
-                let val = match value {
-                    ConstIntExpr::I(value) => signed_int_expr(value),
-                    ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
-                };
-
-                Ok(ConvertedDecl::Item(
-                    mk().span(span).pub_().const_item(name, ty, val),
-                ))
-            }
+            EnumConstant { value, .. } => self.convert_enum_constant(decl_id, span, value),
 
             // We can allow non top level function declarations (i.e. extern
             // declarations) without any problem. Clang doesn't support nested
@@ -3497,11 +3465,9 @@ impl<'c> Translation<'c> {
                 }
 
                 // If the variable is actually an `EnumConstant`, we need to add a cast to the
-                // expected integral type. When modifying this, look at `Translation::enum_cast` -
-                // this function assumes `DeclRef`'s to `EnumConstants`'s will translate to casts.
+                // expected integral type.
                 if let &CDeclKind::EnumConstant { .. } = decl {
-                    let ty = self.convert_type(qual_ty.ctype)?;
-                    val = mk().cast_expr(val, ty);
+                    val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
                 }
 
                 // If we are referring to a function and need its address, we
@@ -4519,14 +4485,15 @@ impl<'c> Translation<'c> {
                     // Casts targeting `enum` types...
                     let expr =
                         expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
-                    Ok(self.enum_cast(
-                        target_cty.ctype,
-                        enum_decl_id,
-                        expr,
-                        val,
-                        source_ty,
-                        target_ty,
-                    ))
+                    val.result_map(|val| {
+                        self.convert_cast_to_enum(
+                            ctx,
+                            target_cty.ctype,
+                            enum_decl_id,
+                            Some(expr),
+                            val,
+                        )
+                    })
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     val.and_then(|x| {
                         Ok(WithStmts::new_val(mk().cast_expr(
@@ -4550,6 +4517,9 @@ impl<'c> Translation<'c> {
                             Ok(WithStmts::new_unsafe_val(transmute_expr(
                                 source_ty, target_ty, x,
                             )))
+                        } else if let &CTypeKind::Enum(..) = source_ty_kind {
+                            self.convert_cast_from_enum(target_cty.ctype, x)
+                                .map(WithStmts::new_val)
                         } else {
                             Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
                         }
@@ -4664,64 +4634,6 @@ impl<'c> Translation<'c> {
 
             mk().method_call_expr(to_call, "unwrap", Vec::new())
         }))
-    }
-
-    /// This handles translating casts when the target type in an `enum` type.
-    ///
-    /// When translating variable references to `EnumConstant`'s, we always insert casts to the
-    /// expected type. In C, `EnumConstants` have some integral type, _not_ the enum type. However,
-    /// if we then immediately have a cast to convert this variable back into an enum type, we would
-    /// like to produce Rust with _no_ casts. This function handles this simplification.
-    fn enum_cast(
-        &self,
-        enum_type: CTypeId,
-        enum_decl: CEnumId, // ID of the enum declaration corresponding to the target type
-        expr: CExprId,      // ID of initial C argument to cast
-        val: WithStmts<Box<Expr>>, // translated Rust argument to cast
-        _source_ty: Box<Type>, // source type of cast
-        target_ty: Box<Type>, // target type of cast
-    ) -> WithStmts<Box<Expr>> {
-        // Extract the IDs of the `EnumConstant` decls underlying the enum.
-        let variants = match self.ast_context.index(enum_decl).kind {
-            CDeclKind::Enum { ref variants, .. } => variants,
-            _ => panic!("{:?} does not point to an `enum` declaration", enum_decl),
-        };
-
-        match self.ast_context.index(expr).kind {
-            // This is the case of finding a variable which is an `EnumConstant` of the same enum
-            // we are casting to. Here, we can just remove the extraneous cast instead of generating
-            // a new one.
-            CExprKind::DeclRef(_, decl_id, _) if variants.contains(&decl_id) => {
-                return val.map(|x| match *unparen(&x) {
-                    Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
-                    // If this DeclRef expanded to a const macro, we actually need to insert a cast,
-                    // because the translation of a const macro skips implicit casts in its context.
-                    Expr::Path(..) => mk().cast_expr(x, target_ty),
-                    _ => panic!(
-                        "DeclRef {:?} of enum {:?} is not cast: {x:?}",
-                        expr, enum_decl
-                    ),
-                });
-            }
-
-            CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                return val.map(|_| self.enum_for_i64(enum_type, i as i64));
-            }
-
-            CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id, _) => {
-                if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
-                    &self.ast_context[subexpr_id].kind
-                {
-                    return val.map(|_| self.enum_for_i64(enum_type, -(i as i64)));
-                }
-            }
-
-            // In all other cases, a cast to an enum requires a `transmute` - Rust enums cannot be
-            // converted into integral types as easily as C ones.
-            _ => {}
-        }
-
-        val.map(|x| mk().cast_expr(x, target_ty))
     }
 
     pub fn implicit_default_expr(
@@ -4882,7 +4794,7 @@ impl<'c> Translation<'c> {
             }
 
             // Transmute the number `0` into the enum type
-            CDeclKind::Enum { .. } => WithStmts::new_val(self.enum_for_i64(type_id, 0)),
+            CDeclKind::Enum { .. } => self.convert_enum_zero_initializer(type_id),
 
             _ => {
                 return Err(TranslationError::generic(
