@@ -1,0 +1,25 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat /home/mod/immunant/c2rust/repo/c2rust-transpile/tests/c_decls_snapshots/nh.c_decls.json
+input_file: c2rust-transpile/tests/c_decls_snapshots/nh.c
+---
+{
+  "FOO": "FOO 4000+50",
+  "a": "#include <stddef.h>\n#include <stdint.h>\nint a;",
+  "a1": "// comment before multiple decl\nint a1,",
+  "a2": ", a2,",
+  "a3": ", a3;",
+  "another": "int another;",
+  "anotherfunc": "int\nanotherfunc(void)\n{\n    int var = 0;\n    return 4 + var;\n}",
+  "bb": "int bb;",
+  "ccc": "/*comment for cc*/int ccc;",
+  "d": "int d;",
+  "e": "int e;",
+  "f": "void f(void){}",
+  "forwarddeclbeforeotherdef": "/*real defn*/\nvoid forwarddeclbeforeotherdef(int x) { }",
+  "funcafterdecl": "void funcafterdecl(int n) {}",
+  "funcholdingdefine": "int\nfuncholdingdefine(void)\n{\n#define FOO 4000+50\n    return FOO;\n}",
+  "g": "void g(void){}",
+  "h": "/*comment for h*/void h(void){}",
+  "ngx_hash_init": "//comment for ngx_hash_init\nvoid\nngx_hash_init(void)\n{\n    size_t len;\n    ngx_uint_t align = len & ~sizeof(void *);\n}"
+}

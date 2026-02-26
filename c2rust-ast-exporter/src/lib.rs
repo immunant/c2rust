@@ -4,6 +4,7 @@ use std::ffi::{c_char, c_int, CStr, CString};
 use std::io::{Error, ErrorKind};
 use std::path::Path;
 use std::slice;
+use std::sync::Mutex;
 
 use crate::clang_ast::BuiltinVaListKind;
 
@@ -48,6 +49,9 @@ pub fn get_untyped_ast(
     clang_ast::process(items).map_err(|e| Error::new(ErrorKind::InvalidData, format!("{}", e)))
 }
 
+/// libClangTooling is not thread-safe, so we must not allow concurrent calls to `ast_exporter`.
+static CLANG_MUTEX: Mutex<()> = Mutex::new(());
+
 fn get_ast_cbors(
     file_path: &Path,
     cc_db: &Path,
@@ -69,12 +73,14 @@ fn get_ast_cbors(
 
     let hashmap;
     unsafe {
+        let lock = CLANG_MUTEX.lock().unwrap();
         let ptr = ast_exporter(
             args_ptrs.len() as c_int,
             args_ptrs.as_ptr(),
             debug.into(),
             &mut res,
         );
+        drop(lock);
         hashmap = marshal_result(ptr);
         drop_export_result(ptr);
     }
@@ -89,6 +95,7 @@ mod ffi {
 }
 
 extern "C" {
+    // Safety: Not thread-safe; must not be called multiple times concurrently.
     // ExportResult *ast_exporter(int argc, char *argv[]);
     fn ast_exporter(
         argc: c_int,
