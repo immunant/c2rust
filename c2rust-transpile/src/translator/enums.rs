@@ -140,24 +140,8 @@ impl<'c> Translation<'c> {
             _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
         };
 
-        let variants = match self.ast_context[enum_id].kind {
-            CDeclKind::Enum { ref variants, .. } => variants,
-            _ => panic!("{:?} does not point to an `enum` declaration", enum_id),
-        };
-
-        for &variant_id in variants {
-            match self.ast_context[variant_id].kind {
-                CDeclKind::EnumConstant { value: v, .. } => {
-                    if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
-                        let name = self.renamer.borrow().get(&variant_id).unwrap();
-
-                        // Import the enum variant if needed
-                        self.add_import(variant_id, &name);
-                        return mk().path_expr(vec![name]);
-                    }
-                }
-                _ => panic!("{:?} does not point to an enum variant", variant_id),
-            }
+        if let Some(enum_constant_id) = self.enum_variant_for_i64(enum_id, value) {
+            return self.enum_constant_expr(enum_constant_id);
         }
 
         let underlying_type_id = self.enum_integral_type(enum_id);
@@ -169,6 +153,30 @@ impl<'c> Translation<'c> {
 
         let target_ty = self.convert_type(enum_type_id).unwrap();
         mk().cast_expr(value, target_ty)
+    }
+
+    /// Returns the id of the variant of `enum_id` whose value matches `value`, if any.
+    fn enum_variant_for_i64(&self, enum_id: CEnumId, value: i64) -> Option<CEnumConstantId> {
+        let variants = match self.ast_context[enum_id].kind {
+            CDeclKind::Enum { ref variants, .. } => variants,
+            _ => panic!("{:?} does not point to an `enum` declaration", enum_id),
+        };
+
+        variants
+            .iter()
+            .copied()
+            .find(|&variant_id| match self.ast_context[variant_id].kind {
+                CDeclKind::EnumConstant { value: v, .. } => {
+                    v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64)
+                }
+                _ => panic!("{:?} does not point to an enum variant", variant_id),
+            })
+    }
+
+    fn enum_constant_expr(&self, enum_constant_id: CEnumConstantId) -> Box<Expr> {
+        let name = self.renamer.borrow().get(&enum_constant_id).unwrap();
+        self.add_import(enum_constant_id, &name);
+        mk().ident_expr(name)
     }
 
     fn is_variant_of_enum(&self, enum_id: CEnumId, enum_constant_id: CEnumConstantId) -> bool {
