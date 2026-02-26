@@ -1,20 +1,19 @@
-use rustc_middle::ty;
-use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_ast::*;
+use rustc_middle::ty;
 use rustc_span::symbol::Ident;
 
 use smallvec::smallvec;
 
-use crate::ast_manip::{fold_blocks, FlatMapNodes, AstEquiv};
+use crate::ast_builder::{mk, IntoSymbol};
+use crate::ast_manip::{fold_blocks, AstEquiv, FlatMapNodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{Phase, parse_expr};
-use crate::{expect, match_or};
+use crate::driver::{parse_expr, Phase};
 use crate::matcher::{mut_visit_match, Subst};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
-use crate::ast_builder::{mk, IntoSymbol};
 use crate::RefactorCtxt;
-
+use crate::{expect, match_or};
 
 /// # `struct_assign_to_update` Command
 ///
@@ -62,7 +61,6 @@ impl Transform for AssignToUpdate {
         Phase::Phase3
     }
 }
-
 
 /// # `struct_merge_updates` Command
 ///
@@ -138,18 +136,16 @@ fn unpack_struct_update(s: Stmt) -> (Path, Vec<ExprField>, P<Expr>) {
     let e = expect!([s.kind] StmtKind::Semi(e) => e);
     let rhs = expect!([e.into_inner().kind] ExprKind::Assign(_, rhs, _) => rhs);
     let se = expect!([rhs.into_inner().kind] ExprKind::Struct(se) => se);
-    let StructExpr { path, fields, rest, .. } = se.into_inner();
+    let StructExpr {
+        path, fields, rest, ..
+    } = se.into_inner();
     let base = expect!([rest] StructRest::Base(base) => base);
     (path, fields, base)
 }
 
 fn build_struct_update(path: Path, fields: Vec<ExprField>, base: P<Expr>) -> Stmt {
-    mk().semi_stmt(
-        mk().assign_expr(
-            &base,
-            mk().struct_expr_base(path, fields, Some(&base))))
+    mk().semi_stmt(mk().assign_expr(&base, mk().struct_expr_base(path, fields, Some(&base))))
 }
-
 
 /// # `rename_struct` Command
 ///
@@ -184,7 +180,7 @@ impl Transform for Rename {
             smallvec![i.map(|i| {
                 Item {
                     ident: new_ident,
-                    .. i
+                    ..i
                 }
             })]
         });
@@ -193,8 +189,7 @@ impl Transform for Rename {
         // appear, since the struct name may be used as a scope for methods or other associated
         // items.
 
-        let target_def_id = target_def_id
-            .expect("found no struct to rename");
+        let target_def_id = target_def_id.expect("found no struct to rename");
 
         fold_resolved_paths(krate, cx, |qself, mut path, def| {
             if let Some(def_id) = def[0].opt_def_id() {
@@ -219,7 +214,6 @@ fn is_struct(i: &Item) -> bool {
     }
     false
 }
-
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;

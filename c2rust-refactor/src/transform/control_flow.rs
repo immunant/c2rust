@@ -1,36 +1,37 @@
 use log::debug;
+use rustc_ast::ptr::P;
+use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
 use rustc_hir::HirId;
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::hir::place::PlaceWithHirId;
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_typeck::expr_use_visitor::*;
-use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
-use rustc_ast::ptr::P;
 
+use crate::ast_builder::mk;
 use crate::command::{CommandState, Registry};
 use crate::context::HirMap;
 use crate::driver::Phase;
 use crate::match_or;
-use crate::matcher::{MatchCtxt, Subst, replace_expr, mut_visit_match_with, find_first};
+use crate::matcher::{find_first, mut_visit_match_with, replace_expr, MatchCtxt, Subst};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use crate::ast_builder::mk;
-
 
 /// # `reconstruct_while` Command
-/// 
+///
 /// Obsolete - the translator now does this automatically.
-/// 
+///
 /// Usage: `reconstruct_while`
-/// 
+///
 /// Replaces all instances of `loop { if !cond { break; } ... }` with `while` loops.
 pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let krate = replace_expr(
-            st, cx, krate,
+            st,
+            cx,
+            krate,
             r#"
                 $'label:?Ident: loop {
                     if !($cond:Expr) {
@@ -43,16 +44,16 @@ impl Transform for ReconstructWhile {
                 $'label: while $cond {
                     $body:MultiStmt;
                 }
-            "#);
+            "#,
+        );
         krate
     }
 }
 
-
 /// # `reconstruct_for_range` Command
-/// 
+///
 /// Usage: `reconstruct_for_range`
-/// 
+///
 /// Replaces `i = start; while i < end { ...; i += step; }` with
 /// `for i in (start .. end).step_by(step) { ...; }`.
 ///
@@ -79,9 +80,14 @@ impl Transform for ReconstructForRange {
         let i_eq_plus = mcx.parse_expr("$i = $i + $step:Expr");
 
         let range_one_excl = mcx.parse_stmts("$'label: for $ipat:Pat in $start .. $end { $body; }");
-        let range_one_incl = mcx.parse_stmts("$'label: for $ipat:Pat in $start ..= $end { $body; }");
-        let range_step_excl = mcx.parse_stmts("$'label: for $ipat:Pat in ($start .. $end).step_by($step as usize) { $body; }");
-        let range_step_incl = mcx.parse_stmts("$'label: for $ipat:Pat in ($start ..= $end).step_by($step as usize) { $body; }");
+        let range_one_incl =
+            mcx.parse_stmts("$'label: for $ipat:Pat in $start ..= $end { $body; }");
+        let range_step_excl = mcx.parse_stmts(
+            "$'label: for $ipat:Pat in ($start .. $end).step_by($step as usize) { $body; }",
+        );
+        let range_step_incl = mcx.parse_stmts(
+            "$'label: for $ipat:Pat in ($start ..= $end).step_by($step as usize) { $body; }",
+        );
 
         mut_visit_match_with(mcx, pat, krate, |orig, mut mcx| {
             let cond = mcx.bindings.get::<_, P<Expr>>("$cond").unwrap().clone();
@@ -94,20 +100,21 @@ impl Transform for ReconstructForRange {
             };
 
             let incr = match mcx.bindings.get::<_, Stmt>("$incr").unwrap().kind {
-                StmtKind::Semi(ref e) |
-                StmtKind::Expr(ref e) => e.clone(),
-                _ => { return; }
+                StmtKind::Semi(ref e) | StmtKind::Expr(ref e) => e.clone(),
+                _ => {
+                    return;
+                }
             };
-            if !mcx.try_match(&*i_plus_eq, &incr).is_ok() &&
-               !mcx.try_match(&*i_eq_plus, &incr).is_ok() {
+            if !mcx.try_match(&*i_plus_eq, &incr).is_ok()
+                && !mcx.try_match(&*i_eq_plus, &incr).is_ok()
+            {
                 return;
             }
 
             let hir_map = cx.hir_map();
-			let while_hir_id = hir_map.node_to_hir_id(orig[1].id);
-			let parent_hir_id = hir_map.get_parent_node(while_hir_id);
-            let var_expr = mcx.bindings.get::<_, P<Expr>>("$i")
-                .unwrap().clone();
+            let while_hir_id = hir_map.node_to_hir_id(orig[1].id);
+            let parent_hir_id = hir_map.get_parent_node(while_hir_id);
+            let var_expr = mcx.bindings.get::<_, P<Expr>>("$i").unwrap().clone();
             let var_hir_id = match_or!([cx.try_resolve_expr_hir(&var_expr)]
                                        Some(rustc_hir::def::Res::Local(x)) => x; return);
             let mut delegate = ForRangeDelegate {
@@ -128,32 +135,28 @@ impl Transform for ReconstructForRange {
             let parent_body = hir_map.body(parent_body_id);
             let tables = tcx.typeck_body(parent_body_id);
             tcx.infer_ctxt().enter(|infcx| {
-                ExprUseVisitor::new(&mut delegate, &infcx, parent_did,
-                                    ParamEnv::empty(), tables)
+                ExprUseVisitor::new(&mut delegate, &infcx, parent_did, ParamEnv::empty(), tables)
                     .consume_body(&parent_body);
             });
             assert!(delegate.writes_inside_loop > 0);
-            debug!("Loop variable '{:?}' writes:{} reads:{}",
-                   var_expr,
-                   delegate.writes_inside_loop,
-                   delegate.reads_outside_loop);
+            debug!(
+                "Loop variable '{:?}' writes:{} reads:{}",
+                var_expr, delegate.writes_inside_loop, delegate.reads_outside_loop
+            );
             if delegate.writes_inside_loop > 1 || delegate.reads_outside_loop > 0 {
                 return;
             }
 
             if let ExprKind::Path(ref qself, ref path) = var_expr.kind {
-                let var_pat = if qself.is_none() &&
-                    path.segments.len() == 1 &&
-                    path.segments[0].args.is_none()
+                let var_pat = if qself.is_none()
+                    && path.segments.len() == 1
+                    && path.segments[0].args.is_none()
                 {
                     // If this path is a single-segment identifier,
                     // we need to emit it as a `PatKind::Ident`
-                    mk()
-                        .span(var_expr.span)
-                        .ident_pat(path.segments[0].ident)
+                    mk().span(var_expr.span).ident_pat(path.segments[0].ident)
                 } else {
-                    mk()
-                        .span(var_expr.span)
+                    mk().span(var_expr.span)
                         .qpath_pat(qself.clone(), path.clone())
                 };
                 mcx.bindings.add("$ipat", var_pat);
@@ -214,8 +217,10 @@ impl<'a, 'hir> ForRangeDelegate<'a, 'hir> {
 
             let parent_id = self.hir_map.get_parent_node(cur_id);
             if parent_id == cur_id {
-                panic!("expected node {} inside parent item {}",
-                       id, self.parent_hir_id);
+                panic!(
+                    "expected node {} inside parent item {}",
+                    id, self.parent_hir_id
+                );
             }
             cur_id = parent_id;
         }
@@ -225,8 +230,8 @@ impl<'a, 'hir> ForRangeDelegate<'a, 'hir> {
 impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
     fn consume(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
         match cmt.place.base {
-            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
-            _ => return
+            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {}
+            _ => return,
         }
 
         if !self.node_inside_loop(cmt.hir_id) {
@@ -236,8 +241,8 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
 
     fn borrow(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId, bk: ty::BorrowKind) {
         match cmt.place.base {
-            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
-            _ => return
+            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {}
+            _ => return,
         }
 
         if bk == ty::BorrowKind::MutBorrow {
@@ -257,8 +262,8 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
 
     fn mutate(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
         match cmt.place.base {
-            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {},
-            _ => return
+            PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {}
+            _ => return,
         }
 
         if self.node_inside_loop(cmt.hir_id) {
@@ -271,21 +276,24 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
         _cmt: &PlaceWithHirId<'tcx>,
         _cause: FakeReadCause,
         _diag_expr_id: HirId,
-    ) {}
+    ) {
+    }
 }
 
 /// # `remove_unused_labels` Command
-/// 
+///
 /// Usage: `remove_unused_labels`
-/// 
+///
 /// Removes loop labels that are not used in a named `break` or `continue`.
 pub struct RemoveUnusedLabels;
 
-fn remove_unused_labels_from_loop_kind(krate: &mut Crate,
-                                       st: &CommandState,
-                                       cx: &RefactorCtxt,
-                                       pat: &str,
-                                       repl: &str) {
+fn remove_unused_labels_from_loop_kind(
+    krate: &mut Crate,
+    st: &CommandState,
+    cx: &RefactorCtxt,
+    pat: &str,
+    repl: &str,
+) {
     let mut mcx = MatchCtxt::new(st, cx);
     let pat = mcx.parse_expr(pat);
     let repl = mcx.parse_expr(repl);
@@ -299,9 +307,27 @@ fn remove_unused_labels_from_loop_kind(krate: &mut Crate,
         // TODO: Would be nice to get rid of the clones of body.  Might require making
         // `find_first` use a visitor instead of a `fold`, which means duplicating a lot of the
         // `PatternFolder` definitions in matcher.rs to make `PatternVisitor` variants.
-        if find_first(st, cx, find_continue.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none() &&
-            find_first(st, cx, find_break.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none() &&
-            find_first(st, cx, find_break_expr.clone().subst(st, cx, &mcx.bindings), &mut body.clone()).is_none()
+        if find_first(
+            st,
+            cx,
+            find_continue.clone().subst(st, cx, &mcx.bindings),
+            &mut body.clone(),
+        )
+        .is_none()
+            && find_first(
+                st,
+                cx,
+                find_break.clone().subst(st, cx, &mcx.bindings),
+                &mut body.clone(),
+            )
+            .is_none()
+            && find_first(
+                st,
+                cx,
+                find_break_expr.clone().subst(st, cx, &mcx.bindings),
+                &mut body.clone(),
+            )
+            .is_none()
         {
             *orig = repl.clone().subst(st, cx, &mcx.bindings);
         }
@@ -310,21 +336,36 @@ fn remove_unused_labels_from_loop_kind(krate: &mut Crate,
 
 impl Transform for RemoveUnusedLabels {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:Ident: loop { $body:MultiStmt; }",
-                "loop { $body; }");
-        remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:Ident: while $cond:Expr { $body:MultiStmt; }",
-                "while $cond { $body; }");
-        remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:Ident: while let $pat:Pat = $init:Expr { $body:MultiStmt; }",
-                "while let $pat = $init { $body; }");
-        remove_unused_labels_from_loop_kind(krate, st, cx,
-                "$'label:Ident: for $pat:Pat in $iter { $body:MultiStmt; }",
-                "for $pat in $iter { $body; }");
+        remove_unused_labels_from_loop_kind(
+            krate,
+            st,
+            cx,
+            "$'label:Ident: loop { $body:MultiStmt; }",
+            "loop { $body; }",
+        );
+        remove_unused_labels_from_loop_kind(
+            krate,
+            st,
+            cx,
+            "$'label:Ident: while $cond:Expr { $body:MultiStmt; }",
+            "while $cond { $body; }",
+        );
+        remove_unused_labels_from_loop_kind(
+            krate,
+            st,
+            cx,
+            "$'label:Ident: while let $pat:Pat = $init:Expr { $body:MultiStmt; }",
+            "while let $pat = $init { $body; }",
+        );
+        remove_unused_labels_from_loop_kind(
+            krate,
+            st,
+            cx,
+            "$'label:Ident: for $pat:Pat in $iter { $body:MultiStmt; }",
+            "for $pat in $iter { $body; }",
+        );
     }
 }
-
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;

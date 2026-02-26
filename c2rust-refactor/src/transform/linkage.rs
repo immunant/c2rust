@@ -1,57 +1,56 @@
-use std::collections::HashMap;
-use rustc_hir::def_id::DefId;
-use rustc_ast::*;
 use rustc_ast::ptr::P;
-use rustc_span::symbol::Symbol;
+use rustc_ast::*;
+use rustc_hir::def_id::DefId;
 use rustc_span::sym;
+use rustc_span::symbol::Symbol;
 use smallvec::smallvec;
+use std::collections::HashMap;
 
-use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
 use crate::ast_manip::fn_edit::{visit_fns, FnKind};
+use crate::ast_manip::{visit_nodes, FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{Phase};
+use crate::driver::Phase;
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
 
-
 /// # `link_funcs` Command
-/// 
+///
 /// Usage: `link_funcs`
-/// 
+///
 /// Link up function declarations and definitions with matching symbols across
 /// modules.  For every foreign `fn` whose symbol matches a `fn` definition
 /// elsewhere in the program, it replaces all uses of the foreign `fn` with a
 /// direct call of the `fn` definition, and deletes the foreign `fn`.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```ignore
 ///     mod a {
 ///         #[no_mangle]
 ///         unsafe extern "C" fn foo() { ... }
 ///     }
-/// 
+///
 ///     mod b {
 ///         extern "C" {
 ///             // This resolves to `a::foo` during linking.
 ///             fn foo();
 ///         }
-/// 
+///
 ///         unsafe fn use_foo() {
 ///             foo();
 ///         }
 ///     }
 /// ```
-/// 
+///
 /// After running `link_funcs`:
-/// 
+///
 /// ```ignore
 ///     mod a {
 ///         #[no_mangle]
 ///         unsafe extern "C" fn foo() { ... }
 ///     }
-/// 
+///
 ///     mod b {
 ///         // 1. Foreign fn `foo` has been deleted
 ///         unsafe fn use_foo() {
@@ -72,7 +71,9 @@ impl Transform for LinkFuncs {
         visit_fns(krate, |fl| {
             let def_id = cx.node_def_id(fl.id);
             if fl.kind != FnKind::Foreign {
-                if let Some(name) = crate::util::first_attr_value_str_by_name(&fl.attrs, sym::export_name) {
+                if let Some(name) =
+                    crate::util::first_attr_value_str_by_name(&fl.attrs, sym::export_name)
+                {
                     symbol_to_def.insert(name, def_id);
                 } else if crate::util::contains_name(&fl.attrs, sym::no_mangle) {
                     symbol_to_def.insert(fl.ident.name, def_id);
@@ -114,39 +115,38 @@ impl Transform for LinkFuncs {
     }
 }
 
-
 /// # `link_incomplete_types` Command
-/// 
+///
 /// Usage: `link_incomplete_types`
-/// 
+///
 /// Link up type declarations and definitions with matching names across modules.
 /// For every foreign type whose name matches a type definition elsewhere in the
 /// program, it replaces all uses of the foreign type with the type definition, and
 /// deletes the foreign type.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```ignore
 ///     mod a {
 ///         struct Foo { ... }
 ///     }
-/// 
+///
 ///     mod b {
 ///         extern "C" {
 ///             type Foo;
 ///         }
-/// 
+///
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
 /// ```
-/// 
+///
 /// After running `link_incomplete_types`:
-/// 
+///
 /// ```ignore
 ///     mod a {
 ///         struct Foo { ... }
 ///     }
-/// 
+///
 ///     mod b {
 ///         // 1. Foreign fn `Foo` has been deleted
 ///         // 2. `use_foo` now references `Foo` directly
@@ -172,7 +172,10 @@ impl Transform for LinkIncompleteTypes {
 
             if complete {
                 let def_id = cx.node_def_id(i.id);
-                name_to_complete.entry(i.ident.name).or_insert_with(Vec::new).push(def_id);
+                name_to_complete
+                    .entry(i.ident.name)
+                    .or_insert_with(Vec::new)
+                    .push(def_id);
             }
         });
 
@@ -191,7 +194,11 @@ impl Transform for LinkIncompleteTypes {
 
         // (3) Replace references to incomplete types with references to same-named complete types.
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(&name) = def[0].opt_def_id().as_ref().and_then(|x| incomplete_to_name.get(x)) {
+            if let Some(&name) = def[0]
+                .opt_def_id()
+                .as_ref()
+                .and_then(|x| incomplete_to_name.get(x))
+            {
                 if let Some(complete_def_ids) = name_to_complete.get(&name) {
                     // Arbitrarily choose the first complete definition, if there's more than one.
                     // A separate transform will canonicalize references to complete types.
@@ -207,47 +214,46 @@ impl Transform for LinkIncompleteTypes {
     }
 }
 
-
 /// # `canonicalize_structs` Command
-/// 
+///
 /// Usage: `canonicalize_structs`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// For each type definition marked `target`, delete all other type definitions
 /// with the same name, and replace their uses with uses of the `target` type.
-/// 
-/// This only works when all the identically-named types have the same definition, 
+///
+/// This only works when all the identically-named types have the same definition,
 /// such as when all are generated from `#include`s of the same C header.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```ignore
 ///     mod a {
 ///         pub struct Foo { ... }  // Foo: target
 ///     }
-/// 
+///
 ///     mod b {
 ///         struct Foo { ... }  // same as ::a::Foo
-/// 
+///
 ///         unsafe fn use_foo(x: &Foo) { ... }
 ///     }
 /// ```
-/// 
+///
 /// After running `canonicalize_structs`:
-/// 
+///
 /// ```ignore
 ///     mod a {
 ///         pub struct Foo { ... }
 ///     }
-/// 
+///
 ///     mod b {
 ///         // 1. `struct Foo` has been deleted
 ///         // 2. `use_foo` now references `::a::Foo` directly
 ///         unsafe fn use_foo(x: &::a::Foo) { ... }
 ///     }
 /// ```
-/// 
+///
 /// Note that this transform does not check or adjust item visibility.  If the
 /// `target` type is not visible throughout the crate, this may introduce compile
 /// errors.
@@ -256,7 +262,7 @@ pub struct CanonicalizeStructs;
 impl Transform for CanonicalizeStructs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         // (1) Find all marked structs.
-        let mut canon_ids: HashMap<Symbol, DefId>  = HashMap::new();
+        let mut canon_ids: HashMap<Symbol, DefId> = HashMap::new();
 
         visit_nodes(krate, |i: &Item| {
             if st.marked(i.id, "target") {
@@ -283,7 +289,7 @@ impl Transform for CanonicalizeStructs {
                     } else {
                         false
                     }
-                },
+                }
                 _ => false,
             };
 
@@ -318,8 +324,11 @@ impl Transform for CanonicalizeStructs {
         // (4) Rewrite references to removed structs.
 
         fold_resolved_paths(krate, cx, |qself, path, def| {
-            if let Some(&canon_def_id) = def[0].opt_def_id().as_ref()
-                .and_then(|x| removed_id_map.get(&x)) {
+            if let Some(&canon_def_id) = def[0]
+                .opt_def_id()
+                .as_ref()
+                .and_then(|x| removed_id_map.get(&x))
+            {
                 (None, cx.def_path(canon_def_id))
             } else {
                 (qself, path)
@@ -331,7 +340,6 @@ impl Transform for CanonicalizeStructs {
         Phase::Phase3
     }
 }
-
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;

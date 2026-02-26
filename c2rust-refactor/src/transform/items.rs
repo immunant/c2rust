@@ -1,23 +1,22 @@
-use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
 use regex::Regex;
-use rustc_hir::HirId;
-use rustc_parse::parser::FollowedByType;
-use rustc_ast::*;
-use rustc_span::source_map::DUMMY_SP;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::*;
+use rustc_hir::HirId;
+use rustc_parse::parser::FollowedByType;
+use rustc_span::source_map::DUMMY_SP;
 use rustc_span::symbol::{Ident, Symbol};
 use smallvec::{smallvec, SmallVec};
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 
-use crate::ast_builder::{mk, Make, IntoSymbol};
-use crate::ast_manip::{FlatMapNodes, MutVisit, AstEquiv};
+use crate::ast_builder::{mk, IntoSymbol, Make};
+use crate::ast_manip::{AstEquiv, FlatMapNodes, MutVisit};
 use crate::command::{CommandState, Registry};
 use crate::driver::{self, Phase};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-
 
 /// # `rename_items_regex` Command
 ///
@@ -56,7 +55,7 @@ impl Transform for RenameRegex {
                 smallvec![i.map(|i| {
                     Item {
                         ident: mk().ident(&new_name),
-                        .. i
+                        ..i
                     }
                 })]
             } else {
@@ -170,7 +169,6 @@ impl Transform for RenameUnnamed {
     }
 }
 
-
 /// # `replace_items` Command
 ///
 /// Usage: `replace_items`
@@ -231,12 +229,9 @@ impl Transform for ReplaceItems {
 
         // (2) Rewrite references to `target` items to refer to `repl` instead.
 
-        fold_resolved_paths(krate, cx, |qself, path, def| {
-            match def[0].opt_def_id() {
-                Some(def_id) if target_ids.contains(&def_id) =>
-                    (None, cx.def_path(repl_id)),
-                _ => (qself, path),
-            }
+        fold_resolved_paths(krate, cx, |qself, path, def| match def[0].opt_def_id() {
+            Some(def_id) if target_ids.contains(&def_id) => (None, cx.def_path(repl_id)),
+            _ => (qself, path),
         });
 
         // (3) Find impls for `target` types, and remove them.  This way, if a struct is removed,
@@ -262,7 +257,6 @@ impl Transform for ReplaceItems {
     }
 }
 
-
 /// # `set_visibility` Command
 ///
 /// Usage: `set_visibility VIS`
@@ -279,8 +273,9 @@ pub struct SetVisibility {
 
 impl Transform for SetVisibility {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let vis = driver::run_parser(cx.session(), &self.vis_str,
-                                     |p| p.parse_visibility(FollowedByType::No));
+        let vis = driver::run_parser(cx.session(), &self.vis_str, |p| {
+            p.parse_visibility(FollowedByType::No)
+        });
 
         struct SetVisFolder<'a> {
             st: &'a CommandState,
@@ -320,7 +315,10 @@ impl Transform for SetVisibility {
                 mut_visit::noop_flat_map_assoc_item(i, self)
             }
 
-            fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
+            fn flat_map_foreign_item(
+                &mut self,
+                mut i: P<ForeignItem>,
+            ) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i.vis = self.vis.clone();
                 }
@@ -330,10 +328,13 @@ impl Transform for SetVisibility {
             // Trait items have no visibility.
         }
 
-        krate.visit(&mut SetVisFolder { st, vis, in_trait_impl: false })
+        krate.visit(&mut SetVisFolder {
+            st,
+            vis,
+            in_trait_impl: false,
+        })
     }
 }
-
 
 /// # `set_mutability` Command
 ///
@@ -362,7 +363,7 @@ impl Transform for SetMutability {
                     i = i.map(|mut i| {
                         match i.kind {
                             ItemKind::Static(_, ref mut mutbl, _) => *mutbl = self.mutbl,
-                            _ => {},
+                            _ => {}
                         }
                         i
                     });
@@ -370,12 +371,14 @@ impl Transform for SetMutability {
                 mut_visit::noop_flat_map_item(i, self)
             }
 
-            fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
+            fn flat_map_foreign_item(
+                &mut self,
+                mut i: P<ForeignItem>,
+            ) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.kind {
-                        ForeignItemKind::Static(_, ref mut is_mutbl, _) =>
-                            *is_mutbl = self.mutbl,
-                        _ => {},
+                        ForeignItemKind::Static(_, ref mut is_mutbl, _) => *is_mutbl = self.mutbl,
+                        _ => {}
                     }
                 }
                 mut_visit::noop_flat_map_foreign_item(i, self)
@@ -385,7 +388,6 @@ impl Transform for SetMutability {
         krate.visit(&mut SetMutFolder { st, mutbl })
     }
 }
-
 
 /// Set unsafety of all marked items.
 pub struct SetUnsafety {
@@ -406,13 +408,16 @@ impl Transform for SetUnsafety {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
                         match i.kind {
-                            ItemKind::Fn(box Fn { ref mut sig, .. }) =>
-                                sig.header.unsafety = self.unsafety,
-                            ItemKind::Trait(box Trait { ref mut unsafety, .. }) =>
-                                *unsafety = self.unsafety,
-                            ItemKind::Impl(box Impl { ref mut unsafety, .. }) =>
-                                *unsafety = self.unsafety,
-                            _ => {},
+                            ItemKind::Fn(box Fn { ref mut sig, .. }) => {
+                                sig.header.unsafety = self.unsafety
+                            }
+                            ItemKind::Trait(box Trait {
+                                ref mut unsafety, ..
+                            }) => *unsafety = self.unsafety,
+                            ItemKind::Impl(box Impl {
+                                ref mut unsafety, ..
+                            }) => *unsafety = self.unsafety,
+                            _ => {}
                         }
                         i
                     });
@@ -423,9 +428,10 @@ impl Transform for SetUnsafety {
             fn flat_map_trait_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
                 if self.st.marked(i.id, "target") {
                     match i.kind {
-                        AssocItemKind::Fn(box Fn { ref mut sig, .. }) =>
-                            sig.header.unsafety = self.unsafety,
-                        _ => {},
+                        AssocItemKind::Fn(box Fn { ref mut sig, .. }) => {
+                            sig.header.unsafety = self.unsafety
+                        }
+                        _ => {}
                     }
                 }
                 mut_visit::noop_flat_map_assoc_item(i, self)
@@ -435,7 +441,6 @@ impl Transform for SetUnsafety {
         krate.visit(&mut SetUnsafetyFolder { st, unsafety })
     }
 }
-
 
 /// # `create_item` Command
 ///
@@ -470,7 +475,6 @@ impl Transform for CreateItem {
             st.add_mark(i.id, "new");
         }
 
-
         struct CreateFolder<'a> {
             st: &'a CommandState,
             mark: Symbol,
@@ -479,7 +483,12 @@ impl Transform for CreateItem {
         }
 
         impl<'a> CreateFolder<'a> {
-            fn handle_mod(&mut self, parent_id: NodeId, m_items: &mut Vec<P<Item>>, skip_dummy: bool) {
+            fn handle_mod(
+                &mut self,
+                parent_id: NodeId,
+                m_items: &mut Vec<P<Item>>,
+                skip_dummy: bool,
+            ) {
                 let mut items = Vec::with_capacity(m_items.len());
 
                 // When true, insert before the next item that satisfies `skip_dummy`
@@ -550,10 +559,14 @@ impl Transform for CreateItem {
             }
         }
 
-        krate.visit(&mut CreateFolder { st, mark, inside, items })
+        krate.visit(&mut CreateFolder {
+            st,
+            mark,
+            inside,
+            items,
+        })
     }
 }
-
 
 /// # `delete_items` Command
 ///
@@ -600,39 +613,49 @@ impl Transform for DeleteItems {
     }
 }
 
-
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("rename_items_regex", |args| mk(RenameRegex {
-        pattern: args[0].clone(),
-        repl: args[1].clone(),
-        filter: args.get(2).map(|x| (x as &str).into_symbol()),
-    }));
+    reg.register("rename_items_regex", |args| {
+        mk(RenameRegex {
+            pattern: args[0].clone(),
+            repl: args[1].clone(),
+            filter: args.get(2).map(|x| (x as &str).into_symbol()),
+        })
+    });
 
     reg.register("rename_unnamed", |_args| mk(RenameUnnamed));
 
     reg.register("replace_items", |_args| mk(ReplaceItems));
 
-    reg.register("set_visibility", |args| mk(SetVisibility {
-        vis_str: args[0].clone(),
-    }));
+    reg.register("set_visibility", |args| {
+        mk(SetVisibility {
+            vis_str: args[0].clone(),
+        })
+    });
 
-    reg.register("set_mutability", |args| mk(SetMutability {
-        mut_str: args[0].clone(),
-    }));
+    reg.register("set_mutability", |args| {
+        mk(SetMutability {
+            mut_str: args[0].clone(),
+        })
+    });
 
-    reg.register("set_unsafety", |args| mk(SetUnsafety {
-        unsafe_str: args[0].clone(),
-    }));
+    reg.register("set_unsafety", |args| {
+        mk(SetUnsafety {
+            unsafe_str: args[0].clone(),
+        })
+    });
 
-    reg.register("create_item", |args| mk(CreateItem {
-        header: args[0].clone(),
-        pos: args[1].clone(),
-        mark: args.get(2).map(|s| (s as &str).into_symbol())
-            .unwrap_or_else(|| "target".into_symbol()),
-    }));
+    reg.register("create_item", |args| {
+        mk(CreateItem {
+            header: args[0].clone(),
+            pos: args[1].clone(),
+            mark: args
+                .get(2)
+                .map(|s| (s as &str).into_symbol())
+                .unwrap_or_else(|| "target".into_symbol()),
+        })
+    });
 
     reg.register("delete_items", |_args| mk(DeleteItems));
 }
-
