@@ -4485,13 +4485,9 @@ impl<'c> Translation<'c> {
                     // Casts targeting `enum` types...
                     let expr =
                         expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
-                    Ok(self.convert_cast_to_enum(
-                        target_cty.ctype,
-                        enum_decl_id,
-                        expr,
-                        val,
-                        target_ty,
-                    ))
+                    val.result_map(|val| {
+                        self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, expr, val)
+                    })
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     val.and_then(|x| {
                         Ok(WithStmts::new_val(mk().cast_expr(

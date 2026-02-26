@@ -1,13 +1,11 @@
-use std::ops::Index;
-
 use c2rust_ast_builder::mk;
 use proc_macro2::Span;
-use syn::{Expr, ExprCast, Type};
+use syn::Expr;
 
 use crate::{
     c_ast,
     diagnostics::TranslationResult,
-    translator::{signed_int_expr, unparen, ConvertedDecl, Translation},
+    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
     with_stmts::WithStmts,
     CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
     CTypeKind, ConstIntExpr,
@@ -72,8 +70,6 @@ impl<'c> Translation<'c> {
         val: Box<Expr>,
     ) -> TranslationResult<Box<Expr>> {
         // Convert it to the expected integral type.
-        // When modifying this, look at `Translation::enum_cast` -
-        // this function assumes `DeclRef`'s to `EnumConstants`'s will translate to casts.
         let ty = self.convert_type(target_cty)?;
         Ok(mk().cast_expr(val, ty))
     }
@@ -86,41 +82,41 @@ impl<'c> Translation<'c> {
     /// like to produce Rust with _no_ casts. This function handles this simplification.
     pub fn convert_cast_to_enum(
         &self,
+        ctx: ExprContext,
         enum_type_id: CTypeId,
         enum_id: CEnumId,
         expr: CExprId,
-        val: WithStmts<Box<Expr>>,
-        target_ty: Box<Type>,
-    ) -> WithStmts<Box<Expr>> {
-        // Extract the IDs of the `EnumConstant` decls underlying the enum.
-        match self.ast_context.index(expr).kind {
+        val: Box<Expr>,
+    ) -> TranslationResult<Box<Expr>> {
+        match self.ast_context[expr].kind {
             // This is the case of finding a variable which is an `EnumConstant` of the same enum
             // we are casting to. Here, we can just remove the extraneous cast instead of generating
             // a new one.
             CExprKind::DeclRef(_, enum_constant_id, _)
                 if self.is_variant_of_enum(enum_id, enum_constant_id) =>
             {
-                return val.map(|x| match *unparen(&x) {
-                    Expr::Cast(ExprCast { ref expr, .. }) => expr.clone(),
-                    // If this DeclRef expanded to a const macro, we actually need to insert a cast,
-                    // because the translation of a const macro skips implicit casts in its context.
-                    Expr::Path(..) => mk().cast_expr(x, target_ty),
-                    _ => panic!(
-                        "DeclRef {:?} of enum {:?} is not cast: {x:?}",
-                        expr, enum_id
-                    ),
-                });
+                // `enum`s shouldn't need portable `override_ty`s.
+                let expr_is_macro = matches!(
+                    self.convert_const_macro_expansion(ctx, expr, None),
+                    Ok(Some(_))
+                );
+
+                // If this DeclRef expanded to a const macro, we actually need to insert a cast,
+                // because the translation of a const macro skips implicit casts in its context.
+                if !expr_is_macro {
+                    return Ok(self.enum_constant_expr(enum_constant_id));
+                }
             }
 
             CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                return val.map(|_| self.enum_for_i64(enum_type_id, i as i64));
+                return Ok(self.enum_for_i64(enum_type_id, i as i64));
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id, _) => {
                 if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
                     &self.ast_context[subexpr_id].kind
                 {
-                    return val.map(|_| self.enum_for_i64(enum_type_id, -(i as i64)));
+                    return Ok(self.enum_for_i64(enum_type_id, -(i as i64)));
                 }
             }
 
@@ -129,7 +125,8 @@ impl<'c> Translation<'c> {
             _ => {}
         }
 
-        val.map(|x| mk().cast_expr(x, target_ty))
+        let target_ty = self.convert_type(enum_type_id)?;
+        Ok(mk().cast_expr(val, target_ty))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
