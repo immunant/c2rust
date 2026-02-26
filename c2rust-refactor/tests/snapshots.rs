@@ -267,6 +267,11 @@ fn test_fix_unused_unsafe() {
 }
 
 #[test]
+fn test_fix_unused_unsafe_compile_error() {
+    test_refactor_named("fix_unused_unsafe", "fix_unused_unsafe_compile_error.rs");
+}
+
+#[test]
 fn test_fold_let_assign() {
     refactor("fold_let_assign").test();
 }

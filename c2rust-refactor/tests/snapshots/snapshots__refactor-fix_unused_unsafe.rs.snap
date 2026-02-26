@@ -10,11 +10,32 @@ fn main() {
         let _safe_val = *ptr;
     }
 
-    {
-        let x = 42;
-    }
+    // Block with no comment and no destructors, block should be removed but
+    // contents kept.
+    let x = 42;
 
+    // Has a comment, shouldn't be removed.
     {}
 
+    {
+        // Contains a destructor, keep the block to avoid changing drop order.
+        let _string = String::from("string");
+    }
+
+    // Block expression should stay.
     let _ = { 5 + 5 };
+
+    {
+        // Nested unsafe blocks. Not that hard to handle, but also not a
+        // case that we need to cover since c2rust doesn't generate code
+        // like this and later refactoring is unlikely to introduce it.
+        let y = 99;
+    }
+
+    // Trailing expr in an unsafe block used as a statement, make sure we don't
+    // just remove the block since that would turn the statement into an
+    // expression.
+    {
+        1 + 2
+    };
 }

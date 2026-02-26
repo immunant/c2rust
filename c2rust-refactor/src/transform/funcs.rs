@@ -1,5 +1,6 @@
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
+use std::mem;
 use rustc_hir::def_id::DefId;
 use rustc_type_ir::sty::TyKind;
 use rustc_ast::ast;
@@ -11,7 +12,10 @@ use rustc_span::symbol::Ident;
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_builder::{mk, IntoSymbol};
-use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules, visit_nodes, MutVisit};
+use crate::ast_manip::{
+    collect_comments, CommentMap, FlatMapNodes, MutVisitNodes, MutVisit, fold_modules,
+    visit_nodes,
+};
 use crate::command::{CommandState, Registry};
 use crate::driver::{Phase, parse_expr};
 use crate::{expect, match_or, unpack};
@@ -279,32 +283,118 @@ impl Transform for ToMethod {
 ///
 /// Usage: `fix_unused_unsafe`
 ///
-/// Find unused `unsafe` blocks and turn them into ordinary blocks. This relies
-/// on the compiler's `#[warn(unused_unsafe)]` warnings, and will not work with warnings
+/// Find unused `unsafe` blocks and turn them into ordinary blocks, removing the
+/// block entirely where possible. This relies on the compiler's
+/// `#[warn(unused_unsafe)]` warnings, and will not work with warnings
 /// suppressed.
+///
+/// Blocks are removed entirely (preserving their contents) if:
+///
+/// - The block is unlabeled.
+/// - There are no comments on the block.
+/// - There are no values in the block that require drop.
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |b: &mut P<Block>| {
-            if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
-                let hir_id = cx.hir_map().node_to_hir_id(b.id);
-                let parent = cx.hir_map().get_parent_item(hir_id);
-                let result = cx.ty_ctxt().unsafety_check_result(parent);
-                let unused = result
+        // HACK: Check if there have been compilation errors before running the
+        // transformation. When there are errors, rustc's unsafe checker can produce
+        // incorrect results, incorrectly marking blocks with actual unsafe
+        // operations as "unused". This would cause us to remove the `unsafe`
+        // keyword from blocks that still need it, so we bail out in that case
+        // instead of corrupting the code.
+        if cx.session().diagnostic().has_errors().is_some() {
+            warn!("Skipping fix_unused_unsafe transform due to compilation errors");
+            return;
+        }
+
+        let comment_map = collect_comments(
+            krate,
+            cx.session().source_map(),
+            &cx.session().parse_sess,
+        );
+
+        struct FixUnusedUnsafeFolder<'a, 'tcx> {
+            cx: &'a RefactorCtxt<'a, 'tcx>,
+            comment_map: &'a CommentMap,
+        }
+
+        impl<'a, 'tcx> FixUnusedUnsafeFolder<'a, 'tcx> {
+            fn is_unused_unsafe_block(&self, b: &Block) -> bool {
+                let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules else {
+                    return false;
+                };
+
+                let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
+                let parent = self.cx.hir_map().get_parent_item(hir_id);
+                let result = self.cx.ty_ctxt().unsafety_check_result(parent);
+                result
                     .unused_unsafes
                     .as_deref()
                     .unwrap_or_default()
                     .iter()
-                    .any(|&(id, _)| {
-                        // TODO: do we need to check the UnusedUnsafe argument?
-                        id == cx.hir_map().node_to_hir_id(b.id)
+                    .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
+            }
+        }
+
+        impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
+            fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
+                'noop: {
+                    let (StmtKind::Expr(expr) | StmtKind::Semi(expr)) = &mut stmt.kind else {
+                        break 'noop;
+                    };
+
+                    let expr_id = expr.id;
+                    let ExprKind::Block(block, label) = &mut expr.kind else {
+                        break 'noop;
+                    };
+
+                    if !self.is_unused_unsafe_block(block) {
+                        break 'noop;
+                    }
+
+                    let block_id = block.id;
+                    let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
+                    let parent = self.cx.hir_map().get_parent_item(hir_id);
+                    let param_env = self.cx.ty_ctxt().param_env(parent);
+
+                    let has_comments = [stmt.id, expr_id, block_id].iter().any(|id| {
+                        self.comment_map
+                            .get(id)
+                            .map_or(false, |comments| !comments.is_empty())
                     });
-                if unused {
+
+                    let has_drop = block.stmts.iter().any(|stmt| match stmt.kind {
+                        StmtKind::Local(ref local) => {
+                            let ty = self
+                                .cx
+                                .opt_node_type(local.id)
+                                .or_else(|| self.cx.opt_node_type(local.pat.id));
+                            ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
+                        }
+                        _ => false,
+                    });
+
+                    // Remove the block if there's nothing preventing us from doing so.
+                    if label.is_none() && !has_comments && !has_drop {
+                        let stmts = mem::take(&mut block.stmts);
+                        return SmallVec::from_vec(stmts);
+                    }
+                }
+
+                mut_visit::noop_flat_map_stmt(stmt, self)
+            }
+
+            fn visit_block(&mut self, b: &mut P<Block>) {
+                if self.is_unused_unsafe_block(b) {
                     b.rules = BlockCheckMode::Default;
                 }
+
+                mut_visit::noop_visit_block(b, self)
             }
-        });
+        }
+
+        krate.visit(&mut FixUnusedUnsafeFolder { cx, comment_map: &comment_map });
     }
 
     fn min_phase(&self) -> Phase {
