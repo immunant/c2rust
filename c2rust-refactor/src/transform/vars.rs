@@ -170,7 +170,18 @@ impl Transform for SinkLets {
                                        Some(x) => x; return);
 
             let mut new_stmts = place_here.iter()
-                .map(|&id| mk().local_stmt(&locals[&id].local))
+                .map(|&id| {
+                    let local = &locals[&id].local;
+                    // Set the statement's span to match the local's span.
+                    //
+                    // By default, mk().local_stmt() creates a Stmt with DUMMY_SP. The rewrite system
+                    // uses stmt.span (via the Splice trait) to extract source text for recovery during
+                    // the print/reparse cycle. Without a valid span, source extraction fails.
+                    //
+                    // Setting stmt.span = local.span provides a valid source location. The Splice
+                    // implementation in print.rs will extend this to cover any attributes.
+                    mk().span(local.span).local_stmt(local)
+                })
                 .collect::<Vec<_>>();
             new_stmts.append(&mut b.stmts);
             b.stmts = new_stmts;
@@ -393,7 +404,20 @@ impl Transform for FoldLetAssign {
                     let local_mark = local_pos.remove(&hir_id).unwrap();
                     let mut l = local.clone();
                     l.kind = LocalKind::Init(init);
-                    curs.replace(|_| mk().local_stmt(l));
+
+                    // Preserve the original local's span when creating the combined statement.
+                    //
+                    // fold_let_assign transforms:
+                    //   let x;          <- original local
+                    //   x = expr;       <- assignment
+                    // into:
+                    //   let x = expr;   <- combined local
+                    //
+                    // The combined Local keeps l.span from the original declaration. Setting
+                    // stmt.span = l.span allows the rewrite system to extract source text using
+                    // the Splice trait. Without this, stmt.span would be DUMMY_SP and source
+                    // extraction would fail.
+                    curs.replace(move |_| mk().span(l.span).local_stmt(l));
 
                     let here = curs.mark();
                     curs.seek(local_mark);
@@ -492,6 +516,7 @@ impl Transform for RemoveRedundantLetTypes {
         let pat = mcx.parse_stmts("let $pat:Pat : $ty:Ty = $init:Expr;");
         let repl = mcx.parse_stmts("let $pat = $init;");
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
+            let orig_span = ast.get(0).map(|s| s.span);
             let e = mcx.bindings.get::<_, P<Expr>>("$init").unwrap();
             let e_ty = cx.adjusted_node_type(e.id);
             let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
@@ -501,6 +526,14 @@ impl Transform for RemoveRedundantLetTypes {
             let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
             if e_ty == t_ty {
                 *ast = repl.clone().subst(st, cx, &mcx.bindings);
+                // Preserve the original statement's span after replacement.
+                //
+                // The subst() call creates a new Stmt from the replacement pattern, which has
+                // a synthetic span from the pattern parse. Restoring the original span allows
+                // the rewrite system to extract source text via the Splice trait.
+                if let (Some(span), Some(first)) = (orig_span, ast.get_mut(0)) {
+                    first.span = span;
+                }
             }
         })
     }

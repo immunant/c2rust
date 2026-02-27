@@ -666,7 +666,27 @@ fn rewrite_at_impl<T>(old_span: Span, new: &T, mut rcx: RewriteCtxtRef) -> bool
 where
     T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
-    let printed = add_comments(new.to_string(), new, &rcx);
+    let mut printed = add_comments(new.to_string(), new, &rcx);
+
+    // Fallback: extract source snippet when pretty-printing produces empty output.
+    //
+    // pprust can emit "" for Local statements whose inner Local has DUMMY_NODE_ID
+    // (sink_lets sets that intentionally). Reparse of "" yields 0 statements and
+    // hits the lone() assertion. The fallback replaces the empty string with the
+    // original source via span_to_snippet(), assuming the statement carries a real
+    // span (set in vars.rs).
+    if printed.trim().is_empty() {
+        if let Ok(snippet) = rcx
+            .session()
+            .source_map()
+            .span_to_snippet(new.splice_span())
+        {
+            if !snippet.trim().is_empty() {
+                printed = snippet;
+            }
+        }
+    }
+
     let reparsed = T::parse(rcx.session(), &printed);
     let reparsed = reparsed.ast_deref();
 
