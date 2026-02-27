@@ -39,6 +39,7 @@ strum = "0.24"
 strum_macros = "0.24"
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing", "printing"]}
 tempfile = "3.5.0"
+which = "4.4.0"
 
 [features]
 # Force static linking of LLVM
