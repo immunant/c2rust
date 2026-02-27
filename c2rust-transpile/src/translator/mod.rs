@@ -2701,68 +2701,44 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad condition type"))?;
 
         let null_pointer_case =
-            |negated: bool, ptr: CExprId| -> TranslationResult<WithStmts<Box<Expr>>> {
+            |ptr: CExprId, is_true: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
                 let ptr_type = self.ast_context[ptr]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
-                val.and_then(|e| {
-                    Ok(WithStmts::new_val(
-                        if self.ast_context.is_function_pointer(ptr_type) {
-                            if negated {
-                                mk().method_call_expr(e, "is_some", vec![])
-                            } else {
-                                mk().method_call_expr(e, "is_none", vec![])
-                            }
-                        } else {
-                            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
-                            if ctx.is_const {
-                                return Err(format_translation_err!(
-                                    None,
-                                    "cannot check nullity of pointer in `const` context",
-                                ));
-                            }
-                            let is_null = mk().method_call_expr(e, "is_null", vec![]);
-                            if negated {
-                                mk().unary_expr(UnOp::Not(Default::default()), is_null)
-                            } else {
-                                is_null
-                            }
-                        },
-                    ))
-                })
+
+                val.result_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_true))
             };
 
         match self.ast_context[cond_id].kind {
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(ptr, target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(ptr, target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(ptr, !target)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(ptr, !target)
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
                 self.convert_condition(ctx, !target, subexpr_id)
             }
-
             _ => {
                 // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
                 // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
@@ -4500,79 +4476,35 @@ impl<'c> Translation<'c> {
 
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
-                if self.ast_context.is_function_pointer(target_cty.ctype)
-                    || self.ast_context.is_function_pointer(source_cty.ctype)
-                {
-                    let source_ty = self
-                        .type_converter
-                        .borrow_mut()
-                        .convert(&self.ast_context, source_cty.ctype)?;
-                    let target_ty = self
-                        .type_converter
-                        .borrow_mut()
-                        .convert(&self.ast_context, target_cty.ctype)?;
-
-                    if source_ty == target_ty {
-                        return Ok(val);
-                    }
-
-                    self.import_type(source_cty.ctype);
-                    self.import_type(target_cty.ctype);
-
-                    val.and_then(|val| {
-                        Ok(WithStmts::new_unsafe_val(transmute_expr(
-                            source_ty, target_ty, val,
-                        )))
-                    })
-                } else {
-                    // Normal case
-                    let target_ty = self.convert_type(target_cty.ctype)?;
-                    Ok(val.map(|val| mk().cast_expr(val, target_ty)))
-                }
+                self.convert_pointer_to_pointer_cast(source_cty.ctype, target_cty.ctype, val)
             }
 
-            CastKind::IntegralToPointer
-                if self.ast_context.is_function_pointer(target_cty.ctype) =>
-            {
-                let target_ty = self.convert_type(target_cty.ctype)?;
-                val.and_then(|x| {
-                    self.use_crate(ExternCrate::Libc);
-                    let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
-                    let intptr = mk().cast_expr(x, intptr_t.clone());
-                    if ctx.is_const {
-                        return Err(format_translation_err!(
-                            None,
-                            "cannot transmute integers to Option<fn ...> in `const` context",
-                        ));
-                    }
-                    Ok(WithStmts::new_unsafe_val(transmute_expr(
-                        intptr_t, target_ty, intptr,
-                    )))
-                })
+            CastKind::IntegralToPointer => {
+                self.convert_integral_to_pointer_cast(ctx, source_cty.ctype, target_cty.ctype, val)
             }
 
-            CastKind::IntegralToPointer
-            | CastKind::PointerToIntegral
-            | CastKind::IntegralCast
+            CastKind::PointerToIntegral => self.convert_pointer_to_integral_cast(
+                ctx,
+                source_cty.ctype,
+                target_cty.ctype,
+                val,
+                expr,
+            ),
+
+            CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
             | CastKind::BooleanToSignedIntegral => {
-                if kind == CastKind::PointerToIntegral && ctx.is_const {
-                    return Err(format_translation_err!(
-                        None,
-                        "cannot observe pointer values in `const` context",
-                    ));
-                }
                 let target_ty = self.convert_type(target_cty.ctype)?;
-                let source_ty = self.convert_type(source_cty.ctype)?;
 
                 if let CTypeKind::LongDouble = target_ty_kind {
                     if ctx.is_const {
                         return Err(format_translation_err!(
-                                None,
-                                "f128 cannot be used in constants because `f128::f128::new` is not `const`",
-                            ));
+                            None,
+                            "f128 cannot be used in constants because \
+                            `f128::f128::new` is not `const`",
+                        ));
                     }
 
                     self.use_crate(ExternCrate::F128);
@@ -4595,35 +4527,13 @@ impl<'c> Translation<'c> {
                         )
                     })
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                    val.and_then(|x| {
-                        Ok(WithStmts::new_val(mk().cast_expr(
-                            mk().cast_expr(x, mk().path_ty(vec!["u8"])),
-                            target_ty,
-                        )))
-                    })
-                } else if target_ty_kind.is_pointer() && source_ty_kind.is_bool() {
-                    val.and_then(|x| {
-                        self.use_crate(ExternCrate::Libc);
-                        Ok(WithStmts::new_val(mk().cast_expr(
-                            mk().cast_expr(x, mk().abs_path_ty(vec!["libc", "size_t"])),
-                            target_ty,
-                        )))
-                    })
+                    Ok(val.map(|val| {
+                        mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
+                    }))
+                } else if let &CTypeKind::Enum(..) = source_ty_kind {
+                    val.result_map(|val| self.convert_cast_from_enum(target_cty.ctype, val))
                 } else {
-                    // Other numeric casts translate to Rust `as` casts,
-                    // unless the cast is to a function pointer then use `transmute`.
-                    val.and_then(|x| {
-                        if self.ast_context.is_function_pointer(source_cty.ctype) {
-                            Ok(WithStmts::new_unsafe_val(transmute_expr(
-                                source_ty, target_ty, x,
-                            )))
-                        } else if let &CTypeKind::Enum(..) = source_ty_kind {
-                            self.convert_cast_from_enum(target_cty.ctype, x)
-                                .map(WithStmts::new_val)
-                        } else {
-                            Ok(WithStmts::new_val(mk().cast_expr(x, target_ty)))
-                        }
-                    })
+                    Ok(val.map(|val| mk().cast_expr(val, target_ty)))
                 }
             }
 
@@ -4958,30 +4868,13 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<Box<Expr>> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
-        Ok(if self.ast_context.is_function_pointer(ty_id) {
-            if target {
-                mk().method_call_expr(val, "is_some", vec![])
-            } else {
-                mk().method_call_expr(val, "is_none", vec![])
-            }
-        } else if ty.is_pointer() {
-            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
-            if ctx.is_const {
-                return Err(format_translation_err!(
-                    None,
-                    "cannot check nullity of pointer in `const` context",
-                ));
-            }
-            let mut res = mk().method_call_expr(val, "is_null", vec![]);
-            if target {
-                res = mk().unary_expr(UnOp::Not(Default::default()), res)
-            }
-            res
+        if ty.is_pointer() {
+            self.convert_pointer_is_null(ctx, ty_id, val, !target)
         } else if ty.is_bool() {
             if target {
-                val
+                Ok(val)
             } else {
-                mk().unary_expr(UnOp::Not(Default::default()), val)
+                Ok(mk().unary_expr(UnOp::Not(Default::default()), val))
             }
         } else {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
@@ -5028,11 +4921,11 @@ impl<'c> Translation<'c> {
             };
 
             if target {
-                mk().binary_expr(BinOp::Ne(Default::default()), val, zero)
+                Ok(mk().binary_expr(BinOp::Ne(Default::default()), val, zero))
             } else {
-                mk().binary_expr(BinOp::Eq(Default::default()), val, zero)
+                Ok(mk().binary_expr(BinOp::Eq(Default::default()), val, zero))
             }
-        })
+        }
     }
 
     pub fn with_scope<F, A>(&self, f: F) -> A
