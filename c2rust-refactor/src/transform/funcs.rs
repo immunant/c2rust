@@ -293,6 +293,7 @@ impl Transform for ToMethod {
 /// - The block is unlabeled.
 /// - There are no comments on the block.
 /// - There are no values in the block that require drop.
+/// - The block doesn't have a tail expression (for statement-position blocks).
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
@@ -340,12 +341,13 @@ impl Transform for FixUnusedUnsafe {
         impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
                 'noop: {
+                    let is_semi = matches!(stmt.kind, StmtKind::Semi(_));
                     let (StmtKind::Expr(expr) | StmtKind::Semi(expr)) = &mut stmt.kind else {
                         break 'noop;
                     };
 
                     let expr_id = expr.id;
-                    let ExprKind::Block(block, label) = &mut expr.kind else {
+                    let ExprKind::Block(block, None) = &mut expr.kind else {
                         break 'noop;
                     };
 
@@ -375,14 +377,55 @@ impl Transform for FixUnusedUnsafe {
                         _ => false,
                     });
 
+                    let has_trailing_expr = block
+                        .stmts
+                        .last()
+                        .map_or(false, |stmt| matches!(stmt.kind, StmtKind::Expr(_)));
+                    let has_non_tail_stmt = block
+                        .stmts
+                        .iter()
+                        .any(|stmt| !matches!(stmt.kind, StmtKind::Expr(_)));
+                    let only_tail_expr = has_trailing_expr
+                        && !has_non_tail_stmt
+                        && block.stmts.len() == 1;
+
                     // Remove the block if there's nothing preventing us from doing so.
-                    if label.is_none() && !has_comments && !has_drop {
-                        let stmts = mem::take(&mut block.stmts);
+                    if !has_comments && !has_drop && (!has_trailing_expr || only_tail_expr) {
+                        let mut stmts = mem::take(&mut block.stmts);
+                        if only_tail_expr && is_semi {
+                            if let Some(last) = stmts.last_mut() {
+                                if let StmtKind::Expr(ref expr) = last.kind {
+                                    last.kind = StmtKind::Semi(expr.clone());
+                                }
+                            }
+                        }
                         return SmallVec::from_vec(stmts);
                     }
                 }
 
                 mut_visit::noop_flat_map_stmt(stmt, self)
+            }
+
+            fn visit_expr(&mut self, expr: &mut P<Expr>) {
+                let expr_id = expr.id;
+                if let ExprKind::Block(block, None) = &mut expr.kind {
+                    if self.is_unused_unsafe_block(block) {
+                        let has_comments = [expr_id, block.id].iter().any(|id| {
+                            self.comment_map
+                                .get(id)
+                                .map_or(false, |comments| !comments.is_empty())
+                        });
+                        if !has_comments && block.stmts.len() == 1 {
+                            if let StmtKind::Expr(inner) = block.stmts[0].kind.clone() {
+                                *expr = inner;
+                                mut_visit::noop_visit_expr(expr, self);
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                mut_visit::noop_visit_expr(expr, self)
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {
