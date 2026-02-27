@@ -82,7 +82,6 @@ impl<'a> RefactorTest<'a> {
         }
     }
 
-    #[allow(unused)] // TODO remove when used
     pub fn expect_compile_error(self, expect_error: bool) -> Self {
         self.old_expect_compile_error(expect_error)
             .new_expect_compile_error(expect_error)
@@ -215,6 +214,27 @@ fn test_refactor(
 }
 
 // NOTE: Tests should be listed in alphabetical order.
+
+/// TODO Broken.
+/// The generated `fn add` is marked `unsafe` when it doesn't appear it should be.
+#[test]
+fn test_abstract() {
+    refactor("abstract")
+        .command_args(&["add(x: i32, y: i32) -> i32", "x + y"])
+        .named("abstract.rs")
+        .new_expect_compile_error(true)
+        .test();
+    // no commit
+    refactor("abstract")
+        .command_args(&[
+            "sub<T: Sub<T, Result=T>>(x: T, y: T) -> T",
+            "typed!(x, T) - y",
+            "x - y",
+        ])
+        .named("abstract.new")
+        .expect_compile_error(true)
+        .test();
+}
 
 #[test]
 fn test_autoretype_array() {
