@@ -48,6 +48,7 @@ fn config() -> TranspilerConfig {
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,
+        postprocess: false,
         emit_build_files: false,
         binaries: Vec::new(),
         c2rust_dir: Some(
