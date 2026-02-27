@@ -1,25 +1,24 @@
 use log::info;
-use std::collections::hash_map::{HashMap, Entry};
-use std::collections::HashSet;
-use std::mem;
-use rustc_hir::def_id::LOCAL_CRATE;
-use rustc_hir::HirId;
-use rustc_middle::ty::{TyKind, ParamEnv};
-use rustc_ast::*;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, Visitor};
+use rustc_ast::*;
+use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_hir::HirId;
+use rustc_middle::ty::{ParamEnv, TyKind};
+use std::collections::hash_map::{Entry, HashMap};
+use std::collections::HashSet;
+use std::mem;
 
 use crate::ast_builder::mk;
-use crate::ast_manip::{MutVisit, MutVisitNodes, fold_blocks, visit_nodes};
+use crate::ast_manip::{fold_blocks, visit_nodes, MutVisit, MutVisitNodes};
 use crate::command::{CommandState, DriverCommand, Registry};
-use crate::driver::{Phase};
+use crate::driver::Phase;
 use crate::match_or;
-use crate::matcher::{MatchCtxt, Subst, mut_visit_match_with};
+use crate::matcher::{mut_visit_match_with, MatchCtxt, Subst};
 use crate::reflect::reflect_tcx_ty;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-
 
 /// # `sink_lets` Command
 ///
@@ -48,17 +47,20 @@ impl Transform for SinkLets {
                 let l_init = get_local_init(&l.kind);
                 if l_init.is_none() || !expr_has_side_effects(cx, l_init.unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
-                    locals.insert(hir_id, LocalInfo {
-                        local: P(Local {
-                            // Later on, e're going to copy this `Local` to create the newly
-                            // generated bindings.  Afterward, we want to delete the old bindings.
-                            // To distinguish the old and new bindings, we give the new one a dummy
-                            // `NodeId`.
-                            id: DUMMY_NODE_ID,
-                            .. l.clone()
-                        }),
-                        old_node_id: l.id,
-                    });
+                    locals.insert(
+                        hir_id,
+                        LocalInfo {
+                            local: P(Local {
+                                // Later on, e're going to copy this `Local` to create the newly
+                                // generated bindings.  Afterward, we want to delete the old bindings.
+                                // To distinguish the old and new bindings, we give the new one a dummy
+                                // `NodeId`.
+                                id: DUMMY_NODE_ID,
+                                ..l.clone()
+                            }),
+                            old_node_id: l.id,
+                        },
+                    );
                 }
             }
         });
@@ -85,8 +87,12 @@ impl Transform for SinkLets {
         impl<'a, 'tcx> BlockLocalsVisitor<'a, 'tcx> {
             fn record_use_inside_block(&mut self, id: HirId) {
                 match self.cur.entry(id) {
-                    Entry::Occupied(e) => { *e.into_mut() = UseKind::Other; },
-                    Entry::Vacant(e) => { e.insert(UseKind::InsideOneBlock); },
+                    Entry::Occupied(e) => {
+                        *e.into_mut() = UseKind::Other;
+                    }
+                    Entry::Vacant(e) => {
+                        e.insert(UseKind::InsideOneBlock);
+                    }
                 }
             }
         }
@@ -147,7 +153,8 @@ impl Transform for SinkLets {
             // `InsideOneBlock` means the local can be placed somewhere deeper, so this strategy
             // ensures we place the local in the deepest legal position.  We rely on `mut_visit_nodes`
             // doing a preorder traversal to avoid placing them too deep.
-            let mut place_here = used_locals.iter()
+            let mut place_here = used_locals
+                .iter()
                 .filter(|&(&id, &kind)| kind == UseKind::Other && !placed_locals.contains(&id))
                 .map(|(&id, _)| id)
                 .collect::<Vec<_>>();
@@ -169,7 +176,8 @@ impl Transform for SinkLets {
             let place_here = match_or!([local_placement.get(&b.id)]
                                        Some(x) => x; return);
 
-            let mut new_stmts = place_here.iter()
+            let mut new_stmts = place_here
+                .iter()
                 .map(|&id| mk().local_stmt(&locals[&id].local))
                 .collect::<Vec<_>>();
             new_stmts.append(&mut b.stmts);
@@ -182,16 +190,15 @@ impl Transform for SinkLets {
         // to place a local is if it is never used anywhere.  Otherwise we would, at worst, place
         // it back in its original block.  The result is that this pass has the additional effect
         // of removing unused locals.
-        let remove_local_ids = locals.iter()
+        let remove_local_ids = locals
+            .iter()
             .map(|(_, info)| info.old_node_id)
             .collect::<HashSet<_>>();
 
         MutVisitNodes::visit(krate, |b: &mut P<Block>| {
-            b.stmts.retain(|s| {
-                match s.kind {
-                    StmtKind::Local(ref l) => !remove_local_ids.contains(&l.id),
-                    _ => true,
-                }
+            b.stmts.retain(|s| match s.kind {
+                StmtKind::Local(ref l) => !remove_local_ids.contains(&l.id),
+                _ => true,
             });
         });
     }
@@ -200,7 +207,6 @@ impl Transform for SinkLets {
         Phase::Phase3
     }
 }
-
 
 /// Helper function that returns the initializer expression
 /// as a `P<Expr>` in contrast to a `LocalKind::init()` which gives a `&Expr`.
@@ -217,11 +223,11 @@ fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
         ExprKind::Lit(_) => false,
         ExprKind::Array(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
         ExprKind::Call(ref func, ref args) => {
-            let func_is_const_fn = cx.try_resolve_expr(func)
+            let func_is_const_fn = cx
+                .try_resolve_expr(func)
                 .map_or(false, |func_id| cx.ty_ctxt().is_const_fn(func_id));
-            !func_is_const_fn ||
-                args.iter().any(|e| expr_has_side_effects(cx, e))
-        },
+            !func_is_const_fn || args.iter().any(|e| expr_has_side_effects(cx, e))
+        }
         ExprKind::Tup(ref elems) => elems.iter().any(|e| expr_has_side_effects(cx, e)),
         ExprKind::Cast(ref expr, _) => expr_has_side_effects(cx, expr),
         ExprKind::Type(ref expr, _) => expr_has_side_effects(cx, expr),
@@ -245,7 +251,6 @@ fn expr_has_side_effects(cx: &RefactorCtxt, e: &P<Expr>) -> bool {
     }
 }
 
-
 fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
     let func = match_or!([e.kind] ExprKind::Call(ref func, _) => func; return false);
     let def_id = cx.resolve_expr(func);
@@ -255,13 +260,17 @@ fn is_uninit_call(cx: &RefactorCtxt, e: &Expr) -> bool {
     let crate_name = cx.ty_ctxt().crate_name(def_id.krate);
     let path = cx.ty_ctxt().def_path(def_id);
 
-    (crate_name.as_str() == "std" || crate_name.as_str() == "core") &&
-    path.data.len() == 2 &&
-    path.data[0].data.get_opt_name().map_or(false, |sym| sym.as_str() == "mem") &&
-    path.data[1].data.get_opt_name().map_or(false, |sym| sym.as_str() == "uninitialized")
+    (crate_name.as_str() == "std" || crate_name.as_str() == "core")
+        && path.data.len() == 2
+        && path.data[0]
+            .data
+            .get_opt_name()
+            .map_or(false, |sym| sym.as_str() == "mem")
+        && path.data[1]
+            .data
+            .get_opt_name()
+            .map_or(false, |sym| sym.as_str() == "uninitialized")
 }
-
-
 
 /// # `fold_let_assign` Command
 ///
@@ -336,12 +345,14 @@ impl Transform for FoldLetAssign {
             v.stmt_locals
         };
 
-
         // (3) Walk through blocks, looking for non-initializing `let`s and assignment statements,
         // and rewriting them when found.
 
         // Map from node ID to def ID, for known locals.
-        let local_node_def = locals.iter().map(|(did, l)| (l.id, did)).collect::<HashMap<_, _>>();
+        let local_node_def = locals
+            .iter()
+            .map(|(did, l)| (l.id, did))
+            .collect::<HashMap<_, _>>();
 
         // Map from def ID to a Mark, giving the position of the local so we can delete it later.
         // If a local gets used before we reach the assignment, we delete it from this map.
@@ -357,7 +368,7 @@ impl Transform for FoldLetAssign {
                         } else {
                             None
                         }
-                    },
+                    }
                     _ => None,
                 };
                 if let Some(did) = mark_did {
@@ -366,25 +377,23 @@ impl Transform for FoldLetAssign {
 
                 // Is it an assignment to a local?
                 let assign_info = match curs.next().kind {
-                    StmtKind::Semi(ref e) => {
-                        match e.kind {
-                            ExprKind::Assign(ref lhs, ref rhs, _) => {
-                                if let Some(hir_id) = cx.try_resolve_expr_to_hid(&lhs) {
-                                    if local_pos.contains_key(&hir_id) {
-                                        if is_self_ref(cx, hir_id, rhs) {
-                                            None
-                                        } else {
-                                            Some((hir_id, rhs.clone()))
-                                        }
-                                    } else {
+                    StmtKind::Semi(ref e) => match e.kind {
+                        ExprKind::Assign(ref lhs, ref rhs, _) => {
+                            if let Some(hir_id) = cx.try_resolve_expr_to_hid(&lhs) {
+                                if local_pos.contains_key(&hir_id) {
+                                    if is_self_ref(cx, hir_id, rhs) {
                                         None
+                                    } else {
+                                        Some((hir_id, rhs.clone()))
                                     }
                                 } else {
                                     None
                                 }
-                            },
-                            _ => None,
+                            } else {
+                                None
+                            }
                         }
+                        _ => None,
                     },
                     _ => None,
                 };
@@ -410,7 +419,6 @@ impl Transform for FoldLetAssign {
                     }
                 }
 
-
                 curs.advance();
             }
         })
@@ -433,7 +441,6 @@ fn is_self_ref(cx: &RefactorCtxt, lhs: HirId, rhs: &Expr) -> bool {
     is_self_ref
 }
 
-
 /// # `uninit_to_default` Command
 ///
 /// Obsolete - works around translator problems that no longer exist.
@@ -447,7 +454,12 @@ pub struct UninitToDefault;
 impl Transform for UninitToDefault {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |l: &mut P<Local>| {
-            if !l.kind.init().as_ref().map_or(false, |e| is_uninit_call(cx, e)) {
+            if !l
+                .kind
+                .init()
+                .as_ref()
+                .map_or(false, |e| is_uninit_call(cx, e))
+            {
                 return;
             }
 
@@ -463,7 +475,7 @@ impl Transform for UninitToDefault {
             };
 
             match l.kind {
-                LocalKind::Decl => {},
+                LocalKind::Decl => {}
                 LocalKind::Init(ref mut init) => *init = new_init,
                 LocalKind::InitElse(ref mut init, _) => *init = new_init,
             };
@@ -474,7 +486,6 @@ impl Transform for UninitToDefault {
         Phase::Phase3
     }
 }
-
 
 /// # `remove_redundant_let_types` Command
 ///
@@ -542,7 +553,7 @@ fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
         }
     }
 
-    st.map_krate(|krate| { krate.visit(&mut LocalVisitor { cx }) });
+    st.map_krate(|krate| krate.visit(&mut LocalVisitor { cx }));
 }
 
 pub fn register_commands(reg: &mut Registry) {
@@ -551,7 +562,9 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("sink_lets", |_args| mk(SinkLets));
     reg.register("fold_let_assign", |_args| mk(FoldLetAssign));
     reg.register("uninit_to_default", |_args| mk(UninitToDefault));
-    reg.register("remove_redundant_let_types", |_args| mk(RemoveRedundantLetTypes));
+    reg.register("remove_redundant_let_types", |_args| {
+        mk(RemoveRedundantLetTypes)
+    });
     reg.register("expand_local_ptr_tys", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             expand_local_ptr_tys(st, cx);

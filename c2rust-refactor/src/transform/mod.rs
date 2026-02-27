@@ -7,6 +7,36 @@ use crate::command::{Command, CommandState, RefactorState, Registry};
 use crate::driver::Phase;
 use crate::RefactorCtxt;
 
+// `cargo fmt` doesn't expand macros, so if we declare modules inside a macro,
+// they won't be formatted because `cargo fmt` won't find them.
+
+pub mod canonicalize_refs;
+pub mod casts;
+pub mod char_literals;
+pub mod control_flow;
+pub mod exits;
+pub mod externs;
+pub mod format;
+pub mod funcs;
+pub mod generics;
+// TODO: this is disabled because it uses Subst for AssocItem
+// pub mod ionize;
+pub mod items;
+// TODO: this is disabled for now because it depends on analysis/runtime
+// pub mod lifetime_analysis;
+pub mod linkage;
+pub mod literals;
+pub mod math;
+pub mod ownership;
+pub mod paths;
+pub mod reorganize_definitions;
+pub mod retype;
+pub mod rewrite;
+pub mod statics;
+pub mod structs;
+pub mod test;
+pub mod vars;
+
 /// An AST transformation that can be applied to a crate.
 pub trait Transform {
     /// Apply the transformation.
@@ -40,8 +70,6 @@ fn mk<T: Transform + 'static>(t: T) -> Box<dyn Command> {
 
 macro_rules! transform_modules {
     ($($name:ident,)*) => {
-        $( pub mod $name; )*
-
         pub fn register_commands(reg: &mut Registry) {
             $( $name::register_commands(reg); )*
         }
@@ -58,11 +86,11 @@ transform_modules! {
     format,
     funcs,
     generics,
-    //TODO: this is disabled because it uses Subst for AssocItem
-    //ionize,
+    // TODO: this is disabled because it uses Subst for AssocItem
+    // ionize,
     items,
     // TODO: this is disabled for now because it depends on analysis/runtime
-    //lifetime_analysis,
+    // lifetime_analysis,
     linkage,
     literals,
     math,

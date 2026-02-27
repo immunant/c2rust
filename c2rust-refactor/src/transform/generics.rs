@@ -1,35 +1,34 @@
-use std::collections::HashSet;
-use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_ast::*;
 use rustc_span::symbol::Symbol;
 use smallvec::smallvec;
+use std::collections::HashSet;
 
+use crate::ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{parse_ty};
+use crate::driver::parse_ty;
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use crate::ast_builder::{mk, IntoSymbol};
-
 
 /// # `generalize_items` Command
-/// 
+///
 /// Usage: `generalize_items VAR [TY]`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Replace marked types with generic type parameters.
-/// 
+///
 /// Specifically: add a new type parameter called `VAR` to each item marked
 /// `target`, replacing type annotations inside that item that are marked `target`
 /// with uses of the type parameter.  Also update all uses of `target` items,
 /// passing `TY` as the new type argument when used inside a non-`target` item, and
 /// passing the type variable `VAR` when used inside a `target` item.
-/// 
+///
 /// If `TY` is not provided, it defaults to a copy of the first type annotation
 /// that was replaced with `VAR`.
-/// 
+///
 /// Example:
 ///
 /// ```ignore
@@ -37,14 +36,14 @@ use crate::ast_builder::{mk, IntoSymbol};
 ///         x: i32,     // i32: target
 ///         y: i32,
 ///     }
-/// 
+///
 ///     fn f(foo: Foo) { ... }  // f: target
-/// 
+///
 ///     fn main() {
 ///         f(...);
 ///     }
 /// ```
-/// 
+///
 /// After running `generalize_items T`:
 ///
 /// ```ignore
@@ -54,14 +53,14 @@ use crate::ast_builder::{mk, IntoSymbol};
 ///         x: T,
 ///         y: i32,
 ///     }
-/// 
+///
 ///     // 3. `f` gains a new type parameter `T`, and passes
 ///     // it through to uses of `Foo`
 ///     fn f<T>(foo: Foo<T>) { ... }
 ///     struct Bar<T> {
 ///         foo: Foo<T>,
 ///     }
-/// 
+///
 ///     fn main() {
 ///         // 4. Uses outside target items use `i32`, the
 ///         // first type that was replaced with `T`.
@@ -80,7 +79,9 @@ impl Transform for GeneralizeItems {
         // Map from item NodeId to the concrete type that was replaced with the type variable.
         // These types are used later as the actual parameters in references to rewritten items.
         // If more than one type was replaced, only the first will be kept in this map.
-        let mut replacement_ty = self.replacement_ty.as_ref()
+        let mut replacement_ty = self
+            .replacement_ty
+            .as_ref()
             .map(|s| parse_ty(cx.session(), s));
 
         MutVisitNodes::visit(krate, |ty: &mut P<Ty>| {
@@ -112,12 +113,19 @@ impl Transform for GeneralizeItems {
             smallvec![i.map(|mut i| {
                 {
                     let gen = match i.kind {
-                        ItemKind::Fn(box Fn { generics: ref mut gen, .. }) => gen,
+                        ItemKind::Fn(box Fn {
+                            generics: ref mut gen,
+                            ..
+                        }) => gen,
                         ItemKind::Enum(_, ref mut gen) => gen,
                         ItemKind::Struct(_, ref mut gen) => gen,
                         ItemKind::Union(_, ref mut gen) => gen,
-                        ItemKind::Trait(box Trait { ref mut generics, .. }) => generics,
-                        ItemKind::Impl(box Impl { ref mut generics, .. }) => generics,
+                        ItemKind::Trait(box Trait {
+                            ref mut generics, ..
+                        }) => generics,
+                        ItemKind::Impl(box Impl {
+                            ref mut generics, ..
+                        }) => generics,
                         _ => panic!("item has no room for generics"),
                     };
                     gen.params.push(mk().ty_param(self.ty_var_name));
@@ -130,8 +138,8 @@ impl Transform for GeneralizeItems {
         // rewritten item `X` appears inside another rewritten item `Y`, we instead replace `X`
         // with `X<T>`, referring to `Y`'s instance of the type parameter.
 
-        let replacement_ty = replacement_ty
-            .expect("must provide a replacement type argument or mark");
+        let replacement_ty =
+            replacement_ty.expect("must provide a replacement type argument or mark");
 
         fold_resolved_paths_with_id(krate, cx, |path_id, qself, mut path, def| {
             match def[0].opt_def_id() {
@@ -153,10 +161,12 @@ impl Transform for GeneralizeItems {
                 if let Some(ref mut args) = seg.args {
                     *args = args.clone().map(|mut args| {
                         match args {
-                            GenericArgs::AngleBracketed(ref mut abpd) =>
-                                abpd.args.push(AngleBracketedArg::Arg(mk().generic_arg(arg))),
-                            GenericArgs::Parenthesized(..) =>
-                                panic!("expected angle bracketed params, but found parenthesized"),
+                            GenericArgs::AngleBracketed(ref mut abpd) => abpd
+                                .args
+                                .push(AngleBracketedArg::Arg(mk().generic_arg(arg))),
+                            GenericArgs::Parenthesized(..) => {
+                                panic!("expected angle bracketed params, but found parenthesized")
+                            }
                         }
                         args
                     });
@@ -171,12 +181,13 @@ impl Transform for GeneralizeItems {
     }
 }
 
-
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("generalize_items", |args| mk(GeneralizeItems {
-        ty_var_name: args.get(0).map_or("T", |x| x).into_symbol(),
-        replacement_ty: args.get(1).cloned(),
-    }));
+    reg.register("generalize_items", |args| {
+        mk(GeneralizeItems {
+            ty_var_name: args.get(0).map_or("T", |x| x).into_symbol(),
+            replacement_ty: args.get(1).cloned(),
+        })
+    });
 }

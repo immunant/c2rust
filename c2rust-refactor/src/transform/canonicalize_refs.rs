@@ -1,6 +1,6 @@
-use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
-use rustc_ast::{Crate, Expr, ExprKind, Mutability, UnOp};
 use rustc_ast::ptr::P;
+use rustc_ast::{Crate, Expr, ExprKind, Mutability, UnOp};
+use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
 use rustc_type_ir::sty;
 
 use crate::ast_builder::mk;
@@ -44,7 +44,7 @@ impl Transform for CanonicalizeRefs {
                         };
                         *expr = mk().set_mutbl(mutability).addr_of_expr(expr.clone());
                     }
-                    _ => {},
+                    _ => {}
                 }
             }
         });
@@ -55,30 +55,27 @@ impl Transform for CanonicalizeRefs {
     }
 }
 
-
 /// Transformation that removes unnecessary refs and derefs.
 struct RemoveUnnecessaryRefs;
 
 impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |expr: &mut P<Expr>| {
-            match &mut expr.kind {
-                ExprKind::MethodCall(_path, args, _span) => {
-                    let (receiver, rest) = args.split_first_mut().unwrap();
-                    remove_reborrow(receiver, cx);
-                    remove_ref(receiver);
-                    remove_all_derefs(receiver, cx);
-                    for arg in rest {
-                        remove_reborrow(arg, cx);
-                    }
+        MutVisitNodes::visit(krate, |expr: &mut P<Expr>| match &mut expr.kind {
+            ExprKind::MethodCall(_path, args, _span) => {
+                let (receiver, rest) = args.split_first_mut().unwrap();
+                remove_reborrow(receiver, cx);
+                remove_ref(receiver);
+                remove_all_derefs(receiver, cx);
+                for arg in rest {
+                    remove_reborrow(arg, cx);
                 }
-                ExprKind::Call(_callee, args) => {
-                    for arg in args.iter_mut() {
-                        remove_reborrow(arg, cx);
-                    }
-                }
-                _ => {}
             }
+            ExprKind::Call(_callee, args) => {
+                for arg in args.iter_mut() {
+                    remove_reborrow(arg, cx);
+                }
+            }
+            _ => {}
         });
     }
 
