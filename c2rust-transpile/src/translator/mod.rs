@@ -581,15 +581,19 @@ pub fn translate(
         t.ast_context.bubble_expr_types();
 
         enum Name<'a> {
-            Var(&'a str),
-            Type(&'a str),
-            Anonymous,
             None,
+            // Types (use `t.type_converter`)
+            Type(&'a str),
+            AnonymousType,
+            // Values (use `t.renamer`)
+            Fn(&'a str),
+            Static(&'a str),
+            Variant(&'a str),
         }
 
         fn some_type_name(s: Option<&str>) -> Name<'_> {
             match s {
-                None => Name::Anonymous,
+                None => Name::AnonymousType,
                 Some(r) => Name::Type(r),
             }
         }
@@ -671,27 +675,37 @@ pub fn translate(
                 Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
                 Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
                 Typedef { ref name, .. } => Name::Type(name),
-                Function { ref name, .. } => Name::Var(name),
-                EnumConstant { ref name, .. } => Name::Var(name),
+                Function { ref name, .. } => Name::Fn(name),
+                EnumConstant { ref name, .. } => Name::Variant(name),
                 Variable { ref ident, .. } if t.ast_context.c_decls_top.contains(&decl_id) => {
-                    Name::Var(ident)
+                    Name::Static(ident)
                 }
-                MacroObject { ref name, .. } => Name::Var(name),
+                MacroObject { ref name, .. } => Name::Static(name),
                 _ => Name::None,
             };
             match decl_name {
                 Name::None => (),
-                Name::Anonymous => {
+                Name::AnonymousType => {
                     t.type_converter
                         .borrow_mut()
                         .declare_decl_name(decl_id, "C2RustUnnamed");
                 }
                 Name::Type(name) => {
+                    // TODO: convert `name` to CamelCase
                     t.type_converter
                         .borrow_mut()
                         .declare_decl_name(decl_id, name);
                 }
-                Name::Var(name) => {
+                Name::Fn(name) => {
+                    // TODO: convert `name` to snake_case
+                    t.renamer.borrow_mut().insert(decl_id, name);
+                }
+                Name::Static(name) => {
+                    // TODO: convert `name` to SNAKE_CASE
+                    t.renamer.borrow_mut().insert(decl_id, name);
+                }
+                Name::Variant(name) => {
+                    // TODO: convert `name` to CamelCase
                     t.renamer.borrow_mut().insert(decl_id, name);
                 }
             }
