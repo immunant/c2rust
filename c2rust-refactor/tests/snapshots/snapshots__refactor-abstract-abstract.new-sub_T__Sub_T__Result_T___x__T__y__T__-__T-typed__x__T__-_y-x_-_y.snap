@@ -1,3 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: "c2rust-refactor abstract 'sub<T: Sub<T, Result=T>>(x: T, y: T) -> T' 'typed!(x, T) - y' 'x - y' --rewrite-mode alongside -- tests/snapshots/abstract.new --edition 2021"
+---
 fn main() {
     let x = add(1, 2);
     let x = add(add(1, 2), 3);

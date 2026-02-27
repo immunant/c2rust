@@ -82,7 +82,6 @@ impl<'a> RefactorTest<'a> {
         }
     }
 
-    #[allow(unused)] // TODO remove when used
     pub fn expect_compile_error(self, expect_error: bool) -> Self {
         self.old_expect_compile_error(expect_error)
             .new_expect_compile_error(expect_error)
@@ -216,6 +215,45 @@ fn test_refactor(
 
 // NOTE: Tests should be listed in alphabetical order.
 
+/// TODO Broken.
+/// The generated `fn add` is marked `unsafe` when it doesn't appear it should be.
+#[test]
+fn test_abstract() {
+    refactor("abstract")
+        .command_args(&["add(x: i32, y: i32) -> i32", "x + y"])
+        .named("abstract.rs")
+        .new_expect_compile_error(true)
+        .test();
+    // no commit
+    refactor("abstract")
+        .command_args(&[
+            "sub<T: Sub<T, Result=T>>(x: T, y: T) -> T",
+            "typed!(x, T) - y",
+            "x - y",
+        ])
+        .named("abstract.new")
+        .expect_compile_error(true)
+        .test();
+}
+
+#[test]
+fn test_autoretype_array() {
+    refactor("rewrite_expr")
+        .command_args(&["1 + 1", "2"])
+        .named("autoretype_array.rs")
+        .test();
+    refactor("autoretype").named("autoretype_array.new").test();
+}
+
+#[test]
+fn test_autoretype_method() {
+    refactor("rewrite_expr")
+        .command_args(&["1 + 1", "2"])
+        .named("autoretype_method.rs")
+        .test();
+    refactor("autoretype").named("autoretype_method.new").test();
+}
+
 #[test]
 fn test_bitcast_retype() {
     refactor("bitcast_retype")
@@ -287,6 +325,28 @@ fn test_matcher_typed() {
         .command_args(&["typed!($i:Ident, u16)", "1000u16"])
         .named("matcher_typed.rs")
         .test();
+}
+
+/// This test was supposed to test if changes are visible across `commit`s,
+/// even when those changes aren't written to the original file
+/// (like with the `--rewrite-mode alongside` used by [`refactor`],
+/// and unlike with `--rewrite-mode inplace`).
+/// However, `commit` is currently broken (see #1605),
+/// so this test is not actually testing what it's meant to.
+/// The places where `commit`s are supposed to go
+/// are left as comments for now until we fix `commit`.
+#[test]
+fn test_multi_rewrite() {
+    refactor("rewrite_expr")
+        .command_args(&["1", "2"])
+        .named("multi_rewrite.rs")
+        .test();
+    // commit
+    refactor("rewrite_expr")
+        .command_args(&["2", "3"])
+        .named("multi_rewrite.new")
+        .test();
+    // commit
 }
 
 /// TODO Broken.
