@@ -1,0 +1,9 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: "c2rust-refactor rewrite_expr '$e:Expr' 'parse!(dbg!($e))' --rewrite-mode alongside -- tests/snapshots/matcher_parse.rs --edition 2021"
+---
+fn main() {
+    let _ = dbg!(1u8);
+    let _ = dbg!(dbg!(2u16) + dbg!(3));
+    let _ = dbg!(dbg!(4u64).saturating_add(dbg!(5)));
+}

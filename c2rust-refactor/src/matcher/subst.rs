@@ -19,8 +19,15 @@
 
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::token::{Nonterminal, Token, TokenKind};
+use rustc_ast::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
 use rustc_ast::MacCall;
-use rustc_ast::{Expr, ExprKind, Item, Label, Pat, Path, Stmt, Ty};
+use rustc_ast::{
+    Expr, ExprKind, Item, ItemKind, Label, MacArgs, Pat, PatKind, Path, Stmt, StmtKind, Ty, TyKind,
+};
+use rustc_ast_pretty::pprust;
+use rustc_data_structures::sync::Lrc;
+use rustc_parse::parser::{ForceCollect, Parser};
 use rustc_span::symbol::Ident;
 use smallvec::smallvec;
 use smallvec::SmallVec;
@@ -28,7 +35,7 @@ use smallvec::SmallVec;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};
 use crate::command::CommandState;
-use crate::matcher::Bindings;
+use crate::matcher::{BindingValue, Bindings};
 use crate::RefactorCtxt;
 
 // `st` and `cx` were previously used for `def!` substitution, which has been removed.  I expect
@@ -58,6 +65,39 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
                 }
             }
         }
+    }
+
+    fn subst_tokenstream_bindings(&mut self, ts: TokenStream) -> TokenStream {
+        let mut tsb = TokenStreamBuilder::new();
+        let mut c = ts.into_trees();
+        while let Some(tt) = c.next() {
+            if let TokenTree::Token(
+                Token {
+                    kind: TokenKind::Ident(ident, _is_raw),
+                    span,
+                },
+                spacing,
+            ) = tt && let Some(bv) = self.bindings.get::<_, BindingValue>(ident) {
+                let nt = match bv.clone() {
+                    BindingValue::Path(x) => Nonterminal::NtPath(P(x)),
+                    BindingValue::Expr(x) => Nonterminal::NtExpr(x),
+                    BindingValue::Pat(x) => Nonterminal::NtPat(x),
+                    BindingValue::Ty(x) => Nonterminal::NtTy(x),
+                    BindingValue::Stmt(x) => Nonterminal::NtStmt(P(x)),
+                    BindingValue::Item(x) => Nonterminal::NtItem(x),
+
+                    _ => unimplemented!("Unsupported binding:{bv:#?}")
+                };
+                let new_tt = TokenTree::Token(Token {
+                    kind: TokenKind::Interpolated(Lrc::new(nt)),
+                    span,
+                }, spacing);
+                tsb.push(TokenStream::new(vec![new_tt]));
+            } else {
+                tsb.push(TokenStream::new(vec![tt]));
+            }
+        }
+        tsb.build()
     }
 }
 
@@ -114,6 +154,25 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             | ExprKind::Continue(ref mut label) => {
                 self.subst_opt_label(label);
             }
+
+            ExprKind::MacCall(ref mc)
+                if mc
+                    .path
+                    .pattern_symbol()
+                    .map_or(false, |s| s.as_str() == "parse") =>
+            {
+                let mut parser = Parser::new(
+                    &self.cx.session().parse_sess,
+                    mc.args.inner_tokens().clone(),
+                    false,
+                    None,
+                );
+                *e = parser.parse_expr().unwrap_or_else(|e| {
+                    let tts = pprust::tts_to_string(&mc.args.inner_tokens());
+                    panic!("Failed to parse Expr parse!({tts}): {e:?}");
+                });
+            }
+
             _ => {}
         }
 
@@ -128,6 +187,19 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             *p = binding.clone();
         }
 
+        if let PatKind::MacCall(ref mc) = p.kind && mc.path.pattern_symbol().map_or(false, |s| s.as_str() == "parse") {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mc.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            *p = parser.parse_pat_no_top_alt(None).unwrap_or_else(|e| {
+                let tts = pprust::tts_to_string(&mc.args.inner_tokens());
+                panic!("Failed to parse Pat parse!({tts}): {e:?}");
+            });
+        }
+
         mut_visit::noop_visit_pat(p, self);
     }
 
@@ -138,6 +210,19 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             } else if let Some(Some(binding)) = self.bindings.get_opt::<_, P<Ty>>(sym) {
                 *ty = binding.clone();
             }
+        }
+
+        if let TyKind::MacCall(ref mc) = ty.kind && mc.path.pattern_symbol().map_or(false, |s| s.as_str() == "parse") {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mc.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            *ty = parser.parse_ty().unwrap_or_else(|e| {
+                let tts = pprust::tts_to_string(&mc.args.inner_tokens());
+                panic!("Failed to parse Ty parse!({tts}): {e:?}");
+            });
         }
 
         mut_visit::noop_visit_ty(ty, self)
@@ -154,6 +239,22 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym))
         {
             SmallVec::from_vec(stmts.clone())
+        } else if let StmtKind::MacCall(ref mcs) = s.kind && mcs.mac.path.pattern_symbol().map_or(false, |s| s.as_str() == "parse") {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mcs.mac.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            parser.parse_stmt(ForceCollect::No)
+                .unwrap_or_else(|e| {
+                    let tts = pprust::tts_to_string(&mcs.mac.args.inner_tokens());
+                    panic!("Failed to parse Stmt parse!({tts}): {e:?}");
+                })
+                .into_iter()
+                .map(|s| mut_visit::noop_flat_map_stmt(s, self))
+                .flatten()
+                .collect()
         } else {
             mut_visit::noop_flat_map_stmt(s, self)
         }
@@ -165,12 +266,38 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             .and_then(|sym| self.bindings.get::<_, P<Item>>(sym))
         {
             smallvec![item.clone()]
+        } else if let ItemKind::MacCall(ref mc) = i.kind && mc.path.pattern_symbol().map_or(false, |s| s.as_str() == "parse") {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mc.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            parser.parse_item(ForceCollect::No)
+                .unwrap_or_else(|e| {
+                    let tts = pprust::tts_to_string(&mc.args.inner_tokens());
+                    panic!("Failed to parse Item parse!({tts}): {e:?}");
+                })
+                .into_iter()
+                .map(|i| mut_visit::noop_flat_map_item(i, self))
+                .flatten()
+                .collect()
         } else {
             mut_visit::noop_flat_map_item(i, self)
         }
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
+        match *mac.args {
+            MacArgs::Empty => {}
+            MacArgs::Delimited(_span, _delim, ref mut ts) => {
+                *ts = self.subst_tokenstream_bindings(std::mem::take(ts));
+            }
+            MacArgs::Eq(_span, ref eq) => {
+                log::warn!("Skipping substitution for MacArgsEq:{eq:#?}");
+            }
+        }
+
         mut_visit::noop_visit_mac(mac, self)
     }
 }

@@ -279,6 +279,14 @@ fn test_matcher_def() {
         .test()
 }
 
+#[test]
+fn test_matcher_parse() {
+    refactor("rewrite_expr")
+        .command_args(&["$e:Expr", "parse!(dbg!($e))"])
+        .named("matcher_parse.rs")
+        .test();
+}
+
 /// TODO Broken.
 /// `b: u16` is not replaced with `1000u16`.
 #[test]
