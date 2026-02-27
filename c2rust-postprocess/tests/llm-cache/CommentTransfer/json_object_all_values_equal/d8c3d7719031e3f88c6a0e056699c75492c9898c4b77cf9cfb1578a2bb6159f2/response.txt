@@ -1,0 +1,95 @@
+```rust
+unsafe extern "C" fn json_object_all_values_equal(
+    mut jso1: *mut json_object,
+    mut jso2: *mut json_object,
+) -> ::core::ffi::c_int {
+    let mut iter: crate::src::json_object::json_object_iter = crate::src::json_object::json_object_iter {
+    key:  ::core::ptr::null_mut::<::core::ffi::c_char>(),
+    val:  ::core::ptr::null_mut::<json_object>(),
+    entry:  ::core::ptr::null_mut::<lh_entry>(),
+};
+    let mut sub: *mut json_object = ::core::ptr::null_mut::<json_object>();
+    '_c2rust_label: {
+        if json_object_get_type(jso1) as ::core::ffi::c_uint
+            == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
+        {
+        } else {
+            __assert_fail(
+                b"json_object_get_type(jso1) == json_type_object\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
+                1277 as ::core::ffi::c_uint,
+                b"int json_object_all_values_equal(struct json_object *, struct json_object *)\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    '_c2rust_label_0: {
+        if json_object_get_type(jso2) as ::core::ffi::c_uint
+            == crate::src::json_object::json_type_object as ::core::ffi::c_int as ::core::ffi::c_uint
+        {
+        } else {
+            __assert_fail(
+                b"json_object_get_type(jso2) == json_type_object\0" as *const u8
+                    as *const ::core::ffi::c_char,
+                b"json_object.c\0" as *const u8 as *const ::core::ffi::c_char,
+                1278 as ::core::ffi::c_uint,
+                b"int json_object_all_values_equal(struct json_object *, struct json_object *)\0"
+                    as *const u8 as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    /* Iterate over jso1 keys and see if they exist and are equal in jso2 */
+    iter.entry = (*json_object_get_object(jso1)).head as *mut lh_entry;
+    while !if !iter.entry.is_null() {
+        iter.key =
+            (*iter.entry).k as uintptr_t as *mut ::core::ffi::c_void as *mut ::core::ffi::c_char;
+        iter.val = (*iter.entry).v as uintptr_t as *mut ::core::ffi::c_void as *mut json_object
+            as *mut json_object;
+        iter.entry
+    } else {
+        ::core::ptr::null_mut::<lh_entry>()
+    }
+    .is_null()
+    {
+        if lh_table_lookup_ex(
+            
+            (*jso2).o.c_object as *mut lh_table,
+            iter.key as *mut ::core::ffi::c_void,
+            &raw mut sub as *mut ::core::ffi::c_void as *mut *mut ::core::ffi::c_void,
+        ) == 0
+        {
+            return 0 as ::core::ffi::c_int;
+        }
+        if json_object_equal(iter.val as *mut json_object, sub) == 0 {
+            return 0 as ::core::ffi::c_int;
+        }
+        iter.entry = (*iter.entry).next as *mut lh_entry;
+    }
+    /* Iterate over jso2 keys to see if any exist that are not in jso1 */
+    iter.entry = (*json_object_get_object(jso2)).head as *mut lh_entry;
+    while !if !iter.entry.is_null() {
+        iter.key =
+            (*iter.entry).k as uintptr_t as *mut ::core::ffi::c_void as *mut ::core::ffi::c_char;
+        iter.val = (*iter.entry).v as uintptr_t as *mut ::core::ffi::c_void as *mut json_object
+            as *mut json_object;
+        iter.entry
+    } else {
+        ::core::ptr::null_mut::<lh_entry>()
+    }
+    .is_null()
+    {
+        if lh_table_lookup_ex(
+            
+            (*jso1).o.c_object as *mut lh_table,
+            iter.key as *mut ::core::ffi::c_void,
+            &raw mut sub as *mut ::core::ffi::c_void as *mut *mut ::core::ffi::c_void,
+        ) == 0
+        {
+            return 0 as ::core::ffi::c_int;
+        }
+        iter.entry = (*iter.entry).next as *mut lh_entry;
+    }
+    return 1 as ::core::ffi::c_int;
+}
+```
