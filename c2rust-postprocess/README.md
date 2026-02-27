@@ -50,6 +50,28 @@ because the C file may not be available and isn't read by `c2rust-postprocess`
 These file paths and function identifiers must match fully.
 They are not regexes or globs.
 
+## LLM Cache
+
+`c2rust-postprocess` caches its LLM responses in `llm-cache/`.
+This is meant to be checked into git so that its shareable, including in CI
+so that we don't have to run a slow, expensive LLM in CI.
+
+### `--gc-cache`
+
+When updating the cache, which may happen when `c2rust-postprocess` is changed,
+or `c2rust-transpile` or `c2rust-refactor` as well, since they affect
+the input to `c2rust-postprocess`, new files are added to the cache.
+However, the old, now unused cache files that they replace remain in the cache.
+To clean these, `--gc-cache` can be used, which deletes all cache files
+that have not been used since the last time `--gc-cache` was used.
+With these deleted, git registers the new files as having moved,
+allowing you to see the diff between the two cache files, which is very useful for review.
+
+The intended way to use `--gc-cache` is to run all of your tests
+and on the last one, add `--gc-cache`.
+This will touch all of the cache files that are actually being used
+and then clean up the ones that are now unused.
+
 # Testing
 
 ## Test prerequisites
