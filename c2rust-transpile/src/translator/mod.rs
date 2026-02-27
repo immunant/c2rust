@@ -580,6 +580,7 @@ pub fn translate(
         // in the presence of typedefs.
         t.ast_context.bubble_expr_types();
 
+        #[derive(Debug)]
         enum Name<'a> {
             None,
             // Types (use `t.type_converter`)
@@ -588,7 +589,6 @@ pub fn translate(
             // Values (use `t.renamer`)
             Fn(&'a str),
             Static(&'a str),
-            Variant(&'a str),
         }
 
         fn some_type_name(s: Option<&str>) -> Name<'_> {
@@ -646,9 +646,10 @@ pub fn translate(
                     {
                         prenamed_decls.insert(decl_id, subdecl_id);
 
+                        let name = to_camel_case(name);
                         t.type_converter
                             .borrow_mut()
-                            .declare_decl_name(decl_id, name);
+                            .declare_decl_name(decl_id, &name);
                         t.type_converter
                             .borrow_mut()
                             .alias_decl_name(subdecl_id, decl_id);
@@ -676,13 +677,14 @@ pub fn translate(
                 Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
                 Typedef { ref name, .. } => Name::Type(name),
                 Function { ref name, .. } => Name::Fn(name),
-                EnumConstant { ref name, .. } => Name::Variant(name),
+                EnumConstant { ref name, .. } => Name::Static(name),
                 Variable { ref ident, .. } if t.ast_context.c_decls_top.contains(&decl_id) => {
                     Name::Static(ident)
                 }
                 MacroObject { ref name, .. } => Name::Static(name),
                 _ => Name::None,
             };
+            eprintln!("name = {decl_name:?}");
             match decl_name {
                 Name::None => (),
                 Name::AnonymousType => {
@@ -691,22 +693,18 @@ pub fn translate(
                         .declare_decl_name(decl_id, "C2RustUnnamed");
                 }
                 Name::Type(name) => {
-                    // TODO: convert `name` to CamelCase
+                    let name = to_camel_case(name);
                     t.type_converter
                         .borrow_mut()
-                        .declare_decl_name(decl_id, name);
+                        .declare_decl_name(decl_id, &name);
                 }
                 Name::Fn(name) => {
-                    // TODO: convert `name` to snake_case
-                    t.renamer.borrow_mut().insert(decl_id, name);
+                    let name = to_snake_case(name);
+                    t.renamer.borrow_mut().insert(decl_id, &name);
                 }
                 Name::Static(name) => {
-                    // TODO: convert `name` to SNAKE_CASE
-                    t.renamer.borrow_mut().insert(decl_id, name);
-                }
-                Name::Variant(name) => {
-                    // TODO: convert `name` to CamelCase
-                    t.renamer.borrow_mut().insert(decl_id, name);
+                    let name = to_snake_case(name).to_uppercase();
+                    t.renamer.borrow_mut().insert(decl_id, &name);
                 }
             }
         }
@@ -5318,4 +5316,97 @@ impl<'c> Translation<'c> {
             ref e => unimplemented!("{:?}", e),
         }
     }
+}
+
+
+// Copied from rust/compiler/rustc_lint/src/nonstandard_style.rs (MIT or Apache-2.0)
+// TODO: add proper attribution (or reimplement from scratch)
+
+/// Some unicode characters *have* case, are considered upper case or lower case, but they *can't*
+/// be upper cased or lower cased. For the purposes of the lint suggestion, we care about being able
+/// to change the char's case.
+fn char_has_case(c: char) -> bool {
+    let mut l = c.to_lowercase();
+    let mut u = c.to_uppercase();
+    while let Some(l) = l.next() {
+        match u.next() {
+            Some(u) if l != u => return true,
+            _ => {}
+        }
+    }
+    u.next().is_some()
+}
+
+fn to_camel_case(s: &str) -> String {
+    s.trim_matches('_')
+        .split('_')
+        .filter(|component| !component.is_empty())
+        .map(|component| {
+            let mut camel_cased_component = String::new();
+
+            let mut new_word = true;
+            let mut prev_is_lower_case = true;
+
+            for c in component.chars() {
+                // Preserve the case if an uppercase letter follows a lowercase letter, so that
+                // `camelCase` is converted to `CamelCase`.
+                if prev_is_lower_case && c.is_uppercase() {
+                    new_word = true;
+                }
+
+                if new_word {
+                    camel_cased_component.extend(c.to_uppercase());
+                } else {
+                    camel_cased_component.extend(c.to_lowercase());
+                }
+
+                prev_is_lower_case = c.is_lowercase();
+                new_word = false;
+            }
+
+            camel_cased_component
+        })
+        .fold((String::new(), None), |(acc, prev): (String, Option<String>), next| {
+            // separate two components with an underscore if their boundary cannot
+            // be distinguished using an uppercase/lowercase case distinction
+            let join = if let Some(prev) = prev {
+                let l = prev.chars().last().unwrap();
+                let f = next.chars().next().unwrap();
+                !char_has_case(l) && !char_has_case(f)
+            } else {
+                false
+            };
+            (acc + if join { "_" } else { "" } + &next, Some(next))
+        })
+        .0
+}
+
+fn to_snake_case(mut name: &str) -> String {
+    let mut words = vec![];
+    // Preserve leading underscores
+    name = name.trim_start_matches(|c: char| {
+        if c == '_' {
+            words.push(String::new());
+            true
+        } else {
+            false
+        }
+    });
+    for s in name.split('_') {
+        let mut last_upper = false;
+        let mut buf = String::new();
+        if s.is_empty() {
+            continue;
+        }
+        for ch in s.chars() {
+            if !buf.is_empty() && buf != "'" && ch.is_uppercase() && !last_upper {
+                words.push(buf);
+                buf = String::new();
+            }
+            last_upper = ch.is_uppercase();
+            buf.extend(ch.to_lowercase());
+        }
+        words.push(buf);
+    }
+    words.join("_")
 }
