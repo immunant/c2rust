@@ -24,6 +24,7 @@ impl SubCommand {
     /// Find all [`SubCommand`]s adjacent to the current (`c2rust`) executable.
     /// They are of the form `c2rust-{name}`.
     pub fn find_all() -> anyhow::Result<Vec<Self>> {
+        // TODO Add support for finding `c2rust-postprocess`, which won't be directly adjacent.
         let c2rust = env::current_exe()?;
         let c2rust_name = c2rust
             .file_name()
@@ -60,12 +61,19 @@ impl SubCommand {
     /// Get all known [`SubCommand`]s.  These have no [`SubCommand::path`].
     /// Even if the subcommand executables aren't there, we can still suggest them.
     pub fn known() -> impl Iterator<Item = Self> {
-        ["transpile", "refactor", "instrument", "pdg", "analyze"]
-            .into_iter()
-            .map(|name| Self {
-                path: None,
-                name: name.into(),
-            })
+        [
+            "transpile",
+            "refactor",
+            "postprocess",
+            "instrument",
+            "pdg",
+            "analyze",
+        ]
+        .into_iter()
+        .map(|name| Self {
+            path: None,
+            name: name.into(),
+        })
     }
 
     /// Get all known ([`Self::known`]) and actual, found ([`Self::find_all`]) subcommands,
