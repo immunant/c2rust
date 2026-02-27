@@ -327,6 +327,28 @@ fn test_matcher_typed() {
         .test();
 }
 
+/// This test was supposed to test if changes are visible across `commit`s,
+/// even when those changes aren't written to the original file
+/// (like with the `--rewrite-mode alongside` used by [`refactor`],
+/// and unlike with `--rewrite-mode inplace`).
+/// However, `commit` is currently broken (see #1605),
+/// so this test is not actually testing what it's meant to.
+/// The places where `commit`s are supposed to go
+/// are left as comments for now until we fix `commit`.
+#[test]
+fn test_multi_rewrite() {
+    refactor("rewrite_expr")
+        .command_args(&["1", "2"])
+        .named("multi_rewrite.rs")
+        .test();
+    // commit
+    refactor("rewrite_expr")
+        .command_args(&["2", "3"])
+        .named("multi_rewrite.new")
+        .test();
+    // commit
+}
+
 /// TODO Broken.
 /// This panics with the error:
 ///
