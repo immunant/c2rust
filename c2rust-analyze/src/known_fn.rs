@@ -607,6 +607,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 i: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn accept(
                 socket: c_int,
                 address: *mut sockaddr: [WRITE],
@@ -626,6 +627,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 amode: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn alarm(
                 seconds: c_uint,
             ) -> c_uint;
@@ -634,6 +636,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn bind(
                 socket: c_int,
                 address: *const sockaddr: [READ],
@@ -649,15 +652,18 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 dir: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn chmod(
                 path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 mode: mode_t,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn chroot(
                 name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn clock_gettime(
                 clk_id: clockid_t,
                 tp: *mut timespec: [WRITE],
@@ -667,21 +673,26 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 fd: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn closelog() -> ();
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn dlclose(
                 handle: *mut c_void: [READ | WRITE | NON_NULL],
             ) -> c_int;
 
             // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
             // as it may be statically allocated and reused.  It is not meant to be modified.
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn dlerror() -> *mut c_char: [READ | OFFSET_ADD];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn dlopen(
                 filename: *const c_char: [READ | OFFSET_ADD],
                 flag: c_int,
             ) -> *mut c_void: [READ | WRITE];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn dlsym(
                 handle: *mut c_void: [READ | WRITE], // TODO(kkysen) May not be a `VALID` pointer.
                 symbol: *const c_char: [READ | OFFSET_ADD | NON_NULL],
@@ -718,10 +729,17 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 timeout: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn execv(
                 prog: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 argv: *const *const c_char: [READ | OFFSET_ADD | NON_NULL, READ | OFFSET_ADD],
             ) -> c_int;
+
+            #[cfg(target_os = "windows")]
+            fn execv(
+                prog: *const c_char: [READ | OFFSET_ADD | NON_NULL],
+                argv: *const *const c_char: [READ | OFFSET_ADD | NON_NULL, READ | OFFSET_ADD],
+            ) -> isize;
 
             fn execve(
                 prog: *const c_char: [READ | OFFSET_ADD | NON_NULL],
@@ -739,6 +757,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 len: size_t,
             ) -> ();
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn fchdir(
                 dirfd: c_int,
             ) -> c_int;
@@ -754,6 +773,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 file: *mut FILE: [READ | WRITE | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn fork() -> pid_t;
 
             // fn fprintf(
@@ -772,6 +792,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 p: *mut c_void: [FREE],
             ) -> ();
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn freeaddrinfo(
                 // TODO(kkysen) Should this be `FREE`, as it could be manually `free`d,
                 // but is not meant to be `free`d directly?
@@ -783,15 +804,18 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 buf: *mut stat: [WRITE | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn ftruncate(
                 fd: c_int,
                 length: off_t,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn gai_strerror(
                 errcode: c_int,
             ) -> *const c_char: [READ | OFFSET_ADD | NON_NULL];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getaddrinfo(
                 node: *const c_char: [READ | OFFSET_ADD],
                 service: *const c_char: [READ | OFFSET_ADD],
@@ -801,6 +825,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 res: *mut *mut addrinfo: [WRITE | NON_NULL, WRITE | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getcwd(
                 // `READ` because the return type is `READ`.
                 buf: *mut c_char: [READ | WRITE | OFFSET_ADD],
@@ -808,6 +833,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // glibc's extension will allocate if `buf` is `NULL`.
             ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | FREE];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getegid() -> gid_t;
 
             #[cfg(target_os = "linux")]
@@ -822,27 +848,33 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // as it may be statically allocated and reused.  It is not meant to be modified.
             ) -> *mut c_char: [READ | OFFSET_ADD];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn geteuid() -> uid_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getgid() -> gid_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getgrgid(
                 gid: gid_t,
                 // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
                 // as it may be statically allocated and reused.  It is not meant to be modified.
             ) -> *mut group: [READ];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getgrnam(
                 name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
                 // as it may be statically allocated and reused.  It is not meant to be modified.
             ) -> *mut group: [READ];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getloadavg(
                 loadavg: *mut c_double: [WRITE | OFFSET_ADD | NON_NULL],
                 nelem: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getnameinfo(
                 sa: *const sockaddr: [READ | NON_NULL],
                 salen: socklen_t,
@@ -853,6 +885,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 flags: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getopt(
                 argc: c_int,
                 // The outer `*const` array is actually mutated unless `$POSIXLY_CORRECT` is set.
@@ -860,16 +893,20 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 optstr: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getpeername(
                 socket: c_int,
                 address: *mut sockaddr: [WRITE | NON_NULL],
                 address_len: *mut socklen_t: [READ | WRITE | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getpid() -> pid_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getppid() -> pid_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getpwnam(
                 name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 // Not `WRITE` even though it's `*mut` since future calls may overwrite the returned memory,
@@ -888,12 +925,14 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 rlim: *mut rlimit: [WRITE | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getsockname(
                 socket: c_int,
                 address: *mut sockaddr: [WRITE | NON_NULL],
                 address_len: *mut socklen_t: [READ | WRITE | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getsockopt(
                 sockfd: c_int,
                 level: c_int,
@@ -902,6 +941,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 optlen: *mut socklen_t: [READ | WRITE | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn getuid() -> uid_t;
 
             // fn glob(
@@ -912,10 +952,12 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             //     pglob: *mut glob_t,
             // ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn globfree(
                 pglob: *mut glob_t: [READ | WRITE | NON_NULL],
             ) -> ();
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn gmtime_r(
                 time_p: *const time_t: [READ | NON_NULL],
                 // `READ` because it's returned.
@@ -974,16 +1016,19 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             //     ...
             // ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn kill(
                 pid: pid_t,
                 sig: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn listen(
                 socket: c_int,
                 backlog: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn localtime_r(
                 time_p: *const time_t: [READ | NON_NULL],
                 // `READ` because it's returned (if there's no error).
@@ -996,6 +1041,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 whence: c_int,
             ) -> off_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn lstat(
                 path: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 buf: *mut stat: [WRITE | NON_NULL],
@@ -1054,6 +1100,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 flags: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn mmap(
                 // Not yet a `VALID` pointer.
                 addr: *mut c_void: [NONE],
@@ -1065,6 +1112,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 // TODO(kkysen) Not always a `VALID` pointer, as it can be `-1`.
             ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | NON_NULL];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn munmap(
                 addr: *mut c_void: [OFFSET_ADD | NON_NULL],
                 len: size_t,
@@ -1080,6 +1128,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             //     ...
             // ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn openlog(
                 ident: *const c_char: [READ | OFFSET_ADD],
                 logopt: c_int,
@@ -1090,6 +1139,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 s: *const c_char: [READ | OFFSET_ADD],
             ) -> ();
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn pipe(
                 fds: *mut c_int: [WRITE | OFFSET_ADD | NON_NULL],
             ) -> c_int;
@@ -1100,6 +1150,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 flags: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn poll(
                 fds: *mut pollfd: [READ | WRITE | OFFSET_ADD | NON_NULL],
                 nfds: nfds_t,
@@ -1112,6 +1163,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             //     ...
             // ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn pread(
                 fd: c_int,
                 buf: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
@@ -1129,6 +1181,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 s: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn pwrite(
                 fd: c_int,
                 buf: *const c_void: [READ | OFFSET_ADD | NON_NULL],
@@ -1136,6 +1189,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 offset: off_t,
             ) -> ssize_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn pwritev(
                 fd: c_int,
                 iov: *const iovec: [READ | OFFSET_ADD | NON_NULL],
@@ -1149,6 +1203,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
 
             fn rand() -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn read(
                 fd: c_int,
                 buf: *mut c_void: [WRITE | OFFSET_ADD],
@@ -1160,6 +1215,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 size: size_t,
             ) -> *mut c_void: [READ | WRITE | OFFSET_ADD | FREE];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn recv(
                 socket: c_int,
                 buf: *mut c_void: [WRITE | OFFSET_ADD | NON_NULL],
@@ -1172,6 +1228,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 newname: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn select(
                 nfds: c_int,
                 readfds: *mut fd_set: [READ | WRITE],
@@ -1199,12 +1256,14 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 flags: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn setenv(
                 name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 val: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 overwrite: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn setgid(
                 gid: gid_t,
             ) -> c_int;
@@ -1240,8 +1299,10 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 rlim: *const rlimit: [READ | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn setsid() -> pid_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn setsockopt(
                 socket: c_int,
                 level: c_int,
@@ -1250,21 +1311,25 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 option_len: socklen_t,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn setuid(
                 uid: uid_t,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn shutdown(
                 socket: c_int,
                 how: c_int,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn sigaction(
                 signum: c_int,
                 act: *const sigaction: [READ],
                 oldact: *mut sigaction: [WRITE],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn sigemptyset(
                 set: *mut sigset_t: [WRITE | NON_NULL],
             ) -> c_int;
@@ -1283,6 +1348,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             //     ...
             // ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn socket(
                 domain: c_int,
                 ty: c_int,
@@ -1331,12 +1397,14 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> *mut c_char: [READ | WRITE | OFFSET_ADD | FREE];
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn strerror_r(
                 errnum: c_int,
                 buf: *mut c_char: [WRITE | OFFSET_ADD | NON_NULL],
                 buflen: size_t,
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn strftime(
                 s: *mut c_char: [WRITE | OFFSET_ADD | NON_NULL],
                 max: size_t,
@@ -1348,6 +1416,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 cs: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> size_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn strncasecmp(
                 s1: *const c_char: [READ | OFFSET_ADD | NON_NULL],
                 s2: *const c_char: [READ | OFFSET_ADD | NON_NULL],
@@ -1390,6 +1459,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 base: c_int,
             ) -> c_ulong;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn sysconf(
                 name: c_int,
             ) -> c_long;
@@ -1405,6 +1475,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 time: *mut time_t: [WRITE],
             ) -> time_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn timegm(
                 tm: *mut tm: [READ | WRITE | NON_NULL],
             ) -> time_t;
@@ -1416,6 +1487,7 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
                 c: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn unsetenv(
                 name: *const c_char: [READ | OFFSET_ADD | NON_NULL],
             ) -> c_int;
@@ -1423,18 +1495,21 @@ pub const fn all_known_fns() -> &'static [KnownFn] {
             // TODO(kkysen) Not in `libc` crate.
             // fn vsnprintf;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn waitpid(
                 pid: pid_t,
                 status: *mut c_int: [WRITE],
                 options: c_int,
             ) -> pid_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn write(
                 fd: c_int,
                 buf: *const c_void: [READ | OFFSET_ADD],
                 count: size_t,
             ) -> ssize_t;
 
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             fn writev(
                 fd: c_int,
                 iov: *const iovec: [READ | OFFSET_ADD | NON_NULL],
