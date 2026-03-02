@@ -14,6 +14,10 @@ fn main() {
     // removed but contents kept.
     let x = 42;
 
+    // Empty block expr should stay a block, empty block statement can be
+    // removed entirely.
+    let _ = {};
+
     // Has a comment, shouldn't be removed.
     {}
 
@@ -25,18 +29,17 @@ fn main() {
     // Block expr with no statements, we can remove the block.
     let _ = 5 + 5;
 
+    let _ = {
+        // Comment on the tail expr, keep the block because it's not easy to
+        // lift the comment to the outer statement.
+        5 + 5
+    };
+
     // Block expr with statements, keep the block.
     let _ = {
         let _ = 5;
         5 + 5
     };
-
-    // TODO: Uh oh, if there's a comment on the tail expr we eat it.
-    // let _ = unsafe {
-    //     // Comment on the expr.
-    //     5 + 5
-    // };
-    let _ = {};
 
     {
         // Nested unsafe blocks. Not that hard to handle, but also not a
