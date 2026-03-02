@@ -14,21 +14,21 @@ ngx_hash_init(void)
     ngx_uint_t align = len & ~sizeof(void *);
 }
 int
-anotherfunc(void)
+another_func(void)
 {
     int var = 0;
     return 4 + var;
 }
 int
-funcholdingdefine(void)
+func_holding_define(void)
 {
 #define FOO 4000+50
     return FOO;
 }
 // comment before multiple decl
 int a1, a2, a3;
-void forwarddeclbeforeotherdef(int x);
-void funcafterdecl(int n) {}
+void forward_decl_before_other_def(int x);
+void func_after_decl(int n) {}
 /*real defn*/
-void forwarddeclbeforeotherdef(int x) { }
+void forward_decl_before_other_def(int x) { }
 
