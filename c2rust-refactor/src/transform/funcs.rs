@@ -423,16 +423,22 @@ impl Transform for FixUnusedUnsafe {
                 let expr_id = expr.id;
                 if let ExprKind::Block(block, None) = &mut expr.kind {
                     if self.is_unused_unsafe_block(block) {
-                        let has_comments = [expr_id, block.id].iter().any(|id| {
+                        let has_outer_comments = [expr_id, block.id].iter().any(|id| {
                             self.comment_map
                                 .get(id)
                                 .map_or(false, |comments| !comments.is_empty())
                         });
-                        if !has_comments && block.stmts.len() == 1 {
-                            if let StmtKind::Expr(inner) = block.stmts[0].kind.clone() {
-                                *expr = inner;
-                                mut_visit::noop_visit_expr(expr, self);
-                                return;
+                        if !has_outer_comments && block.stmts.len() == 1 {
+                            let stmt_has_comments = self
+                                .comment_map
+                                .get(&block.stmts[0].id)
+                                .map_or(false, |comments| !comments.is_empty());
+                            if !stmt_has_comments {
+                                if let StmtKind::Expr(inner) = block.stmts[0].kind.clone() {
+                                    *expr = inner;
+                                    mut_visit::noop_visit_expr(expr, self);
+                                    return;
+                                }
                             }
                         }
                     }
