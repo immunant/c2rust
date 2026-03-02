@@ -211,7 +211,7 @@ impl<'c> Translation<'c> {
                         // This was likely a C array of the form `int x[16] = {}`.
                         // We'll emit that as [0; 16].
                         let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));
-                        let zeroed = self.implicit_default_expr(ty, ctx.is_static)?;
+                        let zeroed = self.implicit_default_expr(ctx, ty)?;
                         Ok(zeroed.map(|default_value| mk().repeat_expr(default_value, len)))
                     }
                     &[single] if is_string_literal(single) => {
@@ -236,7 +236,7 @@ impl<'c> Translation<'c> {
                             .map(to_array_element)
                             .chain(
                                 // Pad out the array literal with default values to the desired size
-                                iter::repeat(self.implicit_default_expr(ty, ctx.is_static))
+                                iter::repeat(self.implicit_default_expr(ctx, ty))
                                     .take(n - ids.len()),
                             )
                             .collect::<TranslationResult<WithStmts<_>>>()?
@@ -291,7 +291,7 @@ impl<'c> Translation<'c> {
                 match self.ast_context.index(union_field_id).kind {
                     CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
-                            self.implicit_default_expr(field_ty.ctype, ctx.is_static)?
+                            self.implicit_default_expr(ctx, field_ty.ctype)?
                         } else {
                             self.convert_expr(ctx.used(), ids[0], None)?
                         };

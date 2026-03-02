@@ -408,7 +408,7 @@ impl<'c> Translation<'c> {
 
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
-    pub fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> TranslationResult<Box<Expr>> {
+    pub fn null_ptr(&self, ctx: ExprContext, type_id: CTypeId) -> TranslationResult<Box<Expr>> {
         if self.ast_context.is_function_pointer(type_id) {
             return Ok(mk().path_expr(vec!["None"]));
         }
@@ -421,7 +421,7 @@ impl<'c> Translation<'c> {
         let func = if pointer_qty.qualifiers.is_const
             // static variable initializers aren't able to use null_mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
-            || is_static
+            || ctx.is_static
         {
             "null"
         } else {
@@ -439,7 +439,7 @@ impl<'c> Translation<'c> {
         );
 
         // TODO: Rust 1.83: Remove.
-        if is_static && !pointer_qty.qualifiers.is_const {
+        if ctx.is_static && !pointer_qty.qualifiers.is_const {
             val = mk().cast_expr(val, mk().mutbl().ptr_ty(pointee_ty));
         }
 

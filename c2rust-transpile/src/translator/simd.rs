@@ -238,9 +238,9 @@ impl<'c> Translation<'c> {
     /// is specified with the underlying element type and the number of elements in the vector.
     pub fn implicit_vector_default(
         &self,
+        ctx: ExprContext,
         ctype: CTypeId,
         len: usize,
-        is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
@@ -267,7 +267,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        if is_static {
+        if ctx.is_static {
             let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);

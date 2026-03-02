@@ -1770,11 +1770,12 @@ impl<'c> Translation<'c> {
 
     fn add_static_initializer_to_section(
         &self,
+        ctx: ExprContext,
         name: &str,
         typ: CQualTypeId,
         init: &mut Box<Expr>,
     ) -> TranslationResult<()> {
-        let mut default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
+        let mut default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
 
         std::mem::swap(init, &mut default_init);
 
@@ -2176,7 +2177,12 @@ impl<'c> Translation<'c> {
                         .map(pos_to_span)
                         .unwrap_or(span);
 
-                    self.add_static_initializer_to_section(new_name, typ, &mut init)?;
+                    self.add_static_initializer_to_section(
+                        ctx.static_(),
+                        new_name,
+                        typ,
+                        &mut init,
+                    )?;
 
                     (ty, init)
                 } else {
@@ -2825,7 +2831,9 @@ impl<'c> Translation<'c> {
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
                     self.convert_variable(ctx.static_(), initializer, typ)?;
-                let default_init = self.implicit_default_expr(typ.ctype, true)?.to_expr();
+                let default_init = self
+                    .implicit_default_expr(ctx.static_(), typ.ctype)?
+                    .to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2841,7 +2849,7 @@ impl<'c> Translation<'c> {
                 init.set_unsafe();
                 let mut init = init.to_expr();
 
-                self.add_static_initializer_to_section(&ident2, typ, &mut init)?;
+                self.add_static_initializer_to_section(ctx.static_(), &ident2, typ, &mut init)?;
                 self.items.borrow_mut()[&self.main_file].add_item(static_item);
 
                 return Ok(cfg::DeclStmtInfo::empty());
@@ -2906,7 +2914,7 @@ impl<'c> Translation<'c> {
                     init.into_value()
                 };
 
-                let zeroed = self.implicit_default_expr(typ.ctype, false)?;
+                let zeroed = self.implicit_default_expr(ctx, typ.ctype)?;
                 let zeroed = if ctx.is_const {
                     zeroed.to_unsafe_pure_expr()
                 } else {
@@ -3088,7 +3096,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
-            None => self.implicit_default_expr(typ.ctype, ctx.is_static),
+            None => self.implicit_default_expr(ctx, typ.ctype),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
@@ -4098,7 +4106,7 @@ impl<'c> Translation<'c> {
                 self.convert_init_list(ctx, ty, ids, opt_union_field_id)
             }
 
-            ImplicitValueInit(ty) => self.implicit_default_expr(ty.ctype, ctx.is_static),
+            ImplicitValueInit(ty) => self.implicit_default_expr(ctx, ty.ctype),
 
             Predefined(_, val_id) => self.convert_expr(ctx, val_id, override_ty),
 
@@ -4639,9 +4647,7 @@ impl<'c> Translation<'c> {
 
             CastKind::NullToPointer => {
                 assert!(val.stmts().is_empty());
-                Ok(WithStmts::new_val(
-                    self.null_ptr(target_cty.ctype, ctx.is_static)?,
-                ))
+                Ok(WithStmts::new_val(self.null_ptr(ctx, target_cty.ctype)?))
             }
 
             CastKind::ToUnion => {
@@ -4738,8 +4744,8 @@ impl<'c> Translation<'c> {
 
     pub fn implicit_default_expr(
         &self,
+        ctx: ExprContext,
         ty_id: CTypeId,
-        is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if self.ast_context.is_va_list(ty_id) {
             // generate MaybeUninit::uninit().assume_init()
@@ -4771,18 +4777,17 @@ impl<'c> Translation<'c> {
                 )),
             }
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
-            self.null_ptr(resolved_ty_id, is_static)
-                .map(WithStmts::new_val)
+            self.null_ptr(ctx, resolved_ty_id).map(WithStmts::new_val)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_unsuffixed_lit(sz as u128));
             Ok(self
-                .implicit_default_expr(elt, is_static)?
+                .implicit_default_expr(ctx, elt)?
                 .map(|elt| mk().repeat_expr(elt, sz)))
         } else if let &CTypeKind::IncompleteArray(_) = resolved_ty {
             // Incomplete arrays are translated to zero length arrays
             Ok(WithStmts::new_val(mk().array_expr(vec![])))
         } else if let Some(decl_id) = resolved_ty.as_underlying_decl() {
-            self.zero_initializer(decl_id, ty_id, is_static)
+            self.zero_initializer(ctx, decl_id, ty_id)
         } else if let &CTypeKind::VariableArray(elt, _) = resolved_ty {
             // Variable length arrays unnested and implemented as a flat array of the underlying
             // element type.
@@ -4791,10 +4796,10 @@ impl<'c> Translation<'c> {
             let inner = self.variable_array_base_type(elt);
             let count = self.compute_size_of_expr(ty_id).unwrap();
             Ok(self
-                .implicit_default_expr(inner, is_static)?
+                .implicit_default_expr(ctx, inner)?
                 .map(|val| vec_expr(val, count)))
         } else if let &CTypeKind::Vector(CQualTypeId { ctype, .. }, len) = resolved_ty {
-            self.implicit_vector_default(ctype, len, is_static)
+            self.implicit_vector_default(ctx, ctype, len)
         } else {
             Err(format_err!("Unsupported default initializer: {:?}", resolved_ty).into())
         }
@@ -4803,9 +4808,9 @@ impl<'c> Translation<'c> {
     /// Produce zero-initializers for structs/unions/enums, looking them up when possible.
     fn zero_initializer(
         &self,
+        ctx: ExprContext,
         decl_id: CDeclId,
         type_id: CTypeId,
-        is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.import_type(type_id);
 
@@ -4837,11 +4842,11 @@ impl<'c> Translation<'c> {
                 platform_byte_size,
                 ..
             } => self.convert_struct_zero_initializer(
+                ctx,
                 decl_id,
                 name_decl_id,
                 fields,
                 platform_byte_size,
-                is_static,
             )?,
 
             CDeclKind::Struct { fields: None, .. } => {
@@ -4873,7 +4878,7 @@ impl<'c> Translation<'c> {
 
                 let field = match self.ast_context.index(field_id).kind {
                     CDeclKind::Field { typ, .. } => self
-                        .implicit_default_expr(typ.ctype, is_static)?
+                        .implicit_default_expr(ctx, typ.ctype)?
                         .map(|field_init| {
                             let name = self
                                 .type_converter
