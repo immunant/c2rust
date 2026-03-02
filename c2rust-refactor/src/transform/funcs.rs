@@ -354,7 +354,6 @@ impl Transform for FixUnusedUnsafe {
         impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
                 'noop: {
-                    let is_semi = matches!(stmt.kind, StmtKind::Semi(_));
                     let (StmtKind::Expr(expr) | StmtKind::Semi(expr)) = &mut stmt.kind else {
                         break 'noop;
                     };
@@ -402,16 +401,19 @@ impl Transform for FixUnusedUnsafe {
                         && !has_non_tail_stmt
                         && block.stmts.len() == 1;
 
-                    // Remove the block if there's nothing preventing us from doing so.
+                    // Remove the block if there's nothing preventing us from doing so. 
                     if !has_comments && !has_drop && (!has_trailing_expr || only_tail_expr) {
                         let mut stmts = mem::take(&mut block.stmts);
-                        if only_tail_expr && is_semi {
-                            if let Some(last) = stmts.last_mut() {
-                                if let StmtKind::Expr(ref expr) = last.kind {
-                                    last.kind = StmtKind::Semi(expr.clone());
-                                }
-                            }
+
+                        // If the block has a tail expr, turn it into a statement. This is valid
+                        // because this is a block statement, which means that the tail expr isn't
+                        // being used as part of an expression and so can (and must be) turned into
+                        // a statement.
+                        if let Some(last) = stmts.last_mut()
+                            && let StmtKind::Expr(expr) = &last.kind {
+                            last.kind = StmtKind::Semi(expr.clone());
                         }
+
                         return SmallVec::from_vec(stmts);
                     }
                 }
