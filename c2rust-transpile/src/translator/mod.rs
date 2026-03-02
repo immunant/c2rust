@@ -119,15 +119,24 @@ pub enum ReplaceMode {
 #[derive(Copy, Clone, Debug)]
 pub struct ExprContext {
     used: bool,
-    is_static: bool,
+
+    /// In a Rust const context, for example in a static initializer or constant-like macro
+    /// translation.
     is_const: bool,
+
+    /// Evaluating a C global/static variable.
+    /// This is usually in a const context, but doesn't have to be, for example with initializers
+    /// that are executed by the `c2rust_run_static_initializers` function.
+    #[allow(dead_code)]
+    is_static: bool,
+
     decay_ref: DecayRef,
     is_bitfield_write: bool,
 
-    // We will be referring to the expression by address. In this context we
-    // can't index arrays because they may legally go out of bounds. We also
-    // need to explicitly cast function references to fn() so we get their
-    // address in function pointer literals.
+    /// We will be referring to the expression by address. In this context we
+    /// can't index arrays because they may legally go out of bounds. We also
+    /// need to explicitly cast function references to fn() so we get their
+    /// address in function pointer literals.
     needs_address: bool,
 
     ternary_needs_parens: bool,
@@ -156,6 +165,18 @@ impl ExprContext {
             ..self
         }
     }
+    pub fn const_(self) -> Self {
+        ExprContext {
+            is_const: true,
+            ..self
+        }
+    }
+    pub fn not_const(self) -> Self {
+        ExprContext {
+            is_const: false,
+            ..self
+        }
+    }
     pub fn not_static(self) -> Self {
         ExprContext {
             is_static: false,
@@ -167,12 +188,6 @@ impl ExprContext {
             is_static: true,
             ..self
         }
-    }
-    pub fn set_static(self, is_static: bool) -> Self {
-        ExprContext { is_static, ..self }
-    }
-    pub fn set_const(self, is_const: bool) -> Self {
-        ExprContext { is_const, ..self }
     }
     pub fn is_bitfield_write(&self) -> bool {
         self.is_bitfield_write
@@ -2101,7 +2116,7 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
                 let ConvertedVariable { ty, mutbl, init: _ } =
-                    self.convert_variable(ctx.static_(), None, typ)?;
+                    self.convert_variable(ctx.static_().const_(), None, typ)?;
                 let mut extern_item = mk_linkage(true, &new_name, ident)
                     .span(span)
                     .set_mutbl(mutbl);
@@ -2150,13 +2165,17 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
 
+                let ctx = ctx.static_();
+
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 let (ty, init) = if self.static_initializer_is_uncompilable(initializer, typ) {
-                    // Note: We don't pass has_static_duration through here. Extracted initializers
-                    // are run outside of the static initializer.
+                    // Note: We don't pass `is_const` through here. Extracted initializers are run
+                    // outside of the static initializer, in a non-const context.
+                    let ctx = ctx.not_const();
+
                     let ConvertedVariable { ty, mutbl: _, init } =
-                        self.convert_variable(ctx.not_static(), initializer, typ)?;
+                        self.convert_variable(ctx, initializer, typ)?;
 
                     let mut init = init?.to_expr();
 
@@ -2177,17 +2196,12 @@ impl<'c> Translation<'c> {
                         .map(pos_to_span)
                         .unwrap_or(span);
 
-                    self.add_static_initializer_to_section(
-                        ctx.static_(),
-                        new_name,
-                        typ,
-                        &mut init,
-                    )?;
+                    self.add_static_initializer_to_section(ctx, new_name, typ, &mut init)?;
 
                     (ty, init)
                 } else {
                     let ConvertedVariable { ty, mutbl: _, init } =
-                        self.convert_variable(ctx.static_(), initializer, typ)?;
+                        self.convert_variable(ctx.const_(), initializer, typ)?;
                     let mut init = init?;
                     // TODO: Replace this by relying entirely on
                     // WithStmts.is_unsafe() of the translated variable
@@ -2250,7 +2264,7 @@ impl<'c> Translation<'c> {
                 );
 
                 let maybe_replacement = self.recreate_const_macro_from_expansions(
-                    ctx.set_const(true).set_expanding_macro(decl_id),
+                    ctx.const_().set_expanding_macro(decl_id),
                     &self.ast_context.macro_expansions[&decl_id],
                 );
 
@@ -2820,6 +2834,8 @@ impl<'c> Translation<'c> {
         } = self.ast_context.index(decl_id).kind
         {
             if self.static_initializer_is_uncompilable(initializer, typ) {
+                let ctx = ctx.static_().not_const();
+
                 let ident2 = self
                     .renamer
                     .borrow_mut()
@@ -2830,10 +2846,8 @@ impl<'c> Translation<'c> {
                         )
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
-                    self.convert_variable(ctx.static_(), initializer, typ)?;
-                let default_init = self
-                    .implicit_default_expr(ctx.static_(), typ.ctype)?
-                    .to_expr();
+                    self.convert_variable(ctx, initializer, typ)?;
+                let default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2849,7 +2863,7 @@ impl<'c> Translation<'c> {
                 init.set_unsafe();
                 let mut init = init.to_expr();
 
-                self.add_static_initializer_to_section(ctx.static_(), &ident2, typ, &mut init)?;
+                self.add_static_initializer_to_section(ctx, &ident2, typ, &mut init)?;
                 self.items.borrow_mut()[&self.main_file].add_item(static_item);
 
                 return Ok(cfg::DeclStmtInfo::empty());
@@ -3520,7 +3534,7 @@ impl<'c> Translation<'c> {
                     .get_decl(&decl_id)
                     .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
                     .kind;
-                if ctx.is_const {
+                if ctx.expanding_macro.is_some() {
                     // TODO Determining which declarations have been declared within the scope of the const macro expr
                     // vs. which are out-of-scope of the const macro is non-trivial,
                     // so for now, we don't allow const macros referencing any declarations.
@@ -4069,8 +4083,8 @@ impl<'c> Translation<'c> {
             CompoundLiteral(qty, val) => {
                 let val = self.convert_expr(ctx, val, override_ty)?;
 
-                if !ctx.needs_address() || ctx.is_static || ctx.is_const {
-                    // Statics and consts have their intermediates' lifetimes extended.
+                if !ctx.needs_address() || ctx.is_const {
+                    // consts have their intermediates' lifetimes extended.
                     return Ok(val);
                 }
 

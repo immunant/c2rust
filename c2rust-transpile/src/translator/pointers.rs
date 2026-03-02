@@ -113,8 +113,8 @@ impl<'c> Translation<'c> {
         let mut ref_cast_pointee_ty = None;
         let mutbl = if pointee_cty.qualifiers.is_const {
             Mutability::Immutable
-        } else if ctx.is_static {
-            // static variable initializers aren't able to use &mut, so we work around that
+        } else if ctx.is_const {
+            // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
             needs_cast = true;
@@ -145,9 +145,9 @@ impl<'c> Translation<'c> {
         }
         // Values that translate into temporaries can't be raw-borrowed in Rust,
         // and must be regular-borrowed first.
-        // Borrowing in a static/const context will extend the lifetime to static.
+        // Borrowing in a const context will extend the lifetime to static.
         else if arg_is_macro
-            || ctx.is_static
+            || ctx.is_const
                 && matches!(
                     arg_expr_kind,
                     Some(CExprKind::Literal(..) | CExprKind::CompoundLiteral(..))
@@ -419,9 +419,9 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| TranslationError::generic("null_ptr requires a pointer"))?;
 
         let func = if pointer_qty.qualifiers.is_const
-            // static variable initializers aren't able to use null_mut
+            // mutable references/pointers are not allowed in const context
             // TODO: Rust 1.83: Allowed, so this can be removed.
-            || ctx.is_static
+            || ctx.is_const
         {
             "null"
         } else {
@@ -439,7 +439,7 @@ impl<'c> Translation<'c> {
         );
 
         // TODO: Rust 1.83: Remove.
-        if ctx.is_static && !pointer_qty.qualifiers.is_const {
+        if ctx.is_const && !pointer_qty.qualifiers.is_const {
             val = mk().cast_expr(val, mk().mutbl().ptr_ty(pointee_ty));
         }
 
