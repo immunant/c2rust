@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use c2rust_rust_tools::rustc;
+use c2rust_transpile::convert_type::RESERVED_NAMES;
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+use itertools::Itertools;
 
 fn config() -> TranspilerConfig {
     TranspilerConfig {
@@ -135,6 +137,8 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
 
 #[test]
 fn transpile_all_snapshots() {
+    generate_keywords_test();
+
     // TODO parallelize these `insta::glob!`s across multiple `#[test]`s
     // now that we use `cargo nextest`.
 
@@ -178,6 +182,25 @@ fn transpile_all_snapshots() {
     insta::with_settings!({snapshot_suffix => arch_os.as_str()}, {
         insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile_snapshot(Some(arch_os.as_str()), path));
     });
+}
+
+fn generate_keywords_test() {
+    // Common keywords we need to filter out.
+    let c_keywords = [
+        "break", "const", "continue", "else", "enum", "extern", "for", "if", "return", "static",
+        "struct", "while", "do", "typeof", "char",
+    ];
+    // These don't work yet.  We need to fix these.
+    let broken_rust_keywords = ["await"];
+    let mut c_code = RESERVED_NAMES
+        .into_iter()
+        .filter(|keyword| !c_keywords.contains(keyword))
+        .filter(|keyword| !broken_rust_keywords.contains(keyword))
+        .map(|name| format!("void {name}(void) {{}}"))
+        .join("\n\n");
+    c_code.push_str("\n");
+    let c_path = Path::new("tests/snapshots/keywords.c");
+    fs_err::write(c_path, c_code).unwrap();
 }
 
 #[test]
