@@ -389,20 +389,8 @@ impl Transform for FixUnusedUnsafe {
                         _ => false,
                     });
 
-                    let has_trailing_expr = block
-                        .stmts
-                        .last()
-                        .map_or(false, |stmt| matches!(stmt.kind, StmtKind::Expr(_)));
-                    let has_non_tail_stmt = block
-                        .stmts
-                        .iter()
-                        .any(|stmt| !matches!(stmt.kind, StmtKind::Expr(_)));
-                    let only_tail_expr = has_trailing_expr
-                        && !has_non_tail_stmt
-                        && block.stmts.len() == 1;
-
                     // Remove the block if there's nothing preventing us from doing so. 
-                    if !has_comments && !has_drop && (!has_trailing_expr || only_tail_expr) {
+                    if !has_comments && !has_drop {
                         let mut stmts = mem::take(&mut block.stmts);
 
                         // If the block has a tail expr, turn it into a statement. This is valid
