@@ -388,16 +388,15 @@ impl<'c> Translation<'c> {
                         vec![init_expr],
                     ));
 
-                    // c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr()
-                    let last_mut_expr = mk().method_call_expr(
-                        mk().ident_expr(alloca_allocations_name),
-                        "last_mut",
-                        vec![],
-                    );
-                    let unwrap_expr = mk().method_call_expr(last_mut_expr, "unwrap", vec![]);
-                    let as_mut_ptr_expr = mk().method_call_expr(unwrap_expr, "as_mut_ptr", vec![]);
+                    // c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_void
+                    let expr = mk().ident_expr(alloca_allocations_name);
+                    let expr = mk().method_call_expr(expr, "last_mut", vec![]);
+                    let expr = mk().method_call_expr(expr, "unwrap", vec![]);
+                    let expr = mk().method_call_expr(expr, "as_mut_ptr", vec![]);
+                    let pointee_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
+                    let expr = mk().cast_expr(expr, mk().mutbl().ptr_ty(pointee_ty));
 
-                    Ok(WithStmts::new(vec![push_stmt], as_mut_ptr_expr))
+                    Ok(WithStmts::new(vec![push_stmt], expr))
                 })
             }
 
