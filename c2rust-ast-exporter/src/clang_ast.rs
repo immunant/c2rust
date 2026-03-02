@@ -215,8 +215,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
         .into_iter()
         .map(|(path, loc)| {
             let path = match path.as_str() {
-                "" => None,
-                "?" => None,
+                "" => None,  // Clang gives an empty path for builtins, for example.
+                "?" => None, // The AST exporter gives "?" when `tryGetRealPathName` fails.
                 path => Some(Path::new(path).to_path_buf()),
             };
             SrcFile {

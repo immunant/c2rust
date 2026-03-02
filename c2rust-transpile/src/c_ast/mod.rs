@@ -221,6 +221,16 @@ impl TypedAstContext {
             }
         }
 
+        // Ensure that the main file is actually present. This is not the case if it is empty,
+        // in which case the AST exporter's visitor would have never observed it.
+        if !files.iter().any(|f| f.path.as_ref() == Some(&main_file)) {
+            file_map.push(files.len());
+            files.push(SrcFile {
+                path: Some(main_file.clone()),
+                include_loc: None,
+            });
+        }
+
         TypedAstContext {
             main_file,
             files,
