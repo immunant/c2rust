@@ -1484,7 +1484,9 @@ impl<'c> Translation<'c> {
             type_converter.translate_valist = true
         }
 
-        let main_file = ast_context.find_file_id(main_file).unwrap_or(0);
+        let main_file = ast_context
+            .find_file_id(main_file)
+            .expect("could not find FileId for main file");
         let items = indexmap! {main_file => ItemStore::new()};
 
         Translation {
