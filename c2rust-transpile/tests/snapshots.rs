@@ -18,7 +18,7 @@ fn config() -> TranspilerConfig {
         dump_structures: false,
         verbose: false,
         debug_ast_exporter: false,
-        emit_c_decl_map: false,
+        emit_c_decl_map: true, // So `transpile_with_c_decl_map_snapshot` can validate C decl map.
         incremental_relooper: true,
         fail_on_multiple: false,
         filter: None,
@@ -186,13 +186,7 @@ fn check_c_decl_map() {
 }
 
 fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
-    compile_and_transpile_file(
-        c_path,
-        TranspilerConfig {
-            emit_c_decl_map: true,
-            ..config()
-        },
-    );
+    compile_and_transpile_file(c_path, config());
 
     let c_decls_path = c_path.with_extension("c_decls.json");
     let snapshot_name = format!("c_decls-{}", c_path.file_name().unwrap().to_str().unwrap());
