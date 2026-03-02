@@ -420,28 +420,39 @@ impl Transform for FixUnusedUnsafe {
             }
 
             fn visit_expr(&mut self, expr: &mut P<Expr>) {
-                let expr_id = expr.id;
-                if let ExprKind::Block(block, None) = &mut expr.kind {
-                    if self.is_unused_unsafe_block(block) {
-                        let has_outer_comments = [expr_id, block.id].iter().any(|id| {
-                            self.comment_map
-                                .get(id)
-                                .map_or(false, |comments| !comments.is_empty())
-                        });
-                        if !has_outer_comments && block.stmts.len() == 1 {
-                            let stmt_has_comments = self
-                                .comment_map
-                                .get(&block.stmts[0].id)
-                                .map_or(false, |comments| !comments.is_empty());
-                            if !stmt_has_comments {
-                                if let StmtKind::Expr(inner) = block.stmts[0].kind.clone() {
-                                    *expr = inner;
-                                    mut_visit::noop_visit_expr(expr, self);
-                                    return;
-                                }
-                            }
-                        }
+                'noop: {
+                    let expr_id = expr.id;
+                    let ExprKind::Block(block, None) = &mut expr.kind else {
+                        break 'noop;
+                    };
+                    if !self.is_unused_unsafe_block(block) {
+                        break 'noop;
                     }
+
+                    let has_outer_comments = [expr_id, block.id].iter().any(|id| {
+                        self.comment_map
+                            .get(id)
+                            .map_or(false, |comments| !comments.is_empty())
+                    });
+                    if has_outer_comments {
+                        break 'noop;
+                    }
+                    if block.stmts.len() != 1 {
+                        break 'noop;
+                    }
+
+                    let stmt_has_comments = self
+                        .comment_map
+                        .get(&block.stmts[0].id)
+                        .map_or(false, |comments| !comments.is_empty());
+                    if stmt_has_comments {
+                        break 'noop;
+                    }
+
+                    let StmtKind::Expr(inner) = block.stmts[0].kind.clone() else {
+                        break 'noop;
+                    };
+                    *expr = inner;
                 }
 
                 mut_visit::noop_visit_expr(expr, self)
