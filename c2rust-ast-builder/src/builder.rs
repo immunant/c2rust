@@ -738,10 +738,6 @@ impl Builder {
         })))
     }
 
-    pub fn unsafe_block_expr(self, unsafe_blk: ExprUnsafe) -> Box<Expr> {
-        Box::new(Expr::Unsafe(unsafe_blk))
-    }
-
     pub fn block_expr(self, block: Block) -> Box<Expr> {
         Box::new(Expr::Block(ExprBlock {
             attrs: self.attrs,
@@ -760,6 +756,14 @@ impl Builder {
             block,
             label: Some(lbl),
         }))
+    }
+
+    pub fn const_block_expr(self, const_blk: ExprConst) -> Box<Expr> {
+        Box::new(Expr::Const(const_blk))
+    }
+
+    pub fn unsafe_block_expr(self, unsafe_blk: ExprUnsafe) -> Box<Expr> {
+        Box::new(Expr::Unsafe(unsafe_blk))
     }
 
     pub fn assign_expr(self, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
@@ -1819,22 +1823,26 @@ impl Builder {
 
     // Misc nodes
 
-    pub fn unsafe_block(self, stmts: Vec<Stmt>) -> ExprUnsafe {
-        let blk = Block {
-            stmts,
-            brace_token: token::Brace(self.span),
-        };
-        ExprUnsafe {
-            attrs: self.attrs,
-            unsafe_token: Token![unsafe](self.span),
-            block: blk,
-        }
-    }
-
     pub fn block(self, stmts: Vec<Stmt>) -> Block {
         Block {
             stmts,
             brace_token: token::Brace(self.span),
+        }
+    }
+
+    pub fn const_block(self, stmts: Vec<Stmt>) -> ExprConst {
+        ExprConst {
+            attrs: self.attrs,
+            const_token: Token![const](self.span),
+            block: mk().block(stmts),
+        }
+    }
+
+    pub fn unsafe_block(self, stmts: Vec<Stmt>) -> ExprUnsafe {
+        ExprUnsafe {
+            attrs: self.attrs,
+            unsafe_token: Token![unsafe](self.span),
+            block: mk().block(stmts),
         }
     }
 
