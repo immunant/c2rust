@@ -35,15 +35,6 @@ void entry(void) {
     char *char_lit_ptr = "abc";
     char (*char_lit_array_ptr)[4] = &"abc";
 
-// TODO re-enable after #1266 adds portable support for translating `wchar_t`.
-#if 0
-    wchar_t wide1[] = L"x";
-
-    wchar_t wide2[3] = L"x";
-
-    wchar_t wide3[1] = L"xy";
-#endif
-
     // Test that we can get the address of the element past the end of the array
     char *past_end = &static_char_array[sizeof(static_char_array)];
     past_end = &static_char_ptr[8];
