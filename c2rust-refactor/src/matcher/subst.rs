@@ -17,11 +17,11 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
+use rustc_ast::MacCall;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
-use rustc_ast::MacCall;
 use rustc_ast::{
     Expr, ExprKind, Item, ItemKind, Label, MacArgs, Pat, PatKind, Path, Stmt, StmtKind, Ty, TyKind,
 };
@@ -29,14 +29,14 @@ use rustc_ast_pretty::pprust;
 use rustc_data_structures::sync::Lrc;
 use rustc_parse::parser::{ForceCollect, Parser};
 use rustc_span::symbol::Ident;
-use smallvec::smallvec;
 use smallvec::SmallVec;
+use smallvec::smallvec;
 
+use crate::RefactorCtxt;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};
 use crate::command::CommandState;
 use crate::matcher::{BindingValue, Bindings};
-use crate::RefactorCtxt;
 
 // `st` and `cx` were previously used for `def!` substitution, which has been removed.  I expect
 // they'll be needed again for future subst extensions, so I've left them in to reduce API churn.
@@ -77,7 +77,9 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
                     span,
                 },
                 spacing,
-            ) = tt && let Some(bv) = self.bindings.get::<_, BindingValue>(ident) {
+            ) = tt
+                && let Some(bv) = self.bindings.get::<_, BindingValue>(ident)
+            {
                 let nt = match bv.clone() {
                     BindingValue::Path(x) => Nonterminal::NtPath(P(x)),
                     BindingValue::Expr(x) => Nonterminal::NtExpr(x),
@@ -86,12 +88,15 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
                     BindingValue::Stmt(x) => Nonterminal::NtStmt(P(x)),
                     BindingValue::Item(x) => Nonterminal::NtItem(x),
 
-                    _ => unimplemented!("Unsupported binding:{bv:#?}")
+                    _ => unimplemented!("Unsupported binding:{bv:#?}"),
                 };
-                let new_tt = TokenTree::Token(Token {
-                    kind: TokenKind::Interpolated(Lrc::new(nt)),
-                    span,
-                }, spacing);
+                let new_tt = TokenTree::Token(
+                    Token {
+                        kind: TokenKind::Interpolated(Lrc::new(nt)),
+                        span,
+                    },
+                    spacing,
+                );
                 tsb.push(TokenStream::new(vec![new_tt]));
             } else {
                 tsb.push(TokenStream::new(vec![tt]));
@@ -189,7 +194,9 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             *p = binding.clone();
         }
 
-        if let PatKind::MacCall(mc) = &p.kind && mc.path.is_named("parse") {
+        if let PatKind::MacCall(mc) = &p.kind
+            && mc.path.is_named("parse")
+        {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
                 mc.args.inner_tokens().clone(),
@@ -211,7 +218,9 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             }
         }
 
-        if let TyKind::MacCall(mc) = &ty.kind && mc.path.is_named("parse") {
+        if let TyKind::MacCall(mc) = &ty.kind
+            && mc.path.is_named("parse")
+        {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
                 mc.args.inner_tokens().clone(),
@@ -235,7 +244,9 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym))
         {
             SmallVec::from_vec(stmts.clone())
-        } else if let StmtKind::MacCall(mcs) = &s.kind && mcs.mac.path.is_named("parse") {
+        } else if let StmtKind::MacCall(mcs) = &s.kind
+            && mcs.mac.path.is_named("parse")
+        {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
                 mcs.mac.args.inner_tokens().clone(),
@@ -258,7 +269,9 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             .and_then(|sym| self.bindings.get::<_, P<Item>>(sym))
         {
             smallvec![item.clone()]
-        } else if let ItemKind::MacCall(mc) = &i.kind && mc.path.is_named("parse") {
+        } else if let ItemKind::MacCall(mc) = &i.kind
+            && mc.path.is_named("parse")
+        {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
                 mc.args.inner_tokens().clone(),
