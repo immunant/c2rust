@@ -45,4 +45,5 @@ tempfile = "3.5.0"
 llvm-static = ["c2rust-ast-exporter/llvm-static"]
 
 [dev-dependencies]
+fs-err = "3.3.0"
 insta = { version = "1.46.3", features = ["glob", "json"] }

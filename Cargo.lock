@@ -493,6 +493,7 @@ dependencies = [
  "dtoa",
  "failure",
  "fern",
+ "fs-err",
  "handlebars",
  "indexmap",
  "insta",
