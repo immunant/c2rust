@@ -40,7 +40,7 @@ pub static mut static_char_array: [::core::ffi::c_char; 9] =
     unsafe { ::core::mem::transmute::<[u8; 9], [::core::ffi::c_char; 9]>(*b"mystring\0") };
 #[no_mangle]
 pub static mut static_char_ptr: *mut ::core::ffi::c_char =
-    b"mystring\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
+    b"mystring\0".as_ptr() as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
 #[no_mangle]
 pub static mut static_void_ptr: *mut ::core::ffi::c_void =
     unsafe { &raw const static_char_array as *mut ::core::ffi::c_char as *mut ::core::ffi::c_void };
@@ -89,11 +89,11 @@ pub unsafe extern "C" fn entry() {
         &raw mut char_with_string as *mut ::core::ffi::c_char;
     let mut char_var_array_ptr: *mut [::core::ffi::c_char; 4] = &raw mut char_with_string;
     let mut const_char_lit_ptr: *const ::core::ffi::c_char =
-        b"abc\0" as *const u8 as *const ::core::ffi::c_char;
+        b"abc\0".as_ptr() as *const ::core::ffi::c_char;
     let mut const_char_lit_array_ptr: *const [::core::ffi::c_char; 4] =
         b"abc\0" as *const [u8; 4] as *const [::core::ffi::c_char; 4];
     let mut char_lit_ptr: *mut ::core::ffi::c_char =
-        b"abc\0" as *const u8 as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
+        b"abc\0".as_ptr() as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
     let mut char_lit_array_ptr: *mut [::core::ffi::c_char; 4] = b"abc\0" as *const [u8; 4]
         as *const [::core::ffi::c_char; 4]
         as *mut [::core::ffi::c_char; 4];
