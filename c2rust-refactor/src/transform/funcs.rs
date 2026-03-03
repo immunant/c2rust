@@ -337,8 +337,9 @@ impl Transform for FixUnusedUnsafe {
                     .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
             }
 
-            fn has_unattached_inner_comment(&self, b: &Block) -> bool {
-                b.stmts.is_empty() && self.comment_map.has_comment_in_span(b.span)
+            fn has_dangling_inner_comment(&self, b: &Block) -> bool {
+                self.comment_map
+                    .contains_dangling_comment(b.span)
             }
         }
 
@@ -373,7 +374,7 @@ impl Transform for FixUnusedUnsafe {
                     // Edge case: The block has no statements, but contains a comment. Since the
                     // comment isn't attached to an AST node, removing the block would delete the
                     // comment.
-                    let only_contains_comment = self.has_unattached_inner_comment(block);
+                    let has_dangling_inner_comment = self.has_dangling_inner_comment(block);
 
                     // Detect if there are any values in the block that need `Drop`. We don't want
                     // to remove the block in that case because it would change drop order.
@@ -389,7 +390,7 @@ impl Transform for FixUnusedUnsafe {
                     });
 
                     // Remove the block if there's nothing preventing us from doing so. 
-                    if !has_comments && !only_contains_comment && !has_drop {
+                    if !has_comments && !has_dangling_inner_comment && !has_drop {
                         let mut stmts = mem::take(&mut block.stmts);
 
                         // If the block has a tail expr, turn it into a statement. This is valid
@@ -444,7 +445,7 @@ impl Transform for FixUnusedUnsafe {
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {
-                if self.is_unused_unsafe_block(b) && !self.has_unattached_inner_comment(b) {
+                if self.is_unused_unsafe_block(b) && !self.has_dangling_inner_comment(b) {
                     b.rules = BlockCheckMode::Default;
                 }
 

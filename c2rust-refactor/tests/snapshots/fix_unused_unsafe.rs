@@ -47,6 +47,14 @@ fn main() {
     }
 
     unsafe {
+        // Inner statement with a trailing comment, make sure we don't modify
+        // the block in a way that deletes the comment.
+        let _ = ();
+
+        // Dangling comment with no AST node to attach to.
+    }
+
+    unsafe {
         unsafe {
             // Nested unsafe blocks. Not that hard to handle, but also not a
             // case that we need to cover since c2rust doesn't generate code

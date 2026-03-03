@@ -17,6 +17,7 @@ pub use rustc_ast::util::comments::{Comment, CommentStyle};
 pub struct CommentMap {
     by_node: HashMap<NodeId, Vec<Comment>>,
     all_comments: Vec<Comment>,
+    mapped_spans: Vec<(Comment, Span)>,
 }
 
 impl CommentMap {
@@ -42,8 +43,33 @@ impl CommentMap {
         })
     }
 
-    fn insert_mapped_comment(&mut self, id: NodeId, comment: Comment) {
-        self.by_node.entry(id).or_default().push(comment);
+    /// Detects if there's a comment without a corresponding AST node within a span.
+    ///
+    /// Comments need to be attached to an AST node in order for us to handle them
+    /// correctly in most cases. In some cases comments can be "dangling" where they
+    /// don't have a corresponding AST node, e.g. if there's a trailing comment at
+    /// the end of a block.
+    pub fn contains_dangling_comment(&self, span: Span) -> bool {
+        self.all_comments.iter().any(|comment| {
+            comment.style != CommentStyle::BlankLine
+                && comment.pos >= span.lo()
+                && comment.pos < span.hi()
+                && !self
+                    .mapped_spans
+                    .iter()
+                    .any(|(mapped_comment, mapped_span)| {
+                        mapped_comment.style == comment.style
+                            && mapped_comment.pos == comment.pos
+                            && mapped_comment.lines == comment.lines
+                            && mapped_span.lo() >= span.lo()
+                            && mapped_span.hi() <= span.hi()
+                    })
+        })
+    }
+
+    fn insert_mapped_comment(&mut self, id: NodeId, span: Span, comment: Comment) {
+        self.by_node.entry(id).or_default().push(comment.clone());
+        self.mapped_spans.push((comment, span));
     }
 }
 
@@ -74,6 +100,7 @@ pub fn collect_comments<T: Visit>(ast: &T, source_map: &SourceMap, sess: &ParseS
         comment_map: CommentMap {
             by_node: HashMap::default(),
             all_comments: comments.clone(),
+            mapped_spans: vec![],
         },
         cur_comment: comments.iter().peekable(),
     };
@@ -114,14 +141,14 @@ impl<'a> CommentCollector<'a> {
                 CommentStyle::Isolated => {
                     if comment.pos < span.lo() {
                         let comment = self.consume_comment();
-                        self.comment_map.insert_mapped_comment(id, comment);
+                        self.comment_map.insert_mapped_comment(id, span, comment);
                         continue;
                     }
                 }
                 CommentStyle::Trailing => {
                     if comment.pos >= span.hi() {
                         let comment = self.consume_comment();
-                        self.comment_map.insert_mapped_comment(id, comment);
+                        self.comment_map.insert_mapped_comment(id, span, comment);
                         continue;
                     }
                 }
