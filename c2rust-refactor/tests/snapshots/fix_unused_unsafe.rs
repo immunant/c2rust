@@ -63,3 +63,18 @@ fn main() {
         1 + 2
     };
 }
+
+// In a generic context, all non-`Copy` type params show up as requiring drop,
+// so we won't be able to fully remove the block.
+fn generic_non_copy<T: Default>() {
+    unsafe {
+        let _val = T::default();
+    }
+}
+
+// If the type parameter is `Copy` then we should be able to remove the block.
+fn generic_copy<T: Copy + Default>() {
+    unsafe {
+        let _val = T::default();
+    }
+}
