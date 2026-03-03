@@ -108,18 +108,23 @@ impl<'c> Translation<'c> {
 
             CLiteral::String(ref bytes, element_size) => {
                 let bytes_padded = self.string_literal_bytes(ty.ctype, bytes, element_size);
+                let len = bytes_padded.len();
+                let val = mk().lit_expr(bytes_padded);
 
-                // std::mem::transmute::<[u8; size], ctype>(*b"xxxx")
-                let array_ty = mk().array_ty(
-                    mk().ident_ty("u8"),
-                    mk().lit_expr(bytes_padded.len() as u128),
-                );
-                let val = transmute_expr(
-                    array_ty,
-                    self.convert_type(ty.ctype)?,
-                    mk().unary_expr(UnOp::Deref(Default::default()), mk().lit_expr(bytes_padded)),
-                );
-                Ok(WithStmts::new_unsafe_val(val))
+                if ctx.needs_address && element_size == 1 {
+                    // Unlike in C, Rust string literals are already references by default.
+                    // So if the address needs to be taken, just make a bare literal.
+                    Ok(WithStmts::new_val(val))
+                } else {
+                    // std::mem::transmute::<[u8; size], ctype>(*b"xxxx")
+                    let array_ty = mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(len as u128));
+                    let val = transmute_expr(
+                        array_ty,
+                        self.convert_type(ty.ctype)?,
+                        mk().unary_expr(UnOp::Deref(Default::default()), val),
+                    );
+                    Ok(WithStmts::new_unsafe_val(val))
+                }
             }
         }
     }
@@ -127,18 +132,10 @@ impl<'c> Translation<'c> {
     /// Returns the bytes of a string literal, including any additional zero bytes to pad the
     /// literal to the expected size.
     pub fn string_literal_bytes(&self, ctype: CTypeId, bytes: &[u8], element_size: u8) -> Vec<u8> {
-        let num_elems = match self.ast_context.resolve_type(ctype).kind {
-            CTypeKind::ConstantArray(_, num_elems) => num_elems,
-            ref kind => {
-                panic!("String literal with unknown size: {bytes:?}, kind = {kind:?}")
-            }
-        };
-
-        let size = num_elems * (element_size as usize);
+        let size = self.ast_context.array_len(ctype) * element_size as usize;
         let mut bytes_padded = Vec::with_capacity(size);
         bytes_padded.extend(bytes);
         bytes_padded.resize(size, 0);
-
         bytes_padded
     }
 

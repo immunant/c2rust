@@ -4083,17 +4083,19 @@ impl<'c> Translation<'c> {
             Paren(_, val) => self.convert_expr(ctx, val, override_ty),
 
             CompoundLiteral(qty, val) => {
-                let val = self.convert_expr(ctx, val, override_ty)?;
-
                 if !ctx.needs_address() || ctx.is_const {
                     // consts have their intermediates' lifetimes extended.
-                    return Ok(val);
+                    return self.convert_expr(ctx, val, override_ty);
                 }
 
                 // C compound literals are lvalues, but equivalent Rust expressions generally are not.
                 // So if an address is needed, store it in an intermediate variable first.
                 let fresh_name = self.renamer.borrow_mut().fresh();
                 let fresh_ty = self.convert_type(override_ty.unwrap_or(qty).ctype)?;
+
+                // Translate the expression to be assigned to the fresh variable.
+                // It will be assigned by value, so we don't need its address anymore.
+                let val = self.convert_expr(ctx.set_needs_address(false), val, override_ty)?;
 
                 val.and_then(|val| {
                     let fresh_stmt = {

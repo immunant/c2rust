@@ -611,6 +611,14 @@ impl TypedAstContext {
         }
     }
 
+    /// Returns the length of an array type, or panics.
+    pub fn array_len(&self, typ: CTypeId) -> usize {
+        match self.resolve_type(typ).kind {
+            CTypeKind::ConstantArray(_, len) => len,
+            ref kind => panic!("CTypeId {typ:?} is {kind:?}, not a ConstantArray"),
+        }
+    }
+
     /// Can the given field decl be a flexible array member?
     pub fn maybe_flexible_array(&self, typ: CTypeId) -> bool {
         let field_ty = self.resolve_type(typ);
