@@ -411,7 +411,7 @@ impl Transform for FixUnusedUnsafe {
 
             fn visit_expr(&mut self, expr: &mut P<Expr>) {
                 'noop: {
-                    let expr_id = expr.id;
+                    // We only want to touch unsafe block exprs where the unsafe is unused.
                     let ExprKind::Block(block, None) = &mut expr.kind else {
                         break 'noop;
                     };
@@ -419,30 +419,26 @@ impl Transform for FixUnusedUnsafe {
                         break 'noop;
                     }
 
-                    let has_outer_comments = [expr_id, block.id].iter().any(|id| {
-                        self.comment_map
-                            .get(id)
-                            .map_or(false, |comments| !comments.is_empty())
-                    });
-                    if has_outer_comments {
-                        break 'noop;
-                    }
-                    if block.stmts.len() != 1 {
-                        break 'noop;
-                    }
-
-                    let stmt_has_comments = self
-                        .comment_map
-                        .get(&block.stmts[0].id)
-                        .map_or(false, |comments| !comments.is_empty());
-                    if stmt_has_comments {
-                        break 'noop;
-                    }
-
-                    let StmtKind::Expr(inner) = block.stmts[0].kind.clone() else {
+                    // We only remove the block if it consists of a single tail expr.
+                    let [stmt] = &block.stmts[..] else {
                         break 'noop;
                     };
-                    *expr = inner;
+
+                    // We don't want to remove the block if our tail expr has a comment on it, since
+                    // doing so would delete the comment.
+                    let has_comments = self
+                        .comment_map
+                        .get(&stmt.id)
+                        .map_or(false, |comments| !comments.is_empty());
+                    if has_comments {
+                        break 'noop;
+                    }
+
+                    let StmtKind::Expr(inner) = &stmt.kind else {
+                        break 'noop;
+                    };
+
+                    *expr = inner.clone();
                 }
 
                 mut_visit::noop_visit_expr(expr, self)
