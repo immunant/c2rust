@@ -17,7 +17,6 @@ fn main() {
     let _ = unsafe {};
     unsafe {}
 
-
     // Has a comment, shouldn't be removed.
     unsafe {}
 
