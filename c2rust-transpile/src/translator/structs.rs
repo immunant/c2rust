@@ -418,7 +418,7 @@ impl<'a> Translation<'a> {
                         continue;
                     }
 
-                    let mut init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
+                    let mut init = self.implicit_default_expr(ctx, ty.ctype)?;
                     if !init.is_pure() {
                         return Err(TranslationError::generic(
                             "Expected no statements in field expression",
@@ -511,11 +511,11 @@ impl<'a> Translation<'a> {
     /// & padding fields
     pub fn convert_struct_zero_initializer(
         &self,
+        ctx: ExprContext,
         decl_id: CRecordId,
         name_decl_id: CDeclId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-        is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = self.resolve_decl_inner_name(name_decl_id);
         let reorganized_fields = self.get_field_types(decl_id, field_ids, platform_byte_size)?;
@@ -570,7 +570,7 @@ impl<'a> Translation<'a> {
                     use_inner_type,
                     ..
                 } => {
-                    let mut field_init = self.implicit_default_expr(ctype, is_static)?;
+                    let mut field_init = self.implicit_default_expr(ctx, ctype)?;
                     if !field_init.is_pure() {
                         return Err(TranslationError::generic(
                             "Expected no statements in field expression",

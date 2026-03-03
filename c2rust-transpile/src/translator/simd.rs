@@ -238,9 +238,9 @@ impl<'c> Translation<'c> {
     /// is specified with the underlying element type and the number of elements in the vector.
     pub fn implicit_vector_default(
         &self,
+        ctx: ExprContext,
         ctype: CTypeId,
         len: usize,
-        is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // NOTE: This is only for x86/_64, and so support for other architectures
         // might need some sort of disambiguation to be exported
@@ -267,7 +267,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        if is_static {
+        if ctx.is_const {
             let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
@@ -297,9 +297,9 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let param_translation = self.convert_exprs(ctx, ids, None)?;
         param_translation.and_then(|mut params| {
-            // When used in a static, we cannot call the standard functions since they
+            // When used in a const context, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
-            let call = if ctx.is_static {
+            let call = if ctx.is_const {
                 let tuple = mk().tuple_expr(params);
 
                 transmute_expr(mk().infer_ty(), mk().infer_ty(), tuple)
