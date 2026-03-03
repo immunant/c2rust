@@ -1,6 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
-expression: c2rust-refactor fix_unused_unsafe --rewrite-mode alongside -- tests/snapshots/fix_unused_unsafe.rs --edition 2021 -Awarnings
+expression: c2rust-refactor fix_unused_unsafe --rewrite-mode alongside -- tests/snapshots/fix_unused_unsafe.rs --edition 2021
 ---
 fn main() {
     // Has unsafe operations, shouldn't be modified.
@@ -57,4 +57,17 @@ fn main() {
     // TODO: Why is there extra whitespace between lines of the comment?
 
     1 + 2;
+}
+
+// In a generic context, all non-`Copy` type params show up as requiring drop,
+// so we won't be able to fully remove the block.
+fn generic_non_copy<T: Default>() {
+    {
+        let _val = T::default();
+    }
+}
+
+// If the type parameter is `Copy` then we should be able to remove the block.
+fn generic_copy<T: Copy + Default>() {
+    let _val = T::default();
 }
