@@ -1,5 +1,6 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
+assertion_line: 56
 expression: c2rust-refactor fix_unused_unsafe --rewrite-mode alongside -- tests/snapshots/fix_unused_unsafe.rs --edition 2021
 ---
 fn main() {
@@ -40,6 +41,12 @@ fn main() {
         let _ = 5;
         5 + 5
     };
+
+    unsafe {
+        // Contains a comment but no body. We have to keep leave the block the
+        // same, because attempting to change it causes us to delete the
+        // comment.
+    }
 
     {
         // Nested unsafe blocks. Not that hard to handle, but also not a

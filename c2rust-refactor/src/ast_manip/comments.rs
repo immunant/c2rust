@@ -14,7 +14,10 @@ use crate::ast_manip::Visit;
 pub use rustc_ast::util::comments::{Comment, CommentStyle};
 
 #[derive(Default)]
-pub struct CommentMap(HashMap<NodeId, Vec<Comment>>);
+pub struct CommentMap {
+    by_node: HashMap<NodeId, Vec<Comment>>,
+    all_comments: Vec<Comment>,
+}
 
 impl CommentMap {
     pub fn insert(&mut self, id: NodeId, comment: Comment) {
@@ -23,11 +26,24 @@ impl CommentMap {
             lines: comment.lines,
             pos: comment.pos,
         };
-        self.0.entry(id).or_default().push(comment);
+        self.by_node.entry(id).or_default().push(comment.clone());
+        self.all_comments.push(comment);
     }
 
     pub fn get(&self, k: &NodeId) -> Option<&[Comment]> {
-        self.0.get(k).map(Vec::as_slice)
+        self.by_node.get(k).map(Vec::as_slice)
+    }
+
+    pub fn has_comment_in_span(&self, span: Span) -> bool {
+        self.all_comments.iter().any(|comment| {
+            comment.style != CommentStyle::BlankLine
+                && comment.pos >= span.lo()
+                && comment.pos < span.hi()
+        })
+    }
+
+    fn insert_mapped_comment(&mut self, id: NodeId, comment: Comment) {
+        self.by_node.entry(id).or_default().push(comment);
     }
 }
 
@@ -35,7 +51,7 @@ impl Index<&NodeId> for CommentMap {
     type Output = [Comment];
 
     fn index(&self, key: &NodeId) -> &[Comment] {
-        self.0.index(key)
+        self.by_node.index(key)
     }
 }
 
@@ -55,7 +71,10 @@ pub fn collect_comments<T: Visit>(ast: &T, source_map: &SourceMap, sess: &ParseS
 
     // Walk the AST and map nodes to their associated comments.
     let mut collector = CommentCollector {
-        comment_map: CommentMap::default(),
+        comment_map: CommentMap {
+            by_node: HashMap::default(),
+            all_comments: comments.clone(),
+        },
         cur_comment: comments.iter().peekable(),
     };
     ast.visit(&mut collector);
@@ -95,14 +114,14 @@ impl<'a> CommentCollector<'a> {
                 CommentStyle::Isolated => {
                     if comment.pos < span.lo() {
                         let comment = self.consume_comment();
-                        self.comment_map.insert(id, comment);
+                        self.comment_map.insert_mapped_comment(id, comment);
                         continue;
                     }
                 }
                 CommentStyle::Trailing => {
                     if comment.pos >= span.hi() {
                         let comment = self.consume_comment();
-                        self.comment_map.insert(id, comment);
+                        self.comment_map.insert_mapped_comment(id, comment);
                         continue;
                     }
                 }

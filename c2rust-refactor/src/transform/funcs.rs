@@ -336,6 +336,10 @@ impl Transform for FixUnusedUnsafe {
                     .iter()
                     .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
             }
+
+            fn has_unattached_inner_comment(&self, b: &Block) -> bool {
+                b.stmts.is_empty() && self.comment_map.has_comment_in_span(b.span)
+            }
         }
 
         impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
@@ -349,7 +353,6 @@ impl Transform for FixUnusedUnsafe {
                     let ExprKind::Block(block, None) = &mut expr.kind else {
                         break 'noop;
                     };
-
                     if !self.is_unused_unsafe_block(block) {
                         break 'noop;
                     }
@@ -359,12 +362,21 @@ impl Transform for FixUnusedUnsafe {
                     let parent = self.cx.hir_map().get_parent_item(hir_id);
                     let param_env = self.cx.ty_ctxt().param_env(parent);
 
+                    // Detect if the block itself has a comment. We don't want to remove the block
+                    // in that case because doing so would delete the comment.
                     let has_comments = [stmt.id, expr_id, block_id].iter().any(|id| {
                         self.comment_map
                             .get(id)
                             .map_or(false, |comments| !comments.is_empty())
                     });
 
+                    // Edge case: The block has no statements, but contains a comment. Since the
+                    // comment isn't attached to an AST node, removing the block would delete the
+                    // comment.
+                    let only_contains_comment = self.has_unattached_inner_comment(block);
+
+                    // Detect if there are any values in the block that need `Drop`. We don't want
+                    // to remove the block in that case because it would change drop order.
                     let has_drop = block.stmts.iter().any(|stmt| match stmt.kind {
                         StmtKind::Local(ref local) => {
                             let ty = self
@@ -377,7 +389,7 @@ impl Transform for FixUnusedUnsafe {
                     });
 
                     // Remove the block if there's nothing preventing us from doing so. 
-                    if !has_comments && !has_drop {
+                    if !has_comments && !only_contains_comment && !has_drop {
                         let mut stmts = mem::take(&mut block.stmts);
 
                         // If the block has a tail expr, turn it into a statement. This is valid
@@ -432,7 +444,7 @@ impl Transform for FixUnusedUnsafe {
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {
-                if self.is_unused_unsafe_block(b) {
+                if self.is_unused_unsafe_block(b) && !self.has_unattached_inner_comment(b) {
                     b.rules = BlockCheckMode::Default;
                 }
 

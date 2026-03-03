@@ -41,9 +41,9 @@ fn main() {
     };
 
     unsafe {
-        // Contains a comment but no body. In theory we'd like to preserve this,
-        // but it's hard to detect the comment since it doesn't have an AST node
-        // it's attached to. For now we allow this to be deleted.
+        // Contains a comment but no body. We have to keep leave the block the
+        // same, because attempting to change it causes us to delete the
+        // comment.
     }
 
     unsafe {
