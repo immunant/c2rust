@@ -39,7 +39,7 @@ pub struct vastruct<'a> {
 #[no_mangle]
 pub unsafe extern "C" fn call_printf() {
     printf(
-        b"%d, %f\n\0" as *const u8 as *const ::core::ffi::c_char,
+        b"%d, %f\n\0".as_ptr() as *const ::core::ffi::c_char,
         10 as ::core::ffi::c_int,
         1.5f64,
     );
@@ -72,19 +72,19 @@ pub unsafe extern "C" fn my_printf(mut fmt: *const ::core::ffi::c_char, mut c2ru
                     match *fmt as ::core::ffi::c_int {
                         105 | 100 => {
                             printf(
-                                b"%d\0" as *const u8 as *const ::core::ffi::c_char,
+                                b"%d\0".as_ptr() as *const ::core::ffi::c_char,
                                 ap.arg::<::core::ffi::c_int>(),
                             );
                         }
                         102 => {
                             printf(
-                                b"%f\0" as *const u8 as *const ::core::ffi::c_char,
+                                b"%f\0".as_ptr() as *const ::core::ffi::c_char,
                                 ap.arg::<::core::ffi::c_double>(),
                             );
                         }
                         115 => {
                             printf(
-                                b"%s\0" as *const u8 as *const ::core::ffi::c_char,
+                                b"%s\0".as_ptr() as *const ::core::ffi::c_char,
                                 ap.arg::<*mut ::core::ffi::c_char>(),
                             );
                         }
@@ -153,7 +153,7 @@ pub unsafe extern "C" fn restart_valist(mut fmt: *const ::core::ffi::c_char, mut
 #[no_mangle]
 pub unsafe extern "C" fn print_int(mut ap: *mut ::core::ffi::VaListImpl) {
     printf(
-        b"%d\0" as *const u8 as *const ::core::ffi::c_char,
+        b"%d\0".as_ptr() as *const ::core::ffi::c_char,
         (*ap).arg::<::core::ffi::c_int>(),
     );
 }

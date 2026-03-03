@@ -37,9 +37,9 @@ pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
         if called_only_once() != 0 {
         } else {
             __assert_fail(
-                b"called_only_once()\0" as *const u8 as *const ::core::ffi::c_char,
+                b"called_only_once()\0".as_ptr() as *const ::core::ffi::c_char,
                 b"./tests/snapshots/os-specific/call_only_once.c\0"
-                    as *const u8 as *const ::core::ffi::c_char,
+                    .as_ptr() as *const ::core::ffi::c_char,
                 12 as ::core::ffi::c_uint,
                 __ASSERT_FUNCTION.as_ptr(),
             );

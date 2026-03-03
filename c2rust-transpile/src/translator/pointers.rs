@@ -131,7 +131,7 @@ impl<'c> Translation<'c> {
         ) = (arg_expr_kind, arg_is_macro)
         {
             if is_array_decay {
-                ref_cast_pointee_ty = Some(mk().ident_ty("u8"));
+                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
             } else {
                 let size = self.ast_context.array_len(literal_cty.ctype) * element_size as usize;
                 ref_cast_pointee_ty =
