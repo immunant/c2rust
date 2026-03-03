@@ -293,7 +293,7 @@ impl Transform for ToMethod {
 /// - The block is unlabeled.
 /// - There are no comments on the block.
 /// - There are no values in the block that require drop.
-/// - The block doesn't have a tail expression (for statement-position blocks).
+/// - The block is used as an expression and consists of only a tail expression.
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
