@@ -93,8 +93,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update the Rust in-place",
     )
 
-    # TODO: add option to select model
-    # TODO: add option to configure cache
     # TODO: add option to select what transforms to apply
 
     return parser
