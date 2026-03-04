@@ -445,8 +445,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
                 let crate_file = crate_file.as_deref();
                 reorganize_definitions(&tcfg, &build_dir, crate_file)
                     .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
-                run_postprocess(&tcfg, &build_dir, crate_file)
-                    .unwrap_or_else(|e| warn!("postprocess failed: {e}"));
+                run_postprocess(&tcfg, &build_dir, crate_file).unwrap_or_else(|e| warn!("{e}"));
                 workspace_members.push(lcmd_name);
             }
         }
@@ -463,8 +462,7 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
         let crate_file = crate_file.as_deref();
         reorganize_definitions(&tcfg, &build_dir, crate_file)
             .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
-        run_postprocess(&tcfg, &build_dir, crate_file)
-            .unwrap_or_else(|e| warn!("postprocess failed: {e}"));
+        run_postprocess(&tcfg, &build_dir, crate_file).unwrap_or_else(|e| warn!("{e}"));
     }
 
     tcfg.check_if_all_binaries_used(&transpiled_modules);
@@ -617,7 +615,7 @@ fn invoke_postprocess(crate_file: &Path, build_dir: &Path) -> Result<(), Error> 
         })?;
 
     if !status.success() {
-        Err(format_err!("postprocessing failed: {cmd:?}"))?;
+        Err(format_err!("postprocess failed: {cmd:?}"))?;
     }
 
     Ok(())
