@@ -445,7 +445,7 @@ impl Transform for FixUnusedUnsafe {
             }
 
             fn visit_block(&mut self, b: &mut P<Block>) {
-                if self.is_unused_unsafe_block(b) && !self.has_dangling_inner_comment(b) {
+                if self.is_unused_unsafe_block(b) {
                     b.rules = BlockCheckMode::Default;
                 }
 

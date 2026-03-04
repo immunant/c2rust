@@ -35,7 +35,7 @@ use std::rc::Rc;
 
 use crate::ast_manip::util::extend_span_attrs;
 use crate::ast_manip::NodeTable;
-use crate::ast_manip::{AstDeref, GetSpan, MaybeGetNodeId};
+use crate::ast_manip::{AstDeref, AstEquiv, GetSpan, MaybeGetNodeId};
 use crate::driver;
 use crate::rewrite::base::{binop_left_prec, binop_right_prec};
 use crate::rewrite::base::{
@@ -704,6 +704,38 @@ where
     T: PrintParse + RecoverChildren + Splice + MaybeGetNodeId,
 {
     default fn rewrite_at(&self, old_span: Span, rcx: RewriteCtxtRef) -> bool {
+        rewrite_at_impl(old_span, self, rcx)
+    }
+}
+
+impl RewriteAt for Block {
+    fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
+        let old_id = rcx.new_to_old_id(self.get_node_id());
+        let old = match rcx.old_nodes().blocks.get(old_id) {
+            Some(old) => old,
+            None => return rewrite_at_impl(old_span, self, rcx),
+        };
+
+        // If this block changed only by removing an `unsafe` keyword, rewrite that token in-place.
+        // This preserves any interior comments that may not be attached to AST nodes.
+        if matches!(old.rules, BlockCheckMode::Unsafe(UnsafeSource::UserProvided))
+            && matches!(self.rules, BlockCheckMode::Default)
+            && old.stmts.ast_equiv(&self.stmts)
+            && old.span == self.span
+            && rcx
+                .comments()
+                .contains_dangling_comment(old_span)
+        {
+            if let Ok(src) = rcx.session().source_map().span_to_snippet(old_span) {
+                let trimmed = src.trim_start();
+                if let Some(rest) = trimmed.strip_prefix("unsafe") {
+                    let rest = rest.trim_start();
+                    rcx.record_text(old_span, rest);
+                    return true;
+                }
+            }
+        }
+
         rewrite_at_impl(old_span, self, rcx)
     }
 }

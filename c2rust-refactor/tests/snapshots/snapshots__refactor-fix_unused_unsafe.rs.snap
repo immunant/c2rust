@@ -42,13 +42,13 @@ fn main() {
         5 + 5
     };
 
-    unsafe {
+    {
         // Contains a comment but no body. We have to keep leave the block the
         // same, because attempting to change it causes us to delete the
         // comment.
     }
 
-    unsafe {
+    {
         // Inner statement with a trailing comment, make sure we don't modify
         // the block in a way that deletes the comment.
         let _ = ();
