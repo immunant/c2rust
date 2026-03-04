@@ -55,3 +55,6 @@ features = ["libc-hash", "fixed-length-array-hash"]
 version = "*"
 {{~/if}}
 {{~/if}}
+
+[profile.release]
+strip = "debuginfo"
