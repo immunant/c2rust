@@ -61,7 +61,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--model-id",
+        "--llm-model",
         type=str,
         required=False,
         default="gemini-3-flash-preview",
@@ -131,7 +131,7 @@ def main(argv: Sequence[str] | None = None):
         if not args.update_cache:
             cache = FrozenCache(cache)
 
-        model = get_model(args.model_id)
+        model = get_model(args.llm_model)
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
