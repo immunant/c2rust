@@ -65,7 +65,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         required=False,
         default="gemini-3-flash-preview",
-        help="ID of the LLM model to use (default: gemini-3-pro-preview)",
+        help="ID of the LLM model to use (default: gemini-3-flash-preview)",
     )
 
     parser.add_argument(
