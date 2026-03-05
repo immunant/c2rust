@@ -306,7 +306,10 @@ fn test_fix_unused_unsafe() {
 
 #[test]
 fn test_fix_unused_unsafe_compile_error() {
-    test_refactor_named("fix_unused_unsafe", "fix_unused_unsafe_compile_error.rs");
+    refactor("fix_unused_unsafe")
+        .named("fix_unused_unsafe_compile_error.rs")
+        .expect_compile_error(true)
+        .test();
 }
 
 #[test]
