@@ -324,131 +324,6 @@ impl Transform for FixUnusedUnsafe {
         let comment_map =
             collect_comments(krate, cx.session().source_map(), &cx.session().parse_sess);
 
-        struct FixUnusedUnsafeFolder<'a, 'tcx> {
-            cx: &'a RefactorCtxt<'a, 'tcx>,
-            comment_map: &'a CommentMap,
-        }
-
-        impl<'a, 'tcx> FixUnusedUnsafeFolder<'a, 'tcx> {
-            fn is_unused_unsafe_block(&self, b: &Block) -> bool {
-                let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules else {
-                    return false;
-                };
-
-                let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
-                let parent = self.cx.hir_map().get_parent_item(hir_id);
-                let result = self.cx.ty_ctxt().unsafety_check_result(parent);
-                result
-                    .unused_unsafes
-                    .as_deref()
-                    .unwrap_or_default()
-                    .iter()
-                    .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
-            }
-        }
-
-        impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
-            fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
-                'noop: {
-                    let (StmtKind::Expr(expr) | StmtKind::Semi(expr)) = &mut stmt.kind else {
-                        break 'noop;
-                    };
-
-                    let expr_id = expr.id;
-                    let ExprKind::Block(block, None) = &mut expr.kind else {
-                        break 'noop;
-                    };
-
-                    if !self.is_unused_unsafe_block(block) {
-                        break 'noop;
-                    }
-
-                    let block_id = block.id;
-                    let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
-                    let parent = self.cx.hir_map().get_parent_item(hir_id);
-                    let param_env = self.cx.ty_ctxt().param_env(parent);
-
-                    let has_comments = [stmt.id, expr_id, block_id].iter().any(|id| {
-                        self.comment_map
-                            .get(id)
-                            .map_or(false, |comments| !comments.is_empty())
-                    });
-
-                    let has_drop = block.stmts.iter().any(|stmt| match stmt.kind {
-                        StmtKind::Local(ref local) => {
-                            let ty = self
-                                .cx
-                                .opt_node_type(local.id)
-                                .or_else(|| self.cx.opt_node_type(local.pat.id));
-                            ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
-                        }
-                        _ => false,
-                    });
-
-                    // Remove the block if there's nothing preventing us from doing so.
-                    if !has_comments && !has_drop {
-                        let mut stmts = mem::take(&mut block.stmts);
-
-                        // If the block has a tail expr, turn it into a statement. This is valid
-                        // because this is a block statement, which means that the tail expr isn't
-                        // being used as part of an expression and so can (and must be) turned into
-                        // a statement.
-                        if let Some(last) = stmts.last_mut()
-                            && let StmtKind::Expr(expr) = &last.kind {
-                            last.kind = StmtKind::Semi(expr.clone());
-                        }
-
-                        return SmallVec::from_vec(stmts);
-                    }
-                }
-
-                mut_visit::noop_flat_map_stmt(stmt, self)
-            }
-
-            fn visit_expr(&mut self, expr: &mut P<Expr>) {
-                'noop: {
-                    // We only want to touch unsafe block exprs where the unsafe is unused.
-                    let ExprKind::Block(block, None) = &mut expr.kind else {
-                        break 'noop;
-                    };
-                    if !self.is_unused_unsafe_block(block) {
-                        break 'noop;
-                    }
-
-                    // We only remove the block if it consists of a single tail expr.
-                    let [stmt] = &block.stmts[..] else {
-                        break 'noop;
-                    };
-
-                    // We don't want to remove the block if our tail expr has a comment on it, since
-                    // doing so would delete the comment.
-                    let has_comments = self
-                        .comment_map
-                        .get(&stmt.id)
-                        .map_or(false, |comments| !comments.is_empty());
-                    if has_comments {
-                        break 'noop;
-                    }
-
-                    let StmtKind::Expr(inner) = &stmt.kind else {
-                        break 'noop;
-                    };
-
-                    *expr = inner.clone();
-                }
-
-                mut_visit::noop_visit_expr(expr, self)
-            }
-
-            fn visit_block(&mut self, b: &mut P<Block>) {
-                if self.is_unused_unsafe_block(b) {
-                    b.rules = BlockCheckMode::Default;
-                }
-
-                mut_visit::noop_visit_block(b, self)
-            }
-        }
-
         krate.visit(&mut FixUnusedUnsafeFolder {
             cx,
             comment_map: &comment_map,
@@ -457,6 +332,130 @@ impl Transform for FixUnusedUnsafe {
 
     fn min_phase(&self) -> Phase {
         Phase::Phase3
+    }
+}
+
+struct FixUnusedUnsafeFolder<'a, 'tcx> {
+    cx: &'a RefactorCtxt<'a, 'tcx>,
+    comment_map: &'a CommentMap,
+}
+
+impl<'a, 'tcx> FixUnusedUnsafeFolder<'a, 'tcx> {
+    fn is_unused_unsafe_block(&self, b: &Block) -> bool {
+        let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules else {
+            return false;
+        };
+
+        let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
+        let parent = self.cx.hir_map().get_parent_item(hir_id);
+        let result = self.cx.ty_ctxt().unsafety_check_result(parent);
+        result
+            .unused_unsafes
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
+    }
+}
+
+impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
+    fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
+        'noop: {
+            let (StmtKind::Expr(expr) | StmtKind::Semi(expr)) = &mut stmt.kind else {
+                break 'noop;
+            };
+
+            let expr_id = expr.id;
+            let ExprKind::Block(block, None) = &mut expr.kind else {
+                break 'noop;
+            };
+
+            if !self.is_unused_unsafe_block(block) {
+                break 'noop;
+            }
+
+            let block_id = block.id;
+            let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
+            let parent = self.cx.hir_map().get_parent_item(hir_id);
+            let param_env = self.cx.ty_ctxt().param_env(parent);
+
+            let has_comments = [stmt.id, expr_id, block_id].iter().any(|id| {
+                self.comment_map
+                    .get(id)
+                    .map_or(false, |comments| !comments.is_empty())
+            });
+
+            let has_drop = block.stmts.iter().any(|stmt| match stmt.kind {
+                StmtKind::Local(ref local) => {
+                    let ty = self
+                        .cx
+                        .opt_node_type(local.id)
+                        .or_else(|| self.cx.opt_node_type(local.pat.id));
+                    ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
+                }
+                _ => false,
+            });
+
+            // Remove the block if there's nothing preventing us from doing so.
+            if !has_comments && !has_drop {
+                let mut stmts = mem::take(&mut block.stmts);
+
+                // If the block has a tail expr, turn it into a statement. This is valid
+                // because this is a block statement, which means that the tail expr isn't
+                // being used as part of an expression and so can (and must be) turned into
+                // a statement.
+                if let Some(last) = stmts.last_mut() && let StmtKind::Expr(expr) = &last.kind {
+                    last.kind = StmtKind::Semi(expr.clone());
+                }
+
+                return SmallVec::from_vec(stmts);
+            }
+        }
+
+        mut_visit::noop_flat_map_stmt(stmt, self)
+    }
+
+    fn visit_expr(&mut self, expr: &mut P<Expr>) {
+        'noop: {
+            // We only want to touch unsafe block exprs where the unsafe is unused.
+            let ExprKind::Block(block, None) = &mut expr.kind else {
+                break 'noop;
+            };
+            if !self.is_unused_unsafe_block(block) {
+                break 'noop;
+            }
+
+            // We only remove the block if it consists of a single tail expr.
+            let [stmt] = &block.stmts[..] else {
+                break 'noop;
+            };
+
+            // We don't want to remove the block if our tail expr has a comment on it, since
+            // doing so would delete the comment.
+            let has_comments = self
+                .comment_map
+                .get(&stmt.id)
+                .map_or(false, |comments| !comments.is_empty());
+            if has_comments {
+                break 'noop;
+            }
+
+            let StmtKind::Expr(inner) = &stmt.kind else {
+                break 'noop;
+            };
+
+            *expr = inner.clone();
+        }
+
+        mut_visit::noop_visit_expr(expr, self)
+    }
+
+    fn visit_block(&mut self, b: &mut P<Block>) {
+        if self.is_unused_unsafe_block(b) {
+            b.rules = BlockCheckMode::Default;
+        }
+
+        mut_visit::noop_visit_block(b, self)
     }
 }
 
