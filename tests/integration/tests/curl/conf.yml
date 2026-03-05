@@ -12,7 +12,7 @@ requirements:
 
 transpile:
   autogen: true
-  # tflags: --reorganize-definitions
+  # tflags: --emit-refactor-annotations
   binary: tool_main
 
 cargo.transpile:

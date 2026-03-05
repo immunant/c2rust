@@ -39,7 +39,7 @@ use super::externs;
 /// Usage: `reorganize_definitions`
 ///
 /// This refactoring operates on code transpiled with the
-/// `--reorganize-definitions` flag.
+/// `--emit-refactor-annotations` flag.
 ///
 /// This pass refactors a crate to de-duplicate declarations, move them into
 /// their relevant modules and import the items as needed, rather than using

@@ -811,7 +811,7 @@ pub fn translate(
         {
             let export_type = |decl_id: CDeclId, decl: &CDecl| {
                 let decl_file_id = t.ast_context.file_id(decl);
-                if t.tcfg.reorganize_definitions {
+                if t.tcfg.emit_refactor_annotations {
                     t.cur_file.set(decl_file_id);
                 }
                 match t.convert_decl(ctx, decl_id) {
@@ -840,7 +840,7 @@ pub fn translate(
                 }
                 t.cur_file.take();
 
-                if t.tcfg.reorganize_definitions
+                if t.tcfg.emit_refactor_annotations
                     && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
                     let name = t
@@ -899,7 +899,7 @@ pub fn translate(
                 let decl = t.ast_context.get_decl(&top_id).unwrap();
                 let decl_file_id = t.ast_context.file_id(decl);
 
-                if t.tcfg.reorganize_definitions
+                if t.tcfg.emit_refactor_annotations
                     && decl_file_id.map_or(false, |id| id != t.main_file)
                 {
                     t.cur_file.set(decl_file_id);
@@ -961,7 +961,9 @@ pub fn translate(
                 NoItem => {}
             };
 
-            if t.tcfg.reorganize_definitions && decl_file_id.map_or(false, |id| id != t.main_file) {
+            if t.tcfg.emit_refactor_annotations
+                && decl_file_id.map_or(false, |id| id != t.main_file)
+            {
                 log::debug!("emitting any imports needed by {:?}", decl.kind.get_name());
                 t.generate_submodule_imports(*top_id, decl_file_id);
             }
@@ -995,7 +997,7 @@ pub fn translate(
         // Header Reorganization: Submodule Item Stores
         for (file_id, ref mut mod_item_store) in t.items.borrow_mut().iter_mut() {
             if *file_id != t.main_file {
-                if tcfg.reorganize_definitions {
+                if tcfg.emit_refactor_annotations {
                     t.use_feature("register_tool");
                 }
                 let mut submodule = make_submodule(
@@ -1004,7 +1006,7 @@ pub fn translate(
                     *file_id,
                     &mut new_uses,
                     &t.mod_names,
-                    tcfg.reorganize_definitions,
+                    tcfg.emit_refactor_annotations,
                 );
                 let comments = t.comment_context.get_remaining_comments(*file_id);
                 submodule.set_span(match t.comment_store.borrow_mut().add_comments(&comments) {
@@ -2124,7 +2126,7 @@ impl<'c> Translation<'c> {
                     .set_mutbl(mutbl);
 
                 // When putting extern statics into submodules, they need to be public to be accessible
-                if self.tcfg.reorganize_definitions {
+                if self.tcfg.emit_refactor_annotations {
                     extern_item = extern_item.pub_();
                 };
 
@@ -2606,7 +2608,7 @@ impl<'c> Translation<'c> {
                 let mut mk_ = mk_linkage(true, new_name, name).span(span);
 
                 // When putting extern fns into submodules, they need to be public to be accessible
-                if self.tcfg.reorganize_definitions {
+                if self.tcfg.emit_refactor_annotations {
                     mk_ = mk_.pub_();
                 };
 
@@ -3566,7 +3568,7 @@ impl<'c> Translation<'c> {
                     .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
 
                 // Import the referenced global decl into our submodule
-                if self.tcfg.reorganize_definitions {
+                if self.tcfg.emit_refactor_annotations {
                     self.add_import(decl_id, &rustname);
                     // match decl {
                     //     CDeclKind::Variable { is_defn: false, .. } => {}
@@ -5073,7 +5075,7 @@ impl<'c> Translation<'c> {
     fn insert_item(&self, mut item: Box<Item>, decl: &CDecl) {
         let decl_file_id = self.ast_context.file_id(decl);
 
-        if self.tcfg.reorganize_definitions {
+        if self.tcfg.emit_refactor_annotations {
             self.use_feature("register_tool");
             let attrs = item_attrs(&mut item).expect("no attrs field on unexpected item variant");
             add_src_loc_attr(attrs, &decl.loc.as_ref().map(|x| x.begin()));
@@ -5091,7 +5093,7 @@ impl<'c> Translation<'c> {
     fn insert_foreign_item(&self, mut item: ForeignItem, decl: &CDecl) {
         let decl_file_id = self.ast_context.file_id(decl);
 
-        if self.tcfg.reorganize_definitions {
+        if self.tcfg.emit_refactor_annotations {
             self.use_feature("register_tool");
             let attrs = foreign_item_attrs(&mut item)
                 .expect("no attrs field on unexpected foreign item variant");

@@ -40,8 +40,8 @@ pub fn test_sectioned_used_static() {
 
         let mut lines = src.lines().collect::<Vec<_>>();
 
-        // Remove the c2rust::src_loc annotation, which is only produced if
-        // --reorganize-definitions is enabled.
+        // Remove the `c2rust::src_loc` annotation, which is only produced if
+        // `--emit-refactor-annotations` is enabled.
         lines.retain(|x| !x.contains("#[c2rust::src_loc"));
         let src = lines.join("\n");
 
@@ -65,7 +65,7 @@ pub static mut rust_initialized_extern: ::core::ffi::c_int = 1 as ::core::ffi::c
 "#
             .trim(),
         ));
-        // This static is pub only with --reorganize-definitions
+        // This static is pub only with `--emit-refactor-annotations`.
         let aliased_static_syntax = |public| {
             format!(
                 r#"
