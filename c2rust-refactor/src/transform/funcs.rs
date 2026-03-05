@@ -1,20 +1,19 @@
 use log::{info, warn};
-use std::collections::{HashMap, HashSet};
-use std::mem;
-use rustc_hir::def_id::DefId;
-use rustc_type_ir::sty::TyKind;
 use rustc_ast::ast;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
+use rustc_hir::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::{sym, DUMMY_SP};
+use rustc_type_ir::sty::TyKind;
 use smallvec::{smallvec, SmallVec};
+use std::collections::{HashMap, HashSet};
+use std::mem;
 
 use crate::ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::{
-    collect_comments, CommentMap, FlatMapNodes, MutVisitNodes, MutVisit, fold_modules,
-    visit_nodes,
+    collect_comments, fold_modules, visit_nodes, CommentMap, FlatMapNodes, MutVisit, MutVisitNodes,
 };
 use crate::command::{CommandState, Registry};
 use crate::driver::{parse_expr, Phase};
@@ -322,11 +321,8 @@ impl Transform for FixUnusedUnsafe {
             return;
         }
 
-        let comment_map = collect_comments(
-            krate,
-            cx.session().source_map(),
-            &cx.session().parse_sess,
-        );
+        let comment_map =
+            collect_comments(krate, cx.session().source_map(), &cx.session().parse_sess);
 
         struct FixUnusedUnsafeFolder<'a, 'tcx> {
             cx: &'a RefactorCtxt<'a, 'tcx>,
@@ -389,7 +385,7 @@ impl Transform for FixUnusedUnsafe {
                         _ => false,
                     });
 
-                    // Remove the block if there's nothing preventing us from doing so. 
+                    // Remove the block if there's nothing preventing us from doing so.
                     if !has_comments && !has_drop {
                         let mut stmts = mem::take(&mut block.stmts);
 
@@ -453,7 +449,10 @@ impl Transform for FixUnusedUnsafe {
             }
         }
 
-        krate.visit(&mut FixUnusedUnsafeFolder { cx, comment_map: &comment_map });
+        krate.visit(&mut FixUnusedUnsafeFolder {
+            cx,
+            comment_map: &comment_map,
+        });
     }
 
     fn min_phase(&self) -> Phase {
