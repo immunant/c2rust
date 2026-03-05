@@ -223,7 +223,7 @@ normal Rust modules.
 They will export and import functions through the C API.
 These modules can be compiled together into a single static Rust library or binary.
 
-You can run with `--reorganize-definitions` (which invokes `c2rust-refactor`),
+You can run with `--refactor`,
 which should deduplicate definitions and directly import them
 with `use`s instead of through the C API.
 

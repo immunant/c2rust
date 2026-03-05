@@ -475,7 +475,7 @@ def transpile(cc_db_path: str,
               use_fakechecks: bool = False,
               cross_check_config: List[str] = [],
               incremental_relooper: bool = True,
-              reorganize_definitions: bool = False) -> bool:
+              refactor: bool = False) -> bool:
     """
     run the transpiler on all C files in a compile commands database.
     """
@@ -502,8 +502,8 @@ def transpile(cc_db_path: str,
             args.append(ccc)
     if not incremental_relooper:
         args.append('--no-incremental-relooper')
-    if reorganize_definitions:
-        args.append('--reorganize-definitions')
+    if refactor:
+        args.append('--refactor')
     if filter:
         args.append('--filter')
         args.append(filter)
