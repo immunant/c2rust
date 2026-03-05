@@ -408,8 +408,9 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
                 // because this is a block statement, which means that the tail expr isn't
                 // being used as part of an expression and so can (and must be) turned into
                 // a statement.
-                if let Some(last) = stmts.last_mut() && let StmtKind::Expr(expr) = &last.kind {
-                    last.kind = StmtKind::Semi(expr.clone());
+                if let Some(last) = stmts.last_mut() && let StmtKind::Expr(expr) = &mut last.kind {
+                    let expr = std::mem::replace(expr, mk().tuple_expr(Vec::<P<Expr>>::new()));
+                    last.kind = StmtKind::Semi(expr);
                 }
 
                 return SmallVec::from_vec(stmts);
@@ -430,7 +431,7 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             }
 
             // We only remove the block if it consists of a single tail expr.
-            let [stmt] = &block.stmts[..] else {
+            let [stmt] = &mut block.stmts[..] else {
                 break 'noop;
             };
 
@@ -444,11 +445,11 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
                 break 'noop;
             }
 
-            let StmtKind::Expr(inner) = &stmt.kind else {
+            let StmtKind::Expr(inner) = &mut stmt.kind else {
                 break 'noop;
             };
 
-            *expr = inner.clone();
+            *expr = std::mem::replace(inner, mk().tuple_expr(Vec::<P<Expr>>::new()));
         }
 
         mut_visit::noop_visit_expr(expr, self)
