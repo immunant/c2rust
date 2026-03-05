@@ -17,11 +17,11 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
-use rustc_ast::MacCall;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
+use rustc_ast::MacCall;
 use rustc_ast::{
     Expr, ExprKind, Item, ItemKind, Label, MacArgs, Pat, PatKind, Path, Stmt, StmtKind, Ty, TyKind,
 };
@@ -29,14 +29,14 @@ use rustc_ast_pretty::pprust;
 use rustc_data_structures::sync::Lrc;
 use rustc_parse::parser::{ForceCollect, Parser};
 use rustc_span::symbol::Ident;
-use smallvec::SmallVec;
 use smallvec::smallvec;
+use smallvec::SmallVec;
 
-use crate::RefactorCtxt;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};
 use crate::command::CommandState;
 use crate::matcher::{BindingValue, Bindings};
+use crate::RefactorCtxt;
 
 // `st` and `cx` were previously used for `def!` substitution, which has been removed.  I expect
 // they'll be needed again for future subst extensions, so I've left them in to reduce API churn.
