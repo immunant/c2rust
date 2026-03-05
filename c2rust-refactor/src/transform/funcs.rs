@@ -305,7 +305,11 @@ impl Transform for ToMethod {
 /// - The block is unlabeled.
 /// - There are no comments on the block.
 /// - There are no values in the block that require drop.
-/// - The block is used as an expression and consists of only a tail expression.
+/// - And either:
+///   - The block is used as a statement, in which case its inner statements are
+///     lifted into the surrounding block (possibly multiple statements).
+///   - The block is used as an expression and consists only of a tail expression,
+///     in which case the block is replaced by that expression.
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
