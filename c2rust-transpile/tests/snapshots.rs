@@ -452,7 +452,7 @@ fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
     compile_and_transpile_file(c_path, config(Default::default()));
 
     let c_decls_path = c_path.with_extension("c_decls.json");
-    let snapshot_name = format!("c_decls-{}", c_path.file_name().unwrap().to_str().unwrap());
+    let snapshot_name = format!("c_decls@{}", c_path.file_name().unwrap().to_str().unwrap());
     let debug_expr = format!("cat {}", c_decls_path.display());
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&c_decls_path).unwrap()).unwrap();
