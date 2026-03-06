@@ -416,8 +416,8 @@ impl<'c> Translation<'c> {
                 let fn_name = "__yield";
                 self.use_feature("stdsimd");
                 // TODO See #1298.
-                // In Rust 1.7, `#![feature(stdsimd)]` was removed and split into (at least):
-                // `#![feature("stdarch_arm_hints")]` and
+                // In Rust 1.78, `#![feature(stdsimd)]` was removed and split into (at least):
+                // `#![feature(stdarch_arm_hints)]` and
                 // `#![cfg_attr(target_arch = "arm", feature(stdarch_arm_neon_intrinsics))]`.
                 // self.use_feature("stdarch_arm_hints");
                 // self.use_feature("stdarch_arm_neon_intrinsics"); // TODO need to add `cfg_attr` support.
