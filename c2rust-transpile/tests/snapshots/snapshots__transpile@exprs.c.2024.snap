@@ -10,7 +10,7 @@ expression: cat tests/snapshots/exprs.2024.rs
     unused_assignments,
     unused_mut
 )]
-#![feature(label_break_value, raw_ref_op)]
+#![feature(label_break_value)]
 unsafe extern "C" {
     fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }

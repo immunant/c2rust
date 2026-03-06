@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/wide_strings.2024.linux.rs
     unused_assignments,
     unused_mut
 )]
-#![feature(raw_ref_op)]
 unsafe extern "C" {
     fn wcslen(__s: *const wchar_t) -> ::core::ffi::c_ulong;
 }

@@ -10,7 +10,7 @@ expression: cat tests/snapshots/arch-os-specific/varargs.2024.x86_64.linux.rs
     unused_assignments,
     unused_mut
 )]
-#![feature(c_variadic, raw_ref_op)]
+#![feature(c_variadic)]
 unsafe extern "C" {
     fn printf(__format: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
     fn vprintf(

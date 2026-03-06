@@ -2,6 +2,7 @@ use std::ops::Index;
 
 use c2rust_ast_builder::{mk, properties::Mutability};
 use c2rust_ast_exporter::clang_ast::LRValue;
+use c2rust_rust_tools::RustEdition;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
@@ -175,7 +176,9 @@ impl<'c> Translation<'c> {
                 }
             }
         } else {
-            self.use_feature("raw_ref_op");
+            if self.tcfg.edition < RustEdition::Rust2024 {
+                self.use_feature("raw_ref_op");
+            }
             val = val.map(|val| mk().set_mutbl(mutbl).raw_borrow_expr(val));
 
             if is_array_decay {

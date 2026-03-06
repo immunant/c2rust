@@ -10,7 +10,7 @@ expression: cat tests/snapshots/arch-specific/vm_x86.2024.x86_64.rs
     unused_assignments,
     unused_mut
 )]
-#![feature(asm, raw_ref_op)]
+#![feature(asm)]
 use ::core::arch::asm;
 #[derive(Copy, Clone)]
 #[repr(C)]
