@@ -164,7 +164,7 @@ struct TranspileTest<'a> {
 fn transpile(c_file_name: &str) -> TranspileTest {
     TranspileTest {
         c_file_name,
-        edition: Default::default(),
+        edition: RustEdition::Rust2024,
         arch_specific: false,
         os_specific: false,
         expect_compile_error: false,
@@ -281,211 +281,162 @@ fn generate_keywords_test() {
 
 #[test]
 fn test_alloca() {
-    transpile("alloca.c").edition(RustEdition::Rust2024).run();
+    transpile("alloca.c").run();
 }
 
 #[test]
 fn test_arrays() {
-    transpile("arrays.c").edition(RustEdition::Rust2024).run();
+    transpile("arrays.c").run();
 }
 
 #[test]
 fn test_atomics() {
-    transpile("atomics.c").run();
+    transpile("atomics.c").edition(RustEdition::Rust2021).run();
 }
 
 #[test]
 fn test_compound_literals() {
-    transpile("compound_literals.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("compound_literals.c").run();
 }
 
 #[test]
 fn test_empty_init() {
-    transpile("empty_init.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("empty_init.c").run();
 }
 
 #[test]
 fn test_exprs() {
-    transpile("exprs.c").edition(RustEdition::Rust2024).run();
+    transpile("exprs.c").run();
 }
 
 #[test]
 fn test_factorial() {
-    transpile("factorial.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("factorial.c").run();
 }
 
 #[test]
 fn test_gotos() {
-    transpile("gotos.c").edition(RustEdition::Rust2024).run();
+    transpile("gotos.c").run();
 }
 
 #[test]
 fn test_incomplete_arrays() {
-    transpile("incomplete_arrays.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("incomplete_arrays.c").run();
 }
 
 #[test]
 fn test_insertion() {
-    transpile("insertion.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("insertion.c").run();
 }
 
 #[test]
 fn test_keywords() {
     generate_keywords_test();
-    transpile("keywords.c").run();
+    transpile("keywords.c").edition(RustEdition::Rust2021).run();
 }
 
 #[test]
 fn test_macrocase() {
-    transpile("macrocase.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("macrocase.c").run();
 }
 
 #[test]
 fn test_macros() {
-    transpile("macros.c").edition(RustEdition::Rust2024).run();
+    transpile("macros.c").run();
 }
 
 #[test]
 fn test_main_fn() {
-    transpile("main_fn.c").edition(RustEdition::Rust2024).run();
+    transpile("main_fn.c").run();
 }
 
 #[test]
 fn test_predefined() {
-    transpile("predefined.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("predefined.c").run();
 }
 
 #[test]
 fn test_records() {
-    transpile("records.c").edition(RustEdition::Rust2024).run();
+    transpile("records.c").run();
 }
 
 #[test]
 fn test_ref_ub() {
-    transpile("ref_ub.c").edition(RustEdition::Rust2024).run();
+    transpile("ref_ub.c").run();
 }
 
 #[test]
 fn test_rotate() {
-    transpile("rotate.c").edition(RustEdition::Rust2024).run();
+    transpile("rotate.c").run();
 }
 
 #[test]
 fn test_static_assert() {
-    transpile("static_assert.c")
-        .edition(RustEdition::Rust2024)
-        .run();
+    transpile("static_assert.c").run();
 }
 
 #[test]
 fn test_str_init() {
-    transpile("str_init.c").edition(RustEdition::Rust2024).run();
+    transpile("str_init.c").run();
 }
 
 // arch-specific
 
 #[test]
 fn test_spin() {
-    transpile("spin.c")
-        .edition(RustEdition::Rust2024)
-        .arch_specific(true)
-        .run();
+    transpile("spin.c").arch_specific(true).run();
 }
 
 #[test]
 fn test_vm_x86() {
-    transpile("vm_x86.c")
-        .edition(RustEdition::Rust2024)
-        .arch_specific(true)
-        .run();
+    transpile("vm_x86.c").arch_specific(true).run();
 }
 
 // os-specific
 
 #[test]
 fn test_call_only_once() {
-    transpile("call_only_once.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("call_only_once.c").os_specific(true).run();
 }
 
 #[test]
 fn test_macros_os_specific() {
-    transpile("macros.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("macros.c").os_specific(true).run();
 }
 
 #[test]
 fn test_out_of_range_lit() {
-    transpile("out_of_range_lit.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("out_of_range_lit.c").os_specific(true).run();
 }
 
 #[test]
 fn test_rnd() {
-    transpile("rnd.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("rnd.c").os_specific(true).run();
 }
 
 #[test]
 fn test_rotate_os_specific() {
-    transpile("rotate.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("rotate.c").os_specific(true).run();
 }
 
 #[test]
 fn test_sigign() {
-    transpile("sigign.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("sigign.c").os_specific(true).run();
 }
 
 #[test]
 fn test_typedefidx() {
-    transpile("typedefidx.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("typedefidx.c").os_specific(true).run();
 }
 
 #[test]
 fn test_types() {
-    transpile("types.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("types.c").os_specific(true).run();
 }
 
 #[test]
 fn test_wide_strings() {
-    transpile("wide_strings.c")
-        .edition(RustEdition::Rust2024)
-        .os_specific(true)
-        .run();
+    transpile("wide_strings.c").os_specific(true).run();
 }
 
 // arch-os-specific
@@ -493,6 +444,7 @@ fn test_wide_strings() {
 #[test]
 fn test_varargs() {
     transpile("varargs.c")
+        .edition(RustEdition::Rust2021)
         .arch_specific(true)
         .os_specific(true)
         .run();
