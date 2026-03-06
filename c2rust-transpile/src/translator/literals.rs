@@ -145,6 +145,51 @@ impl<'c> Translation<'c> {
         bytes_padded
     }
 
+    /// Convert a C compound literal expression to a Rust expression.
+    pub fn convert_compound_literal(
+        &self,
+        ctx: ExprContext,
+        qty: CQualTypeId,
+        val: CExprId,
+        override_ty: Option<CQualTypeId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if !ctx.needs_address() || ctx.is_const {
+            // consts have their intermediates' lifetimes extended.
+            return self.convert_expr(ctx, val, override_ty);
+        }
+
+        // C compound literals are lvalues, but equivalent Rust expressions generally are not.
+        // So if an address is needed, store it in an intermediate variable first.
+        let fresh_name = self.renamer.borrow_mut().fresh();
+        let fresh_ty = self.convert_type(override_ty.unwrap_or(qty).ctype)?;
+
+        // Translate the expression to be assigned to the fresh variable.
+        // It will be assigned by value, so we don't need its address anymore.
+        let val = self.convert_expr(ctx.set_needs_address(false), val, override_ty)?;
+
+        val.and_then(|val| {
+            let fresh_stmt = {
+                let mutbl = if qty.qualifiers.is_const {
+                    Mutability::Immutable
+                } else {
+                    Mutability::Mutable
+                };
+
+                let local = mk().local(
+                    mk().set_mutbl(mutbl).ident_pat(&fresh_name),
+                    Some(fresh_ty),
+                    Some(val),
+                );
+                mk().local_stmt(Box::new(local))
+            };
+
+            Ok(WithStmts::new(
+                vec![fresh_stmt],
+                mk().ident_expr(fresh_name),
+            ))
+        })
+    }
+
     /// Convert an initialization list into an expression. These initialization lists can be
     /// used as array literals, struct literals, and union literals in code.
     pub fn convert_init_list(
