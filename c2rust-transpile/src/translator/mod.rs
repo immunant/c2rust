@@ -380,6 +380,15 @@ fn extern_block_unsafety(edition: RustEdition) -> Unsafety {
     }
 }
 
+/// Whether attributes can be `unsafe` in this edition.
+fn attr_unsafety(edition: RustEdition) -> Unsafety {
+    if edition >= RustEdition::Rust2024 {
+        Unsafety::Unsafe
+    } else {
+        Unsafety::Normal
+    }
+}
+
 /// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol values.
 fn mk_linkage(
     in_extern_block: bool,
@@ -390,15 +399,15 @@ fn mk_linkage(
     if new_name == old_name {
         if in_extern_block {
             mk() // There is no mangling by default in extern blocks anymore
-        } else if edition >= RustEdition::Rust2024 {
-            mk().call_attr("unsafe", vec!["no_mangle"])
         } else {
-            mk().single_attr("no_mangle") // Don't touch my name Rust!
+            mk().unsafety(attr_unsafety(edition))
+                .single_attr("no_mangle") // Don't touch my name Rust!
         }
     } else if in_extern_block {
         mk().str_attr("link_name", old_name) // Look for this name
     } else {
-        mk().str_attr("export_name", old_name) // Make sure you actually name it this
+        mk().unsafety(attr_unsafety(edition))
+            .str_attr("export_name", old_name) // Make sure you actually name it this
     }
 }
 
@@ -1856,21 +1865,24 @@ impl<'c> Translation<'c> {
                 "cfg_attr",
                 vec![
                     mk().meta_namevalue("target_os", "linux"),
-                    mk().meta_namevalue("link_section", ".init_array"),
+                    mk().unsafety(attr_unsafety(self.tcfg.edition))
+                        .meta_namevalue("link_section", ".init_array"),
                 ],
             )
             .call_attr(
                 "cfg_attr",
                 vec![
                     mk().meta_namevalue("target_os", "windows"),
-                    mk().meta_namevalue("link_section", ".CRT$XIB"),
+                    mk().unsafety(attr_unsafety(self.tcfg.edition))
+                        .meta_namevalue("link_section", ".CRT$XIB"),
                 ],
             )
             .call_attr(
                 "cfg_attr",
                 vec![
                     mk().meta_namevalue("target_os", "macos"),
-                    mk().meta_namevalue("link_section", "__DATA,__mod_init_func"),
+                    mk().unsafety(attr_unsafety(self.tcfg.edition))
+                        .meta_namevalue("link_section", "__DATA,__mod_init_func"),
                 ],
             );
         let static_array_size = mk().lit_expr(mk().int_unsuffixed_lit(1));
@@ -2265,9 +2277,9 @@ impl<'c> Translation<'c> {
                 for attr in attrs {
                     static_def = match attr {
                         c_ast::Attribute::Used => static_def.single_attr("used"),
-                        c_ast::Attribute::Section(name) => {
-                            static_def.str_attr("link_section", name)
-                        }
+                        c_ast::Attribute::Section(name) => static_def
+                            .unsafety(attr_unsafety(self.tcfg.edition))
+                            .str_attr("link_section", name),
                         _ => continue,
                     }
                 }

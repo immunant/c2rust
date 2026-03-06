@@ -354,7 +354,7 @@ fn test_macrocase() {
 
 #[test]
 fn test_macros() {
-    transpile("macros.c").run();
+    transpile("macros.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]

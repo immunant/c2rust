@@ -1,11 +1,11 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
 
-use std::str;
-
 use itertools::intersperse;
 use proc_macro2::{Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 use std::default::Default;
 use std::iter::FromIterator;
+use std::mem;
+use std::str;
 use syn::{__private::ToTokens, punctuated::Punctuated, *};
 
 pub mod properties {
@@ -49,11 +49,12 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     pub enum Unsafety {
         Normal,
         Unsafe,
     }
+
     impl ToToken for Unsafety {
         type Token = Token![unsafe];
         fn to_token(&self) -> Option<Self::Token> {
@@ -513,7 +514,7 @@ impl Builder {
         K: Make<Path>,
         V: Make<Lit>,
     {
-        let meta = mk().meta_namevalue(key, value);
+        let meta = self.clone().meta_namevalue(key, value);
         self.prepared_attr(meta)
     }
 
@@ -521,7 +522,7 @@ impl Builder {
     where
         K: Make<Path>,
     {
-        let meta = mk().meta_path(key);
+        let meta = self.clone().meta_path(key);
         self.prepared_attr(meta)
     }
 
@@ -530,7 +531,7 @@ impl Builder {
         K: Make<Path>,
         V: Make<TokenStream>,
     {
-        let meta = mk().meta_list(func, arguments);
+        let meta = self.clone().meta_list(func, arguments);
         self.prepared_attr(meta)
     }
 
@@ -1951,6 +1952,13 @@ impl Builder {
         }
     }
 
+    pub fn meta(self, meta: Meta) -> Meta {
+        match self.unsafety {
+            Unsafety::Normal => meta,
+            Unsafety::Unsafe => mk().meta_list("unsafe", vec![meta]),
+        }
+    }
+
     /// makes a meta item with just a path
     /// # Examples
     ///
@@ -1960,7 +1968,7 @@ impl Builder {
         Pa: Make<Path>,
     {
         let path = path.make(&self);
-        Meta::Path(path)
+        self.meta(Meta::Path(path))
     }
 
     /// makes a meta item with the given path and some arguments
@@ -1974,18 +1982,19 @@ impl Builder {
     {
         let path = path.make(&self);
         let args = args.make(&self);
-        Meta::List(MetaList {
+        let span = self.span;
+        self.meta(Meta::List(MetaList {
             path,
-            delimiter: MacroDelimiter::Paren(token::Paren(self.span)),
+            delimiter: MacroDelimiter::Paren(token::Paren(span)),
             tokens: args,
-        })
+        }))
     }
 
     /// makes a meta item with key value argument
     /// # Examples
     ///
     /// mk().meta_namevalue("target_os", "linux") // ->  `target_os = "linux"`
-    pub fn meta_namevalue<K, V>(self, key: K, value: V) -> Meta
+    pub fn meta_namevalue<K, V>(mut self, key: K, value: V) -> Meta
     where
         K: Make<Path>,
         V: Make<Lit>,
@@ -1993,15 +2002,15 @@ impl Builder {
         let key = key.make(&self);
         let lit = value.make(&self);
         let value = Expr::Lit(ExprLit {
-            attrs: self.attrs,
+            attrs: mem::take(&mut self.attrs),
             lit,
         });
-
-        Meta::NameValue(MetaNameValue {
+        let span = self.span;
+        self.meta(Meta::NameValue(MetaNameValue {
             path: key,
-            eq_token: Token![=](self.span),
+            eq_token: Token![=](span),
             value,
-        })
+        }))
     }
 
     pub fn empty_mac<Pa>(self, path: Pa, delim: MacroDelimiter) -> Macro

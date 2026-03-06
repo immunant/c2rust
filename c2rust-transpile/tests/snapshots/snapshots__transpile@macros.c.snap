@@ -11,7 +11,7 @@ expression: cat tests/snapshots/macros.rs
     unused_mut
 )]
 #![feature(raw_ref_op)]
-extern "C" {
+unsafe extern "C" {
     fn extern_fn() -> ::core::ffi::c_int;
 }
 pub type uintptr_t = usize;
@@ -60,7 +60,7 @@ pub const PTR_ARITHMETIC: *const ::core::ffi::c_char = unsafe {
 };
 pub const WIDENING_CAST: ::core::ffi::c_ulonglong = LITERAL_INT as ::core::ffi::c_ulonglong;
 pub const CONVERSION_CAST: ::core::ffi::c_double = LITERAL_INT as ::core::ffi::c_double;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn local_muts() {
     let mut literal_int: ::core::ffi::c_int = LITERAL_INT;
     let mut literal_bool: bool = LITERAL_BOOL != 0;
@@ -132,7 +132,7 @@ pub unsafe extern "C" fn local_muts() {
         mixed
     });
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn local_consts() {
     let literal_int: ::core::ffi::c_int = LITERAL_INT;
     let literal_bool: bool = LITERAL_BOOL != 0;
@@ -255,91 +255,91 @@ static mut global_static_const_ref_indexing: *const ::core::ffi::c_char =
 static mut global_static_const_ref_struct: *const S = &LITERAL_STRUCT as *const S as *mut S;
 static mut global_static_const_ternary: ::core::ffi::c_int = 0;
 static mut global_static_const_member: ::core::ffi::c_int = 0;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn global_static_consts() {}
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_int: ::core::ffi::c_int = LITERAL_INT;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_bool: bool = LITERAL_BOOL != 0;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_float: ::core::ffi::c_float =
     LITERAL_FLOAT as ::core::ffi::c_float;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_char: ::core::ffi::c_char = LITERAL_CHAR as ::core::ffi::c_char;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_str_ptr: *const ::core::ffi::c_char = LITERAL_STR.as_ptr();
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_str: [::core::ffi::c_char; 6] = LITERAL_STR;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_array: [::core::ffi::c_int; 3] = [
     1 as ::core::ffi::c_int,
     2 as ::core::ffi::c_int,
     3 as ::core::ffi::c_int,
 ];
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_literal_struct: S = LITERAL_STRUCT;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_int: ::core::ffi::c_int = NESTED_INT;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_bool: bool = NESTED_BOOL != 0;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_float: ::core::ffi::c_float =
     NESTED_FLOAT as ::core::ffi::c_float;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_char: ::core::ffi::c_char = NESTED_CHAR as ::core::ffi::c_char;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_str_ptr: *const ::core::ffi::c_char = NESTED_STR.as_ptr();
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_str: [::core::ffi::c_char; 6] = NESTED_STR;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_array: [::core::ffi::c_int; 3] = [
     1 as ::core::ffi::c_int,
     2 as ::core::ffi::c_int,
     3 as ::core::ffi::c_int,
 ];
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_nested_struct: S = NESTED_STRUCT;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_int_arithmetic: ::core::ffi::c_int =
     NESTED_INT + LITERAL_INT + 1 as ::core::ffi::c_int;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_mixed_arithmetic: ::core::ffi::c_float =
     (LITERAL_INT as ::core::ffi::c_double + NESTED_FLOAT * LITERAL_CHAR as ::core::ffi::c_double
         - true_0 as ::core::ffi::c_double) as ::core::ffi::c_float;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_parens: ::core::ffi::c_int = PARENS;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_ptr_arithmetic: *const ::core::ffi::c_char =
     ::core::ptr::null::<::core::ffi::c_char>();
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_widening_cast: ::core::ffi::c_ulonglong = WIDENING_CAST;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_narrowing_cast: ::core::ffi::c_char =
     LITERAL_INT as ::core::ffi::c_char;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_conversion_cast: ::core::ffi::c_double = CONVERSION_CAST;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_indexing: ::core::ffi::c_char = 0;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_str_concatenation_ptr: *const ::core::ffi::c_char =
     b"hello hello world\0".as_ptr() as *const ::core::ffi::c_char;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_str_concatenation: [::core::ffi::c_char; 18] = unsafe {
     ::core::mem::transmute::<[u8; 18], [::core::ffi::c_char; 18]>(*b"hello hello world\0")
 };
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_builtin: ::core::ffi::c_int =
     (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_ref_indexing: *const ::core::ffi::c_char =
     ::core::ptr::null::<::core::ffi::c_char>();
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_ref_struct: *const S = &LITERAL_STRUCT as *const S as *mut S;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_ternary: ::core::ffi::c_int = 0;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut global_const_member: ::core::ffi::c_int = 0;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_fn_macro(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     return x * x;
 }
@@ -348,7 +348,7 @@ pub const TEST_NESTED: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
 pub const TEST_CONST2: ::core::ffi::c_int = TEST_NESTED;
 pub const TEST_PARENS: ::core::ffi::c_int =
     (TEST_CONST2 + 1 as ::core::ffi::c_int) * 3 as ::core::ffi::c_int;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn reference_define() -> ::core::ffi::c_int {
     let mut x: ::core::ffi::c_int = TEST_CONST1;
     x += TEST_CONST2;
@@ -357,17 +357,17 @@ pub unsafe extern "C" fn reference_define() -> ::core::ffi::c_int {
     }
     return x;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut fns: fn_ptrs = fn_ptrs {
     v: ::core::ptr::null::<::core::ffi::c_void>() as *mut ::core::ffi::c_void,
     fn1: None,
     fn2: None,
 };
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut p: *const fn_ptrs = unsafe { &raw const fns };
 pub const ZSTD_WINDOWLOG_MAX_32: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const ZSTD_WINDOWLOG_MAX_64: ::core::ffi::c_int = 31 as ::core::ffi::c_int;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_zstd() -> U64 {
     return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as usize == 4 as usize {
         ZSTD_WINDOWLOG_MAX_32
@@ -375,7 +375,7 @@ pub unsafe extern "C" fn test_zstd() -> U64 {
         ZSTD_WINDOWLOG_MAX_64
     }) as U64;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn stmt_expr_inc() -> ::core::ffi::c_int {
     let mut a: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     let mut b: *mut ::core::ffi::c_int = &raw mut a;
@@ -388,7 +388,7 @@ pub unsafe extern "C" fn stmt_expr_inc() -> ::core::ffi::c_int {
         *b
     });
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_switch(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     match x {
         TEST_CONST1 => return 10 as ::core::ffi::c_int,
@@ -399,36 +399,36 @@ pub unsafe extern "C" fn test_switch(mut x: ::core::ffi::c_int) -> ::core::ffi::
 }
 pub const silk_int16_MIN: ::core::ffi::c_short =
     0x8000 as ::core::ffi::c_int as ::core::ffi::c_short;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_silk_int16_MIN() -> ::core::ffi::c_int {
     let mut _null: ::core::ffi::c_char =
         ::core::mem::transmute::<[u8; 1], [::core::ffi::c_char; 1]>(*b"\0")
             [(silk_int16_MIN as ::core::ffi::c_int + 0x8000 as ::core::ffi::c_int) as usize];
     return silk_int16_MIN as ::core::ffi::c_int;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn use_extern_value() -> ::core::ffi::c_int {
     return extern_fn();
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn local_fn() -> ::core::ffi::c_int {
     return 1234 as ::core::ffi::c_int;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn use_local_value() -> ::core::ffi::c_int {
     return local_fn();
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
     return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as ::core::ffi::c_int as uintptr_t);
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn ntlm_v2_blob_len(mut ntlm: *mut ntlmdata) -> ::core::ffi::c_uint {
     return ((44 as ::core::ffi::c_int - 16 as ::core::ffi::c_int) as ::core::ffi::c_uint)
         .wrapping_add((*ntlm).target_info_len)
         .wrapping_add(4 as ::core::ffi::c_uint);
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn late_init_var() -> ::core::ffi::c_int {
     return ({
         let mut i: ::core::ffi::c_int = 0;
@@ -463,7 +463,7 @@ unsafe extern "C" fn c2rust_run_static_initializers() {
     global_const_member = LITERAL_STRUCT.i;
 }
 #[used]
-#[cfg_attr(target_os = "linux", link_section = ".init_array")]
-#[cfg_attr(target_os = "windows", link_section = ".CRT$XIB")]
-#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".init_array"))]
+#[cfg_attr(target_os = "windows", unsafe(link_section = ".CRT$XIB"))]
+#[cfg_attr(target_os = "macos", unsafe(link_section = "__DATA,__mod_init_func"))]
 static INIT_ARRAY: [unsafe extern "C" fn(); 1] = [c2rust_run_static_initializers];
