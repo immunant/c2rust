@@ -5,6 +5,7 @@ use c2rust_refactor::Options;
 use c2rust_refactor::RustcArgSource;
 use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::rustfmt;
+use c2rust_rust_tools::sanitize_file_name;
 use c2rust_rust_tools::EDITION;
 use insta::assert_snapshot;
 use itertools::Itertools;
@@ -115,22 +116,6 @@ impl<'a> RefactorTest<'a> {
             new_expect_compile_error,
         );
     }
-}
-
-/// Replace all non-alphanumeric characters and `-_.` with `_`s
-/// so that we have a sanitized, idiomatic file name that excludes weird characters,
-/// even if they're technically allowed in a file name.
-fn sanitize_file_name(file_name: &str) -> String {
-    file_name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 fn test_refactor(
