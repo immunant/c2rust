@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/arch-os-specific/varargs.x86_64-linux.rs
+expression: cat tests/snapshots/arch-os-specific/varargs.x86_64.linux.rs
 ---
 #![allow(
     dead_code,

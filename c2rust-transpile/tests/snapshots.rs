@@ -126,13 +126,13 @@ fn transpile_snapshot(
     // Replace real paths with placeholders
     let rs = rs.replace(cwd.to_str().unwrap(), ".");
 
-    let snapshot_prefix = [&["transpile"][..], platform]
-        .into_iter()
-        .flatten()
-        .join("-");
     let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
     let c_file_name = sanitize_file_name(&c_file_name);
-    let snapshot_name = format!("{snapshot_prefix}@{c_file_name}");
+    let snapshot_suffix = [&[c_file_name.as_str()][..], platform]
+        .into_iter()
+        .flatten()
+        .join(".");
+    let snapshot_name = format!("transpile@{snapshot_suffix}");
 
     insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
