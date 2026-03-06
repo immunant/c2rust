@@ -235,7 +235,7 @@ fn emit_build_rs(
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path).run();
+        rustfmt(&output_path).edition(tcfg.edition).run();
     }
 
     Some(path)
@@ -279,7 +279,7 @@ fn emit_lib_rs(
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path).run();
+        rustfmt(&output_path).edition(tcfg.edition).run();
     }
 
     Some(path)
@@ -319,6 +319,7 @@ fn emit_cargo_toml<'lcmd>(
         let crate_json = json!({
             "crate_name": ccfg.crate_name,
             "crate_rust_name": ccfg.crate_name.replace('-', "_"),
+            "edition": tcfg.edition.as_str(),
             "crate_types": ccfg.link_cmd.r#type.as_cargo_types(),
             "is_library": ccfg.link_cmd.r#type.is_library(),
             "lib_rs_file": get_lib_rs_file_name(tcfg),

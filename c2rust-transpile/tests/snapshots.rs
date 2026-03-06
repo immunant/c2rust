@@ -51,6 +51,7 @@ fn config() -> TranspilerConfig {
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,
+        edition: Default::default(),
         postprocess: false,
         emit_build_files: false,
         binaries: Vec::new(),
@@ -91,7 +92,9 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
 /// For outputs that vary in different environments, `platform` can be any platform-specific string.
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
 fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
-    compile_and_transpile_file(c_path, config());
+    let cfg = config();
+    let edition = cfg.edition;
+    compile_and_transpile_file(c_path, cfg);
     let cwd = current_dir().unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
     // This is also why we set it explicitly with `--crate-name`,
@@ -137,7 +140,10 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
         return;
     }
 
-    rustc(&rs_path).crate_name(crate_name).run();
+    rustc(&rs_path)
+        .edition(edition)
+        .crate_name(crate_name)
+        .run();
 }
 
 #[must_use]

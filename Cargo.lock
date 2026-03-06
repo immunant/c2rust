@@ -275,6 +275,7 @@ version = "0.22.1"
 dependencies = [
  "anyhow",
  "c2rust-build-paths",
+ "c2rust-rust-tools",
  "c2rust-transpile",
  "clap 3.2.25",
  "env_logger 0.10.0",
@@ -477,6 +478,7 @@ name = "c2rust-rust-tools"
 version = "0.22.1"
 dependencies = [
  "fs-err",
+ "itertools 0.14.0",
  "log",
 ]
 

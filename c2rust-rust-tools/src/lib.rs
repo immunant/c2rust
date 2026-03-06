@@ -1,13 +1,52 @@
+use itertools::Itertools;
 use log::warn;
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::path::Path;
 use std::process::Command;
+use std::str::FromStr;
 
-/// The Rust edition used by code emitted by `c2rust`.
-pub const EDITION: &str = "2021";
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Debug)]
+pub enum RustEdition {
+    /// The default is edition 2021 because `c2rust-refactor`,
+    /// based on `nightly-2022-08-08`, only understands up to edition 2021.
+    #[default]
+    Rust2021,
+    Rust2024,
+}
+
+impl RustEdition {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Rust2021 => "2021",
+            Self::Rust2024 => "2024",
+        }
+    }
+}
+
+impl Display for RustEdition {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for RustEdition {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let choices = [Self::Rust2021, Self::Rust2024];
+        choices
+            .into_iter()
+            .find(|choice| choice.as_str() == s)
+            .ok_or_else(|| format!("{s} not one of {}", choices.iter().join(" ,")))
+    }
+}
 
 #[must_use]
 pub struct Rustfmt<'a> {
     rs_path: &'a Path,
+    edition: RustEdition,
     check: bool,
     expect_error: bool,
 }
@@ -15,12 +54,17 @@ pub struct Rustfmt<'a> {
 pub fn rustfmt(rs_path: &Path) -> Rustfmt {
     Rustfmt {
         rs_path,
+        edition: Default::default(),
         check: false,
         expect_error: false,
     }
 }
 
 impl<'a> Rustfmt<'a> {
+    pub fn edition(self, edition: RustEdition) -> Self {
+        Self { edition, ..self }
+    }
+
     pub fn check(self, check: bool) -> Self {
         Self { check, ..self }
     }
@@ -35,19 +79,20 @@ impl<'a> Rustfmt<'a> {
     pub fn run(self) {
         let Self {
             rs_path,
+            edition,
             check,
             expect_error,
         } = self;
         let check = if expect_error { true } else { check };
-        run_rustfmt(rs_path, check, expect_error)
+        run_rustfmt(rs_path, edition, check, expect_error)
     }
 }
 
-fn run_rustfmt(rs_path: &Path, check: bool, expect_error: bool) {
+fn run_rustfmt(rs_path: &Path, edition: RustEdition, check: bool, expect_error: bool) {
     assert!(!expect_error || check);
 
     let mut cmd = Command::new("rustfmt");
-    cmd.args(["--edition", EDITION]);
+    cmd.args(["--edition", edition.as_str()]);
     cmd.arg(rs_path);
     if check {
         cmd.arg("--check");
@@ -80,6 +125,7 @@ fn run_rustfmt(rs_path: &Path, check: bool, expect_error: bool) {
 #[must_use]
 pub struct Rustc<'a> {
     rs_path: &'a Path,
+    edition: RustEdition,
     crate_name: Option<&'a str>,
     expect_error: bool,
 }
@@ -87,12 +133,17 @@ pub struct Rustc<'a> {
 pub fn rustc(rs_path: &Path) -> Rustc {
     Rustc {
         rs_path,
+        edition: Default::default(),
         crate_name: None,
         expect_error: false,
     }
 }
 
 impl<'a> Rustc<'a> {
+    pub fn edition(self, edition: RustEdition) -> Self {
+        Self { edition, ..self }
+    }
+
     pub fn crate_name(self, crate_name: &'a str) -> Self {
         Self {
             crate_name: Some(crate_name),
@@ -110,16 +161,17 @@ impl<'a> Rustc<'a> {
     pub fn run(self) {
         let Self {
             rs_path,
+            edition,
             crate_name,
             expect_error,
         } = self;
         let crate_name =
             crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
-        run_rustc(rs_path, crate_name, expect_error);
+        run_rustc(rs_path, edition, crate_name, expect_error);
     }
 }
 
-fn run_rustc(rs_path: &Path, crate_name: &str, expect_error: bool) {
+fn run_rustc(rs_path: &Path, edition: RustEdition, crate_name: &str, expect_error: bool) {
     // There's no good way to not create an output with `rustc`,
     // so just create an `.rlib` and then delete it immediately.
     let rlib_path = rs_path.with_file_name(format!("lib{crate_name}.rlib"));
@@ -129,7 +181,7 @@ fn run_rustc(rs_path: &Path, crate_name: &str, expect_error: bool) {
         "--crate-type",
         "lib",
         "--edition",
-        EDITION,
+        edition.as_str(),
         "--crate-name",
         crate_name,
         "-Awarnings", // Disable warnings.
