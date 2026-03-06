@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use c2rust_rust_tools::rustfmt;
+use c2rust_rust_tools::{rustfmt, RustEdition};
 use handlebars::Handlebars;
 use pathdiff::diff_paths;
 use serde_derive::Serialize;
@@ -320,6 +320,9 @@ fn emit_cargo_toml<'lcmd>(
             "crate_name": ccfg.crate_name,
             "crate_rust_name": ccfg.crate_name.replace('-', "_"),
             "edition": tcfg.edition.as_str(),
+            // This is already the default in Rust 1.77,
+            // and edition 2024 was released in Rust 1.85.
+            "strip_debuginfo_release": tcfg.edition < RustEdition::Rust2024,
             "crate_types": ccfg.link_cmd.r#type.as_cargo_types(),
             "is_library": ccfg.link_cmd.r#type.is_library(),
             "lib_rs_file": get_lib_rs_file_name(tcfg),

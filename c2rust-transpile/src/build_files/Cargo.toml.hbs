@@ -56,5 +56,7 @@ version = "*"
 {{~/if}}
 {{~/if}}
 
+{{#if strip_debuginfo_release~}}
 [profile.release]
 strip = "debuginfo"
+{{~/if}}
