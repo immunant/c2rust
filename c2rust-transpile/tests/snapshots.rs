@@ -172,7 +172,6 @@ fn transpile(c_file_name: &str) -> TranspileTest {
 }
 
 impl<'a> TranspileTest<'a> {
-    #[allow(unused)] // TODO remove once used
     pub fn edition(self, edition: RustEdition) -> Self {
         Self { edition, ..self }
     }
@@ -322,7 +321,9 @@ fn test_gotos() {
 
 #[test]
 fn test_incomplete_arrays() {
-    transpile("incomplete_arrays.c").run();
+    transpile("incomplete_arrays.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
@@ -348,7 +349,7 @@ fn test_macros() {
 
 #[test]
 fn test_main_fn() {
-    transpile("main_fn.c").run();
+    transpile("main_fn.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
