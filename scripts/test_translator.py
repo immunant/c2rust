@@ -529,7 +529,7 @@ components = ["rustfmt"]
 
         # Build
         with pb.local.cwd(self.full_path):
-            args = ["build"]
+            args = ["build", "--color", "always"]
 
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
