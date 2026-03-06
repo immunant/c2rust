@@ -113,7 +113,7 @@ fn transpile_snapshot(
     let rs_path = match platform {
         &[] => rs_path,
         platform => {
-            let platform = platform.join("-");
+            let platform = platform.join(".");
             let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
             fs::rename(&rs_path, &platform_rs_path).unwrap();
             platform_rs_path
