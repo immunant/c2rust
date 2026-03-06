@@ -124,10 +124,10 @@ fn transpile_snapshot(
     // Replace real paths with placeholders
     let rs = rs.replace(cwd.to_str().unwrap(), ".");
 
-    let snapshot_prefix = match platform {
-        None => "transpile".into(),
-        Some(platform) => format!("transpile-{platform}"),
-    };
+    let snapshot_prefix = [Some("transpile"), platform]
+        .into_iter()
+        .flatten()
+        .join("-");
     let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
     let c_file_name = sanitize_file_name(&c_file_name);
     let snapshot_name = format!("{snapshot_prefix}@{c_file_name}");
