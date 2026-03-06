@@ -419,11 +419,6 @@ fn test_varargs() {
         .run();
 }
 
-#[test]
-fn check_c_decl_map() {
-    insta::glob!("c_decls_snapshots/*.c", transpile_with_c_decl_map_snapshot);
-}
-
 fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
     compile_and_transpile_file(c_path, config());
 
@@ -433,4 +428,10 @@ fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&c_decls_path).unwrap()).unwrap();
     insta::assert_json_snapshot!(snapshot_name, json, &debug_expr);
+}
+
+#[test]
+fn test_c_decls_nh() {
+    let c_path = Path::new("tests/c_decls_snapshots/nh.c");
+    transpile_with_c_decl_map_snapshot(c_path);
 }
