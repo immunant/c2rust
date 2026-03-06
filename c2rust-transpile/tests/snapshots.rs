@@ -91,7 +91,7 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
 /// Transpile one input and compare output against the corresponding snapshot.
 /// For outputs that vary in different environments, `platform` can be any platform-specific string.
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
+fn transpile_snapshot(platform: Option<&str>, c_path: &Path, expect_compile_error: bool) {
     let cfg = config();
     let edition = cfg.edition;
     compile_and_transpile_file(c_path, cfg);
@@ -143,6 +143,7 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     rustc(&rs_path)
         .edition(edition)
         .crate_name(crate_name)
+        .expect_error(expect_compile_error)
         .run();
 }
 
@@ -151,6 +152,7 @@ struct TranspileTest<'a> {
     c_file_name: &'a str,
     arch_specific: bool,
     os_specific: bool,
+    expect_compile_error: bool,
 }
 
 fn transpile(c_file_name: &str) -> TranspileTest {
@@ -158,6 +160,7 @@ fn transpile(c_file_name: &str) -> TranspileTest {
         c_file_name,
         arch_specific: false,
         os_specific: false,
+        expect_compile_error: false,
     }
 }
 
@@ -176,11 +179,20 @@ impl<'a> TranspileTest<'a> {
         }
     }
 
+    #[allow(unused)] // TODO remove once used
+    pub fn expect_compile_error(self, expect_compile_error: bool) -> Self {
+        Self {
+            expect_compile_error,
+            ..self
+        }
+    }
+
     pub fn run(self) {
         let Self {
             c_file_name,
             arch_specific,
             os_specific,
+            expect_compile_error,
         } = self;
 
         let specific_dir_prefix = [arch_specific.then_some("arch"), os_specific.then_some("os")]
@@ -230,7 +242,7 @@ impl<'a> TranspileTest<'a> {
             platform => Some(platform),
         };
 
-        transpile_snapshot(platform, &c_path);
+        transpile_snapshot(platform, &c_path, expect_compile_error);
     }
 }
 
