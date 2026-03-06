@@ -108,17 +108,15 @@ fn transpile_snapshot(
     // the file name won't be valid anymore.
     let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
     let rs_path = c_path.with_extension("rs");
-    // We need to move the `.rs` file to a platform-specific name
+    // We need to move the `.rs` file to a platform/edition-specific name
     // so that they don't overwrite each other.
-    let rs_path = match platform {
-        &[] => rs_path,
-        platform => {
-            let platform = platform.join(".");
-            let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
-            fs::rename(&rs_path, &platform_rs_path).unwrap();
-            platform_rs_path
-        }
-    };
+    let ext = [&[edition.as_str()][..], platform]
+        .into_iter()
+        .flatten()
+        .join(".");
+    let old_rs_path = rs_path;
+    let rs_path = old_rs_path.with_extension(format!("{ext}.rs"));
+    fs::rename(&old_rs_path, &rs_path).unwrap();
 
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
@@ -128,11 +126,7 @@ fn transpile_snapshot(
 
     let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
     let c_file_name = sanitize_file_name(&c_file_name);
-    let snapshot_suffix = [&[c_file_name.as_str()][..], platform]
-        .into_iter()
-        .flatten()
-        .join(".");
-    let snapshot_name = format!("transpile@{snapshot_suffix}");
+    let snapshot_name = format!("transpile@{c_file_name}.{ext}");
 
     insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
@@ -157,27 +151,23 @@ fn transpile_snapshot(
 #[must_use]
 struct TranspileTest<'a> {
     c_file_name: &'a str,
-    edition: RustEdition,
     arch_specific: bool,
     os_specific: bool,
-    expect_compile_error: bool,
+    expect_compile_error_edition_2021: bool,
+    expect_compile_error_edition_2024: bool,
 }
 
 fn transpile(c_file_name: &str) -> TranspileTest {
     TranspileTest {
         c_file_name,
-        edition: RustEdition::Rust2024,
         arch_specific: false,
         os_specific: false,
-        expect_compile_error: false,
+        expect_compile_error_edition_2021: false,
+        expect_compile_error_edition_2024: false,
     }
 }
 
 impl<'a> TranspileTest<'a> {
-    pub fn edition(self, edition: RustEdition) -> Self {
-        Self { edition, ..self }
-    }
-
     pub fn arch_specific(self, arch_specific: bool) -> Self {
         Self {
             arch_specific,
@@ -193,9 +183,22 @@ impl<'a> TranspileTest<'a> {
     }
 
     #[allow(unused)] // TODO remove once used
-    pub fn expect_compile_error(self, expect_compile_error: bool) -> Self {
+    pub fn expect_compile_error_edition_2021(
+        self,
+        expect_compile_error_edition_2021: bool,
+    ) -> Self {
         Self {
-            expect_compile_error,
+            expect_compile_error_edition_2021,
+            ..self
+        }
+    }
+
+    pub fn expect_compile_error_edition_2024(
+        self,
+        expect_compile_error_edition_2024: bool,
+    ) -> Self {
+        Self {
+            expect_compile_error_edition_2024,
             ..self
         }
     }
@@ -203,10 +206,10 @@ impl<'a> TranspileTest<'a> {
     pub fn run(self) {
         let Self {
             c_file_name,
-            edition,
             arch_specific,
             os_specific,
-            expect_compile_error,
+            expect_compile_error_edition_2021,
+            expect_compile_error_edition_2024,
         } = self;
 
         let specific_dir_prefix = [arch_specific.then_some("arch"), os_specific.then_some("os")]
@@ -252,7 +255,18 @@ impl<'a> TranspileTest<'a> {
             .flatten()
             .collect::<Vec<_>>();
 
-        transpile_snapshot(&platform, &c_path, edition, expect_compile_error);
+        transpile_snapshot(
+            &platform,
+            &c_path,
+            RustEdition::Rust2021,
+            expect_compile_error_edition_2021,
+        );
+        transpile_snapshot(
+            &platform,
+            &c_path,
+            RustEdition::Rust2024,
+            expect_compile_error_edition_2024,
+        );
     }
 }
 
@@ -289,7 +303,9 @@ fn test_arrays() {
 
 #[test]
 fn test_atomics() {
-    transpile("atomics.c").edition(RustEdition::Rust2021).run();
+    transpile("atomics.c")
+        .expect_compile_error_edition_2024(true)
+        .run();
 }
 
 #[test]
@@ -330,7 +346,9 @@ fn test_insertion() {
 #[test]
 fn test_keywords() {
     generate_keywords_test();
-    transpile("keywords.c").edition(RustEdition::Rust2021).run();
+    transpile("keywords.c")
+        .expect_compile_error_edition_2024(true)
+        .run();
 }
 
 #[test]
@@ -442,7 +460,7 @@ fn test_wide_strings() {
 #[test]
 fn test_varargs() {
     transpile("varargs.c")
-        .edition(RustEdition::Rust2021)
+        .expect_compile_error_edition_2024(cfg!(target_os = "linux"))
         .arch_specific(true)
         .os_specific(true)
         .run();

@@ -17,6 +17,8 @@ pub enum RustEdition {
 }
 
 impl RustEdition {
+    pub const ALL: &[Self] = &[Self::Rust2021, Self::Rust2024];
+
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Rust2021 => "2021",
