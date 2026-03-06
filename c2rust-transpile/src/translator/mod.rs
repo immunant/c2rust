@@ -1596,7 +1596,7 @@ impl<'c> Translation<'c> {
 
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
-        if matches!(feature, "label_break_value" | "raw_ref_op")
+        if matches!(feature, "asm" | "label_break_value" | "raw_ref_op")
             && self.tcfg.edition >= RustEdition::Rust2024
         {
             return;
