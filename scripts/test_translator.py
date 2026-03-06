@@ -508,11 +508,11 @@ class TestDirectory:
         # (if it's generated, it's in the wrong directory and may be different for each transpiled file).
         # We could also change things to transpile all `*.c` files at once, but that's more involved.
         # This logic needs to stay in sync with `fn emit_rust_toolchain`.
-        edition = "2021"
+        edition = 2021
         match edition:
-            case "2021":
+            case 2021:
                 toolchain = "nightly-2023-04-15"
-            case "2024":
+            case 2024:
                 toolchain = "nightly-2026-03-03"
         rust_toolchain_toml = f"""\
 [toolchain]
