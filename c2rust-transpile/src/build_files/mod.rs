@@ -232,7 +232,7 @@ fn emit_build_rs(
     });
     let output = reg.render("build.rs", &json).unwrap();
     let output_path = build_dir.join("build.rs");
-    let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
+    let path = maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
         rustfmt(&output_path).edition(tcfg.edition).run();
@@ -276,7 +276,7 @@ fn emit_lib_rs(
 
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
-    let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
+    let path = maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
         rustfmt(&output_path).edition(tcfg.edition).run();
@@ -290,7 +290,7 @@ fn emit_lib_rs(
 fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     let output_path = build_dir.join("rust-toolchain.toml");
     let output = include_str!("generated-rust-toolchain.toml").to_string();
-    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
+    maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing);
 }
 
 fn emit_cargo_toml<'lcmd>(
@@ -342,10 +342,10 @@ fn emit_cargo_toml<'lcmd>(
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);
     let output = reg.render(file_name, &json).unwrap();
-    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
+    maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing);
 }
 
-fn maybe_write_to_file(output_path: &Path, output: String, overwrite: bool) -> Option<PathBuf> {
+fn maybe_write_to_file(output_path: &Path, output: &str, overwrite: bool) -> Option<PathBuf> {
     if output_path.exists() && !overwrite {
         eprintln!("Skipping existing file {}", output_path.display());
         return None;
