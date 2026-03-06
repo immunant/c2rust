@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/call_only_once.2024.linux.rs
     unused_assignments,
     unused_mut
 )]
-#![feature(label_break_value)]
 unsafe extern "C" {
     fn __assert_fail(
         __assertion: *const ::core::ffi::c_char,
