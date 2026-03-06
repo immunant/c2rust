@@ -12,4 +12,3 @@ input_file: c2rust-transpile/tests/snapshots/incomplete_arrays.c
     unused_assignments,
     unused_mut
 )]
-

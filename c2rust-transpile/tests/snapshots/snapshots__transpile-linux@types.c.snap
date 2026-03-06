@@ -66,4 +66,3 @@ pub static mut int64var: int64_t = 0 as int64_t;
 pub static mut maxvar: intmax_t = 0 as intmax_t;
 #[no_mangle]
 pub static mut umaxvar: uintmax_t = 0 as uintmax_t;
-
