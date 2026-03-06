@@ -60,6 +60,8 @@ jobs:
             --profile minimal --component rustfmt,rustc-dev
           rustup toolchain install nightly-2023-04-15 \
             --profile minimal --component rustfmt
+          rustup toolchain install nightly-2026-03-03 \
+            --profile minimal --component rustfmt
       
       - uses: taiki-e/install-action@nextest
 

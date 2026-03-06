@@ -23,6 +23,17 @@ impl RustEdition {
             Self::Rust2024 => "2024",
         }
     }
+
+    /// The toolchain to use for this edition.
+    /// This is returned in the `+{toolchain}` format
+    /// that can be passed to `rustup` wrappers.
+    pub const fn toolchain(&self) -> &'static str {
+        match self {
+            Self::Rust2021 => "+nightly-2023-04-15",
+            // This doesn't really need to be pinned, but pin it for stability.
+            Self::Rust2024 => "+nightly-2026-03-03",
+        }
+    }
 }
 
 impl Display for RustEdition {
@@ -92,7 +103,7 @@ fn run_rustfmt(rs_path: &Path, edition: RustEdition, check: bool, expect_error: 
     assert!(!expect_error || check);
 
     let mut cmd = Command::new("rustfmt");
-    cmd.args(["--edition", edition.as_str()]);
+    cmd.args([edition.toolchain(), "--edition", edition.as_str()]);
     cmd.arg(rs_path);
     if check {
         cmd.arg("--check");
@@ -177,7 +188,7 @@ fn run_rustc(rs_path: &Path, edition: RustEdition, crate_name: &str, expect_erro
     let rlib_path = rs_path.with_file_name(format!("lib{crate_name}.rlib"));
     let mut cmd = Command::new("rustc");
     cmd.args([
-        "+nightly-2023-04-15",
+        edition.toolchain(),
         "--crate-type",
         "lib",
         "--edition",
