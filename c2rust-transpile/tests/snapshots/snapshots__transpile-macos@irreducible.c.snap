@@ -13,21 +13,21 @@ input_file: c2rust-transpile/tests/snapshots/os-specific/irreducible.c
 )]
 #[no_mangle]
 pub unsafe extern "C" fn irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
-    let mut current_block: u64;
+    let mut c2rust_current_block: u64;
     's_36: loop {
         if x < 6 as ::core::ffi::c_int {
             x += 1 as ::core::ffi::c_int;
-            current_block = 12097759719871926671;
+            c2rust_current_block = 12097759719871926671;
         } else {
-            current_block = 3588625364671200237;
+            c2rust_current_block = 3588625364671200237;
         }
         loop {
-            match current_block {
+            match c2rust_current_block {
                 3588625364671200237 => {
                     if x < 9 as ::core::ffi::c_int {
                         break;
                     } else {
-                        current_block = 12097759719871926671;
+                        c2rust_current_block = 12097759719871926671;
                     }
                 }
                 _ => {
@@ -35,7 +35,7 @@ pub unsafe extern "C" fn irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::
                         break 's_36;
                     }
                     x += 90 as ::core::ffi::c_int;
-                    current_block = 3588625364671200237;
+                    c2rust_current_block = 3588625364671200237;
                 }
             }
         }
@@ -45,18 +45,18 @@ pub unsafe extern "C" fn irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::
 }
 #[no_mangle]
 pub unsafe extern "C" fn jump_to_irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
-    let mut current_block: u64;
+    let mut c2rust_current_block: u64;
     '_b: {
         match x {
             0 => {
                 if x != 0 {
-                    current_block = 1094806437454221055;
+                    c2rust_current_block = 1094806437454221055;
                     break '_b;
                 }
             }
             1 => {
                 if x != 0 {
-                    current_block = 5588263458070972378;
+                    c2rust_current_block = 5588263458070972378;
                     break '_b;
                 }
             }
@@ -65,20 +65,20 @@ pub unsafe extern "C" fn jump_to_irreducible(mut x: ::core::ffi::c_int) -> ::cor
             }
         }
         x += 2 as ::core::ffi::c_int;
-        current_block = 1094806437454221055;
+        c2rust_current_block = 1094806437454221055;
     }
     loop {
-        match current_block {
+        match c2rust_current_block {
             1094806437454221055 => {
                 if x != 0 {
-                    current_block = 5588263458070972378;
+                    c2rust_current_block = 5588263458070972378;
                     continue;
                 }
                 return x;
             }
             _ => {
                 if x != 0 {
-                    current_block = 1094806437454221055;
+                    c2rust_current_block = 1094806437454221055;
                     continue;
                 }
                 return x;
