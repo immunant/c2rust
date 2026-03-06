@@ -1,8 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 105
 expression: cat tests/snapshots/os-specific/call_only_once.linux.rs
-input_file: c2rust-transpile/tests/snapshots/os-specific/call_only_once.c
 ---
 #![allow(
     dead_code,

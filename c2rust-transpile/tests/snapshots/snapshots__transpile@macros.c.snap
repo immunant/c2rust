@@ -1,8 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-assertion_line: 105
 expression: cat tests/snapshots/macros.rs
-input_file: c2rust-transpile/tests/snapshots/macros.c
 ---
 #![allow(
     dead_code,

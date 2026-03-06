@@ -1,7 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/snapshots/out_of_range_lit.rs
-input_file: c2rust-transpile/tests/snapshots/out_of_range_lit.c
 ---
 #![allow(
     dead_code,

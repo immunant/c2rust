@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use c2rust_rust_tools::rustc;
+use c2rust_rust_tools::sanitize_file_name;
 use c2rust_transpile::convert_type::RESERVED_NAMES;
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
 use itertools::Itertools;
@@ -92,7 +93,6 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
 fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     compile_and_transpile_file(c_path, config());
     let cwd = current_dir().unwrap();
-    let c_path = c_path.strip_prefix(&cwd).unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
     // This is also why we set it explicitly with `--crate-name`,
     // as once we add `.{platform}`, the crate name derived from
@@ -116,10 +116,14 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     // Replace real paths with placeholders
     let rs = rs.replace(cwd.to_str().unwrap(), ".");
 
-    let snapshot_name = match platform {
+    let snapshot_prefix = match platform {
         None => "transpile".into(),
         Some(platform) => format!("transpile-{platform}"),
     };
+    let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
+    let c_file_name = sanitize_file_name(&c_file_name);
+    let snapshot_name = format!("{snapshot_prefix}@{c_file_name}");
+
     insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
     // Using rustc itself to build snapshots that reference libc is difficult because we don't know
@@ -136,53 +140,92 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     rustc(&rs_path).crate_name(crate_name).run();
 }
 
-#[test]
-fn transpile_all_snapshots() {
-    generate_keywords_test();
+#[must_use]
+struct TranspileTest<'a> {
+    c_file_name: &'a str,
+    arch_specific: bool,
+    os_specific: bool,
+}
 
-    // TODO parallelize these `insta::glob!`s across multiple `#[test]`s
-    // now that we use `cargo nextest`.
+fn transpile(c_file_name: &str) -> TranspileTest {
+    TranspileTest {
+        c_file_name,
+        arch_specific: false,
+        os_specific: false,
+    }
+}
 
-    insta::glob!("snapshots/*.c", |x| transpile_snapshot(None, x));
+impl<'a> TranspileTest<'a> {
+    pub fn arch_specific(self, arch_specific: bool) -> Self {
+        Self {
+            arch_specific,
+            ..self
+        }
+    }
 
-    // Some things transpile differently on Linux vs. macOS,
-    // as they use `unsigned long` and `unsigned long long` differently for builtins.
-    // This makes snapshot tests trickier, as the output will be OS-dependent.
-    // We handle this by adding OS name to the snapshot result filename.
-    #[allow(unused)]
-    let os = "unknown";
+    pub fn os_specific(self, os_specific: bool) -> Self {
+        Self {
+            os_specific,
+            ..self
+        }
+    }
 
-    #[cfg(target_os = "linux")]
-    let os = "linux";
-    #[cfg(target_os = "macos")]
-    let os = "macos";
+    pub fn run(self) {
+        let Self {
+            c_file_name,
+            arch_specific,
+            os_specific,
+        } = self;
 
-    // Similarly, some things transpile differently on different architectures.
-    #[allow(unused)]
-    let arch = "unknown";
+        let specific_dir_prefix = [arch_specific.then_some("arch"), os_specific.then_some("os")]
+            .into_iter()
+            .flatten()
+            .join("-");
+        let c_path = {
+            let mut path = Path::new("tests/snapshots").to_owned();
+            if !specific_dir_prefix.is_empty() {
+                path.push(format!("{specific_dir_prefix}-specific"))
+            }
+            path.push(c_file_name);
+            path
+        };
 
-    #[cfg(target_arch = "x86")]
-    let arch = "x86";
-    #[cfg(target_arch = "x86_64")]
-    let arch = "x86_64";
-    #[cfg(target_arch = "arm")]
-    let arch = "arm";
-    #[cfg(target_arch = "aarch64")]
-    let arch = "aarch64";
+        // Some things transpile differently on Linux vs. macOS,
+        // as they use `unsigned long` and `unsigned long long` differently for builtins.
+        // This makes snapshot tests trickier, as the output will be OS-dependent.
+        // We handle this by adding OS name to the snapshot result filename.
+        #[allow(unused)]
+        let os = "unknown";
 
-    let arch_os = format!("{}-{}", arch, os);
+        #[cfg(target_os = "linux")]
+        let os = "linux";
+        #[cfg(target_os = "macos")]
+        let os = "macos";
 
-    insta::with_settings!({snapshot_suffix => os}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| transpile_snapshot(Some(os), path));
-    });
+        // Similarly, some things transpile differently on different architectures.
+        #[allow(unused)]
+        let arch = "unknown";
 
-    insta::with_settings!({snapshot_suffix => arch}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| transpile_snapshot(Some(arch), path));
-    });
+        #[cfg(target_arch = "x86")]
+        let arch = "x86";
+        #[cfg(target_arch = "x86_64")]
+        let arch = "x86_64";
+        #[cfg(target_arch = "arm")]
+        let arch = "arm";
+        #[cfg(target_arch = "aarch64")]
+        let arch = "aarch64";
 
-    insta::with_settings!({snapshot_suffix => arch_os.as_str()}, {
-        insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile_snapshot(Some(arch_os.as_str()), path));
-    });
+        let platform = [arch_specific.then_some(arch), os_specific.then_some(os)]
+            .into_iter()
+            .flatten()
+            .join("-");
+        let platform = match platform.as_str() {
+            "" => None,
+            platform => Some(platform),
+        };
+
+        transpile_snapshot(platform, &c_path);
+    }
 }
 
 fn generate_keywords_test() {
@@ -202,6 +245,178 @@ fn generate_keywords_test() {
     c_code.push_str("\n");
     let c_path = Path::new("tests/snapshots/keywords.c");
     fs_err::write(c_path, c_code).unwrap();
+}
+
+// NOTE: Tests should be listed in alphabetical order.
+
+#[test]
+fn test_alloca() {
+    transpile("alloca.c").run();
+}
+
+#[test]
+fn test_arrays() {
+    transpile("arrays.c").run();
+}
+
+#[test]
+fn test_atomics() {
+    transpile("atomics.c").run();
+}
+
+#[test]
+fn test_compound_literals() {
+    transpile("compound_literals.c").run();
+}
+
+#[test]
+fn test_empty_init() {
+    transpile("empty_init.c").run();
+}
+
+#[test]
+fn test_exprs() {
+    transpile("exprs.c").run();
+}
+
+#[test]
+fn test_factorial() {
+    transpile("factorial.c").run();
+}
+
+#[test]
+fn test_gotos() {
+    transpile("gotos.c").run();
+}
+
+#[test]
+fn test_incomplete_arrays() {
+    transpile("incomplete_arrays.c").run();
+}
+
+#[test]
+fn test_insertion() {
+    transpile("insertion.c").run();
+}
+
+#[test]
+fn test_keywords() {
+    generate_keywords_test();
+    transpile("keywords.c").run();
+}
+
+#[test]
+fn test_macrocase() {
+    transpile("macrocase.c").run();
+}
+
+#[test]
+fn test_macros() {
+    transpile("macros.c").run();
+}
+
+#[test]
+fn test_main_fn() {
+    transpile("main_fn.c").run();
+}
+
+#[test]
+fn test_predefined() {
+    transpile("predefined.c").run();
+}
+
+#[test]
+fn test_records() {
+    transpile("records.c").run();
+}
+
+#[test]
+fn test_ref_ub() {
+    transpile("ref_ub.c").run();
+}
+
+#[test]
+fn test_rotate() {
+    transpile("rotate.c").run();
+}
+
+#[test]
+fn test_static_assert() {
+    transpile("static_assert.c").run();
+}
+
+#[test]
+fn test_str_init() {
+    transpile("str_init.c").run();
+}
+
+// arch-specific
+
+#[test]
+fn test_spin() {
+    transpile("spin.c").arch_specific(true).run();
+}
+
+#[test]
+fn test_vm_x86() {
+    transpile("vm_x86.c").arch_specific(true).run();
+}
+
+// os-specific
+
+#[test]
+fn test_call_only_once() {
+    transpile("call_only_once.c").os_specific(true).run();
+}
+
+#[test]
+fn test_macros_os_specific() {
+    transpile("macros.c").os_specific(true).run();
+}
+
+#[test]
+fn test_out_of_range_lit() {
+    transpile("out_of_range_lit.c").os_specific(true).run();
+}
+
+#[test]
+fn test_rnd() {
+    transpile("rnd.c").os_specific(true).run();
+}
+
+#[test]
+fn test_rotate_os_specific() {
+    transpile("rotate.c").os_specific(true).run();
+}
+
+#[test]
+fn test_sigign() {
+    transpile("sigign.c").os_specific(true).run();
+}
+
+#[test]
+fn test_typedefidx() {
+    transpile("typedefidx.c").os_specific(true).run();
+}
+
+#[test]
+fn test_types() {
+    transpile("types.c").os_specific(true).run();
+}
+
+#[test]
+fn test_wide_strings() {
+    transpile("wide_strings.c").os_specific(true).run();
+}
+
+// arch-os-specific
+
+#[test]
+fn test_varargs() {
+    transpile("varargs.c")
+        .arch_specific(true)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
