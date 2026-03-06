@@ -289,8 +289,16 @@ fn emit_lib_rs(
 /// on a nightly toolchain until the `c_variadics` feature is stable.
 fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     let output_path = build_dir.join("rust-toolchain.toml");
-    let output = include_str!("generated-rust-toolchain.toml").to_string();
-    maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing);
+    let toolchain = tcfg.edition.toolchain().strip_prefix("+").unwrap();
+    let output = format!(
+        "
+[toolchain]
+channel = \"{toolchain}\"
+components = [\"rustfmt\"]
+"
+    );
+    let output = output.trim_start();
+    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
 fn emit_cargo_toml<'lcmd>(
