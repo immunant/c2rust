@@ -24,7 +24,7 @@ pub struct alpn_spec {
 }
 #[no_mangle]
 pub unsafe extern "C" fn ptr() {
-    let mut _s: *const ::core::ffi::c_char = b"hello\0" as *const u8 as *const ::core::ffi::c_char;
+    let mut _s: *const ::core::ffi::c_char = b"hello\0".as_ptr() as *const ::core::ffi::c_char;
 }
 #[no_mangle]
 pub unsafe extern "C" fn array_deduced_length() {
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn int_array_extra_braces() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn ptr_extra_braces() {
-    let mut _s: *const ::core::ffi::c_char = b"hello\0" as *const u8 as *const ::core::ffi::c_char;
+    let mut _s: *const ::core::ffi::c_char = b"hello\0".as_ptr() as *const ::core::ffi::c_char;
 }
 #[no_mangle]
 pub unsafe extern "C" fn array_extra_braces() {
@@ -67,7 +67,7 @@ pub unsafe extern "C" fn array_extra_braces() {
 #[no_mangle]
 pub unsafe extern "C" fn array_of_ptrs() {
     let mut _s: [*const ::core::ffi::c_char; 3] = [
-        b"hello\0" as *const u8 as *const ::core::ffi::c_char,
+        b"hello\0".as_ptr() as *const ::core::ffi::c_char,
         ::core::ptr::null::<::core::ffi::c_char>(),
         ::core::ptr::null::<::core::ffi::c_char>(),
     ];

@@ -1,0 +1,72 @@
+---
+test.c:
+    - item: defaults
+      disable_xchecks: true
+
+    - item: function
+      name: main
+      #disable_xchecks: false
+      #entry: disabled
+      #entry: { djb2: "" }
+
+    - item: function
+      name: nn_n
+      disable_xchecks: false
+      entry: { fixed: 0xabcdef78 }
+      exit:  { fixed: 0xabcdef78 }
+      all_args: default
+
+    - item: function
+      name: fibo
+      disable_xchecks: false
+      entry: { fixed: 0x12345678 }
+      #entry: disabled
+      #entry: { custom: "foo" }
+      #all_args: { fixed: 0xabcdef00 }
+      return: default
+      #return: { custom: "id(__c2rust_fn_result)" }
+      args:
+        n: default
+        #p: default
+        #p: { custom: "id(*p)" }
+        #p: { custom: "deref(p)" }
+        #p: { custom: "id(ctr)" }
+        #q: default
+        #foo: default
+        #foo: { custom: "my_Foo_hash(foo)" }
+        #n: disabled
+        #n: { custom: "id(n)" }
+        #n: { custom: "deref(n)" }
+        #n: { custom: "id(n, x)" }
+        #n: { fixed: 0xabcd1234 }
+        #stop: default
+
+      entry_extra:
+        - { custom: "my_Foo_hash(foo)" }
+        - { custom: "deref(p)", tag: UNKNOWN }
+        - { custom: "id(ctr)", tag: FUNCTION_ENTRY }
+        #- { custom: "deref(n)", tag: FUNCTION_ARG }
+
+      exit_extra:
+        - { custom: "id(__c2rust_fn_result)" }
+
+    - item: struct
+      name: Foo
+      #disable_xchecks: false
+      #custom_hash: "my_Foo_hash"
+      #field_hasher: "foo_hasher"
+      fields:
+        #n1: disabled
+        n1: { fixed: 0x1234 }
+        #n2: disabled
+        #n2: { fixed: 0x1234 }
+        #n2: { custom: "id" }
+        #n2: { custom: "foo(n1, n2)" }
+        n2: { custom: "double_hash(n1, n2)" }
+        #p: disabled # TODO: enable when MAX_DEPTH is implemented
+
+    - item: struct
+      name: Foo$field$n3
+      disable_xchecks: false
+
+...

@@ -2,7 +2,7 @@
 
 use super::*;
 use log::warn;
-use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprReturn, ExprUnary, Stmt};
+use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprUnary, Stmt};
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
@@ -13,7 +13,6 @@ pub fn structured_cfg(
     comment_store: &mut comment_store::CommentStore,
     current_block: Box<Expr>,
     debug_labels: bool,
-    cut_out_trailing_ret: bool,
 ) -> TranslationResult<Vec<Stmt>> {
     let loop_context = LoopContext::default();
     let mut ast = process_cfg(
@@ -32,15 +31,7 @@ pub fn structured_cfg(
         debug_labels,
         current_block,
     };
-    let (mut stmts, _span) = s.to_stmt(ast, comment_store);
-
-    // If the very last statement in the vector is a `return`, we can either cut it out or replace
-    // it with the returned value.
-    if cut_out_trailing_ret {
-        if let Some(Stmt::Expr(Expr::Return(ExprReturn { expr: None, .. }), _)) = stmts.last() {
-            stmts.pop();
-        }
-    }
+    let (stmts, _span) = s.to_stmt(ast, comment_store);
 
     Ok(stmts)
 }
@@ -848,7 +839,7 @@ impl StructureState {
             }
 
             Goto(to) => {
-                // Assign to `current_block` the next label we want to go to.
+                // Assign to `c2rust_current_block` the next label we want to go to.
 
                 let lbl_expr = if self.debug_labels {
                     to.to_string_expr()
@@ -942,7 +933,7 @@ impl StructureState {
             }
 
             GotoTable(cases, then) => {
-                // Dispatch based on the next `current_block` value.
+                // Dispatch based on the next `c2rust_current_block` value.
 
                 let mut arms: Vec<Arm> = cases
                     .into_iter()

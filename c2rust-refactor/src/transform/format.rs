@@ -1,24 +1,23 @@
 use log::{info, warn};
+use rustc_ast::ptr::P;
+use rustc_ast::token::{Nonterminal, Token, TokenKind};
+use rustc_ast::tokenstream::{Spacing, TokenTree};
+use rustc_ast::*;
+use rustc_data_structures::sync::Lrc;
+use rustc_hir::def_id::DefId;
+use rustc_span::source_map::DUMMY_SP;
+use rustc_span::{sym, Span};
+use smallvec::smallvec;
 use std::collections::{HashMap, HashSet};
 use std::str;
 use std::str::FromStr;
-use rustc_data_structures::sync::Lrc;
-use rustc_hir::def_id::DefId;
-use rustc_ast::*;
-use rustc_span::source_map::DUMMY_SP;
-use rustc_ast::ptr::P;
-use rustc_ast::token::{Token, TokenKind, Nonterminal};
-use rustc_ast::tokenstream::{Spacing, TokenTree};
-use rustc_span::{sym, Span};
-use smallvec::smallvec;
 
 use crate::ast_builder::mk;
-use crate::ast_manip::{FlatMapNodes, MutVisitNodes, visit_nodes};
+use crate::ast_manip::{visit_nodes, FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::expect;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-
 
 /// # `convert_format_args` Command
 ///
@@ -58,15 +57,13 @@ impl Transform for ConvertFormatArgs {
     fn transform(&self, krate: &mut Crate, st: &CommandState, _cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let fmt_idx = match e.kind {
-                ExprKind::Call(_, ref args) =>
-                    args.iter().position(|e| st.marked(e.id, "target")),
+                ExprKind::Call(_, ref args) => args.iter().position(|e| st.marked(e.id, "target")),
                 _ => None,
             };
             if fmt_idx.is_none() {
                 return;
             }
             let fmt_idx = fmt_idx.unwrap();
-
 
             let (func, args) = expect!([e.kind] ExprKind::Call(ref f, ref a) => (f, a));
 
@@ -75,7 +72,12 @@ impl Transform for ConvertFormatArgs {
 
             let mut old_fmt_str_expr = None;
             visit_nodes(&args[fmt_idx] as &Expr, |e: &Expr| {
-                info!("  look at {:?} - marked? {} - {:?}", e.id, st.marked(e.id, "fmt_str"), e);
+                info!(
+                    "  look at {:?} - marked? {} - {:?}",
+                    e.id,
+                    st.marked(e.id, "fmt_str"),
+                    e
+                );
                 if st.marked(e.id, "fmt_str") {
                     if old_fmt_str_expr.is_some() {
                         warn!("multiple fmt_str marks inside argument {:?}", args[fmt_idx]);
@@ -84,7 +86,13 @@ impl Transform for ConvertFormatArgs {
                     old_fmt_str_expr = Some(P(e.clone()));
                 }
             });
-            let mac = build_format_macro("format_args", None, old_fmt_str_expr, &args[fmt_idx..], None);
+            let mac = build_format_macro(
+                "format_args",
+                None,
+                old_fmt_str_expr,
+                &args[fmt_idx..],
+                None,
+            );
             let mut new_args = args[..fmt_idx].to_owned();
             new_args.push(mk().mac_expr(mac));
 
@@ -92,7 +100,6 @@ impl Transform for ConvertFormatArgs {
         })
     }
 }
-
 
 fn build_format_macro(
     macro_name: &str,
@@ -110,13 +117,15 @@ fn build_format_macro(
         // Peel off any casts and retrieve the inner string
         match ep.kind {
             ExprKind::Lit(ref l) => break l,
-            ExprKind::Cast(ref e, _) |
-            ExprKind::Type(ref e, _) => ep = &*e,
+            ExprKind::Cast(ref e, _) | ExprKind::Type(ref e, _) => ep = &*e,
             // `e.as_ptr()` or `e.as_mut_ptr()` => e
-            ExprKind::MethodCall(ref ps, ref args, _) if args.len() == 1 &&
-                (ps.ident.as_str() == "as_ptr" ||
-                 ps.ident.as_str() == "as_mut_ptr") => ep = &args[0],
-            _ => panic!("unexpected format string: {:?}", old_fmt_str_expr)
+            ExprKind::MethodCall(ref ps, ref args, _)
+                if args.len() == 1
+                    && (ps.ident.as_str() == "as_ptr" || ps.ident.as_str() == "as_mut_ptr") =>
+            {
+                ep = &args[0]
+            }
+            _ => panic!("unexpected format string: {:?}", old_fmt_str_expr),
         }
     };
     let s = expect!([lit.kind]
@@ -130,7 +139,8 @@ fn build_format_macro(
     Parser::new(&s, |piece| match piece {
         Piece::Text(s) => {
             // Find all occurrences of brace characters in `s`
-            let mut brace_indices = s.match_indices('{')
+            let mut brace_indices = s
+                .match_indices('{')
                 .chain(s.match_indices('}'))
                 .collect::<Vec<_>>();
             brace_indices.sort();
@@ -148,12 +158,13 @@ fn build_format_macro(
                 last = idx + 1;
             }
             new_s.push_str(&s[last..]);
-        },
+        }
         Piece::Conv(c) => {
             c.push_spec(&mut new_s);
             c.add_casts(&mut idx, &mut casts);
-        },
-    }).parse();
+        }
+    })
+    .parse();
 
     while new_s.ends_with('\0') {
         new_s.pop();
@@ -175,16 +186,25 @@ fn build_format_macro(
     let expr_tt = |mut e: P<Expr>| {
         let span = e.span;
         e.span = DUMMY_SP;
-        TokenTree::Token(Token {
-            kind: TokenKind::Interpolated(Lrc::new(Nonterminal::NtExpr(e))),
-            span,
-        }, Spacing::Alone)
+        TokenTree::Token(
+            Token {
+                kind: TokenKind::Interpolated(Lrc::new(Nonterminal::NtExpr(e))),
+                span,
+            },
+            Spacing::Alone,
+        )
     };
     macro_tts.push(expr_tt(new_fmt_str_expr));
     for (i, arg) in fmt_args[1..].iter().enumerate() {
         if let Some(cast) = casts.get(&i) {
             let tt = expr_tt(cast.apply(arg.clone()));
-            macro_tts.push(TokenTree::Token(Token {kind: TokenKind::Comma, span: DUMMY_SP}, Spacing::Alone));
+            macro_tts.push(TokenTree::Token(
+                Token {
+                    kind: TokenKind::Comma,
+                    span: DUMMY_SP,
+                },
+                Spacing::Alone,
+            ));
             macro_tts.push(tt);
         }
     }
@@ -243,34 +263,44 @@ impl Transform for ConvertPrintfs {
                 }
             }
         });
-        FlatMapNodes::visit(krate, |s: Stmt| {
-            match s.kind {
-                StmtKind::Semi(ref expr) => {
-                    if let ExprKind::Call(ref f, ref args) = expr.kind {
-                        if args.len() < 1 {
-                            return smallvec![s];
+        FlatMapNodes::visit(krate, |s: Stmt| match s.kind {
+            StmtKind::Semi(ref expr) => {
+                if let ExprKind::Call(ref f, ref args) = expr.kind {
+                    if args.len() < 1 {
+                        return smallvec![s];
+                    }
+                    match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
+                        (Some(ref f_id), Some(ref arg0_id))
+                            if fprintf_defs.contains(f_id) && stderr_defs.contains(arg0_id) =>
+                        {
+                            let mac = build_format_macro(
+                                "eprint",
+                                Some("eprintln"),
+                                None,
+                                &args[1..],
+                                Some(expr.span),
+                            );
+                            return smallvec![mk().span(s.span).mac_stmt(mac)];
                         }
-                        match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
-                            (Some(ref f_id), Some(ref arg0_id)) if fprintf_defs.contains(f_id) &&
-                                stderr_defs.contains(arg0_id) => {
-                                let mac = build_format_macro("eprint", Some("eprintln"), None, &args[1..], Some(expr.span));
-                                return smallvec![mk().span(s.span).mac_stmt(mac)];
-                            }
-                            (Some(ref f_id), _) if printf_defs.contains(f_id) => {
-                                let mac = build_format_macro("print", Some("println"), None, &args[..], Some(expr.span));
-                                return smallvec![mk().span(s.span).mac_stmt(mac)];
-                            },
-                            _ => {}
-                        };
+                        (Some(ref f_id), _) if printf_defs.contains(f_id) => {
+                            let mac = build_format_macro(
+                                "print",
+                                Some("println"),
+                                None,
+                                &args[..],
+                                Some(expr.span),
+                            );
+                            return smallvec![mk().span(s.span).mac_stmt(mac)];
+                        }
+                        _ => {}
                     };
-                    smallvec![s]
-                },
-                _ => smallvec![s]
+                };
+                smallvec![s]
             }
+            _ => smallvec![s],
         })
     }
 }
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum CastType {
@@ -290,27 +320,32 @@ impl CastType {
         let span = e.span;
         e.span = DUMMY_SP;
         match *self {
-            CastType::Int(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
-            CastType::Uint(_) => mk().span(span).cast_expr(e, mk().path_ty(self.as_rust_ty())),
+            CastType::Int(_) => mk()
+                .span(span)
+                .cast_expr(e, mk().path_ty(self.as_rust_ty())),
+            CastType::Uint(_) => mk()
+                .span(span)
+                .cast_expr(e, mk().path_ty(self.as_rust_ty())),
             CastType::Usize => mk().span(span).cast_expr(e, mk().ident_ty("usize")),
             CastType::Float => mk().span(span).cast_expr(e, mk().ident_ty("f64")),
             CastType::Char => {
                 // e as u8 as char
                 let e = mk().cast_expr(e, mk().ident_ty("u8"));
                 mk().span(span).cast_expr(e, mk().ident_ty("char"))
-            },
+            }
             CastType::Str => {
                 // CStr::from_ptr(e as *const libc::c_char).to_str().unwrap()
                 let e = mk().cast_expr(e, mk().ptr_ty(mk().path_ty(vec!["libc", "c_char"])));
                 let cs = mk().call_expr(
                     // TODO(kkysen) change `"std"` to `"core"` after `#![feature(core_c_str)]` is stabilized in `1.63.0`
                     mk().path_expr(vec!["std", "ffi", "CStr", "from_ptr"]),
-                    vec![e]);
+                    vec![e],
+                );
                 let s = mk().method_call_expr(cs, "to_str", Vec::<P<Expr>>::new());
                 let call = mk().method_call_expr(s, "unwrap", Vec::<P<Expr>>::new());
                 let b = mk().unsafe_().block(vec![mk().expr_stmt(call)]);
                 mk().span(span).block_expr(b)
-            },
+            }
         }
     }
 
@@ -332,7 +367,7 @@ impl CastType {
             CastType::Int(Length::Size) => vec!["libc", "ssize_t"],
             CastType::Uint(Length::Size) => vec!["libc", "size_t"],
             CastType::Int(Length::PtrDiff) => vec!["libc", "ptrdiff_t"],
-            _ => panic!("invalid length modifier type: {:?}", self)
+            _ => panic!("invalid length modifier type: {:?}", self),
         }
     }
 }
@@ -396,8 +431,7 @@ impl Conv {
 
         let cast = match self.ty {
             ConvType::Int(len) => CastType::Int(len),
-            ConvType::Uint(len) |
-            ConvType::Hex(len, _) => CastType::Uint(len),
+            ConvType::Uint(len) | ConvType::Hex(len, _) => CastType::Uint(len),
             ConvType::Char => CastType::Char,
             ConvType::Str => CastType::Str,
             ConvType::Float => CastType::Float,
@@ -428,7 +462,7 @@ impl Conv {
         match self.ty {
             ConvType::Hex(_, false) => buf.push('x'),
             ConvType::Hex(_, true) => buf.push('X'),
-            _ => {},
+            _ => {}
         }
 
         buf.push('}');
@@ -499,7 +533,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
                 continue;
             }
 
-            if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*'{
+            if b'1' <= self.peek() && self.peek() <= b'9' || self.peek() == b'*' {
                 conv.width = Some(self.parse_amount());
             }
             if self.eat(b'.') {
@@ -560,7 +594,7 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
                 self.skip();
                 Length::PtrDiff
             }
-            _ => Length::None
+            _ => Length::None,
         }
     }
 
@@ -581,7 +615,6 @@ impl<'a, F: FnMut(Piece)> Parser<'a, F> {
         }
     }
 }
-
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;

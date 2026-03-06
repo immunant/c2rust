@@ -299,7 +299,8 @@ impl<'c> Translation<'c> {
             };
 
             let block = mk().block(stmts);
-            Ok(mk().pub_().fn_item(decl, block))
+            let main_attributes = self.mk_cross_check(mk(), vec!["none"]);
+            Ok(main_attributes.pub_().fn_item(decl, block))
         } else {
             Err(TranslationError::generic(
                 "Cannot translate non-function main entry point",

@@ -372,10 +372,12 @@ impl<'c> Translation<'c> {
                     let mut fn_ctx = self.function_context.borrow_mut();
                     let alloca_allocations_name =
                         &*fn_ctx.alloca_allocations_name.get_or_insert_with(|| {
-                            self.renamer.borrow_mut().pick_name("alloca_allocations")
+                            self.renamer
+                                .borrow_mut()
+                                .pick_name("c2rust_alloca_allocations")
                         });
 
-                    // alloca_allocations.push(std::vec::from_elem(0, count));
+                    // c2rust_alloca_allocations.push(std::vec::from_elem(0, count));
                     let init_expr = vec_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
                         cast_int(count, "usize", false),
@@ -386,16 +388,15 @@ impl<'c> Translation<'c> {
                         vec![init_expr],
                     ));
 
-                    // alloca_allocations.last_mut().unwrap().as_mut_ptr()
-                    let last_mut_expr = mk().method_call_expr(
-                        mk().ident_expr(alloca_allocations_name),
-                        "last_mut",
-                        vec![],
-                    );
-                    let unwrap_expr = mk().method_call_expr(last_mut_expr, "unwrap", vec![]);
-                    let as_mut_ptr_expr = mk().method_call_expr(unwrap_expr, "as_mut_ptr", vec![]);
+                    // c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_void
+                    let expr = mk().ident_expr(alloca_allocations_name);
+                    let expr = mk().method_call_expr(expr, "last_mut", vec![]);
+                    let expr = mk().method_call_expr(expr, "unwrap", vec![]);
+                    let expr = mk().method_call_expr(expr, "as_mut_ptr", vec![]);
+                    let pointee_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
+                    let expr = mk().cast_expr(expr, mk().mutbl().ptr_ty(pointee_ty));
 
-                    Ok(WithStmts::new(vec![push_stmt], as_mut_ptr_expr))
+                    Ok(WithStmts::new(vec![push_stmt], expr))
                 })
             }
 

@@ -18,7 +18,7 @@ pub trait AstEquiv {
     fn ast_equiv(&self, other: &Self) -> bool;
 
     /// Checks for structural and name equivalence of AST nodes, while ignoring
-    /// any difference in the names of C2RustUnnamed* types
+    /// any difference in the names of C2Rust_Unnamed* types
     fn unnamed_equiv(&self, other: &Self) -> bool;
 }
 
@@ -176,7 +176,7 @@ impl AstEquiv for Ident {
     }
 
     fn unnamed_equiv(&self, other: &Self) -> bool {
-        (self.as_str().contains("C2RustUnnamed") && other.as_str().contains("C2RustUnnamed"))
+        (self.as_str().contains("C2Rust_Unnamed") && other.as_str().contains("C2Rust_Unnamed"))
             || self.ast_equiv(other)
     }
 }

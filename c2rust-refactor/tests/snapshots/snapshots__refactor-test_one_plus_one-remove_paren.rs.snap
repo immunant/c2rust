@@ -1,0 +1,11 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor test_one_plus_one --rewrite-mode alongside -- tests/snapshots/remove_paren.rs --edition 2021
+---
+fn main() {
+    let x = (1 + 1 + (1 + 1));
+    let x = (1 + 1) + 1;
+    let x = 1 + (1 + 1);
+    let x = (1 as u8) + 1;
+    let x = ((1 + 1) as u8) + 1;
+}

@@ -1,0 +1,20 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor fix_unused_unsafe --rewrite-mode alongside -- tests/snapshots/fix_unused_unsafe.rs --edition 2021
+---
+fn main() {
+    // Has unsafe operations, shouldn't be modified.
+    unsafe {
+        let val = 123;
+        let ptr = &val as *const i32;
+        let _safe_val = *ptr;
+    }
+
+    {
+        let x = 42;
+    }
+
+    {}
+
+    let _ = { 5 + 5 };
+}

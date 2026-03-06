@@ -1,0 +1,58 @@
+---
+- file: src/*.rs
+  items:
+    - item: defaults
+      disable_xchecks: false
+      return: disabled
+      exit: disabled
+
+- file: src/fibo.rs
+  priority: 100
+  items:
+    - item: defaults
+      disable_xchecks: true
+
+    - item: struct
+      name: ".*"
+      disable_xchecks: false
+
+    - item: function
+      name: fibo
+      disable_xchecks: false
+      //entry: { fixed: 0x123456 }
+      args:
+        //n: default
+        //n: { as_type: "u32" }
+      //entry: none
+      all_args: { fixed: 0x3456 }
+      //all_args: { custom: "foo(&n)" }
+      //ahasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
+      //shasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
+      return: default
+      exit: default
+
+      entry_extra:
+        - { custom: "foo(&n)", tag: FUNCTION_ARG }
+        - { custom: "0xdeadbeef", tag: FUNCTION_ARG }
+
+      exit_extra:
+        - { custom: "__c2rust_fn_result", tag: UNKNOWN }
+
+    - item: struct
+      name: FiboArg
+      //ahasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
+      //shasher: "::c2rust_xcheck_runtime::hash::djb2::Djb2Hasher"
+      //fields:
+        //0: { fixed: 0x123456 }
+        //1: none
+        //2: { custom: "tch" }
+
+      nested:
+        - item: function
+          name: foo
+          entry: { fixed: 0x3456789a }
+          exit: default
+          args:
+            self: default
+
+...

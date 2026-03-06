@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use c2rust_rust_tools::rustfmt;
 use handlebars::Handlebars;
 use pathdiff::diff_paths;
 use serde_derive::Serialize;
@@ -11,10 +12,10 @@ use serde_json::json;
 
 use super::compile_cmds::LinkCmd;
 use super::TranspilerConfig;
+use crate::get_module_name;
 use crate::CrateSet;
 use crate::ExternCrateDetails;
 use crate::PragmaSet;
-use crate::{get_module_name, rustfmt};
 
 #[derive(Debug, Copy, Clone)]
 pub enum BuildDirectoryContents {
@@ -201,8 +202,14 @@ fn convert_module_list(
     res
 }
 
-fn convert_dependencies_list(crates: CrateSet) -> Vec<ExternCrateDetails> {
-    crates.into_iter().map(|dep| dep.into()).collect()
+fn convert_dependencies_list(
+    crates: CrateSet,
+    c2rust_dir: Option<&Path>,
+) -> Vec<ExternCrateDetails> {
+    crates
+        .into_iter()
+        .map(|dep| dep.with_details(c2rust_dir))
+        .collect()
 }
 
 fn get_lib_rs_file_name(tcfg: &TranspilerConfig) -> &str {
@@ -228,7 +235,7 @@ fn emit_build_rs(
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path, build_dir);
+        rustfmt(&output_path).run();
     }
 
     Some(path)
@@ -244,13 +251,24 @@ fn emit_lib_rs(
     pragmas: PragmaSet,
     crates: &CrateSet,
 ) -> Option<PathBuf> {
+    let plugin_args = tcfg
+        .cross_check_configs
+        .iter()
+        .map(|ccc| format!("config_file = \"{}\"", ccc))
+        .collect::<Vec<String>>()
+        .join(", ");
+
     let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
-    let crates = convert_dependencies_list(crates.clone());
+    let crates = convert_dependencies_list(crates.clone(), tcfg.c2rust_dir.as_deref());
     let file_name = get_lib_rs_file_name(tcfg);
+    let rs_xcheck_backend = tcfg.cross_check_backend.replace('-', "_");
     let json = json!({
         "lib_rs_file": file_name,
         "reorganize_definitions": tcfg.reorganize_definitions,
         "translate_valist": tcfg.translate_valist,
+        "cross_checks": tcfg.cross_checks,
+        "cross_check_backend": rs_xcheck_backend,
+        "plugin_args": plugin_args,
         "modules": modules,
         "pragmas": pragmas,
         "crates": crates,
@@ -261,7 +279,7 @@ fn emit_lib_rs(
     let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path, build_dir);
+        rustfmt(&output_path).run();
     }
 
     Some(path)
@@ -296,7 +314,8 @@ fn emit_cargo_toml<'lcmd>(
             ccfg.modules.to_owned(),
             ModuleSubset::Binaries,
         );
-        let dependencies = convert_dependencies_list(ccfg.crates.clone());
+        let dependencies =
+            convert_dependencies_list(ccfg.crates.clone(), tcfg.c2rust_dir.as_deref());
         let crate_json = json!({
             "crate_name": ccfg.crate_name,
             "crate_rust_name": ccfg.crate_name.replace('-', "_"),
@@ -304,6 +323,8 @@ fn emit_cargo_toml<'lcmd>(
             "is_library": ccfg.link_cmd.r#type.is_library(),
             "lib_rs_file": get_lib_rs_file_name(tcfg),
             "binaries": binaries,
+            "cross_checks": tcfg.cross_checks,
+            "cross_check_backend": tcfg.cross_check_backend,
             "dependencies": dependencies,
         });
         json.as_object_mut().unwrap().extend(

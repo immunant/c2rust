@@ -25,13 +25,16 @@ pub struct TypeConverter {
     extern_crates: CrateSet,
 }
 
-pub const RESERVED_NAMES: [&str; 103] = [
+pub const RESERVED_NAMES: [&str; 100] = [
     // Keywords currently in use
     "as",
+    "async",
+    "await",
     "break",
     "const",
     "continue",
     "crate",
+    "dyn",
     "else",
     "enum",
     "extern",
@@ -50,8 +53,8 @@ pub const RESERVED_NAMES: [&str; 103] = [
     "pub",
     "ref",
     "return",
-    "Self",
     "self",
+    "Self",
     "static",
     "struct",
     "super",
@@ -62,27 +65,21 @@ pub const RESERVED_NAMES: [&str; 103] = [
     "use",
     "where",
     "while",
-    "dyn",
     // Keywords reserved for future use
     "abstract",
-    "alignof",
     "become",
     "box",
     "do",
     "final",
+    "gen",
     "macro",
-    "offsetof",
     "override",
     "priv",
-    "proc",
-    "pure",
-    "sizeof",
+    "try",
     "typeof",
     "unsized",
     "virtual",
     "yield",
-    "async",
-    "try",
     // Types exported in prelude
     "Copy",
     "Send",
@@ -182,13 +179,9 @@ impl TypeConverter {
     pub fn resolve_decl_suffix_name(&mut self, decl_id: CDeclId, suffix: &'static str) -> &str {
         let key = (decl_id, suffix);
         self.suffix_names.entry(key).or_insert_with(|| {
-            let mut suffix_name = self
-                .renamer
-                .get(&decl_id)
-                .unwrap_or_else(|| "C2RustUnnamed".to_string());
-            suffix_name += suffix;
-
-            self.renamer.pick_name(&suffix_name)
+            let name = self.renamer.get(&decl_id);
+            let name = name.as_deref().unwrap_or("Unnamed");
+            self.renamer.pick_name(&format!("C2Rust_{name}_{suffix}"))
         })
     }
 

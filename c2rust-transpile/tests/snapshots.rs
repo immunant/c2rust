@@ -1,9 +1,13 @@
 use std::env::current_dir;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
+use c2rust_rust_tools::rustc;
+use c2rust_transpile::convert_type::RESERVED_NAMES;
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+use itertools::Itertools;
 
 fn config() -> TranspilerConfig {
     TranspilerConfig {
@@ -16,11 +20,14 @@ fn config() -> TranspilerConfig {
         dump_structures: false,
         verbose: false,
         debug_ast_exporter: false,
-        emit_c_decl_map: false,
+        emit_c_decl_map: true, // So `transpile_with_c_decl_map_snapshot` can validate C decl map.
         incremental_relooper: true,
         fail_on_multiple: false,
         filter: None,
         debug_relooper_labels: false,
+        cross_checks: false,
+        cross_check_backend: Default::default(),
+        cross_check_configs: Default::default(),
         prefix_function_names: None,
         translate_asm: true,
         use_c_loop_info: true,
@@ -43,14 +50,20 @@ fn config() -> TranspilerConfig {
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,
+        postprocess: false,
         emit_build_files: false,
         binaries: Vec::new(),
+        c2rust_dir: Some(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .to_path_buf(),
+        ),
     }
 }
 
-/// `platform` can be any platform-specific string.
-/// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile(platform: Option<&str>, c_path: &Path) {
+/// Validate that the given C file compiles, then transpile it with the given config.
+fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
     let status = Command::new("clang")
         .args([
             "-c",
@@ -65,12 +78,19 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
     let (_temp_dir, temp_path) =
         c2rust_transpile::create_temp_compile_commands(&[c_path.to_owned()]);
     c2rust_transpile::transpile(
-        config(),
+        config,
         &temp_path,
         &[
             "-w", // Disable warnings.
         ],
     );
+}
+
+/// Transpile one input and compare output against the corresponding snapshot.
+/// For outputs that vary in different environments, `platform` can be any platform-specific string.
+/// It could be the `target_arch`, `target_os`, some combination, or something else.
+fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
+    compile_and_transpile_file(c_path, config());
     let cwd = current_dir().unwrap();
     let c_path = c_path.strip_prefix(&cwd).unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
@@ -89,8 +109,6 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
             platform_rs_path
         }
     };
-
-    let edition = "2021";
 
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
@@ -115,30 +133,17 @@ fn transpile(platform: Option<&str>, c_path: &Path) {
         return;
     }
 
-    // Don't need to worry about platform clashes here, as this is immediately deleted.
-    let rlib_path = format!("lib{crate_name}.rlib");
-    let status = Command::new("rustc")
-        .args([
-            "+nightly-2023-04-15",
-            "--crate-type",
-            "lib",
-            "--edition",
-            edition,
-            "--crate-name",
-            crate_name,
-            "-o",
-            &rlib_path,
-            "-Awarnings", // Disable warnings.
-        ])
-        .arg(&rs_path)
-        .status();
-    assert!(status.unwrap().success());
-    fs::remove_file(&rlib_path).unwrap();
+    rustc(&rs_path).crate_name(crate_name).run();
 }
 
 #[test]
-fn transpile_all() {
-    insta::glob!("snapshots/*.c", |x| transpile(None, x));
+fn transpile_all_snapshots() {
+    generate_keywords_test();
+
+    // TODO parallelize these `insta::glob!`s across multiple `#[test]`s
+    // now that we use `cargo nextest`.
+
+    insta::glob!("snapshots/*.c", |x| transpile_snapshot(None, x));
 
     // Some things transpile differently on Linux vs. macOS,
     // as they use `unsigned long` and `unsigned long long` differently for builtins.
@@ -168,14 +173,49 @@ fn transpile_all() {
     let arch_os = format!("{}-{}", arch, os);
 
     insta::with_settings!({snapshot_suffix => os}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| transpile(Some(os), path));
+        insta::glob!("snapshots/os-specific/*.c", |path| transpile_snapshot(Some(os), path));
     });
 
     insta::with_settings!({snapshot_suffix => arch}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| transpile(Some(arch), path));
+        insta::glob!("snapshots/arch-specific/*.c", |path| transpile_snapshot(Some(arch), path));
     });
 
     insta::with_settings!({snapshot_suffix => arch_os.as_str()}, {
-        insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile(Some(arch_os.as_str()), path));
+        insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile_snapshot(Some(arch_os.as_str()), path));
     });
+}
+
+fn generate_keywords_test() {
+    // Common keywords we need to filter out.
+    let c_keywords = [
+        "break", "const", "continue", "else", "enum", "extern", "for", "if", "return", "static",
+        "struct", "while", "do", "typeof", "char",
+    ];
+    // These don't work yet.  We need to fix these.
+    let broken_rust_keywords = ["await"];
+    let mut c_code = RESERVED_NAMES
+        .into_iter()
+        .filter(|keyword| !c_keywords.contains(keyword))
+        .filter(|keyword| !broken_rust_keywords.contains(keyword))
+        .map(|name| format!("void {name}(void) {{}}"))
+        .join("\n\n");
+    c_code.push_str("\n");
+    let c_path = Path::new("tests/snapshots/keywords.c");
+    fs_err::write(c_path, c_code).unwrap();
+}
+
+#[test]
+fn check_c_decl_map() {
+    insta::glob!("c_decls_snapshots/*.c", transpile_with_c_decl_map_snapshot);
+}
+
+fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
+    compile_and_transpile_file(c_path, config());
+
+    let c_decls_path = c_path.with_extension("c_decls.json");
+    let snapshot_name = format!("c_decls-{}", c_path.file_name().unwrap().to_str().unwrap());
+    let debug_expr = format!("cat {}", c_decls_path.display());
+    let json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&c_decls_path).unwrap()).unwrap();
+    insta::assert_json_snapshot!(snapshot_name, json, &debug_expr);
 }

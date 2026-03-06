@@ -85,7 +85,7 @@ struct Args {
     #[clap(long = "ddump-structures")]
     dump_structures: bool,
 
-    /// Generate readable 'current_block' values in relooper
+    /// Generate readable 'c2rust_current_block' values in relooper
     #[clap(long = "ddebug-labels")]
     debug_labels: bool,
 
@@ -104,6 +104,12 @@ struct Args {
     /// Emit Rust build files, i.e., Cargo.toml for a library (and one or more binaries if -b/--binary is given). Implies --emit-modules.
     #[clap(short = 'e', long)]
     emit_build_files: bool,
+
+    /// If building from the c2rust repo, the path to it.
+    /// This is needed to use relative paths for up-to-date dependencies
+    /// (as opposed to what is published on crates.io).
+    #[clap(long)]
+    c2rust_dir: Option<PathBuf>,
 
     /// Path to output directory. Rust sources will be emitted in DIR/src/ and build files will be emitted in DIR/.
     #[clap(short = 'o', long, value_name = "DIR")]
@@ -132,6 +138,10 @@ struct Args {
     /// Output file in such a way that the refactoring tool can deduplicate code
     #[clap(short = 'r', long)]
     reorganize_definitions: bool,
+
+    /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
+    #[clap(long)]
+    postprocess: bool,
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
     #[clap(multiple = true, last(true))]
@@ -164,6 +174,15 @@ struct Args {
     /// Fail when the control-flow graph generates branching constructs
     #[clap(long)]
     fail_on_multiple: bool,
+
+    #[clap(long, short = 'x')]
+    cross_checks: bool,
+
+    #[clap(long, short = 'X', multiple = true)]
+    cross_check_config: Vec<String>,
+
+    #[clap(long, value_enum, default_value_t)]
+    cross_check_backend: CrossCheckBackend,
 }
 
 // TODO Eventually move this code into `c2rust-transpile`
@@ -191,6 +210,30 @@ impl From<TranslateMacros> for c2rust_transpile::TranslateMacros {
             TranslateMacros::Conservative => c2rust_transpile::TranslateMacros::Conservative,
             TranslateMacros::Experimental => c2rust_transpile::TranslateMacros::Experimental,
         }
+    }
+}
+
+#[derive(Default, Debug, ValueEnum, Clone)]
+pub enum CrossCheckBackend {
+    DynamicDlsym,
+
+    #[default]
+    ZstdLogging,
+
+    LibclevrbufSys,
+
+    LibfakechecksSys,
+}
+
+impl From<CrossCheckBackend> for String {
+    fn from(x: CrossCheckBackend) -> String {
+        let s = match x {
+            CrossCheckBackend::DynamicDlsym => "dynamic-dlsym",
+            CrossCheckBackend::ZstdLogging => "zstd-logging",
+            CrossCheckBackend::LibclevrbufSys => "libclevrbuf-sys",
+            CrossCheckBackend::LibfakechecksSys => "libfakechecks-sys",
+        };
+        s.to_string()
     }
 }
 
@@ -222,6 +265,9 @@ fn main() {
         fail_on_multiple: args.fail_on_multiple,
         filter: args.filter,
         debug_relooper_labels: args.debug_labels,
+        cross_checks: args.cross_checks,
+        cross_check_backend: args.cross_check_backend.into(),
+        cross_check_configs: args.cross_check_config,
         prefix_function_names: args.prefix_function_names,
 
         // We used to guard asm translation with a command-line
@@ -246,8 +292,10 @@ fn main() {
         overwrite_existing: args.overwrite_existing,
         reduce_type_annotations: args.reduce_type_annotations,
         reorganize_definitions: args.reorganize_definitions,
+        postprocess: args.postprocess,
         emit_modules: args.emit_modules,
         emit_build_files: args.emit_build_files,
+        c2rust_dir: args.c2rust_dir,
         output_dir: args.output_dir,
         binaries: args.binary.unwrap_or_default(),
         panic_on_translator_failure: args.invalid_code == InvalidCodes::Panic,

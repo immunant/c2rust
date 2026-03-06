@@ -1,24 +1,23 @@
 use log::info;
-use std::collections::{HashMap, HashSet};
-use std::mem;
-use rustc_hir::def_id::DefId;
-use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_ast::*;
+use rustc_hir::def_id::DefId;
 use rustc_span::symbol::{Ident, Symbol};
 use smallvec::smallvec;
+use std::collections::{HashMap, HashSet};
+use std::mem;
 
-use crate::ast_manip::{FlatMapNodes, MutVisitNodes, fold_modules};
+use crate::ast_builder::{mk, IntoSymbol};
 use crate::ast_manip::fn_edit::mut_visit_fns;
+use crate::ast_manip::{fold_modules, FlatMapNodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{parse_expr};
+use crate::driver::parse_expr;
 use crate::match_or;
-use crate::matcher::{Bindings, BindingType, MatchCtxt, Subst, mut_visit_match_with};
+use crate::matcher::{mut_visit_match_with, BindingType, Bindings, MatchCtxt, Subst};
 use crate::path_edit::fold_resolved_paths;
 use crate::transform::Transform;
-use crate::ast_builder::{mk, IntoSymbol};
 use crate::util::dataflow;
 use crate::RefactorCtxt;
-
 
 /// # `static_collect_to_struct` Command
 ///
@@ -81,9 +80,10 @@ impl Transform for CollectToStruct {
             let mut matches = Vec::new();
             let mut insert_point = None;
 
-            while let Some((ident, ty, init)) = curs.advance_until_match(
-                    |i| match_or!([i.kind] ItemKind::Static(ref ty, _, ref init) =>
-                                  Some((i.ident, ty.clone(), init.clone())); None)) {
+            while let Some((ident, ty, init)) = curs.advance_until_match(|i| {
+                match_or!([i.kind] ItemKind::Static(ref ty, _, ref init) =>
+                                  Some((i.ident, ty.clone(), init.clone())); None)
+            }) {
                 if !st.marked(curs.next().id, "target") {
                     curs.advance();
                     continue;
@@ -91,8 +91,7 @@ impl Transform for CollectToStruct {
                 info!("found {:?}: {:?}", ident, ty);
 
                 // Record this static
-                old_statics.insert(ident.name,
-                                   cx.node_def_id(curs.next().id));
+                old_statics.insert(ident.name, cx.node_def_id(curs.next().id));
 
                 if insert_point.is_none() {
                     insert_point = Some(curs.mark());
@@ -111,9 +110,11 @@ impl Transform for CollectToStruct {
             if let Some(insert_point) = insert_point {
                 curs.seek(insert_point);
                 curs.insert(build_collected_struct(&self.struct_name, &matches));
-                curs.insert(build_struct_instance(&self.struct_name,
-                                                  &self.instance_name,
-                                                  &matches));
+                curs.insert(build_struct_instance(
+                    &self.struct_name,
+                    &self.instance_name,
+                    &matches,
+                ));
             }
         });
 
@@ -122,13 +123,16 @@ impl Transform for CollectToStruct {
         let mut init_mcx = MatchCtxt::new(st, cx);
         init_mcx.set_type("__x", BindingType::Ident);
         init_mcx.bindings.add(
-            "__s", Ident::with_dummy_span((&self.instance_name as &str).into_symbol()));
+            "__s",
+            Ident::with_dummy_span((&self.instance_name as &str).into_symbol()),
+        );
 
         mut_visit_match_with(init_mcx, ident_pat, krate, |orig, mcx| {
-            let static_id = match old_statics.get(&mcx.bindings.get::<_, Ident>("__x").unwrap().name) {
-                Some(&x) => x,
-                None => return,
-            };
+            let static_id =
+                match old_statics.get(&mcx.bindings.get::<_, Ident>("__x").unwrap().name) {
+                    Some(&x) => x,
+                    None => return,
+                };
 
             if cx.resolve_expr(&orig) != static_id {
                 return;
@@ -142,22 +146,34 @@ impl Transform for CollectToStruct {
 }
 
 fn build_collected_struct(name: &str, matches: &[Bindings]) -> P<Item> {
-    let fields = matches.iter().map(
-        |bnd| mk().field_def(bnd.get::<_, Ident>("__x").unwrap(), bnd.get::<_, P<Ty>>("__t").unwrap())).collect::<Vec<_>>();
+    let fields = matches
+        .iter()
+        .map(|bnd| {
+            mk().field_def(
+                bnd.get::<_, Ident>("__x").unwrap(),
+                bnd.get::<_, P<Ty>>("__t").unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
     mk().struct_item(name, fields, false)
 }
 
-fn build_struct_instance(struct_name: &str,
-                         instance_name: &str,
-                         matches: &[Bindings]) -> P<Item> {
-    let fields = matches.iter().map(
-        |bnd| mk().field(bnd.get::<_, Ident>("__x").unwrap(), bnd.get::<_, P<Expr>>("__init").unwrap())).collect::<Vec<_>>();
-    mk().mutbl()
-        .static_item(instance_name,
-                     mk().path_ty(vec![struct_name]),
-                     mk().struct_expr(vec![struct_name], fields))
+fn build_struct_instance(struct_name: &str, instance_name: &str, matches: &[Bindings]) -> P<Item> {
+    let fields = matches
+        .iter()
+        .map(|bnd| {
+            mk().field(
+                bnd.get::<_, Ident>("__x").unwrap(),
+                bnd.get::<_, P<Expr>>("__init").unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    mk().mutbl().static_item(
+        instance_name,
+        mk().path_ty(vec![struct_name]),
+        mk().struct_expr(vec![struct_name], fields),
+    )
 }
-
 
 /// # `static_to_local_ref` Command
 ///
@@ -243,19 +259,21 @@ impl Transform for Localize {
                     let def_id = cx.node_def_id(i.id);
                     let arg_name_str = format!("{}_", i.ident.name.as_str());
                     let arg_name = (&arg_name_str as &str).into_symbol();
-                    statics.insert(def_id, StaticInfo {
-                        name: i.ident,
-                        arg_name: arg_name,
-                        ty: ty.clone(),
-                        mutbl: mutbl,
-                    });
-                },
-                _ => {},
+                    statics.insert(
+                        def_id,
+                        StaticInfo {
+                            name: i.ident,
+                            arg_name: arg_name,
+                            ty: ty.clone(),
+                            mutbl: mutbl,
+                        },
+                    );
+                }
+                _ => {}
             }
 
             smallvec![i]
         });
-
 
         // (2) Collect all marked functions, and figure out which statics are used in each.
 
@@ -286,13 +304,24 @@ impl Transform for Localize {
         }
 
         let fn_ids = fn_refs.keys().copied().collect::<HashSet<_>>();
-        let mut fns = fn_refs.into_iter().map(|(k, v)| {
-            let fn_refs = v.iter().filter(|id| fn_ids.contains(id))
-                .copied().collect();
-            let static_refs = v.iter().filter(|id| statics.contains_key(id))
-                .copied().collect();
-            (k, FnInfo { fn_refs, static_refs })
-        }).collect::<HashMap<_, _>>();
+        let mut fns = fn_refs
+            .into_iter()
+            .map(|(k, v)| {
+                let fn_refs = v.iter().filter(|id| fn_ids.contains(id)).copied().collect();
+                let static_refs = v
+                    .iter()
+                    .filter(|id| statics.contains_key(id))
+                    .copied()
+                    .collect();
+                (
+                    k,
+                    FnInfo {
+                        fn_refs,
+                        static_refs,
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
 
         // Propagate statics backward through the (partial) callgraph.
         dataflow::iterate(&mut fns, |cur_id, cur, data| {
@@ -312,12 +341,14 @@ impl Transform for Localize {
         });
 
         // Build the final map of static usage, sorted to ensure deterministic ordering.
-        let fn_statics = fns.into_iter().map(|(k, v)| {
-            let mut statics = v.static_refs.into_iter().collect::<Vec<_>>();
-            statics.sort();
-            (k, statics)
-        }).collect::<HashMap<_, _>>();
-
+        let fn_statics = fns
+            .into_iter()
+            .map(|(k, v)| {
+                let mut statics = v.static_refs.into_iter().collect::<Vec<_>>();
+                statics.sort();
+                (k, statics)
+            })
+            .collect::<HashMap<_, _>>();
 
         // (3) Do the actual rewrite.  Update calls to marked functions, passing any statics they
         // require as arguments.  Add arguments to marked functions' signatures, corresponding to
@@ -327,13 +358,13 @@ impl Transform for Localize {
         mut_visit_fns(krate, |fl| {
             let fn_def_id = cx.node_def_id(fl.id);
             if let Some(static_ids) = fn_statics.get(&fn_def_id) {
-
                 // Add new argument to function signature.
                 for &static_id in static_ids {
                     let info = &statics[&static_id];
                     fl.decl.inputs.push(mk().arg(
                         mk().set_mutbl(info.mutbl).ref_ty(&info.ty),
-                        mk().ident_pat(info.arg_name)));
+                        mk().ident_pat(info.arg_name),
+                    ));
                 }
 
                 // Update uses of statics.
@@ -358,7 +389,6 @@ impl Transform for Localize {
                         }
                     }
                 });
-
             } else {
                 // Update calls only.
                 MutVisitNodes::visit(&mut fl.body, |e: &mut P<Expr>| {
@@ -367,8 +397,10 @@ impl Transform for Localize {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
                                 for &static_id in func_static_ids {
                                     let info = &statics[&static_id];
-                                    args.push(mk().set_mutbl(info.mutbl).addr_of_expr(
-                                            mk().ident_expr(info.name)));
+                                    args.push(
+                                        mk().set_mutbl(info.mutbl)
+                                            .addr_of_expr(mk().ident_expr(info.name)),
+                                    );
                                 }
                             }
                         }
@@ -378,7 +410,6 @@ impl Transform for Localize {
         });
     }
 }
-
 
 /// # `static_to_local` Command
 ///
@@ -442,20 +473,22 @@ impl Transform for StaticToLocal {
             match i.kind {
                 ItemKind::Static(ref ty, mutbl, ref expr) => {
                     let def_id = cx.node_def_id(i.id);
-                    statics.insert(def_id, StaticInfo {
-                        name: i.ident,
-                        ty: ty.clone(),
-                        mutbl: mutbl,
-                        expr: expr.clone(),
-                    });
+                    statics.insert(
+                        def_id,
+                        StaticInfo {
+                            name: i.ident,
+                            ty: ty.clone(),
+                            mutbl: mutbl,
+                            expr: expr.clone(),
+                        },
+                    );
                     return smallvec![];
-                },
-                _ => {},
+                }
+                _ => {}
             }
 
             smallvec![i]
         });
-
 
         // (2) Add a new local to every function that uses a marked static.
 
@@ -497,16 +530,15 @@ impl Transform for StaticToLocal {
     }
 }
 
-
-
-
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("static_collect_to_struct", |args| mk(CollectToStruct {
-        struct_name: args[0].clone(),
-        instance_name: args[1].clone(),
-    }));
+    reg.register("static_collect_to_struct", |args| {
+        mk(CollectToStruct {
+            struct_name: args[0].clone(),
+            instance_name: args[1].clone(),
+        })
+    });
     reg.register("static_to_local_ref", |_args| mk(Localize));
     reg.register("static_to_local", |_args| mk(StaticToLocal));
 }

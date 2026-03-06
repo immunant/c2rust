@@ -9,6 +9,16 @@
 extern crate {{this.ident}};
 {{~/each}}
 
+{{#if cross_checks~}}
+#![plugin(c2rust_xcheck_plugin({{plugin_args}}))]
+#[macro_use] extern crate c2rust_xcheck_derive;
+#[macro_use] extern crate c2rust_xcheck_runtime;
+extern crate c2rust_xcheck_backend_{{cross_check_backend}};
+
+#[global_allocator]
+static C2RUST_ALLOC: ::std::alloc::System = ::std::alloc::System;
+{{~/if}}
+
 {{#each modules~}}
 {{~#if this.path~}}
 #[path = "{{this.path}}"]

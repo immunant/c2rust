@@ -6,17 +6,14 @@ requirements:
         - libpcre3-dev
         - zlib1g-dev
 
-cargo.transpile:
-  autogen: true
-
-cargo.refactor:
-  autogen: true
-
 transpile:
   autogen: true
   # blocked on https://github.com/immunant/c2rust/issues/266
   tflags: --reorganize-definitions --disable-refactoring
   binary: nginx
+
+cargo.transpile:
+  autogen: true
 
 refactor:
   autogen: true
@@ -28,3 +25,6 @@ refactor:
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs
+
+cargo.refactor:
+  autogen: true

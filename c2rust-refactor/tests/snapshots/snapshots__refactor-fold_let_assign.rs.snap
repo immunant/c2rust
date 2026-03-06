@@ -1,0 +1,45 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor fold_let_assign --rewrite-mode alongside -- tests/snapshots/fold_let_assign.rs --edition 2021
+---
+fn main() {
+    {
+        let x = 5;
+    }
+
+    {
+        let x = 5;
+        let y = 5;
+    }
+
+    {
+        let y = 5;
+        let x = 5;
+    }
+
+    {
+        let mut y = 17;
+        let x = 5;
+    }
+
+    {
+        let mut x;
+        {
+            x = 5;
+        }
+        x = 10;
+    }
+
+    {
+        let x = 5;
+        let y = 5;
+        let mut x = unsafe { ::std::mem::uninitialized() };
+        x = 10;
+    }
+
+    {
+        let mut x = unsafe { ::std::mem::uninitialized() };
+        ::std::mem::drop(&mut x);
+        x = 10;
+    }
+}

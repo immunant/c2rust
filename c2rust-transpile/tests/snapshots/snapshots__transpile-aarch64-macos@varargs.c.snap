@@ -17,7 +17,7 @@ extern "C" {
 #[no_mangle]
 pub unsafe extern "C" fn call_printf() {
     printf(
-        b"%d, %f\n\0" as *const u8 as *const ::core::ffi::c_char,
+        b"%d, %f\n\0".as_ptr() as *const ::core::ffi::c_char,
         10 as ::core::ffi::c_int,
         1.5f64,
     );

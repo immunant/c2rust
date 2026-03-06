@@ -19,9 +19,10 @@ class Test(object):
         "make": ["make.sh", "cmake.sh"],
         "transpile": ["transpile.gen.sh", "transpile.sh"],
         "cargo.transpile": ["cargo.transpile.gen.sh", "cargo.transpile.sh"],
+        "check.transpile": ["check.transpile.sh", "test.sh"],
         "refactor": ["refactor.gen.sh", "refactor.sh"],
         "cargo.refactor": ["cargo.refactor.gen.sh", "cargo.refactor.sh"],
-        "check": ["check.sh", "test.sh"],
+        "check.refactor": ["check.refactor.sh", "test.sh"],
     }
 
     def __init__(self, directory: Path, generated_scripts: set[Path]):
@@ -174,7 +175,7 @@ class Test(object):
         elif is_dir_empty(repo_dir):
             repo_dir = os.path.relpath(repo_dir, os.path.curdir)
             msg = f"submodule not checked out: {repo_dir}\n"
-            msg += f"(try running `git submodule update --depth 50 --init {repo_dir}`)"
+            msg += f"(try running `git submodule update --depth 50 --init --checkout {repo_dir}`)"
             die(msg)
 
     def is_stage_xfail(self, stage, script, conf: Config) -> bool:
@@ -258,5 +259,5 @@ def run_tests(conf: Config, generated_scripts: set[Path]):
     for result in results:
         print(f"{result.test.name} took {result.time}")
     if not all(result.passed for result in results):
-        print(f"projects failed: {' '.join(result.test.name for result in results)}")
+        print(f"projects failed: {' '.join(result.test.name for result in results if not result.passed)}")
         exit(1)

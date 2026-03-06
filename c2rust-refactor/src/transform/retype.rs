@@ -1,31 +1,31 @@
 use log::{debug, info, trace};
-use std::collections::{HashMap, HashSet};
-use std::ops::DerefMut;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::token::{BinOpToken, TokenKind};
+use rustc_ast::*;
+use rustc_ast_pretty::pprust;
+use rustc_errors::PResult;
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::ty::{self, TyKind, TyCtxt, ParamEnv};
-use rustc_ast::*;
-use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_errors::PResult;
+use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyKind};
 use rustc_parse::parser::Parser;
-use rustc_ast::token::{TokenKind, BinOpToken};
-use rustc_ast_pretty::pprust;
-use rustc_ast::ptr::P;
 use rustc_span::Span;
 use smallvec::{smallvec, SmallVec};
+use std::collections::{HashMap, HashSet};
+use std::ops::DerefMut;
 
 use crate::ast_builder::{mk, IntoSymbol};
-use crate::ast_manip::{FlatMapNodes, MutVisit, MutVisitNodes, fold_output_exprs};
 use crate::ast_manip::fn_edit::{mut_visit_fns, visit_fns};
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_context};
+use crate::ast_manip::{fold_output_exprs, FlatMapNodes, MutVisit, MutVisitNodes};
 use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
-use crate::driver::{self, Phase, parse_ty, parse_expr};
-use crate::{expect, match_or};
-use crate::illtyped::{IlltypedFolder, fold_illtyped};
-use crate::matcher::{Bindings, MatchCtxt, Subst, mut_visit_match};
+use crate::driver::{self, parse_expr, parse_ty, Phase};
+use crate::illtyped::{fold_illtyped, IlltypedFolder};
+use crate::matcher::{mut_visit_match, Bindings, MatchCtxt, Subst};
 use crate::reflect::{self, reflect_tcx_ty};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
+use crate::{expect, match_or};
 
 /// # `retype_argument` Command
 ///
@@ -67,7 +67,10 @@ impl Transform for RetypeArgument {
             for (i, arg) in fl.decl.inputs.iter_mut().enumerate() {
                 if st.marked(arg.id, "target") {
                     arg.ty = new_ty.clone();
-                    mod_fns.entry(cx.node_def_id(fn_id)).or_insert_with(HashSet::new).insert(i);
+                    mod_fns
+                        .entry(cx.node_def_id(fn_id))
+                        .or_insert_with(HashSet::new)
+                        .insert(i);
 
                     changed_args.insert(cx.hir_map().node_to_hir_id(arg.pat.id));
                 }
@@ -84,16 +87,18 @@ impl Transform for RetypeArgument {
             // see `x` again in the recursive call.  We keep track of which nodes have already been
             // rewritten so that we don't end up with a stack overflow.
             let mut rewritten_nodes = HashSet::new();
-            fl.body.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
-                if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
-                    if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
-                        rewritten_nodes.insert(e.id);
-                        let mut bnd = Bindings::new();
-                        bnd.add("__new", e.clone());
-                        *e = unwrap.clone().subst(st, cx, &bnd);
+            fl.body.as_mut().map(|b| {
+                MutVisitNodes::visit(b, |e: &mut P<Expr>| {
+                    if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
+                        if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
+                            rewritten_nodes.insert(e.id);
+                            let mut bnd = Bindings::new();
+                            bnd.add("__new", e.clone());
+                            *e = unwrap.clone().subst(st, cx, &bnd);
+                        }
                     }
-                }
-            }));
+                })
+            });
         });
 
         // (2) Rewrite callsites of modified functions.
@@ -120,7 +125,6 @@ impl Transform for RetypeArgument {
         Phase::Phase3
     }
 }
-
 
 /// # `retype_return` Command
 ///
@@ -162,11 +166,13 @@ impl Transform for RetypeReturn {
             fl.decl.output = FnRetTy::Ty(new_ty.clone());
 
             // Rewrite output expressions using `wrap`.
-            fl.body.as_mut().map(|b| fold_output_exprs(b, true, |e| {
-                let mut bnd = Bindings::new();
-                bnd.add("__old", e.clone());
-                *e = wrap.clone().subst(st, cx, &bnd);
-            }));
+            fl.body.as_mut().map(|b| {
+                fold_output_exprs(b, true, |e| {
+                    let mut bnd = Bindings::new();
+                    bnd.add("__old", e.clone());
+                    *e = wrap.clone().subst(st, cx, &bnd);
+                })
+            });
 
             mod_fns.insert(cx.node_def_id(fl.id));
         });
@@ -190,7 +196,6 @@ impl Transform for RetypeReturn {
         Phase::Phase3
     }
 }
-
 
 /// # `retype_static` Command
 ///
@@ -231,7 +236,10 @@ impl Transform for RetypeStatic {
         let rev_conv_assign = st.parse_expr(cx, &self.rev_conv_assign);
         let conv_rval = st.parse_expr(cx, &self.conv_rval);
         let conv_lval = st.parse_expr(cx, &self.conv_lval);
-        let conv_lval_mut = self.conv_lval_mut.as_ref().map(|src| st.parse_expr(cx, src));
+        let conv_lval_mut = self
+            .conv_lval_mut
+            .as_ref()
+            .map(|src| st.parse_expr(cx, src));
 
         // Modified statics, by DefId.
         let mut mod_statics: HashSet<DefId> = HashSet::new();
@@ -251,8 +259,8 @@ impl Transform for RetypeStatic {
                             *init = rev_conv_assign.clone().subst(st, cx, &bnd);
                         }
                         mod_statics.insert(cx.node_def_id(i.id));
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
                 i
             })]
@@ -267,8 +275,8 @@ impl Transform for RetypeStatic {
                 ForeignItemKind::Static(ref mut ty, _, _) => {
                     *ty = new_ty.clone();
                     mod_statics.insert(cx.node_def_id(fi.id));
-                },
-                _ => {},
+                }
+                _ => {}
             }
             smallvec![fi]
         });
@@ -286,26 +294,31 @@ impl Transform for RetypeStatic {
             }
 
             match e.kind {
-                ExprKind::Assign(ref lhs, ref mut rhs, _) |
-                ExprKind::AssignOp(_, ref lhs, ref mut rhs) => {
-                    if cx.try_resolve_expr(lhs)
-                        .map_or(false, |did| mod_statics.contains(&did)) {
-                            let mut bnd = Bindings::new();
-                            bnd.add("__old", rhs.clone());
-                            *rhs = rev_conv_assign.clone().subst(st, cx, &bnd);
-                            handled_ids.insert(lhs.id);
-                        }
-                },
-                _ => {},
+                ExprKind::Assign(ref lhs, ref mut rhs, _)
+                | ExprKind::AssignOp(_, ref lhs, ref mut rhs) => {
+                    if cx
+                        .try_resolve_expr(lhs)
+                        .map_or(false, |did| mod_statics.contains(&did))
+                    {
+                        let mut bnd = Bindings::new();
+                        bnd.add("__old", rhs.clone());
+                        *rhs = rev_conv_assign.clone().subst(st, cx, &bnd);
+                        handled_ids.insert(lhs.id);
+                    }
+                }
+                _ => {}
             }
         });
 
         // (3) Rewrite use sites of modified statics.
 
         fold_exprs_with_context(krate, |e, ectx| {
-            if !crate::matches!([e.kind] ExprKind::Path(..)) ||
-               handled_ids.contains(&e.id) ||
-               !cx.try_resolve_expr(&e).map_or(false, |did| mod_statics.contains(&did)) {
+            if !crate::matches!([e.kind] ExprKind::Path(..))
+                || handled_ids.contains(&e.id)
+                || !cx
+                    .try_resolve_expr(&e)
+                    .map_or(false, |did| mod_statics.contains(&did))
+            {
                 return;
             }
 
@@ -314,12 +327,15 @@ impl Transform for RetypeStatic {
             *e = match ectx {
                 lr_expr::Context::Rvalue => conv_rval.clone().subst(st, cx, &bnd),
                 lr_expr::Context::Lvalue => conv_lval.clone().subst(st, cx, &bnd),
-                lr_expr::Context::LvalueMut => {
-                    conv_lval_mut.clone().unwrap_or_else(
-                        || panic!("need conv_lval_mut to handle LvalueMut expression `{}`",
-                                  pprust::expr_to_string(&e)))
-                        .subst(st, cx, &bnd)
-                }
+                lr_expr::Context::LvalueMut => conv_lval_mut
+                    .clone()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "need conv_lval_mut to handle LvalueMut expression `{}`",
+                            pprust::expr_to_string(&e)
+                        )
+                    })
+                    .subst(st, cx, &bnd),
             };
         });
     }
@@ -329,14 +345,15 @@ impl Transform for RetypeStatic {
     }
 }
 
-
 /// Rewrite types in the crate to types that are transmute-compatible with the original.
 /// Automatically inserts `transmute` calls as needed to make the types line up after rewriting.
 ///
 /// This function currently handles only direct function calls.  Creation and use of function
 /// pointers is not handled correctly yet.
 pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate, retype: F)
-    where F: FnMut(&mut P<Ty>) -> bool {
+where
+    F: FnMut(&mut P<Ty>) -> bool,
+{
     // (1) Walk over all supported nodes, replacing type annotations.  Also record which nodes had
     // type annotations replaced, for future reference.
 
@@ -350,7 +367,9 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
     }
 
     impl<F> MutVisitor for ChangeTypeFolder<F>
-            where F: FnMut(&mut P<Ty>) -> bool {
+    where
+        F: FnMut(&mut P<Ty>) -> bool,
+    {
         fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             let i = if crate::matches!([i.kind] ItemKind::Fn(..)) {
                 i.map(|mut i| {
@@ -361,8 +380,8 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     for (j, arg) in fd.inputs.iter_mut().enumerate() {
                         let old_ty = arg.ty.clone();
                         if (self.retype)(&mut arg.ty) {
-                            self.changed_inputs.insert((i.id, j),
-                                                       (old_ty.clone(), arg.ty.clone()));
+                            self.changed_inputs
+                                .insert((i.id, j), (old_ty.clone(), arg.ty.clone()));
                             self.changed_funcs.insert(i.id);
 
                             // Also record that the type of the variable declared here has changed.
@@ -370,7 +389,8 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                                 // Note that `PatKind::Ident` doesn't guarantee that this is a
                                 // variable binding.  But if it's not, then no name will ever
                                 // resolve to `arg.pat`'s DefId, so it doesn't matter.
-                                self.changed_defs.insert(arg.pat.id, (old_ty, arg.ty.clone()));
+                                self.changed_defs
+                                    .insert(arg.pat.id, (old_ty, arg.ty.clone()));
                             } else {
                                 // TODO: Would be nice to warn the user (or skip rewriting) if a
                                 // nontrivial pattern gets its type changed, as we'll likely miss
@@ -390,13 +410,12 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     match i.kind {
                         ItemKind::Fn(box Fn { ref mut sig, .. }) => {
                             *sig.decl = fd;
-                        },
+                        }
                         _ => panic!("expected ItemKind::Fn"),
                     }
 
                     i
                 })
-
             } else if crate::matches!([i.kind] ItemKind::Static(..)) {
                 i.map(|mut i| {
                     {
@@ -408,7 +427,6 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     }
                     i
                 })
-
             } else if crate::matches!([i.kind] ItemKind::Const(..)) {
                 i.map(|mut i| {
                     {
@@ -420,7 +438,6 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                     }
                     i
                 })
-
             } else {
                 i
             };
@@ -445,18 +462,28 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
         changed_defs: HashMap::new(),
     };
     krate.visit(&mut f);
-    let ChangeTypeFolder { changed_inputs, changed_outputs, changed_funcs,
-                           changed_defs, .. } = f;
-
+    let ChangeTypeFolder {
+        changed_inputs,
+        changed_outputs,
+        changed_funcs,
+        changed_defs,
+        ..
+    } = f;
 
     // (2) Look for exprs referencing the changed items, and wrap them in transmutes.
 
-    let rvalue_repl = parse_expr(cx.session(),
-            "::std::mem::transmute::<__old_ty, __new_ty>(__e)");
-    let lvalue_repl = parse_expr(cx.session(),
-            "*::std::mem::transmute::<&__old_ty, &__new_ty>(&__e)");
-    let lvalue_mut_repl = parse_expr(cx.session(),
-            "*::std::mem::transmute::<&mut __old_ty, &mut __new_ty>(&mut __e)");
+    let rvalue_repl = parse_expr(
+        cx.session(),
+        "::std::mem::transmute::<__old_ty, __new_ty>(__e)",
+    );
+    let lvalue_repl = parse_expr(
+        cx.session(),
+        "*::std::mem::transmute::<&__old_ty, &__new_ty>(&__e)",
+    );
+    let lvalue_mut_repl = parse_expr(
+        cx.session(),
+        "*::std::mem::transmute::<&mut __old_ty, &mut __new_ty>(&mut __e)",
+    );
 
     // MutVisitor for rewriting top-level exprs only
     struct ExprFolder<F> {
@@ -470,7 +497,10 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
     }
 
     fn fold_top_exprs<T, F>(x: &mut T, callback: F)
-            where T: MutVisit, F: FnMut(&mut P<Expr>) {
+    where
+        T: MutVisit,
+        F: FnMut(&mut P<Expr>),
+    {
         let mut f = ExprFolder { callback: callback };
         x.visit(&mut f)
     }
@@ -493,45 +523,61 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
         fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
             match e.kind {
                 ExprKind::Path(..) => {
-                    if let Some(&(ref old_ty, ref new_ty)) = cx.try_resolve_expr_to_hid(&e)
-                            .and_then(|hid| changed_defs.get(&cx.hir_map().hir_to_node_id(hid))) {
+                    if let Some(&(ref old_ty, ref new_ty)) = cx
+                        .try_resolve_expr_to_hid(&e)
+                        .and_then(|hid| changed_defs.get(&cx.hir_map().hir_to_node_id(hid)))
+                    {
                         *e = transmute(e.clone(), context, new_ty, old_ty);
                     }
-                },
+                }
 
                 ExprKind::Field(ref obj, ref name) => {
                     let ty = cx.adjusted_node_type(obj.id);
                     match ty.kind() {
                         TyKind::Adt(adt, _) => {
-                            let did = adt.non_enum_variant().fields
-                              .iter()
-                              .find(|f| f.ident(cx.ty_ctxt()) == *name)
-                              .expect(&format!("Couldn't find struct field {}", name)).did;
-                            if let Some(&(ref old_ty, ref new_ty)) = cx.hir_map()
-                                    .as_local_node_id(did)
-                                    .and_then(|id| changed_defs.get(&id)) {
+                            let did = adt
+                                .non_enum_variant()
+                                .fields
+                                .iter()
+                                .find(|f| f.ident(cx.ty_ctxt()) == *name)
+                                .expect(&format!("Couldn't find struct field {}", name))
+                                .did;
+                            if let Some(&(ref old_ty, ref new_ty)) = cx
+                                .hir_map()
+                                .as_local_node_id(did)
+                                .and_then(|id| changed_defs.get(&id))
+                            {
                                 *e = transmute(e.clone(), context, new_ty, old_ty);
                             }
-                        },
+                        }
                         _ => panic!("field access on non-adt"),
                     }
-                },
+                }
 
                 ExprKind::Call(_, ref args) => {
-                    if let Some(func_id) = cx.opt_callee(&e)
-                            .and_then(|did| cx.hir_map().as_local_node_id(did)) {
+                    if let Some(func_id) = cx
+                        .opt_callee(&e)
+                        .and_then(|did| cx.hir_map().as_local_node_id(did))
+                    {
                         if changed_funcs.contains(&func_id) {
-                            let new_args = args.iter().enumerate().map(|(i, a)| {
-                                if let Some(&(ref old_ty, ref new_ty)) =
-                                        changed_inputs.get(&(func_id, i)) {
-                                    transmute(a.clone(),
-                                              lr_expr::Context::Rvalue,
-                                              old_ty,
-                                              new_ty)
-                                } else {
-                                    a.clone()
-                                }
-                            }).collect();
+                            let new_args = args
+                                .iter()
+                                .enumerate()
+                                .map(|(i, a)| {
+                                    if let Some(&(ref old_ty, ref new_ty)) =
+                                        changed_inputs.get(&(func_id, i))
+                                    {
+                                        transmute(
+                                            a.clone(),
+                                            lr_expr::Context::Rvalue,
+                                            old_ty,
+                                            new_ty,
+                                        )
+                                    } else {
+                                        a.clone()
+                                    }
+                                })
+                                .collect();
                             expect!([e.kind]
                                     ExprKind::Call(_, ref mut args) => *args = new_args);
 
@@ -540,28 +586,27 @@ pub fn bitcast_retype<F>(st: &CommandState, cx: &RefactorCtxt, krate: &mut Crate
                             }
                         }
                     }
-                },
+                }
 
                 // TODO: Handle MethodCall.  In theory we should also deal with method calls from
                 // operator overloads, but I doubt anybody wants to rewrite those definitions.
-
-                _ => {},
+                _ => {}
             };
         })
     });
-
 
     // (3) Wrap output expressions from functions whose return types were modified.
 
     mut_visit_fns(krate, |fl| {
         if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&fl.id) {
-            fl.body.as_mut().map(|b| fold_output_exprs(b, true, |e| {
-                *e = transmute(e.clone(), lr_expr::Context::Rvalue, old_ty, new_ty);
-            }));
+            fl.body.as_mut().map(|b| {
+                fold_output_exprs(b, true, |e| {
+                    *e = transmute(e.clone(), lr_expr::Context::Rvalue, old_ty, new_ty);
+                })
+            });
         }
     });
 }
-
 
 /// # `bitcast_retype` Command
 ///
@@ -604,7 +649,6 @@ impl Transform for BitcastRetype {
         Phase::Phase3
     }
 }
-
 
 /// # `type_fix_rules` Command
 ///
@@ -661,41 +705,55 @@ fn parse_rule<'a>(p: &mut Parser<'a>) -> PResult<'a, Rule> {
 
     p.expect(&TokenKind::Eof)?;
 
-    Ok(Rule { ectx, actual_ty, expected_ty, cast_expr })
+    Ok(Rule {
+        ectx,
+        actual_ty,
+        expected_ty,
+        cast_expr,
+    })
 }
 
 impl Command for TypeFixRules {
     fn run(&mut self, state: &mut RefactorState) {
-        let rules = self.rules.iter()
+        let rules = self
+            .rules
+            .iter()
             .map(|s| driver::run_parser(state.session(), s, parse_rule))
             .collect::<Vec<_>>();
 
-        state.run_typeck_loop(|krate, st, cx| {
-            info!("Starting retyping iteration");
+        state
+            .run_typeck_loop(|krate, st, cx| {
+                info!("Starting retyping iteration");
 
-            let mut lr_map = HashMap::new();
-            lr_expr::fold_exprs_with_context(krate, |e, ectx| {
-                // This crate was just expanded (inside run_typeck_loop), so all nodes should be
-                // numbered.
-                assert!(e.id != DUMMY_NODE_ID);
-                if ectx != lr_expr::Context::Rvalue {
-                    lr_map.insert(e.id, ectx);
+                let mut lr_map = HashMap::new();
+                lr_expr::fold_exprs_with_context(krate, |e, ectx| {
+                    // This crate was just expanded (inside run_typeck_loop), so all nodes should be
+                    // numbered.
+                    assert!(e.id != DUMMY_NODE_ID);
+                    if ectx != lr_expr::Context::Rvalue {
+                        lr_map.insert(e.id, ectx);
+                    }
+                });
+
+                let mut inserted = 0;
+                fold_illtyped(
+                    cx,
+                    krate,
+                    TypeFixRulesFolder {
+                        st,
+                        cx,
+                        rules: &rules,
+                        num_inserted_casts: &mut inserted,
+                        lr_map: &lr_map,
+                    },
+                );
+                if inserted > 0 {
+                    TypeckLoopResult::Iterate
+                } else {
+                    TypeckLoopResult::Finished
                 }
-            });
-
-            let mut inserted = 0;
-            fold_illtyped(cx, krate, TypeFixRulesFolder {
-                st, cx,
-                rules: &rules,
-                num_inserted_casts: &mut inserted,
-                lr_map: &lr_map,
-            });
-            if inserted > 0 {
-                TypeckLoopResult::Iterate
-            } else {
-                TypeckLoopResult::Finished
-            }
-        }).expect("Could not retype crate!");
+            })
+            .expect("Could not retype crate!");
     }
 }
 
@@ -709,15 +767,18 @@ struct TypeFixRulesFolder<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
-    fn fix_expr(&mut self,
-                e: &mut P<Expr>,
-                actual: ty::Ty<'tcx>,
-                expected: ty::Ty<'tcx>) {
-        let ectx = self.lr_map.get(&e.id).cloned().unwrap_or(lr_expr::Context::Rvalue);
+    fn fix_expr(&mut self, e: &mut P<Expr>, actual: ty::Ty<'tcx>, expected: ty::Ty<'tcx>) {
+        let ectx = self
+            .lr_map
+            .get(&e.id)
+            .cloned()
+            .unwrap_or(lr_expr::Context::Rvalue);
         let actual_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), actual);
         let expected_ty_ast = reflect::reflect_tcx_ty(self.cx.ty_ctxt(), expected);
-        debug!("looking for rule matching {:?}, {:?}, {:?}", ectx, actual_ty_ast, expected_ty_ast);
-
+        debug!(
+            "looking for rule matching {:?}, {:?}, {:?}",
+            ectx, actual_ty_ast, expected_ty_ast
+        );
 
         for r in self.rules {
             if !r.ectx.map_or(true, |rule_ectx| rule_ectx == ectx) {
@@ -727,13 +788,21 @@ impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
 
             let mut mcx = MatchCtxt::new(self.st, self.cx);
             if let Err(e) = mcx.try_match(&r.actual_ty, &actual_ty_ast) {
-                trace!("error matching actual {:?} with {:?}: {:?}",
-                      r.actual_ty, actual_ty_ast, e);
+                trace!(
+                    "error matching actual {:?} with {:?}: {:?}",
+                    r.actual_ty,
+                    actual_ty_ast,
+                    e
+                );
                 continue;
             }
             if let Err(e) = mcx.try_match(&r.expected_ty, &expected_ty_ast) {
-                trace!("error matching expected {:?} with {:?}: {:?}",
-                      r.expected_ty, expected_ty_ast, e);
+                trace!(
+                    "error matching expected {:?} with {:?}: {:?}",
+                    r.expected_ty,
+                    expected_ty_ast,
+                    e
+                );
                 continue;
             }
 
@@ -746,7 +815,6 @@ impl<'a, 'tcx> IlltypedFolder<'tcx> for TypeFixRulesFolder<'a, 'tcx> {
         }
     }
 }
-
 
 /// # `autoretype` Command
 ///
@@ -777,36 +845,38 @@ impl AutoRetype {
             mark_types.insert(words[0].to_string(), words[1].to_string());
         }
 
-        AutoRetype {
-            mark_types
-        }
+        AutoRetype { mark_types }
     }
 }
 
 impl Command for AutoRetype {
     fn run(&mut self, state: &mut RefactorState) {
-        let type_annotations = state.transform_crate(Phase::Phase3, |st, cx| {
-            let mut retype_prep = RetypePrepFolder::new(st, cx, &self.mark_types);
-            st.map_krate(|krate| {
-                krate.visit(&mut retype_prep)
-            });
-            retype_prep.type_annotations
-        }).expect("Failed to run compiler");
-        state.run_typeck_loop(|krate, _st, cx| {
-            info!("Starting retyping iteration");
-            RetypeIteration::new(cx, &type_annotations).run(krate)
+        let type_annotations = state
+            .transform_crate(Phase::Phase3, |st, cx| {
+                let mut retype_prep = RetypePrepFolder::new(st, cx, &self.mark_types);
+                st.map_krate(|krate| krate.visit(&mut retype_prep));
+                retype_prep.type_annotations
+            })
+            .expect("Failed to run compiler");
+        state
+            .run_typeck_loop(|krate, _st, cx| {
+                info!("Starting retyping iteration");
+                RetypeIteration::new(cx, &type_annotations).run(krate)
 
-            // TODO: Proper error handling showing type checking errors
-        }).expect("Could not retype crate!");
+                // TODO: Proper error handling showing type checking errors
+            })
+            .expect("Could not retype crate!");
 
         // We successfully retyped the crate, now restore type annotations we
         // removed in the process.
-        state.transform_crate(Phase::Phase3, |st, cx| {
-            st.map_krate(|krate| {
-                let mut folder = RestoreAnnotationsFolder::new(cx, type_annotations);
-                krate.visit(&mut folder)
-            });
-        }).expect("Failed to run compiler");
+        state
+            .transform_crate(Phase::Phase3, |st, cx| {
+                st.map_krate(|krate| {
+                    let mut folder = RestoreAnnotationsFolder::new(cx, type_annotations);
+                    krate.visit(&mut folder)
+                });
+            })
+            .expect("Failed to run compiler");
     }
 }
 
@@ -824,8 +894,11 @@ struct RetypePrepFolder<'a> {
 }
 
 impl<'a> RetypePrepFolder<'a> {
-    fn new<'tcx: 'a>(st: &'a CommandState, cx: &'a RefactorCtxt<'a, 'tcx>,
-                     mark_types: &HashMap<String, String>) -> Self {
+    fn new<'tcx: 'a>(
+        st: &'a CommandState,
+        cx: &'a RefactorCtxt<'a, 'tcx>,
+        mark_types: &HashMap<String, String>,
+    ) -> Self {
         let mark_types = mark_types
             .iter()
             .map(|(label, ty)| (label.clone(), parse_ty(cx.session(), ty)))
@@ -835,7 +908,7 @@ impl<'a> RetypePrepFolder<'a> {
             st,
             mark_types,
             type_annotations: HashMap::new(),
-       }
+        }
     }
 
     /// Check type node for marks and return the new type if found in
@@ -866,7 +939,7 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
     /// Replace marked struct field types with their new types
     fn flat_map_field_def(&mut self, mut field: FieldDef) -> SmallVec<[FieldDef; 1]> {
         self.map_type(&mut field.ty);
-        return mut_visit::noop_flat_map_field_def(field, self)
+        return mut_visit::noop_flat_map_field_def(field, self);
     }
 
     /// Remove all local variable types forcing type inference to update their
@@ -1001,12 +1074,7 @@ struct RetypeIterationFolder<'a, 'b, 'tcx, 'c> {
 }
 
 impl<'a, 'b, 'tcx, 'c> IlltypedFolder<'tcx> for RetypeIterationFolder<'a, 'b, 'tcx, 'c> {
-    fn fix_expr(
-        &mut self,
-        e: &mut P<Expr>,
-        actual: ty::Ty<'tcx>,
-        expected: ty::Ty<'tcx>
-    ) {
+    fn fix_expr(&mut self, e: &mut P<Expr>, actual: ty::Ty<'tcx>, expected: ty::Ty<'tcx>) {
         info!("Retyping {:?} into type {:?}", e, expected);
         if let TyKind::Error(_) = actual.kind() {
             return;
@@ -1017,7 +1085,10 @@ impl<'a, 'b, 'tcx, 'c> IlltypedFolder<'tcx> for RetypeIterationFolder<'a, 'b, 't
             // With a bottom-up retyping, I'm not sure we want to panic
             // here. We may be able to retype a parent and eliminate the
             // need to retype the child.
-            panic!("Could not transform expression {:?} from type {:?} into type {:?}", e, actual, expected)
+            panic!(
+                "Could not transform expression {:?} from type {:?} into type {:?}",
+                e, actual, expected
+            )
         }
     }
 }
@@ -1042,12 +1113,12 @@ impl<'tcx> TypeExpectation<'tcx> {
 impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     /// Determine if `from` can cast be cast to `to` according to rust-rfc 0401.
     fn can_cast(&self, from: ty::Ty<'tcx>, to: ty::Ty<'tcx>, parent: LocalDefId) -> bool {
-        use rustc_type_ir::sty::TyKind::*;
         use rustc_middle::ty::TypeAndMut;
+        use rustc_type_ir::sty::TyKind::*;
 
         // coercion-cast
         if can_coerce(from, to, self.cx.ty_ctxt()) {
-            return true
+            return true;
         }
 
         match (&from.kind(), &to.kind()) {
@@ -1191,7 +1262,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 ty::IntTy::I16 => (i16::min_value() as i64 as i128, i16::max_value() as i128),
                 ty::IntTy::I32 => (i32::min_value() as i64 as i128, i32::max_value() as i128),
                 ty::IntTy::I64 => (i64::min_value() as i128, i64::max_value() as i128),
-                ty::IntTy::I128 =>(i128::min_value() as i128, i128::max_value()),
+                ty::IntTy::I128 => (i128::min_value() as i128, i128::max_value()),
             }
         }
 
@@ -1244,8 +1315,8 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     let callee_str = self.cx.ty_ctxt().def_path_str(callee_did);
                     // intrinsics are in an anonymous namespace, so the full
                     // path is actually core::intrinsics::<anon>::transmute
-                    if callee_str == "std::intrinsics::transmute" ||
-                        callee_str == "core::intrinsics::transmute"
+                    if callee_str == "std::intrinsics::transmute"
+                        || callee_str == "core::intrinsics::transmute"
                     {
                         let mut e = arguments[0].clone();
                         if self.try_retype(&mut e, expected) {
@@ -1257,9 +1328,13 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             }
             (
                 ExprKind::MethodCall(ref path, ref arguments, _),
-                TyKind::RawPtr(ty::TypeAndMut{ty: ref inner_ty, ref mutbl}),
+                TyKind::RawPtr(ty::TypeAndMut {
+                    ty: ref inner_ty,
+                    ref mutbl,
+                }),
             ) if (path.ident.name.as_str() == "as_mut_ptr"
-                  || path.ident.name.as_str() == "as_ptr") => {
+                || path.ident.name.as_str() == "as_ptr") =>
+            {
                 let new_method_name = if *mutbl == hir::Mutability::Mut {
                     "as_mut_ptr"
                 } else {
@@ -1275,7 +1350,10 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
                 sub_expected.ty = self.cx.ty_ctxt().mk_ref(
                     self.cx.ty_ctxt().lifetimes.re_root_empty,
-                    ty::TypeAndMut{ty: sub_expected.ty, mutbl: *mutbl},
+                    ty::TypeAndMut {
+                        ty: sub_expected.ty,
+                        mutbl: *mutbl,
+                    },
                 );
                 if self.try_retype(&mut e, sub_expected) {
                     *expr = mk().method_call_expr(e, new_method_name, Vec::<P<Expr>>::new());
@@ -1286,18 +1364,24 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 let mut sub_expected = expected.clone();
                 let old_subtype = self.cx.node_type(e.id);
                 sub_expected.ty = match old_subtype.kind() {
-                    TyKind::RawPtr(ty::TypeAndMut{mutbl: subtype_mutbl, ..}) => {
+                    TyKind::RawPtr(ty::TypeAndMut {
+                        mutbl: subtype_mutbl,
+                        ..
+                    }) => {
                         let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
-                        self.cx.ty_ctxt().mk_ptr(ty::TypeAndMut{
+                        self.cx.ty_ctxt().mk_ptr(ty::TypeAndMut {
                             ty: expected.ty,
-                            mutbl
+                            mutbl,
                         })
                     }
                     TyKind::Ref(_, _, subtype_mutbl) => {
                         let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
                         self.cx.ty_ctxt().mk_ref(
                             self.cx.ty_ctxt().lifetimes.re_root_empty,
-                            ty::TypeAndMut { ty: expected.ty, mutbl },
+                            ty::TypeAndMut {
+                                ty: expected.ty,
+                                mutbl,
+                            },
                         )
                     }
                     _ => panic!("Unsupported type for dereference"),
@@ -1306,8 +1390,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             }
             (ExprKind::AddrOf(_, expr_mut, e), TyKind::Ref(_, subty, expected_mut)) => {
                 let mutbl = match (&expr_mut, expected_mut) {
-                    (Mutability::Mut, _) |
-                    (Mutability::Not, hir::Mutability::Not) => expected_mut,
+                    (Mutability::Mut, _) | (Mutability::Not, hir::Mutability::Not) => expected_mut,
                     _ => return false,
                 };
                 let mut sub_expected = expected;
@@ -1324,13 +1407,12 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     }
 
     /// Attempt to coerce or cast an expression into the expected type
-    fn try_retype(
-        &mut self,
-        expr: &mut P<Expr>,
-        expected: TypeExpectation<'tcx>,
-    ) -> bool {
+    fn try_retype(&mut self, expr: &mut P<Expr>, expected: TypeExpectation<'tcx>) -> bool {
         let cur_ty = self.cx.node_type(expr.id);
-        debug!("Attempting to retype {:?} from {:?} to {:?}", expr, cur_ty, expected);
+        debug!(
+            "Attempting to retype {:?} from {:?} to {:?}",
+            expr, cur_ty, expected
+        );
         if can_coerce(cur_ty, expected.ty, self.cx.ty_ctxt()) {
             return true;
         }
@@ -1353,7 +1435,11 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         }
 
         let hir_id = self.cx.hir_map().node_to_hir_id(expr.id);
-        if self.can_cast(cur_ty, expected.ty, self.cx.hir_map().get_parent_item(hir_id)) {
+        if self.can_cast(
+            cur_ty,
+            expected.ty,
+            self.cx.hir_map().get_parent_item(hir_id),
+        ) {
             self.num_inserted_casts += 1;
             *expr = mk().cast_expr(expr.clone(), reflect_tcx_ty(self.cx.ty_ctxt(), expected.ty));
             return true;
@@ -1365,11 +1451,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
 /// Will `from_ty` coerce to `to_ty`?
 /// Based on rules described in https://doc.rust-lang.org/nomicon/coercions.html
-fn can_coerce<'a, 'tcx>(
-    from_ty: ty::Ty<'tcx>,
-    to_ty: ty::Ty<'tcx>,
-    tcx: TyCtxt<'tcx>,
-) -> bool {
+fn can_coerce<'a, 'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     use rustc_type_ir::sty::TyKind::*;
 
     // We won't necessarily have matching regions if we created new expressions
@@ -1404,44 +1486,53 @@ fn can_coerce<'a, 'tcx>(
 
         // TODO Deref coercion: Expression &x of type &T to &*x of type &U if T
         // derefs to U (i.e. T: Deref<Target=U>)
+        (FnDef(..), FnPtr(sig)) => from_ty.fn_sig(tcx) == *sig,
 
-        (FnDef(..), FnPtr(sig)) => {
-            from_ty.fn_sig(tcx) == *sig
-        },
-
-        _ => false
+        _ => false,
     }
 }
 
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("retype_argument", |args| mk(RetypeArgument {
-        new_ty: args[0].clone(),
-        wrap: args[1].clone(),
-        unwrap: args[2].clone(),
-    }));
+    reg.register("retype_argument", |args| {
+        mk(RetypeArgument {
+            new_ty: args[0].clone(),
+            wrap: args[1].clone(),
+            unwrap: args[2].clone(),
+        })
+    });
 
-    reg.register("retype_return", |args| mk(RetypeReturn {
-        new_ty: args[0].clone(),
-        wrap: args[1].clone(),
-        unwrap: args[2].clone(),
-    }));
+    reg.register("retype_return", |args| {
+        mk(RetypeReturn {
+            new_ty: args[0].clone(),
+            wrap: args[1].clone(),
+            unwrap: args[2].clone(),
+        })
+    });
 
-    reg.register("retype_static", |args| mk(RetypeStatic {
-        new_ty: args[0].clone(),
-        rev_conv_assign: args[1].clone(),
-        conv_rval: args[2].clone(),
-        conv_lval: args[3].clone(),
-        conv_lval_mut: args.get(4).cloned(),
-    }));
+    reg.register("retype_static", |args| {
+        mk(RetypeStatic {
+            new_ty: args[0].clone(),
+            rev_conv_assign: args[1].clone(),
+            conv_rval: args[2].clone(),
+            conv_lval: args[3].clone(),
+            conv_lval_mut: args.get(4).cloned(),
+        })
+    });
 
-    reg.register("bitcast_retype", |args| mk(BitcastRetype {
-        pat: args[0].clone(),
-        repl: args[1].clone(),
-    }));
+    reg.register("bitcast_retype", |args| {
+        mk(BitcastRetype {
+            pat: args[0].clone(),
+            repl: args[1].clone(),
+        })
+    });
 
-    reg.register("type_fix_rules", |args| Box::new(TypeFixRules { rules: args.to_owned() }));
+    reg.register("type_fix_rules", |args| {
+        Box::new(TypeFixRules {
+            rules: args.to_owned(),
+        })
+    });
 
     reg.register("autoretype", |args| Box::new(AutoRetype::new(args)));
 }

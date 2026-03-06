@@ -25,51 +25,6 @@ impl<'c> Translation<'c> {
         Ok(mk().cast_expr(mk().lit_expr(lit), target_ty))
     }
 
-    /// Given an integer value this attempts to either generate the corresponding enum
-    /// variant directly, otherwise it transmutes a number to the enum type.
-    pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
-        let def_id = match self.ast_context.resolve_type(enum_type_id).kind {
-            CTypeKind::Enum(def_id) => def_id,
-            _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
-        };
-
-        let (variants, underlying_type_id) = match self.ast_context[def_id].kind {
-            CDeclKind::Enum {
-                ref variants,
-                integral_type,
-                ..
-            } => (variants, integral_type),
-            _ => panic!("{:?} does not point to an `enum` declaration", def_id),
-        };
-
-        for &variant_id in variants {
-            match self.ast_context[variant_id].kind {
-                CDeclKind::EnumConstant { value: v, .. } => {
-                    if v == ConstIntExpr::I(value) || v == ConstIntExpr::U(value as u64) {
-                        let name = self.renamer.borrow().get(&variant_id).unwrap();
-
-                        // Import the enum variant if needed
-                        self.add_import(variant_id, &name);
-                        return mk().path_expr(vec![name]);
-                    }
-                }
-                _ => panic!("{:?} does not point to an enum variant", variant_id),
-            }
-        }
-
-        let underlying_type_id =
-            underlying_type_id.expect("Attempt to construct value of forward declared enum");
-        let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
-            CTypeKind::UInt => mk().lit_expr(mk().int_unsuffixed_lit((value as u32) as u128)),
-            CTypeKind::ULong => mk().lit_expr(mk().int_unsuffixed_lit((value as u64) as u128)),
-            _ => signed_int_expr(value),
-        };
-
-        let target_ty = self.convert_type(enum_type_id).unwrap();
-
-        mk().cast_expr(value, target_ty)
-    }
-
     /// Return whether the literal can be directly translated as this type.
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
@@ -153,18 +108,23 @@ impl<'c> Translation<'c> {
 
             CLiteral::String(ref bytes, element_size) => {
                 let bytes_padded = self.string_literal_bytes(ty.ctype, bytes, element_size);
+                let len = bytes_padded.len();
+                let val = mk().lit_expr(bytes_padded);
 
-                // std::mem::transmute::<[u8; size], ctype>(*b"xxxx")
-                let array_ty = mk().array_ty(
-                    mk().ident_ty("u8"),
-                    mk().lit_expr(bytes_padded.len() as u128),
-                );
-                let val = transmute_expr(
-                    array_ty,
-                    self.convert_type(ty.ctype)?,
-                    mk().unary_expr(UnOp::Deref(Default::default()), mk().lit_expr(bytes_padded)),
-                );
-                Ok(WithStmts::new_unsafe_val(val))
+                if ctx.needs_address && element_size == 1 {
+                    // Unlike in C, Rust string literals are already references by default.
+                    // So if the address needs to be taken, just make a bare literal.
+                    Ok(WithStmts::new_val(val))
+                } else {
+                    // std::mem::transmute::<[u8; size], ctype>(*b"xxxx")
+                    let array_ty = mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(len as u128));
+                    let val = transmute_expr(
+                        array_ty,
+                        self.convert_type(ty.ctype)?,
+                        mk().unary_expr(UnOp::Deref(Default::default()), val),
+                    );
+                    Ok(WithStmts::new_unsafe_val(val))
+                }
             }
         }
     }
@@ -172,18 +132,10 @@ impl<'c> Translation<'c> {
     /// Returns the bytes of a string literal, including any additional zero bytes to pad the
     /// literal to the expected size.
     pub fn string_literal_bytes(&self, ctype: CTypeId, bytes: &[u8], element_size: u8) -> Vec<u8> {
-        let num_elems = match self.ast_context.resolve_type(ctype).kind {
-            CTypeKind::ConstantArray(_, num_elems) => num_elems,
-            ref kind => {
-                panic!("String literal with unknown size: {bytes:?}, kind = {kind:?}")
-            }
-        };
-
-        let size = num_elems * (element_size as usize);
+        let size = self.ast_context.array_len(ctype) * element_size as usize;
         let mut bytes_padded = Vec::with_capacity(size);
         bytes_padded.extend(bytes);
         bytes_padded.resize(size, 0);
-
         bytes_padded
     }
 
@@ -256,7 +208,7 @@ impl<'c> Translation<'c> {
                         // This was likely a C array of the form `int x[16] = {}`.
                         // We'll emit that as [0; 16].
                         let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));
-                        let zeroed = self.implicit_default_expr(ty, ctx.is_static)?;
+                        let zeroed = self.implicit_default_expr(ctx, ty)?;
                         Ok(zeroed.map(|default_value| mk().repeat_expr(default_value, len)))
                     }
                     &[single] if is_string_literal(single) => {
@@ -281,7 +233,7 @@ impl<'c> Translation<'c> {
                             .map(to_array_element)
                             .chain(
                                 // Pad out the array literal with default values to the desired size
-                                iter::repeat(self.implicit_default_expr(ty, ctx.is_static))
+                                iter::repeat(self.implicit_default_expr(ctx, ty))
                                     .take(n - ids.len()),
                             )
                             .collect::<TranslationResult<WithStmts<_>>>()?
@@ -336,7 +288,7 @@ impl<'c> Translation<'c> {
                 match self.ast_context.index(union_field_id).kind {
                     CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
-                            self.implicit_default_expr(field_ty.ctype, ctx.is_static)?
+                            self.implicit_default_expr(ctx, field_ty.ctype)?
                         } else {
                             self.convert_expr(ctx.used(), ids[0], None)?
                         };

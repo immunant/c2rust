@@ -208,13 +208,15 @@ is going to be emitted or discarded.
 This can be modified in the current context with the
 `.used()` and `.unused()` methods.
 
-The `is_static` attribute indicates that an expression
-is being used in the initializer for a static variable.
-Rust has many extra restrictions on the expressions
-that can be used for a static initializer.
-In some cases, we can still generate valid code
-at the cost of readability.
+The `is_const` attribute indicates that an expression will be inside a Rust `const` context.
+Rust has many extra restrictions on the expressions that can be used inside a `const` context.
+In some cases, we can still generate valid code at the cost of readability.
 This fallback is enabled by this attribute.
+
+The `is_static` attribute indicates that an expression is being used in the initializer for a static variable.
+This allows emitting different code in such situations,
+to account for the different lifetimes of compound literals for example.
+`is_static` usually implies `is_const`, but not always.
 
 The `decay_ref` attribute keeps track of whether or not
 we're in a context in which Rust will infer that a reference can decay in to a pointer.

@@ -20,6 +20,10 @@ transpile:
   tflags: --reorganize-definitions --disable-refactoring
   binary: python
 
+cargo.transpile:
+  autogen: true
+  rustflags: "-C link-args=-Wl,-export-dynamic"
+
 refactor:
   autogen: true
   transforms:
@@ -36,10 +40,6 @@ refactor:
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs
-
-cargo.transpile:
-  autogen: true
-  rustflags: "-C link-args=-Wl,-export-dynamic"
 
 cargo.refactor:
   autogen: true

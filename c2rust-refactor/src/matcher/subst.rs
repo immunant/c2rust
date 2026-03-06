@@ -19,8 +19,15 @@
 
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::token::{Nonterminal, Token, TokenKind};
+use rustc_ast::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
 use rustc_ast::MacCall;
-use rustc_ast::{Expr, ExprKind, Item, Label, Pat, Path, Stmt, Ty};
+use rustc_ast::{
+    Expr, ExprKind, Item, ItemKind, Label, MacArgs, Pat, PatKind, Path, Stmt, StmtKind, Ty, TyKind,
+};
+use rustc_ast_pretty::pprust;
+use rustc_data_structures::sync::Lrc;
+use rustc_parse::parser::{ForceCollect, Parser};
 use rustc_span::symbol::Ident;
 use smallvec::smallvec;
 use smallvec::SmallVec;
@@ -28,7 +35,7 @@ use smallvec::SmallVec;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};
 use crate::command::CommandState;
-use crate::matcher::Bindings;
+use crate::matcher::{BindingValue, Bindings};
 use crate::RefactorCtxt;
 
 // `st` and `cx` were previously used for `def!` substitution, which has been removed.  I expect
@@ -59,6 +66,54 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             }
         }
     }
+
+    fn subst_token_stream_bindings(&mut self, ts: TokenStream) -> TokenStream {
+        let mut tsb = TokenStreamBuilder::new();
+        let mut c = ts.into_trees();
+        while let Some(tt) = c.next() {
+            if let TokenTree::Token(
+                Token {
+                    kind: TokenKind::Ident(ident, _is_raw),
+                    span,
+                },
+                spacing,
+            ) = tt
+                && let Some(bv) = self.bindings.get::<_, BindingValue>(ident)
+            {
+                let nt = match bv.clone() {
+                    BindingValue::Path(x) => Nonterminal::NtPath(P(x)),
+                    BindingValue::Expr(x) => Nonterminal::NtExpr(x),
+                    BindingValue::Pat(x) => Nonterminal::NtPat(x),
+                    BindingValue::Ty(x) => Nonterminal::NtTy(x),
+                    BindingValue::Stmt(x) => Nonterminal::NtStmt(P(x)),
+                    BindingValue::Item(x) => Nonterminal::NtItem(x),
+
+                    _ => unimplemented!("Unsupported binding:{bv:#?}"),
+                };
+                let new_tt = TokenTree::Token(
+                    Token {
+                        kind: TokenKind::Interpolated(Lrc::new(nt)),
+                        span,
+                    },
+                    spacing,
+                );
+                tsb.push(TokenStream::new(vec![new_tt]));
+            } else {
+                tsb.push(TokenStream::new(vec![tt]));
+            }
+        }
+        tsb.build()
+    }
+}
+
+fn unwrap_or_panic_tts<T, E>(x: Result<T, E>, args: &MacArgs, kind: &str) -> T
+where
+    E: std::fmt::Debug,
+{
+    x.unwrap_or_else(|e| {
+        let tts = pprust::tts_to_string(&args.inner_tokens());
+        panic!("Failed to parse {kind} parse!({tts}): {e:?}");
+    })
 }
 
 impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
@@ -114,6 +169,17 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             | ExprKind::Continue(ref mut label) => {
                 self.subst_opt_label(label);
             }
+
+            ExprKind::MacCall(ref mc) if mc.path.is_named("parse") => {
+                let mut parser = Parser::new(
+                    &self.cx.session().parse_sess,
+                    mc.args.inner_tokens().clone(),
+                    false,
+                    None,
+                );
+                *e = unwrap_or_panic_tts(parser.parse_expr(), &mc.args, "Expr");
+            }
+
             _ => {}
         }
 
@@ -128,6 +194,18 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             *p = binding.clone();
         }
 
+        if let PatKind::MacCall(mc) = &p.kind
+            && mc.path.is_named("parse")
+        {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mc.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            *p = unwrap_or_panic_tts(parser.parse_pat_no_top_alt(None), &mc.args, "Pat");
+        }
+
         mut_visit::noop_visit_pat(p, self);
     }
 
@@ -138,6 +216,18 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             } else if let Some(Some(binding)) = self.bindings.get_opt::<_, P<Ty>>(sym) {
                 *ty = binding.clone();
             }
+        }
+
+        if let TyKind::MacCall(mc) = &ty.kind
+            && mc.path.is_named("parse")
+        {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mc.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            *ty = unwrap_or_panic_tts(parser.parse_ty(), &mc.args, "Ty");
         }
 
         mut_visit::noop_visit_ty(ty, self)
@@ -154,6 +244,20 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             .and_then(|sym| self.bindings.get::<_, Vec<Stmt>>(sym))
         {
             SmallVec::from_vec(stmts.clone())
+        } else if let StmtKind::MacCall(mcs) = &s.kind
+            && mcs.mac.path.is_named("parse")
+        {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mcs.mac.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            unwrap_or_panic_tts(parser.parse_stmt(ForceCollect::No), &mcs.mac.args, "Stmt")
+                .into_iter()
+                .map(|s| mut_visit::noop_flat_map_stmt(s, self))
+                .flatten()
+                .collect()
         } else {
             mut_visit::noop_flat_map_stmt(s, self)
         }
@@ -165,12 +269,39 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             .and_then(|sym| self.bindings.get::<_, P<Item>>(sym))
         {
             smallvec![item.clone()]
+        } else if let ItemKind::MacCall(mc) = &i.kind
+            && mc.path.is_named("parse")
+        {
+            let mut parser = Parser::new(
+                &self.cx.session().parse_sess,
+                mc.args.inner_tokens().clone(),
+                false,
+                None,
+            );
+            unwrap_or_panic_tts(parser.parse_item(ForceCollect::No), &mc.args, "Item")
+                .into_iter()
+                .map(|i| mut_visit::noop_flat_map_item(i, self))
+                .flatten()
+                .collect()
         } else {
             mut_visit::noop_flat_map_item(i, self)
         }
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
+        match &mut *mac.args {
+            MacArgs::Empty => {}
+            MacArgs::Delimited(_span, _delim, ts) => {
+                *ts = self.subst_token_stream_bindings(std::mem::take(ts));
+            }
+            MacArgs::Eq(_span, eq) => {
+                // According to the rustc AST, this only shows up for
+                // key-value attributes, which users shouldn't put into
+                // a substitution
+                unimplemented!("Unsupported substitution for MacArgsEq: {eq:#?}");
+            }
+        }
+
         mut_visit::noop_visit_mac(mac, self)
     }
 }

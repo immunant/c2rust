@@ -13,6 +13,7 @@ members = [
     "c2rust-build-paths",
     "c2rust-macros",
     "c2rust-refactor",
+    "c2rust-rust-tools",
     "c2rust-transpile",
     "dynamic_instrumentation",
     "pdg",
@@ -25,7 +26,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.21.0"
+version = "0.22.1"
 authors = ["The C2Rust Project Developers <c2rust@immunant.com>"]
 edition = "2021"
 rust-version = "1.65"

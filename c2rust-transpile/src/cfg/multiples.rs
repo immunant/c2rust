@@ -17,14 +17,14 @@
 //!
 //! ```rust
 //! # let mut i = 0i32;
-//! let mut current_block: &'static str;
-//! if i > 5i32 { current_block = "s_7"; } else { current_block = "s_14"; }
+//! let mut c2rust_current_block: &'static str;
+//! if i > 5i32 { c2rust_current_block = "s_7"; } else { c2rust_current_block = "s_14"; }
 //! loop  {
-//!     match current_block {
+//!     match c2rust_current_block {
 //!         "s_7" => {
-//!             if !(i > 0i32) { current_block = "s_14"; continue ; }
+//!             if !(i > 0i32) { c2rust_current_block = "s_14"; continue ; }
 //!             i -= 3i32;
-//!             current_block = "s_7";
+//!             c2rust_current_block = "s_7";
 //!         }
 //!         _ => { return; }
 //!     }

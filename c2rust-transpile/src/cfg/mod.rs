@@ -547,6 +547,8 @@ pub enum ImplicitReturnType {
     ///
     /// TODO: document
     StmtExpr(ExprContext, CExprId, Label),
+
+    StmtExprVoid,
 }
 
 /// A complete control-flow graph
@@ -621,6 +623,7 @@ impl Cfg<Label, StmtOrDecl> {
                             mk().break_expr_value(Some(brk_label.pretty_print()), Some(val)),
                         )));
                     }
+                    ImplicitReturnType::StmtExprVoid => (),
                 };
 
                 cfg_builder.add_wip_block(wip, End);
@@ -2103,13 +2106,8 @@ impl CfgBuilder {
         };
 
         // Run relooper
-        let mut stmts = translator.convert_cfg(
-            &format!("<substmt_{:?}>", stmt_id),
-            graph,
-            store,
-            live_in,
-            false,
-        )?;
+        let mut stmts =
+            translator.convert_cfg(&format!("<substmt_{:?}>", stmt_id), graph, store, live_in)?;
 
         let inner_span = stmts.first().map(|stmt| stmt.span());
 

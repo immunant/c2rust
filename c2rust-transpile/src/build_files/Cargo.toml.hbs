@@ -33,7 +33,28 @@ name = "{{name}}"
 {{/each}}
 [dependencies]
 {{#each dependencies}}
+{{#if this.path}}
+{{this.name}} = { version = "{{this.version}}", path = "{{this.path}}" }
+{{else}}
 {{this.name}} = "{{this.version}}"
+{{/if}}
 {{/each}}
 
+{{#if cross_checks~}}
+[dependencies.c2rust-xcheck-plugin]
+version = "*"
+
+[dependencies.c2rust-xcheck-derive]
+version = "*"
+
+[dependencies.c2rust-xcheck-runtime]
+version = "*"
+features = ["libc-hash", "fixed-length-array-hash"]
+
+[dependencies.c2rust-xcheck-backend-{{cross_check_backend}}]
+version = "*"
 {{~/if}}
+{{~/if}}
+
+[profile.release]
+strip = "debuginfo"

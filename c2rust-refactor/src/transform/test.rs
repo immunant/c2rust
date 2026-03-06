@@ -1,31 +1,30 @@
 //! Transformation passes used for testing parts of the system.
 
 use log::info;
-use std::collections::{HashSet, HashMap};
-use std::str::FromStr;
-use rustc_ast::*;
 use rustc_ast::ptr::P;
+use rustc_ast::*;
 use rustc_hir as hir;
-use rustc_middle::ty::{self, TyCtxt, ParamEnv};
 use rustc_middle::ty::subst::InternalSubsts;
+use rustc_middle::ty::{self, ParamEnv, TyCtxt};
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 
 use crate::ast_builder::mk;
-use crate::ast_manip::{visit_nodes};
 use crate::ast_manip::fn_edit::mut_visit_fns;
-use crate::command::{RefactorState, CommandState, Command, Registry, TypeckLoopResult};
-use crate::driver::{Phase};
+use crate::ast_manip::visit_nodes;
+use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
+use crate::driver::Phase;
 use crate::match_or;
 use crate::matcher::{replace_expr, replace_stmts};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
 
-
 /// # `test_one_plus_one` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `test_one_plus_one`
-/// 
+///
 /// Replace the expression `2` with `1 + 1` everywhere it appears.
 pub struct OnePlusOne;
 
@@ -36,13 +35,12 @@ impl Transform for OnePlusOne {
     }
 }
 
-
 /// # `test_f_plus_one` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `test_f_plus_one`
-/// 
+///
 /// Replace the expression `f(__x)` with `__x + 1` everywhere it appears.
 pub struct FPlusOne;
 
@@ -53,13 +51,12 @@ impl Transform for FPlusOne {
     }
 }
 
-
 /// # `test_replace_stmts` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `test_replace_stmts OLD NEW`
-/// 
+///
 /// Replace statement(s) `OLD` with `NEW` everywhere it appears.
 pub struct ReplaceStmts(pub String, pub String);
 
@@ -70,17 +67,16 @@ impl Transform for ReplaceStmts {
     }
 }
 
-
 /// # `test_insert_remove_args` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `test_insert_remove_args INS REM`
-/// 
+///
 /// In each function marked `target`, insert new arguments at each index listed in
 /// `INS` (a comma-separated list of integers), then delete the arguments whose
 /// original indices are listed in `REM`.
-/// 
+///
 /// This is used for testing sequence rewriting of `fn` argument lists.
 pub struct InsertRemoveArgs {
     insert_idxs: HashMap<usize, usize>,
@@ -96,8 +92,10 @@ impl Transform for InsertRemoveArgs {
 
             let mut counter = 0;
             let mut mk_arg = || {
-                let arg = mk().arg(mk().tuple_ty::<P<Ty>>(vec![]),
-                                   mk().ident_pat(&format!("new_arg{}", counter)));
+                let arg = mk().arg(
+                    mk().tuple_ty::<P<Ty>>(vec![]),
+                    mk().ident_pat(&format!("new_arg{}", counter)),
+                );
                 counter += 1;
                 arg
             };
@@ -105,7 +103,7 @@ impl Transform for InsertRemoveArgs {
             let mut new_args = Vec::new();
             let old_arg_count = fl.decl.inputs.len();
             for (i, arg) in fl.decl.inputs.iter().enumerate() {
-                for _ in 0 .. self.insert_idxs.get(&i).cloned().unwrap_or(0) {
+                for _ in 0..self.insert_idxs.get(&i).cloned().unwrap_or(0) {
                     new_args.push(mk_arg());
                 }
 
@@ -114,7 +112,7 @@ impl Transform for InsertRemoveArgs {
                 }
             }
 
-            for _ in 0 .. self.insert_idxs.get(&old_arg_count).cloned().unwrap_or(0) {
+            for _ in 0..self.insert_idxs.get(&old_arg_count).cloned().unwrap_or(0) {
                 new_args.push(mk_arg());
             }
 
@@ -123,13 +121,12 @@ impl Transform for InsertRemoveArgs {
     }
 }
 
-
 /// # `test_typeck_loop` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `test_typeck_loop`
-/// 
+///
 /// Runs a no-op typechecking loop for three iterations.  Used to test the typechecking loop and
 /// AST re-analysis code.
 pub struct TestTypeckLoop;
@@ -137,25 +134,26 @@ pub struct TestTypeckLoop;
 impl Command for TestTypeckLoop {
     fn run(&mut self, state: &mut RefactorState) {
         let mut i = 3;
-        state.run_typeck_loop(|_krate, _st, _cx| {
-            i -= 1;
-            info!("ran typeck loop iteration {}", i);
-            if i == 0 {
-                TypeckLoopResult::Finished
-            } else {
-                TypeckLoopResult::Iterate
-            }
-        }).unwrap();
+        state
+            .run_typeck_loop(|_krate, _st, _cx| {
+                i -= 1;
+                info!("ran typeck loop iteration {}", i);
+                if i == 0 {
+                    TypeckLoopResult::Finished
+                } else {
+                    TypeckLoopResult::Iterate
+                }
+            })
+            .unwrap();
     }
 }
 
-
 /// # `test_debug_callees` Command
-/// 
+///
 /// Test command - not intended for general use.
-/// 
+///
 /// Usage: `test_debug_callees`
-/// 
+///
 /// Inspect the details of each Call expression.  Used to debug
 /// `RefactorCtxt::opt_callee_info`.
 pub struct TestDebugCallees;
@@ -178,27 +176,35 @@ impl Transform for TestDebugCallees {
                 }
             }
 
-            fn describe_ty<'a, 'tcx: 'a>(tcx: TyCtxt<'tcx>,
-                                         desc: &str,
-                                         ty: ty::Ty<'tcx>,
-                                         substs: Option<&'tcx InternalSubsts<'tcx>>) {
+            fn describe_ty<'a, 'tcx: 'a>(
+                tcx: TyCtxt<'tcx>,
+                desc: &str,
+                ty: ty::Ty<'tcx>,
+                substs: Option<&'tcx InternalSubsts<'tcx>>,
+            ) {
                 info!("    {}: {:?}", desc, ty);
                 if let Some(substs) = substs {
-                    info!("      subst: {:?}",
-                          tcx.subst_and_normalize_erasing_regions(
-                              substs, ParamEnv::empty(), ty));
+                    info!(
+                        "      subst: {:?}",
+                        tcx.subst_and_normalize_erasing_regions(substs, ParamEnv::empty(), ty)
+                    );
                 }
                 if ty.is_fn() {
                     let sig = ty.fn_sig(tcx);
                     info!("      fn sig: {:?}", sig);
                     info!("      input tys: {:?}", sig.inputs());
                     info!("      input tys (skip): {:?}", sig.skip_binder().inputs());
-                    info!("      anonymized: {:?}", tcx.anonymize_late_bound_regions(sig));
+                    info!(
+                        "      anonymized: {:?}",
+                        tcx.anonymize_late_bound_regions(sig)
+                    );
                     info!("      erased: {:?}", tcx.erase_late_bound_regions(sig));
                     if let Some(substs) = substs {
                         let sig2 = tcx.subst_and_normalize_erasing_regions(
-                            substs, ParamEnv::empty(),
-                            tcx.erase_late_bound_regions(sig));
+                            substs,
+                            ParamEnv::empty(),
+                            tcx.erase_late_bound_regions(sig),
+                        );
                         info!("      sig + erase + subst: {:?}", sig2);
                         info!("      input tys: {:?}", sig2.inputs());
                     }
@@ -240,20 +246,20 @@ impl Transform for TestDebugCallees {
                     describe(e);
                     info!("  func info:");
                     describe(func);
-                },
+                }
 
                 ExprKind::MethodCall(_, _, _) => {
                     info!("at method call {:?}", e);
                     info!("  call info:");
                     describe(e);
-                },
+                }
 
                 ExprKind::Binary(_, _, _) => {
                     info!("at binary op {:?}", e);
                     describe(e);
-                },
+                }
 
-                _ => {},
+                _ => {}
             }
         });
     }
@@ -263,14 +269,14 @@ impl Transform for TestDebugCallees {
     }
 }
 
-
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
     reg.register("test_one_plus_one", |_args| mk(OnePlusOne));
     reg.register("test_f_plus_one", |_args| mk(FPlusOne));
-    reg.register("test_replace_stmts", |args| mk(
-            ReplaceStmts(args[0].clone(), args[1].clone())));
+    reg.register("test_replace_stmts", |args| {
+        mk(ReplaceStmts(args[0].clone(), args[1].clone()))
+    });
 
     reg.register("test_insert_remove_args", |args| {
         let mut insert_idxs = HashMap::new();
@@ -292,7 +298,10 @@ pub fn register_commands(reg: &mut Registry) {
             remove_idxs.insert(idx);
         }
 
-        mk(InsertRemoveArgs { insert_idxs, remove_idxs })
+        mk(InsertRemoveArgs {
+            insert_idxs,
+            remove_idxs,
+        })
     });
 
     reg.register("test_typeck_loop", |_| Box::new(TestTypeckLoop));

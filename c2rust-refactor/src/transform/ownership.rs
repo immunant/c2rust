@@ -3,29 +3,29 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use rustc_arena::DroplessArena;
+use rustc_ast::mut_visit::{self, MutVisitor};
+use rustc_ast::ptr::P;
+use rustc_ast::token::{self, Delimiter, Token, TokenKind};
+use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenTree};
+use rustc_ast::*;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
-use rustc_ast::*;
 use rustc_span::source_map::DUMMY_SP;
-use rustc_ast::mut_visit::{self, MutVisitor};
-use rustc_ast::token::{self, Delimiter, Token, TokenKind};
-use rustc_ast::ptr::P;
 use rustc_span::symbol::Symbol;
-use rustc_ast::tokenstream::{Spacing, TokenTree, TokenStream, DelimSpan};
 use smallvec::{smallvec, SmallVec};
 
-use crate::ast_manip::{MutVisitNodes, MutVisit};
-use crate::ast_manip::fn_edit::flat_map_fns;
 use crate::analysis::labeled_ty::LabeledTyCtxt;
-use crate::analysis::ownership::{self, ConcretePerm, Var, PTy};
 use crate::analysis::ownership::constraint::{ConstraintSet, Perm};
-use crate::command::{CommandState, Registry, DriverCommand};
-use crate::context::HirMap;
-use crate::driver::{Phase};
-use crate::match_or;
-use crate::RefactorCtxt;
-use crate::type_map;
+use crate::analysis::ownership::{self, ConcretePerm, PTy, Var};
 use crate::ast_builder::{mk, IntoSymbol};
+use crate::ast_manip::fn_edit::flat_map_fns;
+use crate::ast_manip::{MutVisit, MutVisitNodes};
+use crate::command::{CommandState, DriverCommand, Registry};
+use crate::context::HirMap;
+use crate::driver::Phase;
+use crate::match_or;
+use crate::type_map;
+use crate::RefactorCtxt;
 
 pub fn register_commands(reg: &mut Registry) {
     reg.register("ownership_annotate", |args| {
@@ -61,9 +61,7 @@ pub fn register_commands(reg: &mut Registry) {
 /// and add attributes to each function describing its inferred
 /// ownership properties.
 /// See `analysis/ownership/README.md` for details on ownership inference.
-fn do_annotate(st: &CommandState,
-               cx: &RefactorCtxt,
-               label: Symbol) {
+fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
     let arena = DroplessArena::default();
     let analysis = ownership::analyze(&st, &cx, &arena);
 
@@ -76,26 +74,31 @@ fn do_annotate(st: &CommandState,
 
     impl<'lty, 'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
-            self.hir_map.opt_local_def_id_from_node_id(id)
+            self.hir_map
+                .opt_local_def_id_from_node_id(id)
                 .and_then(|def_id| self.ana.statics.get(&def_id.to_def_id()))
                 .and_then(|&ty| build_static_attr(ty))
         }
 
         fn constraints_attr_for(&self, id: NodeId) -> Option<Attribute> {
-            self.hir_map.opt_local_def_id_from_node_id(id)
+            self.hir_map
+                .opt_local_def_id_from_node_id(id)
                 .and_then(|def_id| self.ana.funcs.get(&def_id.to_def_id()))
                 .map(|fr| build_constraints_attr(&fr.cset))
         }
 
         fn push_mono_attrs_for(&self, id: NodeId, dest: &mut Vec<Attribute>) {
-            if let Some((def_id, (fr, vr))) = self.hir_map.opt_local_def_id_from_node_id(id)
-                    .map(|def_id| (def_id, self.ana.fn_results(def_id.to_def_id()))) {
+            if let Some((def_id, (fr, vr))) = self
+                .hir_map
+                .opt_local_def_id_from_node_id(id)
+                .map(|def_id| (def_id, self.ana.fn_results(def_id.to_def_id())))
+            {
                 if fr.num_sig_vars == 0 {
                     return;
                 }
 
                 if fr.variants.is_none() {
-                    for idx in 0 .. fr.num_monos {
+                    for idx in 0..fr.num_monos {
                         let mr = &self.ana.monos[&(def_id.to_def_id(), idx)];
                         dest.push(build_mono_attr(&mr.suffix, &mr.assign));
                     }
@@ -107,13 +110,9 @@ fn do_annotate(st: &CommandState,
         }
 
         fn clean_attrs(&self, attrs: &mut Vec<Attribute>) {
-            attrs.retain(|a| {
-                match &*a.name_or_empty().as_str() {
-                    "ownership_mono" |
-                    "ownership_constraints" |
-                    "ownership_static" => false,
-                    _ => true,
-                }
+            attrs.retain(|a| match &*a.name_or_empty().as_str() {
+                "ownership_mono" | "ownership_constraints" | "ownership_static" => false,
+                _ => true,
             });
         }
     }
@@ -124,28 +123,31 @@ fn do_annotate(st: &CommandState,
                 return mut_visit::noop_flat_map_item(i, self);
             }
 
-            mut_visit::noop_flat_map_item(i.map(|mut i| {
-                match i.kind {
-                    ItemKind::Static(..) | ItemKind::Const(..) => {
-                        self.clean_attrs(&mut i.attrs);
-                        if let Some(attr) = self.static_attr_for(i.id) {
-                            i.attrs.push(attr);
+            mut_visit::noop_flat_map_item(
+                i.map(|mut i| {
+                    match i.kind {
+                        ItemKind::Static(..) | ItemKind::Const(..) => {
+                            self.clean_attrs(&mut i.attrs);
+                            if let Some(attr) = self.static_attr_for(i.id) {
+                                i.attrs.push(attr);
+                            }
                         }
-                    },
 
-                    ItemKind::Fn(..) => {
-                        self.clean_attrs(&mut i.attrs);
-                        if let Some(attr) = self.constraints_attr_for(i.id) {
-                            i.attrs.push(attr);
+                        ItemKind::Fn(..) => {
+                            self.clean_attrs(&mut i.attrs);
+                            if let Some(attr) = self.constraints_attr_for(i.id) {
+                                i.attrs.push(attr);
+                            }
+                            self.push_mono_attrs_for(i.id, &mut i.attrs);
                         }
-                        self.push_mono_attrs_for(i.id, &mut i.attrs);
-                    },
 
-                    _ => {},
-                }
+                        _ => {}
+                    }
 
-                i
-            }), self)
+                    i
+                }),
+                self,
+            )
         }
 
         fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
@@ -211,7 +213,7 @@ fn build_constraints_attr(cset: &ConstraintSet) -> Attribute {
                 }
                 dest.push(ident_token("min"));
                 dest.push(parens(ts));
-            },
+            }
             _ => panic!("unexpected var kind in fn constraints"),
         }
     }
@@ -267,7 +269,13 @@ fn str_token(s: &str) -> TokenTree {
 }
 
 fn token(kind: TokenKind) -> TokenTree {
-    TokenTree::Token(Token{kind, span: DUMMY_SP}, Spacing::Alone)
+    TokenTree::Token(
+        Token {
+            kind,
+            span: DUMMY_SP,
+        },
+        Spacing::Alone,
+    )
 }
 
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
@@ -290,11 +298,14 @@ fn make_attr(name: &str, args: MacArgs) -> Attribute {
     Attribute {
         id: AttrId::from_u32(0),
         style: AttrStyle::Outer,
-        kind: AttrKind::Normal(AttrItem {
-            path: mk().path(vec![name]),
-            args: args,
-            tokens: None,
-        }, None),
+        kind: AttrKind::Normal(
+            AttrItem {
+                path: mk().path(vec![name]),
+                args: args,
+                tokens: None,
+            },
+            None,
+        ),
         span: DUMMY_SP,
     }
 }
@@ -302,8 +313,6 @@ fn make_attr(name: &str, args: MacArgs) -> Attribute {
 fn build_variant_attr(group: &str) -> Attribute {
     make_attr("ownership_variant_of", delimited(vec![str_token(group)]))
 }
-
-
 
 /// # `ownership_split_variants` Command
 ///
@@ -315,9 +324,7 @@ fn build_variant_attr(group: &str) -> Attribute {
 /// and split each ownership-polymorphic functions into multiple
 /// monomorphic variants.
 /// See `analysis/ownership/README.md` for details on ownership inference.
-fn do_split_variants(st: &CommandState,
-                     cx: &RefactorCtxt,
-                     label: Symbol) {
+fn do_split_variants(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
     let arena = DroplessArena::default();
     let ana = ownership::analyze(&st, &cx, &arena);
 
@@ -357,12 +364,11 @@ fn do_split_variants(st: &CommandState,
 
             let path_str = cx.ty_ctxt().def_path(def_id).to_string_no_crate_verbose();
 
-
             // For consistency, we run the split logic even for funcs with only one mono.  This way
             // the "1 variant, N monos" case is handled here, and the "N variants, N monos" case is
             // handled below.
             let mut fls = SmallVec::with_capacity(fr.num_monos);
-            for mono_idx in 0 .. fr.num_monos {
+            for mono_idx in 0..fr.num_monos {
                 let mr = &ana.monos[&(vr.func_id, mono_idx)];
                 let mut fl = fl.clone();
 
@@ -378,36 +384,40 @@ fn do_split_variants(st: &CommandState,
 
                     // Remove all `ownership_mono` (we add a new one below) and also remove
                     // `ownership_constraints` from all but the first split fn.
-                    !a.has_name("ownership_mono".into_symbol()) &&
-                    (!a.has_name("ownership_constraints".into_symbol()) || mono_idx == 0)
+                    !a.has_name("ownership_mono".into_symbol())
+                        && (!a.has_name("ownership_constraints".into_symbol()) || mono_idx == 0)
                 });
 
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.body.as_mut().map(|b| MutVisitNodes::visit(b, |e: &mut P<Expr>| {
-                    let fref_idx = match_or!([span_fref_idx.get(&e.span)]
+                fl.body.as_mut().map(|b| {
+                    MutVisitNodes::visit(b, |e: &mut P<Expr>| {
+                        let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                              Some(&x) => x; return);
-                    handled_spans.insert(e.span);
+                        handled_spans.insert(e.span);
 
-                    let dest = vr.func_refs[fref_idx].def_id;
-                    let dest_fr = &ana.funcs[&dest];
-                    let dest_marked = cx.hir_map().as_local_node_id(dest)
-                        .map_or(false, |id| st.marked(id, label));
-                    // Two conditions under which we adjust the call site.  First, if the fn is
-                    // marked, then it's going to be split during this pass.  Second, if the callee
-                    // func has variants (i.e, it was previously split), then we retarget the call
-                    // to the appropriate variant.
-                    if !dest_marked && dest_fr.variants.is_none() {
-                        // A call from a split function to a non-split function.  Leave the call
-                        // unchanged.
-                        return;
-                    }
-                    let dest_mono_idx = mr.callee_mono_idxs[fref_idx];
+                        let dest = vr.func_refs[fref_idx].def_id;
+                        let dest_fr = &ana.funcs[&dest];
+                        let dest_marked = cx
+                            .hir_map()
+                            .as_local_node_id(dest)
+                            .map_or(false, |id| st.marked(id, label));
+                        // Two conditions under which we adjust the call site.  First, if the fn is
+                        // marked, then it's going to be split during this pass.  Second, if the callee
+                        // func has variants (i.e, it was previously split), then we retarget the call
+                        // to the appropriate variant.
+                        if !dest_marked && dest_fr.variants.is_none() {
+                            // A call from a split function to a non-split function.  Leave the call
+                            // unchanged.
+                            return;
+                        }
+                        let dest_mono_idx = mr.callee_mono_idxs[fref_idx];
 
-                    let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
-                    rename_callee(e, &new_name);
-                }));
+                        let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
+                        rename_callee(e, &new_name);
+                    })
+                });
 
                 fls.push(fl);
             }
@@ -434,7 +444,9 @@ fn do_split_variants(st: &CommandState,
             // Figure out what we're calling.
             let dest = src_vr.func_refs[fref_idx].def_id;
             let dest_fr = &ana.funcs[&dest];
-            let dest_marked = cx.hir_map().as_local_node_id(dest)
+            let dest_marked = cx
+                .hir_map()
+                .as_local_node_id(dest)
                 .map_or(false, |id| st.marked(id, label));
             if !dest_marked && dest_fr.variants.is_none() {
                 return;
@@ -447,9 +459,11 @@ fn do_split_variants(st: &CommandState,
             // we might be in a pre-split fn (a variant).  Then we use the variant index as the src
             // mono idx.
 
-            let src_mono_idx =
-                if src_fr.variants.is_none() { 0 }
-                else { src_vr.index };
+            let src_mono_idx = if src_fr.variants.is_none() {
+                0
+            } else {
+                src_vr.index
+            };
             let src_mr = &ana.monos[&(src_vr.func_id, src_mono_idx)];
             let dest_mono_idx = src_mr.callee_mono_idxs[fref_idx];
 
@@ -465,31 +479,45 @@ fn rename_callee(e: &mut P<Expr>, new_name: &str) {
             // Change the last path segment.
             let seg = path.segments.last_mut().unwrap();
             seg.ident = mk().ident(new_name);
-        },
+        }
 
         ExprKind::MethodCall(ref mut seg, _, _) => {
             seg.ident = mk().ident(new_name);
-        },
+        }
 
         _ => panic!("rename_callee: unexpected expr kind: {:?}", e),
     }
 }
 
-fn callee_new_name(cx: &RefactorCtxt,
-                   ana: &ownership::AnalysisResult,
-                   dest: DefId,
-                   dest_mono_idx: usize) -> String {
+fn callee_new_name(
+    cx: &RefactorCtxt,
+    ana: &ownership::AnalysisResult,
+    dest: DefId,
+    dest_mono_idx: usize,
+) -> String {
     let fr = &ana.funcs[&dest];
     if let Some(ref var_ids) = fr.variants {
         // Function has variants.  Take the name of the indicated variant.
         let var_id = var_ids[dest_mono_idx];
-        cx.ty_ctxt().def_path(var_id).data
-           .last().unwrap().data.to_string()
+        cx.ty_ctxt()
+            .def_path(var_id)
+            .data
+            .last()
+            .unwrap()
+            .data
+            .to_string()
     } else {
         // No variants.  Presumably the function is getting split.  Add the suffix for the selected
         // mono.
-        let base_name = cx.ty_ctxt().def_path(dest).data
-           .last().unwrap().data.get_opt_name().unwrap();
+        let base_name = cx
+            .ty_ctxt()
+            .def_path(dest)
+            .data
+            .last()
+            .unwrap()
+            .data
+            .get_opt_name()
+            .unwrap();
         let suffix = &ana.monos[&(dest, dest_mono_idx)].suffix;
         if !suffix.is_empty() {
             format!("{}_{}", base_name, suffix)
@@ -498,7 +526,6 @@ fn callee_new_name(cx: &RefactorCtxt,
         }
     }
 }
-
 
 /// # `ownership_mark_pointers` Command
 ///
@@ -537,9 +564,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
             // Only one variant?  Use mono #0 (which is the only one, by the check above).
             // Multiple variants?  Use the mono for the current variant.
-            let mono_idx =
-                if fr.variants.is_none() { 0 }
-                else { vr.index };
+            let mono_idx = if fr.variants.is_none() { 0 } else { vr.index };
 
             let mr = &self.ana.monos[&(vr.func_id, mono_idx)];
 
@@ -571,7 +596,9 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
 
             // VTy -> PTy
             let mut map_fn = |opt_var: &Option<Var>| -> Option<ConcretePerm> {
-                opt_var.map(|var| f.local_assign.get(var).copied()).flatten()
+                opt_var
+                    .map(|var| f.local_assign.get(var).copied())
+                    .flatten()
             };
 
             let lcx = LabeledTyCtxt::new(self.ana.arena());
@@ -579,7 +606,9 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
             Some(lcx.relabel(local_var, &mut map_fn))
         }
 
-        fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> { None }
+        fn closure_sig(&mut self, _did: DefId) -> Option<Self::Signature> {
+            None
+        }
     }
 
     let source = AnalysisTypeSource {
@@ -591,18 +620,23 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let s_mut = "mut".into_symbol();
     let s_move = "move".into_symbol();
 
-    type_map::map_types(&cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
-        let p = match lty.label {
-            Some(x) => x,
-            None => return,
-        };
+    type_map::map_types(
+        &cx.hir_map(),
+        source,
+        &st.krate(),
+        |_source, ast_ty, lty| {
+            let p = match lty.label {
+                Some(x) => x,
+                None => return,
+            };
 
-        let label = match p {
-            ConcretePerm::Read => s_ref,
-            ConcretePerm::Write => s_mut,
-            ConcretePerm::Move => s_move,
-        };
+            let label = match p {
+                ConcretePerm::Read => s_ref,
+                ConcretePerm::Write => s_mut,
+                ConcretePerm::Move => s_move,
+            };
 
-        st.add_mark(ast_ty.id, label);
-    });
+            st.add_mark(ast_ty.id, label);
+        },
+    );
 }

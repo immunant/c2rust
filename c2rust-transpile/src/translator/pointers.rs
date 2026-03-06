@@ -113,8 +113,8 @@ impl<'c> Translation<'c> {
         let mut ref_cast_pointee_ty = None;
         let mutbl = if pointee_cty.qualifiers.is_const {
             Mutability::Immutable
-        } else if ctx.is_static {
-            // static variable initializers aren't able to use &mut, so we work around that
+        } else if ctx.is_const {
+            // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
             needs_cast = true;
@@ -123,31 +123,27 @@ impl<'c> Translation<'c> {
             Mutability::Mutable
         };
 
-        // String literals are translated with a transmute, which produces a temporary.
-        // Taking the address of a temporary leaves a dangling pointer. So instead,
-        // cast the string literal directly so that its 'static lifetime is preserved.
+        // Narrow string literals are translated directly as `[u8; N]` literals when their address
+        // is taken, without the transmute. String/byte literals are already references in Rust.
         if let (
-            Some(&CExprKind::Literal(literal_cty, CLiteral::String(ref bytes, element_size @ 1))),
+            Some(&CExprKind::Literal(literal_cty, CLiteral::String(_, element_size @ 1))),
             false,
         ) = (arg_expr_kind, arg_is_macro)
         {
-            let bytes_padded = self.string_literal_bytes(literal_cty.ctype, bytes, element_size);
-            let len = bytes_padded.len();
-            val = WithStmts::new_val(mk().lit_expr(bytes_padded));
-
             if is_array_decay {
-                ref_cast_pointee_ty = Some(mk().ident_ty("u8"));
+                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
             } else {
+                let size = self.ast_context.array_len(literal_cty.ctype) * element_size as usize;
                 ref_cast_pointee_ty =
-                    Some(mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(len as u128)));
+                    Some(mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(size as u128)));
             }
             needs_cast = true;
         }
         // Values that translate into temporaries can't be raw-borrowed in Rust,
         // and must be regular-borrowed first.
-        // Borrowing in a static/const context will extend the lifetime to static.
+        // Borrowing in a const context will extend the lifetime to static.
         else if arg_is_macro
-            || ctx.is_static
+            || ctx.is_const
                 && matches!(
                     arg_expr_kind,
                     Some(CExprKind::Literal(..) | CExprKind::CompoundLiteral(..))
@@ -408,7 +404,7 @@ impl<'c> Translation<'c> {
 
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
-    pub fn null_ptr(&self, type_id: CTypeId, is_static: bool) -> TranslationResult<Box<Expr>> {
+    pub fn null_ptr(&self, ctx: ExprContext, type_id: CTypeId) -> TranslationResult<Box<Expr>> {
         if self.ast_context.is_function_pointer(type_id) {
             return Ok(mk().path_expr(vec!["None"]));
         }
@@ -419,9 +415,9 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| TranslationError::generic("null_ptr requires a pointer"))?;
 
         let func = if pointer_qty.qualifiers.is_const
-            // static variable initializers aren't able to use null_mut
+            // mutable references/pointers are not allowed in const context
             // TODO: Rust 1.83: Allowed, so this can be removed.
-            || is_static
+            || ctx.is_const
         {
             "null"
         } else {
@@ -439,7 +435,7 @@ impl<'c> Translation<'c> {
         );
 
         // TODO: Rust 1.83: Remove.
-        if is_static && !pointer_qty.qualifiers.is_const {
+        if ctx.is_const && !pointer_qty.qualifiers.is_const {
             val = mk().cast_expr(val, mk().mutbl().ptr_ty(pointee_ty));
         }
 

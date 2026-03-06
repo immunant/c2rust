@@ -1,0 +1,2 @@
+[unstable]
+sparse-registry = true # Only needed for cargo versions < 1.68.

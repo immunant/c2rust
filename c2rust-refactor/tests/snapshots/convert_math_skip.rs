@@ -1,0 +1,33 @@
+// Tests that we don't rewrite custom math functions.
+
+#![allow(unused)]
+
+// Custom function imported with `extern "C"`, as it would be in the initial
+// transpile output.
+mod custom_math {
+    #[no_mangle]
+    pub extern "C" fn sin(x: f64) -> f64 {
+        x + 1.0f64
+    }
+}
+extern "C" {
+    #[no_mangle]
+    fn sin(x: f64) -> f64;
+}
+
+// Regular Rust function referenced directly, as might be the case after
+// refactoring.
+fn cos(x: f64) -> f64 {
+    x * 2.0f64
+}
+
+fn main() {
+    unsafe {
+        let value = sin(1.0f64);
+        println!("sin(1.0) = {}", value);
+    }
+
+    // Test regular Rust function
+    let c = cos(0.5f64);
+    println!("cos(0.5) = {}", c);
+}
