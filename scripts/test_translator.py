@@ -364,6 +364,8 @@ class TestDirectory:
             fh.write(compile_commands)
 
     def run(self) -> List[TestOutcome]:
+        edition = 2021
+
         if self.target and not rustc_has_target(self.target):
             self.print_status(Colors.OKBLUE, "SKIPPED",
                               "building test {} because the {} target is not installed"
@@ -417,10 +419,13 @@ class TestDirectory:
         rust_file_builder.add_features([
             "extern_types",
             "simd_ffi",
-            "stdsimd",
             "linkage",
             "register_tool",
         ])
+        if edition < 2024:
+            rust_file_builder.add_features([
+                "stdsimd",
+            ])
         rust_file_builder.add_pragma("register_tool", ["c2rust"])
 
         # Ensure that path to rustc's lib dir is in`LD_LIBRARY_PATH`
@@ -508,7 +513,6 @@ class TestDirectory:
         # (if it's generated, it's in the wrong directory and may be different for each transpiled file).
         # We could also change things to transpile all `*.c` files at once, but that's more involved.
         # This logic needs to stay in sync with `fn emit_rust_toolchain`.
-        edition = 2021
         match edition:
             case 2021:
                 toolchain = "nightly-2023-04-15"
