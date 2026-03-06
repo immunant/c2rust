@@ -254,12 +254,7 @@ impl<'c> Translation<'c> {
             (Double, 4) => ("_mm256_setzero_pd", 32),
             (Char, 16) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
             (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
-            (Char, 8) | (Int, 2) | (LongLong, 1) => {
-                // __m64 is still unstable as of rust 1.29
-                self.use_feature("stdsimd");
-
-                ("_mm_setzero_si64", 8)
-            }
+            (Char, 8) | (Int, 2) | (LongLong, 1) => ("_mm_setzero_si64", 8),
             (kind, len) => {
                 return Err(format_err!(
                     "Unsupported vector default initializer: {:?} x {}",
