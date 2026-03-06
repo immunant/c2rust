@@ -90,10 +90,11 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
 }
 
 /// Transpile one input and compare output against the corresponding snapshot.
-/// For outputs that vary in different environments, `platform` can be any platform-specific string.
-/// It could be the `target_arch`, `target_os`, some combination, or something else.
+/// For outputs that vary in different environments,
+/// `platform` should be a slice of the platform-specific parts,
+/// such as the `target_arch` or  `target_os` or both.
 fn transpile_snapshot(
-    platform: Option<&str>,
+    platform: &[&str],
     c_path: &Path,
     edition: RustEdition,
     expect_compile_error: bool,
@@ -110,8 +111,9 @@ fn transpile_snapshot(
     // We need to move the `.rs` file to a platform-specific name
     // so that they don't overwrite each other.
     let rs_path = match platform {
-        None => rs_path,
-        Some(platform) => {
+        &[] => rs_path,
+        platform => {
+            let platform = platform.join("-");
             let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
             fs::rename(&rs_path, &platform_rs_path).unwrap();
             platform_rs_path
@@ -124,7 +126,7 @@ fn transpile_snapshot(
     // Replace real paths with placeholders
     let rs = rs.replace(cwd.to_str().unwrap(), ".");
 
-    let snapshot_prefix = [Some("transpile"), platform]
+    let snapshot_prefix = [&["transpile"][..], platform]
         .into_iter()
         .flatten()
         .join("-");
@@ -248,13 +250,9 @@ impl<'a> TranspileTest<'a> {
         let platform = [arch_specific.then_some(arch), os_specific.then_some(os)]
             .into_iter()
             .flatten()
-            .join("-");
-        let platform = match platform.as_str() {
-            "" => None,
-            platform => Some(platform),
-        };
+            .collect::<Vec<_>>();
 
-        transpile_snapshot(platform, &c_path, edition, expect_compile_error);
+        transpile_snapshot(&platform, &c_path, edition, expect_compile_error);
     }
 }
 
