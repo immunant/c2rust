@@ -1596,6 +1596,11 @@ impl<'c> Translation<'c> {
 
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
+        if matches!(feature, "raw_ref_op")
+            && self.tcfg.edition >= RustEdition::Rust2024
+        {
+            return;
+        }
         self.features.borrow_mut().insert(feature);
     }
 
