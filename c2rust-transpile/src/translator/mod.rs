@@ -371,6 +371,15 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
     mk().block(stmts)
 }
 
+/// Whether `extern` blocks can be `unsafe` in this edition.
+fn extern_block_unsafety(edition: RustEdition) -> Unsafety {
+    if edition >= RustEdition::Rust2024 {
+        Unsafety::Unsafe
+    } else {
+        Unsafety::Normal
+    }
+}
+
 /// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol values.
 fn mk_linkage(
     in_extern_block: bool,
@@ -1013,6 +1022,7 @@ pub fn translate(
                     &mut new_uses,
                     &t.mod_names,
                     tcfg.reorganize_definitions,
+                    tcfg.edition,
                 );
                 let comments = t.comment_context.get_remaining_comments(*file_id);
                 submodule.set_span(match t.comment_store.borrow_mut().add_comments(&comments) {
@@ -1084,7 +1094,11 @@ pub fn translate(
             all_items.extend(new_uses.into_items());
 
             if !foreign_items.is_empty() {
-                all_items.push(mk().extern_("C").foreign_items(foreign_items));
+                all_items.push(
+                    mk().unsafety(extern_block_unsafety(t.tcfg.edition))
+                        .extern_("C")
+                        .foreign_items(foreign_items),
+                );
             }
 
             // Add the items accumulated
@@ -1235,6 +1249,7 @@ fn make_submodule(
     use_item_store: &mut ItemStore,
     mod_names: &RefCell<IndexMap<String, PathBuf>>,
     reorganize_definitions: bool,
+    edition: RustEdition,
 ) -> Box<Item> {
     let (mut items, foreign_items, uses) = item_store.drain();
     let file_path = ast_context.get_file_path(file_id);
@@ -1307,7 +1322,11 @@ fn make_submodule(
     }
 
     if !foreign_items.is_empty() {
-        items.push(mk().extern_("C").foreign_items(foreign_items));
+        items.push(
+            mk().unsafety(extern_block_unsafety(edition))
+                .extern_("C")
+                .foreign_items(foreign_items),
+        );
     }
 
     let module_builder = mk().pub_();
@@ -3021,7 +3040,10 @@ impl<'c> Translation<'c> {
                     let items = match self.convert_decl(ctx, decl_id)? {
                         Item(item) => vec![item],
                         ForeignItem(item) => {
-                            vec![mk().extern_("C").foreign_items(vec![*item])]
+                            vec![mk()
+                                .unsafety(extern_block_unsafety(self.tcfg.edition))
+                                .extern_("C")
+                                .foreign_items(vec![*item])]
                         }
                         Items(items) => items,
                         NoItem => return Ok(cfg::DeclStmtInfo::empty()),

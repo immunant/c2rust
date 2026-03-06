@@ -10,7 +10,7 @@ expression: cat tests/snapshots/os-specific/call_only_once.macos.rs
     unused_assignments,
     unused_mut
 )]
-extern "C" {
+unsafe extern "C" {
     fn __assert_rtn(
         _: *const ::core::ffi::c_char,
         _: *const ::core::ffi::c_char,
@@ -23,7 +23,7 @@ unsafe extern "C" fn called_only_once() -> ::core::ffi::c_int {
     called += 1;
     return 1 as ::core::ffi::c_int;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
     if (called_only_once() == 0) as ::core::ffi::c_int as ::core::ffi::c_long != 0 {
         __assert_rtn(

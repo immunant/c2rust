@@ -310,7 +310,7 @@ fn test_empty_init() {
 
 #[test]
 fn test_exprs() {
-    transpile("exprs.c").run();
+    transpile("exprs.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
@@ -415,12 +415,18 @@ fn test_vm_x86() {
 
 #[test]
 fn test_call_only_once() {
-    transpile("call_only_once.c").os_specific(true).run();
+    transpile("call_only_once.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
 fn test_macros_os_specific() {
-    transpile("macros.c").os_specific(true).run();
+    transpile("macros.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
@@ -433,7 +439,10 @@ fn test_out_of_range_lit() {
 
 #[test]
 fn test_rnd() {
-    transpile("rnd.c").os_specific(true).run();
+    transpile("rnd.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]

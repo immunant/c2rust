@@ -1684,7 +1684,7 @@ impl Builder {
 
         Box::new(Item::ForeignMod(ItemForeignMod {
             attrs: self.attrs,
-            unsafety: None,
+            unsafety: self.unsafety.to_token(),
             brace_token: token::Brace(self.span),
             items,
             abi,

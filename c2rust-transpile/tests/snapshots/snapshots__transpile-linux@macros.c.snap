@@ -10,7 +10,7 @@ expression: cat tests/snapshots/os-specific/macros.linux.rs
     unused_assignments,
     unused_mut
 )]
-extern "C" {
+unsafe extern "C" {
     fn __errno_location() -> *mut ::core::ffi::c_int;
     fn memcpy(
         __dest: *mut ::core::ffi::c_void,
@@ -19,11 +19,11 @@ extern "C" {
     ) -> *mut ::core::ffi::c_void;
 }
 pub type size_t = usize;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn errno_is_error() -> bool {
     return *__errno_location() != 0 as ::core::ffi::c_int;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn size_of_const() -> ::core::ffi::c_int {
     let mut a: [::core::ffi::c_int; 10] = [0; 10];
     return SIZE as ::core::ffi::c_int;
@@ -31,7 +31,7 @@ pub unsafe extern "C" fn size_of_const() -> ::core::ffi::c_int {
 pub const SIZE: usize = ::core::mem::size_of::<[::core::ffi::c_int; 10]>();
 pub const POS: [::core::ffi::c_char; 3] =
     unsafe { ::core::mem::transmute::<[u8; 3], [::core::ffi::c_char; 3]>(*b"\"]\0") };
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut ::core::ffi::c_char) {
     memcpy(
         out as *mut ::core::ffi::c_void,

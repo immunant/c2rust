@@ -11,7 +11,7 @@ expression: cat tests/snapshots/os-specific/wide_strings.macos.rs
     unused_mut
 )]
 #![feature(raw_ref_op)]
-extern "C" {
+unsafe extern "C" {
     fn wcslen(_: *const wchar_t) -> ::core::ffi::c_ulong;
 }
 pub type __darwin_size_t = usize;
