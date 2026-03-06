@@ -47,7 +47,7 @@ pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::
 pub struct TypedAstContext {
     main_file: PathBuf,
 
-    c_types: HashMap<CTypeId, CType>,
+    c_types: dashmap::DashMap<CTypeId, CType>,
     c_exprs: HashMap<CExprId, CExpr>,
     c_stmts: HashMap<CStmtId, CStmt>,
 
@@ -1050,11 +1050,16 @@ impl TypedAstContext {
                 use SomeId::*;
                 match some_id {
                     Type(type_id) => {
-                        if let CTypeKind::Elaborated(decl_type_id) = self.c_types[&type_id].kind {
+                        if let CTypeKind::Elaborated(decl_type_id) =
+                            self.c_types.get(&type_id).unwrap().kind
+                        {
                             // This is a reference to a previously declared type.  If we look
                             // through it we should(?) get something that looks like a declaration,
                             // which we can mark as wanted.
-                            let decl_id = self.c_types[&decl_type_id]
+                            let decl_id = self
+                                .c_types
+                                .get(&decl_type_id)
+                                .unwrap()
                                 .kind
                                 .as_decl_or_typedef()
                                 .expect("target of CTypeKind::Elaborated isn't a decl?");
@@ -1388,7 +1393,7 @@ impl Index<CTypeId> for TypedAstContext {
     fn index(&self, index: CTypeId) -> &CType {
         match self.c_types.get(&index) {
             None => panic!("Could not find {:?} in TypedAstContext", index),
-            Some(ty) => ty,
+            Some(ty) => Box::leak(Box::new(ty.clone())),
         }
     }
 }
