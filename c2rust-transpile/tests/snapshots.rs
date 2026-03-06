@@ -400,7 +400,10 @@ fn test_str_init() {
 
 #[test]
 fn test_spin() {
-    transpile("spin.c").arch_specific(true).run();
+    transpile("spin.c")
+        .edition(RustEdition::Rust2024)
+        .arch_specific(true)
+        .run();
 }
 
 #[test]

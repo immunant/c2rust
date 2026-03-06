@@ -160,9 +160,12 @@ impl<'c> Translation<'c> {
                 .into());
             }
 
-            // The majority of x86/64 SIMD is stable, however there are still some
-            // bits that are behind a feature gate.
-            self.use_feature("stdsimd");
+            if self.tcfg.edition < RustEdition::Rust2024 {
+                // Edition 2024 was released in Rust 1.85.
+                // In Rust 1.78, `#![feature(stdsimd)]` was removed and split into individual features.
+                // All of the x86_64 parts (that we use at least) were stabilized.
+                self.use_feature("stdsimd");
+            }
 
             self.with_cur_file_item_store(|item_store| {
                 // REVIEW: Also a linear lookup
