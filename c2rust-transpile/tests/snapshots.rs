@@ -6,11 +6,12 @@ use std::process::Command;
 
 use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::sanitize_file_name;
+use c2rust_rust_tools::RustEdition;
 use c2rust_transpile::convert_type::RESERVED_NAMES;
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
 use itertools::Itertools;
 
-fn config() -> TranspilerConfig {
+fn config(edition: RustEdition) -> TranspilerConfig {
     TranspilerConfig {
         dump_untyped_context: false,
         dump_typed_context: false,
@@ -51,7 +52,7 @@ fn config() -> TranspilerConfig {
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,
-        edition: Default::default(),
+        edition,
         postprocess: false,
         emit_build_files: false,
         binaries: Vec::new(),
@@ -91,9 +92,13 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
 /// Transpile one input and compare output against the corresponding snapshot.
 /// For outputs that vary in different environments, `platform` can be any platform-specific string.
 /// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile_snapshot(platform: Option<&str>, c_path: &Path, expect_compile_error: bool) {
-    let cfg = config();
-    let edition = cfg.edition;
+fn transpile_snapshot(
+    platform: Option<&str>,
+    c_path: &Path,
+    edition: RustEdition,
+    expect_compile_error: bool,
+) {
+    let cfg = config(edition);
     compile_and_transpile_file(c_path, cfg);
     let cwd = current_dir().unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
@@ -150,6 +155,7 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path, expect_compile_erro
 #[must_use]
 struct TranspileTest<'a> {
     c_file_name: &'a str,
+    edition: RustEdition,
     arch_specific: bool,
     os_specific: bool,
     expect_compile_error: bool,
@@ -158,6 +164,7 @@ struct TranspileTest<'a> {
 fn transpile(c_file_name: &str) -> TranspileTest {
     TranspileTest {
         c_file_name,
+        edition: Default::default(),
         arch_specific: false,
         os_specific: false,
         expect_compile_error: false,
@@ -165,6 +172,11 @@ fn transpile(c_file_name: &str) -> TranspileTest {
 }
 
 impl<'a> TranspileTest<'a> {
+    #[allow(unused)] // TODO remove once used
+    pub fn edition(self, edition: RustEdition) -> Self {
+        Self { edition, ..self }
+    }
+
     pub fn arch_specific(self, arch_specific: bool) -> Self {
         Self {
             arch_specific,
@@ -190,6 +202,7 @@ impl<'a> TranspileTest<'a> {
     pub fn run(self) {
         let Self {
             c_file_name,
+            edition,
             arch_specific,
             os_specific,
             expect_compile_error,
@@ -242,7 +255,7 @@ impl<'a> TranspileTest<'a> {
             platform => Some(platform),
         };
 
-        transpile_snapshot(platform, &c_path, expect_compile_error);
+        transpile_snapshot(platform, &c_path, edition, expect_compile_error);
     }
 }
 
@@ -438,7 +451,7 @@ fn test_varargs() {
 }
 
 fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
-    compile_and_transpile_file(c_path, config());
+    compile_and_transpile_file(c_path, config(Default::default()));
 
     let c_decls_path = c_path.with_extension("c_decls.json");
     let snapshot_name = format!("c_decls-{}", c_path.file_name().unwrap().to_str().unwrap());
