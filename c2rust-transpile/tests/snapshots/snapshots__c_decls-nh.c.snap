@@ -1,7 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat /home/mod/immunant/c2rust/repo/c2rust-transpile/tests/c_decls_snapshots/nh.c_decls.json
-input_file: c2rust-transpile/tests/c_decls_snapshots/nh.c
+expression: cat tests/c_decls_snapshots/nh.c_decls.json
 ---
 {
   "FOO": "FOO 4000+50",

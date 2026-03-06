@@ -1,7 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/snapshots/ref_ub.rs
-input_file: c2rust-transpile/tests/snapshots/ref_ub.c
 ---
 #![allow(
     dead_code,

@@ -149,3 +149,19 @@ fn run_rustc(rs_path: &Path, crate_name: &str, expect_error: bool) {
         assert!(status.success(), "rustc failed with {status}: {cmd:?}");
     }
 }
+
+/// Replace all non-alphanumeric characters and `-_.` with `_`s
+/// so that we have a sanitized, idiomatic file name that excludes weird characters,
+/// even if they're technically allowed in a file name.
+pub fn sanitize_file_name(file_name: &str) -> String {
+    file_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}

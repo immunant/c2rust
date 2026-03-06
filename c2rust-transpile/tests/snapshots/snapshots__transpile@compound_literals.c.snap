@@ -1,7 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/snapshots/compound_literals.rs
-input_file: c2rust-transpile/tests/snapshots/compound_literals.c
 ---
 #![allow(
     dead_code,

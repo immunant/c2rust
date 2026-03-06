@@ -1,7 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/snapshots/arch-specific/spin.aarch64.rs
-input_file: c2rust-transpile/tests/snapshots/arch-specific/spin.c
 ---
 #![allow(
     dead_code,

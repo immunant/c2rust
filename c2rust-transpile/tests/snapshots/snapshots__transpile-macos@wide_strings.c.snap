@@ -1,7 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/snapshots/os-specific/wide_strings.macos.rs
-input_file: c2rust-transpile/tests/snapshots/os-specific/wide_strings.c
 ---
 #![allow(
     dead_code,
