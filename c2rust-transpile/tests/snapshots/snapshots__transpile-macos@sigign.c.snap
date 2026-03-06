@@ -10,7 +10,7 @@ expression: cat tests/snapshots/os-specific/sigign.macos.rs
     unused_assignments,
     unused_mut
 )]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn foo() {
     let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
         ::core::mem::transmute::<

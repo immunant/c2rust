@@ -16,7 +16,7 @@ expression: cat tests/snapshots/ref_ub.rs
 pub struct Foo {
     pub len: ::core::ffi::c_int,
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dec(mut f: *mut Foo) {
     (*f).len -= 1;
 }

@@ -22,7 +22,7 @@ pub struct vm_t {
 }
 pub type byte = ::core::ffi::c_uchar;
 pub const MAX_VMMAIN_ARGS: ::core::ffi::c_int = 50 as ::core::ffi::c_int;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn VM_CallCompiled(
     mut vm: *mut vm_t,
     mut args: *mut ::core::ffi::c_int,

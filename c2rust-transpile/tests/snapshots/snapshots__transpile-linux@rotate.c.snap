@@ -10,7 +10,7 @@ expression: cat tests/snapshots/os-specific/rotate.linux.rs
     unused_assignments,
     unused_mut
 )]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn rotate_left_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {
@@ -18,7 +18,7 @@ pub unsafe extern "C" fn rotate_left_64(
         .rotate_left(4 as ::core::ffi::c_int as ::core::ffi::c_ulong as u32)
         as ::core::ffi::c_ulonglong;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn rotate_right_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {

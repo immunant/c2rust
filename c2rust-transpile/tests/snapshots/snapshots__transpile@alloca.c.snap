@@ -10,9 +10,9 @@ expression: cat tests/snapshots/alloca.rs
     unused_assignments,
     unused_mut
 )]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut TRUE: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn alloca_sum(
     mut val1: ::core::ffi::c_int,
     mut val2: ::core::ffi::c_int,

@@ -10,7 +10,7 @@ expression: cat tests/snapshots/predefined.rs
     unused_assignments,
     unused_mut
 )]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn predefined() {
     let mut line: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
     let mut file_name: *const ::core::ffi::c_char =
@@ -18,7 +18,7 @@ pub unsafe extern "C" fn predefined() {
     let mut func: *const ::core::ffi::c_char =
         b"predefined\0".as_ptr() as *const ::core::ffi::c_char;
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn extension_operator() -> *const ::core::ffi::c_char {
     return b"const char *extension_operator()\0".as_ptr() as *const ::core::ffi::c_char;
 }

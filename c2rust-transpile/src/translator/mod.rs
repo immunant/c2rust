@@ -6,6 +6,7 @@ use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use c2rust_rust_tools::RustEdition;
 use dtoa;
 use failure::{err_msg, format_err, Fail};
 use indexmap::indexmap;
@@ -371,10 +372,17 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
 }
 
 /// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol values.
-fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder {
+fn mk_linkage(
+    in_extern_block: bool,
+    new_name: &str,
+    old_name: &str,
+    edition: RustEdition,
+) -> Builder {
     if new_name == old_name {
         if in_extern_block {
             mk() // There is no mangling by default in extern blocks anymore
+        } else if edition >= RustEdition::Rust2024 {
+            mk().call_attr("unsafe", vec!["no_mangle"])
         } else {
             mk().single_attr("no_mangle") // Don't touch my name Rust!
         }
@@ -2119,7 +2127,7 @@ impl<'c> Translation<'c> {
                     .expect("Variables should already be renamed");
                 let ConvertedVariable { ty, mutbl, init: _ } =
                     self.convert_variable(ctx.static_().const_(), None, typ)?;
-                let mut extern_item = mk_linkage(true, &new_name, ident)
+                let mut extern_item = mk_linkage(true, &new_name, ident, self.tcfg.edition)
                     .span(span)
                     .set_mutbl(mutbl);
 
@@ -2218,7 +2226,9 @@ impl<'c> Translation<'c> {
                 };
 
                 let static_def = if is_externally_visible {
-                    mk_linkage(false, new_name, ident).pub_().extern_("C")
+                    mk_linkage(false, new_name, ident, self.tcfg.edition)
+                        .pub_()
+                        .extern_("C")
                 } else if self.cur_file.get().is_some() {
                     mk().pub_()
                 } else {
@@ -2556,7 +2566,9 @@ impl<'c> Translation<'c> {
                     // but strings have to do for now
                     self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")", "exit(djb2=\"main\")"])
                 } else if (is_global && !is_inline) || is_extern_inline {
-                    mk_linkage(false, new_name, name).extern_("C").pub_()
+                    mk_linkage(false, new_name, name, self.tcfg.edition)
+                        .extern_("C")
+                        .pub_()
                 } else if self.cur_file.get().is_some() {
                     mk().extern_("C").pub_()
                 } else {
@@ -2603,7 +2615,7 @@ impl<'c> Translation<'c> {
                 ))
             } else {
                 // Translating an extern function declaration
-                let mut mk_ = mk_linkage(true, new_name, name).span(span);
+                let mut mk_ = mk_linkage(true, new_name, name, self.tcfg.edition).span(span);
 
                 // When putting extern fns into submodules, they need to be public to be accessible
                 if self.tcfg.reorganize_definitions {

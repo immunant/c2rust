@@ -281,12 +281,12 @@ fn generate_keywords_test() {
 
 #[test]
 fn test_alloca() {
-    transpile("alloca.c").run();
+    transpile("alloca.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
 fn test_arrays() {
-    transpile("arrays.c").run();
+    transpile("arrays.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
@@ -296,12 +296,16 @@ fn test_atomics() {
 
 #[test]
 fn test_compound_literals() {
-    transpile("compound_literals.c").run();
+    transpile("compound_literals.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
 fn test_empty_init() {
-    transpile("empty_init.c").run();
+    transpile("empty_init.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
@@ -311,12 +315,14 @@ fn test_exprs() {
 
 #[test]
 fn test_factorial() {
-    transpile("factorial.c").run();
+    transpile("factorial.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
 fn test_gotos() {
-    transpile("gotos.c").run();
+    transpile("gotos.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
@@ -328,7 +334,9 @@ fn test_incomplete_arrays() {
 
 #[test]
 fn test_insertion() {
-    transpile("insertion.c").run();
+    transpile("insertion.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
@@ -339,7 +347,9 @@ fn test_keywords() {
 
 #[test]
 fn test_macrocase() {
-    transpile("macrocase.c").run();
+    transpile("macrocase.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
@@ -354,32 +364,36 @@ fn test_main_fn() {
 
 #[test]
 fn test_predefined() {
-    transpile("predefined.c").run();
+    transpile("predefined.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
 fn test_records() {
-    transpile("records.c").run();
+    transpile("records.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
 fn test_ref_ub() {
-    transpile("ref_ub.c").run();
+    transpile("ref_ub.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
 fn test_rotate() {
-    transpile("rotate.c").run();
+    transpile("rotate.c").edition(RustEdition::Rust2024).run();
 }
 
 #[test]
 fn test_static_assert() {
-    transpile("static_assert.c").run();
+    transpile("static_assert.c")
+        .edition(RustEdition::Rust2024)
+        .run();
 }
 
 #[test]
 fn test_str_init() {
-    transpile("str_init.c").run();
+    transpile("str_init.c").edition(RustEdition::Rust2024).run();
 }
 
 // arch-specific
@@ -391,7 +405,10 @@ fn test_spin() {
 
 #[test]
 fn test_vm_x86() {
-    transpile("vm_x86.c").arch_specific(true).run();
+    transpile("vm_x86.c")
+        .edition(RustEdition::Rust2024)
+        .arch_specific(true)
+        .run();
 }
 
 // os-specific
@@ -408,7 +425,10 @@ fn test_macros_os_specific() {
 
 #[test]
 fn test_out_of_range_lit() {
-    transpile("out_of_range_lit.c").os_specific(true).run();
+    transpile("out_of_range_lit.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
@@ -418,27 +438,42 @@ fn test_rnd() {
 
 #[test]
 fn test_rotate_os_specific() {
-    transpile("rotate.c").os_specific(true).run();
+    transpile("rotate.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
 fn test_sigign() {
-    transpile("sigign.c").os_specific(true).run();
+    transpile("sigign.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
 fn test_typedefidx() {
-    transpile("typedefidx.c").os_specific(true).run();
+    transpile("typedefidx.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
 fn test_types() {
-    transpile("types.c").os_specific(true).run();
+    transpile("types.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 #[test]
 fn test_wide_strings() {
-    transpile("wide_strings.c").os_specific(true).run();
+    transpile("wide_strings.c")
+        .edition(RustEdition::Rust2024)
+        .os_specific(true)
+        .run();
 }
 
 // arch-os-specific

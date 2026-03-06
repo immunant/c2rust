@@ -11,7 +11,7 @@ expression: cat tests/snapshots/os-specific/sigign.linux.rs
     unused_mut
 )]
 pub type __sighandler_t = Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn foo() {
     let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
         ::core::mem::transmute::<

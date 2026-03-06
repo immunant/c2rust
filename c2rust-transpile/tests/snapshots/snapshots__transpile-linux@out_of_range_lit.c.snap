@@ -12,7 +12,7 @@ expression: cat tests/snapshots/os-specific/out_of_range_lit.linux.rs
 )]
 pub type __int32_t = i32;
 pub type int32_t = __int32_t;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn f() {
     let mut a: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;
     let mut b: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;

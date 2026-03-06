@@ -11,7 +11,7 @@ expression: cat tests/snapshots/out_of_range_lit.rs
     unused_mut
 )]
 pub type int32_t = i32;
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn f() {
     let mut a: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;
     let mut b: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;

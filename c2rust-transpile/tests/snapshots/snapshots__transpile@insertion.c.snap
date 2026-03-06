@@ -10,7 +10,7 @@ expression: cat tests/snapshots/insertion.rs
     unused_assignments,
     unused_mut
 )]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn insertion_sort(n: ::core::ffi::c_int, p: *mut ::core::ffi::c_int) {
     let mut i: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
     while i < n {

@@ -10,5 +10,5 @@ expression: cat tests/snapshots/static_assert.rs
     unused_assignments,
     unused_mut
 )]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn static_assert() {}
