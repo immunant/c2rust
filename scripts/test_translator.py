@@ -1,4 +1,5 @@
 #!/usr/bin/env -S uv run
+from collections import defaultdict
 
 import errno
 import os
@@ -28,7 +29,7 @@ from rust_file import (
     RustMod,
     RustVisibility,
 )
-from typing import Any, Dict, Generator, List, Optional, Set, Iterable
+from typing import Any, Dict, Generator, List, Optional, Set, Iterable, Literal
 
 # Tools we will need
 clang = get_cmd_or_die("clang")
@@ -54,6 +55,9 @@ class TestOutcome(Enum):
     UnexpectedSuccess = "unexpected successes"
 
 
+RustEdition = Literal[2021] | Literal[2024]
+
+
 class CStaticLibrary:
     def __init__(self, path: str, link_name: str,
                  obj_files: List[str]) -> None:
@@ -73,7 +77,7 @@ class CFile:
         self.reorganize_definitions = "reorganize_definitions" in flags
         self.emit_build_files = "emit_build_files" in flags
 
-    def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
+    def translate(self, cc_db: str, edition: RustEdition, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
 
         # run the transpiler
@@ -84,6 +88,8 @@ class CFile:
             "--prefix-function-names",
             "rust_",
             "--overwrite-existing",
+            "--edition",
+            str(edition),
         ]
 
         # return nonzero if translation fails
@@ -214,10 +220,13 @@ class TestFile(RustFile):
         self.pass_expected = "xfail" not in flags
         self.extern_crates = {flag[13:] for flag in flags if flag.startswith("extern_crate_")}
         self.features = {flag[8:] for flag in flags if flag.startswith("feature_")}
+        self.edition_2021 = "--edition 2021" in flags
+        self.edition_2024 = "--edition 2024" in flags
 
 
 class TestDirectory:
     rs_test_files: list[TestFile]
+    edition: RustEdition
 
     def __init__(self, full_path: str, files: 're.Pattern', keep: List[str], log_level: str) -> None:
         self.c_files = []
@@ -287,6 +296,26 @@ class TestDirectory:
                       files.search(filename)):
                     rs_test_file = self._read_rust_test_file(path)
                     self.rs_test_files.append(rs_test_file)
+
+        editions: defaultdict[RustEdition, list[TestFile]] = defaultdict(list)
+        for test_file in self.rs_test_files:
+            assert not (test_file.edition_2021 and test_file.edition_2024), (
+                f"{test_file.path} has can only have one --edition flag"
+            )
+            edition = 2021  # default
+            if test_file.edition_2021:
+                edition = 2021
+            elif test_file.edition_2024:
+                edition = 2024
+            editions[edition].append(test_file)
+        editions_rendered = {
+            f"--edition {edition}": [test_file.path for test_file in test_files]
+            for edition, test_files in editions.items()
+        }
+        assert len(editions) <= 1, (
+            f"multiple editions in a TestDirectory not allowed: {editions_rendered}"
+        )
+        self.edition = next(iter(editions.keys()))
 
     def _read_c_file(self, path: str) -> Optional[CFile]:
         file_config = None
@@ -364,8 +393,6 @@ class TestDirectory:
             fh.write(compile_commands)
 
     def run(self) -> List[TestOutcome]:
-        edition = 2021
-
         if self.target and not rustc_has_target(self.target):
             self.print_status(Colors.OKBLUE, "SKIPPED",
                               "building test {} because the {} target is not installed"
@@ -422,7 +449,7 @@ class TestDirectory:
             "linkage",
             "register_tool",
         ])
-        if edition < 2024:
+        if self.edition < 2024:
             rust_file_builder.add_features([
                 "stdsimd",
             ])
@@ -448,6 +475,7 @@ class TestDirectory:
                 logging.debug("translating %s", c_file_short)
                 translated_rust_file = c_file.translate(
                     cc_db=self.generated_files["cc_db"][0],
+                    edition=self.edition,
                     ld_lib_path=ld_lib_path,
                     extra_args=target_args(self.target),
                 )
@@ -515,7 +543,7 @@ class TestDirectory:
         # (if it's generated, it's in the wrong directory and may be different for each transpiled file).
         # We could also change things to transpile all `*.c` files at once, but that's more involved.
         # This logic needs to stay in sync with `fn emit_rust_toolchain`.
-        match edition:
+        match self.edition:
             case 2021:
                 toolchain = "nightly-2023-04-15"
             case 2024:
