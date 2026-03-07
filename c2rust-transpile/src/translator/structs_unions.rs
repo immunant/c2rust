@@ -6,7 +6,7 @@ use std::ops::Index;
 
 use super::named_references::NamedReference;
 use super::TranslationError;
-use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CRecordId, CTypeId};
+use crate::c_ast::{BinOp, CDeclId, CDeclKind, CExprId, CFieldId, CQualTypeId, CRecordId, CTypeId};
 use crate::diagnostics::TranslationResult;
 use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
@@ -505,6 +505,51 @@ impl<'a> Translation<'a> {
         }
 
         Ok(val)
+    }
+
+    pub fn convert_union_literal(
+        &self,
+        ctx: ExprContext,
+        union_id: CRecordId,
+        ids: &[CExprId],
+        _ty: CQualTypeId,
+        opt_union_field_id: Option<CFieldId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let union_field_id = opt_union_field_id.expect("union field ID");
+
+        match self.ast_context.index(union_id).kind {
+            CDeclKind::Union { .. } => {
+                let union_name = self
+                    .type_converter
+                    .borrow()
+                    .resolve_decl_name(union_id)
+                    .unwrap();
+                log::debug!("importing union {union_name}, id {union_id:?}");
+                self.add_import(union_id, &union_name);
+                match self.ast_context.index(union_field_id).kind {
+                    CDeclKind::Field { typ: field_ty, .. } => {
+                        let val = if ids.is_empty() {
+                            self.implicit_default_expr(ctx, field_ty.ctype)?
+                        } else {
+                            self.convert_expr(ctx.used(), ids[0], None)?
+                        };
+
+                        Ok(val.map(|v| {
+                            let name = vec![mk().path_segment(union_name)];
+                            let field_name = self
+                                .type_converter
+                                .borrow()
+                                .resolve_field_name(Some(union_id), union_field_id)
+                                .unwrap();
+                            let fields = vec![mk().field(field_name, v)];
+                            mk().struct_expr(name, fields)
+                        }))
+                    }
+                    _ => panic!("Union field decl mismatch"),
+                }
+            }
+            _ => panic!("Expected union decl"),
+        }
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
