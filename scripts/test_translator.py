@@ -446,9 +446,11 @@ class TestDirectory:
 
             try:
                 logging.debug("translating %s", c_file_short)
-                translated_rust_file = c_file.translate(self.generated_files["cc_db"][0],
-                                                        ld_lib_path,
-                                                        extra_args=target_args(self.target))
+                translated_rust_file = c_file.translate(
+                    cc_db=self.generated_files["cc_db"][0],
+                    ld_lib_path=ld_lib_path,
+                    extra_args=target_args(self.target),
+                )
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
                                   c_file_short)
