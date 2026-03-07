@@ -174,6 +174,64 @@ impl<'a> Translation<'a> {
         }
     }
 
+    pub fn convert_union(
+        &self,
+        decl_id: CDeclId,
+        span: Span,
+        fields: &[CDeclId],
+        is_packed: bool,
+    ) -> TranslationResult<ConvertedDecl> {
+        let name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(decl_id)
+            .unwrap();
+
+        let mut field_syns = vec![];
+        for &x in fields {
+            let field_decl = self.ast_context.index(x);
+            match field_decl.kind {
+                CDeclKind::Field { ref name, typ, .. } => {
+                    let name = self
+                        .type_converter
+                        .borrow_mut()
+                        .declare_field_name(decl_id, x, name);
+                    let typ = self.convert_type(typ.ctype)?;
+                    field_syns.push(mk().pub_().struct_field(name, typ))
+                }
+                _ => {
+                    return Err(TranslationError::generic(
+                        "Found non-field in record field list",
+                    ));
+                }
+            }
+        }
+
+        let mut repr = vec!["C"];
+        if is_packed {
+            repr.push("packed");
+        }
+
+        Ok(if field_syns.is_empty() {
+            // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
+            ConvertedDecl::Item(
+                mk().span(span)
+                    .pub_()
+                    .call_attr("derive", vec!["Copy", "Clone"])
+                    .call_attr("repr", repr)
+                    .struct_item(name, vec![], false),
+            )
+        } else {
+            ConvertedDecl::Item(
+                mk().span(span)
+                    .pub_()
+                    .call_attr("derive", vec!["Copy", "Clone"])
+                    .call_attr("repr", repr)
+                    .union_item(name, field_syns),
+            )
+        })
+    }
+
     /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
@@ -960,6 +1018,30 @@ impl<'a> Translation<'a> {
         }
 
         Ok(reorganized_fields)
+    }
+
+    pub fn convert_cast_to_union(
+        &self,
+        val: WithStmts<Box<Expr>>,
+        opt_field_id: Option<CFieldId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let field_id = opt_field_id.expect("Missing field ID in union cast");
+        let union_id = self.ast_context.parents[&field_id];
+
+        let union_name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(union_id)
+            .expect("required union name");
+        let field_name = self
+            .type_converter
+            .borrow()
+            .resolve_field_name(Some(union_id), field_id)
+            .expect("field name required");
+
+        Ok(val.map(|x| {
+            mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
+        }))
     }
 }
 
