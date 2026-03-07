@@ -248,4 +248,16 @@ impl<'c> Translation<'c> {
             MacroDelimiter::Paren(Default::default()),
         ))))
     }
+
+    pub fn expr_is_expanded_macro(
+        &self,
+        ctx: ExprContext,
+        expr_id: CExprId,
+        override_ty: Option<CQualTypeId>,
+    ) -> bool {
+        matches!(
+            self.convert_const_macro_expansion(ctx, expr_id, override_ty),
+            Ok(Some(_))
+        )
+    }
 }
