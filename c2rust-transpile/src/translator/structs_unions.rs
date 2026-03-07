@@ -1034,70 +1034,70 @@ impl<'a> Translation<'a> {
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if ctx.is_unused() {
-            self.convert_expr(ctx, expr, None)
-        } else {
-            let mut val = match kind {
-                MemberKind::Dot => self.convert_expr(ctx, expr, None)?,
-                MemberKind::Arrow => {
-                    if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
-                        self.ast_context[expr].kind
-                    {
-                        // Special-case the `(&x)->field` pattern
-                        // Convert it directly into `x.field`
-                        self.convert_expr(ctx, subexpr_id, None)?
-                    } else {
-                        let val = self.convert_expr(ctx, expr, None)?;
-                        val.map(|v| mk().unary_expr(UnOp::Deref(Default::default()), v))
-                    }
-                }
-            };
+            return self.convert_expr(ctx, expr, None);
+        }
 
-            let record_id = self.ast_context.parents[&decl];
-            if self.ast_context.has_inner_struct_decl(record_id) {
-                // The structure is split into an outer and an inner,
-                // so we need to go through the outer structure to the inner one
-                val = val.map(|v| mk().anon_field_expr(v, 0));
-            };
-
-            let field_name = self
-                .type_converter
-                .borrow()
-                .resolve_field_name(None, decl)
-                .unwrap();
-            let is_bitfield = match &self.ast_context[decl].kind {
-                CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                _ => unreachable!("Found a member which is not a field"),
-            };
-            if is_bitfield {
-                // Convert a bitfield member one of four ways:
-                // A) bf.a()
-                // B) (*bf).a()
-                // C) bf
-                // D) (*bf)
-                //
-                // The first two are when we know this bitfield member is going to be read
-                // from (default), possibly requiring a dereference first. The latter two
-                // are generated when we are expecting to require a write, which will need
-                // to make a method call with some input which we do not yet have access
-                // to and will have to be handled elsewhere, IE `bf.set_a(1)`
-                if !ctx.is_bitfield_write {
-                    // Cases A and B above
-                    val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
-                }
-            } else {
-                val = val.map(|v| mk().field_expr(v, field_name));
-            };
-
-            // if the context wants a different type, add a cast
-            if let Some(expected_ty) = override_ty {
-                if expected_ty != qual_ty {
-                    let ty = self.convert_type(expected_ty.ctype)?;
-                    val = val.map(|v| mk().cast_expr(v, ty));
+        let mut val = match kind {
+            MemberKind::Dot => self.convert_expr(ctx, expr, None)?,
+            MemberKind::Arrow => {
+                if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
+                    self.ast_context[expr].kind
+                {
+                    // Special-case the `(&x)->field` pattern
+                    // Convert it directly into `x.field`
+                    self.convert_expr(ctx, subexpr_id, None)?
+                } else {
+                    let val = self.convert_expr(ctx, expr, None)?;
+                    val.map(|v| mk().unary_expr(UnOp::Deref(Default::default()), v))
                 }
             }
+        };
 
-            Ok(val)
+        let record_id = self.ast_context.parents[&decl];
+        if self.ast_context.has_inner_struct_decl(record_id) {
+            // The structure is split into an outer and an inner,
+            // so we need to go through the outer structure to the inner one
+            val = val.map(|v| mk().anon_field_expr(v, 0));
+        };
+
+        let field_name = self
+            .type_converter
+            .borrow()
+            .resolve_field_name(None, decl)
+            .unwrap();
+        let is_bitfield = match &self.ast_context[decl].kind {
+            CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+            _ => unreachable!("Found a member which is not a field"),
+        };
+        if is_bitfield {
+            // Convert a bitfield member one of four ways:
+            // A) bf.a()
+            // B) (*bf).a()
+            // C) bf
+            // D) (*bf)
+            //
+            // The first two are when we know this bitfield member is going to be read
+            // from (default), possibly requiring a dereference first. The latter two
+            // are generated when we are expecting to require a write, which will need
+            // to make a method call with some input which we do not yet have access
+            // to and will have to be handled elsewhere, IE `bf.set_a(1)`
+            if !ctx.is_bitfield_write {
+                // Cases A and B above
+                val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
+            }
+        } else {
+            val = val.map(|v| mk().field_expr(v, field_name));
+        };
+
+        // if the context wants a different type, add a cast
+        if let Some(expected_ty) = override_ty {
+            if expected_ty != qual_ty {
+                let ty = self.convert_type(expected_ty.ctype)?;
+                val = val.map(|v| mk().cast_expr(v, ty));
+            }
         }
+
+        Ok(val)
     }
 
     pub fn convert_cast_to_union(
