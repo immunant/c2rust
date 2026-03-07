@@ -1477,11 +1477,6 @@ struct ConvertedVariable {
     pub init: TranslationResult<WithStmts<Box<Expr>>>,
 }
 
-struct ConvertedFunctionParam {
-    pub ty: Box<Type>,
-    pub mutbl: Mutability,
-}
-
 impl<'c> Translation<'c> {
     pub fn new(
         mut ast_context: TypedAstContext,
@@ -2240,245 +2235,6 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn convert_function(
-        &self,
-        ctx: ExprContext,
-        span: Span,
-        is_global: bool,
-        is_inline: bool,
-        is_main: bool,
-        is_variadic: bool,
-        is_extern: bool,
-        new_name: &str,
-        name: &str,
-        arguments: &[(CDeclId, String, CQualTypeId)],
-        return_type: Option<CQualTypeId>,
-        body: Option<CStmtId>,
-        attrs: &IndexSet<c_ast::Attribute>,
-    ) -> TranslationResult<ConvertedDecl> {
-        self.function_context.borrow_mut().enter_new(name);
-
-        self.with_scope(|| {
-            let mut args: Vec<FnArg> = vec![];
-
-            // handle regular (non-variadic) arguments
-            for &(decl_id, ref var, typ) in arguments {
-                let ConvertedFunctionParam { ty, mutbl } = self.convert_function_param(ctx, typ)?;
-
-                let pat = if var.is_empty() {
-                    mk().wild_pat()
-                } else {
-                    // extern function declarations don't support/require mut patterns
-                    let mutbl = if body.is_none() {
-                        Mutability::Immutable
-                    } else {
-                        mutbl
-                    };
-
-                    let new_var = self
-                        .renamer
-                        .borrow_mut()
-                        .insert(decl_id, var.as_str())
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Failed to insert argument '{}' while converting '{}'",
-                                var, name
-                            )
-                        });
-
-                    mk().set_mutbl(mutbl).ident_pat(new_var)
-                };
-
-                args.push(mk().arg(ty, pat))
-            }
-
-            let variadic = if is_variadic {
-                // function definitions
-                let mut builder = mk();
-                let arg_va_list_name = if let Some(body_id) = body {
-                    // FIXME: detect mutability requirements.
-                    builder = builder.set_mutbl(Mutability::Mutable);
-                    Some(self.register_va_decls(body_id))
-                } else {
-                    None
-                };
-
-                Some(builder.variadic_arg(arg_va_list_name))
-            } else {
-                None
-            };
-
-            // handle return type
-            let ret = match return_type {
-                Some(return_type) => self.convert_type(return_type.ctype)?,
-                None => mk().never_ty(),
-            };
-            let is_void_ret = return_type
-                .map(|qty| self.ast_context[qty.ctype].kind == CTypeKind::Void)
-                .unwrap_or(false);
-
-            // If a return type is void, we should instead omit the unit type return,
-            // -> (), to be more idiomatic
-            let ret = if is_void_ret {
-                ReturnType::Default
-            } else {
-                ReturnType::Type(Default::default(), ret)
-            };
-
-            let decl = mk().fn_decl(new_name, args, variadic, ret);
-
-            if let Some(body) = body {
-                // Translating an actual function
-
-                let ret = match return_type {
-                    Some(return_type) => {
-                        let ret_type_id: CTypeId =
-                            self.ast_context.resolve_type_id(return_type.ctype);
-                        if let CTypeKind::Void = self.ast_context.index(ret_type_id).kind {
-                            cfg::ImplicitReturnType::Void
-                        } else if is_main {
-                            cfg::ImplicitReturnType::Main
-                        } else {
-                            cfg::ImplicitReturnType::NoImplicitReturnType
-                        }
-                    }
-                    _ => cfg::ImplicitReturnType::Void,
-                };
-
-                let mut body_stmts = vec![];
-                for &(_, _, typ) in arguments {
-                    body_stmts.append(&mut self.compute_variable_array_sizes(ctx, typ.ctype)?);
-                }
-
-                let body_ids = match self.ast_context.index(body).kind {
-                    CStmtKind::Compound(ref stmts) => stmts,
-                    _ => panic!("function body expects to be a compound statement"),
-                };
-                let mut converted_body =
-                    self.convert_block_with_scope(ctx, name, body_ids, return_type, ret)?;
-                strip_tail_return(&mut converted_body);
-
-                // If `alloca` was used in the function body, include a variable to hold the
-                // allocations.
-                if let Some(alloca_allocations_name) = self
-                    .function_context
-                    .borrow_mut()
-                    .alloca_allocations_name
-                    .take()
-                {
-                    // let mut c2rust_alloca_allocations: Vec<Vec<u8>> = Vec::new();
-                    let inner_vec = mk().path_ty(vec![mk().path_segment_with_args(
-                        "Vec",
-                        mk().angle_bracketed_args(vec![mk().ident_ty("u8")]),
-                    )]);
-                    let outer_vec = mk().path_ty(vec![mk().path_segment_with_args(
-                        "Vec",
-                        mk().angle_bracketed_args(vec![inner_vec]),
-                    )]);
-                    let alloca_allocations_stmt = mk().local_stmt(Box::new(mk().local(
-                        mk().mutbl().ident_pat(alloca_allocations_name),
-                        Some(outer_vec),
-                        Some(mk().call_expr(mk().path_expr(vec!["Vec", "new"]), vec![])),
-                    )));
-
-                    body_stmts.push(alloca_allocations_stmt);
-                }
-
-                body_stmts.append(&mut converted_body);
-                let mut block = stmts_block(body_stmts);
-                if let Some(span) = self.get_span(SomeId::Stmt(body)) {
-                    block.set_span(span);
-                }
-
-                // c99 extern inline functions should be pub, but not gnu_inline attributed
-                // extern inlines, which become subject to their gnu89 visibility (private)
-                let is_extern_inline =
-                    is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline);
-
-                // Only add linkage attributes if the function is `extern`
-                let mut mk_ = if is_main {
-                    // Cross-check this function as if it was called `main`
-                    // FIXME: pass in a vector of NestedMetaItem elements,
-                    // but strings have to do for now
-                    self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")", "exit(djb2=\"main\")"])
-                } else if (is_global && !is_inline) || is_extern_inline {
-                    mk_linkage(false, new_name, name, self.tcfg.edition)
-                        .extern_("C")
-                        .pub_()
-                } else if self.cur_file.get().is_some() {
-                    mk().extern_("C").pub_()
-                } else {
-                    mk().extern_("C")
-                };
-
-                // In Edition2024, `unsafe_op_in_unsafe_fn` is deny-by-default so we emit an allow pragma
-                // to silence warnings. Was this overridden by the `--deny_unsafe_op_in_unsafe_fn` flag?
-                if self.tcfg.deny_unsafe_op_in_unsafe_fn {
-                    mk_ = mk_.deny_unsafe_op_in_unsafe_fn();
-                }
-
-                for attr in attrs {
-                    mk_ = match attr {
-                        c_ast::Attribute::AlwaysInline => mk_.call_attr("inline", vec!["always"]),
-                        c_ast::Attribute::Cold => mk_.single_attr("cold"),
-                        c_ast::Attribute::NoInline => mk_.call_attr("inline", vec!["never"]),
-                        _ => continue,
-                    };
-                }
-
-                // If this function is just a regular inline
-                if is_inline && !attrs.contains(&c_ast::Attribute::AlwaysInline) {
-                    mk_ = mk_.single_attr("inline");
-
-                    // * In C99, a function defined inline will never, and a function defined extern
-                    //   inline will always, emit an externally visible function.
-                    // * If a non-static function is declared inline, then it must be defined in the
-                    //   same translation unit. The inline definition that does not use extern is
-                    //   not externally visible and does not prevent other translation units from
-                    //   defining the same function. This makes the inline keyword an alternative to
-                    //   static for defining functions inside header files, which may be included in
-                    //   multiple translation units of the same program.
-                    // * always_inline implies inline -
-                    //   https://gcc.gnu.org/ml/gcc-help/2007-01/msg00051.html
-                    //   even if the `inline` keyword isn't present
-                    // * gnu_inline instead applies gnu89 rules. extern inline will not emit an
-                    //   externally visible function.
-                    if is_global && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
-                        self.use_feature("linkage");
-                        // ensures that public inlined rust function can be used in other modules
-                        mk_ = mk_.str_attr("linkage", "external");
-                    }
-                    // NOTE: it does not seem necessary to have an else branch here that
-                    // specifies internal linkage in all other cases due to name mangling by rustc.
-                }
-
-                Ok(ConvertedDecl::Item(
-                    mk_.span(span).unsafe_().fn_item(decl, block),
-                ))
-            } else {
-                // Translating an extern function declaration
-                let mut mk_ = mk_linkage(true, new_name, name, self.tcfg.edition).span(span);
-
-                // When putting extern fns into submodules, they need to be public to be accessible
-                if self.tcfg.reorganize_definitions {
-                    mk_ = mk_.pub_();
-                };
-
-                for attr in attrs {
-                    mk_ = match attr {
-                        c_ast::Attribute::Alias(aliasee) => mk_.str_attr("link_name", aliasee),
-                        _ => continue,
-                    };
-                }
-
-                let mk_ = mk_.unsafety(extern_block_unsafety(self.tcfg.edition));
-                let function_decl = mk_.fn_foreign_item(decl);
-
-                Ok(ConvertedDecl::ForeignItem(function_decl))
-            }
-        })
-    }
-
     pub fn convert_cfg(
         &self,
         name: &str,
@@ -3006,25 +2762,6 @@ impl<'c> Translation<'c> {
         Ok(ConvertedVariable { ty, mutbl, init })
     }
 
-    fn convert_function_param(
-        &self,
-        ctx: ExprContext,
-        typ: CQualTypeId,
-    ) -> TranslationResult<ConvertedFunctionParam> {
-        if self.ast_context.is_va_list(typ.ctype) {
-            let mutbl = if typ.qualifiers.is_const {
-                Mutability::Immutable
-            } else {
-                Mutability::Mutable
-            };
-            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaList"]);
-            return Ok(ConvertedFunctionParam { mutbl, ty });
-        }
-
-        self.convert_variable(ctx, None, typ)
-            .map(|ConvertedVariable { ty, mutbl, .. }| ConvertedFunctionParam { ty, mutbl })
-    }
-
     fn convert_type(&self, type_id: CTypeId) -> TranslationResult<Box<Type>> {
         self.import_type(type_id);
 
@@ -3289,34 +3026,6 @@ impl<'c> Translation<'c> {
             .iter()
             .enumerate()
             .map(|(n, arg)| self.convert_expr(ctx, *arg, arg_tys.map(|tys| tys[n])))
-            .collect()
-    }
-
-    /// Variant of `convert_exprs` for the arguments of a function call.
-    /// Accounts for differences in translation for arguments, and for varargs where only a prefix
-    /// of the expression types are known.
-    #[allow(clippy::vec_box/*, reason = "not worth a substantial refactor"*/)]
-    fn convert_call_args(
-        &self,
-        ctx: ExprContext,
-        exprs: &[CExprId],
-        arg_tys: Option<&[CQualTypeId]>,
-        is_variadic: bool,
-    ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
-        let arg_tys = if let Some(arg_tys) = arg_tys {
-            if !is_variadic {
-                assert!(arg_tys.len() == exprs.len());
-            }
-
-            arg_tys
-        } else {
-            &[]
-        };
-
-        exprs
-            .iter()
-            .enumerate()
-            .map(|(n, arg)| self.convert_call_arg(ctx, *arg, arg_tys.get(n).copied()))
             .collect()
     }
 
@@ -3992,28 +3701,6 @@ impl<'c> Translation<'c> {
             }
         };
         Ok(expr)
-    }
-
-    /// Wrapper around `convert_expr` for the arguments of a function call.
-    pub fn convert_call_arg(
-        &self,
-        ctx: ExprContext,
-        expr_id: CExprId,
-        override_ty: Option<CQualTypeId>,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let mut val;
-
-        if (self.ast_context.index(expr_id).kind.get_qual_type())
-            .map_or(false, |qtype| self.ast_context.is_va_list(qtype.ctype))
-        {
-            // No `override_ty` to avoid unwanted casting.
-            val = self.convert_expr(ctx, expr_id, None)?;
-            val = val.map(|val| mk_va_list_copy(self.tcfg.edition, val));
-        } else {
-            val = self.convert_expr(ctx, expr_id, override_ty)?;
-        }
-
-        Ok(val)
     }
 
     /// If `ctx` is unused, convert `expr` to a semi statement, otherwise return
