@@ -1509,19 +1509,7 @@ impl<'c> Translation<'c> {
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
-            renamer: RefCell::new(Renamer::new(&[
-                // Keywords currently in use
-                "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false",
-                "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut",
-                "pub", "ref", "return", "Self", "self", "static", "struct", "super", "trait",
-                "true", "type", "unsafe", "use", "where", "while", "dyn",
-                // Keywords reserved for future use
-                "abstract", "alignof", "become", "box", "do", "final", "macro", "offsetof",
-                "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual",
-                "async", "try", "yield", // Prevent use for other reasons
-                "main",  // prelude names
-                "drop", "Some", "None", "Ok", "Err",
-            ])),
+            renamer: RefCell::new(Renamer::value_namespace()),
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),

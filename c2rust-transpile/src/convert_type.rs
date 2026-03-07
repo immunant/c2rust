@@ -25,112 +25,6 @@ pub struct TypeConverter {
     extern_crates: CrateSet,
 }
 
-pub const RESERVED_NAMES: [&str; 100] = [
-    // Keywords currently in use
-    "as",
-    "async",
-    "await",
-    "break",
-    "const",
-    "continue",
-    "crate",
-    "dyn",
-    "else",
-    "enum",
-    "extern",
-    "false",
-    "fn",
-    "for",
-    "if",
-    "impl",
-    "in",
-    "let",
-    "loop",
-    "match",
-    "mod",
-    "move",
-    "mut",
-    "pub",
-    "ref",
-    "return",
-    "self",
-    "Self",
-    "static",
-    "struct",
-    "super",
-    "trait",
-    "true",
-    "type",
-    "unsafe",
-    "use",
-    "where",
-    "while",
-    // Keywords reserved for future use
-    "abstract",
-    "become",
-    "box",
-    "do",
-    "final",
-    "gen",
-    "macro",
-    "override",
-    "priv",
-    "try",
-    "typeof",
-    "unsized",
-    "virtual",
-    "yield",
-    // Types exported in prelude
-    "Copy",
-    "Send",
-    "Sized",
-    "Sync",
-    "Drop",
-    "Fn",
-    "FnMut",
-    "FnOnce",
-    "Box",
-    "ToOwned",
-    "Clone",
-    "PartialEq",
-    "PartialOrd",
-    "Eq",
-    "Ord",
-    "AsRef",
-    "AsMut",
-    "Into",
-    "From",
-    "Default",
-    "Iterator",
-    "Extend",
-    "IntoIterator",
-    "DoubleEndedIterator",
-    "ExactSizeIterator",
-    "Option",
-    "Result",
-    "SliceConcatExt",
-    "String",
-    "ToString",
-    "Vec",
-    "bool",
-    "char",
-    "f32",
-    "f64",
-    "i8",
-    "i16",
-    "i32",
-    "i64",
-    "i128",
-    "isize",
-    "u8",
-    "u16",
-    "u32",
-    "u64",
-    "u128",
-    "usize",
-    "str",
-];
-
 impl TypeConverter {
     // We don't provide a `Default` impl to simplify future compatibility:
     // if `TypeConverter` ever gets fields incompatible with `Default`, then
@@ -142,7 +36,7 @@ impl TypeConverter {
     pub fn new() -> TypeConverter {
         TypeConverter {
             translate_valist: false,
-            renamer: Renamer::new(&RESERVED_NAMES),
+            renamer: Renamer::type_namespace(),
             fields: HashMap::new(),
             suffix_names: HashMap::new(),
             features: HashSet::new(),
@@ -199,7 +93,7 @@ impl TypeConverter {
 
         self.fields
             .entry(record_id)
-            .or_insert_with(|| Renamer::new(&RESERVED_NAMES))
+            .or_insert_with(|| Renamer::keywords())
             .insert(FieldKey::Field(field_id), name)
             .expect("Field already declared")
     }
@@ -208,7 +102,7 @@ impl TypeConverter {
         let field = self
             .fields
             .entry(record_id)
-            .or_insert_with(|| Renamer::new(&RESERVED_NAMES));
+            .or_insert_with(|| Renamer::keywords());
         let key = FieldKey::Padding(padding_idx);
         if let Some(name) = field.get(&key) {
             name

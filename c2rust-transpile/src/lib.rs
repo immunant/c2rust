@@ -36,7 +36,6 @@ use c2rust_ast_exporter as ast_exporter;
 
 use crate::build_files::{emit_build_files, get_build_dir, CrateConfig};
 use crate::compile_cmds::get_compile_commands;
-use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
 
@@ -247,7 +246,7 @@ fn str_to_ident_checked(s: &str, check_reserved: bool) -> String {
     let s = str_to_ident(s);
 
     // make sure the name does not clash with keywords
-    if check_reserved && RESERVED_NAMES.contains(&s.as_str()) {
+    if check_reserved && renamer::RUST_KEYWORDS.contains(&s.as_str()) {
         format!("r#{}", s)
     } else {
         s

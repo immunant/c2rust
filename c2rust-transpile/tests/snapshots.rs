@@ -6,7 +6,7 @@ use std::process::Command;
 
 use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::sanitize_file_name;
-use c2rust_transpile::convert_type::RESERVED_NAMES;
+use c2rust_transpile::renamer::RUST_KEYWORDS;
 use c2rust_transpile::{ReplaceMode, TranspilerConfig};
 use itertools::Itertools;
 
@@ -234,12 +234,9 @@ fn generate_keywords_test() {
         "break", "const", "continue", "else", "enum", "extern", "for", "if", "return", "static",
         "struct", "while", "do", "typeof", "char",
     ];
-    // These don't work yet.  We need to fix these.
-    let broken_rust_keywords = ["await"];
-    let mut c_code = RESERVED_NAMES
+    let mut c_code = RUST_KEYWORDS
         .into_iter()
         .filter(|keyword| !c_keywords.contains(keyword))
-        .filter(|keyword| !broken_rust_keywords.contains(keyword))
         .map(|name| format!("void {name}(void) {{}}"))
         .join("\n\n");
     c_code.push_str("\n");
