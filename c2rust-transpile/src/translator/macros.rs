@@ -1,10 +1,11 @@
 use c2rust_ast_builder::mk;
 use failure::format_err;
+use log::warn;
 use log::{info, trace};
 use proc_macro2::{Span, TokenStream};
 use syn::{Expr, MacroDelimiter};
 
-use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind, CastKind};
 use crate::diagnostics::{TranslationError, TranslationResult};
 use crate::translator::{ConvertedDecl, ExprContext, MacroExpansion, Translation};
 use crate::with_stmts::WithStmts;
@@ -203,16 +204,22 @@ impl<'c> Translation<'c> {
         // so we need to cast it to the `override_ty` here.
         let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
-            self.convert_cast(
-                ctx,
-                CQualTypeId::new(macro_ty),
-                expr_ty,
-                val,
-                None,
-                None,
-                None,
-            )
-            .map(Some)
+            let source_cty = CQualTypeId::new(macro_ty);
+            let target_cty = expr_ty;
+
+            let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
+            let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
+            let kind = CastKind::from_types(source_ty_kind, target_ty_kind).unwrap_or_else(|| {
+                warn!(
+                    "Unknown CastKind for {:?} to {:?} cast. Defaulting to BitCast",
+                    source_ty_kind, target_ty_kind,
+                );
+
+                CastKind::BitCast
+            });
+
+            self.convert_cast(ctx, source_cty, target_cty, val, None, kind, None)
+                .map(Some)
         } else {
             Ok(Some(val))
         }
