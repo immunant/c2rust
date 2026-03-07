@@ -9,7 +9,7 @@ use c2rust_rust_tools::sanitize_file_name;
 use c2rust_rust_tools::RustEdition;
 use c2rust_rust_tools::RustEdition::Edition2021;
 use c2rust_rust_tools::RustEdition::Edition2024;
-use c2rust_transpile::convert_type::RESERVED_NAMES;
+use c2rust_transpile::renamer::RUST_KEYWORDS;
 use c2rust_transpile::ReplaceMode;
 use c2rust_transpile::TranspilerConfig;
 use itertools::Itertools;
@@ -196,6 +196,7 @@ impl<'a> TranspileTest<'a> {
         }
     }
 
+    #[allow(unused)] // TODO remove once used
     pub fn expect_compile_error_edition_2024(
         self,
         expect_compile_error_edition_2024: bool,
@@ -279,12 +280,9 @@ fn generate_keywords_test() {
         "break", "const", "continue", "else", "enum", "extern", "for", "if", "return", "static",
         "struct", "while", "do", "typeof", "char",
     ];
-    // These don't work yet.  We need to fix these.
-    let broken_rust_keywords = ["await"];
-    let mut c_code = RESERVED_NAMES
+    let mut c_code = RUST_KEYWORDS
         .into_iter()
         .filter(|keyword| !c_keywords.contains(keyword))
-        .filter(|keyword| !broken_rust_keywords.contains(keyword))
         .map(|name| format!("void {name}(void) {{}}"))
         .join("\n\n");
     c_code.push_str("\n");
@@ -352,9 +350,7 @@ fn test_insertion() {
 #[test]
 fn test_keywords() {
     generate_keywords_test();
-    transpile("keywords.c")
-        .expect_compile_error_edition_2024(true)
-        .run();
+    transpile("keywords.c").run();
 }
 
 #[test]

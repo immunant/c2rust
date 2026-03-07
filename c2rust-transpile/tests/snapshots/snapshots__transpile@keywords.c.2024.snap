@@ -15,6 +15,8 @@ expression: cat tests/snapshots/keywords.2024.rs
 pub unsafe extern "C" fn as_0() {}
 #[unsafe(export_name = "async")]
 pub unsafe extern "C" fn async_0() {}
+#[unsafe(export_name = "await")]
+pub unsafe extern "C" fn await_0() {}
 #[unsafe(export_name = "crate")]
 pub unsafe extern "C" fn crate_0() {}
 #[unsafe(export_name = "dyn")]
@@ -69,8 +71,8 @@ pub unsafe extern "C" fn become_0() {}
 pub unsafe extern "C" fn box_0() {}
 #[unsafe(export_name = "final")]
 pub unsafe extern "C" fn final_0() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gen() {}
+#[unsafe(export_name = "gen")]
+pub unsafe extern "C" fn gen_0() {}
 #[unsafe(export_name = "macro")]
 pub unsafe extern "C" fn macro_0() {}
 #[unsafe(export_name = "override")]
@@ -85,97 +87,3 @@ pub unsafe extern "C" fn unsized_0() {}
 pub unsafe extern "C" fn virtual_0() {}
 #[unsafe(export_name = "yield")]
 pub unsafe extern "C" fn yield_0() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Copy() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Send() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Sized() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Sync() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Drop() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Fn() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn FnMut() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn FnOnce() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Box() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ToOwned() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Clone() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PartialEq() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PartialOrd() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Eq() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Ord() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn AsRef() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn AsMut() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Into() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn From() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Default() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Iterator() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Extend() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IntoIterator() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn DoubleEndedIterator() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ExactSizeIterator() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Option() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Result() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SliceConcatExt() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn String() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ToString() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Vec() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bool() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn f32() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn f64() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn i8() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn i16() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn i32() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn i64() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn i128() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isize() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn u8() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn u16() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn u32() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn u64() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn u128() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn usize() {}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn str() {}
