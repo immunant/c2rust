@@ -54,7 +54,7 @@ mod named_references;
 mod operators;
 mod pointers;
 mod simd;
-mod structs;
+mod structs_unions;
 mod variadic;
 
 pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
