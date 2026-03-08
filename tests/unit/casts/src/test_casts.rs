@@ -1,5 +1,3 @@
-//! feature_raw_ref_op
-
 use crate::cast_funptr::{rust_entry, rust_get_identity, rust_identity};
 use crate::casts::rust_cast_stuff;
 
