@@ -10,94 +10,6 @@ use std::vec::Vec;
 use super::Located;
 use crate::diagnostics::{Diagnostic, TranslationError, TranslationErrorKind};
 
-fn parse_cast_kind(kind: &str) -> CastKind {
-    match kind {
-        "BitCast" => CastKind::BitCast,
-        "LValueToRValue" => CastKind::LValueToRValue,
-        "NoOp" => CastKind::NoOp,
-        "ToUnion" => CastKind::ToUnion,
-        "ArrayToPointerDecay" => CastKind::ArrayToPointerDecay,
-        "FunctionToPointerDecay" => CastKind::FunctionToPointerDecay,
-        "NullToPointer" => CastKind::NullToPointer,
-        "IntegralToPointer" => CastKind::IntegralToPointer,
-        "PointerToIntegral" => CastKind::PointerToIntegral,
-        "ToVoid" => CastKind::ToVoid,
-        "IntegralCast" => CastKind::IntegralCast,
-        "IntegralToBoolean" => CastKind::IntegralToBoolean,
-        "IntegralToFloating" => CastKind::IntegralToFloating,
-        "FloatingToIntegral" => CastKind::FloatingToIntegral,
-        "FloatingToBoolean" => CastKind::FloatingToBoolean,
-        "BooleanToSignedIntegral" => CastKind::BooleanToSignedIntegral,
-        "PointerToBoolean" => CastKind::PointerToBoolean,
-        "FloatingCast" => CastKind::FloatingCast,
-        "FloatingRealToComplex" => CastKind::FloatingRealToComplex,
-        "FloatingComplexToReal" => CastKind::FloatingComplexToReal,
-        "FloatingComplexCast" => CastKind::FloatingComplexCast,
-        "FloatingComplexToIntegralComplex" => CastKind::FloatingComplexToIntegralComplex,
-        "IntegralRealToComplex" => CastKind::IntegralRealToComplex,
-        "IntegralComplexToReal" => CastKind::IntegralComplexToReal,
-        "IntegralComplexToBoolean" => CastKind::IntegralComplexToBoolean,
-        "IntegralComplexCast" => CastKind::IntegralComplexCast,
-        "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
-        "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
-        "ConstCast" => CastKind::ConstCast,
-        "VectorSplat" => CastKind::VectorSplat,
-        "AtomicToNonAtomic" => CastKind::AtomicToNonAtomic,
-        "NonAtomicToAtomic" => CastKind::NonAtomicToAtomic,
-        k => panic!("Unsupported implicit cast: {}", k),
-    }
-}
-
-fn parse_attributes(attributes: Vec<Value>) -> IndexSet<Attribute> {
-    let mut attrs = IndexSet::new();
-    let mut expect_section_value = false;
-    let mut expect_alias_value = false;
-    let mut expect_visibility_value = false;
-
-    for attr in attributes.into_iter() {
-        let attr_str = from_value::<String>(attr).expect("Decl attributes should be strings");
-
-        match attr_str.as_str() {
-            "alias" => expect_alias_value = true,
-            "always_inline" => {
-                attrs.insert(Attribute::AlwaysInline);
-            }
-            "cold" => {
-                attrs.insert(Attribute::Cold);
-            }
-            "gnu_inline" => {
-                attrs.insert(Attribute::GnuInline);
-            }
-            "noinline" => {
-                attrs.insert(Attribute::NoInline);
-            }
-            "used" => {
-                attrs.insert(Attribute::Used);
-            }
-            "visibility" => expect_visibility_value = true,
-            "section" => expect_section_value = true,
-            s if expect_section_value => {
-                attrs.insert(Attribute::Section(s.into()));
-
-                expect_section_value = false;
-            }
-            s if expect_alias_value => {
-                attrs.insert(Attribute::Alias(s.into()));
-
-                expect_alias_value = false;
-            }
-            s if expect_visibility_value => {
-                attrs.insert(Attribute::Visibility(s.into()));
-
-                expect_visibility_value = false;
-            }
-            _ => {}
-        }
-    }
-
-    attrs
-}
-
 /// This stores the information needed to convert an `AstContext` into a `TypedAstContext`.
 pub struct ConversionContext {
     /// Keeps track of the mapping between IDs used by clang (old) and the AST importer (new)
@@ -119,28 +31,15 @@ type ClangId = u64;
 type ImporterId = u64;
 
 impl ConversionContext {
-    pub fn into_typed_context(self) -> TypedAstContext {
-        self.typed_context
-    }
-}
-
-fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
-    loc.as_ref().map(|loc| DisplaySrcSpan {
-        file: ctx.files[loc.fileid as usize].path.clone(),
-        loc: *loc,
-    })
-}
-
-fn has_packed_attribute(attrs: Vec<Value>) -> bool {
-    attrs
-        .into_iter()
-        .map(|attr| from_value::<String>(attr).expect("Record attributes should be strings"))
-        .any(|attr_name| attr_name == "packed")
-}
-
-impl ConversionContext {
     /// Create a new 'ConversionContext' seeded with top-level nodes from an 'AstContext'.
     pub fn new(input_path: &Path, untyped_context: &AstContext) -> ConversionContext {
+        fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
+            loc.as_ref().map(|loc| DisplaySrcSpan {
+                file: ctx.files[loc.fileid as usize].path.clone(),
+                loc: *loc,
+            })
+        }
+
         let mut invalid_clang_ast = false;
 
         // This starts out as all of the top-level nodes, which we expect to be 'DECL's
@@ -212,6 +111,10 @@ impl ConversionContext {
 
         ctx.convert(untyped_context);
         ctx
+    }
+
+    pub fn into_typed_context(self) -> TypedAstContext {
+        self.typed_context
     }
 
     /// Records the fact that we will need to visit a Clang node and the type we want it to have.
@@ -499,6 +402,15 @@ impl ConversionContext {
         new_id: ImporterId,
         expected_ty: NodeType,
     ) {
+        fn has_packed_attribute(attrs: Vec<Value>) -> bool {
+            attrs
+                .into_iter()
+                .map(|attr| {
+                    from_value::<String>(attr).expect("Record attributes should be strings")
+                })
+                .any(|attr_name| attr_name == "packed")
+        }
+
         use self::node_types::*;
 
         if expected_ty & EXPR != 0 {
@@ -949,7 +861,7 @@ impl ConversionContext {
                 let typ_old = node.type_id.expect("Expected type for implicit cast");
                 let typ = self.visit_qualified_type(typ_old);
 
-                let kind = parse_cast_kind(
+                let kind = CastKind::parse(
                     &from_value::<String>(node.extras[0].clone()).expect("Expected cast kind"),
                 );
                 let implicit = CExprKind::ImplicitCast(typ, expression, kind, None, node.rvalue);
@@ -965,7 +877,7 @@ impl ConversionContext {
                 let typ_old = node.type_id.expect("Expected type for explicit cast");
                 let typ = self.visit_qualified_type(typ_old);
 
-                let kind = parse_cast_kind(
+                let kind = CastKind::parse(
                     &from_value::<String>(node.extras[0].clone()).expect("Expected cast kind"),
                 );
 
@@ -1506,7 +1418,7 @@ impl ConversionContext {
                     from_value(node.extras[6].clone()).expect("Expected to find inline visibliity");
                 let attributes = from_value::<Vec<Value>>(node.extras[7].clone())
                     .expect("Expected to find attributes");
-                let attrs = parse_attributes(attributes);
+                let attrs = Attribute::parse(attributes);
 
                 // The always_inline attribute implies inline even if the
                 // inline keyword is not present.
@@ -1759,7 +1671,7 @@ impl ConversionContext {
                     .expect("Expected to find type on variable declaration");
                 let typ = self.visit_qualified_type(typ_id);
 
-                let attrs = parse_attributes(attributes);
+                let attrs = Attribute::parse(attributes);
 
                 let variable_decl = CDeclKind::Variable {
                     has_static_duration,
@@ -2426,4 +2338,96 @@ pub enum ClangAstParseErrorKind {
     MissingChild,
     MissingType,
     MissingNode,
+}
+
+impl CastKind {
+    fn parse(kind: &str) -> CastKind {
+        match kind {
+            "BitCast" => CastKind::BitCast,
+            "LValueToRValue" => CastKind::LValueToRValue,
+            "NoOp" => CastKind::NoOp,
+            "ToUnion" => CastKind::ToUnion,
+            "ArrayToPointerDecay" => CastKind::ArrayToPointerDecay,
+            "FunctionToPointerDecay" => CastKind::FunctionToPointerDecay,
+            "NullToPointer" => CastKind::NullToPointer,
+            "IntegralToPointer" => CastKind::IntegralToPointer,
+            "PointerToIntegral" => CastKind::PointerToIntegral,
+            "ToVoid" => CastKind::ToVoid,
+            "IntegralCast" => CastKind::IntegralCast,
+            "IntegralToBoolean" => CastKind::IntegralToBoolean,
+            "IntegralToFloating" => CastKind::IntegralToFloating,
+            "FloatingToIntegral" => CastKind::FloatingToIntegral,
+            "FloatingToBoolean" => CastKind::FloatingToBoolean,
+            "BooleanToSignedIntegral" => CastKind::BooleanToSignedIntegral,
+            "PointerToBoolean" => CastKind::PointerToBoolean,
+            "FloatingCast" => CastKind::FloatingCast,
+            "FloatingRealToComplex" => CastKind::FloatingRealToComplex,
+            "FloatingComplexToReal" => CastKind::FloatingComplexToReal,
+            "FloatingComplexCast" => CastKind::FloatingComplexCast,
+            "FloatingComplexToIntegralComplex" => CastKind::FloatingComplexToIntegralComplex,
+            "IntegralRealToComplex" => CastKind::IntegralRealToComplex,
+            "IntegralComplexToReal" => CastKind::IntegralComplexToReal,
+            "IntegralComplexToBoolean" => CastKind::IntegralComplexToBoolean,
+            "IntegralComplexCast" => CastKind::IntegralComplexCast,
+            "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
+            "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
+            "ConstCast" => CastKind::ConstCast,
+            "VectorSplat" => CastKind::VectorSplat,
+            "AtomicToNonAtomic" => CastKind::AtomicToNonAtomic,
+            "NonAtomicToAtomic" => CastKind::NonAtomicToAtomic,
+            k => panic!("Unsupported implicit cast: {}", k),
+        }
+    }
+}
+
+impl Attribute {
+    fn parse(attributes: Vec<Value>) -> IndexSet<Attribute> {
+        let mut attrs = IndexSet::new();
+        let mut expect_section_value = false;
+        let mut expect_alias_value = false;
+        let mut expect_visibility_value = false;
+
+        for attr in attributes.into_iter() {
+            let attr_str = from_value::<String>(attr).expect("Decl attributes should be strings");
+
+            match attr_str.as_str() {
+                "alias" => expect_alias_value = true,
+                "always_inline" => {
+                    attrs.insert(Attribute::AlwaysInline);
+                }
+                "cold" => {
+                    attrs.insert(Attribute::Cold);
+                }
+                "gnu_inline" => {
+                    attrs.insert(Attribute::GnuInline);
+                }
+                "noinline" => {
+                    attrs.insert(Attribute::NoInline);
+                }
+                "used" => {
+                    attrs.insert(Attribute::Used);
+                }
+                "visibility" => expect_visibility_value = true,
+                "section" => expect_section_value = true,
+                s if expect_section_value => {
+                    attrs.insert(Attribute::Section(s.into()));
+
+                    expect_section_value = false;
+                }
+                s if expect_alias_value => {
+                    attrs.insert(Attribute::Alias(s.into()));
+
+                    expect_alias_value = false;
+                }
+                s if expect_visibility_value => {
+                    attrs.insert(Attribute::Visibility(s.into()));
+
+                    expect_visibility_value = false;
+                }
+                _ => {}
+            }
+        }
+
+        attrs
+    }
 }
