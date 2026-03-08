@@ -49,9 +49,10 @@ impl FromStr for RustEdition {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let choices = [Self::Edition2021, Self::Edition2024];
+        let choices = Self::ALL;
         choices
             .into_iter()
+            .copied()
             .find(|choice| choice.as_str() == s)
             .ok_or_else(|| format!("{s} not one of {}", choices.iter().join(" ,")))
     }
