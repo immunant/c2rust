@@ -4,7 +4,7 @@ use crate::arithmetic::rust_entry2;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn entry2(_: c_uint, _: *mut c_int);
 }
 

@@ -8,7 +8,7 @@ use std::ffi::{c_int, c_uint, c_void};
 use std::mem::transmute;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn cast_stuff();
 
     fn identity(_: c_int) -> c_int;

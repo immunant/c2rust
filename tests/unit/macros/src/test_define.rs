@@ -6,7 +6,7 @@ use crate::define::{rust_test_zstd, ZSTD_WINDOWLOG_MAX_32, ZSTD_WINDOWLOG_MAX_64
 use std::ffi::{c_int, c_uint, c_ulong};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn reference_define() -> c_uint;
 }
 
