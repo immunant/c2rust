@@ -7,8 +7,11 @@ use std::process::Command;
 use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::sanitize_file_name;
 use c2rust_rust_tools::RustEdition;
+use c2rust_rust_tools::RustEdition::Edition2021;
+use c2rust_rust_tools::RustEdition::Edition2024;
 use c2rust_transpile::convert_type::RESERVED_NAMES;
-use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+use c2rust_transpile::ReplaceMode;
+use c2rust_transpile::TranspilerConfig;
 use itertools::Itertools;
 
 fn config(edition: RustEdition) -> TranspilerConfig {
@@ -258,13 +261,13 @@ impl<'a> TranspileTest<'a> {
         transpile_snapshot(
             &platform,
             &c_path,
-            RustEdition::Edition2021,
+            Edition2021,
             expect_compile_error_edition_2021,
         );
         transpile_snapshot(
             &platform,
             &c_path,
-            RustEdition::Edition2024,
+            Edition2024,
             expect_compile_error_edition_2024,
         );
     }

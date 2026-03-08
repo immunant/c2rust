@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use c2rust_rust_tools::RustEdition;
+use c2rust_rust_tools::RustEdition::Edition2024;
 use dtoa;
 use failure::{err_msg, format_err, Fail};
 use indexmap::indexmap;
@@ -373,7 +374,7 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
 
 /// Whether `extern` blocks can be `unsafe` in this edition.
 fn extern_block_unsafety(edition: RustEdition) -> Unsafety {
-    if edition >= RustEdition::Edition2024 {
+    if edition >= Edition2024 {
         Unsafety::Unsafe
     } else {
         Unsafety::Normal
@@ -382,7 +383,7 @@ fn extern_block_unsafety(edition: RustEdition) -> Unsafety {
 
 /// Whether attributes can be `unsafe` in this edition.
 fn attr_unsafety(edition: RustEdition) -> Unsafety {
-    if edition >= RustEdition::Edition2024 {
+    if edition >= Edition2024 {
         Unsafety::Unsafe
     } else {
         Unsafety::Normal
@@ -1597,7 +1598,7 @@ impl<'c> Translation<'c> {
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
         if matches!(feature, "asm" | "label_break_value" | "raw_ref_op")
-            && self.tcfg.edition >= RustEdition::Edition2024
+            && self.tcfg.edition >= Edition2024
         {
             return;
         }

@@ -7,6 +7,9 @@ use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
 
+use crate::RustEdition::Edition2021;
+use crate::RustEdition::Edition2024;
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Debug)]
 pub enum RustEdition {
     /// The default is edition 2021 because `c2rust-refactor`,
@@ -17,12 +20,12 @@ pub enum RustEdition {
 }
 
 impl RustEdition {
-    pub const ALL: &[Self] = &[Self::Edition2021, Self::Edition2024];
+    pub const ALL: &[Self] = &[Edition2021, Edition2024];
 
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::Edition2021 => "2021",
-            Self::Edition2024 => "2024",
+            Edition2021 => "2021",
+            Edition2024 => "2024",
         }
     }
 
@@ -32,9 +35,9 @@ impl RustEdition {
     pub const fn toolchain(&self) -> &'static str {
         match self {
             // 1.70 (1.68 for syn v2.0, 1.70 for sparse registry)
-            Self::Edition2021 => "+nightly-2023-04-15",
+            Edition2021 => "+nightly-2023-04-15",
             // This doesn't really need to be pinned, but pin it for stability.
-            Self::Edition2024 => "+nightly-2026-03-03",
+            Edition2024 => "+nightly-2026-03-03",
         }
     }
 }

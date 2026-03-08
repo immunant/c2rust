@@ -5,6 +5,8 @@ use crate::format_translation_err;
 
 use super::*;
 
+use c2rust_rust_tools::RustEdition::Edition2024;
+
 /// The argument type for a libc builtin function
 #[derive(Copy, Clone, PartialEq)]
 enum LibcFnArgType {
@@ -414,7 +416,7 @@ impl<'c> Translation<'c> {
 
             "__builtin_arm_yield" => {
                 let fn_name = "__yield";
-                if self.tcfg.edition < RustEdition::Edition2024 {
+                if self.tcfg.edition < Edition2024 {
                     self.use_feature("stdsimd");
                 } else {
                     // Edition 2024 was released in Rust 1.85.

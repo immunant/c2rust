@@ -160,7 +160,7 @@ impl<'c> Translation<'c> {
                 .into());
             }
 
-            if self.tcfg.edition < RustEdition::Edition2024 {
+            if self.tcfg.edition < Edition2024 {
                 // Edition 2024 was released in Rust 1.85.
                 // In Rust 1.78, `#![feature(stdsimd)]` was removed and split into individual features.
                 // All of the x86_64 parts (that we use at least) were stabilized.
