@@ -330,7 +330,7 @@ fn emit_cargo_toml<'lcmd>(
             "edition": tcfg.edition.as_str(),
             // This is already the default in Rust 1.77,
             // and edition 2024 was released in Rust 1.85.
-            "strip_debuginfo_release": tcfg.edition < RustEdition::Rust2024,
+            "strip_debuginfo_release": tcfg.edition < RustEdition::Edition2024,
             "crate_types": ccfg.link_cmd.r#type.as_cargo_types(),
             "is_library": ccfg.link_cmd.r#type.is_library(),
             "lib_rs_file": get_lib_rs_file_name(tcfg),

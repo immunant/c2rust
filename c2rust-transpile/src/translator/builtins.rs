@@ -414,7 +414,7 @@ impl<'c> Translation<'c> {
 
             "__builtin_arm_yield" => {
                 let fn_name = "__yield";
-                if self.tcfg.edition < RustEdition::Rust2024 {
+                if self.tcfg.edition < RustEdition::Edition2024 {
                     self.use_feature("stdsimd");
                 } else {
                     // Edition 2024 was released in Rust 1.85.

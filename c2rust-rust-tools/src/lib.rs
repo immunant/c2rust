@@ -12,17 +12,17 @@ pub enum RustEdition {
     /// The default is edition 2021 because `c2rust-refactor`,
     /// based on `nightly-2022-08-08`, only understands up to edition 2021.
     #[default]
-    Rust2021,
-    Rust2024,
+    Edition2021,
+    Edition2024,
 }
 
 impl RustEdition {
-    pub const ALL: &[Self] = &[Self::Rust2021, Self::Rust2024];
+    pub const ALL: &[Self] = &[Self::Edition2021, Self::Edition2024];
 
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::Rust2021 => "2021",
-            Self::Rust2024 => "2024",
+            Self::Edition2021 => "2021",
+            Self::Edition2024 => "2024",
         }
     }
 
@@ -32,9 +32,9 @@ impl RustEdition {
     pub const fn toolchain(&self) -> &'static str {
         match self {
             // 1.70 (1.68 for syn v2.0, 1.70 for sparse registry)
-            Self::Rust2021 => "+nightly-2023-04-15",
+            Self::Edition2021 => "+nightly-2023-04-15",
             // This doesn't really need to be pinned, but pin it for stability.
-            Self::Rust2024 => "+nightly-2026-03-03",
+            Self::Edition2024 => "+nightly-2026-03-03",
         }
     }
 }
@@ -49,7 +49,7 @@ impl FromStr for RustEdition {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let choices = [Self::Rust2021, Self::Rust2024];
+        let choices = [Self::Edition2021, Self::Edition2024];
         choices
             .into_iter()
             .find(|choice| choice.as_str() == s)

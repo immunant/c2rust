@@ -258,13 +258,13 @@ impl<'a> TranspileTest<'a> {
         transpile_snapshot(
             &platform,
             &c_path,
-            RustEdition::Rust2021,
+            RustEdition::Edition2021,
             expect_compile_error_edition_2021,
         );
         transpile_snapshot(
             &platform,
             &c_path,
-            RustEdition::Rust2024,
+            RustEdition::Edition2024,
             expect_compile_error_edition_2024,
         );
     }

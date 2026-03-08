@@ -373,7 +373,7 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
 
 /// Whether `extern` blocks can be `unsafe` in this edition.
 fn extern_block_unsafety(edition: RustEdition) -> Unsafety {
-    if edition >= RustEdition::Rust2024 {
+    if edition >= RustEdition::Edition2024 {
         Unsafety::Unsafe
     } else {
         Unsafety::Normal
@@ -382,7 +382,7 @@ fn extern_block_unsafety(edition: RustEdition) -> Unsafety {
 
 /// Whether attributes can be `unsafe` in this edition.
 fn attr_unsafety(edition: RustEdition) -> Unsafety {
-    if edition >= RustEdition::Rust2024 {
+    if edition >= RustEdition::Edition2024 {
         Unsafety::Unsafe
     } else {
         Unsafety::Normal
@@ -1597,7 +1597,7 @@ impl<'c> Translation<'c> {
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
         if matches!(feature, "asm" | "label_break_value" | "raw_ref_op")
-            && self.tcfg.edition >= RustEdition::Rust2024
+            && self.tcfg.edition >= RustEdition::Edition2024
         {
             return;
         }
