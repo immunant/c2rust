@@ -10,126 +10,6 @@ use std::vec::Vec;
 use super::Located;
 use crate::diagnostics::{Diagnostic, TranslationError, TranslationErrorKind};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ClangAstParseErrorKind {
-    MissingChild,
-    MissingType,
-    MissingNode,
-}
-
-/// Possible node types
-pub type NodeType = u16;
-
-mod node_types {
-    pub const FUNC_TYPE: super::NodeType = 0b0000000000000001;
-    pub const OTHER_TYPE: super::NodeType = 0b0000000000000010;
-    pub const TYPE: super::NodeType = FUNC_TYPE | OTHER_TYPE;
-
-    pub const EXPR: super::NodeType = 0b0000000000000100;
-
-    pub const FIELD_DECL: super::NodeType = 0b0000000000001000;
-    pub const VAR_DECL: super::NodeType = 0b0000000000010000;
-    pub const RECORD_DECL: super::NodeType = 0b0000000000100000;
-    pub const TYPDEF_DECL: super::NodeType = 0b0000000001000000;
-    pub const ENUM_DECL: super::NodeType = 0b0000000010000000;
-    pub const ENUM_CON: super::NodeType = 0b0000000100000000;
-    pub const MACRO_DECL: super::NodeType = 0b0000001000000000;
-    pub const OTHER_DECL: super::NodeType = 0b0000010000000000;
-    pub const DECL: super::NodeType = FIELD_DECL
-        | VAR_DECL
-        | RECORD_DECL
-        | TYPDEF_DECL
-        | ENUM_DECL
-        | ENUM_CON
-        | MACRO_DECL
-        | OTHER_DECL;
-
-    pub const LABEL_STMT: super::NodeType = 0b0000100000000000;
-    pub const OTHER_STMT: super::NodeType = 0b0001000000000000;
-    pub const STMT: super::NodeType = LABEL_STMT | OTHER_STMT;
-}
-
-type ClangId = u64;
-type ImporterId = u64;
-
-/// Correspondence between old/new IDs.
-///
-/// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
-/// we need to add nodes (such as 'Semi' nodes to make the lifting of expressions into statements
-/// explicit), sometimes we need to collapse (such as inlining 'FieldDecl' into the 'StructDecl').
-#[derive(Debug, Default)]
-pub struct IdMapper {
-    new_id_source: ImporterId,
-    old_to_new: HashMap<ClangId, ImporterId>,
-    new_to_old: HashMap<ImporterId, ClangId>,
-}
-
-impl IdMapper {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Create a fresh NEW_ID not corresponding to a CLANG_ID
-    fn fresh_id(&mut self) -> ImporterId {
-        self.new_id_source += 1;
-        self.new_id_source
-    }
-
-    /// Lookup the NEW_ID corresponding to a CLANG_ID
-    pub fn get_new(&mut self, old_id: ClangId) -> Option<ImporterId> {
-        self.old_to_new.get(&old_id).copied()
-    }
-
-    /// Lookup (or create if not a found) a NEW_ID corresponding to a CLANG_ID
-    pub fn get_or_create_new(&mut self, old_id: ClangId) -> ImporterId {
-        match self.get_new(old_id) {
-            Some(new_id) => new_id,
-            None => {
-                let new_id = self.fresh_id();
-                let inserted = self.old_to_new.insert(old_id, new_id).is_some();
-                assert!(
-                    !inserted,
-                    "get_or_create_new: overwrote an old id at {}",
-                    old_id
-                );
-                new_id
-            }
-        }
-    }
-
-    /// Lookup the CLANG_ID corresponding to a NEW_ID
-    pub fn get_old(&mut self, new_id: ImporterId) -> Option<ClangId> {
-        self.new_to_old.get(&new_id).copied()
-    }
-
-    /// If the `old_id` is present in the mapper, make `other_old_id` map to the same value. Note
-    /// that `other_old_id` should not already be in the mapper.
-    pub fn merge_old(&mut self, old_id: ClangId, other_old_id: ClangId) -> Option<ImporterId> {
-        self.get_new(old_id).map(|new_id| {
-            let inserted = self.old_to_new.insert(other_old_id, new_id).is_some();
-            assert!(
-                !inserted,
-                "get_or_create_new: overwrote an old id at {}",
-                other_old_id
-            );
-            new_id
-        })
-    }
-}
-
-/// Transfer location information off of an `AstNode` and onto something that is `Located`
-fn located<T>(node: &AstNode, t: T) -> Located<T> {
-    Located {
-        loc: Some(node.loc),
-        kind: t,
-    }
-}
-
-/// Wrap something into a `Located` node without any location information
-fn not_located<T>(t: T) -> Located<T> {
-    Located { loc: None, kind: t }
-}
-
 fn parse_cast_kind(kind: &str) -> CastKind {
     match kind {
         "BitCast" => CastKind::BitCast,
@@ -234,6 +114,9 @@ pub struct ConversionContext {
 
     pub invalid_clang_ast: bool,
 }
+
+type ClangId = u64;
+type ImporterId = u64;
 
 impl ConversionContext {
     pub fn into_typed_context(self) -> TypedAstContext {
@@ -2426,4 +2309,121 @@ impl ConversionContext {
             ),
         }
     }
+}
+
+/// Possible node types
+pub type NodeType = u16;
+
+mod node_types {
+    pub const FUNC_TYPE: super::NodeType = 0b0000000000000001;
+    pub const OTHER_TYPE: super::NodeType = 0b0000000000000010;
+    pub const TYPE: super::NodeType = FUNC_TYPE | OTHER_TYPE;
+
+    pub const EXPR: super::NodeType = 0b0000000000000100;
+
+    pub const FIELD_DECL: super::NodeType = 0b0000000000001000;
+    pub const VAR_DECL: super::NodeType = 0b0000000000010000;
+    pub const RECORD_DECL: super::NodeType = 0b0000000000100000;
+    pub const TYPDEF_DECL: super::NodeType = 0b0000000001000000;
+    pub const ENUM_DECL: super::NodeType = 0b0000000010000000;
+    pub const ENUM_CON: super::NodeType = 0b0000000100000000;
+    pub const MACRO_DECL: super::NodeType = 0b0000001000000000;
+    pub const OTHER_DECL: super::NodeType = 0b0000010000000000;
+    pub const DECL: super::NodeType = FIELD_DECL
+        | VAR_DECL
+        | RECORD_DECL
+        | TYPDEF_DECL
+        | ENUM_DECL
+        | ENUM_CON
+        | MACRO_DECL
+        | OTHER_DECL;
+
+    pub const LABEL_STMT: super::NodeType = 0b0000100000000000;
+    pub const OTHER_STMT: super::NodeType = 0b0001000000000000;
+    pub const STMT: super::NodeType = LABEL_STMT | OTHER_STMT;
+}
+
+/// Correspondence between old/new IDs.
+///
+/// We need to re-ID nodes since the mapping from Clang's AST to ours is not one-to-one. Sometimes
+/// we need to add nodes (such as 'Semi' nodes to make the lifting of expressions into statements
+/// explicit), sometimes we need to collapse (such as inlining 'FieldDecl' into the 'StructDecl').
+#[derive(Debug, Default)]
+pub struct IdMapper {
+    new_id_source: ImporterId,
+    old_to_new: HashMap<ClangId, ImporterId>,
+    new_to_old: HashMap<ImporterId, ClangId>,
+}
+
+impl IdMapper {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a fresh NEW_ID not corresponding to a CLANG_ID
+    fn fresh_id(&mut self) -> ImporterId {
+        self.new_id_source += 1;
+        self.new_id_source
+    }
+
+    /// Lookup the NEW_ID corresponding to a CLANG_ID
+    pub fn get_new(&mut self, old_id: ClangId) -> Option<ImporterId> {
+        self.old_to_new.get(&old_id).copied()
+    }
+
+    /// Lookup (or create if not a found) a NEW_ID corresponding to a CLANG_ID
+    pub fn get_or_create_new(&mut self, old_id: ClangId) -> ImporterId {
+        match self.get_new(old_id) {
+            Some(new_id) => new_id,
+            None => {
+                let new_id = self.fresh_id();
+                let inserted = self.old_to_new.insert(old_id, new_id).is_some();
+                assert!(
+                    !inserted,
+                    "get_or_create_new: overwrote an old id at {}",
+                    old_id
+                );
+                new_id
+            }
+        }
+    }
+
+    /// Lookup the CLANG_ID corresponding to a NEW_ID
+    pub fn get_old(&mut self, new_id: ImporterId) -> Option<ClangId> {
+        self.new_to_old.get(&new_id).copied()
+    }
+
+    /// If the `old_id` is present in the mapper, make `other_old_id` map to the same value. Note
+    /// that `other_old_id` should not already be in the mapper.
+    pub fn merge_old(&mut self, old_id: ClangId, other_old_id: ClangId) -> Option<ImporterId> {
+        self.get_new(old_id).map(|new_id| {
+            let inserted = self.old_to_new.insert(other_old_id, new_id).is_some();
+            assert!(
+                !inserted,
+                "get_or_create_new: overwrote an old id at {}",
+                other_old_id
+            );
+            new_id
+        })
+    }
+}
+
+/// Transfer location information off of an `AstNode` and onto something that is `Located`
+fn located<T>(node: &AstNode, t: T) -> Located<T> {
+    Located {
+        loc: Some(node.loc),
+        kind: t,
+    }
+}
+
+/// Wrap something into a `Located` node without any location information
+fn not_located<T>(t: T) -> Located<T> {
+    Located { loc: None, kind: t }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ClangAstParseErrorKind {
+    MissingChild,
+    MissingType,
+    MissingNode,
 }
