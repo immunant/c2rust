@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run
-from collections import defaultdict
+import toml
 
 import errno
 import os
@@ -29,7 +29,7 @@ from rust_file import (
     RustMod,
     RustVisibility,
 )
-from typing import Any, Dict, Generator, List, Optional, Set, Iterable, Literal
+from typing import Any, Dict, Generator, List, Optional, Set, Iterable, Literal, cast
 
 # Tools we will need
 clang = get_cmd_or_die("clang")
@@ -220,8 +220,6 @@ class TestFile(RustFile):
         self.pass_expected = "xfail" not in flags
         self.extern_crates = {flag[13:] for flag in flags if flag.startswith("extern_crate_")}
         self.features = {flag[8:] for flag in flags if flag.startswith("feature_")}
-        self.edition_2021 = "--edition 2021" in flags
-        self.edition_2024 = "--edition 2024" in flags
 
 
 class TestDirectory:
@@ -243,6 +241,15 @@ class TestDirectory:
             "c_lib": [],
             "cc_db": [],
         }
+
+        cargo_toml_path = Path(full_path) / "Cargo.toml"
+        cargo_toml = toml.loads(cargo_toml_path.read_text())
+        edition = int(cargo_toml["package"]["edition"])
+        match edition:
+            case 2021 | 2024:
+                self.edition = cast(RustEdition, edition)
+            case _:
+                raise ValueError(f"unsupported Rust edition: {edition}")
 
         # if the test is arch-specific, check if we can run it natively; if not,
         # set self.target to a known-working target tuple for it
@@ -296,26 +303,6 @@ class TestDirectory:
                       files.search(filename)):
                     rs_test_file = self._read_rust_test_file(path)
                     self.rs_test_files.append(rs_test_file)
-
-        editions: defaultdict[RustEdition, list[TestFile]] = defaultdict(list)
-        for test_file in self.rs_test_files:
-            assert not (test_file.edition_2021 and test_file.edition_2024), (
-                f"{test_file.path} has can only have one --edition flag"
-            )
-            edition = 2021  # default
-            if test_file.edition_2021:
-                edition = 2021
-            elif test_file.edition_2024:
-                edition = 2024
-            editions[edition].append(test_file)
-        editions_rendered = {
-            f"--edition {edition}": [test_file.path for test_file in test_files]
-            for edition, test_files in editions.items()
-        }
-        assert len(editions) <= 1, (
-            f"multiple editions in a TestDirectory not allowed: {editions_rendered}"
-        )
-        self.edition = next(iter(editions.keys()))
 
     def _read_c_file(self, path: str) -> Optional[CFile]:
         file_config = None
