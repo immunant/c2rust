@@ -2657,24 +2657,30 @@ impl<'c> Translation<'c> {
             live_in,
         );
 
-        fn dump_structures(relooped: &[cfg::Structure<Stmt>], file_name: &str) {
+        fn dump_structures(structures: &[cfg::Structure<Stmt>], fn_name: &str, suffix: &str) {
             use std::io::Write;
+
             std::fs::create_dir_all("dumps").unwrap();
-            let mut file = std::fs::File::create(&file_name).unwrap();
-            write!(&mut file, "{:#?}", relooped).unwrap();
+
+            // Use the `.ron` extension to aid with syntax highlighting when opening the
+            // dump file in an editor. The output isn't actually RON (it's just the
+            // `Debug` representation of the structured CFG), but this makes inspecting
+            // the dump files easier.
+            let path = format!("dumps/{fn_name}_structures_{suffix}.ron");
+            let mut file = std::fs::File::create(&path).unwrap();
+
+            write!(&mut file, "{:#?}", structures).unwrap();
         }
 
         if self.tcfg.dump_structures {
-            let file_name = format!("dumps/{name}_structures_initial.ron");
-            dump_structures(&relooped, &file_name);
+            dump_structures(&relooped, name, "initial");
         }
 
         if self.tcfg.simplify_structures {
             relooped = cfg::relooper::simplify_structure(relooped);
 
             if self.tcfg.dump_structures {
-                let file_name = format!("dumps/{name}_structures_simplified.ron");
-                dump_structures(&relooped, &file_name);
+                dump_structures(&relooped, name, "simplified");
             }
         }
 
