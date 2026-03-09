@@ -43,94 +43,60 @@ pub unsafe extern "C" fn basic_switch(mut x: ::core::ffi::c_int) -> ::core::ffi:
 }
 #[no_mangle]
 pub unsafe extern "C" fn fallthrough_many(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
-    let mut c2rust_current_block_4: u64;
-    match x {
-        0 => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block_4 = 10360454792362206679;
-        }
-        1 => {
-            c2rust_current_block_4 = 10360454792362206679;
-        }
-        2 => {
-            c2rust_current_block_4 = 3423701799690728026;
-        }
-        3 => {
-            c2rust_current_block_4 = 18310602771108729670;
-        }
-        _ => {
-            c2rust_current_block_4 = 8624014922074814122;
-        }
-    }
-    match c2rust_current_block_4 {
-        10360454792362206679 => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block_4 = 3423701799690728026;
-        }
-        _ => {}
-    }
-    match c2rust_current_block_4 {
-        3423701799690728026 => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block_4 = 18310602771108729670;
-        }
-        _ => {}
-    }
-    match c2rust_current_block_4 {
-        18310602771108729670 => {
+    'c_175: {
+        'c_174: {
+            'c_173: {
+                match x {
+                    0 => {
+                        x += 1 as ::core::ffi::c_int;
+                    }
+                    1 => {}
+                    2 => {
+                        break 'c_173;
+                    }
+                    3 => {
+                        break 'c_174;
+                    }
+                    _ => {
+                        break 'c_175;
+                    }
+                }
+                x += 1 as ::core::ffi::c_int;
+            }
             x += 1 as ::core::ffi::c_int;
         }
-        _ => {}
+        x += 1 as ::core::ffi::c_int;
     }
     x += 1 as ::core::ffi::c_int;
-    let mut c2rust_current_block_10: u64;
-    match x {
-        0 => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block_10 = 10897594935609488075;
-        }
-        1 => {
-            c2rust_current_block_10 = 10897594935609488075;
-        }
-        2 => {
-            c2rust_current_block_10 = 8984589044037914545;
-        }
-        3 => {
-            c2rust_current_block_10 = 13766659360152472789;
-        }
-        4 => {
-            c2rust_current_block_10 = 883797864222002128;
-        }
-        _ => {
-            c2rust_current_block_10 = 1856101646708284338;
-        }
-    }
-    match c2rust_current_block_10 {
-        10897594935609488075 => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block_10 = 8984589044037914545;
-        }
-        _ => {}
-    }
-    match c2rust_current_block_10 {
-        8984589044037914545 => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block_10 = 13766659360152472789;
-        }
-        _ => {}
-    }
-    match c2rust_current_block_10 {
-        13766659360152472789 => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block_10 = 883797864222002128;
-        }
-        _ => {}
-    }
-    match c2rust_current_block_10 {
-        883797864222002128 => {
+    's_64: {
+        'c_137: {
+            'c_136: {
+                'c_135: {
+                    match x {
+                        0 => {
+                            x += 1 as ::core::ffi::c_int;
+                        }
+                        1 => {}
+                        2 => {
+                            break 'c_135;
+                        }
+                        3 => {
+                            break 'c_136;
+                        }
+                        4 => {
+                            break 'c_137;
+                        }
+                        _ => {
+                            break 's_64;
+                        }
+                    }
+                    x += 1 as ::core::ffi::c_int;
+                }
+                x += 1 as ::core::ffi::c_int;
+            }
             x += 1 as ::core::ffi::c_int;
         }
-        _ => {}
+        x += 1 as ::core::ffi::c_int;
     }
     return x;
 }

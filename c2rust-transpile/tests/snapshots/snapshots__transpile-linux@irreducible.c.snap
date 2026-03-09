@@ -14,7 +14,7 @@ input_file: c2rust-transpile/tests/snapshots/os-specific/irreducible.c
 #[no_mangle]
 pub unsafe extern "C" fn irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     let mut c2rust_current_block: u64;
-    '_l1: loop {
+    's_36: loop {
         if x < 6 as ::core::ffi::c_int {
             x += 1 as ::core::ffi::c_int;
             c2rust_current_block = 11006884313001856693;
@@ -32,7 +32,7 @@ pub unsafe extern "C" fn irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::
                 }
                 _ => {
                     if !(x < 20 as ::core::ffi::c_int) {
-                        break '_l1;
+                        break 's_36;
                     }
                     x += 90 as ::core::ffi::c_int;
                     c2rust_current_block = 7005012182606106737;
@@ -46,32 +46,26 @@ pub unsafe extern "C" fn irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::
 #[no_mangle]
 pub unsafe extern "C" fn jump_to_irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     let mut c2rust_current_block: u64;
-    match x {
-        0 => {
-            if x != 0 {
-                c2rust_current_block = 197541242141302941;
-            } else {
-                c2rust_current_block = 6873731126896040597;
+    '_b: {
+        match x {
+            0 => {
+                if x != 0 {
+                    c2rust_current_block = 197541242141302941;
+                    break '_b;
+                }
+            }
+            1 => {
+                if x != 0 {
+                    c2rust_current_block = 3760217419871525498;
+                    break '_b;
+                }
+            }
+            _ => {
+                x += 1 as ::core::ffi::c_int;
             }
         }
-        1 => {
-            if x != 0 {
-                c2rust_current_block = 3760217419871525498;
-            } else {
-                c2rust_current_block = 6873731126896040597;
-            }
-        }
-        _ => {
-            x += 1 as ::core::ffi::c_int;
-            c2rust_current_block = 6873731126896040597;
-        }
-    }
-    match c2rust_current_block {
-        6873731126896040597 => {
-            x += 2 as ::core::ffi::c_int;
-            c2rust_current_block = 197541242141302941;
-        }
-        _ => {}
+        x += 2 as ::core::ffi::c_int;
+        c2rust_current_block = 197541242141302941;
     }
     loop {
         match c2rust_current_block {
