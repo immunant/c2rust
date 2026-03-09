@@ -2665,7 +2665,7 @@ impl<'c> Translation<'c> {
         }
 
         if self.tcfg.dump_structures {
-            let file_name = format!("dumps/{}_structures_initial.ron", name);
+            let file_name = format!("dumps/{name}_structures_initial.ron");
             dump_structures(&relooped, &file_name);
         }
 
@@ -2673,7 +2673,7 @@ impl<'c> Translation<'c> {
             relooped = cfg::relooper::simplify_structure(relooped);
 
             if self.tcfg.dump_structures {
-                let file_name = format!("dumps/{}_structures_simplified.ron", name);
+                let file_name = format!("dumps/{name}_structures_simplified.ron");
                 dump_structures(&relooped, &file_name);
             }
         }
