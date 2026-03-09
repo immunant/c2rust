@@ -290,6 +290,14 @@ fn test_fix_unused_unsafe() {
 }
 
 #[test]
+fn test_fix_unused_unsafe_compile_error() {
+    refactor("fix_unused_unsafe")
+        .named("fix_unused_unsafe_compile_error.rs")
+        .expect_compile_error(true)
+        .test();
+}
+
+#[test]
 fn test_fold_let_assign() {
     refactor("fold_let_assign").test();
 }
