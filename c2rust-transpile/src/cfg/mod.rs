@@ -24,13 +24,15 @@ use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
+use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::io;
 use std::io::Write;
 use std::ops::Deref;
 use std::ops::Index;
+use std::rc::Rc;
+use std::{fmt, io};
 use syn::Lit;
 use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
 
@@ -70,8 +72,8 @@ pub enum Label {
     Synthetic(u64),
 }
 
-impl std::fmt::Display for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Label {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::FromC(_, Some(name)) => write!(f, "_{name}"),
             Self::FromC(id, None) => write!(f, "c_{}", id.0),
@@ -80,9 +82,9 @@ impl std::fmt::Display for Label {
     }
 }
 
-impl std::fmt::Debug for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self, f)
+impl Debug for Label {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
     }
 }
 
@@ -657,9 +659,6 @@ impl Cfg<Label, StmtOrDecl> {
         Ok((graph, decls_seen))
     }
 }
-
-use std::fmt::Debug;
-use std::rc::Rc;
 
 /// The polymorphism here is only to make it clear exactly how little these functions need to know
 /// about the actual contents of the CFG - we only actual call these on one monomorphic CFG type.
