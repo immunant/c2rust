@@ -58,3 +58,7 @@ c2rust-transpile/tests/snapshots/**/*.rs
 c2rust-transpile/tests/snapshots/**/*.c_decls.json
 c2rust-transpile/tests/c_decls_snapshots/**/*.rs
 c2rust-transpile/tests/c_decls_snapshots/**/*.c_decls.json
+
+# Debug info dumps
+/dumps
+c2rust-transpile/dumps

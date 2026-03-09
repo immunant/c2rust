@@ -2643,31 +2643,54 @@ impl<'c> Translation<'c> {
                 .expect("Failed to write CFG .dot file");
         }
         if self.tcfg.json_function_cfgs {
+            std::fs::create_dir_all("dumps").unwrap();
             graph
-                .dump_json_graph(&store, format!("{}_{}.json", "cfg", name))
+                .dump_json_graph(&store, format!("dumps/{name}_cfg.json"))
                 .expect("Failed to write CFG .json file");
         }
 
-        let (lifted_stmts, relooped) = cfg::relooper::reloop(
+        let (lifted_stmts, mut relooped) = cfg::relooper::reloop(
             graph,
             store,
-            self.tcfg.simplify_structures,
             self.tcfg.use_c_loop_info,
             self.tcfg.use_c_multiple_info,
             live_in,
         );
 
+        fn dump_structures(structures: &[cfg::Structure<Stmt>], fn_name: &str, suffix: &str) {
+            use std::io::Write;
+
+            std::fs::create_dir_all("dumps").unwrap();
+
+            // Use the `.ron` extension to aid with syntax highlighting when opening the
+            // dump file in an editor. The output isn't actually RON (it's just the
+            // `Debug` representation of the structured CFG), but this makes inspecting
+            // the dump files easier.
+            let path = format!("dumps/{fn_name}_structures_{suffix}.ron");
+            let mut file = std::fs::File::create(&path).unwrap();
+
+            write!(&mut file, "{:#?}", structures).unwrap();
+        }
+
         if self.tcfg.dump_structures {
-            eprintln!("Relooped structures:");
-            for s in &relooped {
-                eprintln!("  {:#?}", s);
+            dump_structures(&relooped, name, "initial");
+        }
+
+        if self.tcfg.simplify_structures {
+            relooped = cfg::relooper::simplify_structure(relooped);
+
+            if self.tcfg.dump_structures {
+                dump_structures(&relooped, name, "simplified");
             }
         }
+
+        let mut cfg_info = cfg::structures::CfgInfo::default();
+        cfg::structures::gather_cfg_info(&relooped, &mut cfg_info);
 
         let current_block_ident = self.renamer.borrow_mut().pick_name("c2rust_current_block");
         let current_block = mk().ident_expr(&current_block_ident);
         let mut stmts: Vec<Stmt> = lifted_stmts;
-        if cfg::structures::has_multiple(&relooped) {
+        if !cfg_info.checked_entries.is_empty() {
             if self.tcfg.fail_on_multiple {
                 panic!("Uses of `c2rust_current_block' are illegal with `--fail-on-multiple'.");
             }
@@ -2688,6 +2711,7 @@ impl<'c> Translation<'c> {
 
         stmts.extend(cfg::structures::structured_cfg(
             &relooped,
+            &cfg_info,
             &mut self.comment_store.borrow_mut(),
             current_block,
             self.tcfg.debug_relooper_labels,

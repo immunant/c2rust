@@ -14,6 +14,7 @@
 //!   - simplify that sequence of `Structure<Stmt>`s into another such sequence
 //!   - convert the `Vec<Structure<Stmt>>` back into a `Vec<Stmt>`
 //!
+//! See the [`relooper`] module for more details about the Relooper algorithm.
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
@@ -23,13 +24,15 @@ use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
+use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::io;
 use std::io::Write;
 use std::ops::Deref;
 use std::ops::Index;
+use std::rc::Rc;
+use std::{fmt, io};
 use syn::Lit;
 use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
 
@@ -58,7 +61,7 @@ use crate::cfg::loops::*;
 use crate::cfg::multiples::*;
 
 /// These labels identify basic blocks in a regular CFG.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Label {
     /// Some labels come directly from the C side (namely those created from labels, cases, and
     /// defaults). For those, we just re-use the `CLabelId` of the C AST node.
@@ -69,13 +72,25 @@ pub enum Label {
     Synthetic(u64),
 }
 
+impl Display for Label {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FromC(_, Some(name)) => write!(f, "_{name}"),
+            Self::FromC(id, None) => write!(f, "c_{}", id.0),
+            Self::Synthetic(id) => write!(f, "s_{id}"),
+        }
+    }
+}
+
+impl Debug for Label {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
 impl Label {
     pub fn pretty_print(&self) -> String {
-        match self {
-            Label::FromC(_, Some(s)) => format!("_{}", s.as_ref()),
-            Label::FromC(CStmtId(label_id), None) => format!("c_{}", label_id),
-            Label::Synthetic(syn_id) => format!("s_{}", syn_id),
-        }
+        self.to_string()
     }
 
     fn debug_print(&self) -> String {
@@ -162,19 +177,7 @@ pub enum Structure<Stmt> {
     Multiple {
         entries: IndexSet<Label>,
         branches: IndexMap<Label, Vec<Structure<Stmt>>>,
-        then: Vec<Structure<Stmt>>,
     },
-}
-
-impl<S> Structure<S> {
-    fn get_entries(&self) -> &IndexSet<Label> {
-        use Structure::*;
-        match self {
-            Simple { entries, .. } => entries,
-            Loop { entries, .. } => entries,
-            Multiple { entries, .. } => entries,
-        }
-    }
 }
 
 impl Structure<StmtOrDecl> {
@@ -211,11 +214,7 @@ impl Structure<StmtOrDecl> {
                     .collect();
                 Structure::Loop { entries, body }
             }
-            Structure::Multiple {
-                entries,
-                branches,
-                then,
-            } => {
+            Structure::Multiple { entries, branches } => {
                 let branches = branches
                     .into_iter()
                     .map(|(lbl, vs)| {
@@ -227,15 +226,7 @@ impl Structure<StmtOrDecl> {
                         )
                     })
                     .collect();
-                let then = then
-                    .into_iter()
-                    .map(|s| s.place_decls(lift_me, store))
-                    .collect();
-                Structure::Multiple {
-                    entries,
-                    branches,
-                    then,
-                }
+                Structure::Multiple { entries, branches }
             }
         }
     }
@@ -668,9 +659,6 @@ impl Cfg<Label, StmtOrDecl> {
         Ok((graph, decls_seen))
     }
 }
-
-use std::fmt::Debug;
-use std::rc::Rc;
 
 /// The polymorphism here is only to make it clear exactly how little these functions need to know
 /// about the actual contents of the CFG - we only actual call these on one monomorphic CFG type.
@@ -2170,7 +2158,7 @@ impl Cfg<Label, StmtOrDecl> {
         let cfg_mapped = self.map_stmts(|sd: &StmtOrDecl| -> Vec<String> { sd.to_string(store) });
 
         let file = File::create(file_path)?;
-        serde_json::to_writer(file, &cfg_mapped)?;
+        serde_json::to_writer_pretty(file, &cfg_mapped)?;
 
         Ok(())
     }
