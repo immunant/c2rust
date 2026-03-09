@@ -1,61 +1,33 @@
 #![allow(unused)]
 
 extern "C" {
-    #[no_mangle]
     fn sin(x: f64) -> f64;
-    #[no_mangle]
     fn sinf(x: f32) -> f32;
-    #[no_mangle]
     fn cos(x: f64) -> f64;
-    #[no_mangle]
     fn tan(x: f64) -> f64;
-    #[no_mangle]
     fn asin(x: f64) -> f64;
-    #[no_mangle]
     fn acos(x: f64) -> f64;
-    #[no_mangle]
     fn atan(x: f64) -> f64;
-    #[no_mangle]
     fn sinh(x: f64) -> f64;
-    #[no_mangle]
     fn cosh(x: f64) -> f64;
-    #[no_mangle]
     fn tanh(x: f64) -> f64;
-    #[no_mangle]
     fn sqrt(x: f64) -> f64;
-    #[no_mangle]
     fn pow(x: f64, y: f64) -> f64;
-    #[no_mangle]
     fn log(x: f64) -> f64;
-    #[no_mangle]
     fn exp(x: f64) -> f64;
-    #[no_mangle]
     fn fabs(x: f64) -> f64;
-    #[no_mangle]
     fn abs(x: i32) -> i32;
-    #[no_mangle]
     fn labs(x: i64) -> i64;
-    #[no_mangle]
     fn llabs(x: i64) -> i64;
-    #[no_mangle]
     fn floor(x: f64) -> f64;
-    #[no_mangle]
     fn floorf(x: f32) -> f32;
-    #[no_mangle]
     fn ceil(x: f64) -> f64;
-    #[no_mangle]
     fn ceilf(x: f32) -> f32;
-    #[no_mangle]
     fn round(x: f64) -> f64;
-    #[no_mangle]
     fn trunc(x: f64) -> f64;
-    #[no_mangle]
     fn truncf(x: f32) -> f32;
-    #[no_mangle]
     fn atan2(y: f64, x: f64) -> f64;
-    #[no_mangle]
     fn hypot(x: f64, y: f64) -> f64;
-    #[no_mangle]
     fn fmax(x: f64, y: f64) -> f64;
 }
 
