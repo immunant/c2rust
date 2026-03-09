@@ -190,9 +190,6 @@ where
     });
 
     visit_nodes(target, |fi: &ForeignItem| {
-        if !crate::util::contains_name(&fi.attrs, sym::no_mangle) {
-            return;
-        }
         let ForeignItemKind::Fn(_) = fi.kind else {
             return;
         };
