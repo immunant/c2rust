@@ -115,10 +115,10 @@ pub unsafe extern "C" fn nested_for(mut x: ::core::ffi::c_int) {
 }
 #[no_mangle]
 pub unsafe extern "C" fn exit_nested_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
-    '_break_outer: while x != 0 {
+    's_1: while x != 0 {
         while x != 0 {
             if x != 0 {
-                break '_break_outer;
+                break 's_1;
             }
             x += 1;
         }
@@ -127,10 +127,10 @@ pub unsafe extern "C" fn exit_nested_loops(mut x: ::core::ffi::c_int) -> ::core:
 }
 #[no_mangle]
 pub unsafe extern "C" fn continue_nested_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
-    's_28: while x != 0 {
+    's_1: while x != 0 {
         while x != 0 {
             if x != 0 {
-                continue 's_28;
+                continue 's_1;
             }
             x += 1;
         }
@@ -142,13 +142,13 @@ pub unsafe extern "C" fn continue_nested_loops(mut x: ::core::ffi::c_int) -> ::c
 pub unsafe extern "C" fn break_and_continue_nested_loops(
     mut x: ::core::ffi::c_int,
 ) -> ::core::ffi::c_int {
-    '_break_outer: while x != 0 {
+    's_1: while x != 0 {
         while x != 0 {
             if x != 0 {
-                break '_break_outer;
+                break 's_1;
             }
             if x != 0 {
-                continue '_break_outer;
+                continue 's_1;
             }
             x += 1;
         }
@@ -158,15 +158,23 @@ pub unsafe extern "C" fn break_and_continue_nested_loops(
 }
 #[no_mangle]
 pub unsafe extern "C" fn for_loop_single_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut c2rust_current_block_0: u64;
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < 10 as ::core::ffi::c_int {
-        's_4: {
+        if x != 0 {
             if x != 0 {
-                if x != 0 {
-                    break 's_4;
-                }
+                c2rust_current_block_0 = 792017965103506125;
+            } else {
+                c2rust_current_block_0 = 4644295000439058019;
             }
-            x += 1 as ::core::ffi::c_int;
+        } else {
+            c2rust_current_block_0 = 4644295000439058019;
+        }
+        match c2rust_current_block_0 {
+            4644295000439058019 => {
+                x += 1 as ::core::ffi::c_int;
+            }
+            _ => {}
         }
         i += 1;
     }
@@ -174,21 +182,38 @@ pub unsafe extern "C" fn for_loop_single_continue(mut x: ::core::ffi::c_int) -> 
 }
 #[no_mangle]
 pub unsafe extern "C" fn for_loop_multi_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut c2rust_current_block_1: u64;
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     while i < 10 as ::core::ffi::c_int {
-        's_4: {
+        if x != 0 {
             if x != 0 {
+                c2rust_current_block_1 = 792017965103506125;
+            } else {
+                c2rust_current_block_1 = 12675440807659640239;
+            }
+        } else {
+            c2rust_current_block_1 = 12675440807659640239;
+        }
+        match c2rust_current_block_1 {
+            12675440807659640239 => {
+                x += 1 as ::core::ffi::c_int;
                 if x != 0 {
-                    break 's_4;
+                    if x != 0 {
+                        c2rust_current_block_1 = 792017965103506125;
+                    } else {
+                        c2rust_current_block_1 = 15427931788582360902;
+                    }
+                } else {
+                    c2rust_current_block_1 = 15427931788582360902;
+                }
+                match c2rust_current_block_1 {
+                    792017965103506125 => {}
+                    _ => {
+                        x += 2 as ::core::ffi::c_int;
+                    }
                 }
             }
-            x += 1 as ::core::ffi::c_int;
-            if x != 0 {
-                if x != 0 {
-                    break 's_4;
-                }
-            }
-            x += 2 as ::core::ffi::c_int;
+            _ => {}
         }
         i += 1;
     }
@@ -196,14 +221,22 @@ pub unsafe extern "C" fn for_loop_multi_continue(mut x: ::core::ffi::c_int) -> :
 }
 #[no_mangle]
 pub unsafe extern "C" fn do_loop_single_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut c2rust_current_block_0: u64;
     loop {
-        's_2: {
+        if x != 0 {
             if x != 0 {
-                if x != 0 {
-                    break 's_2;
-                }
+                c2rust_current_block_0 = 18088007599891946824;
+            } else {
+                c2rust_current_block_0 = 12517898123489920830;
             }
-            x += 1 as ::core::ffi::c_int;
+        } else {
+            c2rust_current_block_0 = 12517898123489920830;
+        }
+        match c2rust_current_block_0 {
+            12517898123489920830 => {
+                x += 1 as ::core::ffi::c_int;
+            }
+            _ => {}
         }
         if !(x != 0) {
             break;
@@ -213,20 +246,37 @@ pub unsafe extern "C" fn do_loop_single_continue(mut x: ::core::ffi::c_int) -> :
 }
 #[no_mangle]
 pub unsafe extern "C" fn do_loop_multi_continue(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    let mut c2rust_current_block_1: u64;
     loop {
-        's_2: {
+        if x != 0 {
             if x != 0 {
+                c2rust_current_block_1 = 18088007599891946824;
+            } else {
+                c2rust_current_block_1 = 4988723283678924448;
+            }
+        } else {
+            c2rust_current_block_1 = 4988723283678924448;
+        }
+        match c2rust_current_block_1 {
+            4988723283678924448 => {
+                x += 1 as ::core::ffi::c_int;
                 if x != 0 {
-                    break 's_2;
+                    if x != 0 {
+                        c2rust_current_block_1 = 18088007599891946824;
+                    } else {
+                        c2rust_current_block_1 = 7502529970979898288;
+                    }
+                } else {
+                    c2rust_current_block_1 = 7502529970979898288;
+                }
+                match c2rust_current_block_1 {
+                    18088007599891946824 => {}
+                    _ => {
+                        x += 2 as ::core::ffi::c_int;
+                    }
                 }
             }
-            x += 1 as ::core::ffi::c_int;
-            if x != 0 {
-                if x != 0 {
-                    break 's_2;
-                }
-            }
-            x += 2 as ::core::ffi::c_int;
+            _ => {}
         }
         if !(x != 0) {
             break;
@@ -304,25 +354,32 @@ pub unsafe extern "C" fn loop_returns(mut x: ::core::ffi::c_int) -> ::core::ffi:
 }
 #[no_mangle]
 pub unsafe extern "C" fn loop_gotos(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
-    '_exit: {
-        while x != 0 {
-            x += 1 as ::core::ffi::c_int;
+    let mut c2rust_current_block: u64;
+    loop {
+        if !(x != 0) {
+            c2rust_current_block = 11006700562992250127;
+            break;
+        }
+        x += 1 as ::core::ffi::c_int;
+        if x != 0 {
+            x += 2 as ::core::ffi::c_int;
+            c2rust_current_block = 18208003724056061397;
+            break;
+        } else {
+            x += 3 as ::core::ffi::c_int;
             if x != 0 {
-                x += 2 as ::core::ffi::c_int;
-                break '_exit;
+                x += 4 as ::core::ffi::c_int;
+                c2rust_current_block = 18208003724056061397;
+                break;
             } else {
-                x += 3 as ::core::ffi::c_int;
-                if x != 0 {
-                    x += 4 as ::core::ffi::c_int;
-                    break '_exit;
-                } else {
-                    x += 5 as ::core::ffi::c_int;
-                }
+                x += 5 as ::core::ffi::c_int;
             }
         }
-        return x;
     }
-    return -x;
+    match c2rust_current_block {
+        18208003724056061397 => return -x,
+        _ => return x,
+    };
 }
 #[no_mangle]
 pub unsafe extern "C" fn loop_early_return(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
@@ -349,19 +406,28 @@ pub unsafe extern "C" fn if_else_loops(mut x: ::core::ffi::c_int) {
 }
 #[no_mangle]
 pub unsafe extern "C" fn goto_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
-    '_D: {
-        if x != 0 {
-            loop {
+    let mut c2rust_current_block: u64;
+    if x != 0 {
+        c2rust_current_block = 7699282067288334629;
+    } else {
+        c2rust_current_block = 214121115656568262;
+    }
+    loop {
+        match c2rust_current_block {
+            7699282067288334629 => {
                 x += 1 as ::core::ffi::c_int;
-                if !(x != 0) {
-                    break '_D;
+                if x != 0 {
+                    c2rust_current_block = 7699282067288334629;
+                } else {
+                    break;
                 }
             }
-        } else {
-            loop {
+            _ => {
                 x += 2 as ::core::ffi::c_int;
-                if !(x != 0) {
-                    break '_D;
+                if x != 0 {
+                    c2rust_current_block = 214121115656568262;
+                } else {
+                    break;
                 }
             }
         }
@@ -370,23 +436,32 @@ pub unsafe extern "C" fn goto_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c
 }
 #[no_mangle]
 pub unsafe extern "C" fn goto_into_loops(mut x: ::core::ffi::c_int) {
-    '_D: {
-        if x != 0 {
-            loop {
+    let mut c2rust_current_block: u64;
+    if x != 0 {
+        c2rust_current_block = 12352858790245325121;
+    } else {
+        c2rust_current_block = 9583393612731269253;
+    }
+    loop {
+        match c2rust_current_block {
+            12352858790245325121 => {
                 x += 1 as ::core::ffi::c_int;
-                if !(x != 0) {
-                    break '_D;
+                if x != 0 {
+                    c2rust_current_block = 12352858790245325121;
+                } else {
+                    break;
                 }
             }
-        } else {
-            loop {
+            _ => {
                 x += 2 as ::core::ffi::c_int;
-                if !(x != 0) {
-                    break '_D;
+                if x != 0 {
+                    c2rust_current_block = 9583393612731269253;
+                } else {
+                    break;
                 }
             }
         }
-    };
+    }
 }
 #[no_mangle]
 pub unsafe extern "C" fn goto_separate_loops(mut x: ::core::ffi::c_int) {
