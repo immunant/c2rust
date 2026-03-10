@@ -697,10 +697,10 @@ impl<W: Write> Printer<W> {
         let ty = context
             .c_types
             .get(&type_id)
-            .map(|l| &l.kind)
+            .map(|l| l.kind.clone())
             .unwrap_or_else(|| panic!("Could not find type with ID {:?}", type_id));
         use CTypeKind::*;
-        match ty {
+        match &ty {
             Pointer(ref qual_ty) => {
                 self.print_qtype(*qual_ty, None, context)?;
                 self.writer.write_all(b"*")?;

@@ -47,7 +47,7 @@ pub type CEnumConstantId = CDeclId; // Enum's need to point to child 'DeclKind::
 pub struct TypedAstContext {
     main_file: PathBuf,
 
-    c_types: HashMap<CTypeId, CType>,
+    c_types: dashmap::DashMap<CTypeId, CType>,
     c_exprs: HashMap<CExprId, CExpr>,
     c_stmts: HashMap<CStmtId, CStmt>,
 
@@ -716,9 +716,26 @@ impl TypedAstContext {
     }
 
     pub fn type_for_kind(&self, kind: &CTypeKind) -> Option<CTypeId> {
-        self.c_types
+        let ro = self.c_types.clone().into_read_only();
+        if let Some(ty) = ro
             .iter()
             .find_map(|(id, k)| if kind == &k.kind { Some(*id) } else { None })
+        {
+            return Some(ty);
+        }
+        let max_type_id = ro
+            .keys()
+            .max_by_key(|id| id.0)
+            .expect("expected non-empty AstContext::c_types");
+        let new_id = CTypeId(max_type_id.0 + 1);
+        self.c_types.insert(
+            new_id,
+            Located {
+                loc: None,
+                kind: kind.clone(),
+            },
+        );
+        Some(new_id)
     }
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
@@ -1050,11 +1067,16 @@ impl TypedAstContext {
                 use SomeId::*;
                 match some_id {
                     Type(type_id) => {
-                        if let CTypeKind::Elaborated(decl_type_id) = self.c_types[&type_id].kind {
+                        if let CTypeKind::Elaborated(decl_type_id) =
+                            self.c_types.get(&type_id).unwrap().kind
+                        {
                             // This is a reference to a previously declared type.  If we look
                             // through it we should(?) get something that looks like a declaration,
                             // which we can mark as wanted.
-                            let decl_id = self.c_types[&decl_type_id]
+                            let decl_id = self
+                                .c_types
+                                .get(&decl_type_id)
+                                .unwrap()
                                 .kind
                                 .as_decl_or_typedef()
                                 .expect("target of CTypeKind::Elaborated isn't a decl?");
@@ -1388,7 +1410,7 @@ impl Index<CTypeId> for TypedAstContext {
     fn index(&self, index: CTypeId) -> &CType {
         match self.c_types.get(&index) {
             None => panic!("Could not find {:?} in TypedAstContext", index),
-            Some(ty) => ty,
+            Some(ty) => Box::leak(Box::new(ty.clone())),
         }
     }
 }

@@ -490,6 +490,7 @@ dependencies = [
  "c2rust-bitfields",
  "c2rust-rust-tools",
  "colored 2.0.0",
+ "dashmap",
  "dtoa",
  "failure",
  "fern",
@@ -965,6 +966,16 @@ dependencies = [
  "pkg-config",
  "vcpkg",
  "winapi",
+]
+
+[[package]]
+name = "dashmap"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
+dependencies = [
+ "cfg-if",
+ "num_cpus",
 ]
 
 [[package]]
