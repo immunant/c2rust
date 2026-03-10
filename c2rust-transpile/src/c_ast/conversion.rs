@@ -1,9 +1,17 @@
-use crate::c_ast::*;
+use crate::c_ast::{
+    AsmOperand, Attribute, CBinOp, CDecl, CDeclId, CDeclKind, CExpr, CExprId, CExprKind, CLiteral,
+    CQualTypeId, CStmt, CStmtId, CStmtKind, CType, CTypeId, CTypeKind, CUnOp, CUnTypeOp, CastKind,
+    ConstIntExpr, Designator, DisplaySrcSpan, IntBase, MemberKind, OffsetOfKind, Qualifiers,
+    TypedAstContext,
+};
 use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;
 use failure::err_msg;
+use indexmap::IndexSet;
 use serde_bytes::ByteBuf;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::mem;
+use std::path::Path;
 use std::rc::Rc;
 use std::vec::Vec;
 

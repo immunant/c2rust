@@ -1,5 +1,7 @@
 use crate::c_ast::CDeclId;
-use crate::c_ast::*;
+use crate::c_ast::{
+    CDeclKind, CFieldId, CParamId, CQualTypeId, CRecordId, CTypeId, CTypeKind, TypedAstContext,
+};
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
 use crate::translator::variadic::mk_va_list_ty;

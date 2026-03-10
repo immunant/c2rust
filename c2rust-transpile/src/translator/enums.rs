@@ -2,14 +2,13 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
-use crate::c_ast::CUnOp;
-use crate::{
-    diagnostics::TranslationResult,
-    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
-    with_stmts::WithStmts,
+use crate::c_ast::{
     CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
-    CTypeKind, ConstIntExpr,
+    CTypeKind, CUnOp, ConstIntExpr,
 };
+use crate::diagnostics::TranslationResult;
+use crate::translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation};
+use crate::with_stmts::WithStmts;
 
 impl<'c> Translation<'c> {
     pub fn convert_enum(

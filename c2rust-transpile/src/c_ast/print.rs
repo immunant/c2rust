@@ -1,4 +1,7 @@
-use crate::c_ast::*;
+use crate::c_ast::{
+    CBinOp, CDeclId, CDeclKind, CExprId, CExprKind, CLiteral, CQualTypeId, CStmtId, CStmtKind,
+    CTypeId, CTypeKind, CUnOp, MemberKind, OffsetOfKind, Qualifiers, TypedAstContext,
+};
 use std::io::{Result, Write};
 
 pub struct Printer<W: Write> {

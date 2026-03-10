@@ -1,5 +1,4 @@
-use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
-use crate::iterators::{DFNodes, SomeId};
+use crate::c_ast::iterators::{immediate_children_all_types, DFNodes, NodeVisitor, SomeId};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
