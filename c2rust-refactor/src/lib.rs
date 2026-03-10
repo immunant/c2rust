@@ -10,6 +10,7 @@
     box_patterns,
     generator_trait,
     drain_filter,
+    let_chains,
     never_type
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]

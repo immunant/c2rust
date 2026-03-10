@@ -152,9 +152,7 @@ impl Transform for ToMethod {
                 if pat_ty == self_ty {
                     match mode {
                         BindingAnnotation(ByRef::No, mutbl) => Some(SelfKind::Value(mutbl)),
-                        BindingAnnotation(ByRef::Yes, mutbl) => {
-                            Some(SelfKind::Region(None, mutbl))
-                        }
+                        BindingAnnotation(ByRef::Yes, mutbl) => Some(SelfKind::Region(None, mutbl)),
                     }
                 } else {
                     match pat_ty.kind() {
@@ -273,7 +271,7 @@ impl Transform for ToMethod {
                 let mut args = args;
                 let recv = args.remove(arg_idx);
 
-                e.kind = ExprKind::MethodCall(mk().path_segment(&info.ident), args, DUMMY_SP);
+                e.kind = ExprKind::MethodCall(mk().path_segment(&info.ident), recv, args, DUMMY_SP);
             } else {
                 // There is no `self` argument, but change the function reference to the new path.
                 let mut new_path = cx.def_path(cx.node_def_id(dest.id));
@@ -514,7 +512,7 @@ impl Transform for WrapExtern {
                             // TODO: match_arg("__i: __t", arg).ident("__i")
                             match arg.pat.kind {
                                 PatKind::Ident(
-                                    BindingMode::ByValue(Mutability::Not),
+                                    BindingAnnotation(ByRef::No, Mutability::Not),
                                     ident,
                                     None,
                                 ) => ident,

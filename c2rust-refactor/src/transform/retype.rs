@@ -118,7 +118,11 @@ impl Transform for RetypeArgument {
                 }
                 ExprKind::MethodCall(_, ref mut recv, ref mut args, _) => {
                     for &idx in mod_args {
-                        let target = if idx == 0 { &mut *recv } else { &mut args[idx - 1] };
+                        let target = if idx == 0 {
+                            &mut *recv
+                        } else {
+                            &mut args[idx - 1]
+                        };
                         let mut bnd = Bindings::new();
                         bnd.add("__old", target.clone());
                         *target = wrap.clone().subst(st, cx, &bnd);
@@ -1335,7 +1339,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
             }
             (
-                ExprKind::MethodCall(ref path, ref arguments, _),
+                ExprKind::MethodCall(ref path, ref recv, ref _arguments, _),
                 TyKind::RawPtr(ty::TypeAndMut {
                     ty: ref inner_ty,
                     ref mutbl,
@@ -1357,7 +1361,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     return true;
                 }
                 sub_expected.ty = self.cx.ty_ctxt().mk_ref(
-                    self.cx.ty_ctxt().lifetimes.re_root_empty,
+                    self.cx.ty_ctxt().lifetimes.re_erased,
                     ty::TypeAndMut {
                         ty: sub_expected.ty,
                         mutbl: *mutbl,
@@ -1385,7 +1389,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     TyKind::Ref(_, _, subtype_mutbl) => {
                         let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
                         self.cx.ty_ctxt().mk_ref(
-                            self.cx.ty_ctxt().lifetimes.re_root_empty,
+                            self.cx.ty_ctxt().lifetimes.re_erased,
                             ty::TypeAndMut {
                                 ty: expected.ty,
                                 mutbl,

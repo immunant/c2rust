@@ -20,7 +20,7 @@
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Nonterminal, Token, TokenKind};
-use rustc_ast::tokenstream::{TokenStream, TokenStreamBuilder, TokenTree};
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::MacCall;
 use rustc_ast::{
     Expr, ExprKind, Item, ItemKind, Label, MacArgs, Pat, PatKind, Path, Stmt, StmtKind, Ty, TyKind,
@@ -68,7 +68,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
     }
 
     fn subst_token_stream_bindings(&mut self, ts: TokenStream) -> TokenStream {
-        let mut tsb = TokenStreamBuilder::new();
+        let mut trees = Vec::new();
         let mut c = ts.into_trees();
         while let Some(tt) = c.next() {
             if let TokenTree::Token(
@@ -97,12 +97,12 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
                     },
                     spacing,
                 );
-                tsb.push(TokenStream::new(vec![new_tt]));
+                trees.push(new_tt);
             } else {
-                tsb.push(TokenStream::new(vec![tt]));
+                trees.push(tt);
             }
         }
-        tsb.build()
+        TokenStream::new(trees)
     }
 }
 

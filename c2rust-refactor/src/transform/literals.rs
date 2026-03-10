@@ -48,7 +48,7 @@ impl Transform for ByteStrToStr {
                     LitKind::ByteStr(ref bs) => {
                         let s = String::from_utf8(bs.to_vec()).unwrap();
                         l.kind = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
-                        l.token.kind = token::LitKind::Str;
+                        l.token_lit.kind = token::LitKind::Str;
                     }
                     _ => {}
                 },
@@ -91,7 +91,7 @@ impl Transform for RemoveNullTerminator {
                         if let Some((last, rest)) = ms.split_last_mut() {
                             if *last == 0 {
                                 *ms = rest;
-                                strip_null(&mut l.token.symbol);
+                                strip_null(&mut l.token_lit.symbol);
                             }
                         }
                     }
@@ -120,9 +120,9 @@ pub struct RemoveLiteralSuffixes;
 fn remove_suffix(lit: &Lit) -> Option<Lit> {
     match lit.kind {
         LitKind::Int(x, _) => Some(Lit {
-            token: token::Lit {
+            token_lit: token::Lit {
                 suffix: None,
-                ..lit.token
+                ..lit.token_lit
             },
             kind: LitKind::Int(x, LitIntType::Unsuffixed),
             span: lit.span,
@@ -130,9 +130,9 @@ fn remove_suffix(lit: &Lit) -> Option<Lit> {
 
         LitKind::Float(sym, _) => match sym_token_kind(sym) {
             token::LitKind::Float => Some(Lit {
-                token: token::Lit {
+                token_lit: token::Lit {
                     suffix: None,
-                    ..lit.token
+                    ..lit.token_lit
                 },
                 kind: LitKind::Float(sym, LitFloatType::Unsuffixed),
                 span: lit.span,
@@ -600,11 +600,14 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     ch[0].set(LitTyKeyNode::Empty);
                 }
 
-                self.visit_path_segment(ex.span, segment);
+                self.visit_path_segment(segment);
                 if let Some(&[ref input_key_trees @ .., output_key_tree]) =
                     callee_key_tree.get().children()
                 {
-                    for (arg_expr, arg_key_tree) in args.iter().zip(input_key_trees.iter()) {
+                    for (arg_expr, arg_key_tree) in std::iter::once(recv)
+                        .chain(args.iter())
+                        .zip(input_key_trees.iter())
+                    {
                         self.visit_expr_unify(arg_expr, arg_key_tree);
                     }
                     self.unify_key_trees(kt, output_key_tree);
