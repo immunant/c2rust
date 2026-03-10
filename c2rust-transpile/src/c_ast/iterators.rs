@@ -1,4 +1,7 @@
-use crate::c_ast::*;
+use crate::c_ast::{
+    CDeclId, CDeclKind, CExprId, CExprKind, CStmtId, CStmtKind, CTypeId, CTypeKind, OffsetOfKind,
+    TypedAstContext,
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SomeId {

@@ -5,13 +5,11 @@ use c2rust_ast_exporter::clang_ast::LRValue;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
-use crate::{
-    c_ast,
-    diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
-    translator::{cast_int, unwrap_function_pointer, ExprContext, Translation},
-    with_stmts::WithStmts,
-    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind,
-};
+use crate::c_ast;
+use crate::c_ast::{CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind};
+use crate::diagnostics::{TranslationError, TranslationErrorKind, TranslationResult};
+use crate::translator::{cast_int, unwrap_function_pointer, ExprContext, Translation};
+use crate::with_stmts::WithStmts;
 
 impl<'c> Translation<'c> {
     pub fn convert_address_of(
