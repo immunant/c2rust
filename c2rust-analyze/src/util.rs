@@ -438,7 +438,7 @@ pub fn lty_project<'tcx, L: Debug>(
         }
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
-        ProjectionElem::OpaqueCast(_) => lty,
+        ProjectionElem::OpaqueCast(_) => todo!("type_of OpaqueCast"),
     }
 }
 
