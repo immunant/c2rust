@@ -96,18 +96,23 @@ pub struct TranspilerConfig {
     pub translate_valist: bool,
     pub overwrite_existing: bool,
     pub reduce_type_annotations: bool,
-    pub reorganize_definitions: bool,
     pub enabled_warnings: HashSet<Diagnostic>,
     pub emit_no_std: bool,
     pub output_dir: Option<PathBuf>,
     pub translate_const_macros: TranslateMacros,
     pub translate_fn_macros: TranslateMacros,
     pub disable_rustfmt: bool,
-    pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
 
-    /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
+    /// Run `c2rust-refactor` after transpiling (and before [`Self::postprocess`]).
+    pub refactor: bool,
+
+    /// Emit annotations needed by the refactorer for certain transforms, such as `reorganize_definitions`.
+    /// Implied by [`Self::refactor`].
+    pub emit_refactor_annotations: bool,
+
+    /// Run `c2rust-postprocess` after transpiling (and after [`Self::refactor`]).
     pub postprocess: bool,
 
     // Options that control build files
@@ -546,7 +551,7 @@ fn reorganize_definitions(
     crate_file: Option<&Path>,
 ) -> Result<(), Error> {
     // We only run the reorganization refactoring if we emitted a fresh crate file
-    if crate_file.is_none() || tcfg.disable_refactoring || !tcfg.reorganize_definitions {
+    if crate_file.is_none() || !tcfg.refactor {
         return Ok(());
     }
 

@@ -17,7 +17,7 @@ requirements:
 
 transpile:
   autogen: true
-  tflags: --reorganize-definitions --disable-refactoring
+  tflags: --emit-refactor-annotations
   binary: python
 
 cargo.transpile:

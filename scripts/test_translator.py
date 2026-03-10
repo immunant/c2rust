@@ -70,7 +70,7 @@ class CFile:
         self.disable_incremental_relooper = "disable_incremental_relooper" in flags
         self.disallow_current_block = "disallow_current_block" in flags
         self.translate_const_macros = "translate_const_macros" in flags
-        self.reorganize_definitions = "reorganize_definitions" in flags
+        self.refactor = "refactor" in flags
         self.emit_build_files = "emit_build_files" in flags
 
     def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
@@ -96,8 +96,8 @@ class CFile:
         if self.translate_const_macros:
             args.append("--translate-const-macros")
             args.append("experimental")
-        if self.reorganize_definitions:
-            args.append("--reorganize-definitions")
+        if self.refactor:
+            args.append("--refactor")
         if self.emit_build_files:
             args.append("--emit-build-files")
 
