@@ -6,7 +6,8 @@ use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
 use crate::c_ast;
-use crate::c_ast::{CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind};
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::{CExprId, CExprKind, CLiteral, CastKind};
 use crate::diagnostics::{TranslationError, TranslationErrorKind, TranslationResult};
 use crate::translator::{cast_int, unwrap_function_pointer, ExprContext, Translation};
 use crate::with_stmts::WithStmts;

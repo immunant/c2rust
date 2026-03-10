@@ -42,9 +42,9 @@ use serde::ser::{
 };
 use serde_json;
 
+use crate::c_ast::c_type::CQualTypeId;
 use crate::c_ast::{
-    CDeclId, CExprId, CExprKind, CQualTypeId, CStmtId, CStmtKind, ConstIntExpr, TypedAstContext,
-    UnOp,
+    CDeclId, CExprId, CExprKind, CStmtId, CStmtKind, ConstIntExpr, TypedAstContext, UnOp,
 };
 use crate::translator::*;
 use crate::with_stmts::WithStmts;

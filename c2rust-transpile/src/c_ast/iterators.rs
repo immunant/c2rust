@@ -1,6 +1,6 @@
+use crate::c_ast::c_type::{CTypeId, CTypeKind};
 use crate::c_ast::{
-    CDeclId, CDeclKind, CExprId, CExprKind, CStmtId, CStmtKind, CTypeId, CTypeKind, OffsetOfKind,
-    TypedAstContext,
+    CDeclId, CDeclKind, CExprId, CExprKind, CStmtId, CStmtKind, OffsetOfKind, TypedAstContext,
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
@@ -273,7 +273,7 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
 }
 
 fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
-    use crate::c_ast::CTypeKind::*;
+    use CTypeKind::*;
     match *kind {
         Elaborated(_) => vec![], // These are references to previous definitions
         TypeOfExpr(e) => intos![e],
