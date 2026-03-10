@@ -1,5 +1,6 @@
+use crate::c_ast::c_decl::CDeclId;
 use crate::c_ast::c_expr::{CExprId, ConstIntExpr};
-use crate::c_ast::{Attribute, CDeclId, Located, TypedAstContext};
+use crate::c_ast::{Attribute, Located, TypedAstContext};
 use std::fmt::Debug;
 use std::ops::Index;
 
