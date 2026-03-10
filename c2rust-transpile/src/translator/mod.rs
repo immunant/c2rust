@@ -40,11 +40,12 @@ use crate::c_ast::c_expr::{
     CBinOp, CExprId, CExprKind, CLiteral, CUnOp, CUnTypeOp, CastKind, ConstIntExpr, IntBase,
     OffsetOfKind,
 };
+use crate::c_ast::c_stmt::{AsmOperand, CStmtId, CStmtKind};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::{
-    AsmOperand, CDecl, CDeclId, CDeclKind, CDeclSrcRange, CFieldId, CStmtId, CStmtKind,
-    CommentContext, FileId, Located, TypedAstContext,
+    CDecl, CDeclId, CDeclKind, CDeclSrcRange, CFieldId, CommentContext, FileId, Located,
+    TypedAstContext,
 };
 use crate::cfg;
 use crate::convert_type::TypeConverter;
