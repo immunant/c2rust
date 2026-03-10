@@ -270,7 +270,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 return;
             }
 
-            hir::ExprKind::Call(_, _args) | hir::ExprKind::MethodCall(_, _, _args, _) => {
+            hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, _, args, _) => {
                 // Handle adjustments on the call's output first.
                 let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
                     Some(x @ (pl, _)) if is_var(pl) => x,
@@ -313,17 +313,18 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 self.finish_visit_expr_cursor(ex, cursor);
 
                 self.record(loc, &[SubLoc::Rvalue], ex);
-                let hir_args: Vec<&hir::Expr<'tcx>> = match ex.kind {
-                    hir::ExprKind::Call(_, call_args) => call_args.iter().collect(),
-                    hir::ExprKind::MethodCall(_, recv, call_args, _) => {
-                        std::iter::once(recv).chain(call_args.iter()).collect()
-                    }
-                    _ => unreachable!(),
+
+                // Put method call receiver at the front of the args list.
+                let method_recv = match ex.kind {
+                    hir::ExprKind::MethodCall(_, recv, _, _) => Some(recv),
+                    _ => None,
                 };
-                for (i, (arg, mir_arg)) in hir_args.iter().zip(mir_args).enumerate() {
+                let hir_args = method_recv.into_iter().chain(args.iter());
+
+                for (i, (arg, mir_arg)) in hir_args.zip(mir_args).enumerate() {
                     let sub_loc = vec![SubLoc::Rvalue, SubLoc::CallArg(i)];
-                    self.record_operand(loc, &sub_loc, *arg, mir_arg);
-                    self.visit_expr_operand(*arg, loc, sub_loc, mir_arg, &[]);
+                    self.record_operand(loc, &sub_loc, arg, mir_arg);
+                    self.visit_expr_operand(arg, loc, sub_loc, mir_arg, &[]);
                 }
 
                 if !extra_locs.is_empty() {
@@ -331,9 +332,9 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     // emitted with the same span as the `MethodCall` itself, and thus show up as
                     // leftover `extra_locs` here.  We associate them with the child instead so all
                     // of the child's statements can be processed together.
-                    if matches!(ex.kind, hir::ExprKind::MethodCall(..)) {
+                    if let Some(recv) = method_recv {
                         self.append_extra_locations
-                            .entry(hir_args[0].hir_id)
+                            .entry(recv.hir_id)
                             .or_insert_with(Vec::new)
                             .extend_from_slice(extra_locs);
                     } else {
