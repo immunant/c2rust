@@ -1,7 +1,8 @@
+use crate::c_ast::c_decl::{CDeclId, CDeclKind, CFieldId};
 use crate::c_ast::c_stmt::CStmtId;
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor, SomeId};
-use crate::c_ast::{CDeclId, CDeclKind, CFieldId, Located, TypedAstContext};
+use crate::c_ast::{Located, TypedAstContext};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use std::fmt::{self, Debug, Display};
 use std::ops::Index;

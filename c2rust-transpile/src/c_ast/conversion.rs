@@ -1,10 +1,11 @@
+use crate::c_ast::c_decl::{CDecl, CDeclId, CDeclKind};
 use crate::c_ast::c_expr::{
     BinOp, CExpr, CExprId, CExprKind, CLiteral, CastKind, ConstIntExpr, Designator, IntBase,
     MemberKind, OffsetOfKind, UnOp, UnTypeOp,
 };
 use crate::c_ast::c_stmt::{AsmOperand, CStmt, CStmtId, CStmtKind};
 use crate::c_ast::c_type::{CQualTypeId, CType, CTypeId, CTypeKind, Qualifiers};
-use crate::c_ast::{Attribute, CDecl, CDeclId, CDeclKind, DisplaySrcSpan, TypedAstContext};
+use crate::c_ast::{Attribute, DisplaySrcSpan, TypedAstContext};
 use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;
 use failure::err_msg;

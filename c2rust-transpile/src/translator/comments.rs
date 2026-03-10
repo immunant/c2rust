@@ -1,6 +1,7 @@
 use super::Translation;
+use crate::c_ast::c_decl::{CDeclId, CDeclKind};
 use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor, SomeId};
-use crate::c_ast::{CDeclId, CDeclKind, CommentContext, SrcLoc, TypedAstContext};
+use crate::c_ast::{CommentContext, SrcLoc, TypedAstContext};
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::{pos_to_span, SpanExt};
 use log::debug;

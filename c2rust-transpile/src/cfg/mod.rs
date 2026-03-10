@@ -42,10 +42,11 @@ use serde::ser::{
 };
 use serde_json;
 
+use crate::c_ast::c_decl::CDeclId;
 use crate::c_ast::c_expr::{CExprId, CExprKind, ConstIntExpr, UnOp};
 use crate::c_ast::c_stmt::{CStmtId, CStmtKind};
 use crate::c_ast::c_type::CQualTypeId;
-use crate::c_ast::{CDeclId, TypedAstContext};
+use crate::c_ast::TypedAstContext;
 use crate::translator::*;
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
