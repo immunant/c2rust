@@ -25,10 +25,10 @@ pub enum CExprKind {
     Literal(CQualTypeId, CLiteral),
 
     /// Unary operator.
-    Unary(CQualTypeId, UnOp, CExprId, LRValue),
+    Unary(CQualTypeId, CUnOp, CExprId, LRValue),
 
     /// Unary type operator.
-    UnaryType(CQualTypeId, UnTypeOp, Option<CExprId>, CQualTypeId),
+    UnaryType(CQualTypeId, CUnTypeOp, Option<CExprId>, CQualTypeId),
 
     /// `offsetof` expression.
     OffsetOf(CQualTypeId, OffsetOfKind),
@@ -36,7 +36,7 @@ pub enum CExprKind {
     /// Binary operator.
     Binary(
         CQualTypeId,
-        BinOp,
+        CBinOp,
         CExprId,
         CExprId,
         Option<CQualTypeId>,
@@ -250,7 +250,7 @@ pub enum CastKind {
 
 /// Represents a unary operator in C (6.5.3 Unary operators) and GNU C extensions
 #[derive(Debug, Clone, Copy)]
-pub enum UnOp {
+pub enum CUnOp {
     AddressOf,     // &x
     Deref,         // *x
     Plus,          // +x
@@ -267,9 +267,9 @@ pub enum UnOp {
     Coawait,       // [C++ Coroutines] co_await x
 }
 
-impl UnOp {
+impl CUnOp {
     pub fn as_str(&self) -> &'static str {
-        use UnOp::*;
+        use CUnOp::*;
         match self {
             AddressOf => "&",
             Deref => "*",
@@ -294,7 +294,7 @@ impl UnOp {
         ast_context: &TypedAstContext,
         arg_type: CQualTypeId,
     ) -> Option<CQualTypeId> {
-        use UnOp::*;
+        use CUnOp::*;
         let resolved_ty = ast_context.resolve_type(arg_type.ctype);
         Some(match self {
             // We could construct CTypeKind::Pointer here, but it is not guaranteed to have a
@@ -325,7 +325,7 @@ impl UnOp {
     }
 }
 
-impl Display for UnOp {
+impl Display for CUnOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_str())
     }
@@ -333,15 +333,15 @@ impl Display for UnOp {
 
 /// Represents a unary type operator in C
 #[derive(Debug, Clone, Copy)]
-pub enum UnTypeOp {
+pub enum CUnTypeOp {
     SizeOf,
     AlignOf,
     PreferredAlignOf,
 }
 
-impl UnTypeOp {
+impl CUnTypeOp {
     pub fn as_str(&self) -> &'static str {
-        use UnTypeOp::*;
+        use CUnTypeOp::*;
         match self {
             SizeOf => "sizeof",
             AlignOf => "alignof",
@@ -350,22 +350,22 @@ impl UnTypeOp {
     }
 }
 
-impl Display for UnTypeOp {
+impl Display for CUnTypeOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
 
-impl UnOp {
+impl CUnOp {
     /// Check is the operator is rendered before or after is operand.
     pub fn is_prefix(&self) -> bool {
-        !matches!(*self, UnOp::PostIncrement | UnOp::PostDecrement)
+        !matches!(*self, CUnOp::PostIncrement | CUnOp::PostDecrement)
     }
 }
 
 /// Represents a binary operator in C (6.5.5 Multiplicative operators - 6.5.14 Logical OR operator)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinOp {
+pub enum CBinOp {
     Multiply,     // *
     Divide,       // /
     Modulus,      // %
@@ -400,9 +400,9 @@ pub enum BinOp {
     Comma,  // ,
 }
 
-impl BinOp {
+impl CBinOp {
     pub fn as_str(&self) -> &'static str {
-        use BinOp::*;
+        use CBinOp::*;
         match self {
             Multiply => "*",
             Divide => "/",
@@ -442,7 +442,7 @@ impl BinOp {
     /// Does the rust equivalent of this operator have type (T, T) -> U?
     #[rustfmt::skip]
     pub fn input_types_same(&self) -> bool {
-        use BinOp::*;
+        use CBinOp::*;
         self.all_types_same() || matches!(self,
             Less | Greater | LessEqual | GreaterEqual | EqualEqual | NotEqual
             | And | Or
@@ -455,7 +455,7 @@ impl BinOp {
     /// Does the rust equivalent of this operator have type (T, T) -> T?
     /// This ignores cases where one argument is a pointer and we translate to `.offset()`.
     pub fn all_types_same(&self) -> bool {
-        use BinOp::*;
+        use CBinOp::*;
         matches!(
             self,
             Multiply | Divide | Modulus | Add | Subtract | BitAnd | BitXor | BitOr
@@ -463,19 +463,19 @@ impl BinOp {
     }
 }
 
-impl Display for BinOp {
+impl Display for CBinOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
 
-impl BinOp {
+impl CBinOp {
     /// Maps compound assignment operators to operator underlying them, and returns `None` for all
     /// other operators.
     ///
     /// For example, `AssignAdd` maps to `Some(Add)` but `Add` maps to `None`.
-    pub fn underlying_assignment(&self) -> Option<BinOp> {
-        use BinOp::*;
+    pub fn underlying_assignment(&self) -> Option<CBinOp> {
+        use CBinOp::*;
         Some(match *self {
             AssignAdd => Add,
             AssignSubtract => Subtract,
@@ -566,7 +566,7 @@ impl TypedAstContext {
 
     /// Returns the expression inside an `__extension__` operator.
     pub fn resolve_extension(&self, expr_id: CExprId) -> CExprId {
-        if let CExprKind::Unary(_, UnOp::Extension, subexpr, _) = self.index(expr_id).kind {
+        if let CExprKind::Unary(_, CUnOp::Extension, subexpr, _) = self.index(expr_id).kind {
             subexpr
         } else {
             expr_id
@@ -673,11 +673,11 @@ impl TypedAstContext {
             ShuffleVector(..) |
             ConvertVector(..) |
             Call(..) |
-            Unary(_, UnOp::PreIncrement, _, _) |
-            Unary(_, UnOp::PostIncrement, _, _) |
-            Unary(_, UnOp::PreDecrement, _, _) |
-            Unary(_, UnOp::PostDecrement, _, _) |
-            Binary(_, BinOp::Assign, _, _, _, _) |
+            Unary(_, CUnOp::PreIncrement, _, _) |
+            Unary(_, CUnOp::PostIncrement, _, _) |
+            Unary(_, CUnOp::PreDecrement, _, _) |
+            Unary(_, CUnOp::PostDecrement, _, _) |
+            Binary(_, CBinOp::Assign, _, _, _, _) |
             InitList { .. } |
             ImplicitValueInit { .. } |
             Predefined(..) |
@@ -753,8 +753,8 @@ impl TypedAstContext {
             UnaryType(_, _, expr, _) => expr.map_or(true, is_const),
             // Not sure what a `OffsetOfKind::Variable` means.
             OffsetOf(_, _) => true,
-            // `ptr::offset` (ptr `BinOp::Add`) was `const` stabilized in `1.61.0`.
-            // `ptr::offset_from` (ptr `BinOp::Subtract`) was `const` stabilized in `1.65.0`.
+            // `ptr::offset` (ptr `CBinOp::Add`) was `const` stabilized in `1.61.0`.
+            // `ptr::offset_from` (ptr `CBinOp::Subtract`) was `const` stabilized in `1.65.0`.
             // TODO `f128` is not yet handled, as we should eventually
             // switch to the (currently unstable) `f128` primitive type (#1262).
             Binary(_, _, lhs, rhs, _, _) => is_const(lhs) && is_const(rhs),

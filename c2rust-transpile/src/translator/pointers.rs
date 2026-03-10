@@ -5,8 +5,7 @@ use c2rust_ast_exporter::clang_ast::LRValue;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
-use crate::c_ast;
-use crate::c_ast::c_expr::{CExprId, CExprKind, CLiteral, CastKind};
+use crate::c_ast::c_expr::{CExprId, CExprKind, CLiteral, CUnOp, CastKind};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::diagnostics::{TranslationError, TranslationErrorKind, TranslationResult};
 use crate::translator::{
@@ -26,7 +25,7 @@ impl<'c> Translation<'c> {
 
         match arg_kind {
             // C99 6.5.3.2 para 4
-            CExprKind::Unary(_, c_ast::c_expr::UnOp::Deref, target, _) => {
+            CExprKind::Unary(_, CUnOp::Deref, target, _) => {
                 return self.convert_expr(ctx, *target, None)
             }
             // Array subscript functions as a deref too.
@@ -211,7 +210,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let arg_expr_kind = &self.ast_context.index(arg).kind;
 
-        if let &CExprKind::Unary(_, c_ast::c_expr::UnOp::AddressOf, arg, _) = arg_expr_kind {
+        if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
             return self.convert_expr(ctx.used(), arg, None);
         }
 

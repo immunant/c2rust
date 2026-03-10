@@ -3,7 +3,7 @@
 
 use super::*;
 
-use crate::c_ast::c_expr::BinOp::{Add, BitAnd, ShiftRight};
+use crate::c_ast::c_expr::CBinOp::{Add, BitAnd, ShiftRight};
 use crate::c_ast::c_expr::CExprKind::{
     Binary, Call, Conditional, ExplicitCast, ImplicitCast, Literal,
 };

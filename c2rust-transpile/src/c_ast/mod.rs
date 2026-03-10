@@ -1,5 +1,5 @@
 use crate::c_ast::c_decl::{CDecl, CDeclId, CDeclKind};
-use crate::c_ast::c_expr::{BinOp, CExpr, CExprId, CExprKind, UnTypeOp};
+use crate::c_ast::c_expr::{CBinOp, CExpr, CExprId, CExprKind, CUnTypeOp};
 use crate::c_ast::c_stmt::{CLabelId, CStmt, CStmtId};
 use crate::c_ast::c_type::{CQualTypeId, CType, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{immediate_children_all_types, DFNodes, NodeVisitor, SomeId};
@@ -498,7 +498,7 @@ impl TypedAstContext {
                             } else {
                                 Some(rhs_type_id)
                             }
-                        } else if op == BinOp::ShiftLeft || op == BinOp::ShiftRight {
+                        } else if op == CBinOp::ShiftLeft || op == CBinOp::ShiftRight {
                             Some(lhs_type_id)
                         } else {
                             return;
@@ -510,11 +510,11 @@ impl TypedAstContext {
                     ),
                     CExprKind::Paren(_ty, e) => self.ast_context.c_exprs[&e].kind.get_qual_type(),
                     CExprKind::UnaryType(_, op, _, _) => {
-                        // All of these `UnTypeOp`s should return `size_t`.
+                        // All of these `CUnTypeOp`s should return `size_t`.
                         let kind = match op {
-                            UnTypeOp::SizeOf => CTypeKind::Size,
-                            UnTypeOp::AlignOf => CTypeKind::Size,
-                            UnTypeOp::PreferredAlignOf => CTypeKind::Size,
+                            CUnTypeOp::SizeOf => CTypeKind::Size,
+                            CUnTypeOp::AlignOf => CTypeKind::Size,
+                            CUnTypeOp::PreferredAlignOf => CTypeKind::Size,
                         };
                         let ty = self
                             .ast_context
