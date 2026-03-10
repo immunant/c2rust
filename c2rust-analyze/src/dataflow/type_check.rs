@@ -210,7 +210,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             | CastKind::IntToInt
             | CastKind::FloatToInt
             | CastKind::FloatToFloat
-            | CastKind::IntToFloat => {}
+            | CastKind::IntToFloat => {
+                // TODO: Do we need to do anything for these casts?
+            }
         }
 
         self.visit_operand(op)
