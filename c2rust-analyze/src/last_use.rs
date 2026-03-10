@@ -21,8 +21,8 @@ use rustc_index::bit_set::BitSet;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::traversal;
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, Local, Location, Operand, Place, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+    BasicBlock, BasicBlockData, Body, Local, Location, NonDivergingIntrinsic, Operand, Place,
+    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 
 /// A single MIR `Statement` or `Terminator` may refer to multiple `Place`s in different
@@ -200,7 +200,16 @@ impl ActionsBuilder {
             StatementKind::Retag(..) => panic!("unexpected StatementKind::Retag"),
             StatementKind::AscribeUserType(..) => {}
             StatementKind::Coverage(..) => {}
-            StatementKind::Intrinsic(..) => {}
+            StatementKind::Intrinsic(ref intrinsic) => match &**intrinsic {
+                NonDivergingIntrinsic::Assume(op) => {
+                    self.push_operand(op, loc, WhichPlace::Operand(0));
+                }
+                NonDivergingIntrinsic::CopyNonOverlapping(cno) => {
+                    self.push_operand(&cno.src, loc, WhichPlace::Operand(0));
+                    self.push_operand(&cno.dst, loc, WhichPlace::Operand(0));
+                    self.push_operand(&cno.count, loc, WhichPlace::Operand(0));
+                }
+            }
             StatementKind::Nop => {}
         }
     }
