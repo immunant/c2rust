@@ -1,8 +1,6 @@
+use crate::c_ast::c_expr::{BinOp, CExprId, CExprKind, CLiteral, MemberKind, OffsetOfKind, UnOp};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind, Qualifiers};
-use crate::c_ast::{
-    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CLiteral, CStmtId, CStmtKind, MemberKind,
-    OffsetOfKind, TypedAstContext, UnOp,
-};
+use crate::c_ast::{CDeclId, CDeclKind, CStmtId, CStmtKind, TypedAstContext};
 use std::io::{Result, Write};
 
 pub struct Printer<W: Write> {

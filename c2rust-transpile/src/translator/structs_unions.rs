@@ -7,10 +7,9 @@ use std::ops::Index;
 use super::named_references::NamedReference;
 use super::TranslationError;
 use crate::c_ast;
+use crate::c_ast::c_expr::{BinOp, CExprId, CExprKind, MemberKind};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId};
-use crate::c_ast::{
-    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CFieldId, CRecordId, MemberKind,
-};
+use crate::c_ast::{CDeclId, CDeclKind, CFieldId, CRecordId};
 use crate::diagnostics::TranslationResult;
 use crate::translator::variadic::mk_va_list_ty;
 use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX};
@@ -1033,7 +1032,7 @@ impl<'a> Translation<'a> {
         let mut val = match kind {
             MemberKind::Dot => self.convert_expr(ctx, expr, None)?,
             MemberKind::Arrow => {
-                if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
+                if let CExprKind::Unary(_, c_ast::c_expr::UnOp::AddressOf, subexpr_id, _) =
                     self.ast_context[expr].kind
                 {
                     // Special-case the `(&x)->field` pattern

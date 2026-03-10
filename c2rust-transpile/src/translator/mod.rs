@@ -36,12 +36,14 @@ use crate::translator::variadic::{mk_va_list_copy, mk_va_list_ty};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust;
 
+use crate::c_ast::c_expr::{
+    CExprId, CExprKind, CLiteral, CastKind, ConstIntExpr, IntBase, OffsetOfKind, UnTypeOp,
+};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::{
-    AsmOperand, CDecl, CDeclId, CDeclKind, CDeclSrcRange, CExprId, CExprKind, CFieldId, CLiteral,
-    CStmtId, CStmtKind, CastKind, CommentContext, ConstIntExpr, FileId, IntBase, Located,
-    OffsetOfKind, SrcLoc, TypedAstContext, UnTypeOp,
+    AsmOperand, CDecl, CDeclId, CDeclKind, CDeclSrcRange, CFieldId, CStmtId, CStmtKind,
+    CommentContext, FileId, Located, SrcLoc, TypedAstContext,
 };
 use crate::cfg;
 use crate::convert_type::TypeConverter;
@@ -1723,9 +1725,9 @@ impl<'c> Translation<'c> {
         expr_id: Option<CExprId>,
         qtype: CQualTypeId,
     ) -> bool {
-        use crate::c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
-        use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
-        use crate::c_ast::UnOp::{AddressOf, Negate};
+        use crate::c_ast::c_expr::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
+        use crate::c_ast::c_expr::CastKind::{IntegralToPointer, PointerToIntegral};
+        use crate::c_ast::c_expr::UnOp::{AddressOf, Negate};
 
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
@@ -2762,31 +2764,31 @@ impl<'c> Translation<'c> {
             };
 
         match self.ast_context[cond_id].kind {
-            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
+            CExprKind::Binary(_, c_ast::c_expr::BinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(!target, ptr)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
+            CExprKind::Binary(_, c_ast::c_expr::BinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(!target, ptr)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
+            CExprKind::Binary(_, c_ast::c_expr::BinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(target, ptr)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
+            CExprKind::Binary(_, c_ast::c_expr::BinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(target, ptr)
             }
 
-            CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
+            CExprKind::Unary(_, c_ast::c_expr::UnOp::Not, subexpr_id, _) => {
                 self.convert_condition(ctx, !target, subexpr_id)
             }
 
@@ -3089,7 +3091,7 @@ impl<'c> Translation<'c> {
                         }
 
                         // ref decayed ptrs generally need a type annotation
-                        if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _, _)) =
+                        if let Some(CExprKind::Unary(_, c_ast::c_expr::UnOp::AddressOf, _, _)) =
                             initializer_kind
                         {
                             return true;
