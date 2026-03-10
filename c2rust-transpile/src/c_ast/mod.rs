@@ -175,6 +175,18 @@ impl PartialOrd for SrcLocInclude<'_> {
     }
 }
 
+/// The range of source code locations for a C declaration.
+#[derive(Copy, Clone)]
+pub struct CDeclSrcRange {
+    /// The earliest position where this declaration or its documentation might start.
+    pub earliest_begin: SrcLoc,
+    /// A position by which this declaration itself is known to have begun.
+    /// Attributes or return type may possibly precede this position.
+    pub strict_begin: SrcLoc,
+    /// The end of the declaration, except for possible trailing semicolon.
+    pub end: SrcLoc,
+}
+
 impl TypedAstContext {
     // TODO: build the TypedAstContext during initialization, rather than
     // building an empty one and filling it later.
@@ -207,6 +219,16 @@ impl TypedAstContext {
                 file_map.push(files.len());
                 files.push(file.clone());
             }
+        }
+
+        // Ensure that the main file is actually present. This is not the case if it is empty,
+        // in which case the AST exporter's visitor would have never observed it.
+        if !files.iter().any(|f| f.path.as_ref() == Some(&main_file)) {
+            file_map.push(files.len());
+            files.push(SrcFile {
+                path: Some(main_file.clone()),
+                include_loc: None,
+            });
         }
 
         TypedAstContext {
@@ -317,7 +339,7 @@ impl TypedAstContext {
     }
 
     /// Construct a map from top-level decls in the main file to their source ranges.
-    pub fn top_decl_locs(&self) -> IndexMap<CDeclId, (SrcLoc, SrcLoc)> {
+    pub fn top_decl_locs(&self) -> IndexMap<CDeclId, CDeclSrcRange> {
         let mut name_loc_map = IndexMap::new();
         let mut prev_end_loc = SrcLoc {
             fileid: 0,
@@ -327,7 +349,9 @@ impl TypedAstContext {
         // Sort decls by source location so we can reason about the possibly comment-containing gaps
         // between them.
         let mut decls_sorted = self.c_decls_top.clone();
-        decls_sorted.sort_by_key(|decl| self.c_decls[decl].begin_loc());
+        // Break ties in `begin_loc` (e.g. from `int a, b;`) using `end_loc`.
+        decls_sorted
+            .sort_by_key(|decl| (self.c_decls[decl].begin_loc(), self.c_decls[decl].end_loc()));
         for decl_id in &decls_sorted {
             let decl = &self.c_decls[decl_id];
             let begin_loc: SrcLoc = decl.begin_loc().expect("no begin loc for top-level decl");
@@ -384,13 +408,25 @@ impl TypedAstContext {
             }
 
             // End of the previous decl is the start of comments pertaining to the current one.
-            let new_begin_loc = if is_nested { begin_loc } else { prev_end_loc };
+            let earliest_begin_loc = if is_nested { begin_loc } else { prev_end_loc };
 
             // Include only decls from the main file.
             if self.c_decls_top.contains(decl_id)
                 && self.get_source_path(decl) == Some(&self.main_file)
             {
-                let entry = (new_begin_loc, end_loc);
+                // For multiple decls, e.g. `int a, b;`, `begin_loc` is shared, in which case it is
+                // earlier than `earliest_begin_loc` for decls after the first; to maintain their
+                // relative order we must either move `earliest_begin_loc` earlier or move
+                // `begin_loc` later.
+                // For now, we move `begin_loc` later, so that the range used by each variable from
+                // a multiple decl does not overlap the others. If other tooling would benefit more
+                // from maximal but overlapping ranges, we could go the other way.
+                let begin_loc = begin_loc.max(earliest_begin_loc);
+                let entry = CDeclSrcRange {
+                    earliest_begin: earliest_begin_loc,
+                    strict_begin: begin_loc,
+                    end: end_loc,
+                };
                 name_loc_map.insert(*decl_id, entry);
             }
             if !is_nested {
@@ -572,6 +608,14 @@ impl TypedAstContext {
             matches!(self.resolve_type(p.ctype).kind, Function { .. })
         } else {
             false
+        }
+    }
+
+    /// Returns the length of an array type, or panics.
+    pub fn array_len(&self, typ: CTypeId) -> usize {
+        match self.resolve_type(typ).kind {
+            CTypeKind::ConstantArray(_, len) => len,
+            ref kind => panic!("CTypeId {typ:?} is {kind:?}, not a ConstantArray"),
         }
     }
 

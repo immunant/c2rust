@@ -39,10 +39,12 @@ strum = "0.24"
 strum_macros = "0.24"
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing", "printing"]}
 tempfile = "3.5.0"
+which = "4.4.0"
 
 [features]
 # Force static linking of LLVM
 llvm-static = ["c2rust-ast-exporter/llvm-static"]
 
 [dev-dependencies]
-insta = { version = "1.46.3", features = ["glob"] }
+fs-err = "3.3.0"
+insta = { version = "1.46.3", features = ["glob", "json"] }

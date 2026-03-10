@@ -15,6 +15,10 @@ use super::AstEquiv;
 /// Extract the symbol from a pattern-like AST.
 pub trait PatternSymbol {
     fn pattern_symbol(&self) -> Option<Symbol>;
+
+    fn is_named(&self, name: &str) -> bool {
+        self.pattern_symbol().map_or(false, |s| s.as_str() == name)
+    }
 }
 
 impl PatternSymbol for Ident {

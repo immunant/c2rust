@@ -1,7 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/snapshots/os-specific/types.macos.rs
-input_file: c2rust-transpile/tests/snapshots/os-specific/types.c
 ---
 #![allow(
     dead_code,
@@ -61,4 +60,3 @@ pub static mut int64var: int64_t = 0 as int64_t;
 pub static mut maxvar: intmax_t = 0 as intmax_t;
 #[no_mangle]
 pub static mut umaxvar: uintmax_t = 0 as uintmax_t;
-

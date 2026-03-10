@@ -2,6 +2,11 @@
 source: c2rust-refactor/tests/snapshots.rs
 expression: c2rust-refactor sink_lets --rewrite-mode alongside -- tests/snapshots/sink_lets.rs --edition 2021
 ---
+#[inline(never)]
+fn foo() -> i32 {
+    3
+}
+
 fn f() {
     {
         {

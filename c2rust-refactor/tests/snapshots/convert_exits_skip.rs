@@ -1,9 +1,7 @@
 #![allow(unused)]
 
 extern "C" {
-    #[no_mangle]
     fn abort() -> !;
-    #[no_mangle]
     fn exit(status: i32) -> !;
 }
 

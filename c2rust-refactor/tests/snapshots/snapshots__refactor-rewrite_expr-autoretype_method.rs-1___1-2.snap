@@ -1,0 +1,16 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: "c2rust-refactor rewrite_expr '1 + 1' 2 --rewrite-mode alongside -- tests/snapshots/autoretype_method.rs --edition 2021"
+---
+struct S;
+
+impl S {
+    fn f(&self) {}
+}
+
+fn main() {
+    S.f();
+
+    // Something to rewrite, to force generation of old.new
+    2;
+}

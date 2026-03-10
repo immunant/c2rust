@@ -46,6 +46,7 @@ rand = "0.7"
 fs-err = "3.3.0"
 insta = "1.46.3"
 c2rust-rust-tools = { path = "../c2rust-rust-tools", version = "0.22.1" }
+itertools = "0.14.0"
 
 [features]
 default = []

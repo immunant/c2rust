@@ -1,16 +1,17 @@
-use std::collections::{HashMap, HashSet};
-use log::{Level, info, log_enabled, warn};
-use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId};
-use rustc_middle::ty::{Instance, TyCtxt, TyKind, Ty};
-use rustc_ast::*;
+use log::{info, log_enabled, warn, Level};
 use rustc_ast::ptr::P;
+use rustc_ast::*;
+use rustc_hir::def::DefKind;
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::{Instance, Ty, TyCtxt, TyKind};
 use rustc_span::symbol::Ident;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast_builder::mk;
-use crate::ast_manip::{MutVisitNodes, visit_nodes};
+use crate::ast_manip::{visit_nodes, MutVisitNodes};
 use crate::command::{CommandState, Registry};
-use crate::driver::{Phase};
+use crate::context::TypeCompare;
+use crate::driver::Phase;
 use crate::expect;
 use crate::match_or;
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -18,8 +19,6 @@ use crate::reflect::Reflector;
 use crate::resolve;
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use crate::context::TypeCompare;
-
 
 /// Consult the types of the old and new externs to figure out where we'll need
 /// to add casts
@@ -65,14 +64,15 @@ pub fn fix_users(
 
         macro_rules! bail {
             ($msg:expr) => {{
-                warn!(concat!("canonicalize_externs: {:?} -> {:?}: ", $msg, " - skipping"),
-                      old_did, new_did);
+                warn!(
+                    concat!("canonicalize_externs: {:?} -> {:?}: ", $msg, " - skipping"),
+                    old_did, new_did
+                );
                 continue;
             }};
         }
 
-        let (old_sig, new_sig) = match (old_sig.no_bound_vars(),
-                                        new_sig.no_bound_vars()) {
+        let (old_sig, new_sig) = match (old_sig.no_bound_vars(), new_sig.no_bound_vars()) {
             (Some(x), Some(y)) => (x, y),
             _ => bail!("old or new sig had late-bound regions"),
         };
@@ -85,13 +85,17 @@ pub fn fix_users(
             bail!("old and new sig differ in variadicness");
         }
 
-        for (i, (&old_ty, &new_ty)) in old_sig.inputs().iter()
-            .zip(new_sig.inputs().iter()).enumerate() {
-                if !ty_compare.eq_tys(old_ty, new_ty) {
-                    ty_replace_map.insert((old_did, TyLoc::Arg(i)), (old_ty, new_ty));
-                    changed_fns.insert(old_did);
-                }
+        for (i, (&old_ty, &new_ty)) in old_sig
+            .inputs()
+            .iter()
+            .zip(new_sig.inputs().iter())
+            .enumerate()
+        {
+            if !ty_compare.eq_tys(old_ty, new_ty) {
+                ty_replace_map.insert((old_did, TyLoc::Arg(i)), (old_ty, new_ty));
+                changed_fns.insert(old_did);
             }
+        }
 
         let old_ty = old_sig.output();
         let new_ty = new_sig.output();
@@ -110,7 +114,10 @@ pub fn fix_users(
         let mut stuff = ty_replace_map.iter().collect::<Vec<_>>();
         stuff.sort_by_key(|&(&a, _)| a);
         for (&(did, loc), &(old, new)) in stuff {
-            info!("TYPE CHANGE: {:?}  @{:?}:  {:?} -> {:?}", did, loc, old, new);
+            info!(
+                "TYPE CHANGE: {:?}  @{:?}:  {:?} -> {:?}",
+                did, loc, old, new
+            );
         }
     }
 
@@ -129,37 +136,39 @@ pub fn fix_users(
         // TODO: handle assignments to replaced extern statics
 
         match &e.kind {
-            ExprKind::Call(ref f, _) => if let Some(&old_did) = path_ids.get(&f.id) {
-                // This expr is a call to a rewritten extern fn.  Add casts around args and around
-                // the whole expression, as directed by `ty_replace_map`.
-                let arg_count = expect!([e.kind] ExprKind::Call(_, ref a) => a.len());
-                info!("rewriting call - e = {:?}", e);
+            ExprKind::Call(ref f, _) => {
+                if let Some(&old_did) = path_ids.get(&f.id) {
+                    // This expr is a call to a rewritten extern fn.  Add casts around args and around
+                    // the whole expression, as directed by `ty_replace_map`.
+                    let arg_count = expect!([e.kind] ExprKind::Call(_, ref a) => a.len());
+                    info!("rewriting call - e = {:?}", e);
 
-                for i in 0 .. arg_count {
-                    let k = (old_did, TyLoc::Arg(i));
-                    if let Some(&(_old_ty, new_ty)) = ty_replace_map.get(&k) {
-                        expect!([e.kind] ExprKind::Call(_, ref mut args) => {
-                            if let Some(ty) = cx.opt_node_type(args[i].id) {
-                                if ty_compare.eq_tys(ty, new_ty) {
-                                    // We don't need to convert this type, it already matches
-                                    return;
+                    for i in 0..arg_count {
+                        let k = (old_did, TyLoc::Arg(i));
+                        if let Some(&(_old_ty, new_ty)) = ty_replace_map.get(&k) {
+                            expect!([e.kind] ExprKind::Call(_, ref mut args) => {
+                                if let Some(ty) = cx.opt_node_type(args[i].id) {
+                                    if ty_compare.eq_tys(ty, new_ty) {
+                                        // We don't need to convert this type, it already matches
+                                        return;
+                                    }
                                 }
-                            }
-                            // The new fn requires `new_ty`, where the old one needed `old_ty`.
-                            // TODO: fix paths in new_ty based on replacement_map
-                            let new_arg = make_cast(cx, &reflector, args[i].clone(), new_ty);
-                            args[i] = new_arg;
-                        });
-                        info!("  arg {} - rewrote e = {:?}", i, e);
+                                // The new fn requires `new_ty`, where the old one needed `old_ty`.
+                                // TODO: fix paths in new_ty based on replacement_map
+                                let new_arg = make_cast(cx, &reflector, args[i].clone(), new_ty);
+                                args[i] = new_arg;
+                            });
+                            info!("  arg {} - rewrote e = {:?}", i, e);
+                        }
+                    }
+
+                    if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
+                        // The new fn returns `new_ty`, where the old context requires `old_ty`.
+                        *e = make_cast(cx, &reflector, e.clone(), old_ty);
+                        info!("  return - rewrote e = {:?}", e);
                     }
                 }
-
-                if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
-                    // The new fn returns `new_ty`, where the old context requires `old_ty`.
-                    *e = make_cast(cx, &reflector, e.clone(), old_ty);
-                    info!("  return - rewrote e = {:?}", e);
-                }
-            },
+            }
 
             _ => {}
         }
@@ -170,7 +179,7 @@ fn make_cast<'a, 'tcx>(
     cx: &RefactorCtxt<'a, 'tcx>,
     reflector: &Reflector<'a, 'tcx>,
     expr: P<Expr>,
-    ty: Ty<'tcx>
+    ty: Ty<'tcx>,
 ) -> P<Expr> {
     let ty_ast = reflector.reflect_ty(ty);
 
@@ -186,14 +195,19 @@ fn make_cast<'a, 'tcx>(
     }
 
     if needs_transmute {
-        mk().call_expr(mk().path_expr(vec!["", "core", "mem", "transmute"]), vec![expr])
+        mk().call_expr(
+            mk().path_expr(vec!["", "core", "mem", "transmute"]),
+            vec![expr],
+        )
     } else if ty.is_unit() {
         // `{ let _ = expr; }` since the context expects a unit tuple.
         // `let` is technically a statement but its value is `()` which
         // is exactly what we need.
-        mk().block_expr(mk().block(vec![
-            mk().local_stmt(P(mk().local(mk().wild_pat(), None::<P<ast::Ty>>, Some(expr)))),
-        ]))
+        mk().block_expr(mk().block(vec![mk().local_stmt(P(mk().local(
+            mk().wild_pat(),
+            None::<P<ast::Ty>>,
+            Some(expr),
+        )))]))
     } else {
         let expr = if let ExprKind::AddrOf(_, mutability, _) = expr.kind {
             // We have to cast to *T where &T is the type of expr before casting
@@ -207,14 +221,14 @@ fn make_cast<'a, 'tcx>(
 }
 
 /// # `canonicalize_externs` Command
-/// 
+///
 /// Usage: `canonicalize_externs MOD_PATH`
-/// 
+///
 /// Marks: `target`
-/// 
+///
 /// Replace foreign items ("externs") with references to externs
 /// in a different crate or module.
-/// 
+///
 /// For each foreign `fn` or `static` marked `target`, if a foreign item with the
 /// same symbol exists in the module at `MOD_PATH` (which can be part of an
 /// external crate), it deletes the marked foreign item and replaces all its uses
@@ -226,17 +240,19 @@ pub struct CanonicalizeExterns {
 }
 
 fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
-    tcx.is_foreign_item(did) &&
-    crate::matches!([tcx.def_kind(did)] DefKind::Fn, DefKind::Static(_))
+    tcx.is_foreign_item(did) && crate::matches!([tcx.def_kind(did)] DefKind::Fn, DefKind::Static(_))
 }
 
 impl Transform for CanonicalizeExterns {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
         let tcx = cx.ty_ctxt();
 
-
         // List all extern fns in the target library module
-        let lib_path = self.path.split("::").map(|s| Ident::from_str(s)).collect::<Vec<_>>();
+        let lib_path = self
+            .path
+            .split("::")
+            .map(|s| Ident::from_str(s))
+            .collect::<Vec<_>>();
         let lib = resolve::resolve_absolute(tcx, &lib_path);
 
         let mut symbol_map = HashMap::new();
@@ -257,7 +273,6 @@ impl Transform for CanonicalizeExterns {
         for (&sym, &def) in &symbol_map {
             info!("  found symbol {} :: {:?} at {:?}", self.path, sym, def);
         }
-
 
         // Collect DefIds of marked externs whose symbols match something in `symbol_map`
 
@@ -286,9 +301,10 @@ impl Transform for CanonicalizeExterns {
         // Maps the NodeId of each rewritten path expr to the DefId of the old extern that was
         // previously referenced by that path.
         let mut path_ids = HashMap::new();
-        let new_paths = replace_map.iter().map(|(old_did, new_did)| {
-            (*old_did, cx.def_qpath(*new_did))
-        }).collect::<HashMap<_, _>>();
+        let new_paths = replace_map
+            .iter()
+            .map(|(old_did, new_did)| (*old_did, cx.def_qpath(*new_did)))
+            .collect::<HashMap<_, _>>();
         fold_resolved_paths_with_id(krate, cx, |id, qself, path, def| {
             let old_did = match_or!([def[0].opt_def_id()] Some(x) => x; return (qself, path));
             if let Some(new_path) = new_paths.get(&old_did) {
@@ -316,10 +332,11 @@ impl Transform for CanonicalizeExterns {
     }
 }
 
-
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
-    reg.register("canonicalize_externs", |args| mk(CanonicalizeExterns {
-        path: args[0].clone(),
-    }));
+    reg.register("canonicalize_externs", |args| {
+        mk(CanonicalizeExterns {
+            path: args[0].clone(),
+        })
+    });
 }

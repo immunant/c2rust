@@ -1,16 +1,16 @@
 use log::debug;
-use rustc_middle::ty::{self, ParamEnv, TyKind};
-use rustc_ast::*;
-use rustc_ast::token;
 use rustc_ast::ptr::P;
+use rustc_ast::token;
+use rustc_ast::*;
+use rustc_middle::ty::{self, ParamEnv, TyKind};
 use rustc_span::Symbol;
 
+use crate::ast_builder::mk;
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::matcher::{mut_visit_match_with, replace_expr, MatchCtxt};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
-use crate::ast_builder::mk;
 
 #[cfg(test)]
 mod tests;
@@ -36,8 +36,10 @@ impl Transform for RemoveRedundantCasts {
             let ot = mcx.bindings.get::<_, P<Ty>>("$ot").unwrap();
             let ot_ty = cx.node_type(ot.id);
             let ot_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ot_ty);
-            debug!("checking cast: {:?}, types: {:?} => {:?}",
-                   ast, oe_ty, ot_ty);
+            debug!(
+                "checking cast: {:?}, types: {:?} => {:?}",
+                ast, oe_ty, ot_ty
+            );
 
             let ast_mk = mk().id(ast.id).span(ast.span);
             match oe.kind {
@@ -152,9 +154,7 @@ fn check_double_cast<'tcx>(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> 
         // `x as *const T2` instead, but we can't remove both casts
         // if `t2_ty` is a pointer, since `e_ty` might have been
         // something else so we need a non-pointer-to-pointer cast
-        (SameWidth, SameWidth) if t2_ty == SimpleTy::Pointer => {
-            DoubleCastAction::RemoveInner
-        }
+        (SameWidth, SameWidth) if t2_ty == SimpleTy::Pointer => DoubleCastAction::RemoveInner,
 
         // 2 consecutive sign flips or extend-truncate
         // back to the same original type
@@ -276,7 +276,7 @@ impl SimpleTy {
             SimpleTy::Int(128, true) => LitIntType::Signed(IntTy::I128),
             SimpleTy::Size(false) => LitIntType::Unsigned(UintTy::Usize),
             SimpleTy::Size(true) => LitIntType::Signed(IntTy::Isize),
-            _ => panic!("ast_lit_int_type() called with non-integer type")
+            _ => panic!("ast_lit_int_type() called with non-integer type"),
         }
     }
 
@@ -284,7 +284,7 @@ impl SimpleTy {
         match self {
             SimpleTy::Float32 => FloatTy::F32,
             SimpleTy::Float64 => FloatTy::F64,
-            _ => panic!("as_float_ty() called with non-float type")
+            _ => panic!("as_float_ty() called with non-float type"),
         }
     }
 
@@ -300,7 +300,7 @@ impl SimpleTy {
             SimpleTy::Int(32, true) => i32::max_value() as u128,
             SimpleTy::Int(64, true) => i64::max_value() as u128,
             SimpleTy::Int(128, true) => i128::max_value() as u128,
-            _ => panic!("max_int_value() called with non-integer type")
+            _ => panic!("max_int_value() called with non-integer type"),
         }
     }
 }
@@ -321,7 +321,7 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
             TyKind::Ref(_, ty, _mutbl) => match ty.kind() {
                 TyKind::Array(..) => Array,
                 _ => Ref,
-            }
+            },
 
             TyKind::RawPtr(_) | TyKind::FnPtr(_) => Pointer,
 
@@ -351,7 +351,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
         let new_suffix = match ty {
             LitIntType::Signed(ty) => Some(ty.name()),
             LitIntType::Unsigned(ty) => Some(ty.name()),
-            LitIntType::Unsuffixed => None
+            LitIntType::Unsuffixed => None,
         };
         let new_lit = Lit {
             kind: LitKind::Int(i, ty),
@@ -374,7 +374,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
                 kind: sym_token_kind(fsym),
                 symbol: fsym,
                 suffix: Some(Symbol::intern(ty.name_str())),
-            }
+            },
         })
     };
 
@@ -394,8 +394,7 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
             mk_int(*i, ty.ast_lit_int_type())
         }
 
-        (LitKind::Int(i, _), SimpleTy::Float32)
-        | (LitKind::Int(i, _), SimpleTy::Float64) => {
+        (LitKind::Int(i, _), SimpleTy::Float32) | (LitKind::Int(i, _), SimpleTy::Float64) => {
             mk_float(i.to_string(), ty.ast_float_ty())
         }
 

@@ -5,9 +5,7 @@ expression: c2rust-refactor convert_exits --rewrite-mode alongside -- tests/snap
 #![allow(unused)]
 
 extern "C" {
-    #[no_mangle]
     fn abort() -> !;
-    #[no_mangle]
     fn exit(status: i32) -> !;
 }
 

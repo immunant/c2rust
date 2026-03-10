@@ -1,0 +1,16 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor test_one_plus_one --rewrite-mode alongside -- tests/snapshots/collapse_cfg.rs --edition 2021
+---
+// Test restoration of #[cfg] during macro collapsing.
+
+#[cfg(all())]
+mod a {}
+
+#[cfg(any())]
+mod b {}
+
+fn main() {
+    // Need something to rewrite, otherwise `-r alongside` won't actually produce the new file.
+    let x = 1 + 1;
+}

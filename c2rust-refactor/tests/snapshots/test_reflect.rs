@@ -19,5 +19,4 @@ fn main() {
     let f = Vec::pop;
     f(&mut v);
     Vec::drain(&mut v, ..);
-
 }

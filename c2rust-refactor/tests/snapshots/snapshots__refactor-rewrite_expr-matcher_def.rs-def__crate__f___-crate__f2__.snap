@@ -1,0 +1,16 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: "c2rust-refactor rewrite_expr 'def!(crate::f)()' 'crate::f2()' --rewrite-mode alongside -- tests/snapshots/matcher_def.rs --edition 2021"
+---
+fn f() {}
+fn f2() {}
+
+fn g() {
+    fn f() {}
+    f();
+}
+
+fn main() {
+    crate::f2();
+    g();
+}

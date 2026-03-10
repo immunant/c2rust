@@ -1,5 +1,5 @@
-use crate::ast_manip::visit_nodes;
 use crate::ast_manip::util::{namespace, UseInfo};
+use crate::ast_manip::visit_nodes;
 use crate::command::{CommandState, Registry};
 use crate::path_edit::fold_resolved_paths_with_id;
 use crate::transform::Transform;

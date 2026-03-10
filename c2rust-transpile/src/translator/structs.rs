@@ -101,9 +101,9 @@ impl<'a> Translation<'a> {
             // which Rust doesn't currently support; instead, we split
             // the structure into 2 structures like this:
             //   #[align(N)]
-            //   pub struct Foo(pub Foo_Inner);
+            //   pub struct Foo(pub C2Rust_Foo_Inner);
             //   #[packed(M)]
-            //   pub struct Foo_Inner {
+            //   pub struct C2Rust_Foo_Inner {
             //     ...fields...
             //   }
             //
@@ -136,7 +136,7 @@ impl<'a> Translation<'a> {
                 )
                 .struct_item(name, vec![outer_field], true);
 
-            // Emit `const X_PADDING: usize = size_of(Outer) - size_of(Inner);`
+            // Emit `const C2Rust_X_PADDING: usize = size_of(Outer) - size_of(Inner);`
             let padding_name = self
                 .type_converter
                 .borrow_mut()
@@ -418,7 +418,7 @@ impl<'a> Translation<'a> {
                         continue;
                     }
 
-                    let mut init = self.implicit_default_expr(ty.ctype, ctx.is_static)?;
+                    let mut init = self.implicit_default_expr(ctx, ty.ctype)?;
                     if !init.is_pure() {
                         return Err(TranslationError::generic(
                             "Expected no statements in field expression",
@@ -511,11 +511,11 @@ impl<'a> Translation<'a> {
     /// & padding fields
     pub fn convert_struct_zero_initializer(
         &self,
+        ctx: ExprContext,
         decl_id: CRecordId,
         name_decl_id: CDeclId,
         field_ids: &[CDeclId],
         platform_byte_size: u64,
-        is_static: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let name = self.resolve_decl_inner_name(name_decl_id);
         let reorganized_fields = self.get_field_types(decl_id, field_ids, platform_byte_size)?;
@@ -570,7 +570,7 @@ impl<'a> Translation<'a> {
                     use_inner_type,
                     ..
                 } => {
-                    let mut field_init = self.implicit_default_expr(ctype, is_static)?;
+                    let mut field_init = self.implicit_default_expr(ctx, ctype)?;
                     if !field_init.is_pure() {
                         return Err(TranslationError::generic(
                             "Expected no statements in field expression",
@@ -690,7 +690,7 @@ impl<'a> Translation<'a> {
                         stmts.push(mk().semi_stmt(method_call));
                     }
                     _ if contains_block(&param_expr) => {
-                        let name = self.renamer.borrow_mut().pick_name("rhs");
+                        let name = self.renamer.borrow_mut().pick_name("c2rust_rhs");
                         let name_ident = mk().mutbl().ident_pat(name.clone());
                         let temporary_stmt = mk().local(name_ident, None, Some(param_expr.clone()));
                         let assignment_expr = mk().method_call_expr(

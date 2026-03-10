@@ -85,7 +85,7 @@ struct Args {
     #[clap(long = "ddump-structures")]
     dump_structures: bool,
 
-    /// Generate readable 'current_block' values in relooper
+    /// Generate readable 'c2rust_current_block' values in relooper
     #[clap(long = "ddebug-labels")]
     debug_labels: bool,
 
@@ -138,6 +138,10 @@ struct Args {
     /// Output file in such a way that the refactoring tool can deduplicate code
     #[clap(short = 'r', long)]
     reorganize_definitions: bool,
+
+    /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
+    #[clap(long)]
+    postprocess: bool,
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
     #[clap(multiple = true, last(true))]
@@ -288,6 +292,7 @@ fn main() {
         overwrite_existing: args.overwrite_existing,
         reduce_type_annotations: args.reduce_type_annotations,
         reorganize_definitions: args.reorganize_definitions,
+        postprocess: args.postprocess,
         emit_modules: args.emit_modules,
         emit_build_files: args.emit_build_files,
         c2rust_dir: args.c2rust_dir,
