@@ -1,6 +1,7 @@
 use crate::c_ast::c_expr::{CExprId, CExprKind, OffsetOfKind};
+use crate::c_ast::c_stmt::{CStmtId, CStmtKind};
 use crate::c_ast::c_type::{CTypeId, CTypeKind};
-use crate::c_ast::{CDeclId, CDeclKind, CStmtId, CStmtKind, TypedAstContext};
+use crate::c_ast::{CDeclId, CDeclKind, TypedAstContext};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SomeId {
@@ -191,7 +192,7 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
 }
 
 fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
-    use crate::c_ast::CStmtKind::*;
+    use CStmtKind::*;
     match *kind {
         Expr(e) => intos![e],
         Label(s) => intos![s],
