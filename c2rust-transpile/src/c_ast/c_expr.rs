@@ -357,7 +357,7 @@ impl Display for CUnTypeOp {
 }
 
 impl CUnOp {
-    /// Check is the operator is rendered before or after is operand.
+    /// Check if the operator is rendered before or after its operand.
     pub fn is_prefix(&self) -> bool {
         !matches!(*self, CUnOp::PostIncrement | CUnOp::PostDecrement)
     }
