@@ -34,15 +34,21 @@ use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::translator::named_references::NamedReference;
 use crate::translator::variadic::{mk_va_list_copy, mk_va_list_ty};
 use c2rust_ast_builder::{mk, properties::*, Builder};
+use c2rust_ast_exporter::clang_ast::SrcSpan;
 use c2rust_ast_printer::pprust;
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
+use crate::c_ast::{
+    AsmOperand, CDecl, CDeclId, CDeclKind, CDeclSrcRange, CExprId, CExprKind, CFieldId, CLiteral,
+    CQualTypeId, CStmtId, CStmtKind, CTypeId, CTypeKind, CastKind, CommentContext, ConstIntExpr,
+    FileId, IntBase, Located, OffsetOfKind, SrcLoc, TypedAstContext, UnTypeOp,
+};
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
+use crate::TranslateMacros;
 use crate::{c_ast, format_translation_err};
-use crate::{c_ast::*, TranslateMacros};
 use crate::{ExternCrate, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 

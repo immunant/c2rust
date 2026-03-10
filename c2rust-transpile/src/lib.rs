@@ -30,8 +30,7 @@ use serde_derive::Serialize;
 pub use tempfile::TempDir;
 use which::which;
 
-use crate::c_ast::Printer;
-use crate::c_ast::*;
+use crate::c_ast::{ConversionContext, Printer};
 pub use crate::diagnostics::Diagnostic;
 use c2rust_ast_exporter as ast_exporter;
 
