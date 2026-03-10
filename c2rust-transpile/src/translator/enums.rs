@@ -2,9 +2,9 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
+use crate::c_ast::c_decl::{CDeclKind, CEnumConstantId, CEnumId};
 use crate::c_ast::c_expr::{CExprId, CExprKind, CLiteral, CUnOp, ConstIntExpr};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
-use crate::c_ast::{CDeclKind, CEnumConstantId, CEnumId};
 use crate::diagnostics::TranslationResult;
 use crate::translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation};
 use crate::with_stmts::WithStmts;

@@ -36,6 +36,7 @@ use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_exporter::clang_ast::SrcSpan;
 use c2rust_ast_printer::pprust;
 
+use crate::c_ast::c_decl::{CDecl, CDeclId, CDeclKind, CDeclSrcRange, CFieldId};
 use crate::c_ast::c_expr::{
     CBinOp, CExprId, CExprKind, CLiteral, CUnOp, CUnTypeOp, CastKind, ConstIntExpr, IntBase,
     OffsetOfKind,
@@ -43,10 +44,7 @@ use crate::c_ast::c_expr::{
 use crate::c_ast::c_stmt::{AsmOperand, CStmtId, CStmtKind};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{DFExpr, SomeId};
-use crate::c_ast::{
-    CDecl, CDeclId, CDeclKind, CDeclSrcRange, CFieldId, CommentContext, FileId, Located,
-    TypedAstContext,
-};
+use crate::c_ast::{CommentContext, FileId, Located, TypedAstContext};
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;

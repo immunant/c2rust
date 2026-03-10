@@ -1,7 +1,6 @@
+use crate::c_ast::c_decl::{CDeclId, CDeclKind, CEnumId, CRecordId, CTypedefId};
 use crate::c_ast::c_expr::CExprId;
-use crate::c_ast::{
-    Attribute, CDeclId, CDeclKind, CEnumId, CRecordId, CTypedefId, Located, TypedAstContext,
-};
+use crate::c_ast::{Attribute, Located, TypedAstContext};
 use std::fmt::{self, Debug, Display};
 use std::ops::Index;
 
