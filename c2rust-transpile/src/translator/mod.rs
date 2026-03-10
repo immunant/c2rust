@@ -36,12 +36,15 @@ use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_exporter::clang_ast::SrcSpan;
 use c2rust_ast_printer::pprust;
 
+use crate::c_ast::c_expr::{
+    CBinOp, CExprId, CExprKind, CLiteral, CUnOp, CUnTypeOp, CastKind, ConstIntExpr, IntBase,
+    OffsetOfKind,
+};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::{
-    AsmOperand, CBinOp, CDecl, CDeclId, CDeclKind, CDeclSrcRange, CExprId, CExprKind, CFieldId,
-    CLiteral, CStmtId, CStmtKind, CUnOp, CUnTypeOp, CastKind, CommentContext, ConstIntExpr, FileId,
-    IntBase, Located, OffsetOfKind, TypedAstContext,
+    AsmOperand, CDecl, CDeclId, CDeclKind, CDeclSrcRange, CFieldId, CStmtId, CStmtKind,
+    CommentContext, FileId, Located, TypedAstContext,
 };
 use crate::cfg;
 use crate::convert_type::TypeConverter;
@@ -1712,9 +1715,9 @@ impl<'c> Translation<'c> {
         expr_id: Option<CExprId>,
         qtype: CQualTypeId,
     ) -> bool {
-        use crate::c_ast::CBinOp::{Add, Divide, Modulus, Multiply, Subtract};
-        use crate::c_ast::CUnOp::{AddressOf, Negate};
-        use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
+        use crate::c_ast::c_expr::CBinOp::{Add, Divide, Modulus, Multiply, Subtract};
+        use crate::c_ast::c_expr::CUnOp::{AddressOf, Negate};
+        use crate::c_ast::c_expr::CastKind::{IntegralToPointer, PointerToIntegral};
 
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
