@@ -209,7 +209,7 @@ impl ActionsBuilder {
                     self.push_operand(&cno.dst, loc, WhichPlace::Operand(0));
                     self.push_operand(&cno.count, loc, WhichPlace::Operand(0));
                 }
-            }
+            },
             StatementKind::Nop => {}
         }
     }
