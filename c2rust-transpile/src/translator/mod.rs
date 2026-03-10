@@ -37,11 +37,12 @@ use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_exporter::clang_ast::SrcSpan;
 use c2rust_ast_printer::pprust;
 
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::{
     AsmOperand, CDecl, CDeclId, CDeclKind, CDeclSrcRange, CExprId, CExprKind, CFieldId, CLiteral,
-    CQualTypeId, CStmtId, CStmtKind, CTypeId, CTypeKind, CastKind, CommentContext, ConstIntExpr,
-    FileId, IntBase, Located, OffsetOfKind, SrcLoc, TypedAstContext, UnTypeOp,
+    CStmtId, CStmtKind, CastKind, CommentContext, ConstIntExpr, FileId, IntBase, Located,
+    OffsetOfKind, TypedAstContext, UnTypeOp,
 };
 use crate::cfg;
 use crate::convert_type::TypeConverter;
@@ -50,7 +51,7 @@ use crate::with_stmts::WithStmts;
 use crate::TranslateMacros;
 use crate::{c_ast, format_translation_err};
 use crate::{ExternCrate, TranspilerConfig};
-use c2rust_ast_exporter::clang_ast::LRValue;
+use c2rust_ast_exporter::clang_ast::{LRValue, SrcLoc};
 
 mod assembly;
 mod atomics;

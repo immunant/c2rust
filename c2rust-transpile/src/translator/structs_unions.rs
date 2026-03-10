@@ -7,9 +7,9 @@ use std::ops::Index;
 use super::named_references::NamedReference;
 use super::TranslationError;
 use crate::c_ast;
+use crate::c_ast::c_type::{CQualTypeId, CTypeId};
 use crate::c_ast::{
-    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CFieldId, CQualTypeId, CRecordId, CTypeId,
-    MemberKind,
+    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CFieldId, CRecordId, MemberKind,
 };
 use crate::diagnostics::TranslationResult;
 use crate::translator::variadic::mk_va_list_ty;
