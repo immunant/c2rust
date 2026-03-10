@@ -1,8 +1,8 @@
+use crate::c_ast::c_type::{CQualTypeId, CType, CTypeId, CTypeKind, Qualifiers};
 use crate::c_ast::{
     AsmOperand, Attribute, CBinOp, CDecl, CDeclId, CDeclKind, CExpr, CExprId, CExprKind, CLiteral,
-    CQualTypeId, CStmt, CStmtId, CStmtKind, CType, CTypeId, CTypeKind, CUnOp, CUnTypeOp, CastKind,
-    ConstIntExpr, Designator, DisplaySrcSpan, IntBase, MemberKind, OffsetOfKind, Qualifiers,
-    TypedAstContext,
+    CStmt, CStmtId, CStmtKind, CUnOp, CUnTypeOp, CastKind, ConstIntExpr, Designator,
+    DisplaySrcSpan, IntBase, MemberKind, OffsetOfKind, TypedAstContext,
 };
 use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;

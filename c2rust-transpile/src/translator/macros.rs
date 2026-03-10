@@ -4,7 +4,8 @@ use log::{info, trace};
 use proc_macro2::{Span, TokenStream};
 use syn::{Expr, MacroDelimiter};
 
-use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::{CDeclId, CExprId};
 use crate::diagnostics::{TranslationError, TranslationResult};
 use crate::translator::{ConvertedDecl, ExprContext, MacroExpansion, Translation};
 use crate::with_stmts::WithStmts;

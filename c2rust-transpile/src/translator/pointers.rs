@@ -5,9 +5,8 @@ use c2rust_ast_exporter::clang_ast::LRValue;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
-use crate::c_ast::{
-    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CUnOp, CastKind,
-};
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::{CExprId, CExprKind, CLiteral, CUnOp, CastKind};
 use crate::diagnostics::{TranslationError, TranslationErrorKind, TranslationResult};
 use crate::translator::{
     cast_int, format_translation_err, neg_expr, transmute_expr, unwrap_function_pointer,

@@ -1,6 +1,7 @@
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind, Qualifiers};
 use crate::c_ast::{
-    CBinOp, CDeclId, CDeclKind, CExprId, CExprKind, CLiteral, CQualTypeId, CStmtId, CStmtKind,
-    CTypeId, CTypeKind, CUnOp, MemberKind, OffsetOfKind, Qualifiers, TypedAstContext,
+    CBinOp, CDeclId, CDeclKind, CExprId, CExprKind, CLiteral, CStmtId, CStmtKind, CUnOp,
+    MemberKind, OffsetOfKind, TypedAstContext,
 };
 use std::io::{Result, Write};
 
