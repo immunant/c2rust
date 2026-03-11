@@ -1,5 +1,5 @@
 use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
-use crate::iterators::{DFNodes, SomeId};
+use crate::iterators::DFNodes;
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
@@ -3184,3 +3184,34 @@ c = {c}
         locs.sort_unstable_by_key(|&loc| ctx.cmp_loc_include(loc));
     }
 }
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+pub enum SomeId {
+    Stmt(CStmtId),
+    Expr(CExprId),
+    Decl(CDeclId),
+    Type(CTypeId),
+}
+
+macro_rules! from_some_id {
+    ( $field_type:ty, $con_name:ident, $proj_name:ident ) => {
+        impl From<$field_type> for SomeId {
+            fn from(a: $field_type) -> Self {
+                SomeId::$con_name(a)
+            }
+        }
+        impl SomeId {
+            pub fn $proj_name(self) -> Option<$field_type> {
+                match self {
+                    SomeId::$con_name(x) => Some(x),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+from_some_id!(CExprId, Expr, expr);
+from_some_id!(CStmtId, Stmt, stmt);
+from_some_id!(CDeclId, Decl, decl);
+from_some_id!(CTypeId, Type, type_);
