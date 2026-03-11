@@ -1,6 +1,6 @@
 use crate::c_ast::c_decl::CDeclId;
 use crate::c_ast::c_expr::{CExprId, ConstIntExpr};
-use crate::c_ast::{Attribute, Located, TypedAstContext};
+use crate::c_ast::{Attribute, Located, SomeId, TypedAstContext};
 use std::fmt::Debug;
 use std::ops::Index;
 
@@ -92,6 +92,111 @@ pub struct AsmOperand {
 }
 
 impl TypedAstContext {
+    pub(super) fn add_stmt_parents(&mut self, id: CStmtId, kind: &CStmtKind) {
+        use CStmtKind::*;
+        let parent = SomeId::Stmt(id);
+
+        match *kind {
+            Label(stmt) => {
+                self.add_parent(stmt, parent);
+            }
+
+            Case(expr, stmt, _) => {
+                self.add_parent(expr, parent);
+                self.add_parent(stmt, parent);
+            }
+
+            Default(stmt) => {
+                self.add_parent(stmt, parent);
+            }
+
+            Compound(ref stmts) => {
+                for &stmt in stmts {
+                    self.add_parent(stmt, parent);
+                }
+            }
+
+            Expr(expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Empty => (),
+
+            If {
+                scrutinee,
+                true_variant,
+                false_variant,
+            } => {
+                self.add_parent(scrutinee, parent);
+                self.add_parent(true_variant, parent);
+
+                if let Some(false_variant) = false_variant {
+                    self.add_parent(false_variant, parent);
+                }
+            }
+            Switch { scrutinee, body } => {
+                self.add_parent(scrutinee, parent);
+                self.add_parent(body, parent);
+            }
+
+            While { condition, body } => {
+                self.add_parent(condition, parent);
+                self.add_parent(body, parent);
+            }
+
+            DoWhile { body, condition } => {
+                self.add_parent(body, parent);
+                self.add_parent(condition, parent);
+            }
+
+            ForLoop {
+                init,
+                condition,
+                increment,
+                body,
+            } => {
+                if let Some(init) = init {
+                    self.add_parent(init, parent);
+                }
+
+                if let Some(condition) = condition {
+                    self.add_parent(condition, parent);
+                }
+
+                if let Some(increment) = increment {
+                    self.add_parent(increment, parent);
+                }
+
+                self.add_parent(body, parent);
+            }
+
+            Goto(..) => (),
+            Break => (),
+            Continue => (),
+
+            Return(expr) => {
+                if let Some(expr) = expr {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            Decls(ref decls) => {
+                for &decl in decls {
+                    self.add_parent(decl, parent);
+                }
+            }
+
+            Asm { .. } => (),
+
+            Attributed {
+                attributes: _,
+                substatement,
+            } => {
+                self.add_parent(substatement, parent);
+            }
+        }
+    }
+
     pub fn is_const_stmt(&self, stmt: CStmtId) -> bool {
         let is_const = |stmt| self.is_const_stmt(stmt);
         let is_const_expr = |expr| self.is_const_expr(expr);

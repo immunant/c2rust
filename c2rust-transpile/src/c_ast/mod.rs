@@ -38,11 +38,15 @@ pub struct TypedAstContext {
     /// iterated over export all defined types during translation.
     c_decls: IndexMap<CDeclId, CDecl>,
 
+    /// The parent nodes of each CExprId, CStmtId or CDeclId node.
+    /// Most nodes have exactly one parent, or zero if they are a top-level node.
+    ///
+    /// Expressions appearing inside an `InitListExpr` can have two parents,
+    /// as they are shared between the semantic form and the syntactic form.
+    parents: HashMap<SomeId, Vec<SomeId>>,
+
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
-
-    /// record fields and enum constants
-    pub parents: HashMap<CDeclId, CDeclId>,
 
     /// Mapping from [`FileId`] to [`SrcFile`]. Deduplicated by file path.
     files: Vec<SrcFile>,
@@ -209,6 +213,32 @@ impl TypedAstContext {
             include_map,
             ..Default::default()
         }
+    }
+
+    fn add_parent(&mut self, child: impl Into<SomeId>, parent: impl Into<SomeId>) {
+        self.parents
+            .entry(child.into())
+            .or_default()
+            .push(parent.into());
+    }
+
+    /// Returns the parent nodes of `child`.
+    pub fn parents(&self, child: impl Into<SomeId>) -> &[SomeId] {
+        self.parents
+            .get(&child.into())
+            .map(AsRef::as_ref)
+            .unwrap_or_default()
+    }
+
+    /// If `child` has a parent node, returns the first one.
+    pub fn parent(&self, child: impl Into<SomeId>) -> Option<SomeId> {
+        self.parents(child).get(0).copied()
+    }
+
+    /// If `child` has a parent node, and the first one is of the given type `T`, returns it.
+    pub fn parent_with_type<T: TryFrom<SomeId>>(&self, child: impl Into<SomeId>) -> Option<T> {
+        self.parent(child)
+            .and_then(|parent| T::try_from(parent).ok())
     }
 
     pub fn display_loc(&self, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
@@ -725,6 +755,16 @@ macro_rules! from_some_id {
         impl From<$field_type> for SomeId {
             fn from(a: $field_type) -> Self {
                 SomeId::$con_name(a)
+            }
+        }
+        impl TryFrom<SomeId> for $field_type {
+            type Error = ();
+
+            fn try_from(id: SomeId) -> Result<Self, Self::Error> {
+                match id {
+                    SomeId::$con_name(x) => Ok(x),
+                    _ => Err(()),
+                }
             }
         }
         impl SomeId {

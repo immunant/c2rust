@@ -148,6 +148,77 @@ pub struct CDeclSrcRange {
 }
 
 impl TypedAstContext {
+    pub(super) fn add_decl_parents(&mut self, id: CDeclId, kind: &CDeclKind) {
+        use CDeclKind::*;
+        let parent = SomeId::Decl(id);
+
+        match *kind {
+            Function {
+                ref parameters,
+                body,
+                ..
+            } => {
+                for &parameter in parameters {
+                    self.add_parent(parameter, parent);
+                }
+
+                if let Some(body) = body {
+                    self.add_parent(body, parent);
+                }
+            }
+
+            Variable { initializer, .. } => {
+                if let Some(initializer) = initializer {
+                    self.add_parent(initializer, parent);
+                }
+            }
+
+            Enum {
+                ref variants,
+                integral_type,
+                ..
+            } => {
+                if integral_type.is_some() {
+                    for &variant in variants {
+                        self.add_parent(variant, parent);
+                    }
+                }
+            }
+
+            EnumConstant { .. } => (),
+
+            Typedef { .. } => (),
+
+            Struct { ref fields, .. } => {
+                if let Some(fields) = fields {
+                    for &field in fields {
+                        self.add_parent(field, parent);
+                    }
+                }
+            }
+
+            Union { ref fields, .. } => {
+                if let Some(fields) = fields {
+                    for &field in fields {
+                        self.add_parent(field, parent);
+                    }
+                }
+            }
+
+            Field { .. } => (),
+
+            MacroObject { .. } => (),
+
+            MacroFunction { .. } => (),
+
+            NonCanonicalDecl { .. } => (),
+
+            StaticAssert { assert_expr, .. } => {
+                self.add_parent(assert_expr, parent);
+            }
+        }
+    }
+
     /// Construct a map from top-level decls in the main file to their source ranges.
     pub fn top_decl_locs(&self) -> IndexMap<CDeclId, CDeclSrcRange> {
         let mut name_loc_map = IndexMap::new();
@@ -388,7 +459,9 @@ impl TypedAstContext {
                         if let CDeclKind::EnumConstant { .. } = self.c_decls[&decl_id].kind {
                             // Special case for enums.  The enum constant is used, so the whole
                             // enum is also used.
-                            let parent_id = self.parents[&decl_id];
+                            let parent_id = self
+                                .parent_with_type(decl_id)
+                                .expect("Enum constant does not have a parent Enum");
                             if wanted.insert(parent_id) {
                                 to_walk.push(parent_id);
                             }

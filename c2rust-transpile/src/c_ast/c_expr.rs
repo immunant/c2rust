@@ -541,6 +541,164 @@ pub enum Designator {
 }
 
 impl TypedAstContext {
+    pub(super) fn add_expr_parents(&mut self, id: CExprId, kind: &CExprKind) {
+        use CExprKind::*;
+        let parent = SomeId::Expr(id);
+
+        match *kind {
+            Literal(..) => (),
+
+            Unary(_, _, expr, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            UnaryType(_, _, expr, _) => {
+                if let Some(expr) = expr {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            OffsetOf(_, ref kind) => match *kind {
+                OffsetOfKind::Constant(..) => (),
+                OffsetOfKind::Variable(_, _, expr) => {
+                    self.add_parent(expr, parent);
+                }
+            },
+
+            Binary(_, _, lhs, rhs, _, _) => {
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            ImplicitCast(_, expr, _, _, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            ExplicitCast(_, expr, _, _, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            ConstantExpr(_, expr, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            DeclRef(..) => (),
+
+            Call(_, func, ref args) => {
+                self.add_parent(func, parent);
+
+                for &arg in args {
+                    self.add_parent(arg, parent);
+                }
+            }
+
+            Member(_, expr, _, _, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            ArraySubscript(_, lhs, rhs, _) => {
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            Conditional(_, cond, lhs, rhs) => {
+                self.add_parent(cond, parent);
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            BinaryConditional(_, cond, rhs) => {
+                self.add_parent(cond, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            InitList(_, ref exprs, _, syntactic_form) => {
+                for &expr in exprs {
+                    self.add_parent(expr, parent);
+                }
+
+                if let Some(syntactic_form) = syntactic_form {
+                    self.add_parent(syntactic_form, parent);
+                }
+            }
+
+            ImplicitValueInit(..) => (),
+
+            Paren(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            CompoundLiteral(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Predefined(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Statements(_, stmt) => {
+                self.add_parent(stmt, parent);
+            }
+
+            VAArg(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            ShuffleVector(_, ref exprs) => {
+                for &expr in exprs {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            ConvertVector(_, ref exprs) => {
+                for &expr in exprs {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            DesignatedInitExpr(_, _, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Choose(_, cond, lhs, rhs, _) => {
+                self.add_parent(cond, parent);
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            Atomic {
+                ptr,
+                order,
+                val1,
+                order_fail,
+                val2,
+                weak,
+                ..
+            } => {
+                self.add_parent(ptr, parent);
+                self.add_parent(order, parent);
+
+                if let Some(val1) = val1 {
+                    self.add_parent(val1, parent);
+                }
+
+                if let Some(order_fail) = order_fail {
+                    self.add_parent(order_fail, parent);
+                }
+
+                if let Some(val2) = val2 {
+                    self.add_parent(val2, parent);
+                }
+
+                if let Some(weak) = weak {
+                    self.add_parent(weak, parent);
+                }
+            }
+
+            BadExpr => (),
+        }
+    }
+
     pub fn is_null_expr(&self, expr_id: CExprId) -> bool {
         use CExprKind::*;
         match self[expr_id].kind {
