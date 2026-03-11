@@ -292,11 +292,11 @@ fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     let output_path = build_dir.join("rust-toolchain.toml");
     let toolchain = tcfg.edition.toolchain().strip_prefix("+").unwrap();
     let output = format!(
-        "
+        r#"
 [toolchain]
-channel = \"{toolchain}\"
-components = [\"rustfmt\"]
-"
+channel = "{toolchain}"
+components = ["rustfmt"]
+"#
     );
     let output = output.trim_start();
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
