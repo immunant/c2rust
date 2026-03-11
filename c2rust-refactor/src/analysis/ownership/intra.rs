@@ -593,6 +593,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     // TODO: is this needed?
                     self.propagate_perm(Perm::write(), pl_perm);
                 }
+                StatementKind::Intrinsic(..) => unimplemented!(),
                 StatementKind::FakeRead(..)
                 | StatementKind::SetDiscriminant { .. }
                 | StatementKind::StorageLive(_)
@@ -600,7 +601,6 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 | StatementKind::Retag { .. }
                 | StatementKind::AscribeUserType(..)
                 | StatementKind::Coverage(..)
-                | StatementKind::Intrinsic(..)
                 | StatementKind::Nop => {}
             }
         }
