@@ -36,7 +36,7 @@ use crate::translator::variadic::{mk_va_list_copy, mk_va_list_ty};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust;
 
-use crate::c_ast::iterators::{DFExpr, SomeId};
+use crate::c_ast::iterators::DFExpr;
 use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
