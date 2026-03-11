@@ -1,39 +1,8 @@
-use crate::c_ast::c_decl::{CDeclId, CDeclKind};
-use crate::c_ast::c_expr::{CExprId, CExprKind, OffsetOfKind};
-use crate::c_ast::c_stmt::{CStmtId, CStmtKind};
-use crate::c_ast::c_type::{CTypeId, CTypeKind};
-use crate::c_ast::TypedAstContext;
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
-pub enum SomeId {
-    Stmt(CStmtId),
-    Expr(CExprId),
-    Decl(CDeclId),
-    Type(CTypeId),
-}
-
-macro_rules! from_some_id {
-    ( $field_type:ty, $con_name:ident, $proj_name:ident ) => {
-        impl From<$field_type> for SomeId {
-            fn from(a: $field_type) -> Self {
-                SomeId::$con_name(a)
-            }
-        }
-        impl SomeId {
-            pub fn $proj_name(self) -> Option<$field_type> {
-                match self {
-                    SomeId::$con_name(x) => Some(x),
-                    _ => None,
-                }
-            }
-        }
-    };
-}
-
-from_some_id!(CExprId, Expr, expr);
-from_some_id!(CStmtId, Stmt, stmt);
-from_some_id!(CDeclId, Decl, decl);
-from_some_id!(CTypeId, Type, type_);
+use crate::c_ast::c_decl::CDeclKind;
+use crate::c_ast::c_expr::{CExprKind, OffsetOfKind};
+use crate::c_ast::c_stmt::CStmtKind;
+use crate::c_ast::c_type::CTypeKind;
+use crate::c_ast::{SomeId, TypedAstContext};
 
 /// Like the vec macro except that it calls the into method on all list elements
 macro_rules! intos {

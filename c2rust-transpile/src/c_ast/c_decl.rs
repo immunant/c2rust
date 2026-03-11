@@ -1,8 +1,8 @@
 use crate::c_ast::c_expr::{CExprId, CExprKind, ConstIntExpr};
 use crate::c_ast::c_stmt::CStmtId;
 use crate::c_ast::c_type::{CFuncTypeId, CQualTypeId, CTypeKind};
-use crate::c_ast::iterators::{DFNodes, SomeId};
-use crate::c_ast::{Attribute, Located, SrcLoc, TypedAstContext};
+use crate::c_ast::iterators::DFNodes;
+use crate::c_ast::{Attribute, Located, SomeId, SrcLoc, TypedAstContext};
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashSet;
 use std::fmt::Debug;

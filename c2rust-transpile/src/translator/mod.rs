@@ -43,8 +43,8 @@ use crate::c_ast::c_expr::{
 };
 use crate::c_ast::c_stmt::{AsmOperand, CStmtId, CStmtKind};
 use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
-use crate::c_ast::iterators::{DFExpr, SomeId};
-use crate::c_ast::{CommentContext, FileId, Located, SrcLoc, TypedAstContext};
+use crate::c_ast::iterators::DFExpr;
+use crate::c_ast::{CommentContext, FileId, Located, SomeId, SrcLoc, TypedAstContext};
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
