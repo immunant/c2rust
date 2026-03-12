@@ -5,7 +5,7 @@ use crate::typedef::{int_ptr, my_int, rust_entry};
 use std::ffi::c_int;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn entry() -> c_int;
 }
 
