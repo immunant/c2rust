@@ -314,7 +314,15 @@ fn test_matcher_lit() {
 fn test_matcher_lit_parse() {
     refactor("rewrite_expr")
         .command_args(&["$x:Lit", "parse!(dbg!($x))"])
-        .named("matcher_lit.rs")
+        .named("matcher_lit_parse.rs")
+        .test();
+}
+
+#[test]
+fn test_matcher_pat_mut() {
+    refactor("rewrite_stmts")
+        .command_args(&["let mut __p = __e;", "let __p = __e + 1;"])
+        .named("matcher_pat_mut.rs")
         .test();
 }
 
