@@ -293,7 +293,7 @@ pub fn join_visibility(vis1: &VisibilityKind, vis2: &VisibilityKind) -> Visibili
                 Restricted {
                     path: P(Path::from_ident(Ident::new(kw::Crate, DUMMY_SP))),
                     id: DUMMY_NODE_ID,
-                    shorthand: false,
+                    shorthand: true,
                 }
             }
         }
