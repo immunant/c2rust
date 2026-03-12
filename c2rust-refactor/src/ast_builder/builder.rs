@@ -1269,7 +1269,7 @@ impl Builder {
         let name = name.make(&self);
         P(Pat {
             id: self.id,
-            kind: PatKind::Ident(BindingAnnotation(ByRef::No, Mutability::Not), name, None),
+            kind: PatKind::Ident(BindingAnnotation(ByRef::No, self.mutbl), name, None),
             span: self.span,
             tokens: None,
         })
