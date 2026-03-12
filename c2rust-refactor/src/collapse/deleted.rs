@@ -44,11 +44,12 @@ struct CollectDeletedNodes<'a, 'ast> {
 }
 
 impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
-    fn handle_seq<T>(&mut self, parent: NodeId, nodes: &'ast [T])
+    fn handle_seq<T, I>(&mut self, parent: NodeId, nodes: I)
     where
-        T: GetNodeId + ListNodeIds + AsMacNodeRef,
+        I: IntoIterator<Item = &'ast T>,
+        T: GetNodeId + ListNodeIds + AsMacNodeRef + 'ast,
     {
-        let mut history = Vec::with_capacity(nodes.len());
+        let mut history = Vec::new();
         for n in nodes {
             let id = n.get_node_id();
             if self.table.empty_invocs.contains_key(&id) {
@@ -81,25 +82,7 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
                 self.handle_seq(x.id, elements);
             }
             ExprKind::MethodCall(_, receiver, elements, _) => {
-                let mut history = Vec::with_capacity(elements.len() + 1);
-                for n in std::iter::once(receiver).chain(elements.iter()) {
-                    let id = n.get_node_id();
-                    if self.table.empty_invocs.contains_key(&id) {
-                        let origins = n
-                            .list_node_ids()
-                            .into_iter()
-                            .map(|id| self.node_map.save_origin(id))
-                            .collect();
-                        self.deleted.push(DeletedNode {
-                            parent: x.id,
-                            preds: history.clone(),
-                            node: n.as_mac_node_ref(),
-                            saved_origins: origins,
-                        });
-                    } else {
-                        history.push(id);
-                    }
-                }
+                self.handle_seq(x.id, std::iter::once(receiver).chain(elements.iter()));
             }
             _ => {}
         }
