@@ -1260,6 +1260,16 @@ impl Builder {
         })
     }
 
+    pub fn err_expr(self) -> P<Expr> {
+        P(Expr {
+            id: self.id,
+            kind: ExprKind::Err,
+            span: self.span,
+            attrs: self.attrs.into(),
+            tokens: None,
+        })
+    }
+
     // Patterns
 
     pub fn ident_pat<I>(self, name: I) -> P<Pat>

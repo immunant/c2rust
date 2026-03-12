@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
+use crate::ast_builder::mk;
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::ast_manip::{GetNodeId, ListNodeIds, MutVisit, Visit};
 use crate::match_or;
@@ -259,10 +260,14 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
                 self.restore_seq(id, elements);
             }
             ExprKind::MethodCall(_, receiver, elements, _) => {
+                // Merge the receiver and args into a single list.
                 let mut all = Vec::with_capacity(elements.len() + 1);
-                all.push(receiver.clone());
+                all.push(std::mem::replace(receiver, mk().err_expr()));
                 all.extend(std::mem::take(elements).into_iter());
+
                 self.restore_seq(id, &mut all);
+
+                // Pull the new receiver and elements out of the merged list.
                 *receiver = all.remove(0);
                 *elements = all;
             }
