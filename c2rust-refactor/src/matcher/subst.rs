@@ -32,6 +32,7 @@ use rustc_span::symbol::Ident;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 
+use crate::ast_builder::mk;
 use crate::ast_manip::util::PatternSymbol;
 use crate::ast_manip::{AstNode, MutVisit};
 use crate::command::CommandState;
@@ -82,6 +83,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             {
                 let nt = match bv.clone() {
                     BindingValue::Path(x) => Nonterminal::NtPath(P(x)),
+                    BindingValue::Lit(x) => Nonterminal::NtLiteral(mk().span(x.span).lit_expr(x)),
                     BindingValue::Expr(x) => Nonterminal::NtExpr(x),
                     BindingValue::Pat(x) => Nonterminal::NtPat(x),
                     BindingValue::Ty(x) => Nonterminal::NtTy(x),

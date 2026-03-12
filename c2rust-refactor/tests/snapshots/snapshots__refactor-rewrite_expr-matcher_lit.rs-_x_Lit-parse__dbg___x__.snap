@@ -1,0 +1,8 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+assertion_line: 198
+expression: "c2rust-refactor rewrite_expr '$x:Lit' 'parse!(dbg!($x))' --rewrite-mode alongside -- tests/snapshots/matcher_lit.rs --edition 2021"
+---
+fn main() {
+    let x = dbg!(123);
+}

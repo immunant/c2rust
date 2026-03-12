@@ -311,6 +311,14 @@ fn test_matcher_lit() {
 }
 
 #[test]
+fn test_matcher_lit_parse() {
+    refactor("rewrite_expr")
+        .command_args(&["$x:Lit", "parse!(dbg!($x))"])
+        .named("matcher_lit.rs")
+        .test();
+}
+
+#[test]
 fn test_matcher_parse() {
     refactor("rewrite_expr")
         .command_args(&["$e:Expr", "parse!(dbg!($e))"])
