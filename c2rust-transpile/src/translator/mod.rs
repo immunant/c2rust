@@ -1535,9 +1535,7 @@ impl<'c> Translation<'c> {
         let comment_context = CommentContext::new(&mut ast_context);
         let mut type_converter = TypeConverter::new();
 
-        if tcfg.translate_valist {
-            type_converter.translate_valist = true
-        }
+        type_converter.translate_valist = tcfg.translate_valist;
 
         let main_file = ast_context
             .find_file_id(main_file)
