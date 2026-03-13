@@ -332,6 +332,11 @@ fn test_factorial() {
 }
 
 #[test]
+fn test_fn_attrs() {
+    transpile("fn_attrs.c").run();
+}
+
+#[test]
 fn test_gotos() {
     transpile("gotos.c").run();
 }
