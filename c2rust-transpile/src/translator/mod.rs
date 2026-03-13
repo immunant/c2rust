@@ -3399,6 +3399,12 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment("intrinsics"));
             path.push(mk().path_segment_with_args("pref_align_of", mk().angle_bracketed_args(tys)));
         } else {
+            if preferred {
+                warn!(
+                    "using `core::mem::align_of` instead of `core::intrinsics::pref_align_of` \
+                    for preferred alignment (`__alignof`/`__alignof__`) as the latter has been removed in Rust"
+                );
+            }
             path.push(mk().path_segment("mem"));
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
         }
