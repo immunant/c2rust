@@ -3,6 +3,21 @@ use crate::format_translation_err;
 use super::*;
 use std::sync::atomic::Ordering;
 
+fn order_name(order: Ordering) -> &'static str {
+    use Ordering::*;
+    match order {
+        SeqCst => "seqcst",
+        AcqRel => "acqrel",
+        Acquire => "acquire",
+        Release => "release",
+        Relaxed => "relaxed",
+        _ => unreachable!(
+            "new variants added to `{}`",
+            std::any::type_name::<Ordering>()
+        ),
+    }
+}
+
 impl<'c> Translation<'c> {
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
         let val = self.ast_context.unwrap_cast_expr(expr);
@@ -70,21 +85,6 @@ impl<'c> Translation<'c> {
             })
         }
 
-        fn order_name(order: Ordering) -> &'static str {
-            use Ordering::*;
-            match order {
-                SeqCst => "seqcst",
-                AcqRel => "acqrel",
-                Acquire => "acquire",
-                Release => "release",
-                Relaxed => "relaxed",
-                _ => unreachable!(
-                    "new variants added to `{}`",
-                    std::any::type_name::<Ordering>()
-                ),
-            }
-        }
-
         match name {
             "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
                 let order = static_order(order);
@@ -121,8 +121,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let intrinsic_name =
-                            format!("atomic_store_{}", order_name(order));
+                        let intrinsic_name = format!("atomic_store_{}", order_name(order));
 
                         self.use_feature("core_intrinsics");
 
@@ -166,8 +165,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let intrinsic_name =
-                            format!("atomic_xchg_{}", order_name(order));
+                        let intrinsic_name = format!("atomic_xchg_{}", order_name(order));
 
                         self.use_feature("core_intrinsics");
 
