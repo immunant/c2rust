@@ -34,6 +34,10 @@ pub fn mk_va_list_ty(lifetime: Option<&str>) -> Box<Type> {
     ])
 }
 
+pub fn mk_va_list_copy(va_list: Box<Expr>) -> Box<Expr> {
+    mk().method_call_expr(va_list, "as_va_list", vec![])
+}
+
 impl<'c> Translation<'c> {
     /// Returns true iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool {

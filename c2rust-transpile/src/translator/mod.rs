@@ -32,7 +32,7 @@ use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::translator::named_references::NamedReference;
-use crate::translator::variadic::mk_va_list_ty;
+use crate::translator::variadic::{mk_va_list_ty, mk_va_list_copy};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust;
 
@@ -4140,7 +4140,7 @@ impl<'c> Translation<'c> {
         {
             // No `override_ty` to avoid unwanted casting.
             val = self.convert_expr(ctx, expr_id, None)?;
-            val = val.map(|val| mk().method_call_expr(val, "as_va_list", Vec::new()));
+            val = val.map(mk_va_list_copy);
         } else {
             val = self.convert_expr(ctx, expr_id, override_ty)?;
         }
