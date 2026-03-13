@@ -87,7 +87,8 @@ impl<'c> Translation<'c> {
 
         match name {
             "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
-                let intrinsic_name = format!("atomic_load_{}", order_name(static_order(order)));
+                let order = static_order(order);
+                let intrinsic_name = format!("atomic_load_{}", order_name(order));
 
                 self.use_feature("core_intrinsics");
 
@@ -116,11 +117,12 @@ impl<'c> Translation<'c> {
             }),
 
             "__atomic_store" | "__atomic_store_n" | "__c11_atomic_store" => {
+                let order = static_order(order);
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
                         let intrinsic_name =
-                            format!("atomic_store_{}", order_name(static_order(order)));
+                            format!("atomic_store_{}", order_name(order));
 
                         self.use_feature("core_intrinsics");
 
@@ -160,11 +162,12 @@ impl<'c> Translation<'c> {
             }
 
             "__atomic_exchange" | "__atomic_exchange_n" | "__c11_atomic_exchange" => {
+                let order = static_order(order);
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
                         let intrinsic_name =
-                            format!("atomic_xchg_{}", order_name(static_order(order)));
+                            format!("atomic_xchg_{}", order_name(order));
 
                         self.use_feature("core_intrinsics");
 
@@ -218,12 +221,13 @@ impl<'c> Translation<'c> {
                     _ => weak,
                 };
 
+                let order = static_order(order);
+                let order_fail = static_order(order_fail);
+                let weak = static_order(weak);
+
                 ptr.and_then(|ptr| {
                     expected.and_then(|expected| {
                         desired.and_then(|desired| {
-                            let weak = static_order(weak);
-                            let order = static_order(order);
-                            let order_fail = static_order(order_fail);
                             use Ordering::*;
                             let intrinsic_name = match (order, order_fail) {
                                 (_, Release | AcqRel) => None,
@@ -318,7 +322,8 @@ impl<'c> Translation<'c> {
                     "atomic_and"
                 };
 
-                let intrinsic_suffix = order_name(static_order(order));
+                let order = static_order(order);
+                let intrinsic_suffix = order_name(order);
                 let intrinsic_name = format!("{intrinsic_name}_{intrinsic_suffix}");
 
                 let fetch_first =
