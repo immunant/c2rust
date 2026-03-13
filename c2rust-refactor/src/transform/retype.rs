@@ -108,12 +108,15 @@ impl Transform for RetypeArgument {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return);
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return);
+            let wrap_target = |target: &mut P<Expr>| {
+                let mut bnd = Bindings::new();
+                bnd.add("__old", target.clone());
+                *target = wrap.clone().subst(st, cx, &bnd);
+            };
             match e.kind {
                 ExprKind::Call(_, ref mut args) => {
                     for &idx in mod_args {
-                        let mut bnd = Bindings::new();
-                        bnd.add("__old", args[idx].clone());
-                        args[idx] = wrap.clone().subst(st, cx, &bnd);
+                        wrap_target(&mut args[idx]);
                     }
                 }
                 ExprKind::MethodCall(_, ref mut recv, ref mut args, _) => {
@@ -123,9 +126,7 @@ impl Transform for RetypeArgument {
                         } else {
                             &mut args[idx - 1]
                         };
-                        let mut bnd = Bindings::new();
-                        bnd.add("__old", target.clone());
-                        *target = wrap.clone().subst(st, cx, &bnd);
+                        wrap_target(target);
                     }
                 }
                 _ => panic!("expected Call or MethodCall"),
