@@ -3,6 +3,7 @@ use crate::c_ast::*;
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
 use crate::translator::variadic::mk_va_list_ty;
+use crate::TranspilerConfig;
 use crate::{CrateSet, ExternCrate};
 use c2rust_ast_builder::{mk, properties::*};
 use failure::format_err;
@@ -133,16 +134,9 @@ pub const RESERVED_NAMES: [&str; 100] = [
 ];
 
 impl TypeConverter {
-    // We don't provide a `Default` impl to simplify future compatibility:
-    // if `TypeConverter` ever gets fields incompatible with `Default`, then
-    // cleaning out the uses of `impl Default for TypeConverter` can be a pain.
-    // More practically, there is a single use of `TypeConverter::new` and no
-    // current plans to use a `Default` impl, so providing it isn't worth the
-    // potential breakage.
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> TypeConverter {
+    pub fn new(tcfg: &TranspilerConfig) -> TypeConverter {
         TypeConverter {
-            translate_valist: false,
+            translate_valist: tcfg.translate_valist,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
             suffix_names: HashMap::new(),
