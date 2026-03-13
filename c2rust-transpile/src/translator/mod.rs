@@ -3428,6 +3428,7 @@ impl<'c> Translation<'c> {
         &self,
         mut type_id: CTypeId,
         preferred: bool,
+        src_loc: &Option<SrcSpan>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         type_id = self.variable_array_base_type(type_id);
 
@@ -3449,10 +3450,13 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment_with_args("pref_align_of", mk().angle_bracketed_args(tys)));
         } else {
             if preferred {
-                warn!(
-                    "using `core::mem::align_of` instead of `core::intrinsics::pref_align_of` \
-                    for preferred alignment (`__alignof`/`__alignof__`) as the latter has been removed in Rust"
-                );
+                let msg = "using `core::mem::align_of` instead of `core::intrinsics::pref_align_of` \
+                    for preferred alignment (`__alignof`/`__alignof__`) as the latter has been removed in Rust";
+                if let Some(loc) = self.ast_context.display_loc(src_loc) {
+                    warn!("{loc}: {msg}");
+                } else {
+                    warn!("{msg}");
+                }
             }
             path.push(mk().path_segment("mem"));
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
@@ -3585,8 +3589,12 @@ impl<'c> Translation<'c> {
                             }
                         }
                     },
-                    UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype, false)?,
-                    UnTypeOp::PreferredAlignOf => self.compute_align_of_type(arg_ty.ctype, true)?,
+                    UnTypeOp::AlignOf => {
+                        self.compute_align_of_type(arg_ty.ctype, false, src_loc)?
+                    }
+                    UnTypeOp::PreferredAlignOf => {
+                        self.compute_align_of_type(arg_ty.ctype, true, src_loc)?
+                    }
                 };
 
                 Ok(result)
