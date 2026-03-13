@@ -402,12 +402,14 @@ fn mk_linkage(
         } else {
             mk().unsafety(attr_unsafety(edition))
                 .single_attr("no_mangle") // Don't touch my name Rust!
+                .unsafety(Unsafety::Normal)
         }
     } else if in_extern_block {
         mk().str_attr("link_name", old_name) // Look for this name
     } else {
         mk().unsafety(attr_unsafety(edition))
             .str_attr("export_name", old_name) // Make sure you actually name it this
+            .unsafety(Unsafety::Normal)
     }
 }
 
@@ -2279,7 +2281,8 @@ impl<'c> Translation<'c> {
                         c_ast::Attribute::Used => static_def.single_attr("used"),
                         c_ast::Attribute::Section(name) => static_def
                             .unsafety(attr_unsafety(self.tcfg.edition))
-                            .str_attr("link_section", name),
+                            .str_attr("link_section", name)
+                            .unsafety(Unsafety::Normal),
                         _ => continue,
                     }
                 }
