@@ -2,6 +2,7 @@ use crate::c_ast::CDeclId;
 use crate::c_ast::*;
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
+use crate::translator::variadic::mk_va_list_ty;
 use crate::{CrateSet, ExternCrate};
 use c2rust_ast_builder::{mk, properties::*};
 use failure::format_err;
@@ -318,8 +319,7 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaListImpl"]);
-            return Ok(ty);
+            return Ok(mk_va_list_ty(None));
         }
 
         match ctxt.index(ctype).kind {

@@ -22,6 +22,18 @@ macro_rules! match_or {
     };
 }
 
+pub fn mk_va_list_ty(lifetime: Option<&str>) -> Box<Type> {
+    let lifetime_args = match lifetime {
+        None => vec![],
+        Some(lifetime) => vec![mk().lifetime(lifetime)],
+    };
+    mk().abs_path_ty(vec![
+        mk().path_segment("core"),
+        mk().path_segment("ffi"),
+        mk().path_segment_with_args("VaListImpl", mk().angle_bracketed_args(lifetime_args)),
+    ])
+}
+
 impl<'c> Translation<'c> {
     /// Returns true iff `va_start`, `va_end`, or `va_copy` may be called on `decl_id`.
     pub fn is_va_decl(&self, decl_id: CDeclId) -> bool {

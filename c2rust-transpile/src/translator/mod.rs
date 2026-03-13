@@ -32,6 +32,7 @@ use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::translator::named_references::NamedReference;
+use crate::translator::variadic::mk_va_list_ty;
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust;
 
@@ -57,7 +58,7 @@ mod operators;
 mod pointers;
 mod simd;
 mod structs_unions;
-mod variadic;
+pub(crate) mod variadic;
 
 pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
 use crate::CrateSet;
@@ -2899,7 +2900,7 @@ impl<'c> Translation<'c> {
                 if self.ast_context.is_va_list(typ.ctype) {
                     // translate `va_list` variables to `VaListImpl`s and omit the initializer.
                     let pat_mut = mk().mutbl().ident_pat(rust_name);
-                    let ty = mk().abs_path_ty(vec!["core", "ffi", "VaListImpl"]);
+                    let ty = mk_va_list_ty(None);
                     let local_mut = mk().local(pat_mut, Some(ty), None);
 
                     return Ok(cfg::DeclStmtInfo::new(
