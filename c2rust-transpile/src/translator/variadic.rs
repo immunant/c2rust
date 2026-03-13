@@ -22,7 +22,15 @@ macro_rules! match_or {
     };
 }
 
-pub fn mk_va_list_ty(lifetime: Option<&str>) -> Box<Type> {
+pub fn mk_va_list_ty(edition: RustEdition, lifetime: Option<&str>) -> Box<Type> {
+    // This was updated in <https://github.com/rust-lang/rust/pull/141980>,
+    // first changed in `nightly-2025-12-07`.
+    // `VaListImpl` was removed.
+    let name = if edition < Edition2024 {
+        "VaListImpl"
+    } else {
+        "VaList"
+    };
     let lifetime_args = match lifetime {
         None => vec![],
         Some(lifetime) => vec![mk().lifetime(lifetime)],
@@ -30,12 +38,20 @@ pub fn mk_va_list_ty(lifetime: Option<&str>) -> Box<Type> {
     mk().abs_path_ty(vec![
         mk().path_segment("core"),
         mk().path_segment("ffi"),
-        mk().path_segment_with_args("VaListImpl", mk().angle_bracketed_args(lifetime_args)),
+        mk().path_segment_with_args(name, mk().angle_bracketed_args(lifetime_args)),
     ])
 }
 
-pub fn mk_va_list_copy(va_list: Box<Expr>) -> Box<Expr> {
-    mk().method_call_expr(va_list, "as_va_list", vec![])
+pub fn mk_va_list_copy(edition: RustEdition, va_list: Box<Expr>) -> Box<Expr> {
+    // This was updated in <https://github.com/rust-lang/rust/pull/141980>,
+    // first changed in `nightly-2025-12-07`.
+    // `VaListImpl` was removed and `.as_va_list()` was replaced with `.clone()`.
+    let name = if edition < Edition2024 {
+        "as_va_list"
+    } else {
+        "clone"
+    };
+    mk().method_call_expr(va_list, name, vec![])
 }
 
 impl<'c> Translation<'c> {
@@ -248,7 +264,7 @@ impl<'c> Translation<'c> {
     /// Update the current function context by
     /// * enabling the C variadics feature
     /// * naming the Rust function argument that corresponds to the ellipsis in the original C function
-    /// * building a list of variable declarations to be translated into `VaListImpl`s.
+    /// * building a list of variable declarations to be translated into the current Rust `va_list` type.
     ///
     /// Returns the name of the `VaList` function argument for convenience.
     pub fn register_va_decls(&self, body: CStmtId) -> String {

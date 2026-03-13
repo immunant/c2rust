@@ -6,6 +6,7 @@ use crate::translator::variadic::mk_va_list_ty;
 use crate::TranspilerConfig;
 use crate::{CrateSet, ExternCrate};
 use c2rust_ast_builder::{mk, properties::*};
+use c2rust_rust_tools::RustEdition;
 use failure::format_err;
 use indexmap::IndexSet;
 use std::collections::{HashMap, HashSet};
@@ -19,6 +20,7 @@ enum FieldKey {
 }
 
 pub struct TypeConverter {
+    pub edition: RustEdition,
     pub translate_valist: bool,
     renamer: Renamer<CDeclId>,
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
@@ -136,6 +138,7 @@ pub const RESERVED_NAMES: [&str; 100] = [
 impl TypeConverter {
     pub fn new(tcfg: &TranspilerConfig) -> TypeConverter {
         TypeConverter {
+            edition: tcfg.edition,
             translate_valist: tcfg.translate_valist,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
@@ -313,7 +316,7 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            return Ok(mk_va_list_ty(None));
+            return Ok(mk_va_list_ty(self.edition, None));
         }
 
         match ctxt.index(ctype).kind {

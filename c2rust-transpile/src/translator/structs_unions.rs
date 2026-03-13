@@ -859,7 +859,7 @@ impl<'a> Translation<'a> {
                 // TODO: handle or panic on structs with more than one va_list?
                 let is_va_list = self.ast_context.is_va_list(ctype);
                 let mut ty = if is_va_list {
-                    mk_va_list_ty(Some("a"))
+                    mk_va_list_ty(self.tcfg.edition, Some("a"))
                 } else {
                     self.convert_type(ctype)?
                 };

@@ -13,14 +13,14 @@ use std::ffi::c_char;
 use std::ffi::CString;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn call_printf();
 }
 
 // See #1281. Varargs don't yet work on aarch64.
 #[cfg(not(target_arch = "aarch64"))]
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn call_vprintf(_: *const c_char, ...);
 
     fn my_printf(_: *const c_char, ...);

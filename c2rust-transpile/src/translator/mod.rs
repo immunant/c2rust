@@ -32,7 +32,7 @@ use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt};
 use crate::translator::named_references::NamedReference;
-use crate::translator::variadic::{mk_va_list_ty, mk_va_list_copy};
+use crate::translator::variadic::{mk_va_list_copy, mk_va_list_ty};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust;
 
@@ -2894,9 +2894,9 @@ impl<'c> Translation<'c> {
                     .unwrap_or_else(|| panic!("Failed to insert variable '{}'", ident));
 
                 if self.ast_context.is_va_list(typ.ctype) {
-                    // translate `va_list` variables to `VaListImpl`s and omit the initializer.
+                    // Translate `va_list` variables to the current Rust `va_list` type and omit the initializer.
                     let pat_mut = mk().mutbl().ident_pat(rust_name);
-                    let ty = mk_va_list_ty(None);
+                    let ty = mk_va_list_ty(self.tcfg.edition, None);
                     let local_mut = mk().local(pat_mut, Some(ty), None);
 
                     return Ok(cfg::DeclStmtInfo::new(
@@ -4136,7 +4136,7 @@ impl<'c> Translation<'c> {
         {
             // No `override_ty` to avoid unwanted casting.
             val = self.convert_expr(ctx, expr_id, None)?;
-            val = val.map(mk_va_list_copy);
+            val = val.map(|val| mk_va_list_copy(self.tcfg.edition, val));
         } else {
             val = self.convert_expr(ctx, expr_id, override_ty)?;
         }
