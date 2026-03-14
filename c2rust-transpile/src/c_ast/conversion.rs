@@ -1,9 +1,19 @@
-use crate::c_ast::*;
+use crate::c_ast::c_decl::{CDecl, CDeclId, CDeclKind};
+use crate::c_ast::c_expr::{
+    CBinOp, CExpr, CExprId, CExprKind, CLiteral, CUnOp, CUnTypeOp, CastKind, ConstIntExpr,
+    Designator, IntBase, MemberKind, OffsetOfKind,
+};
+use crate::c_ast::c_stmt::{AsmOperand, CStmt, CStmtId, CStmtKind};
+use crate::c_ast::c_type::{CQualTypeId, CType, CTypeId, CTypeKind, Qualifiers};
+use crate::c_ast::{Attribute, DisplaySrcSpan, TypedAstContext};
 use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;
 use failure::err_msg;
+use indexmap::IndexSet;
 use serde_bytes::ByteBuf;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::mem;
+use std::path::Path;
 use std::rc::Rc;
 use std::vec::Vec;
 
@@ -388,17 +398,23 @@ impl ConversionContext {
 
     /// Add a `CStmt` node into the `TypedAstContext`
     fn add_stmt(&mut self, id: ImporterId, stmt: CStmt) {
-        self.typed_context.c_stmts.insert(CStmtId(id), stmt);
+        let id = CStmtId(id);
+        self.typed_context.add_stmt_parents(id, &stmt.kind);
+        self.typed_context.c_stmts.insert(id, stmt);
     }
 
     /// Add a `CExpr` node into the `TypedAstContext`
     fn add_expr(&mut self, id: ImporterId, expr: CExpr) {
-        self.typed_context.c_exprs.insert(CExprId(id), expr);
+        let id = CExprId(id);
+        self.typed_context.add_expr_parents(id, &expr.kind);
+        self.typed_context.c_exprs.insert(id, expr);
     }
 
     /// Add a `CDecl` node into the `TypedAstContext`
     fn add_decl(&mut self, id: ImporterId, decl: CDecl) {
-        self.typed_context.c_decls.insert(CDeclId(id), decl);
+        let id = CDeclId(id);
+        self.typed_context.add_decl_parents(id, &decl.kind);
+        self.typed_context.c_decls.insert(id, decl);
     }
 
     /// Clang has `Expression <: Statement`, but we want to make that explicit via the
@@ -561,7 +577,6 @@ impl ConversionContext {
         &'a mut self,
         untyped_context: &'a AstContext,
         node: &'a AstNode,
-        new_id: ImporterId,
     ) -> impl Iterator<Item = CDeclId> + 'a {
         use self::node_types::*;
 
@@ -573,7 +588,6 @@ impl ConversionContext {
                 .expect("child node not found");
 
             let id = CDeclId(self.visit_node_type(decl, FIELD_DECL | ENUM_DECL | RECORD_DECL));
-            self.typed_context.parents.insert(id, CDeclId(new_id));
 
             if decl_node.tag == ASTEntryTag::TagFieldDecl {
                 Some(id)
@@ -1366,30 +1380,30 @@ impl ConversionContext {
                         .expect("Expected operator")
                         .as_str()
                     {
-                        "&" => UnOp::AddressOf,
-                        "*" => UnOp::Deref,
-                        "+" => UnOp::Plus,
-                        "-" => UnOp::Negate,
-                        "~" => UnOp::Complement,
-                        "!" => UnOp::Not,
+                        "&" => CUnOp::AddressOf,
+                        "*" => CUnOp::Deref,
+                        "+" => CUnOp::Plus,
+                        "-" => CUnOp::Negate,
+                        "~" => CUnOp::Complement,
+                        "!" => CUnOp::Not,
                         "++" => {
                             if prefix {
-                                UnOp::PreIncrement
+                                CUnOp::PreIncrement
                             } else {
-                                UnOp::PostIncrement
+                                CUnOp::PostIncrement
                             }
                         }
                         "--" => {
                             if prefix {
-                                UnOp::PreDecrement
+                                CUnOp::PreDecrement
                             } else {
-                                UnOp::PostDecrement
+                                CUnOp::PostDecrement
                             }
                         }
-                        "__real" => UnOp::Real,
-                        "__imag" => UnOp::Imag,
-                        "__extension__" => UnOp::Extension,
-                        "co_await" => UnOp::Coawait,
+                        "__real" => CUnOp::Real,
+                        "__imag" => CUnOp::Imag,
+                        "__extension__" => CUnOp::Extension,
+                        "co_await" => CUnOp::Coawait,
                         o => panic!("Unexpected operator: {}", o),
                     };
 
@@ -1495,36 +1509,36 @@ impl ConversionContext {
                         .expect("Expected operator")
                         .as_str()
                     {
-                        "*" => BinOp::Multiply,
-                        "/" => BinOp::Divide,
-                        "%" => BinOp::Modulus,
-                        "+" => BinOp::Add,
-                        "-" => BinOp::Subtract,
-                        "<<" => BinOp::ShiftLeft,
-                        ">>" => BinOp::ShiftRight,
-                        "<" => BinOp::Less,
-                        ">" => BinOp::Greater,
-                        "<=" => BinOp::LessEqual,
-                        ">=" => BinOp::GreaterEqual,
-                        "==" => BinOp::EqualEqual,
-                        "!=" => BinOp::NotEqual,
-                        "&" => BinOp::BitAnd,
-                        "^" => BinOp::BitXor,
-                        "|" => BinOp::BitOr,
-                        "&&" => BinOp::And,
-                        "||" => BinOp::Or,
-                        "+=" => BinOp::AssignAdd,
-                        "-=" => BinOp::AssignSubtract,
-                        "*=" => BinOp::AssignMultiply,
-                        "/=" => BinOp::AssignDivide,
-                        "%=" => BinOp::AssignModulus,
-                        "^=" => BinOp::AssignBitXor,
-                        "<<=" => BinOp::AssignShiftLeft,
-                        ">>=" => BinOp::AssignShiftRight,
-                        "|=" => BinOp::AssignBitOr,
-                        "&=" => BinOp::AssignBitAnd,
-                        "=" => BinOp::Assign,
-                        "," => BinOp::Comma,
+                        "*" => CBinOp::Multiply,
+                        "/" => CBinOp::Divide,
+                        "%" => CBinOp::Modulus,
+                        "+" => CBinOp::Add,
+                        "-" => CBinOp::Subtract,
+                        "<<" => CBinOp::ShiftLeft,
+                        ">>" => CBinOp::ShiftRight,
+                        "<" => CBinOp::Less,
+                        ">" => CBinOp::Greater,
+                        "<=" => CBinOp::LessEqual,
+                        ">=" => CBinOp::GreaterEqual,
+                        "==" => CBinOp::EqualEqual,
+                        "!=" => CBinOp::NotEqual,
+                        "&" => CBinOp::BitAnd,
+                        "^" => CBinOp::BitXor,
+                        "|" => CBinOp::BitOr,
+                        "&&" => CBinOp::And,
+                        "||" => CBinOp::Or,
+                        "+=" => CBinOp::AssignAdd,
+                        "-=" => CBinOp::AssignSubtract,
+                        "*=" => CBinOp::AssignMultiply,
+                        "/=" => CBinOp::AssignDivide,
+                        "%=" => CBinOp::AssignModulus,
+                        "^=" => CBinOp::AssignBitXor,
+                        "<<=" => CBinOp::AssignShiftLeft,
+                        ">>=" => CBinOp::AssignShiftRight,
+                        "|=" => CBinOp::AssignBitOr,
+                        "&=" => CBinOp::AssignBitAnd,
+                        "=" => CBinOp::Assign,
+                        "," => CBinOp::Comma,
                         _ => unimplemented!(),
                     };
 
@@ -1629,9 +1643,9 @@ impl ConversionContext {
                     let kind_name =
                         from_value::<String>(node.extras[0].clone()).expect("expected kind");
                     let kind = match kind_name.as_str() {
-                        "sizeof" => UnTypeOp::SizeOf,
-                        "alignof" => UnTypeOp::AlignOf,
-                        "preferredalignof" => UnTypeOp::PreferredAlignOf,
+                        "sizeof" => CUnTypeOp::SizeOf,
+                        "alignof" => CUnTypeOp::AlignOf,
+                        "preferredalignof" => CUnTypeOp::PreferredAlignOf,
                         str => panic!("Unsupported operation: {}", str),
                     };
 
@@ -2164,9 +2178,7 @@ impl ConversionContext {
                         .iter()
                         .map(|id| {
                             let con = id.expect("Enum constant not found");
-                            let id = CDeclId(self.visit_node_type(con, ENUM_CON));
-                            self.typed_context.parents.insert(id, CDeclId(new_id));
-                            id
+                            CDeclId(self.visit_node_type(con, ENUM_CON))
                         })
                         .collect();
 
@@ -2269,10 +2281,7 @@ impl ConversionContext {
                         from_value(node.extras[6].clone()).expect("Expected struct alignment");
 
                     let fields: Option<Vec<CDeclId>> = if has_def {
-                        Some(
-                            self.visit_record_children(untyped_context, node, new_id)
-                                .collect(),
-                        )
+                        Some(self.visit_record_children(untyped_context, node).collect())
                     } else {
                         None
                     };
@@ -2300,10 +2309,7 @@ impl ConversionContext {
                     let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
                         .expect("Expected attribute array on record");
                     let fields: Option<Vec<CDeclId>> = if has_def {
-                        Some(
-                            self.visit_record_children(untyped_context, node, new_id)
-                                .collect(),
-                        )
+                        Some(self.visit_record_children(untyped_context, node).collect())
                     } else {
                         None
                     };

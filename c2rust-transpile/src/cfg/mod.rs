@@ -15,8 +15,9 @@
 //!   - convert the `Vec<Structure<Stmt>>` back into a `Vec<Stmt>`
 //!
 
-use crate::c_ast::iterators::{DFExpr, SomeId};
-use crate::c_ast::CLabelId;
+use crate::c_ast::c_stmt::CLabelId;
+use crate::c_ast::iterators::DFExpr;
+use crate::c_ast::SomeId;
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::SpanExt;
 use c2rust_ast_printer::pprust;
@@ -42,7 +43,11 @@ use serde::ser::{
 };
 use serde_json;
 
-use crate::c_ast::*;
+use crate::c_ast::c_decl::CDeclId;
+use crate::c_ast::c_expr::{CExprId, CExprKind, CUnOp, ConstIntExpr};
+use crate::c_ast::c_stmt::{CStmtId, CStmtKind};
+use crate::c_ast::c_type::CQualTypeId;
+use crate::c_ast::TypedAstContext;
 use crate::translator::*;
 use crate::with_stmts::WithStmts;
 use c2rust_ast_builder::mk;
@@ -1783,7 +1788,7 @@ impl CfgBuilder {
                 // This case typically happens in macros from system headers.
                 // We simply inline the common statement at this point rather
                 // than to try and create new control-flow blocks.
-                let blk_or_wip = if let CExprKind::Unary(_, UnOp::Extension, sube, _) =
+                let blk_or_wip = if let CExprKind::Unary(_, CUnOp::Extension, sube, _) =
                     translator.ast_context[expr].kind
                 {
                     if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind {

@@ -2,14 +2,12 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
-use crate::{
-    c_ast,
-    diagnostics::TranslationResult,
-    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
-    with_stmts::WithStmts,
-    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
-    CTypeKind, ConstIntExpr,
-};
+use crate::c_ast::c_decl::{CDeclKind, CEnumConstantId, CEnumId};
+use crate::c_ast::c_expr::{CExprId, CExprKind, CLiteral, CUnOp, ConstIntExpr};
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
+use crate::diagnostics::TranslationResult;
+use crate::translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation};
+use crate::with_stmts::WithStmts;
 
 impl<'c> Translation<'c> {
     pub fn convert_enum(
@@ -40,7 +38,10 @@ impl<'c> Translation<'c> {
             .borrow_mut()
             .get(&enum_constant_id)
             .expect("Enum constant not named");
-        let enum_id = self.ast_context.parents[&enum_constant_id];
+        let enum_id = self
+            .ast_context
+            .parent_with_type(enum_constant_id)
+            .expect("Enum constant does not have a parent Enum");
         let enum_name = self
             .type_converter
             .borrow()
@@ -113,7 +114,7 @@ impl<'c> Translation<'c> {
                     return Ok(self.enum_for_i64(enum_type_id, i as i64));
                 }
 
-                CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id, _) => {
+                CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
                     if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
                         &self.ast_context[subexpr_id].kind
                     {
