@@ -113,16 +113,29 @@ impl<'c> Translation<'c> {
 
                 if ctx.needs_address && element_size == 1 {
                     // Unlike in C, Rust string literals are already references by default.
-                    // So if the address needs to be taken, just make a bare literal.
+                    // So if the address needs to be taken, just make a bare literal and let
+                    // `convert_address_of_common` cast it to the appropriate type.
+                    // Strings with element_size > 1 cannot be cast from a byte literal for
+                    // alignment reasons, and need a transmute.
                     Ok(WithStmts::new_val(val))
                 } else {
                     // std::mem::transmute::<[u8; size], ctype>(*b"xxxx")
                     let array_ty = mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(len as u128));
-                    let val = transmute_expr(
+                    let mut val = transmute_expr(
                         array_ty,
                         self.convert_type(ty.ctype)?,
                         mk().unary_expr(UnOp::Deref(Default::default()), val),
                     );
+
+                    // A transmute creates a temporary, which cannot have its address taken without
+                    // creating dangling pointers. Wrap it inside an inline `const` block, so that
+                    // it will be const-promoted to 'static.
+                    if ctx.needs_address {
+                        self.use_feature("inline_const");
+                        let stmts = vec![mk().expr_stmt(val)];
+                        val = mk().const_block_expr(mk().const_block(stmts));
+                    }
+
                     Ok(WithStmts::new_unsafe_val(val))
                 }
             }
