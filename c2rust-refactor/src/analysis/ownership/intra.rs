@@ -318,6 +318,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 ProjectionElem::ConstantIndex { .. } => unimplemented!(),
                 ProjectionElem::Subslice { .. } => unimplemented!(),
                 ProjectionElem::Downcast(_, variant) => (base_ty, base_perm, Some(variant)),
+                ProjectionElem::OpaqueCast(_) => (base_ty, base_perm, None),
             }
         } else {
             (self.local_var_ty(lv.local), Perm::move_(), None)
@@ -592,7 +593,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     // TODO: is this needed?
                     self.propagate_perm(Perm::write(), pl_perm);
                 }
-                StatementKind::CopyNonOverlapping(..) => unimplemented!(),
+                StatementKind::Intrinsic(..) => unimplemented!(),
                 StatementKind::FakeRead(..)
                 | StatementKind::SetDiscriminant { .. }
                 | StatementKind::StorageLive(_)

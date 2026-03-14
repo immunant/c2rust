@@ -79,8 +79,8 @@ impl<'ast> AnyNode<'ast> {
             },
             AnyNode::Pat(p) => match p.kind {
                 PatKind::Ident(mode, _, _) => match mode {
-                    BindingMode::ByRef(mutbl) => Some(mutbl),
-                    BindingMode::ByValue(mutbl) => Some(mutbl),
+                    BindingAnnotation(ByRef::Yes, mutbl) => Some(mutbl),
+                    BindingAnnotation(ByRef::No, mutbl) => Some(mutbl),
                 },
                 _ => None,
             },
@@ -211,7 +211,7 @@ impl ItemLikeKind {
         match i.kind {
             AssocItemKind::Const(..) => ItemLikeKind::Const,
             AssocItemKind::Fn(..) => ItemLikeKind::Fn,
-            AssocItemKind::TyAlias(..) => ItemLikeKind::Ty,
+            AssocItemKind::Type(..) => ItemLikeKind::Ty,
             AssocItemKind::MacCall(..) => ItemLikeKind::Mac,
         }
     }
@@ -458,12 +458,12 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, _span: Span, _id: NodeId) {
         for arg in &kind.decl().inputs {
             (self.func)(AnyNode::Param(arg));
         }
         // `walk` call handles the return type.
-        visit::walk_fn(self, kind, span);
+        visit::walk_fn(self, kind);
     }
 
     fn visit_field_def(&mut self, x: &'ast FieldDef) {

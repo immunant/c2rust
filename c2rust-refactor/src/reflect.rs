@@ -8,7 +8,7 @@ use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::definitions::DefPathData;
 use rustc_hir::Node;
 use rustc_middle::hir::map::Map as HirMap;
-use rustc_middle::ty::{self, DefIdTree, EarlyBinder, GenericParamDefKind, Subst, TyCtxt};
+use rustc_middle::ty::{self, DefIdTree, EarlyBinder, GenericParamDefKind, TyCtxt};
 use rustc_span::source_map::DUMMY_SP;
 use rustc_span::symbol::kw;
 use rustc_type_ir::sty::TyKind as IrTyKind;
@@ -102,7 +102,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     mk().infer_ty() // TODO higher-rank lifetimes (for<'a> fn(...) -> ...)
                 }
             }
-            IrTyKind::Dynamic(_, _) => mk().infer_ty(), // TODO (dyn Trait)
+            IrTyKind::Dynamic(..) => mk().infer_ty(), // TODO (dyn Trait)
             IrTyKind::Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
@@ -369,6 +369,8 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::Lifetime(_)
         // TODO: return true here?
         | Node::Infer(_)
+        | Node::ExprField(_)
+        | Node::PatField(_)
         | Node::Crate(_) => false,
     }
 }

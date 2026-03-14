@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
+use crate::ast_builder::mk;
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
 use crate::ast_manip::{GetNodeId, ListNodeIds, MutVisit, Visit};
 use crate::match_or;
@@ -44,11 +45,12 @@ struct CollectDeletedNodes<'a, 'ast> {
 }
 
 impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
-    fn handle_seq<T>(&mut self, parent: NodeId, nodes: &'ast [T])
+    fn handle_seq<T, I>(&mut self, parent: NodeId, nodes: I)
     where
-        T: GetNodeId + ListNodeIds + AsMacNodeRef,
+        I: IntoIterator<Item = &'ast T>,
+        T: GetNodeId + ListNodeIds + AsMacNodeRef + 'ast,
     {
-        let mut history = Vec::with_capacity(nodes.len());
+        let mut history = Vec::new();
         for n in nodes {
             let id = n.get_node_id();
             if self.table.empty_invocs.contains_key(&id) {
@@ -77,11 +79,11 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
 impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, x: &'ast Expr) {
         match &x.kind {
-            ExprKind::Array(elements)
-            | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements, _)
-            | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
+            }
+            ExprKind::MethodCall(_, receiver, elements, _) => {
+                self.handle_seq(x.id, std::iter::once(receiver).chain(elements.iter()));
             }
             _ => {}
         }
@@ -254,11 +256,20 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn visit_expr(&mut self, expr: &mut P<Expr>) {
         let id = expr.id;
         match &mut expr.kind {
-            ExprKind::Array(elements)
-            | ExprKind::Call(_, elements)
-            | ExprKind::MethodCall(_, elements, _)
-            | ExprKind::Tup(elements) => {
+            ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
+            }
+            ExprKind::MethodCall(_, receiver, elements, _) => {
+                // Merge the receiver and args into a single list.
+                let mut all = Vec::with_capacity(elements.len() + 1);
+                all.push(std::mem::replace(receiver, mk().err_expr()));
+                all.extend(std::mem::take(elements).into_iter());
+
+                self.restore_seq(id, &mut all);
+
+                // Pull the new receiver and elements out of the merged list.
+                *receiver = all.remove(0);
+                *elements = all;
             }
             _ => {}
         }

@@ -55,7 +55,7 @@ where
 
             hir::PatKind::Path(ref qpath) => {
                 let (qself, path) = match &mut p.kind {
-                    PatKind::Ident(BindingMode::ByValue(Mutability::Not), ident, None) => {
+                    PatKind::Ident(BindingAnnotation(ByRef::No, _), ident, None) => {
                         (None, Path::from_ident(*ident))
                     }
                     PatKind::Path(qself, path) => (qself.clone(), path.clone()),
@@ -68,7 +68,7 @@ where
                 // instead, we run into "new and reparsed ASTs don't match" during rewriting.
                 if new_qself.is_none() && new_path.segments.len() == 1 {
                     p.kind = PatKind::Ident(
-                        BindingMode::ByValue(Mutability::Not),
+                        BindingAnnotation(ByRef::No, Mutability::Not),
                         new_path.segments[0].ident,
                         None,
                     );
