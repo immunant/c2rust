@@ -4,7 +4,7 @@
 use super::*;
 
 use crate::format_translation_err;
-use crate::translator::atomics::order_name;
+use crate::translator::atomics::order_suffix;
 use c2rust_rust_tools::RustEdition::Edition2024;
 use std::sync::atomic::Ordering;
 
@@ -629,7 +629,7 @@ impl<'c> Translation<'c> {
                     "atomic_and"
                 };
 
-                let intrinsic_suffix = order_name(Ordering::SeqCst);
+                let intrinsic_suffix = order_suffix(Ordering::SeqCst);
                 let intrinsic_name = format!("{intrinsic_prefix}_{intrinsic_suffix}");
 
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
