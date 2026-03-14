@@ -56,7 +56,7 @@ mod named_references;
 mod operators;
 mod pointers;
 mod simd;
-mod structs;
+mod structs_unions;
 mod variadic;
 
 pub use crate::diagnostics::{TranslationError, TranslationErrorKind};
@@ -1954,57 +1954,7 @@ impl<'c> Translation<'c> {
                 fields: Some(ref fields),
                 is_packed,
                 ..
-            } => {
-                let name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(decl_id)
-                    .unwrap();
-
-                let mut field_syns = vec![];
-                for &x in fields {
-                    let field_decl = self.ast_context.index(x);
-                    match field_decl.kind {
-                        CDeclKind::Field { ref name, typ, .. } => {
-                            let name = self
-                                .type_converter
-                                .borrow_mut()
-                                .declare_field_name(decl_id, x, name);
-                            let typ = self.convert_type(typ.ctype)?;
-                            field_syns.push(mk().pub_().struct_field(name, typ))
-                        }
-                        _ => {
-                            return Err(TranslationError::generic(
-                                "Found non-field in record field list",
-                            ));
-                        }
-                    }
-                }
-
-                let mut repr = vec!["C"];
-                if is_packed {
-                    repr.push("packed");
-                }
-
-                Ok(if field_syns.is_empty() {
-                    // Empty unions are a GNU extension, but Rust doesn't allow empty unions.
-                    ConvertedDecl::Item(
-                        mk().span(span)
-                            .pub_()
-                            .call_attr("derive", vec!["Copy", "Clone"])
-                            .call_attr("repr", repr)
-                            .struct_item(name, vec![], false),
-                    )
-                } else {
-                    ConvertedDecl::Item(
-                        mk().span(span)
-                            .pub_()
-                            .call_attr("derive", vec!["Copy", "Clone"])
-                            .call_attr("repr", repr)
-                            .union_item(name, field_syns),
-                    )
-                })
-            }
+            } => self.convert_union(decl_id, span, fields, is_packed),
 
             Field { .. } => Err(TranslationError::generic(
                 "Field declarations should be handled inside structs/unions",
@@ -4068,71 +4018,7 @@ impl<'c> Translation<'c> {
             }
 
             Member(qual_ty, expr, decl, kind, _) => {
-                if ctx.is_unused() {
-                    self.convert_expr(ctx, expr, None)
-                } else {
-                    let mut val = match kind {
-                        MemberKind::Dot => self.convert_expr(ctx, expr, None)?,
-                        MemberKind::Arrow => {
-                            if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
-                                self.ast_context[expr].kind
-                            {
-                                // Special-case the `(&x)->field` pattern
-                                // Convert it directly into `x.field`
-                                self.convert_expr(ctx, subexpr_id, None)?
-                            } else {
-                                let val = self.convert_expr(ctx, expr, None)?;
-                                val.map(|v| mk().unary_expr(UnOp::Deref(Default::default()), v))
-                            }
-                        }
-                    };
-
-                    let record_id = self.ast_context.parents[&decl];
-                    if self.ast_context.has_inner_struct_decl(record_id) {
-                        // The structure is split into an outer and an inner,
-                        // so we need to go through the outer structure to the inner one
-                        val = val.map(|v| mk().anon_field_expr(v, 0));
-                    };
-
-                    let field_name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(None, decl)
-                        .unwrap();
-                    let is_bitfield = match &self.ast_context[decl].kind {
-                        CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                        _ => unreachable!("Found a member which is not a field"),
-                    };
-                    if is_bitfield {
-                        // Convert a bitfield member one of four ways:
-                        // A) bf.a()
-                        // B) (*bf).a()
-                        // C) bf
-                        // D) (*bf)
-                        //
-                        // The first two are when we know this bitfield member is going to be read
-                        // from (default), possibly requiring a dereference first. The latter two
-                        // are generated when we are expecting to require a write, which will need
-                        // to make a method call with some input which we do not yet have access
-                        // to and will have to be handled elsewhere, IE `bf.set_a(1)`
-                        if !ctx.is_bitfield_write {
-                            // Cases A and B above
-                            val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
-                        }
-                    } else {
-                        val = val.map(|v| mk().field_expr(v, field_name));
-                    };
-
-                    // if the context wants a different type, add a cast
-                    if let Some(expected_ty) = override_ty {
-                        if expected_ty != qual_ty {
-                            let ty = self.convert_type(expected_ty.ctype)?;
-                            val = val.map(|v| mk().cast_expr(v, ty));
-                        }
-                    }
-
-                    Ok(val)
-                }
+                self.convert_member_expr(ctx, qual_ty, expr, decl, kind, override_ty)
             }
 
             Paren(_, val) => self.convert_expr(ctx, val, override_ty),
@@ -4723,25 +4609,7 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(self.null_ptr(ctx, target_cty.ctype)?))
             }
 
-            CastKind::ToUnion => {
-                let field_id = opt_field_id.expect("Missing field ID in union cast");
-                let union_id = self.ast_context.parents[&field_id];
-
-                let union_name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(union_id)
-                    .expect("required union name");
-                let field_name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_field_name(Some(union_id), field_id)
-                    .expect("field name required");
-
-                Ok(val.map(|x| {
-                    mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
-                }))
-            }
+            CastKind::ToUnion => self.convert_cast_to_union(val, opt_field_id),
 
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
