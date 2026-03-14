@@ -1,0 +1,79 @@
+transform = "CommentTransfer"
+identifier = "json_object_get"
+model = "gemini-3-flash-preview"
+response = """/// reference counting
+#[no_mangle]
+pub unsafe extern "C" fn json_object_get(mut jso: *mut json_object) -> *mut json_object {
+    if jso.is_null() {
+        return jso;
+    }
+    // Don't overflow the refcounter.
+    '_c2rust_label: {
+        if (*jso)._ref_count < 4294967295 as uint32_t {
+        } else {
+            __assert_fail(
+                b"jso->_ref_count < UINT32_MAX\\0" as *const u8 as *const ::core::ffi::c_char,
+                b"json_object.c\\0" as *const u8 as *const ::core::ffi::c_char,
+                174 as ::core::ffi::c_uint,
+                b"struct json_object *json_object_get(struct json_object *)\\0" as *const u8
+                    as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    (*jso)._ref_count = (*jso)._ref_count.wrapping_add(1);
+    return jso;
+}"""
+
+[[messages]]
+role = "user"
+content = """Transfer the comments from the following C function to the corresponding Rust function.
+Do not add any comments that are not present in the C function.
+Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+Respond with the Rust function definition with the transferred comments; say nothing else.
+
+C function:
+```c
+/* reference counting */
+
+extern struct json_object* json_object_get(struct json_object *jso)
+{
+\tif (!jso) return jso;
+
+\t// Don't overflow the refcounter.
+\tassert(jso->_ref_count < UINT32_MAX);
+
+#if defined(HAVE_ATOMIC_BUILTINS) && defined(ENABLE_THREADING)
+\t__sync_add_and_fetch(&jso->_ref_count, 1);
+#else
+\t++jso->_ref_count;
+#endif        
+
+\treturn jso;
+}
+```
+
+Rust function:
+```rust
+#[no_mangle]
+
+pub unsafe extern "C" fn json_object_get(mut jso: *mut json_object) -> *mut json_object {
+    if jso.is_null() {
+        return jso;
+    }
+    '_c2rust_label: {
+        if (*jso)._ref_count < 4294967295 as uint32_t {
+        } else {
+            __assert_fail(
+                b"jso->_ref_count < UINT32_MAX\\0" as *const u8 as *const ::core::ffi::c_char,
+                b"json_object.c\\0" as *const u8 as *const ::core::ffi::c_char,
+                174 as ::core::ffi::c_uint,
+                b"struct json_object *json_object_get(struct json_object *)\\0" as *const u8
+                    as *const ::core::ffi::c_char,
+            );
+        }
+    };
+    (*jso)._ref_count = (*jso)._ref_count.wrapping_add(1);
+    return jso;
+}
+```
+"""
