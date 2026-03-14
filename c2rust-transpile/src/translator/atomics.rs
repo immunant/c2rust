@@ -27,6 +27,16 @@ impl<'c> Translation<'c> {
         mk().abs_path_expr(vec!["core", "intrinsics", &intrinsic_name])
     }
 
+    fn atomic_intrinsic_cxchg_expr(
+        &self,
+        weak: bool,
+        order_succ: Ordering,
+        order_fail: Ordering,
+    ) -> Box<Expr> {
+        let base = if weak { "cxchgweak" } else { "cxchg" };
+        self.atomic_intrinsic_expr(base, &[order_succ, order_fail])
+    }
+
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
         let val = self.ast_context.unwrap_cast_expr(expr);
         match self.ast_context.index(val).kind {
@@ -251,9 +261,8 @@ impl<'c> Translation<'c> {
                                 _ => mk().unary_expr(UnOp::Deref(Default::default()), desired),
                             };
 
-                            let intrinsic_base = if weak { "cxchgweak" } else { "cxchg" };
                             let atomic_cxchg =
-                                self.atomic_intrinsic_expr(intrinsic_base, &[order, order_fail]);
+                                self.atomic_intrinsic_cxchg_expr(weak, order, order_fail);
                             let call =
                                 mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
                             let res_name = self.renamer.borrow_mut().fresh();
@@ -337,8 +346,7 @@ impl<'c> Translation<'c> {
         returns_val: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Emit `atomic_cxchg(a0, a1, a2).idx`
-        let intrinsic_base = if weak { "cxchgweak" } else { "cxchg" };
-        let atomic_cxchg = self.atomic_intrinsic_expr(intrinsic_base, &[order_succ, order_fail]);
+        let atomic_cxchg = self.atomic_intrinsic_cxchg_expr(weak, order_succ, order_fail);
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
         let field_idx = if returns_val { 0 } else { 1 };
         let call_expr = mk().anon_field_expr(call, field_idx);
