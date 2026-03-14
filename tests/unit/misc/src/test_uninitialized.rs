@@ -1,6 +1,6 @@
 //! feature_raw_ref_op
 
-use crate::uninitialized::{bar, baz, e, foo, rust_entry2, s, /*myint, myintp,*/ u};
+use crate::uninitialized::{e, rust_entry2, s, /*myint, myintp,*/ u};
 use std::ffi::{c_int, c_uint};
 
 extern "C" {
@@ -26,9 +26,9 @@ pub fn test_buffer() {
 
 #[test]
 pub fn test_types() {
-    assert_eq!(foo as u32, 1);
-    assert_eq!(bar as u32, 2);
-    assert_eq!(baz as u32, 3);
+    assert_eq!(e::foo.0 as u32, 1);
+    assert_eq!(e::bar.0 as u32, 2);
+    assert_eq!(e::baz.0 as u32, 3);
 
     // FIXME: union fields are private
     // let my_union = u { x: 32 };
