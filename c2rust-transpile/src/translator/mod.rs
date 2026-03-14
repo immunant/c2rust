@@ -2151,21 +2151,47 @@ impl<'c> Translation<'c> {
                 ref attrs,
                 ..
             } if has_static_duration || has_thread_duration => {
-                if has_thread_duration {
-                    self.use_feature("thread_local");
-                }
-
                 let new_name = &self
                     .renamer
                     .borrow()
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
 
+                let mut static_def = if is_externally_visible {
+                    mk_linkage(false, new_name, ident, self.tcfg.edition)
+                        .pub_()
+                        .extern_("C")
+                } else if self.cur_file.get().is_some() {
+                    mk().pub_()
+                } else {
+                    mk()
+                };
+
+                // Force mutability due to the potential for raw pointers occurring in the type
+                // and because we may be assigning to these variables in the external initializer
+                static_def = static_def.mutbl();
+
+                if has_thread_duration {
+                    self.use_feature("thread_local");
+                    static_def = static_def.single_attr("thread_local");
+                }
+
+                // Add static attributes
+                for attr in attrs {
+                    static_def = match attr {
+                        c_ast::Attribute::Used => static_def.single_attr("used"),
+                        c_ast::Attribute::Section(name) => {
+                            static_def.str_attr("link_section", name)
+                        }
+                        _ => continue,
+                    };
+                }
+
                 let ctx = ctx.static_();
 
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
-                let (ty, init) = if self.static_initializer_is_uncompilable(initializer, typ) {
+                if self.static_initializer_is_uncompilable(initializer, typ) {
                     // Note: We don't pass `is_const` through here. Extracted initializers are run
                     // outside of the static initializer, in a non-const context.
                     let ctx = ctx.not_const();
@@ -2194,55 +2220,28 @@ impl<'c> Translation<'c> {
 
                     self.add_static_initializer_to_section(ctx, new_name, typ, &mut init)?;
 
-                    (ty, init)
+                    Ok(ConvertedDecl::Item(
+                        static_def.span(span).static_item(new_name, ty, init),
+                    ))
                 } else {
                     let ConvertedVariable { ty, mutbl: _, init } =
                         self.convert_variable(ctx.const_(), initializer, typ)?;
                     let mut init = init?;
+                    let mut items = init.stmts_to_items().ok_or_else(|| {
+                        format_err!("Expected only item statements in static initializer")
+                    })?;
+
                     // TODO: Replace this by relying entirely on
                     // WithStmts.is_unsafe() of the translated variable
                     if self.static_initializer_is_unsafe(initializer, typ) {
                         init.set_unsafe()
                     }
-                    let init = init.to_unsafe_pure_expr().ok_or_else(|| {
-                        format_err!("Expected no side-effects in static initializer")
-                    })?;
+                    let init = init.to_unsafe_pure_expr().unwrap();
+                    let item = static_def.span(span).static_item(new_name, ty, init);
+                    items.push(item);
 
-                    (ty, init)
-                };
-
-                let static_def = if is_externally_visible {
-                    mk_linkage(false, new_name, ident, self.tcfg.edition)
-                        .pub_()
-                        .extern_("C")
-                } else if self.cur_file.get().is_some() {
-                    mk().pub_()
-                } else {
-                    mk()
-                };
-
-                // Force mutability due to the potential for raw pointers occurring in the type
-                // and because we may be assigning to these variables in the external initializer
-                let mut static_def = static_def.span(span).mutbl();
-                if has_thread_duration {
-                    static_def = static_def.single_attr("thread_local");
+                    Ok(ConvertedDecl::Items(items))
                 }
-
-                // Add static attributes
-                for attr in attrs {
-                    static_def = match attr {
-                        c_ast::Attribute::Used => static_def.single_attr("used"),
-                        c_ast::Attribute::Section(name) => static_def
-                            .unsafety(attr_unsafety(self.tcfg.edition))
-                            .str_attr("link_section", name)
-                            .unsafety(Unsafety::Normal),
-                        _ => continue,
-                    }
-                }
-
-                Ok(ConvertedDecl::Item(
-                    static_def.static_item(new_name, ty, init),
-                ))
             }
 
             Variable { .. } => Err(TranslationError::generic(
@@ -4020,43 +4019,7 @@ impl<'c> Translation<'c> {
 
             Paren(_, val) => self.convert_expr(ctx, val, override_ty),
 
-            CompoundLiteral(qty, val) => {
-                if !ctx.needs_address() || ctx.is_const {
-                    // consts have their intermediates' lifetimes extended.
-                    return self.convert_expr(ctx, val, override_ty);
-                }
-
-                // C compound literals are lvalues, but equivalent Rust expressions generally are not.
-                // So if an address is needed, store it in an intermediate variable first.
-                let fresh_name = self.renamer.borrow_mut().fresh();
-                let fresh_ty = self.convert_type(override_ty.unwrap_or(qty).ctype)?;
-
-                // Translate the expression to be assigned to the fresh variable.
-                // It will be assigned by value, so we don't need its address anymore.
-                let val = self.convert_expr(ctx.set_needs_address(false), val, override_ty)?;
-
-                val.and_then(|val| {
-                    let fresh_stmt = {
-                        let mutbl = if qty.qualifiers.is_const {
-                            Mutability::Immutable
-                        } else {
-                            Mutability::Mutable
-                        };
-
-                        let local = mk().local(
-                            mk().set_mutbl(mutbl).ident_pat(&fresh_name),
-                            Some(fresh_ty),
-                            Some(val),
-                        );
-                        mk().local_stmt(Box::new(local))
-                    };
-
-                    Ok(WithStmts::new(
-                        vec![fresh_stmt],
-                        mk().ident_expr(fresh_name),
-                    ))
-                })
-            }
+            CompoundLiteral(qty, val) => self.convert_compound_literal(ctx, qty, val, override_ty),
 
             InitList(ty, ref ids, opt_union_field_id, _) => {
                 self.convert_init_list(ctx, ty, ids, opt_union_field_id)
