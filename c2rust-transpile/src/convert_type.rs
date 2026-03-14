@@ -2,8 +2,11 @@ use crate::c_ast::CDeclId;
 use crate::c_ast::*;
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
+use crate::translator::variadic::mk_va_list_ty;
+use crate::TranspilerConfig;
 use crate::{CrateSet, ExternCrate};
 use c2rust_ast_builder::{mk, properties::*};
+use c2rust_rust_tools::RustEdition;
 use failure::format_err;
 use indexmap::IndexSet;
 use std::collections::{HashMap, HashSet};
@@ -17,6 +20,7 @@ enum FieldKey {
 }
 
 pub struct TypeConverter {
+    pub edition: RustEdition,
     pub translate_valist: bool,
     renamer: Renamer<CDeclId>,
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
@@ -132,16 +136,10 @@ pub const RESERVED_NAMES: [&str; 100] = [
 ];
 
 impl TypeConverter {
-    // We don't provide a `Default` impl to simplify future compatibility:
-    // if `TypeConverter` ever gets fields incompatible with `Default`, then
-    // cleaning out the uses of `impl Default for TypeConverter` can be a pain.
-    // More practically, there is a single use of `TypeConverter::new` and no
-    // current plans to use a `Default` impl, so providing it isn't worth the
-    // potential breakage.
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> TypeConverter {
+    pub fn new(tcfg: &TranspilerConfig) -> TypeConverter {
         TypeConverter {
-            translate_valist: false,
+            edition: tcfg.edition,
+            translate_valist: tcfg.translate_valist,
             renamer: Renamer::new(&RESERVED_NAMES),
             fields: HashMap::new(),
             suffix_names: HashMap::new(),
@@ -318,8 +316,7 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaListImpl"]);
-            return Ok(ty);
+            return Ok(mk_va_list_ty(self.edition, None));
         }
 
         match ctxt.index(ctype).kind {

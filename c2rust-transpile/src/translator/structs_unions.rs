@@ -12,6 +12,7 @@ use crate::c_ast::{
     MemberKind,
 };
 use crate::diagnostics::TranslationResult;
+use crate::translator::variadic::mk_va_list_ty;
 use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
 use crate::ExternCrate;
@@ -858,15 +859,7 @@ impl<'a> Translation<'a> {
                 // TODO: handle or panic on structs with more than one va_list?
                 let is_va_list = self.ast_context.is_va_list(ctype);
                 let mut ty = if is_va_list {
-                    let path = vec![
-                        mk().path_segment("core"),
-                        mk().path_segment("ffi"),
-                        mk().path_segment_with_args(
-                            "VaListImpl",
-                            mk().angle_bracketed_args(vec![mk().lifetime("a")]),
-                        ),
-                    ];
-                    mk().abs_path_ty(path)
+                    mk_va_list_ty(self.tcfg.edition, Some("a"))
                 } else {
                     self.convert_type(ctype)?
                 };

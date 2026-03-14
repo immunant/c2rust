@@ -468,7 +468,6 @@ fn test_wide_strings() {
 #[test]
 fn test_varargs() {
     transpile("varargs.c")
-        .expect_compile_error_edition_2024(cfg!(target_os = "linux"))
         .arch_specific(true)
         .os_specific(true)
         .run();

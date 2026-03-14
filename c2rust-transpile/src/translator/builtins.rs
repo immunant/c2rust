@@ -360,7 +360,7 @@ impl<'c> Translation<'c> {
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
                     if let Some(_va_id) = self.match_vaend(args[0]) {
-                        // nothing to do since `VaListImpl`s get `Drop`'ed.
+                        // nothing to do since the translated Rust `va_list` values get `Drop`'ed.
                         return Ok(WithStmts::new_val(self.panic("va_end stub")));
                     }
                 }
