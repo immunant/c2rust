@@ -7,7 +7,7 @@ use crate::mem_x_fns::{rust_assume_aligned, rust_mem_x};
 use std::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn alloca_hello() -> c_int;
     fn atomics_entry(_: c_uint, _: *mut c_int);
     fn new_atomics(_: c_uint, _: *mut c_int);

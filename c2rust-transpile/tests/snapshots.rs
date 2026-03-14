@@ -306,9 +306,7 @@ fn test_arrays() {
 
 #[test]
 fn test_atomics() {
-    transpile("atomics.c")
-        .expect_compile_error_edition_2024(true)
-        .run();
+    transpile("atomics.c").run();
 }
 
 #[test]
