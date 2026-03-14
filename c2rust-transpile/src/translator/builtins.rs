@@ -643,7 +643,7 @@ impl<'c> Translation<'c> {
             }
 
             "__sync_synchronize" => {
-                let atomic_func = self.atomic_intrinsic_expr("fence", &[SeqCst]);
+                let atomic_func = self.atomic_intrinsic_expr("fence", 0, &[SeqCst]);
                 let call_expr = mk().call_expr(atomic_func, vec![]);
                 self.convert_side_effects_expr(
                     ctx,
@@ -658,7 +658,7 @@ impl<'c> Translation<'c> {
             | "__sync_lock_test_and_set_8"
             | "__sync_lock_test_and_set_16" => {
                 // Emit `atomic_xchg_acquire(arg0, arg1)`
-                let atomic_func = self.atomic_intrinsic_expr("xchg", &[Acquire]);
+                let atomic_func = self.atomic_intrinsic_expr("xchg", 1, &[Acquire]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 arg0.and_then(|arg0| {
@@ -679,7 +679,7 @@ impl<'c> Translation<'c> {
             | "__sync_lock_release_8"
             | "__sync_lock_release_16" => {
                 // Emit `atomic_store_release(arg0, 0)`
-                let atomic_func = self.atomic_intrinsic_expr("store", &[Release]);
+                let atomic_func = self.atomic_intrinsic_expr("store", 1, &[Release]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
