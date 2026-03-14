@@ -14,24 +14,53 @@ expression: cat tests/snapshots/atomics.2024.rs
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn c11_atomics(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     *&raw mut x = 0 as ::core::ffi::c_int;
-    ::core::intrinsics::atomic_store_seqcst(&raw mut x, 1 as ::core::ffi::c_int);
-    ::core::intrinsics::atomic_load_seqcst(&raw mut x);
-    ::core::intrinsics::atomic_xadd_seqcst(&raw mut x, 2 as ::core::ffi::c_int);
-    ::core::intrinsics::atomic_xsub_seqcst(&raw mut x, 1 as ::core::ffi::c_int);
-    ::core::intrinsics::atomic_and_seqcst(&raw mut x, 0xf as ::core::ffi::c_int);
-    ::core::intrinsics::atomic_or_seqcst(&raw mut x, 0x10 as ::core::ffi::c_int);
-    ::core::intrinsics::atomic_nand_seqcst(&raw mut x, 0xff as ::core::ffi::c_int);
-    ::core::intrinsics::atomic_xchg_seqcst(&raw mut x, 42 as ::core::ffi::c_int);
+    ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+        1 as ::core::ffi::c_int,
+    );
+    ::core::intrinsics::atomic_load::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+    );
+    ::core::intrinsics::atomic_xadd::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+        2 as ::core::ffi::c_int,
+    );
+    ::core::intrinsics::atomic_xsub::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+        1 as ::core::ffi::c_int,
+    );
+    ::core::intrinsics::atomic_and::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+        0xf as ::core::ffi::c_int,
+    );
+    ::core::intrinsics::atomic_or::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+        0x10 as ::core::ffi::c_int,
+    );
+    ::core::intrinsics::atomic_nand::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+        0xff as ::core::ffi::c_int,
+    );
+    ::core::intrinsics::atomic_xchg::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut x,
+        42 as ::core::ffi::c_int,
+    );
     let mut expected: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
     let mut desired: ::core::ffi::c_int = 100 as ::core::ffi::c_int;
-    let c2rust_fresh0 =
-        ::core::intrinsics::atomic_cxchg_seqcst_seqcst(&raw mut x, *&raw mut expected, desired);
+    let c2rust_fresh0 = ::core::intrinsics::atomic_cxchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+    >(&raw mut x, *&raw mut expected, desired);
     *&raw mut expected = c2rust_fresh0.0;
     c2rust_fresh0.1;
     expected = 100 as ::core::ffi::c_int;
     desired = 200 as ::core::ffi::c_int;
-    let c2rust_fresh1 =
-        ::core::intrinsics::atomic_cxchgweak_seqcst_seqcst(&raw mut x, *&raw mut expected, desired);
+    let c2rust_fresh1 = ::core::intrinsics::atomic_cxchgweak::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+    >(&raw mut x, *&raw mut expected, desired);
     *&raw mut expected = c2rust_fresh1.0;
     c2rust_fresh1.1;
     return x;
