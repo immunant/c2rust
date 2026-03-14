@@ -3,7 +3,7 @@ use crate::format_translation_err;
 use super::*;
 use std::sync::atomic::Ordering;
 
-fn order_name(order: Ordering) -> &'static str {
+pub fn order_name(order: Ordering) -> &'static str {
     use Ordering::*;
     match order {
         SeqCst => "seqcst",
