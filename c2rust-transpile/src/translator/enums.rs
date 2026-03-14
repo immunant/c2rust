@@ -1,9 +1,9 @@
 use c2rust_ast_builder::mk;
 use proc_macro2::Span;
-use syn::Expr;
+use syn::{Expr, ImplItem};
 
 use crate::{
-    c_ast,
+    c_ast::{self, iterators::SomeId},
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
     with_stmts::WithStmts,
@@ -17,6 +17,7 @@ impl<'c> Translation<'c> {
         enum_id: CEnumId,
         span: Span,
         integral_type: CQualTypeId,
+        variants: &[CEnumConstantId],
     ) -> TranslationResult<ConvertedDecl> {
         let enum_name = &self
             .type_converter
@@ -34,41 +35,59 @@ impl<'c> Translation<'c> {
             .pub_()
             .struct_item(enum_name, vec![field], true);
 
-        Ok(ConvertedDecl::Item(item))
-    }
+        if variants.is_empty() {
+            return Ok(ConvertedDecl::Item(item));
+        }
 
-    pub fn convert_enum_constant(
-        &self,
-        enum_constant_id: CEnumConstantId,
-        span: Span,
-        value: ConstIntExpr,
-    ) -> TranslationResult<ConvertedDecl> {
-        let name = self
-            .renamer
-            .borrow_mut()
-            .get(&enum_constant_id)
-            .expect("Enum constant not named");
-        let enum_id = self.ast_context.parents[&enum_constant_id];
-        let enum_name = self
-            .type_converter
-            .borrow()
-            .resolve_decl_name(enum_id)
-            .expect("Enums should already be renamed");
+        let self_ty = mk().ident_ty("Self");
+        let constants: Vec<ImplItem> = variants
+            .iter()
+            .map(|&enum_constant_id| {
+                let span = self
+                    .get_span(SomeId::Decl(enum_constant_id))
+                    .unwrap_or_else(Span::call_site);
 
-        let ty = mk().ident_ty(enum_name.clone());
-        let val = match value {
-            ConstIntExpr::I(value) => signed_int_expr(value),
-            ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
-        };
-        let init = self.enum_constructor_expr(enum_id, val);
+                let (name, value) = match self.ast_context[enum_constant_id].kind {
+                    CDeclKind::EnumConstant {
+                        ref name, value, ..
+                    } => (name, value),
+                    _ => panic!("{:?} does not point to an enum variant", enum_constant_id),
+                };
+                let name = self.type_converter.borrow_mut().declare_field_name(
+                    enum_id,
+                    enum_constant_id,
+                    name,
+                );
 
-        Ok(ConvertedDecl::Item(
-            mk().span(span).pub_().const_item(name, ty, init),
-        ))
+                let val = match value {
+                    ConstIntExpr::I(value) => signed_int_expr(value),
+                    ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
+                };
+                let init = self.enum_constructor_expr(enum_id, val, true);
+
+                mk().span(span)
+                    .pub_()
+                    .const_impl_item(name, self_ty.clone(), init)
+            })
+            .collect();
+        let impl_block = mk().impl_item(mk().ident_ty(enum_name), constants);
+
+        Ok(ConvertedDecl::Items(vec![item, impl_block]))
     }
 
     pub fn convert_enum_zero_initializer(&self, enum_id: CEnumId) -> WithStmts<Box<Expr>> {
         WithStmts::new_val(self.enum_for_i64(enum_id, 0))
+    }
+
+    /// Translates a `DeclRef` for an `EnumConstant`.
+    pub fn convert_enum_constant_decl_ref(
+        &self,
+        enum_constant_id: CEnumConstantId,
+        target_cty: CTypeId,
+    ) -> TranslationResult<Box<Expr>> {
+        let enum_id = self.ast_context.parents[&enum_constant_id];
+        let val = self.enum_constant_expr(enum_id, enum_constant_id);
+        self.convert_cast_from_enum(target_cty, val)
     }
 
     /// Translate a cast where the source type, but not the target type, is an `enum` type.
@@ -117,7 +136,7 @@ impl<'c> Translation<'c> {
                     // If this DeclRef expanded to a const macro, we actually need to insert a cast,
                     // because the translation of a const macro skips implicit casts in its context.
                     if !expr_is_macro {
-                        return Ok(self.enum_constant_expr(enum_constant_id));
+                        return Ok(self.enum_constant_expr(enum_id, enum_constant_id));
                     }
                 }
 
@@ -152,14 +171,14 @@ impl<'c> Translation<'c> {
             val = mk().cast_expr(val, ty);
         }
 
-        Ok(self.enum_constructor_expr(enum_id, val))
+        Ok(self.enum_constructor_expr(enum_id, val, false))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it converts a number to the enum type.
     fn enum_for_i64(&self, enum_id: CEnumId, value: i64) -> Box<Expr> {
         if let Some(enum_constant_id) = self.enum_variant_for_i64(enum_id, value) {
-            return self.enum_constant_expr(enum_constant_id);
+            return self.enum_constant_expr(enum_id, enum_constant_id);
         }
 
         let underlying_type_id = self.enum_integral_type(enum_id);
@@ -169,7 +188,7 @@ impl<'c> Translation<'c> {
             _ => signed_int_expr(value),
         };
 
-        self.enum_constructor_expr(enum_id, value)
+        self.enum_constructor_expr(enum_id, value, false)
     }
 
     /// Returns the id of the variant of `enum_id` whose value matches `value`, if any.
@@ -190,20 +209,41 @@ impl<'c> Translation<'c> {
             })
     }
 
-    fn enum_constructor_expr(&self, enum_id: CEnumId, value: Box<Expr>) -> Box<Expr> {
+    fn enum_constructor_expr(
+        &self,
+        enum_id: CEnumId,
+        value: Box<Expr>,
+        use_self_ty: bool,
+    ) -> Box<Expr> {
+        let func = if use_self_ty {
+            mk().ident_expr("Self")
+        } else {
+            let enum_name = self
+                .type_converter
+                .borrow()
+                .resolve_decl_name(enum_id)
+                .unwrap();
+            self.add_import(enum_id, &enum_name);
+            mk().ident_expr(enum_name)
+        };
+
+        mk().call_expr(func, vec![value])
+    }
+
+    fn enum_constant_expr(&self, enum_id: CEnumId, enum_constant_id: CEnumConstantId) -> Box<Expr> {
         let enum_name = self
             .type_converter
             .borrow()
             .resolve_decl_name(enum_id)
             .unwrap();
-        self.add_import(enum_id, &enum_name);
-        mk().call_expr(mk().ident_expr(enum_name), vec![value])
-    }
+        let name = self
+            .type_converter
+            .borrow()
+            .resolve_field_name(Some(enum_id), enum_constant_id)
+            .unwrap();
 
-    fn enum_constant_expr(&self, enum_constant_id: CEnumConstantId) -> Box<Expr> {
-        let name = self.renamer.borrow().get(&enum_constant_id).unwrap();
-        self.add_import(enum_constant_id, &name);
-        mk().ident_expr(name)
+        self.add_import(enum_id, &enum_name);
+        mk().path_expr(vec![enum_name, name])
     }
 
     fn is_variant_of_enum(&self, enum_id: CEnumId, enum_constant_id: CEnumConstantId) -> bool {
