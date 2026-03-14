@@ -21,7 +21,7 @@ fn order_suffix(order: Ordering) -> &'static str {
 impl<'c> Translation<'c> {
     pub fn atomic_intrinsic_expr(&self, base_name: &str, orders: &[Ordering]) -> Box<Expr> {
         self.use_feature("core_intrinsics");
-        let prefix = [base_name];
+        let prefix = ["atomic", base_name];
         let suffix = orders.iter().map(|&order| order_suffix(order));
         let intrinsic_name = prefix.iter().copied().chain(suffix).join("_");
         mk().abs_path_expr(vec!["core", "intrinsics", &intrinsic_name])
@@ -97,7 +97,7 @@ impl<'c> Translation<'c> {
             "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
                 let order = static_order(order);
 
-                let atomic_load = self.atomic_intrinsic_expr("atomic_load", &[order]);
+                let atomic_load = self.atomic_intrinsic_expr("load", &[order]);
                 let call = mk().call_expr(atomic_load, vec![ptr]);
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
@@ -126,7 +126,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let atomic_store = self.atomic_intrinsic_expr("atomic_store", &[order]);
+                        let atomic_store = self.atomic_intrinsic_expr("store", &[order]);
                         let val = if name == "__atomic_store" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -165,7 +165,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let fn_path = self.atomic_intrinsic_expr("atomic_xchg", &[order]);
+                        let fn_path = self.atomic_intrinsic_expr("xchg", &[order]);
                         let val = if name == "__atomic_exchange" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -241,11 +241,6 @@ impl<'c> Translation<'c> {
                                     "Invalid failure memory ordering",
                                 )
                             })?;
-                            let intrinsic_base = if weak {
-                                "atomic_cxchgweak"
-                            } else {
-                                "atomic_cxchg"
-                            };
 
                             let expected =
                                 mk().unary_expr(UnOp::Deref(Default::default()), expected);
@@ -256,6 +251,7 @@ impl<'c> Translation<'c> {
                                 _ => mk().unary_expr(UnOp::Deref(Default::default()), desired),
                             };
 
+                            let intrinsic_base = if weak { "cxchgweak" } else { "cxchg" };
                             let atomic_cxchg =
                                 self.atomic_intrinsic_expr(intrinsic_base, &[order, order_fail]);
                             let call =
@@ -300,17 +296,17 @@ impl<'c> Translation<'c> {
             | "__c11_atomic_fetch_or"
             | "__c11_atomic_fetch_nand" => {
                 let intrinsic_name = if name.contains("_add") {
-                    "atomic_xadd"
+                    "xadd"
                 } else if name.contains("_sub") {
-                    "atomic_xsub"
+                    "xsub"
                 } else if name.contains("_or") {
-                    "atomic_or"
+                    "or"
                 } else if name.contains("_xor") {
-                    "atomic_xor"
+                    "xor"
                 } else if name.contains("_nand") {
-                    "atomic_nand"
+                    "nand"
                 } else {
-                    "atomic_and"
+                    "and"
                 };
 
                 let order = static_order(order);
@@ -341,11 +337,7 @@ impl<'c> Translation<'c> {
         returns_val: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Emit `atomic_cxchg(a0, a1, a2).idx`
-        let intrinsic_base = if weak {
-            "atomic_cxchgweak"
-        } else {
-            "atomic_cxchg"
-        };
+        let intrinsic_base = if weak { "cxchgweak" } else { "cxchg" };
         let atomic_cxchg = self.atomic_intrinsic_expr(intrinsic_base, &[order_succ, order_fail]);
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
         let field_idx = if returns_val { 0 } else { 1 };
@@ -378,12 +370,12 @@ impl<'c> Translation<'c> {
             )
         } else {
             let (binary_op, is_nand) = match base_name {
-                "atomic_xadd" => (BinOp::Add(Default::default()), false),
-                "atomic_xsub" => (BinOp::Sub(Default::default()), false),
-                "atomic_or" => (BinOp::BitOr(Default::default()), false),
-                "atomic_xor" => (BinOp::BitXor(Default::default()), false),
-                "atomic_nand" => (BinOp::BitAnd(Default::default()), true),
-                "atomic_and" => (BinOp::BitAnd(Default::default()), false),
+                "xadd" => (BinOp::Add(Default::default()), false),
+                "xsub" => (BinOp::Sub(Default::default()), false),
+                "or" => (BinOp::BitOr(Default::default()), false),
+                "xor" => (BinOp::BitXor(Default::default()), false),
+                "nand" => (BinOp::BitAnd(Default::default()), true),
+                "and" => (BinOp::BitAnd(Default::default()), false),
                 _ => panic!("Unexpected atomic intrinsic base name: {base_name}"),
             };
 
