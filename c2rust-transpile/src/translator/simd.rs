@@ -3,11 +3,13 @@
 
 use super::*;
 
-use crate::c_ast::BinOp::{Add, BitAnd, ShiftRight};
-use crate::c_ast::CExprKind::{Binary, Call, Conditional, ExplicitCast, ImplicitCast, Literal};
-use crate::c_ast::CLiteral::Integer;
-use crate::c_ast::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
-use crate::c_ast::CastKind::{BitCast, IntegralCast};
+use crate::c_ast::c_expr::CBinOp::{Add, BitAnd, ShiftRight};
+use crate::c_ast::c_expr::CExprKind::{
+    Binary, Call, Conditional, ExplicitCast, ImplicitCast, Literal,
+};
+use crate::c_ast::c_expr::CLiteral::Integer;
+use crate::c_ast::c_expr::CastKind::{BitCast, IntegralCast};
+use crate::c_ast::c_type::CTypeKind::{Char, Double, Float, Int, LongLong, Short};
 
 /// As of rustc 1.29, rust is known to be missing some SIMD functions.
 /// See <https://github.com/rust-lang-nursery/stdsimd/issues/579>

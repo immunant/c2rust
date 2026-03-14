@@ -1,6 +1,7 @@
 //! This module provides translations of unary and binary operator expressions.
 
 use super::*;
+use crate::c_ast::c_expr::{CBinOp, CUnOp};
 
 fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
     mk().unary_expr(UnOp::Neg(Default::default()), arg)
@@ -10,27 +11,27 @@ fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![])
 }
 
-impl From<c_ast::BinOp> for BinOp {
-    fn from(op: c_ast::BinOp) -> Self {
+impl From<CBinOp> for BinOp {
+    fn from(op: CBinOp) -> Self {
         match op {
-            c_ast::BinOp::Multiply => BinOp::Mul(Default::default()),
-            c_ast::BinOp::Divide => BinOp::Div(Default::default()),
-            c_ast::BinOp::Modulus => BinOp::Rem(Default::default()),
-            c_ast::BinOp::Add => BinOp::Add(Default::default()),
-            c_ast::BinOp::Subtract => BinOp::Sub(Default::default()),
-            c_ast::BinOp::ShiftLeft => BinOp::Shl(Default::default()),
-            c_ast::BinOp::ShiftRight => BinOp::Shr(Default::default()),
-            c_ast::BinOp::Less => BinOp::Lt(Default::default()),
-            c_ast::BinOp::Greater => BinOp::Gt(Default::default()),
-            c_ast::BinOp::LessEqual => BinOp::Le(Default::default()),
-            c_ast::BinOp::GreaterEqual => BinOp::Ge(Default::default()),
-            c_ast::BinOp::EqualEqual => BinOp::Eq(Default::default()),
-            c_ast::BinOp::NotEqual => BinOp::Ne(Default::default()),
-            c_ast::BinOp::BitAnd => BinOp::BitAnd(Default::default()),
-            c_ast::BinOp::BitXor => BinOp::BitXor(Default::default()),
-            c_ast::BinOp::BitOr => BinOp::BitOr(Default::default()),
-            c_ast::BinOp::And => BinOp::And(Default::default()),
-            c_ast::BinOp::Or => BinOp::Or(Default::default()),
+            CBinOp::Multiply => BinOp::Mul(Default::default()),
+            CBinOp::Divide => BinOp::Div(Default::default()),
+            CBinOp::Modulus => BinOp::Rem(Default::default()),
+            CBinOp::Add => BinOp::Add(Default::default()),
+            CBinOp::Subtract => BinOp::Sub(Default::default()),
+            CBinOp::ShiftLeft => BinOp::Shl(Default::default()),
+            CBinOp::ShiftRight => BinOp::Shr(Default::default()),
+            CBinOp::Less => BinOp::Lt(Default::default()),
+            CBinOp::Greater => BinOp::Gt(Default::default()),
+            CBinOp::LessEqual => BinOp::Le(Default::default()),
+            CBinOp::GreaterEqual => BinOp::Ge(Default::default()),
+            CBinOp::EqualEqual => BinOp::Eq(Default::default()),
+            CBinOp::NotEqual => BinOp::Ne(Default::default()),
+            CBinOp::BitAnd => BinOp::BitAnd(Default::default()),
+            CBinOp::BitXor => BinOp::BitXor(Default::default()),
+            CBinOp::BitOr => BinOp::BitOr(Default::default()),
+            CBinOp::And => BinOp::And(Default::default()),
+            CBinOp::Or => BinOp::Or(Default::default()),
 
             _ => panic!("C BinOp {:?} is not a valid Rust BinOp", op),
         }
@@ -42,7 +43,7 @@ impl<'c> Translation<'c> {
         &self,
         mut ctx: ExprContext,
         expr_type_id: CQualTypeId,
-        op: c_ast::BinOp,
+        op: CBinOp,
         lhs: CExprId,
         rhs: CExprId,
         opt_lhs_type_id: Option<CQualTypeId>,
@@ -56,7 +57,7 @@ impl<'c> Translation<'c> {
 
         let lhs_loc = &self.ast_context[lhs].loc;
         let rhs_loc = &self.ast_context[rhs].loc;
-        use c_ast::BinOp::*;
+        use CBinOp::*;
         match op {
             Comma => {
                 // The value of the LHS of a comma expression is always discarded
@@ -98,7 +99,7 @@ impl<'c> Translation<'c> {
                 // and so we need to decay references to pointers to do so. See
                 // https://github.com/rust-lang/rust/issues/53772. This might be removable
                 // once the above issue is resolved.
-                if op == c_ast::BinOp::EqualEqual || op == c_ast::BinOp::NotEqual {
+                if op == CBinOp::EqualEqual || op == CBinOp::NotEqual {
                     ctx = ctx.decay_ref();
                 }
 
@@ -167,7 +168,7 @@ impl<'c> Translation<'c> {
                     // When we use methods on pointers (ie wrapping_offset_from or offset)
                     // we must ensure we have an explicit raw ptr for the self param, as
                     // self references do not decay
-                    if op == c_ast::BinOp::Subtract || op == c_ast::BinOp::Add {
+                    if op == CBinOp::Subtract || op == CBinOp::Add {
                         let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
 
                         if let CTypeKind::Pointer(_) = ty_kind {
@@ -201,7 +202,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         bin_op_kind: BinOp,
-        bin_op: c_ast::BinOp,
+        bin_op: CBinOp,
         read: Box<Expr>,
         write: Box<Expr>,
         rhs: Box<Expr>,
@@ -271,14 +272,14 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator(
         &self,
         ctx: ExprContext,
-        op: c_ast::BinOp,
+        op: CBinOp,
         expr_type_id: CQualTypeId,
         lhs: CExprId,
         rhs: CExprId,
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if op == c_ast::BinOp::Assign {
+        if op == CBinOp::Assign {
             assert!(compute_lhs_type_id.is_none());
             assert!(compute_res_type_id.is_none());
         } else {
@@ -307,7 +308,7 @@ impl<'c> Translation<'c> {
             let neither_ptr =
                 !lhs_resolved_ty.kind.is_pointer() && !rhs_resolved_ty.kind.is_pointer();
 
-            use c_ast::BinOp::*;
+            use CBinOp::*;
             match op.underlying_assignment() {
                 Some(Add) => neither_ptr,
                 Some(Subtract) => neither_ptr,
@@ -350,7 +351,7 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator_with_rhs(
         &self,
         ctx: ExprContext,
-        op: c_ast::BinOp,
+        op: CBinOp,
         expr_type_id: CQualTypeId,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
@@ -358,7 +359,7 @@ impl<'c> Translation<'c> {
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if op == c_ast::BinOp::Assign {
+        if op == CBinOp::Assign {
             assert!(compute_lhs_type_id.is_none());
             assert!(compute_res_type_id.is_none());
         } else {
@@ -409,11 +410,11 @@ impl<'c> Translation<'c> {
         };
 
         let is_unsigned_arith = match op {
-            c_ast::BinOp::AssignAdd
-            | c_ast::BinOp::AssignSubtract
-            | c_ast::BinOp::AssignMultiply
-            | c_ast::BinOp::AssignDivide
-            | c_ast::BinOp::AssignModulus => compute_resolved_ty.kind.is_unsigned_integral_type(),
+            CBinOp::AssignAdd
+            | CBinOp::AssignSubtract
+            | CBinOp::AssignMultiply
+            | CBinOp::AssignDivide
+            | CBinOp::AssignModulus => compute_resolved_ty.kind.is_unsigned_integral_type(),
             _ => false,
         };
 
@@ -438,7 +439,7 @@ impl<'c> Translation<'c> {
                      rvalue: read,
                  }| {
                     // Assignment expression itself
-                    use c_ast::BinOp::*;
+                    use CBinOp::*;
                     let assign_stmt = match op {
                         // Regular (possibly volatile) assignment
                         Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
@@ -570,7 +571,7 @@ impl<'c> Translation<'c> {
     /// arguments be usable as rvalues.
     fn convert_binary_operator(
         &self,
-        op: c_ast::BinOp,
+        op: CBinOp,
         ty: Box<Type>,
         ctype: CTypeId,
         lhs_type: CQualTypeId,
@@ -586,32 +587,30 @@ impl<'c> Translation<'c> {
             .is_unsigned_integral_type();
 
         Ok(WithStmts::new_val(match op {
-            c_ast::BinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::Subtract => {
-                return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)
-            }
+            CBinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
+            CBinOp::Subtract => return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
 
-            c_ast::BinOp::Multiply if is_unsigned_integral_type => {
+            CBinOp::Multiply if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_mul", vec![rhs])
             }
-            c_ast::BinOp::Multiply => mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs),
+            CBinOp::Multiply => mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::Divide if is_unsigned_integral_type => {
+            CBinOp::Divide if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_div", vec![rhs])
             }
-            c_ast::BinOp::Divide => mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs),
+            CBinOp::Divide => mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::Modulus if is_unsigned_integral_type => {
+            CBinOp::Modulus if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_rem", vec![rhs])
             }
-            c_ast::BinOp::Modulus => mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs),
+            CBinOp::Modulus => mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::BitXor => mk().binary_expr(BinOp::BitXor(Default::default()), lhs, rhs),
+            CBinOp::BitXor => mk().binary_expr(BinOp::BitXor(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::ShiftRight => mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs),
-            c_ast::BinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
+            CBinOp::ShiftRight => mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs),
+            CBinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::EqualEqual => {
+            CBinOp::EqualEqual => {
                 // Using is_none method for null comparison means we don't have to
                 // rely on the PartialEq trait as much and is also more idiomatic
                 let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
@@ -633,7 +632,7 @@ impl<'c> Translation<'c> {
 
                 bool_to_int(expr)
             }
-            c_ast::BinOp::NotEqual => {
+            CBinOp::NotEqual => {
                 // Using is_some method for null comparison means we don't have to
                 // rely on the PartialEq trait as much and is also more idiomatic
                 let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
@@ -655,21 +654,19 @@ impl<'c> Translation<'c> {
 
                 bool_to_int(expr)
             }
-            c_ast::BinOp::Less => {
-                bool_to_int(mk().binary_expr(BinOp::Lt(Default::default()), lhs, rhs))
-            }
-            c_ast::BinOp::Greater => {
+            CBinOp::Less => bool_to_int(mk().binary_expr(BinOp::Lt(Default::default()), lhs, rhs)),
+            CBinOp::Greater => {
                 bool_to_int(mk().binary_expr(BinOp::Gt(Default::default()), lhs, rhs))
             }
-            c_ast::BinOp::GreaterEqual => {
+            CBinOp::GreaterEqual => {
                 bool_to_int(mk().binary_expr(BinOp::Ge(Default::default()), lhs, rhs))
             }
-            c_ast::BinOp::LessEqual => {
+            CBinOp::LessEqual => {
                 bool_to_int(mk().binary_expr(BinOp::Le(Default::default()), lhs, rhs))
             }
 
-            c_ast::BinOp::BitAnd => mk().binary_expr(BinOp::BitAnd(Default::default()), lhs, rhs),
-            c_ast::BinOp::BitOr => mk().binary_expr(BinOp::BitOr(Default::default()), lhs, rhs),
+            CBinOp::BitAnd => mk().binary_expr(BinOp::BitAnd(Default::default()), lhs, rhs),
+            CBinOp::BitOr => mk().binary_expr(BinOp::BitOr(Default::default()), lhs, rhs),
 
             op => unimplemented!("Translation of binary operator {:?}", op),
         }))
@@ -749,9 +746,9 @@ impl<'c> Translation<'c> {
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let op = if up {
-            c_ast::BinOp::AssignAdd
+            CBinOp::AssignAdd
         } else {
-            c_ast::BinOp::AssignSubtract
+            CBinOp::AssignSubtract
         };
         let one = match self.ast_context.resolve_type(ty.ctype).kind {
             // TODO: If rust gets f16 support:
@@ -888,7 +885,7 @@ impl<'c> Translation<'c> {
     pub fn convert_unary_operator(
         &self,
         ctx: ExprContext,
-        name: c_ast::UnOp,
+        name: CUnOp,
         cqual_type: CQualTypeId,
         arg: CExprId,
         lrvalue: LRValue,
@@ -897,15 +894,15 @@ impl<'c> Translation<'c> {
         let resolved_ctype = self.ast_context.resolve_type(ctype);
 
         let mut unary = match name {
-            c_ast::UnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
-            c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
-            c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
-            c_ast::UnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
-            c_ast::UnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
-            c_ast::UnOp::Deref => self.convert_deref(ctx, cqual_type, arg, lrvalue),
-            c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
+            CUnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
+            CUnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
+            CUnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
+            CUnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
+            CUnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
+            CUnOp::Deref => self.convert_deref(ctx, cqual_type, arg, lrvalue),
+            CUnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
-            c_ast::UnOp::Negate => {
+            CUnOp::Negate => {
                 let val = self.convert_expr(ctx.used(), arg, Some(cqual_type))?;
 
                 if resolved_ctype.kind.is_unsigned_integral_type() {
@@ -914,19 +911,19 @@ impl<'c> Translation<'c> {
                     Ok(val.map(neg_expr))
                 }
             }
-            c_ast::UnOp::Complement => Ok(self
+            CUnOp::Complement => Ok(self
                 .convert_expr(ctx.used(), arg, Some(cqual_type))?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
-            c_ast::UnOp::Not => {
+            CUnOp::Not => {
                 let val = self.convert_condition(ctx, false, arg)?;
                 Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
             }
-            c_ast::UnOp::Extension => {
+            CUnOp::Extension => {
                 let arg = self.convert_expr(ctx, arg, Some(cqual_type))?;
                 Ok(arg)
             }
-            c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Coawait => {
+            CUnOp::Real | CUnOp::Imag | CUnOp::Coawait => {
                 panic!("Unsupported extension operator")
             }
         }?;
@@ -938,11 +935,11 @@ impl<'c> Translation<'c> {
         // it's a no-op around the inner expression.
         if !matches!(
             name,
-            c_ast::UnOp::PreDecrement
-                | c_ast::UnOp::PreIncrement
-                | c_ast::UnOp::PostDecrement
-                | c_ast::UnOp::PostIncrement
-                | c_ast::UnOp::Extension
+            CUnOp::PreDecrement
+                | CUnOp::PreIncrement
+                | CUnOp::PostDecrement
+                | CUnOp::PostIncrement
+                | CUnOp::Extension
         ) {
             unary = self.convert_side_effects_expr(
                 ctx,

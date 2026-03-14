@@ -6,11 +6,9 @@ use std::ops::Index;
 
 use super::named_references::NamedReference;
 use super::TranslationError;
-use crate::c_ast;
-use crate::c_ast::{
-    BinOp, CDeclId, CDeclKind, CExprId, CExprKind, CFieldId, CQualTypeId, CRecordId, CTypeId,
-    MemberKind,
-};
+use crate::c_ast::c_decl::{CDeclId, CDeclKind, CFieldId, CRecordId};
+use crate::c_ast::c_expr::{CBinOp, CExprId, CExprKind, CUnOp, MemberKind};
+use crate::c_ast::c_type::{CQualTypeId, CTypeId};
 use crate::diagnostics::TranslationResult;
 use crate::translator::variadic::mk_va_list_ty;
 use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX};
@@ -20,8 +18,8 @@ use c2rust_ast_builder::mk;
 use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
 use syn::{
-    self, BinOp as RBinOp, Expr, ExprAssign, ExprBinary, ExprBlock, ExprCast, ExprMethodCall,
-    ExprUnary, Field, Stmt, Type, UnOp,
+    self, BinOp, Expr, ExprAssign, ExprBinary, ExprBlock, ExprCast, ExprMethodCall, ExprUnary,
+    Field, Stmt, Type, UnOp,
 };
 
 use itertools::EitherOrBoth::{Both, Right};
@@ -151,7 +149,7 @@ impl<'a> Translation<'a> {
             let outer_size = self.mk_size_of_ty_expr(outer_ty)?.to_expr();
             let inner_size = self.mk_size_of_ty_expr(inner_ty)?.to_expr();
             let padding_value =
-                mk().binary_expr(RBinOp::Sub(Default::default()), outer_size, inner_size);
+                mk().binary_expr(BinOp::Sub(Default::default()), outer_size, inner_size);
             let padding_const = mk()
                 .span(span)
                 .call_attr("allow", vec!["dead_code", "non_upper_case_globals"])
@@ -712,7 +710,7 @@ impl<'a> Translation<'a> {
     pub fn convert_bitfield_assignment_op_with_rhs(
         &self,
         ctx: ExprContext,
-        op: BinOp,
+        op: CBinOp,
         lhs: CExprId,
         rhs_expr: Box<Expr>,
         field_id: CDeclId,
@@ -733,41 +731,37 @@ impl<'a> Translation<'a> {
                 // Allow the value of this assignment to be used as the RHS of other assignments
                 let val = lhs_expr_read.clone();
                 let param_expr = match op {
-                    BinOp::AssignAdd => {
-                        mk().binary_expr(RBinOp::Add(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignAdd => {
+                        mk().binary_expr(BinOp::Add(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignSubtract => {
-                        mk().binary_expr(RBinOp::Sub(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignSubtract => {
+                        mk().binary_expr(BinOp::Sub(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignMultiply => {
-                        mk().binary_expr(RBinOp::Mul(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignMultiply => {
+                        mk().binary_expr(BinOp::Mul(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignDivide => {
-                        mk().binary_expr(RBinOp::Div(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignDivide => {
+                        mk().binary_expr(BinOp::Div(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignModulus => {
-                        mk().binary_expr(RBinOp::Rem(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignModulus => {
+                        mk().binary_expr(BinOp::Rem(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignBitXor => mk().binary_expr(
-                        RBinOp::BitXor(Default::default()),
-                        lhs_expr_read,
-                        rhs_expr,
-                    ),
-                    BinOp::AssignShiftLeft => {
-                        mk().binary_expr(RBinOp::Shl(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignBitXor => {
+                        mk().binary_expr(BinOp::BitXor(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignShiftRight => {
-                        mk().binary_expr(RBinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignShiftLeft => {
+                        mk().binary_expr(BinOp::Shl(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignBitOr => {
-                        mk().binary_expr(RBinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr)
+                    CBinOp::AssignShiftRight => {
+                        mk().binary_expr(BinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
                     }
-                    BinOp::AssignBitAnd => mk().binary_expr(
-                        RBinOp::BitAnd(Default::default()),
-                        lhs_expr_read,
-                        rhs_expr,
-                    ),
-                    BinOp::Assign => rhs_expr,
+                    CBinOp::AssignBitOr => {
+                        mk().binary_expr(BinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    CBinOp::AssignBitAnd => {
+                        mk().binary_expr(BinOp::BitAnd(Default::default()), lhs_expr_read, rhs_expr)
+                    }
+                    CBinOp::Assign => rhs_expr,
                     _ => panic!("Cannot convert non-assignment operator"),
                 };
 
@@ -1033,7 +1027,7 @@ impl<'a> Translation<'a> {
         let mut val = match kind {
             MemberKind::Dot => self.convert_expr(ctx, expr, None)?,
             MemberKind::Arrow => {
-                if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
+                if let CExprKind::Unary(_, CUnOp::AddressOf, subexpr_id, _) =
                     self.ast_context[expr].kind
                 {
                     // Special-case the `(&x)->field` pattern

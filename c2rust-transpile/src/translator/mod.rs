@@ -36,13 +36,21 @@ use crate::translator::variadic::{mk_va_list_copy, mk_va_list_ty};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust;
 
+use crate::c_ast::c_decl::{CDecl, CDeclId, CDeclKind, CDeclSrcRange, CFieldId};
+use crate::c_ast::c_expr::{
+    CBinOp, CExprId, CExprKind, CLiteral, CUnOp, CUnTypeOp, CastKind, ConstIntExpr, IntBase,
+    OffsetOfKind,
+};
+use crate::c_ast::c_stmt::{AsmOperand, CStmtId, CStmtKind};
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind};
 use crate::c_ast::iterators::{DFExpr, SomeId};
+use crate::c_ast::{CommentContext, FileId, Located, SrcLoc, TypedAstContext};
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::Renamer;
 use crate::with_stmts::WithStmts;
+use crate::TranslateMacros;
 use crate::{c_ast, format_translation_err};
-use crate::{c_ast::*, TranslateMacros};
 use crate::{ExternCrate, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
 
@@ -1717,9 +1725,9 @@ impl<'c> Translation<'c> {
         expr_id: Option<CExprId>,
         qtype: CQualTypeId,
     ) -> bool {
-        use crate::c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
-        use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
-        use crate::c_ast::UnOp::{AddressOf, Negate};
+        use crate::c_ast::c_expr::CBinOp::{Add, Divide, Modulus, Multiply, Subtract};
+        use crate::c_ast::c_expr::CUnOp::{AddressOf, Negate};
+        use crate::c_ast::c_expr::CastKind::{IntegralToPointer, PointerToIntegral};
 
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
@@ -2756,31 +2764,31 @@ impl<'c> Translation<'c> {
             };
 
         match self.ast_context[cond_id].kind {
-            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
+            CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(!target, ptr)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
+            CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(!target, ptr)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
+            CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(target, ptr)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
+            CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(target, ptr)
             }
 
-            CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
+            CExprKind::Unary(_, CUnOp::Not, subexpr_id, _) => {
                 self.convert_condition(ctx, !target, subexpr_id)
             }
 
@@ -3083,8 +3091,7 @@ impl<'c> Translation<'c> {
                         }
 
                         // ref decayed ptrs generally need a type annotation
-                        if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _, _)) =
-                            initializer_kind
+                        if let Some(CExprKind::Unary(_, CUnOp::AddressOf, _, _)) = initializer_kind
                         {
                             return true;
                         }
@@ -3501,7 +3508,7 @@ impl<'c> Translation<'c> {
 
             UnaryType(_ty, kind, opt_expr, arg_ty) => {
                 let result = match kind {
-                    UnTypeOp::SizeOf => match opt_expr {
+                    CUnTypeOp::SizeOf => match opt_expr {
                         None => self.compute_size_of_type(ctx, arg_ty.ctype, override_ty)?,
                         Some(_) => {
                             let inner = self.variable_array_base_type(arg_ty.ctype);
@@ -3517,8 +3524,10 @@ impl<'c> Translation<'c> {
                             }
                         }
                     },
-                    UnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype, false)?,
-                    UnTypeOp::PreferredAlignOf => self.compute_align_of_type(arg_ty.ctype, true)?,
+                    CUnTypeOp::AlignOf => self.compute_align_of_type(arg_ty.ctype, false)?,
+                    CUnTypeOp::PreferredAlignOf => {
+                        self.compute_align_of_type(arg_ty.ctype, true)?
+                    }
                 };
 
                 Ok(result)

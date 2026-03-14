@@ -1,4 +1,8 @@
-use crate::c_ast::*;
+use crate::c_ast::c_decl::{CDeclId, CDeclKind};
+use crate::c_ast::c_expr::{CBinOp, CExprId, CExprKind, CLiteral, CUnOp, MemberKind, OffsetOfKind};
+use crate::c_ast::c_stmt::{CStmtId, CStmtKind};
+use crate::c_ast::c_type::{CQualTypeId, CTypeId, CTypeKind, Qualifiers};
+use crate::c_ast::TypedAstContext;
 use std::io::{Result, Write};
 
 pub struct Printer<W: Write> {
@@ -287,11 +291,11 @@ impl<W: Write> Printer<W> {
         Ok(())
     }
 
-    pub fn print_unop(&mut self, op: &UnOp, _context: &TypedAstContext) -> Result<()> {
+    pub fn print_unop(&mut self, op: &CUnOp, _context: &TypedAstContext) -> Result<()> {
         self.writer.write_all(op.as_str().as_bytes())
     }
 
-    pub fn print_binop(&mut self, op: &BinOp, _context: &TypedAstContext) -> Result<()> {
+    pub fn print_binop(&mut self, op: &CBinOp, _context: &TypedAstContext) -> Result<()> {
         self.writer.write_all(op.as_str().as_bytes())
     }
 
