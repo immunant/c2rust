@@ -3,7 +3,7 @@ use crate::strings_h::rust_setmem;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn malloc_test(_: c_uint, _: *mut c_int);
 
     fn setmem(_: c_uint, _: *mut c_int);
