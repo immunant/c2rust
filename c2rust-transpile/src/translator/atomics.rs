@@ -3,7 +3,7 @@ use crate::format_translation_err;
 use super::*;
 use std::sync::atomic::Ordering;
 
-pub fn order_name(order: Ordering) -> &'static str {
+pub fn order_suffix(order: Ordering) -> &'static str {
     use Ordering::*;
     match order {
         SeqCst => "seqcst",
@@ -88,7 +88,7 @@ impl<'c> Translation<'c> {
         match name {
             "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
                 let order = static_order(order);
-                let intrinsic_name = format!("atomic_load_{}", order_name(order));
+                let intrinsic_name = format!("atomic_load_{}", order_suffix(order));
 
                 self.use_feature("core_intrinsics");
 
@@ -121,7 +121,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let intrinsic_name = format!("atomic_store_{}", order_name(order));
+                        let intrinsic_name = format!("atomic_store_{}", order_suffix(order));
 
                         self.use_feature("core_intrinsics");
 
@@ -165,7 +165,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let intrinsic_name = format!("atomic_xchg_{}", order_name(order));
+                        let intrinsic_name = format!("atomic_xchg_{}", order_suffix(order));
 
                         self.use_feature("core_intrinsics");
 
@@ -241,8 +241,8 @@ impl<'c> Translation<'c> {
                             }
                             .map(|(order, order_fail)| {
                                 let weak = if weak { "weak" } else { "" };
-                                let order = order_name(order);
-                                let order_fail = order_name(order_fail);
+                                let order = order_suffix(order);
+                                let order_fail = order_suffix(order_fail);
                                 format!("atomic_cxchg{weak}_{order}_{order_fail}")
                             })
                             .ok_or_else(|| {
@@ -321,7 +321,7 @@ impl<'c> Translation<'c> {
                 };
 
                 let order = static_order(order);
-                let intrinsic_suffix = order_name(order);
+                let intrinsic_suffix = order_suffix(order);
                 let intrinsic_name = format!("{intrinsic_name}_{intrinsic_suffix}");
 
                 let fetch_first =
