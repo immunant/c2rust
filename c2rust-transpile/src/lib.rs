@@ -20,7 +20,7 @@ use std::process::Command;
 use std::{env, io};
 
 use crate::compile_cmds::CompileCmd;
-use c2rust_rust_tools::rustfmt;
+use c2rust_rust_tools::{rustfmt, RustEdition};
 use failure::{format_err, Error};
 use itertools::Itertools;
 use log::{info, warn};
@@ -106,6 +106,7 @@ pub struct TranspilerConfig {
     pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
+    pub edition: RustEdition,
 
     /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
     pub postprocess: bool,
@@ -755,7 +756,7 @@ fn transpile_single(
     };
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path).run();
+        rustfmt(&output_path).edition(tcfg.edition).run();
     }
 
     Ok((output_path, pragmas, crates))

@@ -16,7 +16,7 @@ use crate::c_file::rust_example;
 use std::ffi::c_int;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn example(_: c_uint, _: *mut c_int);
 }
 

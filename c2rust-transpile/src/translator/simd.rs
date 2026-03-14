@@ -160,9 +160,12 @@ impl<'c> Translation<'c> {
                 .into());
             }
 
-            // The majority of x86/64 SIMD is stable, however there are still some
-            // bits that are behind a feature gate.
-            self.use_feature("stdsimd");
+            if self.tcfg.edition < Edition2024 {
+                // Edition 2024 was released in Rust 1.85.
+                // In Rust 1.78, `#![feature(stdsimd)]` was removed and split into individual features.
+                // All of the x86_64 parts (that we use at least) were stabilized.
+                self.use_feature("stdsimd");
+            }
 
             self.with_cur_file_item_store(|item_store| {
                 // REVIEW: Also a linear lookup
@@ -251,12 +254,7 @@ impl<'c> Translation<'c> {
             (Double, 4) => ("_mm256_setzero_pd", 32),
             (Char, 16) | (Int, 4) | (LongLong, 2) => ("_mm_setzero_si128", 16),
             (Char, 32) | (Int, 8) | (LongLong, 4) => ("_mm256_setzero_si256", 32),
-            (Char, 8) | (Int, 2) | (LongLong, 1) => {
-                // __m64 is still unstable as of rust 1.29
-                self.use_feature("stdsimd");
-
-                ("_mm_setzero_si64", 8)
-            }
+            (Char, 8) | (Int, 2) | (LongLong, 1) => ("_mm_setzero_si64", 8),
             (kind, len) => {
                 return Err(format_err!(
                     "Unsupported vector default initializer: {:?} x {}",

@@ -2,7 +2,7 @@ use crate::no_float_wrapping_neg::{rust_double_inc_dec, rust_float_inc_dec, rust
 use std::ffi::{c_double, c_float};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn no_wrapping_neg() -> c_double;
     fn float_inc_dec() -> c_float;
     fn double_inc_dec() -> c_double;

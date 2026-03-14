@@ -13,4 +13,5 @@ categories.workspace = true
 
 [dependencies]
 fs-err = "3.3.0"
+itertools = "0.14.0"
 log = "=0.4.28" # "0.4.29" requires Rust 1.68

@@ -5,6 +5,8 @@ use crate::format_translation_err;
 
 use super::*;
 
+use c2rust_rust_tools::RustEdition::Edition2024;
+
 /// The argument type for a libc builtin function
 #[derive(Copy, Clone, PartialEq)]
 enum LibcFnArgType {
@@ -414,13 +416,16 @@ impl<'c> Translation<'c> {
 
             "__builtin_arm_yield" => {
                 let fn_name = "__yield";
-                self.use_feature("stdsimd");
-                // TODO See #1298.
-                // In Rust 1.7, `#![feature(stdsimd)]` was removed and split into (at least):
-                // `#![feature("stdarch_arm_hints")]` and
-                // `#![cfg_attr(target_arch = "arm", feature(stdarch_arm_neon_intrinsics))]`.
-                // self.use_feature("stdarch_arm_hints");
-                // self.use_feature("stdarch_arm_neon_intrinsics"); // TODO need to add `cfg_attr` support.
+                if self.tcfg.edition < Edition2024 {
+                    self.use_feature("stdsimd");
+                } else {
+                    // Edition 2024 was released in Rust 1.85.
+                    // In Rust 1.78, `#![feature(stdsimd)]` was removed and split into (at least):
+                    // `#![feature(stdarch_arm_hints)]` and
+                    // `#![cfg_attr(target_arch = "arm", feature(stdarch_arm_neon_intrinsics))]`.
+                    self.use_feature("stdarch_arm_hints");
+                    // self.use_feature("stdarch_arm_neon_intrinsics"); // TODO need to add `cfg_attr` support.
+                }
                 self.import_arch_function("arm", fn_name);
                 self.import_arch_function("aarch64", fn_name);
                 let ident = mk().ident_expr(fn_name);

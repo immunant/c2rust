@@ -3,6 +3,7 @@ use log::LevelFilter;
 use regex::Regex;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
+use c2rust_rust_tools::RustEdition;
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
 #[derive(Debug, Parser)]
@@ -96,6 +97,11 @@ struct Args {
     /// How to handle violated invariants or invalid code
     #[clap(long, value_enum, default_value_t = InvalidCodes::CompileError)]
     invalid_code: InvalidCodes,
+
+    /// Rust edition to target.
+    /// 2021 and 2024 are supported.
+    #[clap(long, default_value_t)]
+    edition: RustEdition,
 
     /// Emit .rs files as modules instead of crates, excluding the crate preambles
     #[clap(long)]
@@ -303,6 +309,7 @@ fn main() {
         emit_no_std: args.emit_no_std,
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
+        edition: args.edition,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {

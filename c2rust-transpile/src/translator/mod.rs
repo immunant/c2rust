@@ -6,6 +6,8 @@ use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use c2rust_rust_tools::RustEdition;
+use c2rust_rust_tools::RustEdition::Edition2024;
 use dtoa;
 use failure::{err_msg, format_err, Fail};
 use indexmap::indexmap;
@@ -370,18 +372,45 @@ pub fn stmts_block(mut stmts: Vec<Stmt>) -> Block {
     mk().block(stmts)
 }
 
+/// Whether `extern` blocks can be `unsafe` in this edition.
+fn extern_block_unsafety(edition: RustEdition) -> Unsafety {
+    if edition >= Edition2024 {
+        Unsafety::Unsafe
+    } else {
+        Unsafety::Normal
+    }
+}
+
+/// Whether attributes can be `unsafe` in this edition.
+fn attr_unsafety(edition: RustEdition) -> Unsafety {
+    if edition >= Edition2024 {
+        Unsafety::Unsafe
+    } else {
+        Unsafety::Normal
+    }
+}
+
 /// Generate link attributes needed to ensure that the generated Rust libraries have the right symbol values.
-fn mk_linkage(in_extern_block: bool, new_name: &str, old_name: &str) -> Builder {
+fn mk_linkage(
+    in_extern_block: bool,
+    new_name: &str,
+    old_name: &str,
+    edition: RustEdition,
+) -> Builder {
     if new_name == old_name {
         if in_extern_block {
             mk() // There is no mangling by default in extern blocks anymore
         } else {
-            mk().single_attr("no_mangle") // Don't touch my name Rust!
+            mk().unsafety(attr_unsafety(edition))
+                .single_attr("no_mangle") // Don't touch my name Rust!
+                .unsafety(Unsafety::Normal)
         }
     } else if in_extern_block {
         mk().str_attr("link_name", old_name) // Look for this name
     } else {
-        mk().str_attr("export_name", old_name) // Make sure you actually name it this
+        mk().unsafety(attr_unsafety(edition))
+            .str_attr("export_name", old_name) // Make sure you actually name it this
+            .unsafety(Unsafety::Normal)
     }
 }
 
@@ -1005,6 +1034,7 @@ pub fn translate(
                     &mut new_uses,
                     &t.mod_names,
                     tcfg.reorganize_definitions,
+                    tcfg.edition,
                 );
                 let comments = t.comment_context.get_remaining_comments(*file_id);
                 submodule.set_span(match t.comment_store.borrow_mut().add_comments(&comments) {
@@ -1076,7 +1106,11 @@ pub fn translate(
             all_items.extend(new_uses.into_items());
 
             if !foreign_items.is_empty() {
-                all_items.push(mk().extern_("C").foreign_items(foreign_items));
+                all_items.push(
+                    mk().unsafety(extern_block_unsafety(t.tcfg.edition))
+                        .extern_("C")
+                        .foreign_items(foreign_items),
+                );
             }
 
             // Add the items accumulated
@@ -1227,6 +1261,7 @@ fn make_submodule(
     use_item_store: &mut ItemStore,
     mod_names: &RefCell<IndexMap<String, PathBuf>>,
     reorganize_definitions: bool,
+    edition: RustEdition,
 ) -> Box<Item> {
     let (mut items, foreign_items, uses) = item_store.drain();
     let file_path = ast_context.get_file_path(file_id);
@@ -1299,7 +1334,11 @@ fn make_submodule(
     }
 
     if !foreign_items.is_empty() {
-        items.push(mk().extern_("C").foreign_items(foreign_items));
+        items.push(
+            mk().unsafety(extern_block_unsafety(edition))
+                .extern_("C")
+                .foreign_items(foreign_items),
+        );
     }
 
     let module_builder = mk().pub_();
@@ -1558,6 +1597,11 @@ impl<'c> Translation<'c> {
 
     /// Called when translation makes use of a language feature that will require a feature-gate.
     pub fn use_feature(&self, feature: &'static str) {
+        if matches!(feature, "asm" | "label_break_value" | "raw_ref_op")
+            && self.tcfg.edition >= Edition2024
+        {
+            return;
+        }
         self.features.borrow_mut().insert(feature);
     }
 
@@ -1829,21 +1873,24 @@ impl<'c> Translation<'c> {
                 "cfg_attr",
                 vec![
                     mk().meta_namevalue("target_os", "linux"),
-                    mk().meta_namevalue("link_section", ".init_array"),
+                    mk().unsafety(attr_unsafety(self.tcfg.edition))
+                        .meta_namevalue("link_section", ".init_array"),
                 ],
             )
             .call_attr(
                 "cfg_attr",
                 vec![
                     mk().meta_namevalue("target_os", "windows"),
-                    mk().meta_namevalue("link_section", ".CRT$XIB"),
+                    mk().unsafety(attr_unsafety(self.tcfg.edition))
+                        .meta_namevalue("link_section", ".CRT$XIB"),
                 ],
             )
             .call_attr(
                 "cfg_attr",
                 vec![
                     mk().meta_namevalue("target_os", "macos"),
-                    mk().meta_namevalue("link_section", "__DATA,__mod_init_func"),
+                    mk().unsafety(attr_unsafety(self.tcfg.edition))
+                        .meta_namevalue("link_section", "__DATA,__mod_init_func"),
                 ],
             );
         let static_array_size = mk().lit_expr(mk().int_unsuffixed_lit(1));
@@ -2119,7 +2166,7 @@ impl<'c> Translation<'c> {
                     .expect("Variables should already be renamed");
                 let ConvertedVariable { ty, mutbl, init: _ } =
                     self.convert_variable(ctx.static_().const_(), None, typ)?;
-                let mut extern_item = mk_linkage(true, &new_name, ident)
+                let mut extern_item = mk_linkage(true, &new_name, ident, self.tcfg.edition)
                     .span(span)
                     .set_mutbl(mutbl);
 
@@ -2218,7 +2265,9 @@ impl<'c> Translation<'c> {
                 };
 
                 let static_def = if is_externally_visible {
-                    mk_linkage(false, new_name, ident).pub_().extern_("C")
+                    mk_linkage(false, new_name, ident, self.tcfg.edition)
+                        .pub_()
+                        .extern_("C")
                 } else if self.cur_file.get().is_some() {
                     mk().pub_()
                 } else {
@@ -2236,9 +2285,10 @@ impl<'c> Translation<'c> {
                 for attr in attrs {
                     static_def = match attr {
                         c_ast::Attribute::Used => static_def.single_attr("used"),
-                        c_ast::Attribute::Section(name) => {
-                            static_def.str_attr("link_section", name)
-                        }
+                        c_ast::Attribute::Section(name) => static_def
+                            .unsafety(attr_unsafety(self.tcfg.edition))
+                            .str_attr("link_section", name)
+                            .unsafety(Unsafety::Normal),
                         _ => continue,
                     }
                 }
@@ -2556,7 +2606,9 @@ impl<'c> Translation<'c> {
                     // but strings have to do for now
                     self.mk_cross_check(mk(), vec!["entry(djb2=\"main\")", "exit(djb2=\"main\")"])
                 } else if (is_global && !is_inline) || is_extern_inline {
-                    mk_linkage(false, new_name, name).extern_("C").pub_()
+                    mk_linkage(false, new_name, name, self.tcfg.edition)
+                        .extern_("C")
+                        .pub_()
                 } else if self.cur_file.get().is_some() {
                     mk().extern_("C").pub_()
                 } else {
@@ -2603,7 +2655,7 @@ impl<'c> Translation<'c> {
                 ))
             } else {
                 // Translating an extern function declaration
-                let mut mk_ = mk_linkage(true, new_name, name).span(span);
+                let mut mk_ = mk_linkage(true, new_name, name, self.tcfg.edition).span(span);
 
                 // When putting extern fns into submodules, they need to be public to be accessible
                 if self.tcfg.reorganize_definitions {
@@ -3009,7 +3061,10 @@ impl<'c> Translation<'c> {
                     let items = match self.convert_decl(ctx, decl_id)? {
                         Item(item) => vec![item],
                         ForeignItem(item) => {
-                            vec![mk().extern_("C").foreign_items(vec![*item])]
+                            vec![mk()
+                                .unsafety(extern_block_unsafety(self.tcfg.edition))
+                                .extern_("C")
+                                .foreign_items(vec![*item])]
                         }
                         Items(items) => items,
                         NoItem => return Ok(cfg::DeclStmtInfo::empty()),

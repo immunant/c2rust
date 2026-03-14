@@ -3,7 +3,7 @@ use crate::size_t::rust_entry;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
 
     fn multibyte_chars(_: c_uint, _: *mut c_int) -> c_int;

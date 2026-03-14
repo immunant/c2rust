@@ -6,11 +6,15 @@ use std::process::Command;
 
 use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::sanitize_file_name;
+use c2rust_rust_tools::RustEdition;
+use c2rust_rust_tools::RustEdition::Edition2021;
+use c2rust_rust_tools::RustEdition::Edition2024;
 use c2rust_transpile::convert_type::RESERVED_NAMES;
-use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+use c2rust_transpile::ReplaceMode;
+use c2rust_transpile::TranspilerConfig;
 use itertools::Itertools;
 
-fn config() -> TranspilerConfig {
+fn config(edition: RustEdition) -> TranspilerConfig {
     TranspilerConfig {
         dump_untyped_context: false,
         dump_typed_context: false,
@@ -51,6 +55,7 @@ fn config() -> TranspilerConfig {
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,
+        edition,
         postprocess: false,
         emit_build_files: false,
         binaries: Vec::new(),
@@ -88,10 +93,17 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
 }
 
 /// Transpile one input and compare output against the corresponding snapshot.
-/// For outputs that vary in different environments, `platform` can be any platform-specific string.
-/// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
-    compile_and_transpile_file(c_path, config());
+/// For outputs that vary in different environments,
+/// `platform` should be a slice of the platform-specific parts,
+/// such as the `target_arch` or  `target_os` or both.
+fn transpile_snapshot(
+    platform: &[&str],
+    c_path: &Path,
+    edition: RustEdition,
+    expect_compile_error: bool,
+) {
+    let cfg = config(edition);
+    compile_and_transpile_file(c_path, cfg);
     let cwd = current_dir().unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
     // This is also why we set it explicitly with `--crate-name`,
@@ -99,16 +111,15 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     // the file name won't be valid anymore.
     let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
     let rs_path = c_path.with_extension("rs");
-    // We need to move the `.rs` file to a platform-specific name
+    // We need to move the `.rs` file to a platform/edition-specific name
     // so that they don't overwrite each other.
-    let rs_path = match platform {
-        None => rs_path,
-        Some(platform) => {
-            let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
-            fs::rename(&rs_path, &platform_rs_path).unwrap();
-            platform_rs_path
-        }
-    };
+    let ext = [&[edition.as_str()][..], platform]
+        .into_iter()
+        .flatten()
+        .join(".");
+    let old_rs_path = rs_path;
+    let rs_path = old_rs_path.with_extension(format!("{ext}.rs"));
+    fs::rename(&old_rs_path, &rs_path).unwrap();
 
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
@@ -116,13 +127,9 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     // Replace real paths with placeholders
     let rs = rs.replace(cwd.to_str().unwrap(), ".");
 
-    let snapshot_prefix = match platform {
-        None => "transpile".into(),
-        Some(platform) => format!("transpile-{platform}"),
-    };
     let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
     let c_file_name = sanitize_file_name(&c_file_name);
-    let snapshot_name = format!("{snapshot_prefix}@{c_file_name}");
+    let snapshot_name = format!("transpile@{c_file_name}.{ext}");
 
     insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
@@ -137,7 +144,11 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
         return;
     }
 
-    rustc(&rs_path).crate_name(crate_name).run();
+    rustc(&rs_path)
+        .edition(edition)
+        .crate_name(crate_name)
+        .expect_error(expect_compile_error)
+        .run();
 }
 
 #[must_use]
@@ -145,6 +156,8 @@ struct TranspileTest<'a> {
     c_file_name: &'a str,
     arch_specific: bool,
     os_specific: bool,
+    expect_compile_error_edition_2021: bool,
+    expect_compile_error_edition_2024: bool,
 }
 
 fn transpile(c_file_name: &str) -> TranspileTest {
@@ -152,6 +165,8 @@ fn transpile(c_file_name: &str) -> TranspileTest {
         c_file_name,
         arch_specific: false,
         os_specific: false,
+        expect_compile_error_edition_2021: false,
+        expect_compile_error_edition_2024: false,
     }
 }
 
@@ -170,11 +185,34 @@ impl<'a> TranspileTest<'a> {
         }
     }
 
+    #[allow(unused)] // TODO remove once used
+    pub fn expect_compile_error_edition_2021(
+        self,
+        expect_compile_error_edition_2021: bool,
+    ) -> Self {
+        Self {
+            expect_compile_error_edition_2021,
+            ..self
+        }
+    }
+
+    pub fn expect_compile_error_edition_2024(
+        self,
+        expect_compile_error_edition_2024: bool,
+    ) -> Self {
+        Self {
+            expect_compile_error_edition_2024,
+            ..self
+        }
+    }
+
     pub fn run(self) {
         let Self {
             c_file_name,
             arch_specific,
             os_specific,
+            expect_compile_error_edition_2021,
+            expect_compile_error_edition_2024,
         } = self;
 
         let specific_dir_prefix = [arch_specific.then_some("arch"), os_specific.then_some("os")]
@@ -218,13 +256,20 @@ impl<'a> TranspileTest<'a> {
         let platform = [arch_specific.then_some(arch), os_specific.then_some(os)]
             .into_iter()
             .flatten()
-            .join("-");
-        let platform = match platform.as_str() {
-            "" => None,
-            platform => Some(platform),
-        };
+            .collect::<Vec<_>>();
 
-        transpile_snapshot(platform, &c_path);
+        transpile_snapshot(
+            &platform,
+            &c_path,
+            Edition2021,
+            expect_compile_error_edition_2021,
+        );
+        transpile_snapshot(
+            &platform,
+            &c_path,
+            Edition2024,
+            expect_compile_error_edition_2024,
+        );
     }
 }
 
@@ -261,7 +306,9 @@ fn test_arrays() {
 
 #[test]
 fn test_atomics() {
-    transpile("atomics.c").run();
+    transpile("atomics.c")
+        .expect_compile_error_edition_2024(true)
+        .run();
 }
 
 #[test]
@@ -285,6 +332,11 @@ fn test_factorial() {
 }
 
 #[test]
+fn test_fn_attrs() {
+    transpile("fn_attrs.c").run();
+}
+
+#[test]
 fn test_gotos() {
     transpile("gotos.c").run();
 }
@@ -302,7 +354,9 @@ fn test_insertion() {
 #[test]
 fn test_keywords() {
     generate_keywords_test();
-    transpile("keywords.c").run();
+    transpile("keywords.c")
+        .expect_compile_error_edition_2024(true)
+        .run();
 }
 
 #[test]
@@ -414,16 +468,17 @@ fn test_wide_strings() {
 #[test]
 fn test_varargs() {
     transpile("varargs.c")
+        .expect_compile_error_edition_2024(cfg!(target_os = "linux"))
         .arch_specific(true)
         .os_specific(true)
         .run();
 }
 
 fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
-    compile_and_transpile_file(c_path, config());
+    compile_and_transpile_file(c_path, config(Default::default()));
 
     let c_decls_path = c_path.with_extension("c_decls.json");
-    let snapshot_name = format!("c_decls-{}", c_path.file_name().unwrap().to_str().unwrap());
+    let snapshot_name = format!("c_decls@{}", c_path.file_name().unwrap().to_str().unwrap());
     let debug_expr = format!("cat {}", c_decls_path.display());
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&c_decls_path).unwrap()).unwrap();
