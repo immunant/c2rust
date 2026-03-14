@@ -1,11 +1,12 @@
 #![deny(missing_docs)]
 //! Implementations of clang's builtin functions
 
-use crate::format_translation_err;
-
 use super::*;
 
+use crate::format_translation_err;
+use crate::translator::atomics::order_name;
 use c2rust_rust_tools::RustEdition::Edition2024;
+use std::sync::atomic::Ordering;
 
 /// The argument type for a libc builtin function
 #[derive(Copy, Clone, PartialEq)]
@@ -613,27 +614,30 @@ impl<'c> Translation<'c> {
             | "__sync_nand_and_fetch_4"
             | "__sync_nand_and_fetch_8"
             | "__sync_nand_and_fetch_16" => {
-                let func_name = if builtin_name.contains("_add_") {
-                    "atomic_xadd_seqcst"
+                let intrinsic_prefix = if builtin_name.contains("_add_") {
+                    "atomic_xadd"
                 } else if builtin_name.contains("_sub_") {
-                    "atomic_xsub_seqcst"
+                    "atomic_xsub"
                 } else if builtin_name.contains("_or_") {
-                    "atomic_or_seqcst"
+                    "atomic_or"
                 } else if builtin_name.contains("_xor_") {
-                    "atomic_xor_seqcst"
+                    "atomic_xor"
                 } else if builtin_name.contains("_nand_") {
-                    "atomic_nand_seqcst"
+                    "atomic_nand"
                 } else {
                     // We can't explicitly check for "_and_" since they all contain it
-                    "atomic_and_seqcst"
+                    "atomic_and"
                 };
+
+                let intrinsic_suffix = order_name(Ordering::SeqCst);
+                let intrinsic_name = format!("{intrinsic_prefix}_{intrinsic_suffix}");
 
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 let fetch_first = builtin_name.starts_with("__sync_fetch");
                 arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
-                        self.convert_atomic_op(ctx, func_name, arg0, arg1, fetch_first)
+                        self.convert_atomic_op(ctx, &intrinsic_name, arg0, arg1, fetch_first)
                     })
                 })
             }
