@@ -618,18 +618,18 @@ impl<'c> Translation<'c> {
             | "__sync_nand_and_fetch_8"
             | "__sync_nand_and_fetch_16" => {
                 let base_name = if builtin_name.contains("_add_") {
-                    "atomic_xadd"
+                    "xadd"
                 } else if builtin_name.contains("_sub_") {
-                    "atomic_xsub"
+                    "xsub"
                 } else if builtin_name.contains("_or_") {
-                    "atomic_or"
+                    "or"
                 } else if builtin_name.contains("_xor_") {
-                    "atomic_xor"
+                    "xor"
                 } else if builtin_name.contains("_nand_") {
-                    "atomic_nand"
+                    "nand"
                 } else {
                     // We can't explicitly check for "_and_" since they all contain it
-                    "atomic_and"
+                    "and"
                 };
 
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
@@ -643,7 +643,7 @@ impl<'c> Translation<'c> {
             }
 
             "__sync_synchronize" => {
-                let atomic_func = self.atomic_intrinsic_expr("atomic_fence", &[SeqCst]);
+                let atomic_func = self.atomic_intrinsic_expr("fence", &[SeqCst]);
                 let call_expr = mk().call_expr(atomic_func, vec![]);
                 self.convert_side_effects_expr(
                     ctx,
@@ -658,7 +658,7 @@ impl<'c> Translation<'c> {
             | "__sync_lock_test_and_set_8"
             | "__sync_lock_test_and_set_16" => {
                 // Emit `atomic_xchg_acquire(arg0, arg1)`
-                let atomic_func = self.atomic_intrinsic_expr("atomic_xchg", &[Acquire]);
+                let atomic_func = self.atomic_intrinsic_expr("xchg", &[Acquire]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 arg0.and_then(|arg0| {
@@ -679,7 +679,7 @@ impl<'c> Translation<'c> {
             | "__sync_lock_release_8"
             | "__sync_lock_release_16" => {
                 // Emit `atomic_store_release(arg0, 0)`
-                let atomic_func = self.atomic_intrinsic_expr("atomic_store", &[Release]);
+                let atomic_func = self.atomic_intrinsic_expr("store", &[Release]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
