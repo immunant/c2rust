@@ -1792,6 +1792,63 @@ pub enum CastKind {
     NonAtomicToAtomic,
 }
 
+impl CastKind {
+    pub fn from_types(source_ty_kind: &CTypeKind, target_ty_kind: &CTypeKind) -> Option<Self> {
+        Some(match (source_ty_kind, target_ty_kind) {
+            (CTypeKind::VariableArray(..), CTypeKind::Pointer(..))
+            | (CTypeKind::ConstantArray(..), CTypeKind::Pointer(..))
+            | (CTypeKind::IncompleteArray(..), CTypeKind::Pointer(..)) => {
+                CastKind::ArrayToPointerDecay
+            }
+
+            (CTypeKind::Function(..), CTypeKind::Pointer(..)) => CastKind::FunctionToPointerDecay,
+
+            (_, CTypeKind::Pointer(..)) if source_ty_kind.is_integral_type() => {
+                CastKind::IntegralToPointer
+            }
+
+            (CTypeKind::Pointer(..), CTypeKind::Bool) => CastKind::PointerToBoolean,
+
+            (CTypeKind::Pointer(..), _) if target_ty_kind.is_integral_type() => {
+                CastKind::PointerToIntegral
+            }
+
+            (_, CTypeKind::Bool) if source_ty_kind.is_integral_type() => {
+                CastKind::IntegralToBoolean
+            }
+
+            (CTypeKind::Bool, _) if target_ty_kind.is_signed_integral_type() => {
+                CastKind::BooleanToSignedIntegral
+            }
+
+            (_, _) if source_ty_kind.is_integral_type() && target_ty_kind.is_integral_type() => {
+                CastKind::IntegralCast
+            }
+
+            (_, _) if source_ty_kind.is_integral_type() && target_ty_kind.is_floating_type() => {
+                CastKind::IntegralToFloating
+            }
+
+            (_, CTypeKind::Bool) if source_ty_kind.is_floating_type() => {
+                CastKind::FloatingToBoolean
+            }
+
+            (_, _) if source_ty_kind.is_floating_type() && target_ty_kind.is_integral_type() => {
+                CastKind::FloatingToIntegral
+            }
+
+            (_, _) if source_ty_kind.is_floating_type() && target_ty_kind.is_floating_type() => {
+                CastKind::FloatingCast
+            }
+
+            (CTypeKind::Pointer(..), CTypeKind::Pointer(..)) => CastKind::BitCast,
+
+            // Ignoring Complex casts for now
+            _ => return None,
+        })
+    }
+}
+
 /// Represents a unary operator in C (6.5.3 Unary operators) and GNU C extensions
 #[derive(Debug, Clone, Copy)]
 pub enum UnOp {

@@ -102,12 +102,7 @@ impl<'c> Translation<'c> {
             .ast_context
             .get_pointee_qual_type(pointer_cty.ctype)
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
-        let arg_is_macro = arg.map_or(false, |arg| {
-            matches!(
-                self.convert_const_macro_expansion(ctx, arg, None),
-                Ok(Some(_))
-            )
-        });
+        let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
