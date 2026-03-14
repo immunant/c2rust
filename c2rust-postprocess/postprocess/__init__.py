@@ -4,7 +4,8 @@ c2rust-postprocess: Transfer comments from C functions to Rust functions using L
 
 import argparse
 import logging
-from argparse import BooleanOptionalAction
+import os
+from argparse import ArgumentTypeError, BooleanOptionalAction
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -20,6 +21,20 @@ from postprocess.transforms import (
     CommentTransfer,
 )
 from postprocess.utils import existing_file
+
+
+def parse_booly(arg: str) -> bool:
+    """
+    Parse a "booly"/bool-like value, meant for CLI args and environment variables.
+    """
+
+    match arg.lower():
+        case "true" | "1" | "yes" | "y":
+            return True
+        case "false" | "0" | "no" | "n" | "":
+            return False
+        case _:
+            raise ArgumentTypeError(f"booly value expected, got '{arg}'")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -61,11 +76,25 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--model-id",
+        "--llm-model",
         type=str,
         required=False,
         default="gemini-3-flash-preview",
-        help="ID of the LLM model to use (default: gemini-3-pro-preview)",
+        help="ID of the LLM model to use (default: gemini-3-flash-preview)",
+    )
+
+    # Explicitly require opt-in to LLM usage.
+    # This can be set via an environment variable to a "booly" value
+    # or via a CLI argument.
+    enable_llm_env_var = "C2RUST_POSTPROCESS_ENABLE_LLM"
+    enable_llm_default = parse_booly(os.getenv(enable_llm_env_var) or "")
+    parser.add_argument(
+        "--enable-llm",
+        default=enable_llm_default,
+        required=False,
+        action=BooleanOptionalAction,
+        help="explicitly opt into LLM usage"
+        f" (can also set {enable_llm_env_var}, default: {enable_llm_default})",
     )
 
     parser.add_argument(
@@ -93,8 +122,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update the Rust in-place",
     )
 
-    # TODO: add option to select model
-    # TODO: add option to configure cache
     # TODO: add option to select what transforms to apply
 
     return parser
@@ -131,7 +158,7 @@ def main(argv: Sequence[str] | None = None):
         if not args.update_cache:
             cache = FrozenCache(cache)
 
-        model = get_model(args.model_id)
+        model = get_model(args.llm_model) if args.enable_llm else MockGenerativeModel()
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
