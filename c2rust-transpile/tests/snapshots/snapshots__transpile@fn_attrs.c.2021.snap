@@ -12,79 +12,45 @@ expression: cat tests/snapshots/fn_attrs.2021.rs
 )]
 #![feature(linkage)]
 #[inline(always)]
-unsafe extern "C" fn always_inline_static() {
-    unsafe {}
-}
+unsafe extern "C" fn always_inline_static() {}
 #[inline(never)]
-unsafe extern "C" fn noinline_static() {
-    unsafe {}
-}
+unsafe extern "C" fn noinline_static() {}
 #[inline]
-unsafe extern "C" fn inline_static() {
-    unsafe {}
-}
+unsafe extern "C" fn inline_static() {}
 #[inline]
-unsafe extern "C" fn alt_kw_inline_static() {
-    unsafe {}
-}
+unsafe extern "C" fn alt_kw_inline_static() {}
 #[inline]
-unsafe extern "C" fn gnu_inline_static() {
-    unsafe {}
-}
+unsafe extern "C" fn gnu_inline_static() {}
 #[cold]
-unsafe extern "C" fn cold_used_attrs() {
-    unsafe {}
-}
+unsafe extern "C" fn cold_used_attrs() {}
 #[inline(always)]
-unsafe extern "C" fn always_inline_nonstatic() {
-    unsafe {}
-}
+unsafe extern "C" fn always_inline_nonstatic() {}
 #[inline]
-unsafe extern "C" fn gnu_inline_nonstatic() {
-    unsafe {}
-}
+unsafe extern "C" fn gnu_inline_nonstatic() {}
 #[no_mangle]
 #[inline(never)]
-pub unsafe extern "C" fn noinline_nonstatic() {
-    unsafe {}
-}
+pub unsafe extern "C" fn noinline_nonstatic() {}
 #[inline]
-unsafe extern "C" fn inline_nonstatic() {
-    unsafe {}
-}
+unsafe extern "C" fn inline_nonstatic() {}
 #[inline]
-unsafe extern "C" fn alt_kw_inline_nonstatic() {
-    unsafe {}
-}
+unsafe extern "C" fn alt_kw_inline_nonstatic() {}
 #[no_mangle]
 #[inline]
 #[linkage = "external"]
-pub unsafe extern "C" fn inline_extern() {
-    unsafe {}
-}
+pub unsafe extern "C" fn inline_extern() {}
 #[no_mangle]
 #[inline]
 #[linkage = "external"]
-pub unsafe extern "C" fn alt_kw_inline_extern() {
-    unsafe {}
-}
+pub unsafe extern "C" fn alt_kw_inline_extern() {}
 #[no_mangle]
 #[inline(always)]
-pub unsafe extern "C" fn always_inline_extern() {
-    unsafe {}
-}
+pub unsafe extern "C" fn always_inline_extern() {}
 #[inline]
-unsafe extern "C" fn gnu_inline_extern() {
-    unsafe {}
-}
+unsafe extern "C" fn gnu_inline_extern() {}
 #[inline(always)]
-unsafe extern "C" fn always_inline_gnu_inline_extern() {
-    unsafe {}
-}
+unsafe extern "C" fn always_inline_gnu_inline_extern() {}
 #[inline]
-unsafe extern "C" fn gnu_inline_non_canonical_definition_extern() {
-    unsafe {}
-}
+unsafe extern "C" fn gnu_inline_non_canonical_definition_extern() {}
 #[no_mangle]
 pub unsafe extern "C" fn ensure_use() {
     unsafe {

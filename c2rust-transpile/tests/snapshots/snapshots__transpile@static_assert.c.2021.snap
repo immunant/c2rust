@@ -11,6 +11,4 @@ expression: cat tests/snapshots/static_assert.2021.rs
     unused_mut
 )]
 #[no_mangle]
-pub unsafe extern "C" fn static_assert() {
-    unsafe {}
-}
+pub unsafe extern "C" fn static_assert() {}
