@@ -413,6 +413,15 @@ impl Make<String> for u128 {
     }
 }
 
+impl Make<Block> for Vec<Stmt> {
+    fn make(self, mk: &Builder) -> Block {
+        Block {
+            stmts: self,
+            brace_token: token::Brace(mk.span),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
@@ -1825,10 +1834,7 @@ impl Builder {
     // Misc nodes
 
     pub fn block(self, stmts: Vec<Stmt>) -> Block {
-        Block {
-            stmts,
-            brace_token: token::Brace(self.span),
-        }
+        stmts.make(&self)
     }
 
     pub fn const_block(self, stmts: Vec<Stmt>) -> ExprConst {
