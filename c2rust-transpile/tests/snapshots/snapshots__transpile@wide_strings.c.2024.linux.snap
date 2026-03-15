@@ -12,7 +12,7 @@ expression: cat tests/snapshots/os-specific/wide_strings.2024.linux.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn wcslen(__s: *const wchar_t) -> ::core::ffi::c_ulong;
+    unsafe fn wcslen(__s: *const wchar_t) -> ::core::ffi::c_ulong;
 }
 pub type size_t = usize;
 pub type wchar_t = ::libc::wchar_t;

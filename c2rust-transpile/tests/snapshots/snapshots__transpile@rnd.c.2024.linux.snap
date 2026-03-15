@@ -12,7 +12,7 @@ expression: cat tests/snapshots/os-specific/rnd.2024.linux.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn abs(__x: ::core::ffi::c_int) -> ::core::ffi::c_int;
+    unsafe fn abs(__x: ::core::ffi::c_int) -> ::core::ffi::c_int;
 }
 pub type __int32_t = i32;
 pub type __uint32_t = u32;

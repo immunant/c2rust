@@ -12,7 +12,7 @@ expression: cat tests/snapshots/exprs.2024.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
+    unsafe fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }
 pub type C2Rust_Unnamed = ::core::ffi::c_uint;
 pub const C: C2Rust_Unnamed = 2;

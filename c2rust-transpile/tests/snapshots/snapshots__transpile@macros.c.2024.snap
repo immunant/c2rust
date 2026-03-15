@@ -12,7 +12,7 @@ expression: cat tests/snapshots/macros.2024.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn extern_fn() -> ::core::ffi::c_int;
+    unsafe fn extern_fn() -> ::core::ffi::c_int;
 }
 pub type uintptr_t = usize;
 #[derive(Copy, Clone)]

@@ -12,7 +12,7 @@ expression: cat tests/snapshots/arch-os-specific/varargs.2024.aarch64.macos.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn printf(_: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
+    unsafe fn printf(_: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn call_printf() {
