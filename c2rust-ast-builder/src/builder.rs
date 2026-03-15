@@ -422,6 +422,26 @@ impl Make<Block> for Vec<Stmt> {
     }
 }
 
+impl<B: Make<Block>> Make<ExprConst> for B {
+    fn make(self, mk: &Builder) -> ExprConst {
+        ExprConst {
+            attrs: mk.attrs.clone(),
+            const_token: Token![const](mk.span),
+            block: self.make(mk),
+        }
+    }
+}
+
+impl<B: Make<Block>> Make<ExprUnsafe> for B {
+    fn make(self, mk: &Builder) -> ExprUnsafe {
+        ExprUnsafe {
+            attrs: mk.attrs.clone(),
+            unsafe_token: Token![unsafe](mk.span),
+            block: self.make(mk),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
@@ -1837,20 +1857,12 @@ impl Builder {
         b.make(&self)
     }
 
-    pub fn const_block(self, stmts: Vec<Stmt>) -> ExprConst {
-        ExprConst {
-            attrs: self.attrs,
-            const_token: Token![const](self.span),
-            block: mk().block(stmts),
-        }
+    pub fn const_block<B: Make<ExprConst>>(self, b: B) -> ExprConst {
+        b.make(&self)
     }
 
-    pub fn unsafe_block(self, stmts: Vec<Stmt>) -> ExprUnsafe {
-        ExprUnsafe {
-            attrs: self.attrs,
-            unsafe_token: Token![unsafe](self.span),
-            block: mk().block(stmts),
-        }
+    pub fn unsafe_block<B: Make<ExprUnsafe>>(self, b: B) -> ExprUnsafe {
+        b.make(&self)
     }
 
     pub fn label<L>(self, lbl: L) -> Label
