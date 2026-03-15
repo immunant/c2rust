@@ -1407,11 +1407,24 @@ impl Builder {
         }))
     }
 
-    pub fn fn_item<S>(self, sig: S, block: Block) -> Box<Item>
+    pub fn fn_item<S>(self, sig: S, mut block: Block) -> Box<Item>
     where
         S: Make<Signature>,
     {
         let sig = sig.make(&self);
+
+        if sig.unsafety.is_some() {
+            // In edition 2024, `#[warn(unsafe_op_in_unsafe_fn)]` is on,
+            // so we need to wrap any `unsafe` operation in an `unsafe` block.
+            // For now, just wrap the whole function body in an `unsafe` block,
+            // which we can later narrow down to individual `unsafe` operations.
+            // In previous editions, this does not warn by default,
+            // but it can be turned on, and it's generally good practice anyways,
+            // so we do this unconditionally (i.e., no edition check needed).
+            let unsafe_expr = mk().unsafe_block_expr(block);
+            block = mk().block(vec![mk().expr_stmt(unsafe_expr)]);
+        }
+
         Box::new(Item::Fn(ItemFn {
             attrs: self.attrs,
             vis: self.vis,

@@ -15,5 +15,7 @@ pub type size_t = __darwin_size_t;
 pub type uint64_t = u64;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn index_typedef(mut arr: *mut uint64_t) {
-    let mut foo3: size_t = *arr.offset(25 as ::core::ffi::c_int as isize) as size_t;
+    unsafe {
+        let mut foo3: size_t = *arr.offset(25 as ::core::ffi::c_int as isize) as size_t;
+    }
 }

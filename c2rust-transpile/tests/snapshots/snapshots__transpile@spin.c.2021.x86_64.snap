@@ -17,5 +17,7 @@ pub use ::core::arch::x86::_mm_pause;
 pub use ::core::arch::x86_64::_mm_pause;
 #[no_mangle]
 pub unsafe extern "C" fn spin() {
-    _mm_pause();
+    unsafe {
+        _mm_pause();
+    }
 }

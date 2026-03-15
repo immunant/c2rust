@@ -14,11 +14,15 @@ expression: cat tests/snapshots/os-specific/rotate.2021.macos.rs
 pub unsafe extern "C" fn rotate_left_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {
-    return x.rotate_left(4 as ::core::ffi::c_int as ::core::ffi::c_ulonglong as u32);
+    unsafe {
+        return x.rotate_left(4 as ::core::ffi::c_int as ::core::ffi::c_ulonglong as u32);
+    }
 }
 #[no_mangle]
 pub unsafe extern "C" fn rotate_right_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {
-    return x.rotate_right(4 as ::core::ffi::c_int as ::core::ffi::c_ulonglong as u32);
+    unsafe {
+        return x.rotate_right(4 as ::core::ffi::c_int as ::core::ffi::c_ulonglong as u32);
+    }
 }
