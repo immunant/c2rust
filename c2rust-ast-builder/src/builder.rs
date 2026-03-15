@@ -788,12 +788,12 @@ impl Builder {
         }))
     }
 
-    pub fn const_block_expr(self, const_blk: ExprConst) -> Box<Expr> {
-        Box::new(Expr::Const(const_blk))
+    pub fn const_block_expr<B: Make<ExprConst>>(self, const_blk: B) -> Box<Expr> {
+        Box::new(Expr::Const(const_blk.make(&self)))
     }
 
-    pub fn unsafe_block_expr(self, unsafe_blk: ExprUnsafe) -> Box<Expr> {
-        Box::new(Expr::Unsafe(unsafe_blk))
+    pub fn unsafe_block_expr<B: Make<ExprUnsafe>>(self, unsafe_blk: B) -> Box<Expr> {
+        Box::new(Expr::Unsafe(unsafe_blk.make(&self)))
     }
 
     pub fn assign_expr(self, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
