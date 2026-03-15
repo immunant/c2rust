@@ -1833,8 +1833,8 @@ impl Builder {
 
     // Misc nodes
 
-    pub fn block(self, stmts: Vec<Stmt>) -> Block {
-        stmts.make(&self)
+    pub fn block<B: Make<Block>>(self, b: B) -> Block {
+        b.make(&self)
     }
 
     pub fn const_block(self, stmts: Vec<Stmt>) -> ExprConst {
