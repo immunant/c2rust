@@ -1,0 +1,51 @@
+transform = "TrimTransform"
+identifier = "partition"
+model = "gemini-3-flash-preview"
+response = """int partition (int arr[], int low, int high)
+{
+    // Partition the subarray around the last element as pivot and return pivot's final index.
+    int pivot = arr[high];
+    int i = low - 1;
+
+    for (int j = low; j <= high - 1; j++) {
+        if (arr[j] <= pivot) {
+            i++;
+            // Move elements <= pivot into the left partition.
+            swap(&arr[i], &arr[j]);
+        }
+    }
+    // Place pivot just after the final element of the left partition.
+    swap(&arr[i + 1], &arr[high]);
+    return i + 1;
+}"""
+
+[[messages]]
+role = "user"
+content = """Remove any prologues, preprocessor definitions, and comments that are unrelated to the definition
+of the C function `partition`. Respond with the trimmed C function definition; say nothing else.
+
+C function:
+```c
+/* 
+ * Lomuto Partition Scheme:
+ * Partitions the array so that elements < pivot are on the left, 
+ * and elements >= pivot are on the right.
+ */
+int partition (int arr[], int low, int high)
+{
+    // Partition the subarray around the last element as pivot and return pivot's final index.
+    int pivot = arr[high];
+    int i = low - 1;
+
+    for (int j = low; j <= high - 1; j++) {
+        if (arr[j] <= pivot) {
+            i++;
+            // Move elements <= pivot into the left partition.
+            swap(&arr[i], &arr[j]);
+        }
+    }
+    // Place pivot just after the final element of the left partition.
+    swap(&arr[i + 1], &arr[high]);
+    return i + 1;
+}
+```"""

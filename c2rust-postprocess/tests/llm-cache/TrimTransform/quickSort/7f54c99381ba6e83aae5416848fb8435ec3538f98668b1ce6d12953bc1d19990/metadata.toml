@@ -1,0 +1,34 @@
+transform = "TrimTransform"
+identifier = "quickSort"
+model = "gemini-3-flash-preview"
+response = """void quickSort(int arr[], int low, int high)
+{
+    if (low < high) {
+        /* pi is the partitioning index; arr[pi] is now at the right place */
+        int pi = partition(arr, low, high);
+
+        /* Recursively sort elements before and after partition */
+        quickSort(arr, low, pi - 1);
+        quickSort(arr, pi + 1, high);
+    }
+}"""
+
+[[messages]]
+role = "user"
+content = """Remove any prologues, preprocessor definitions, and comments that are unrelated to the definition
+of the C function `quickSort`. Respond with the trimmed C function definition; say nothing else.
+
+C function:
+```c
+void quickSort(int arr[], int low, int high)
+{
+    if (low < high) {
+        /* pi is the partitioning index; arr[pi] is now at the right place */
+        int pi = partition(arr, low, high);
+
+        /* Recursively sort elements before and after partition */
+        quickSort(arr, low, pi - 1);
+        quickSort(arr, pi + 1, high);
+    }
+}
+```"""
