@@ -628,7 +628,7 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     // `parse_arg` is private, so we make do with `parse_attribute`,
     // `parse_pat`, & `parse_ty`.
-    let mut attrs: Vec<ast::Attribute> = Vec::new();
+    let mut attrs = ast::AttrVec::new();
     while let token::Pound = p.token.kind {
         attrs.push(p.parse_attribute(InnerAttrPolicy::Forbidden(None)).unwrap());
     }
@@ -636,7 +636,7 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     p.expect(&TokenKind::Colon)?;
     let ty = p.parse_ty()?;
     Ok(Param {
-        attrs: attrs.into_iter().collect(),
+        attrs,
         pat,
         ty,
         id: DUMMY_NODE_ID,
