@@ -34,10 +34,11 @@ use rustc_span::hygiene::SyntaxContext;
 use rustc_span::source_map::SourceMap;
 use rustc_span::source_map::{FileLoader, RealFileLoader};
 use rustc_span::symbol::{kw, Symbol};
-use rustc_span::{FileName, Span, DUMMY_SP};
+use rustc_span::{FileName, SourceFileHashAlgorithm, Span, DUMMY_SP};
 use std::collections::HashSet;
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::ast_manip::{remove_paren, AstSpanMaps};
@@ -453,6 +454,20 @@ fn build_session(
     // Corresponds roughly to `run_compiler`.
     let descriptions = rustc_driver::diagnostics_registry();
     let file_loader = file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
+    let hash_kind = sopts
+        .unstable_opts
+        .src_hash_algorithm
+        .unwrap_or(SourceFileHashAlgorithm::Md5);
+    // Note: `source_map` is expected to be an `Lrc<SourceMap>`, which is an alias for `Rc<SourceMap>`.
+    // If this ever changes, we'll need a new trick to obtain the `SourceMap` in `rebuild_session`.
+    let source_map = Rc::new(SourceMap::with_file_loader_and_hash_kind(
+        file_loader,
+        sopts.file_path_mapping(),
+        hash_kind,
+    ));
+    // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
+    // collide with `DUMMY_SP` (which is `0 .. 0`).
+    source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
     let codegen_backend = get_codegen_backend(
         &sopts.maybe_sysroot,
         sopts
@@ -468,7 +483,7 @@ fn build_session(
         None,
         descriptions,
         Default::default(),
-        Some(file_loader),
+        None,
         target_override,
     );
     codegen_backend.init(&sess);
