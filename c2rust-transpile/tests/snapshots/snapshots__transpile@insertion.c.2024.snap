@@ -10,6 +10,7 @@ expression: cat tests/snapshots/insertion.2024.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn insertion_sort(n: ::core::ffi::c_int, p: *mut ::core::ffi::c_int) {
     unsafe {

@@ -1606,17 +1606,20 @@ impl<'c> Translation<'c> {
         let mut features = vec![];
         features.extend(self.features.borrow().iter());
         features.extend(self.type_converter.borrow().features_used());
-        let mut pragmas: PragmaVec = vec![(
-            "allow",
-            vec![
-                "non_upper_case_globals",
-                "non_camel_case_types",
-                "non_snake_case",
-                "dead_code",
-                "unused_mut",
-                "unused_assignments",
-            ],
-        )];
+        let mut pragmas: PragmaVec = vec![
+            (
+                "allow",
+                vec![
+                    "non_upper_case_globals",
+                    "non_camel_case_types",
+                    "non_snake_case",
+                    "dead_code",
+                    "unused_mut",
+                    "unused_assignments",
+                ],
+            ),
+            ("deny", vec!["unsafe_op_in_unsafe_fn"]),
+        ];
         if self.tcfg.cross_checks {
             features.append(&mut vec!["plugin"]);
             pragmas.push(("cross_check", vec!["yes"]));

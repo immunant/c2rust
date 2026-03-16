@@ -10,6 +10,7 @@ expression: cat tests/snapshots/arch-specific/vm_x86.2024.x86_64.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 use ::core::arch::asm;
 #[derive(Copy, Clone)]
 #[repr(C)]

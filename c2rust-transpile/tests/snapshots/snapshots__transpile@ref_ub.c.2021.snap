@@ -10,6 +10,7 @@ expression: cat tests/snapshots/ref_ub.2021.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]

@@ -10,6 +10,7 @@ expression: cat tests/snapshots/rotate.2024.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rotate_left_8(mut x: ::core::ffi::c_uchar) -> ::core::ffi::c_uchar {
     unsafe {

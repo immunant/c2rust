@@ -10,6 +10,7 @@ expression: cat tests/snapshots/os-specific/sigign.2021.linux.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 pub type __sighandler_t = Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>;
 #[no_mangle]
 pub unsafe extern "C" fn foo() {

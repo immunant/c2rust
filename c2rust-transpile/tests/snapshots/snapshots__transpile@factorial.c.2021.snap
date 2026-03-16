@@ -10,6 +10,7 @@ expression: cat tests/snapshots/factorial.2021.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 #[no_mangle]
 pub unsafe extern "C" fn factorial(mut n: ::core::ffi::c_ushort) -> ::core::ffi::c_ushort {
     unsafe {

@@ -10,6 +10,7 @@ expression: cat tests/snapshots/os-specific/rnd.2024.macos.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
     fn abs(_: ::core::ffi::c_int) -> ::core::ffi::c_int;
 }
