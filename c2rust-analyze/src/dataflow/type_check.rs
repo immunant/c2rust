@@ -206,12 +206,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     None => {} // not a ptr cast (no dataflow constraints needed); let rustc typeck this
                 };
             }
-            CastKind::DynStar
-            | CastKind::IntToInt
+            CastKind::IntToInt
             | CastKind::FloatToInt
             | CastKind::FloatToFloat
             | CastKind::IntToFloat => {
-                // TODO: Do we need to do anything for these casts?
+                // Not ptr casts, and we don't allow ptr-to-int casts.
+            }
+            CastKind::DynStar => {
+                unimplemented!("dyn* casts are too unstable and rare to bother supporting")
             }
         }
 
