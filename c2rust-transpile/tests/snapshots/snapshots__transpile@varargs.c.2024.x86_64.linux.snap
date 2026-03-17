@@ -10,6 +10,7 @@ expression: cat tests/snapshots/arch-os-specific/varargs.2024.x86_64.linux.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(c_variadic)]
 unsafe extern "C" {
     fn printf(__format: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
@@ -37,131 +38,151 @@ pub struct vastruct<'a> {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn call_printf() {
-    printf(
-        b"%d, %f\n\0".as_ptr() as *const ::core::ffi::c_char,
-        10 as ::core::ffi::c_int,
-        1.5f64,
-    );
+    unsafe {
+        printf(
+            b"%d, %f\n\0".as_ptr() as *const ::core::ffi::c_char,
+            10 as ::core::ffi::c_int,
+            1.5f64,
+        );
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_vprintf(
     mut format: *const ::core::ffi::c_char,
     mut ap: ::core::ffi::VaList,
 ) {
-    vprintf(format, ap.clone());
+    unsafe {
+        vprintf(format, ap.clone());
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn call_vprintf(
     mut format: *const ::core::ffi::c_char,
     mut c2rust_args: ...
 ) {
-    let mut ap: ::core::ffi::VaList;
-    ap = c2rust_args.clone();
-    my_vprintf(format, ap.clone());
+    unsafe {
+        let mut ap: ::core::ffi::VaList;
+        ap = c2rust_args.clone();
+        my_vprintf(format, ap.clone());
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn my_printf(mut fmt: *const ::core::ffi::c_char, mut c2rust_args: ...) {
-    let mut ap: ::core::ffi::VaList;
-    ap = c2rust_args.clone();
-    while *fmt != 0 {
-        match *fmt as ::core::ffi::c_int {
-            37 => {
-                fmt = fmt.offset(1);
-                if !(*fmt == 0) {
-                    match *fmt as ::core::ffi::c_int {
-                        105 | 100 => {
-                            printf(
-                                b"%d\0".as_ptr() as *const ::core::ffi::c_char,
-                                ap.arg::<::core::ffi::c_int>(),
-                            );
+    unsafe {
+        let mut ap: ::core::ffi::VaList;
+        ap = c2rust_args.clone();
+        while *fmt != 0 {
+            match *fmt as ::core::ffi::c_int {
+                37 => {
+                    fmt = fmt.offset(1);
+                    if !(*fmt == 0) {
+                        match *fmt as ::core::ffi::c_int {
+                            105 | 100 => {
+                                printf(
+                                    b"%d\0".as_ptr() as *const ::core::ffi::c_char,
+                                    ap.arg::<::core::ffi::c_int>(),
+                                );
+                            }
+                            102 => {
+                                printf(
+                                    b"%f\0".as_ptr() as *const ::core::ffi::c_char,
+                                    ap.arg::<::core::ffi::c_double>(),
+                                );
+                            }
+                            115 => {
+                                printf(
+                                    b"%s\0".as_ptr() as *const ::core::ffi::c_char,
+                                    ap.arg::<*mut ::core::ffi::c_char>(),
+                                );
+                            }
+                            _ => {}
                         }
-                        102 => {
-                            printf(
-                                b"%f\0".as_ptr() as *const ::core::ffi::c_char,
-                                ap.arg::<::core::ffi::c_double>(),
-                            );
-                        }
-                        115 => {
-                            printf(
-                                b"%s\0".as_ptr() as *const ::core::ffi::c_char,
-                                ap.arg::<*mut ::core::ffi::c_char>(),
-                            );
-                        }
-                        _ => {}
                     }
                 }
+                _ => {
+                    putchar(*fmt as ::core::ffi::c_int);
+                }
             }
-            _ => {
-                putchar(*fmt as ::core::ffi::c_int);
-            }
+            fmt = fmt.offset(1);
         }
-        fmt = fmt.offset(1);
     }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn simple_vacopy(mut fmt: *const ::core::ffi::c_char, mut c2rust_args: ...) {
-    let mut ap: ::core::ffi::VaList;
-    let mut aq: ::core::ffi::VaList;
-    ap = c2rust_args.clone();
-    aq = ap.clone();
-    vprintf(fmt, ap.clone());
-    vprintf(fmt, aq.clone());
+    unsafe {
+        let mut ap: ::core::ffi::VaList;
+        let mut aq: ::core::ffi::VaList;
+        ap = c2rust_args.clone();
+        aq = ap.clone();
+        vprintf(fmt, ap.clone());
+        vprintf(fmt, aq.clone());
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn valist_struct_member(
     mut fmt: *const ::core::ffi::c_char,
     mut c2rust_args: ...
 ) {
-    let mut a: vastruct = vastruct {
-        args: ::core::mem::MaybeUninit::uninit().assume_init(),
-    };
-    let mut b: vastruct = vastruct {
-        args: ::core::mem::MaybeUninit::uninit().assume_init(),
-    };
-    a.args = c2rust_args.clone();
-    b.args = a.args.clone();
-    vprintf(fmt, a.args.clone());
-    vprintf(fmt, b.args.clone());
+    unsafe {
+        let mut a: vastruct = vastruct {
+            args: ::core::mem::MaybeUninit::uninit().assume_init(),
+        };
+        let mut b: vastruct = vastruct {
+            args: ::core::mem::MaybeUninit::uninit().assume_init(),
+        };
+        a.args = c2rust_args.clone();
+        b.args = a.args.clone();
+        vprintf(fmt, a.args.clone());
+        vprintf(fmt, b.args.clone());
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn valist_struct_pointer_member(
     mut fmt: *const ::core::ffi::c_char,
     mut c2rust_args: ...
 ) {
-    let mut a: vastruct = vastruct {
-        args: ::core::mem::MaybeUninit::uninit().assume_init(),
-    };
-    let mut b: vastruct = vastruct {
-        args: ::core::mem::MaybeUninit::uninit().assume_init(),
-    };
-    let mut p: *mut vastruct = &raw mut a;
-    let mut q: *mut vastruct = &raw mut b;
-    (*p).args = c2rust_args.clone();
-    (*q).args = (*p).args.clone();
-    vprintf(fmt, (*p).args.clone());
-    vprintf(fmt, (*q).args.clone());
+    unsafe {
+        let mut a: vastruct = vastruct {
+            args: ::core::mem::MaybeUninit::uninit().assume_init(),
+        };
+        let mut b: vastruct = vastruct {
+            args: ::core::mem::MaybeUninit::uninit().assume_init(),
+        };
+        let mut p: *mut vastruct = &raw mut a;
+        let mut q: *mut vastruct = &raw mut b;
+        (*p).args = c2rust_args.clone();
+        (*q).args = (*p).args.clone();
+        vprintf(fmt, (*p).args.clone());
+        vprintf(fmt, (*q).args.clone());
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn restart_valist(mut fmt: *const ::core::ffi::c_char, mut c2rust_args: ...) {
-    let mut ap: ::core::ffi::VaList;
-    ap = c2rust_args.clone();
-    vprintf(fmt, ap.clone());
-    ap = c2rust_args.clone();
-    vprintf(fmt, ap.clone());
+    unsafe {
+        let mut ap: ::core::ffi::VaList;
+        ap = c2rust_args.clone();
+        vprintf(fmt, ap.clone());
+        ap = c2rust_args.clone();
+        vprintf(fmt, ap.clone());
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn print_int(mut ap: *mut ::core::ffi::VaList) {
-    printf(
-        b"%d\0".as_ptr() as *const ::core::ffi::c_char,
-        (*ap).arg::<::core::ffi::c_int>(),
-    );
+    unsafe {
+        printf(
+            b"%d\0".as_ptr() as *const ::core::ffi::c_char,
+            (*ap).arg::<::core::ffi::c_int>(),
+        );
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn borrowed_valist(mut count: size_t, mut c2rust_args: ...) {
-    let mut ap: ::core::ffi::VaList;
-    ap = c2rust_args.clone();
-    while count > 0 as size_t {
-        print_int(&raw mut ap);
-        count = count.wrapping_sub(1);
+    unsafe {
+        let mut ap: ::core::ffi::VaList;
+        ap = c2rust_args.clone();
+        while count > 0 as size_t {
+            print_int(&raw mut ap);
+            count = count.wrapping_sub(1);
+        }
     }
 }

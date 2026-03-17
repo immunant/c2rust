@@ -10,6 +10,7 @@ expression: cat tests/snapshots/ref_ub.2021.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -18,17 +19,21 @@ pub struct Foo {
 }
 #[no_mangle]
 pub unsafe extern "C" fn dec(mut f: *mut Foo) {
-    (*f).len -= 1;
+    unsafe {
+        (*f).len -= 1;
+    }
 }
 unsafe fn main_0() -> ::core::ffi::c_int {
-    let mut f: Foo = Foo {
-        len: 5 as ::core::ffi::c_int,
-    };
-    let mut fp: *mut Foo = &raw mut f;
-    dec(fp);
-    f.len = 6 as ::core::ffi::c_int;
-    dec(fp);
-    return 0;
+    unsafe {
+        let mut f: Foo = Foo {
+            len: 5 as ::core::ffi::c_int,
+        };
+        let mut fp: *mut Foo = &raw mut f;
+        dec(fp);
+        f.len = 6 as ::core::ffi::c_int;
+        dec(fp);
+        return 0;
+    }
 }
 pub fn main() {
     unsafe { ::std::process::exit(main_0() as i32) }

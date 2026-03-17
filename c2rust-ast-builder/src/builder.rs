@@ -413,6 +413,35 @@ impl Make<String> for u128 {
     }
 }
 
+impl Make<Block> for Vec<Stmt> {
+    fn make(self, mk: &Builder) -> Block {
+        Block {
+            stmts: self,
+            brace_token: token::Brace(mk.span),
+        }
+    }
+}
+
+impl<B: Make<Block>> Make<ExprConst> for B {
+    fn make(self, mk: &Builder) -> ExprConst {
+        ExprConst {
+            attrs: mk.attrs.clone(),
+            const_token: Token![const](mk.span),
+            block: self.make(mk),
+        }
+    }
+}
+
+impl<B: Make<Block>> Make<ExprUnsafe> for B {
+    fn make(self, mk: &Builder) -> ExprUnsafe {
+        ExprUnsafe {
+            attrs: mk.attrs.clone(),
+            unsafe_token: Token![unsafe](mk.span),
+            block: self.make(mk),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
@@ -759,12 +788,12 @@ impl Builder {
         }))
     }
 
-    pub fn const_block_expr(self, const_blk: ExprConst) -> Box<Expr> {
-        Box::new(Expr::Const(const_blk))
+    pub fn const_block_expr<B: Make<ExprConst>>(self, const_blk: B) -> Box<Expr> {
+        Box::new(Expr::Const(const_blk.make(&self)))
     }
 
-    pub fn unsafe_block_expr(self, unsafe_blk: ExprUnsafe) -> Box<Expr> {
-        Box::new(Expr::Unsafe(unsafe_blk))
+    pub fn unsafe_block_expr<B: Make<ExprUnsafe>>(self, unsafe_blk: B) -> Box<Expr> {
+        Box::new(Expr::Unsafe(unsafe_blk.make(&self)))
     }
 
     pub fn assign_expr(self, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
@@ -1378,11 +1407,24 @@ impl Builder {
         }))
     }
 
-    pub fn fn_item<S>(self, sig: S, block: Block) -> Box<Item>
+    pub fn fn_item<S>(self, sig: S, mut block: Block) -> Box<Item>
     where
         S: Make<Signature>,
     {
         let sig = sig.make(&self);
+
+        if sig.unsafety.is_some() && !block.stmts.is_empty() {
+            // In edition 2024, `#[warn(unsafe_op_in_unsafe_fn)]` is on,
+            // so we need to wrap any `unsafe` operation in an `unsafe` block.
+            // For now, just wrap the whole function body in an `unsafe` block,
+            // which we can later narrow down to individual `unsafe` operations.
+            // In previous editions, this does not warn by default,
+            // but it can be turned on, and it's generally good practice anyways,
+            // so we do this unconditionally (i.e., no edition check needed).
+            let unsafe_expr = mk().unsafe_block_expr(block);
+            block = mk().block(vec![mk().expr_stmt(unsafe_expr)]);
+        }
+
         Box::new(Item::Fn(ItemFn {
             attrs: self.attrs,
             vis: self.vis,
@@ -1824,27 +1866,16 @@ impl Builder {
 
     // Misc nodes
 
-    pub fn block(self, stmts: Vec<Stmt>) -> Block {
-        Block {
-            stmts,
-            brace_token: token::Brace(self.span),
-        }
+    pub fn block<B: Make<Block>>(self, b: B) -> Block {
+        b.make(&self)
     }
 
-    pub fn const_block(self, stmts: Vec<Stmt>) -> ExprConst {
-        ExprConst {
-            attrs: self.attrs,
-            const_token: Token![const](self.span),
-            block: mk().block(stmts),
-        }
+    pub fn const_block<B: Make<ExprConst>>(self, b: B) -> ExprConst {
+        b.make(&self)
     }
 
-    pub fn unsafe_block(self, stmts: Vec<Stmt>) -> ExprUnsafe {
-        ExprUnsafe {
-            attrs: self.attrs,
-            unsafe_token: Token![unsafe](self.span),
-            block: mk().block(stmts),
-        }
+    pub fn unsafe_block<B: Make<ExprUnsafe>>(self, b: B) -> ExprUnsafe {
+        b.make(&self)
     }
 
     pub fn label<L>(self, lbl: L) -> Label

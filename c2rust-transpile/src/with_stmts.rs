@@ -128,7 +128,7 @@ impl WithStmts<Box<Expr>> {
         let is_unsafe = self.is_unsafe;
         self.to_pure_expr().map(|expr| {
             if is_unsafe {
-                mk().unsafe_block_expr(mk().unsafe_block(vec![mk().expr_stmt(expr)]))
+                mk().unsafe_block_expr(vec![mk().expr_stmt(expr)])
             } else {
                 expr
             }

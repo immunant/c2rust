@@ -10,12 +10,15 @@ expression: cat tests/snapshots/main_fn.2024.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 unsafe fn main_0(
     mut argc: ::core::ffi::c_int,
     mut argv: *mut *mut ::core::ffi::c_char,
     mut envp: *mut *mut ::core::ffi::c_char,
 ) -> ::core::ffi::c_int {
-    return 0 as ::core::ffi::c_int;
+    unsafe {
+        return 0 as ::core::ffi::c_int;
+    }
 }
 pub fn main() {
     let mut args_strings: Vec<Vec<u8>> = ::std::env::args()

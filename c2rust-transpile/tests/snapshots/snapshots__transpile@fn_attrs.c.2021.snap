@@ -10,6 +10,7 @@ expression: cat tests/snapshots/fn_attrs.2021.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(linkage)]
 #[inline(always)]
 unsafe extern "C" fn always_inline_static() {}
@@ -53,19 +54,21 @@ unsafe extern "C" fn always_inline_gnu_inline_extern() {}
 unsafe extern "C" fn gnu_inline_non_canonical_definition_extern() {}
 #[no_mangle]
 pub unsafe extern "C" fn ensure_use() {
-    always_inline_static();
-    always_inline_nonstatic();
-    gnu_inline_nonstatic();
-    inline_static();
-    alt_kw_inline_static();
-    noinline_static();
-    inline_nonstatic();
-    alt_kw_inline_nonstatic();
-    gnu_inline_static();
-    inline_extern();
-    alt_kw_inline_extern();
-    always_inline_extern();
-    gnu_inline_extern();
-    always_inline_gnu_inline_extern();
-    gnu_inline_non_canonical_definition_extern();
+    unsafe {
+        always_inline_static();
+        always_inline_nonstatic();
+        gnu_inline_nonstatic();
+        inline_static();
+        alt_kw_inline_static();
+        noinline_static();
+        inline_nonstatic();
+        alt_kw_inline_nonstatic();
+        gnu_inline_static();
+        inline_extern();
+        alt_kw_inline_extern();
+        always_inline_extern();
+        gnu_inline_extern();
+        always_inline_gnu_inline_extern();
+        gnu_inline_non_canonical_definition_extern();
+    }
 }

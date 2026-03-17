@@ -10,6 +10,7 @@ expression: cat tests/snapshots/os-specific/types.2024.macos.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 pub type __darwin_ptrdiff_t = isize;
 pub type __darwin_size_t = usize;
 pub type __darwin_ssize_t = isize;

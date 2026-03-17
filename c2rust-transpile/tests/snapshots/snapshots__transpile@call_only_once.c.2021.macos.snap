@@ -10,6 +10,7 @@ expression: cat tests/snapshots/os-specific/call_only_once.2021.macos.rs
     unused_assignments,
     unused_mut
 )]
+#![deny(unsafe_op_in_unsafe_fn)]
 extern "C" {
     fn __assert_rtn(
         _: *const ::core::ffi::c_char,
@@ -20,19 +21,23 @@ extern "C" {
 }
 static mut called: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 unsafe extern "C" fn called_only_once() -> ::core::ffi::c_int {
-    called += 1;
-    return 1 as ::core::ffi::c_int;
+    unsafe {
+        called += 1;
+        return 1 as ::core::ffi::c_int;
+    }
 }
 #[no_mangle]
 pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
-    if (called_only_once() == 0) as ::core::ffi::c_int as ::core::ffi::c_long != 0 {
-        __assert_rtn(
-            b"assert_call_only_once\0".as_ptr() as *const ::core::ffi::c_char,
-            b"call_only_once.c\0".as_ptr() as *const ::core::ffi::c_char,
-            12 as ::core::ffi::c_int,
-            b"called_only_once()\0".as_ptr() as *const ::core::ffi::c_char,
-        );
-    } else {
-    };
-    return called;
+    unsafe {
+        if (called_only_once() == 0) as ::core::ffi::c_int as ::core::ffi::c_long != 0 {
+            __assert_rtn(
+                b"assert_call_only_once\0".as_ptr() as *const ::core::ffi::c_char,
+                b"call_only_once.c\0".as_ptr() as *const ::core::ffi::c_char,
+                12 as ::core::ffi::c_int,
+                b"called_only_once()\0".as_ptr() as *const ::core::ffi::c_char,
+            );
+        } else {
+        };
+        return called;
+    }
 }
