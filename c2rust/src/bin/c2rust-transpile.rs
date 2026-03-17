@@ -146,8 +146,10 @@ struct Args {
     reorganize_definitions: bool,
 
     /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
+    ///
+    /// See `c2rust-postprocess/README.md` for more information.
     #[clap(long)]
-    postprocess: bool,
+    remote_llm_postprocess: bool,
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
     #[clap(multiple = true, last(true))]
@@ -298,7 +300,7 @@ fn main() {
         overwrite_existing: args.overwrite_existing,
         reduce_type_annotations: args.reduce_type_annotations,
         reorganize_definitions: args.reorganize_definitions,
-        postprocess: args.postprocess,
+        postprocess: args.remote_llm_postprocess,
         emit_modules: args.emit_modules,
         emit_build_files: args.emit_build_files,
         c2rust_dir: args.c2rust_dir,
