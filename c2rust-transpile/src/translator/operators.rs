@@ -300,7 +300,7 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
         // First, translate the rhs. Then, if it must match the lhs but doesn't, add a cast.
-        let mut rhs_translation = self.convert_expr(ctx.used(), rhs, Some(rhs_type_id))?;
+        let mut rhs_translation = self.convert_expr(ctx.used(), rhs, None)?;
         let lhs_rhs_types_must_match = {
             let lhs_resolved_ty = &self.ast_context.resolve_type(lhs_type_id.ctype);
             let rhs_resolved_ty = &self.ast_context.resolve_type(rhs_type_id.ctype);
