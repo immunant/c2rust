@@ -265,8 +265,6 @@ fn emit_lib_rs(
     let rs_xcheck_backend = tcfg.cross_check_backend.replace('-', "_");
     let json = json!({
         "lib_rs_file": file_name,
-        "reorganize_definitions": tcfg.reorganize_definitions,
-        "translate_valist": tcfg.translate_valist,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
         "plugin_args": plugin_args,
