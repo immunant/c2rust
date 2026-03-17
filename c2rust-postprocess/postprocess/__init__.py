@@ -18,6 +18,8 @@ from postprocess.transforms import (
     SYSTEM_INSTRUCTION,
     AbstractGenerativeModel,
     CommentTransfer,
+    CommentTransferFailure,
+    CommentTransferOptions,
 )
 from postprocess.utils import existing_file
 
@@ -93,6 +95,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update the Rust in-place",
     )
 
+    parser.add_argument(
+        "--fail-fast",
+        required=False,
+        default=True,
+        action=BooleanOptionalAction,
+        help="Fail on the first error (vs. collecting errors until the end)",
+    )
+
     # TODO: add option to select model
     # TODO: add option to configure cache
     # TODO: add option to select what transforms to apply
@@ -135,12 +145,35 @@ def main(argv: Sequence[str] | None = None):
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)
-        xform.transfer_comments_dir(
-            root_rust_source_file=args.root_rust_source_file,
+
+        options = CommentTransferOptions(
             exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
             ident_filter=args.ident_filter,
             update_rust=args.update_rust,
+            fail_fast=args.fail_fast,
         )
+
+        failures: list[CommentTransferFailure] = []
+        for failure in xform.transfer_comments_dir(
+            root_rust_source_file=args.root_rust_source_file,
+            options=options,
+        ):
+            failures.append(failure)
+            if options.fail_fast:
+                break
+
+        for failure in failures:
+            failure.print()
+            print()
+
+        if failures:
+            print(f"""\
+failures exclude file:
+
+```yaml
+{CommentTransferFailure.to_exclude_file(failures)}
+```""")
+            return 1
 
         return 0
     except KeyboardInterrupt:
