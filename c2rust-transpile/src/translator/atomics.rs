@@ -49,9 +49,15 @@ impl<'c> Translation<'c> {
     fn atomic_intrinsic_expr_edition_2024(
         &self,
         base_name: &str,
-        num_ty_params: usize,
         orders: &[Ordering],
     ) -> Box<Expr> {
+        let num_ty_params = match base_name {
+            "fence" => 0,
+            "load" | "store" | "xchg" | "cxchg" | "cxchgweak" => 1,
+            "xadd" | "xsub" | "or" | "xor" | "nand" | "and" => 2,
+            _ => unimplemented!("unknown atomic intrinsic: {base_name}"),
+        };
+
         let args = repeat_n("_".to_owned(), num_ty_params)
             .chain(orders.iter().map(|&order| {
                 let order = order_ty_name(order);
@@ -66,12 +72,7 @@ impl<'c> Translation<'c> {
         Box::new(expr)
     }
 
-    pub fn atomic_intrinsic_expr(
-        &self,
-        base_name: &str,
-        num_ty_params: usize,
-        orders: &[Ordering],
-    ) -> Box<Expr> {
+    pub fn atomic_intrinsic_expr(&self, base_name: &str, orders: &[Ordering]) -> Box<Expr> {
         assert!(matches!(
             orders,
             &[_ /* order */] | &[_ /* order_succ */, _ /* order_fail */]
@@ -81,7 +82,7 @@ impl<'c> Translation<'c> {
         if self.tcfg.edition < Edition2024 {
             self.atomic_intrinsic_expr_edition_2021(base_name, orders)
         } else {
-            self.atomic_intrinsic_expr_edition_2024(base_name, num_ty_params, orders)
+            self.atomic_intrinsic_expr_edition_2024(base_name, orders)
         }
     }
 
@@ -92,7 +93,7 @@ impl<'c> Translation<'c> {
         order_fail: Ordering,
     ) -> Box<Expr> {
         let base = if weak { "cxchgweak" } else { "cxchg" };
-        self.atomic_intrinsic_expr(base, 1, &[order_succ, order_fail])
+        self.atomic_intrinsic_expr(base, &[order_succ, order_fail])
     }
 
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
@@ -165,7 +166,7 @@ impl<'c> Translation<'c> {
             "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
                 let order = static_order(order);
 
-                let atomic_load = self.atomic_intrinsic_expr("load", 1, &[order]);
+                let atomic_load = self.atomic_intrinsic_expr("load", &[order]);
                 let call = mk().call_expr(atomic_load, vec![ptr]);
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
@@ -194,7 +195,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let atomic_store = self.atomic_intrinsic_expr("store", 1, &[order]);
+                        let atomic_store = self.atomic_intrinsic_expr("store", &[order]);
                         let val = if name == "__atomic_store" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -233,7 +234,7 @@ impl<'c> Translation<'c> {
                 let val = val1.expect("__atomic_store must have a val argument");
                 ptr.and_then(|ptr| {
                     val.and_then(|val| {
-                        let fn_path = self.atomic_intrinsic_expr("xchg", 1, &[order]);
+                        let fn_path = self.atomic_intrinsic_expr("xchg", &[order]);
                         let val = if name == "__atomic_exchange" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
                         } else {
@@ -425,7 +426,7 @@ impl<'c> Translation<'c> {
         fetch_first: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Emit `atomic_func(a0, a1) (op a1)?`
-        let atomic_func = self.atomic_intrinsic_expr(base_name, 2, &[order]);
+        let atomic_func = self.atomic_intrinsic_expr(base_name, &[order]);
 
         if fetch_first {
             let call_expr = mk().call_expr(atomic_func, vec![dst, src]);
