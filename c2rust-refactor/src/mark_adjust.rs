@@ -257,12 +257,18 @@ pub fn find_arg_uses<T: Visit>(
         if let Some(def_id) = cx.opt_callee(e) {
             if let Some(node_id) = cx.hir_map().as_local_node_id(def_id) {
                 if st.marked(node_id, label) {
-                    let args = match e.kind {
-                        ExprKind::Call(_, ref args) => args,
-                        ExprKind::MethodCall(_, ref args, _) => args,
+                    match e.kind {
+                        ExprKind::Call(_, ref args) => st.add_mark(args[arg_idx].id, label),
+                        ExprKind::MethodCall(_, ref recv, ref args, _) => {
+                            let id = if arg_idx == 0 {
+                                recv.id
+                            } else {
+                                args[arg_idx - 1].id
+                            };
+                            st.add_mark(id, label);
+                        }
                         _ => panic!("expected Call or MethodCall"),
                     };
-                    st.add_mark(args[arg_idx].id, label);
                 }
             }
         }

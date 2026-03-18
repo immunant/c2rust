@@ -108,15 +108,28 @@ impl Transform for RetypeArgument {
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return);
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return);
-            let args: &mut [P<Expr>] = match e.kind {
-                ExprKind::Call(_, ref mut args) => args,
-                ExprKind::MethodCall(_, ref mut args, _) => args,
-                _ => panic!("expected Call or MethodCall"),
-            };
-            for &idx in mod_args {
+            let wrap_target = |target: &mut P<Expr>| {
                 let mut bnd = Bindings::new();
-                bnd.add("__old", args[idx].clone());
-                args[idx] = wrap.clone().subst(st, cx, &bnd);
+                bnd.add("__old", target.clone());
+                *target = wrap.clone().subst(st, cx, &bnd);
+            };
+            match e.kind {
+                ExprKind::Call(_, ref mut args) => {
+                    for &idx in mod_args {
+                        wrap_target(&mut args[idx]);
+                    }
+                }
+                ExprKind::MethodCall(_, ref mut recv, ref mut args, _) => {
+                    for &idx in mod_args {
+                        let target = if idx == 0 {
+                            &mut *recv
+                        } else {
+                            &mut args[idx - 1]
+                        };
+                        wrap_target(target);
+                    }
+                }
+                _ => panic!("expected Call or MethodCall"),
             }
         });
     }
@@ -1327,7 +1340,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
             }
             (
-                ExprKind::MethodCall(ref path, ref arguments, _),
+                ExprKind::MethodCall(ref path, ref recv, ref _arguments, _),
                 TyKind::RawPtr(ty::TypeAndMut {
                     ty: ref inner_ty,
                     ref mutbl,
@@ -1343,13 +1356,13 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 let mut sub_expected = expected;
                 sub_expected.ty = self.cx.ty_ctxt().mk_slice(*inner_ty);
                 sub_expected.mutability = Some(*mutbl);
-                let mut e = arguments[0].clone();
+                let mut e = recv.clone();
                 if self.try_retype(&mut e, sub_expected.clone()) {
                     *expr = mk().method_call_expr(e, new_method_name, Vec::<P<Expr>>::new());
                     return true;
                 }
                 sub_expected.ty = self.cx.ty_ctxt().mk_ref(
-                    self.cx.ty_ctxt().lifetimes.re_root_empty,
+                    self.cx.ty_ctxt().lifetimes.re_erased,
                     ty::TypeAndMut {
                         ty: sub_expected.ty,
                         mutbl: *mutbl,
@@ -1377,7 +1390,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     TyKind::Ref(_, _, subtype_mutbl) => {
                         let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
                         self.cx.ty_ctxt().mk_ref(
-                            self.cx.ty_ctxt().lifetimes.re_root_empty,
+                            self.cx.ty_ctxt().lifetimes.re_erased,
                             ty::TypeAndMut {
                                 ty: expected.ty,
                                 mutbl,

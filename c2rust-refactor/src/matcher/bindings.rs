@@ -5,7 +5,7 @@ use std::convert::{TryFrom, TryInto};
 use derive_more::{From, TryInto};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{LitKind as TokenLitKind, Token, TokenKind};
-use rustc_ast::tokenstream::{Cursor, Spacing, TokenStream, TokenStreamBuilder, TokenTree};
+use rustc_ast::tokenstream::{Cursor, Spacing, TokenStream, TokenTree};
 use rustc_ast::{Expr, Item, Lit, Pat, Path, Stmt, Ty};
 use rustc_span::source_map::DUMMY_SP;
 use rustc_span::symbol::{Ident, Symbol};
@@ -340,7 +340,7 @@ fn maybe_get_type(c: &mut Cursor) -> Type {
 
 /// Rewrite tokens like `$foo:ty` into `$foo` and extract the types
 fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
-    let mut tsb = TokenStreamBuilder::new();
+    let mut tokens = Vec::new();
     let mut c = ts.into_trees();
     while let Some(tt) = c.next() {
         let new_tt = match tt {
@@ -428,9 +428,9 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
 
             tt @ _ => tt,
         };
-        tsb.push(TokenStream::new(vec![new_tt]));
+        tokens.push(new_tt);
     }
-    tsb.build()
+    TokenStream::new(tokens)
 }
 
 pub fn parse_bindings(ts: TokenStream) -> (TokenStream, BindingTypes) {

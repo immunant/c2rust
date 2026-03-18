@@ -177,7 +177,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // They don't involve arbitrary raw ptr to raw ptr casts
                 // ([PointerCast::MutToConstPointer`] doesn't allow changing types),
                 // which we need to check for safe transmutability,
-                // and which are (currently) covered in [`CastKind::Misc`].
+                // and which are covered by ptr-to-ptr cast kinds below.
                 // That's why there's a `match` here that does nothing;
                 // it ensures if [`PointerCast`] is changed in a future `rustc` version,
                 // this won't compile until we've checked that this reasoning is still accurate.
@@ -192,7 +192,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.do_assign_pointer_ids(to_lty.label, from_lty.label)
                 // TODO add other dataflow constraints
             }
-            CastKind::Misc => {
+            CastKind::PtrToPtr | CastKind::FnPtrToPtr => {
                 match is_transmutable_ptr_cast(from_ty, to_ty) {
                     Some(true) => {
                         self.do_assign_pointer_ids(to_lty.label, from_lty.label);
@@ -205,6 +205,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                     None => {} // not a ptr cast (no dataflow constraints needed); let rustc typeck this
                 };
+            }
+            CastKind::IntToInt
+            | CastKind::FloatToInt
+            | CastKind::FloatToFloat
+            | CastKind::IntToFloat => {
+                // Not ptr casts, and we don't allow ptr-to-int casts.
+            }
+            CastKind::DynStar => {
+                unimplemented!("dyn* casts are too unstable and rare to bother supporting")
             }
         }
 
@@ -729,8 +738,13 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                                 op = rhs_op;
                                 continue;
                             }
-                            Rvalue::Cast(CastKind::Misc, ref rhs_op, _) => {
-                                // Allow casting from `usize` to `size_t`, for example.
+                            Rvalue::Cast(
+                                CastKind::PtrToPtr | CastKind::FnPtrToPtr | CastKind::IntToInt,
+                                ref rhs_op,
+                                _,
+                            ) => {
+                                // Allow simple value-preserving casts while tracing through a
+                                // local assignment, such as `usize` to `size_t`.
                                 //
                                 // Note: we currently don't check that the cast preserves the
                                 // actual value, so we might wrongly return `true` in some
@@ -761,7 +775,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 }
 
 fn visit_common<'tcx>(tc: &mut TypeChecker<'tcx, '_>, mir: &Body<'tcx>) {
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             tc.visit_statement(
                 stmt,

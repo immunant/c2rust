@@ -61,12 +61,11 @@ struct RemoveUnnecessaryRefs;
 impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| match &mut expr.kind {
-            ExprKind::MethodCall(_path, args, _span) => {
-                let (receiver, rest) = args.split_first_mut().unwrap();
+            ExprKind::MethodCall(_path, receiver, args, _span) => {
                 remove_reborrow(receiver, cx);
                 remove_ref(receiver);
                 remove_all_derefs(receiver, cx);
-                for arg in rest {
+                for arg in args.iter_mut() {
                     remove_reborrow(arg, cx);
                 }
             }

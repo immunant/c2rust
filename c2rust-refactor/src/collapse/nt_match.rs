@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use rustc_ast::tokenstream::{DelimSpan, LazyTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_data_structures::thin_vec::ThinVec;
 use rustc_span::source_map::{Span, Spanned, SyntaxContext};
 use rustc_span::symbol::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
+use thin_vec::ThinVec;
 
 use crate::ast_builder::mk;
 use rustc_ast::ptr::P;

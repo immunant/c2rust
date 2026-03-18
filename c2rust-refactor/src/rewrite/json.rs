@@ -144,7 +144,7 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
         visit::walk_ty(self, x);
     }
 
-    fn visit_fn(&mut self, kind: FnKind<'ast>, span: Span, _id: NodeId) {
+    fn visit_fn(&mut self, kind: FnKind<'ast>, _span: Span, _id: NodeId) {
         for arg in &kind.decl().inputs {
             let name = match arg.pat.kind {
                 PatKind::Ident(_, ident, _) => Some(ident.name),
@@ -152,7 +152,7 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
             };
             self.encode_inner("arg", arg.id, name);
         }
-        visit::walk_fn(self, kind, span);
+        visit::walk_fn(self, kind);
     }
 
     fn visit_field_def(&mut self, x: &'ast FieldDef) {

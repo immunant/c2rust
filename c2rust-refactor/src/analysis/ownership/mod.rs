@@ -185,7 +185,7 @@ fn analyze_intra<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>, 
         let mut local_cx = IntraCtxt::new(cx, def_id, mir);
         local_cx.init();
 
-        for (bbid, bb) in mir.basic_blocks().iter_enumerated() {
+        for (bbid, bb) in mir.basic_blocks.iter_enumerated() {
             local_cx.handle_basic_block(bbid, bb);
         }
 

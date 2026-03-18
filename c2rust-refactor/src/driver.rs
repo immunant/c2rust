@@ -18,7 +18,7 @@ use rustc_errors::PResult;
 use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
 use rustc_index::vec::IndexVec;
 use rustc_interface::interface;
-use rustc_interface::util::{get_codegen_backend, run_in_thread_pool_with_globals};
+use rustc_interface::util::get_codegen_backend;
 use rustc_interface::{util, Config};
 use rustc_lint::LintStore;
 use rustc_middle::hir::map as hir_map;
@@ -27,15 +27,14 @@ use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
 use rustc_session::config::Input;
 use rustc_session::config::Options as SessionOptions;
-use rustc_session::{self, DiagnosticOutput, Session};
+use rustc_session::{self, Session};
 use rustc_span::def_id::LocalDefId;
 use rustc_span::edition::Edition;
 use rustc_span::hygiene::SyntaxContext;
 use rustc_span::source_map::SourceMap;
 use rustc_span::source_map::{FileLoader, RealFileLoader};
 use rustc_span::symbol::{kw, Symbol};
-use rustc_span::SourceFileHashAlgorithm;
-use rustc_span::{FileName, Span, DUMMY_SP};
+use rustc_span::{FileName, SourceFileHashAlgorithm, Span, DUMMY_SP};
 use std::collections::HashSet;
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -235,7 +234,6 @@ pub fn clone_config(config: &interface::Config) -> interface::Config {
         output_file: config.output_file.clone(),
         output_dir: config.output_dir.clone(),
         file_loader: None,
-        diagnostic_output: DiagnosticOutput::Default,
         lint_caps: config.lint_caps.clone(),
         parse_sess_created: None,
         register_lints: None,
@@ -273,7 +271,6 @@ pub fn create_config(args: &[String]) -> interface::Config {
         output_file,
         output_dir,
         file_loader: None,
-        diagnostic_output: DiagnosticOutput::Default,
         lint_caps: Default::default(),
         parse_sess_created: None,
         register_lints: None,
@@ -316,7 +313,7 @@ where
     // Force disable incremental compilation.  It causes panics with multiple typechecking.
     config.opts.incremental = None;
 
-    run_in_thread_pool_with_globals(Edition::Edition2021, 1, move || {
+    rustc_span::create_session_globals_then(Edition::Edition2021, move || {
         let state = RefactorState::new(config, cmd_reg, file_io, marks);
         f(state)
     })
@@ -346,7 +343,6 @@ pub fn make_compiler(
         config.opts,
         config.crate_cfg,
         config.crate_check_cfg,
-        config.diagnostic_output,
         config.file_loader,
         config.input_path.clone(),
         config.lint_caps,
@@ -367,8 +363,8 @@ pub fn make_compiler(
         .map(|o| PathBuf::from(&o));
 
     let compiler = Compiler {
-        sess,
-        codegen_backend,
+        sess: sess.into(),
+        codegen_backend: codegen_backend.into(),
         input: config.input,
         input_path: config.input_path,
         output_dir: config.output_dir,
@@ -472,7 +468,6 @@ fn build_session(
     // Put a dummy file at the beginning of the source_map, so that no real `Span` will accidentally
     // collide with `DUMMY_SP` (which is `0 .. 0`).
     source_map.new_source_file(FileName::Custom("<dummy>".to_string()), " ".to_string());
-
     let codegen_backend = get_codegen_backend(
         &sopts.maybe_sysroot,
         sopts
@@ -487,7 +482,6 @@ fn build_session(
         in_path,
         None,
         descriptions,
-        DiagnosticOutput::Default,
         Default::default(),
         None,
         target_override,
@@ -634,21 +628,15 @@ pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
 fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     // `parse_arg` is private, so we make do with `parse_attribute`,
     // `parse_pat`, & `parse_ty`.
-    const INNER_ATTR_FORBIDDEN: InnerAttrPolicy<'_> = InnerAttrPolicy::Forbidden {
-        reason: "inner attributes not allowed in function arguments",
-        saw_doc_comment: false,
-        prev_outer_attr_sp: None,
-    };
-
-    let mut attrs: Vec<ast::Attribute> = Vec::new();
+    let mut attrs = ast::AttrVec::new();
     while let token::Pound = p.token.kind {
-        attrs.push(p.parse_attribute(INNER_ATTR_FORBIDDEN).unwrap());
+        attrs.push(p.parse_attribute(InnerAttrPolicy::Forbidden(None)).unwrap());
     }
     let pat = p.parse_pat_no_top_alt(None)?;
     p.expect(&TokenKind::Colon)?;
     let ty = p.parse_ty()?;
     Ok(Param {
-        attrs: attrs.into(),
+        attrs,
         pat,
         ty,
         id: DUMMY_NODE_ID,

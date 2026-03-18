@@ -90,6 +90,8 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
         // We do not have a SpanNodeKind for certain nodes
         Some(Node::TypeBinding(_)) => None,
         Some(Node::TraitRef(_)) => None,
+        Some(Node::ExprField(_)) => None,
+        Some(Node::PatField(_)) => None,
         Some(Node::Pat(pat)) => Some(NodeSpan::new(pat.span, Pat)),
         Some(Node::Arm(arm)) => Some(NodeSpan::new(arm.span, Arm)),
         Some(Node::Block(block)) => Some(NodeSpan::new(block.span, Block)),
@@ -143,7 +145,7 @@ impl<'def, 'hir> SpanToHirMapper<'def, 'hir> {
 
     fn current_owner_node_id(&self) -> Option<NodeId> {
         let owner = self.ctx.current_owner()?;
-        let def_id = owner.owner;
+        let def_id = owner.owner.def_id;
         self.def_id_to_node_id.get(def_id).copied()
     }
 
@@ -290,16 +292,14 @@ impl<'def, 'hir> hir::intravisit::Visitor<'hir> for SpanToHirMapper<'def, 'hir> 
                     });
                 }
             }
-            hir::ExprKind::MethodCall(segment, args, _span) => {
+            hir::ExprKind::MethodCall(segment, recv, args, _span) => {
                 // Visit the method name/generics (PathSegment)
-                self.visit_path_segment(expr.span, segment);
-                // Visit receiver and arguments
+                self.visit_path_segment(segment);
+                self.visit_child(child_slot::METHOD_RECEIVER, |this| {
+                    this.visit_expr(recv);
+                });
                 for (i, arg) in args.iter().enumerate() {
-                    let slot = if i == 0 {
-                        child_slot::METHOD_RECEIVER
-                    } else {
-                        child_slot::method_arg(i - 1)
-                    };
+                    let slot = child_slot::method_arg(i);
                     self.visit_child(slot, |this| {
                         this.visit_expr(arg);
                     });
@@ -501,7 +501,8 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             Res::Local(id) => Some(*id),
 
             Res::PrimTy(_)
-            | Res::SelfTy { .. }
+            | Res::SelfTyParam { .. }
+            | Res::SelfTyAlias { .. }
             | Res::ToolMod
             | Res::NonMacroAttr(_)
             | Res::Err => None,
@@ -984,7 +985,7 @@ impl<'hir> HirMap<'hir> {
     }
 
     pub fn get_parent_item(&self, id: HirId) -> LocalDefId {
-        self.map.get_parent_item(id)
+        self.map.get_parent_item(id).def_id
     }
 
     pub fn body_owned_by(&self, id: LocalDefId) -> BodyId {
