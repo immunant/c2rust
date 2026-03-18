@@ -1,7 +1,8 @@
 use crate::format_translation_err;
+use itertools::repeat_n;
+use std::sync::atomic::Ordering;
 
 use super::*;
-use std::sync::atomic::Ordering;
 
 fn order_suffix(order: Ordering) -> &'static str {
     use Ordering::*;
@@ -51,14 +52,12 @@ impl<'c> Translation<'c> {
         num_ty_params: usize,
         orders: &[Ordering],
     ) -> Box<Expr> {
-        let mut args = vec!["_".to_owned(); num_ty_params];
-        for &order in orders {
-            args.push(format!(
-                "{{ ::core::intrinsics::AtomicOrdering::{} }}",
-                order_ty_name(order)
-            ));
-        }
-        let args = args.join(", ");
+        let args = repeat_n("_".to_owned(), num_ty_params)
+            .chain(orders.iter().map(|&order| {
+                let order = order_ty_name(order);
+                format!("{{ ::core::intrinsics::AtomicOrdering::{order} }}")
+            }))
+            .join(", ");
         let path = format!("::core::intrinsics::atomic_{base_name}::<{args}>");
         // `mk()`/`Builder` doesn't seem to support const generic expressions,
         // so re-parsing with `syn` is simpler.
