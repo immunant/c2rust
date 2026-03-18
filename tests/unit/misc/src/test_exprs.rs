@@ -4,7 +4,7 @@ use crate::exprs::rust_exprs;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn exprs(_: c_uint, _: *mut c_int);
 }
 
