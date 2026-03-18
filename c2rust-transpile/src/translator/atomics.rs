@@ -72,6 +72,11 @@ impl<'c> Translation<'c> {
         num_ty_params: usize,
         orders: &[Ordering],
     ) -> Box<Expr> {
+        assert!(matches!(
+            orders,
+            &[_ /* order */] | &[_ /* order_succ */, _ /* order_fail */]
+        ));
+
         self.use_feature("core_intrinsics");
         if self.tcfg.edition < Edition2024 {
             self.atomic_intrinsic_expr_edition_2021(base_name, orders)
