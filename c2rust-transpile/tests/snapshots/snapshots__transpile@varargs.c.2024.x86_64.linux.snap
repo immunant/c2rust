@@ -13,12 +13,12 @@ expression: cat tests/snapshots/arch-os-specific/varargs.2024.x86_64.linux.rs
 #![deny(unsafe_op_in_unsafe_fn)]
 #![feature(c_variadic)]
 unsafe extern "C" {
-    fn printf(__format: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
-    fn vprintf(
+    unsafe fn printf(__format: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
+    unsafe fn vprintf(
         __format: *const ::core::ffi::c_char,
         __arg: ::core::ffi::VaList,
     ) -> ::core::ffi::c_int;
-    fn putchar(__c: ::core::ffi::c_int) -> ::core::ffi::c_int;
+    unsafe fn putchar(__c: ::core::ffi::c_int) -> ::core::ffi::c_int;
 }
 pub type __builtin_va_list = [__va_list_tag; 1];
 #[derive(Copy, Clone)]

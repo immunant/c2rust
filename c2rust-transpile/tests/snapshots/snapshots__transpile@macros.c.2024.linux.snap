@@ -12,8 +12,8 @@ expression: cat tests/snapshots/os-specific/macros.2024.linux.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn __errno_location() -> *mut ::core::ffi::c_int;
-    fn memcpy(
+    unsafe fn __errno_location() -> *mut ::core::ffi::c_int;
+    unsafe fn memcpy(
         __dest: *mut ::core::ffi::c_void,
         __src: *const ::core::ffi::c_void,
         __n: size_t,

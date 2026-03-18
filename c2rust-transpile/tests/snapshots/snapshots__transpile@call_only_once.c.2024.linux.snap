@@ -12,7 +12,7 @@ expression: cat tests/snapshots/os-specific/call_only_once.2024.linux.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn __assert_fail(
+    unsafe fn __assert_fail(
         __assertion: *const ::core::ffi::c_char,
         __file: *const ::core::ffi::c_char,
         __line: ::core::ffi::c_uint,

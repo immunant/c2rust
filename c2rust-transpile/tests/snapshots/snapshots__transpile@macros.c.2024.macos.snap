@@ -12,8 +12,8 @@ expression: cat tests/snapshots/os-specific/macros.2024.macos.rs
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
-    fn __error() -> *mut ::core::ffi::c_int;
-    fn memcpy(
+    unsafe fn __error() -> *mut ::core::ffi::c_int;
+    unsafe fn memcpy(
         __dst: *mut ::core::ffi::c_void,
         __src: *const ::core::ffi::c_void,
         __n: size_t,

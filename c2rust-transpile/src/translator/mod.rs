@@ -2619,6 +2619,7 @@ impl<'c> Translation<'c> {
                     };
                 }
 
+                let mk_ = mk_.unsafety(extern_block_unsafety(self.tcfg.edition));
                 let function_decl = mk_.fn_foreign_item(decl);
 
                 Ok(ConvertedDecl::ForeignItem(function_decl))
