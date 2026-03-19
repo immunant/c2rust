@@ -2715,39 +2715,39 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad condition type"))?;
 
         let null_pointer_case =
-            |negated: bool, ptr: CExprId| -> TranslationResult<WithStmts<Box<Expr>>> {
+            |is_null: bool, ptr: CExprId| -> TranslationResult<WithStmts<Box<Expr>>> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
                 let ptr_type = self.ast_context[ptr]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
 
-                val.result_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, negated))
+                val.result_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_null))
             };
 
         match self.ast_context[cond_id].kind {
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(target, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(!target, ptr)
+                null_pointer_case(target, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(!target, ptr)
             }
 
             CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(target, ptr)
+                null_pointer_case(!target, ptr)
             }
 
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
@@ -4829,7 +4829,7 @@ impl<'c> Translation<'c> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
         Ok(if ty.is_pointer() {
-            self.convert_pointer_is_null(ctx, ty_id, val, target)?
+            self.convert_pointer_is_null(ctx, ty_id, val, !target)?
         } else if ty.is_bool() {
             if target {
                 val

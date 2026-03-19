@@ -570,10 +570,10 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         ptr_type: CTypeId,
         e: Box<Expr>,
-        negated: bool,
+        is_null: bool,
     ) -> TranslationResult<Box<Expr>> {
         Ok(if self.ast_context.is_function_pointer(ptr_type) {
-            let method = if negated { "is_some" } else { "is_none" };
+            let method = if is_null { "is_none" } else { "is_some" };
             mk().method_call_expr(e, method, vec![])
         } else {
             // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
@@ -583,11 +583,11 @@ impl<'c> Translation<'c> {
                     "cannot check nullity of pointer in `const` context",
                 ));
             }
-            let is_null = mk().method_call_expr(e, "is_null", vec![]);
-            if negated {
-                mk().unary_expr(UnOp::Not(Default::default()), is_null)
+            let is_null_val = mk().method_call_expr(e, "is_null", vec![]);
+            if !is_null {
+                mk().unary_expr(UnOp::Not(Default::default()), is_null_val)
             } else {
-                is_null
+                is_null_val
             }
         })
     }

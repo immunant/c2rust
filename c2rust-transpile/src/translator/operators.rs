@@ -620,17 +620,17 @@ impl<'c> Translation<'c> {
                 // Using `.is_none()` and `.is_some()` for null comparison means
                 // we don't have to rely on `trait PartialEq` as much
                 // and it is also more idiomatic.
-                let (negated, bin_op) = match op {
-                    c_ast::BinOp::EqualEqual => (false, BinOp::Eq(Default::default())),
-                    c_ast::BinOp::NotEqual => (true, BinOp::Ne(Default::default())),
+                let (is_null, bin_op) = match op {
+                    c_ast::BinOp::EqualEqual => (true, BinOp::Eq(Default::default())),
+                    c_ast::BinOp::NotEqual => (false, BinOp::Ne(Default::default())),
                     _ => unreachable!(),
                 };
                 let expr = match lhs_rhs_ids {
                     Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, negated)?
+                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, is_null)?
                     }
                     Some((_, rhs_expr_id)) if self.ast_context.is_null_expr(rhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, negated)?
+                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, is_null)?
                     }
                     _ => mk().binary_expr(bin_op, lhs, rhs),
                 };
