@@ -616,32 +616,22 @@ impl<'c> Translation<'c> {
             c_ast::BinOp::ShiftRight => mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs),
             c_ast::BinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::EqualEqual => {
-                // Using is_none method for null comparison means we don't have to
+            c_ast::BinOp::EqualEqual | c_ast::BinOp::NotEqual => {
+                // Using is_none and is_some methods for null comparison means we don't have to
                 // rely on the PartialEq trait as much and is also more idiomatic
-                let expr = match lhs_rhs_ids {
-                    Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, false)?
-                    }
-                    Some((_, rhs_expr_id)) if self.ast_context.is_null_expr(rhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, false)?
-                    }
-                    _ => mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs),
+                let (negated, bin_op) = match op {
+                    c_ast::BinOp::EqualEqual => (false, BinOp::Eq(Default::default())),
+                    c_ast::BinOp::NotEqual => (true, BinOp::Ne(Default::default())),
+                    _ => unreachable!(),
                 };
-
-                bool_to_int(expr)
-            }
-            c_ast::BinOp::NotEqual => {
-                // Using is_some method for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
                 let expr = match lhs_rhs_ids {
                     Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, true)?
+                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, negated)?
                     }
                     Some((_, rhs_expr_id)) if self.ast_context.is_null_expr(rhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, true)?
+                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, negated)?
                     }
-                    _ => mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs),
+                    _ => mk().binary_expr(bin_op, lhs, rhs),
                 };
 
                 bool_to_int(expr)
