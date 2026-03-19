@@ -573,11 +573,8 @@ impl<'c> Translation<'c> {
         negated: bool,
     ) -> TranslationResult<Box<Expr>> {
         Ok(if self.ast_context.is_function_pointer(ptr_type) {
-            if negated {
-                mk().method_call_expr(e, "is_some", vec![])
-            } else {
-                mk().method_call_expr(e, "is_none", vec![])
-            }
+            let method = if negated { "is_some" } else { "is_none" };
+            mk().method_call_expr(e, method, vec![])
         } else {
             // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
             if ctx.is_const {
