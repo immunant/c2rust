@@ -617,8 +617,9 @@ impl<'c> Translation<'c> {
             c_ast::BinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
 
             c_ast::BinOp::EqualEqual | c_ast::BinOp::NotEqual => {
-                // Using is_none and is_some methods for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
+                // Using `.is_none()` and `.is_some()` for null comparison means
+                // we don't have to rely on `trait PartialEq` as much
+                // and it is also more idiomatic.
                 let (negated, bin_op) = match op {
                     c_ast::BinOp::EqualEqual => (false, BinOp::Eq(Default::default())),
                     c_ast::BinOp::NotEqual => (true, BinOp::Ne(Default::default())),
