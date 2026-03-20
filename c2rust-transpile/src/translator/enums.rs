@@ -40,7 +40,10 @@ impl<'c> Translation<'c> {
             .borrow_mut()
             .get(&enum_constant_id)
             .expect("Enum constant not named");
-        let enum_id = self.ast_context.parents[&enum_constant_id];
+        let enum_id = self
+            .ast_context
+            .parent_with_type(enum_constant_id)
+            .expect("Enum constant does not have a parent Enum");
         let enum_name = self
             .type_converter
             .borrow()
