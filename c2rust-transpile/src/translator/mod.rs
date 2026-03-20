@@ -3241,7 +3241,10 @@ impl<'c> Translation<'c> {
                     }
 
                     if let CExprKind::Literal(_, lit) = literal_expr_kind {
-                        if self.literal_matches_ty(lit, target_ty, is_negated) {
+                        if self
+                            .ast_context
+                            .literal_matches_ty(lit, target_ty, is_negated)
+                        {
                             return self.convert_expr(ctx, expr, Some(target_ty));
                         }
                     }
