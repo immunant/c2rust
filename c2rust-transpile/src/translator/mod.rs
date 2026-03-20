@@ -3665,7 +3665,7 @@ impl<'c> Translation<'c> {
                     // literal is translated according to the type we're expecting, and then we can
                     // skip the cast entirely.
                     if let CExprKind::Literal(_ty, lit) = &self.ast_context[expr].kind {
-                        if self.literal_matches_ty(lit, target_ty) {
+                        if self.ast_context.literal_matches_ty(lit, target_ty) {
                             return self.convert_expr(ctx, expr, Some(target_ty));
                         }
                     }
