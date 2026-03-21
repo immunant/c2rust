@@ -118,6 +118,7 @@ pub struct TranspilerConfig {
     /// Names of translation units containing main functions that we should make
     /// into binaries
     pub binaries: Vec<String>,
+    pub thin_binaries: bool,
 
     pub c2rust_dir: Option<PathBuf>,
 }
