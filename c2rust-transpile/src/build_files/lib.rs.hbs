@@ -30,3 +30,7 @@ pub mod {{this.name}}
 } // mod {{this.name}}
 {{/unless}}
 {{/each}}
+
+{{~#if current_binary_path~}}
+pub use {{current_binary_path}}::main;
+{{/if}}

@@ -130,9 +130,13 @@ impl TranspilerConfig {
         get_module_name(file, false, false, false).unwrap()
     }
 
-    fn is_binary(&self, file: &Path) -> bool {
+    fn maybe_binary_name_from_path(&self, file: &Path) -> Option<String> {
         let module_name = Self::binary_name_from_path(file);
-        self.binaries.contains(&module_name)
+        self.binaries.contains(&module_name).then_some(module_name)
+    }
+
+    fn is_binary(&self, file: &Path) -> bool {
+        self.maybe_binary_name_from_path(file).is_some()
     }
 
     fn check_if_all_binaries_used(

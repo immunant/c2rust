@@ -69,7 +69,8 @@ pub struct CrateConfig<'lcmd> {
 /// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
 /// Returns a single-element vector with the path to `lib.rs` or `main.rs`
 /// (or `[]` if the output file existed already). This may return multiple
-/// elements if there are multiple binaries in the current session.
+/// elements if there are multiple binaries in the current session, e.g.,
+/// if the `--no-split-library` command line flag is present.
 pub fn emit_build_files<'lcmd>(
     tcfg: &TranspilerConfig,
     build_dir: &Path,
@@ -102,16 +103,35 @@ pub fn emit_build_files<'lcmd>(
     };
 
     emit_build_rs(tcfg, &reg, build_dir, ccfg.link_cmd);
-    emit_lib_rs(
-        tcfg,
-        &reg,
-        build_dir,
-        ccfg.modules,
-        &ccfg.pragmas,
-        &ccfg.crates,
-    )
-    .into_iter()
-    .collect()
+    if tcfg.no_split_library {
+        tcfg.binaries
+            .iter()
+            .flat_map(|binary| {
+                emit_lib_rs(
+                    tcfg,
+                    &reg,
+                    build_dir,
+                    ccfg.modules.clone(),
+                    &ccfg.pragmas,
+                    &ccfg.crates,
+                    Some(binary),
+                )
+                .into_iter()
+            })
+            .collect()
+    } else {
+        emit_lib_rs(
+            tcfg,
+            &reg,
+            build_dir,
+            ccfg.modules.clone(),
+            &ccfg.pragmas,
+            &ccfg.crates,
+            None,
+        )
+        .into_iter()
+        .collect()
+    }
 }
 
 #[derive(Serialize)]
@@ -172,20 +192,31 @@ fn convert_module_list(
     build_dir: &Path,
     mut modules: Vec<PathBuf>,
     module_subset: ModuleSubset,
+    current_binary: &Option<&str>,
 ) -> Vec<Module> {
     modules.retain(|m| {
-        let is_binary = tcfg.is_binary(m);
+        let binary_name = tcfg.maybe_binary_name_from_path(m);
+        let is_binary = binary_name.is_some();
         let is_binary_subset = module_subset == ModuleSubset::Binaries;
         // Don't add binary modules to lib.rs, these are emitted to
         // standalone, separate binary modules.
+        if tcfg.no_split_library && is_binary && &binary_name.as_deref() == current_binary {
+            // Preserve the current binary in no_split_library mode
+            // because we include it in the top-level `c2rust-bin-{name}.rs`.
+            return true;
+        }
         is_binary == is_binary_subset
     });
+
+    // Whether to include `current_binary` into our "library" build which
+    // is actually `c2rust-bin-{name}.rs`.
+    let include_binary = tcfg.no_split_library && module_subset == ModuleSubset::Libraries;
 
     let mut res = vec![];
     let mut module_tree = ModuleTree(BTreeMap::new());
     for m in &modules {
         match m.strip_prefix(build_dir) {
-            Ok(relpath) if !tcfg.is_binary(m) => {
+            Ok(relpath) if !tcfg.is_binary(m) || include_binary => {
                 // The module is inside the build directory, use nested modules
                 let mut cur = &mut module_tree;
                 for sm in relpath.iter() {
@@ -193,6 +224,21 @@ fn convert_module_list(
                     let name = get_module_name(path, true, false, false).unwrap();
                     cur = cur.0.entry(name).or_default();
                 }
+            }
+            _ if tcfg.no_split_library && tcfg.is_binary(m) => {
+                // We use `c2rust-bin-{name}.rs` when emitting `Cargo.toml`
+                // but the actual name for `emit_lib_rs`.
+                assert!(module_subset == ModuleSubset::Binaries);
+
+                // TODO: does this need check_reserved?
+                let name = TranspilerConfig::binary_name_from_path(m);
+                let path = format!("c2rust-bin-{}.rs", name).into();
+                res.push(Module {
+                    path,
+                    name,
+                    open: false,
+                    close: false,
+                });
             }
             _ => {
                 let relpath = diff_paths(m, build_dir).unwrap();
@@ -259,6 +305,7 @@ fn emit_lib_rs(
     modules: Vec<PathBuf>,
     pragmas: &PragmaSet,
     crates: &CrateSet,
+    current_binary: Option<&str>,
 ) -> Option<PathBuf> {
     let plugin_args = tcfg
         .cross_check_configs
@@ -267,9 +314,38 @@ fn emit_lib_rs(
         .collect::<Vec<String>>()
         .join(", ");
 
-    let modules = convert_module_list(tcfg, build_dir, modules, ModuleSubset::Libraries);
+    let mut current_binary_path = String::new();
+    if current_binary.is_some() {
+        for elem in modules
+            .iter()
+            .find(|m| tcfg.maybe_binary_name_from_path(m).as_deref() == current_binary)
+            .unwrap()
+            .strip_prefix(build_dir)
+            .unwrap()
+            .iter()
+        {
+            if !current_binary_path.is_empty() {
+                current_binary_path.push_str("::");
+            }
+
+            let name = get_module_name(Path::new(elem), true, false, false).unwrap();
+            current_binary_path.push_str(&name);
+        }
+    };
+
+    let modules = convert_module_list(
+        tcfg,
+        build_dir,
+        modules,
+        ModuleSubset::Libraries,
+        &current_binary,
+    );
     let crates = convert_dependencies_list(crates.clone(), tcfg.c2rust_dir.as_deref());
-    let file_name = get_lib_rs_file_name(tcfg);
+    let file_name = if let Some(current_binary) = current_binary {
+        format!("c2rust-bin-{}.rs", current_binary)
+    } else {
+        get_lib_rs_file_name(tcfg).to_string()
+    };
     let rs_xcheck_backend = tcfg.cross_check_backend.replace('-', "_");
     let json = json!({
         "lib_rs_file": file_name,
@@ -279,6 +355,7 @@ fn emit_lib_rs(
         "modules": modules,
         "pragmas": pragmas,
         "crates": crates,
+        "current_binary_path": current_binary_path,
     });
 
     let output_path = build_dir.join(file_name);
@@ -328,6 +405,7 @@ fn emit_cargo_toml<'lcmd>(
             build_dir,
             ccfg.modules.to_owned(),
             ModuleSubset::Binaries,
+            &None,
         );
         let dependencies =
             convert_dependencies_list(ccfg.crates.clone(), tcfg.c2rust_dir.as_deref());
@@ -345,6 +423,7 @@ fn emit_cargo_toml<'lcmd>(
             "cross_checks": tcfg.cross_checks,
             "cross_check_backend": tcfg.cross_check_backend,
             "dependencies": dependencies,
+            "no_split_library": tcfg.no_split_library,
         });
         json.as_object_mut().unwrap().extend(
             crate_json

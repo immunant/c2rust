@@ -193,7 +193,9 @@ struct Args {
     cross_check_backend: CrossCheckBackend,
 
     /// Whether to emit a separate library from the binaries (the default),
-    /// or to fold the library into each binary module.
+    /// or to fold the library into each binary module. This duplicates
+    /// all the common modules into every binary, which may cause issues
+    /// with `c2rust-refactor` and `c2rust-postprocess`.
     #[clap(long)]
     no_split_library: bool,
 }

@@ -1401,7 +1401,7 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
             out_attrs.push(attr);
         }
 
-        if is_binary {
+        if is_binary && !t.tcfg.no_split_library {
             // TODO(kkysen) shouldn't need `extern crate`
             // Add `extern crate X;` to the top of the file
             for extern_crate in t.extern_crates.borrow().iter() {
@@ -1616,6 +1616,11 @@ impl<'c> Translation<'c> {
 
         if self.features.borrow().contains("register_tool") {
             pragmas.push(("register_tool", vec!["c2rust"]));
+        }
+
+        if self.tcfg.no_split_library {
+            // rustc pre-1.79 requires `imported_main` to import `main` from a submodule
+            features.append(&mut vec!["imported_main"]);
         }
 
         if !features.is_empty() {

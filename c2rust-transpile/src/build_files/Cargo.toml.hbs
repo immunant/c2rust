@@ -15,6 +15,7 @@ publish = false
 edition = "{{edition}}"
 autobins = false
 
+{{#unless no_split_library~}}
 {{#if is_library~}}
 [lib]
 name = "{{crate_rust_name}}"
@@ -25,6 +26,7 @@ crate-type = [{{{crate_types}}}]
 name = "{{crate_rust_name}}"
 path = "{{lib_rs_file}}"
 {{~/if}}
+{{~/unless}}
 
 {{#each binaries}}
 [[bin]]
