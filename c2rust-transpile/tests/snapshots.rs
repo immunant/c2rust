@@ -65,6 +65,7 @@ fn config(edition: RustEdition) -> TranspilerConfig {
                 .unwrap()
                 .to_path_buf(),
         ),
+        no_split_library: false,
     }
 }
 

@@ -191,6 +191,11 @@ struct Args {
 
     #[clap(long, value_enum, default_value_t)]
     cross_check_backend: CrossCheckBackend,
+
+    /// Whether to emit a separate library from the binaries (the default),
+    /// or to fold the library into each binary module.
+    #[clap(long)]
+    no_split_library: bool,
 }
 
 // TODO Eventually move this code into `c2rust-transpile`
@@ -312,6 +317,7 @@ fn main() {
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
         edition: args.edition,
+        no_split_library: args.no_split_library,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {

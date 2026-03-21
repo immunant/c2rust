@@ -120,6 +120,8 @@ pub struct TranspilerConfig {
     pub binaries: Vec<String>,
 
     pub c2rust_dir: Option<PathBuf>,
+
+    pub no_split_library: bool,
 }
 
 impl TranspilerConfig {
