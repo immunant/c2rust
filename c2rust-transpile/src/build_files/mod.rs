@@ -67,14 +67,15 @@ pub struct CrateConfig<'lcmd> {
 }
 
 /// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
-/// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
-/// existed already).
+/// Returns a single-element vector with the path to `lib.rs` or `main.rs`
+/// (or `[]` if the output file existed already). This may return multiple
+/// elements if there are multiple binaries in the current session.
 pub fn emit_build_files<'lcmd>(
     tcfg: &TranspilerConfig,
     build_dir: &Path,
     crate_cfg: Option<CrateConfig<'lcmd>>,
     workspace_members: Option<Vec<String>>,
-) -> Option<PathBuf> {
+) -> Vec<PathBuf> {
     let mut reg = Handlebars::new();
 
     reg.register_template_string("Cargo.toml", include_str!("Cargo.toml.hbs"))
@@ -93,17 +94,24 @@ pub fn emit_build_files<'lcmd>(
     if tcfg.translate_valist {
         emit_rust_toolchain(tcfg, build_dir);
     }
-    crate_cfg.and_then(|ccfg| {
-        emit_build_rs(tcfg, &reg, build_dir, ccfg.link_cmd);
-        emit_lib_rs(
-            tcfg,
-            &reg,
-            build_dir,
-            ccfg.modules,
-            ccfg.pragmas,
-            &ccfg.crates,
-        )
-    })
+    // `let ... else` is not supported on both the old nightly and current stable
+    let ccfg = if let Some(ccfg) = crate_cfg {
+        ccfg
+    } else {
+        return vec![];
+    };
+
+    emit_build_rs(tcfg, &reg, build_dir, ccfg.link_cmd);
+    emit_lib_rs(
+        tcfg,
+        &reg,
+        build_dir,
+        ccfg.modules,
+        ccfg.pragmas,
+        &ccfg.crates,
+    )
+    .into_iter()
+    .collect()
 }
 
 #[derive(Serialize)]

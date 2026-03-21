@@ -444,11 +444,11 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
             if lcmd.top_level {
                 top_level_ccfg = Some(ccfg);
             } else {
-                let crate_file = emit_build_files(&tcfg, &build_dir, Some(ccfg), None);
-                let crate_file = crate_file.as_deref();
-                reorganize_definitions(&tcfg, &build_dir, crate_file)
+                let crate_files = emit_build_files(&tcfg, &build_dir, Some(ccfg), None);
+                let crate_files = crate_files.as_slice();
+                reorganize_definitions(&tcfg, &build_dir, crate_files)
                     .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
-                run_postprocess(&tcfg, &build_dir, crate_file).unwrap_or_else(|e| warn!("{e}"));
+                run_postprocess(&tcfg, &build_dir, crate_files).unwrap_or_else(|e| warn!("{e}"));
                 workspace_members.push(lcmd_name);
             }
         }
@@ -460,12 +460,12 @@ pub fn transpile(tcfg: TranspilerConfig, cc_db: &Path, extra_clang_args: &[&str]
     }
 
     if tcfg.emit_build_files {
-        let crate_file =
+        let crate_files =
             emit_build_files(&tcfg, &build_dir, top_level_ccfg, Some(workspace_members));
-        let crate_file = crate_file.as_deref();
-        reorganize_definitions(&tcfg, &build_dir, crate_file)
+        let crate_files = crate_files.as_slice();
+        reorganize_definitions(&tcfg, &build_dir, crate_files)
             .unwrap_or_else(|e| warn!("Reorganizing definitions failed: {}", e));
-        run_postprocess(&tcfg, &build_dir, crate_file).unwrap_or_else(|e| warn!("{e}"));
+        run_postprocess(&tcfg, &build_dir, &crate_files[..]).unwrap_or_else(|e| warn!("{e}"));
     }
 
     tcfg.check_if_all_binaries_used(&transpiled_modules);
@@ -546,10 +546,10 @@ fn invoke_refactor(build_dir: &Path) -> Result<(), Error> {
 fn reorganize_definitions(
     tcfg: &TranspilerConfig,
     build_dir: &Path,
-    crate_file: Option<&Path>,
+    crate_files: &[PathBuf],
 ) -> Result<(), Error> {
     // We only run the reorganization refactoring if we emitted a fresh crate file
-    if crate_file.is_none() || tcfg.disable_refactoring || !tcfg.reorganize_definitions {
+    if crate_files.is_empty() || tcfg.disable_refactoring || !tcfg.reorganize_definitions {
         return Ok(());
     }
 
@@ -574,7 +574,7 @@ fn reorganize_definitions(
 /// This assumes the subcommand executable is either in `$PATH`
 /// or in the same relative directory as it is in the repo
 /// and the current executable is in `target/$profile/`.
-fn invoke_postprocess(crate_file: &Path, build_dir: &Path) -> Result<(), Error> {
+fn invoke_postprocess(crate_files: &[PathBuf], build_dir: &Path) -> Result<(), Error> {
     let subcommand = "c2rust-postprocess";
     let subcommand_path_buf;
     let subcommand_path = match which(subcommand) {
@@ -605,20 +605,24 @@ fn invoke_postprocess(crate_file: &Path, build_dir: &Path) -> Result<(), Error> 
         }
     };
 
-    let mut cmd = Command::new(subcommand_path);
-    cmd.arg("--update-rust")
-        .arg(crate_file)
-        .current_dir(build_dir);
-    let status =  cmd
-        .status()
-        .map_err(|e| {
-            let path = subcommand_path.display();
-            failure::format_err!("unable to run {path}: {e}\nNote that {subcommand} must be installed separately from c2rust and c2rust-transpile.\
-            It must be either installed in $PATH or c2rust/c2rust-transpile must be in `target/$profile/` from the c2rust repo.")
-        })?;
+    // TODO: is it safe to run postprocess over multiple binaries
+    // if they have submodules in common?
+    for crate_file in crate_files {
+        let mut cmd = Command::new(subcommand_path);
+        cmd.arg("--update-rust")
+            .arg(crate_file)
+            .current_dir(build_dir);
+        let status = cmd
+            .status()
+            .map_err(|e| {
+                let path = subcommand_path.display();
+                failure::format_err!("unable to run {path}: {e}\nNote that {subcommand} must be installed separately from c2rust and c2rust-transpile.\
+                It must be either installed in $PATH or c2rust/c2rust-transpile must be in `target/$profile/` from the c2rust repo.")
+            })?;
 
-    if !status.success() {
-        Err(format_err!("postprocess failed: {cmd:?}"))?;
+        if !status.success() {
+            Err(format_err!("postprocess failed: {cmd:?}"))?;
+        }
     }
 
     Ok(())
@@ -627,17 +631,16 @@ fn invoke_postprocess(crate_file: &Path, build_dir: &Path) -> Result<(), Error> 
 fn run_postprocess(
     tcfg: &TranspilerConfig,
     build_dir: &Path,
-    crate_file: Option<&Path>,
+    crate_files: &[PathBuf],
 ) -> Result<(), Error> {
-    let crate_file = match crate_file {
-        Some(crate_file) => crate_file,
-        None => return Ok(()),
-    };
+    if crate_files.is_empty() {
+        return Ok(());
+    }
     if !tcfg.postprocess {
         return Ok(());
     }
 
-    invoke_postprocess(crate_file, build_dir)?;
+    invoke_postprocess(crate_files, build_dir)?;
 
     Ok(())
 }
