@@ -150,7 +150,7 @@ impl<'c> Translation<'c> {
         // C compound literals are lvalues, but equivalent Rust expressions generally are not.
         // So if an address is needed, store it in an intermediate variable first.
         if !ctx.needs_address() || ctx.expanding_macro.is_some() {
-            return self.convert_expr(ctx, val, override_ty);
+            return self.convert_expr(ctx, val);
         }
 
         let fresh_name = self.renamer.borrow_mut().fresh();
@@ -158,7 +158,7 @@ impl<'c> Translation<'c> {
 
         // Translate the expression to be assigned to the fresh variable.
         // It will be assigned by value, so we don't need its address anymore.
-        let val = self.convert_expr(ctx.set_needs_address(false), val, override_ty)?;
+        let val = self.convert_expr(ctx.set_needs_address(false), val)?;
 
         // If we are translating a static variable,
         // then the fresh variable should also be static.
@@ -206,7 +206,7 @@ impl<'c> Translation<'c> {
                 // Convert all of the provided initializer values
 
                 let to_array_element = |id: CExprId| -> TranslationResult<_> {
-                    self.convert_expr(ctx.used(), id, None)?.try_map(|x| {
+                    self.convert_expr(ctx.used(), id)?.try_map(|x| {
                         // Array literals require all of their elements to be
                         // the correct type; they will not use implicit casts to
                         // change mut to const. This becomes a problem when an
@@ -270,7 +270,7 @@ impl<'c> Translation<'c> {
                         // * `ptr_extra_braces`
                         // * `array_of_ptrs`
                         // * `array_of_arrays`
-                        self.convert_expr(ctx.used(), single, None)
+                        self.convert_expr(ctx.used(), single)
                     }
                     &[single] if is_zero_literal(single) && n > 1 => {
                         // This was likely a C array of the form `int x[16] = { 0 }`.
@@ -305,7 +305,7 @@ impl<'c> Translation<'c> {
             }
             ref kind if kind.is_scalar() => {
                 if let Some(&first) = ids.first() {
-                    self.convert_expr(ctx.used(), first, None)
+                    self.convert_expr(ctx.used(), first)
                 } else {
                     self.implicit_default_expr(ctx.used(), ty.ctype)
                 }
