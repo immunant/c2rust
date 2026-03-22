@@ -100,9 +100,7 @@ impl<'c> Translation<'c> {
         reference: CExprId,
         uses_read: bool,
     ) -> TranslationResult<WithStmts<NamedReference<Option<Box<Expr>>>>> {
-        let reference_ty = self
-            .ast_context
-            .index(reference)
+        let reference_ty = self.ast_context[self.ast_context.resolve_parens(reference)]
             .kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad reference type"))?;

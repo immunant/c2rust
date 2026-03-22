@@ -542,7 +542,7 @@ pub enum Designator {
 impl TypedAstContext {
     pub fn is_null_expr(&self, expr_id: CExprId) -> bool {
         use CExprKind::*;
-        match self[expr_id].kind {
+        match self[self.resolve_parens(expr_id)].kind {
             ExplicitCast(_, _, CastKind::NullToPointer, _, _)
             | ImplicitCast(_, _, CastKind::NullToPointer, _, _) => true,
 
@@ -557,7 +557,7 @@ impl TypedAstContext {
 
     /// Returns the expression inside any number of nested parentheses.
     pub fn resolve_parens(&self, mut expr_id: CExprId) -> CExprId {
-        while let CExprKind::Paren(_, subexpr) = self.index(expr_id).kind {
+        while let CExprKind::Paren(_, subexpr) = self[expr_id].kind {
             expr_id = subexpr;
         }
 
@@ -566,7 +566,9 @@ impl TypedAstContext {
 
     /// Returns the expression inside an `__extension__` operator.
     pub fn resolve_extension(&self, expr_id: CExprId) -> CExprId {
-        if let CExprKind::Unary(_, CUnOp::Extension, subexpr, _) = self.index(expr_id).kind {
+        if let CExprKind::Unary(_, CUnOp::Extension, subexpr, _) =
+            self[self.resolve_parens(expr_id)].kind
+        {
             subexpr
         } else {
             expr_id
@@ -577,7 +579,7 @@ impl TypedAstContext {
     pub fn unwrap_predefined_ident(&self, mut expr_id: CExprId) -> CExprId {
         expr_id = self.resolve_extension(self.resolve_parens(expr_id));
 
-        if let CExprKind::Predefined(_, subexpr) = self.index(expr_id).kind {
+        if let CExprKind::Predefined(_, subexpr) = self[self.resolve_parens(expr_id)].kind {
             subexpr
         } else {
             expr_id
@@ -588,7 +590,7 @@ impl TypedAstContext {
     pub fn unwrap_cast_expr(&self, mut expr_id: CExprId) -> CExprId {
         while let CExprKind::Paren(_, subexpr)
         | CExprKind::ImplicitCast(_, subexpr, _, _, _)
-        | CExprKind::ExplicitCast(_, subexpr, _, _, _) = self.index(expr_id).kind
+        | CExprKind::ExplicitCast(_, subexpr, _, _, _) = self[expr_id].kind
         {
             expr_id = subexpr;
         }
@@ -598,7 +600,9 @@ impl TypedAstContext {
 
     /// Unwraps the underlying expression beneath any implicit casts.
     pub fn unwrap_implicit_cast_expr(&self, mut expr_id: CExprId) -> CExprId {
-        while let CExprKind::ImplicitCast(_, subexpr, _, _, _) = self.index(expr_id).kind {
+        while let CExprKind::Paren(_, subexpr) | CExprKind::ImplicitCast(_, subexpr, _, _, _) =
+            self[expr_id].kind
+        {
             expr_id = subexpr;
         }
 
@@ -608,7 +612,7 @@ impl TypedAstContext {
     /// Resolve true expression type, iterating through any casts and variable
     /// references.
     pub fn resolve_expr_type_id(&self, expr_id: CExprId) -> Option<(CExprId, CTypeId)> {
-        let expr = &self.index(expr_id).kind;
+        let expr = &self[self.resolve_parens(expr_id)].kind;
         let mut ty = expr.get_type();
         use CExprKind::*;
         match expr {
@@ -639,9 +643,10 @@ impl TypedAstContext {
     /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
     pub fn fn_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
         use CastKind::FunctionToPointerDecay;
-        if let CExprKind::ImplicitCast(_, fexp, FunctionToPointerDecay, _, _) = self[func_expr].kind
+        if let CExprKind::ImplicitCast(_, fexp, FunctionToPointerDecay, _, _) =
+            self[self.resolve_parens(func_expr)].kind
         {
-            if let CExprKind::DeclRef(_ty, decl_id, _rv) = &self[fexp].kind {
+            if let CExprKind::DeclRef(_ty, decl_id, _rv) = &self[self.resolve_parens(fexp)].kind {
                 let decl = &self.index(*decl_id).kind;
                 assert!(matches!(decl, CDeclKind::Function { .. }));
                 return Some(decl);
@@ -668,7 +673,7 @@ impl TypedAstContext {
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
         use CExprKind::*;
         let pure = |expr| self.is_expr_pure(expr);
-        match self.index(expr).kind {
+        match self[expr].kind {
             BadExpr |
             ShuffleVector(..) |
             ConvertVector(..) |
@@ -712,12 +717,12 @@ impl TypedAstContext {
     /// Pessimistically try to check if an expression doesn't return.
     /// If it does, or we can't tell that it doesn't, return `false`.
     pub fn expr_diverges(&self, expr_id: CExprId) -> bool {
-        let func_id = match self.index(expr_id).kind {
+        let func_id = match self[self.resolve_parens(expr_id)].kind {
             CExprKind::Call(_, func_id, _) => func_id,
             _ => return false,
         };
 
-        let type_id = match self[func_id].kind.get_type() {
+        let type_id = match self[self.resolve_parens(func_id)].kind.get_type() {
             None => return false,
             Some(t) => t,
         };
@@ -806,14 +811,7 @@ impl Index<CExprId> for TypedAstContext {
         };
         match self.c_exprs.get(&index) {
             None => &BADEXPR, // panic!("Could not find {:?} in TypedAstContext", index),
-            Some(e) => {
-                // Transparently index through Paren expressions
-                if let CExprKind::Paren(_, subexpr) = e.kind {
-                    self.index(subexpr)
-                } else {
-                    e
-                }
-            }
+            Some(e) => e,
         }
     }
 }

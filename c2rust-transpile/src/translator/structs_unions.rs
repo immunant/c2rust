@@ -1028,7 +1028,7 @@ impl<'a> Translation<'a> {
             MemberKind::Dot => self.convert_expr(ctx, expr, None)?,
             MemberKind::Arrow => {
                 if let CExprKind::Unary(_, CUnOp::AddressOf, subexpr_id, _) =
-                    self.ast_context[expr].kind
+                    self.ast_context[self.ast_context.resolve_parens(expr)].kind
                 {
                     // Special-case the `(&x)->field` pattern
                     // Convert it directly into `x.field`

@@ -98,14 +98,14 @@ impl<'c> Translation<'c> {
 
     fn convert_constant_bool(&self, expr: CExprId) -> Option<bool> {
         let val = self.ast_context.unwrap_cast_expr(expr);
-        match self.ast_context.index(val).kind {
+        match self.ast_context[self.ast_context.resolve_parens(val)].kind {
             CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i != 0),
             _ => None,
         }
     }
 
     fn convert_memordering(&self, expr: CExprId) -> Option<Ordering> {
-        let memorder = &self.ast_context[expr];
+        let memorder = &self.ast_context[self.ast_context.resolve_parens(expr)];
         let i = match memorder.kind {
             CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i),
             CExprKind::DeclRef(_, decl_id, LRValue::RValue) => {
@@ -305,8 +305,12 @@ impl<'c> Translation<'c> {
                             }
                             .ok_or_else(|| {
                                 format_translation_err!(
-                                    self.ast_context
-                                        .display_loc(&self.ast_context[order_fail_id.unwrap()].loc),
+                                    self.ast_context.display_loc(
+                                        &self.ast_context[self
+                                            .ast_context
+                                            .resolve_parens(order_fail_id.unwrap())]
+                                        .loc
+                                    ),
                                     "Invalid failure memory ordering",
                                 )
                             })?;

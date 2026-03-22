@@ -87,7 +87,7 @@ impl<'c> Translation<'c> {
         val: Box<Expr>,
     ) -> TranslationResult<Box<Expr>> {
         if let Some(expr) = expr {
-            match self.ast_context[expr].kind {
+            match self.ast_context[self.ast_context.resolve_parens(expr)].kind {
                 // This is the case of finding a variable which is an `EnumConstant` of the same
                 // enum we are casting to. Here, we can just remove the extraneous cast instead of
                 // generating a new one.
@@ -113,7 +113,7 @@ impl<'c> Translation<'c> {
 
                 CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
                     if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
-                        &self.ast_context[subexpr_id].kind
+                        &self.ast_context[self.ast_context.resolve_parens(subexpr_id)].kind
                     {
                         return Ok(self.enum_for_i64(enum_type_id, -(i as i64)));
                     }

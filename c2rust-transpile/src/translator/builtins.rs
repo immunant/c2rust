@@ -51,7 +51,7 @@ impl<'c> Translation<'c> {
         fexp: CExprId,
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let expr = &self.ast_context[fexp];
+        let expr = &self.ast_context[self.ast_context.resolve_parens(fexp)];
         let src_loc = &expr.loc;
         let decl_id = match expr.kind {
             CExprKind::DeclRef(_, decl_id, _) => decl_id,

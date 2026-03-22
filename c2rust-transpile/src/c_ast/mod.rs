@@ -383,7 +383,7 @@ impl TypedAstContext {
                     }
 
                     Expr(expr_id) => {
-                        let expr = self.index(expr_id);
+                        let expr = &self[self.resolve_parens(expr_id)];
                         if let Some(macs) = self.macro_invocations.get(&expr_id) {
                             for mac_id in macs {
                                 if wanted.insert(*mac_id) {

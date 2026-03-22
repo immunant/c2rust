@@ -187,7 +187,7 @@ impl<'c> Translation<'c> {
     /// This function will strip either an implicitly casted int or explicitly casted
     /// vector as both casts are unnecessary (and problematic) for our purposes
     fn clean_int_or_vector_param(&self, expr_id: CExprId) -> CExprId {
-        match self.ast_context[expr_id].kind {
+        match self.ast_context[self.ast_context.resolve_parens(expr_id)].kind {
             // For some reason there seems to be an incorrect implicit cast here to char
             // it's possible the builtin takes a char even though the function takes an int
             ImplicitCast(_, expr_id, IntegralCast, _, _) => expr_id,
@@ -423,7 +423,9 @@ impl<'c> Translation<'c> {
                     // _mm_shufflehi_epi16 mask params start with const int,
                     // _mm_shufflelo_epi16 does not
                     let expr_id = &child_expr_ids[2];
-                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind {
+                    if let Literal(_, Integer(0, IntBase::Dec)) =
+                        self.ast_context[self.ast_context.resolve_parens(*expr_id)].kind
+                    {
                         "_mm_shufflehi_epi16"
                     } else {
                         "_mm_shufflelo_epi16"
@@ -433,7 +435,9 @@ impl<'c> Translation<'c> {
                     // _mm256_shufflehi_epi16 mask params start with const int,
                     // _mm256_shufflelo_epi16 does not
                     let expr_id = &child_expr_ids[2];
-                    if let Literal(_, Integer(0, IntBase::Dec)) = self.ast_context[*expr_id].kind {
+                    if let Literal(_, Integer(0, IntBase::Dec)) =
+                        self.ast_context[self.ast_context.resolve_parens(*expr_id)].kind
+                    {
                         "_mm256_shufflehi_epi16"
                     } else {
                         "_mm256_shufflelo_epi16"
@@ -464,9 +468,10 @@ impl<'c> Translation<'c> {
     /// is likely redundant (external type), the other is not (internal type). We remove both of the
     /// casts for simplicity and readability
     fn strip_vector_explicit_cast(&self, expr_id: CExprId) -> (&CTypeKind, CExprId, usize) {
-        match self.ast_context[expr_id].kind {
+        match self.ast_context[self.ast_context.resolve_parens(expr_id)].kind {
             ExplicitCast(CQualTypeId { ctype, .. }, expr_id, _, _, _) => {
-                let expr_id = match &self.ast_context[expr_id].kind {
+                let expr_id = match &self.ast_context[self.ast_context.resolve_parens(expr_id)].kind
+                {
                     ExplicitCast(_, expr_id, _, _, _) => *expr_id,
                     // The expr_id wont be used in this case (the function only has one
                     // vector param, not two, despite the following type match), so it's
@@ -504,14 +509,14 @@ impl<'c> Translation<'c> {
         fn unknown_mask_format(e: &CExprKind) -> Result<CExprId, TranslationError> {
             Err(format_err!("Found unknown mask format: {:?}", e).into())
         }
-        match self.ast_context[expr_ids[0]].kind {
+        match self.ast_context[self.ast_context.resolve_parens(expr_ids[0])].kind {
             // Need to unmask which looks like this most of the time: X + (((mask) >> Y) & Z):
             Binary(_, Add, _, rhs_expr_id, None, None) => {
                 self.get_shuffle_vector_mask(&[rhs_expr_id])
             }
             // Sometimes there is a mask like this: ((mask) >> X) & Y:
             Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
-                match self.ast_context[lhs_expr_id].kind {
+                match self.ast_context[self.ast_context.resolve_parens(lhs_expr_id)].kind {
                     Binary(_, ShiftRight, lhs_expr_id, _, None, None) => Ok(lhs_expr_id),
                     ref e => unknown_mask_format(e),
                 }
@@ -519,20 +524,24 @@ impl<'c> Translation<'c> {
             // Sometimes you find a constant and the mask is used further down the expr list
             Literal(_, Integer(0, IntBase::Dec)) => self.get_shuffle_vector_mask(&[expr_ids[4]]),
             // format: ((char)(mask) & A) ?  B : C - (char)(mask)
-            Conditional(_, lhs_expr_id, _, _) => match self.ast_context[lhs_expr_id].kind {
-                Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
-                    match self.ast_context[lhs_expr_id].kind {
-                        ImplicitCast(_, expr_id, IntegralCast, _, _) => {
-                            match self.ast_context[expr_id].kind {
-                                ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
-                                ref e => unknown_mask_format(e),
+            Conditional(_, lhs_expr_id, _, _) => {
+                match self.ast_context[self.ast_context.resolve_parens(lhs_expr_id)].kind {
+                    Binary(_, BitAnd, lhs_expr_id, _, None, None) => {
+                        match self.ast_context[self.ast_context.resolve_parens(lhs_expr_id)].kind {
+                            ImplicitCast(_, expr_id, IntegralCast, _, _) => {
+                                match self.ast_context[self.ast_context.resolve_parens(expr_id)]
+                                    .kind
+                                {
+                                    ExplicitCast(_, expr_id, IntegralCast, _, _) => Ok(expr_id),
+                                    ref e => unknown_mask_format(e),
+                                }
                             }
+                            ref e => unknown_mask_format(e),
                         }
-                        ref e => unknown_mask_format(e),
                     }
+                    ref e => unknown_mask_format(e),
                 }
-                ref e => unknown_mask_format(e),
-            },
+            }
             ref e => unknown_mask_format(e),
         }
     }
@@ -547,13 +556,13 @@ impl<'c> Translation<'c> {
     ) -> bool {
         use self::CastKind::BuiltinFnToFnPtr;
 
-        match self.ast_context[expr_id].kind {
+        match self.ast_context[self.ast_context.resolve_parens(expr_id)].kind {
             CExprKind::ShuffleVector(..) => is_explicit && kind == CastKind::BitCast,
             CExprKind::Call(_, fn_id, _) => {
-                let fn_expr = &self.ast_context[fn_id].kind;
+                let fn_expr = &self.ast_context[self.ast_context.resolve_parens(fn_id)].kind;
 
                 if let CExprKind::ImplicitCast(_, expr_id, BuiltinFnToFnPtr, _, _) = fn_expr {
-                    let expr = &self.ast_context[*expr_id].kind;
+                    let expr = &self.ast_context[self.ast_context.resolve_parens(*expr_id)].kind;
 
                     if let CExprKind::DeclRef(_, decl_id, _) = expr {
                         let decl = &self.ast_context[*decl_id].kind;

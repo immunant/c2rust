@@ -68,9 +68,9 @@ impl<'c> Translation<'c> {
     pub fn match_vastart(&self, expr: CExprId) -> Option<CDeclId> {
         // struct-based va_list (e.g. x86_64)
         fn match_vastart_struct(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(expr)].kind]
             CExprKind::ImplicitCast(_, e, _, _, _) => e }
-            match_or! { [ast_context[e].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(e)].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         }
@@ -81,11 +81,11 @@ impl<'c> Translation<'c> {
             ast_context: &TypedAstContext,
             expr: CExprId,
         ) -> Option<CDeclId> {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(expr)].kind]
             CExprKind::ImplicitCast(_, me, _, _, _) => me }
-            match_or! { [ast_context[me].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(me)].kind]
             CExprKind::Member(_, e, _, _, _) => e }
-            match_or! { [ast_context[e].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(e)].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         }
@@ -96,20 +96,20 @@ impl<'c> Translation<'c> {
             ast_context: &TypedAstContext,
             expr: CExprId,
         ) -> Option<CDeclId> {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(expr)].kind]
             CExprKind::ImplicitCast(_, me, _, _, _) => me }
-            match_or! { [ast_context[me].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(me)].kind]
             CExprKind::Member(_, ie, _, _, _) => ie }
-            match_or! { [ast_context[ie].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(ie)].kind]
             CExprKind::ImplicitCast(_, e, _, _, _) => e }
-            match_or! { [ast_context[e].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(e)].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         }
 
         // char pointer-based va_list (e.g. x86)
         fn match_vastart_pointer(ast_context: &TypedAstContext, expr: CExprId) -> Option<CDeclId> {
-            match_or! { [ast_context[expr].kind]
+            match_or! { [ast_context[ast_context.resolve_parens(expr)].kind]
             CExprKind::DeclRef(_, va_id, _) => va_id }
             Some(va_id)
         }
@@ -134,11 +134,11 @@ impl<'c> Translation<'c> {
     }
 
     pub fn match_vapart(&self, expr: CExprId) -> Option<VaPart> {
-        match_or! { [self.ast_context[expr].kind]
+        match_or! { [self.ast_context[self.ast_context.resolve_parens(expr)].kind]
         CExprKind::Call(_, func, ref args) => (func, args) }
-        match_or! { [self.ast_context[func].kind]
+        match_or! { [self.ast_context[self.ast_context.resolve_parens(func)].kind]
         CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => fexp }
-        match_or! { [self.ast_context[fexp].kind]
+        match_or! { [self.ast_context[self.ast_context.resolve_parens(fexp)].kind]
         CExprKind::DeclRef(_, decl_id, _) => decl_id }
         match_or! { [self.ast_context[decl_id].kind]
         CDeclKind::Function { ref name, .. } => name }

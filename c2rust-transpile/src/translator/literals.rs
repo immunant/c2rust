@@ -163,7 +163,7 @@ impl<'c> Translation<'c> {
                         // we manually insert the otherwise elided casts in this
                         // particular context.
                         if let CExprKind::ImplicitCast(ty, _, CastKind::ConstCast, _, _) =
-                            self.ast_context[id].kind
+                            self.ast_context[self.ast_context.resolve_parens(id)].kind
                         {
                             let t = self.convert_type(ty.ctype)?;
                             Ok(mk().cast_expr(x, t))
@@ -189,7 +189,7 @@ impl<'c> Translation<'c> {
                 // * the expr kind being a string literal (`CExprKind::Literal` of a `CLiteral::String`).
                 let is_string_literal = |id: CExprId| {
                     let ty_kind = &self.ast_context.resolve_type(ty).kind;
-                    let expr_kind = &self.ast_context.index(id).kind;
+                    let expr_kind = &self.ast_context[self.ast_context.resolve_parens(id)].kind;
                     let is_char_array = matches!(*ty_kind, CTypeKind::Char);
                     let is_str_literal =
                         matches!(*expr_kind, CExprKind::Literal(_, CLiteral::String { .. }));
@@ -198,7 +198,7 @@ impl<'c> Translation<'c> {
 
                 let is_zero_literal = |id: CExprId| {
                     matches!(
-                        self.ast_context.index(id).kind,
+                        self.ast_context[self.ast_context.resolve_parens(id)].kind,
                         CExprKind::Literal(_, CLiteral::Integer(0, _base))
                     )
                 };

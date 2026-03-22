@@ -1688,7 +1688,7 @@ impl<'c> Translation<'c> {
             };
 
             use CExprKind::*;
-            match self.ast_context[expr_id].kind {
+            match self.ast_context[self.ast_context.resolve_parens(expr_id)].kind {
                 DeclRef(_, _, LRValue::LValue) => return true,
                 ImplicitCast(_, _, cast_kind, _, _) | ExplicitCast(_, _, cast_kind, _, _) => {
                     use CastKind::*;
@@ -1737,7 +1737,7 @@ impl<'c> Translation<'c> {
             };
 
             use CExprKind::*;
-            match self.ast_context[expr_id].kind {
+            match self.ast_context[self.ast_context.resolve_parens(expr_id)].kind {
                 // Technically we're being conservative here, but it's only the most
                 // contrived array indexing initializers that would be accepted
                 ArraySubscript(..) => return true,
@@ -1772,8 +1772,12 @@ impl<'c> Translation<'c> {
                     }
                 }
                 Unary(_, AddressOf, expr_id, _) => {
-                    if let Member(_, expr_id, _, _, _) = self.ast_context[expr_id].kind {
-                        if let DeclRef(..) = self.ast_context[expr_id].kind {
+                    if let Member(_, expr_id, _, _, _) =
+                        self.ast_context[self.ast_context.resolve_parens(expr_id)].kind
+                    {
+                        if let DeclRef(..) =
+                            self.ast_context[self.ast_context.resolve_parens(expr_id)].kind
+                        {
                             return true;
                         }
                     }
@@ -2351,7 +2355,7 @@ impl<'c> Translation<'c> {
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
 
-                let ty = self.ast_context[id]
+                let ty = self.ast_context[self.ast_context.resolve_parens(id)]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
@@ -2713,7 +2717,7 @@ impl<'c> Translation<'c> {
         target: bool,
         cond_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let ty_id = self.ast_context[cond_id]
+        let ty_id = self.ast_context[self.ast_context.resolve_parens(cond_id)]
             .kind
             .get_type()
             .ok_or_else(|| format_err!("bad condition type"))?;
@@ -2721,7 +2725,7 @@ impl<'c> Translation<'c> {
         let null_pointer_case =
             |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
-                let ptr_type = self.ast_context[ptr]
+                let ptr_type = self.ast_context[self.ast_context.resolve_parens(ptr)]
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
@@ -2729,7 +2733,7 @@ impl<'c> Translation<'c> {
                 val.result_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_null))
             };
 
-        match self.ast_context[cond_id].kind {
+        match self.ast_context[self.ast_context.resolve_parens(cond_id)].kind {
             CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
@@ -2777,11 +2781,13 @@ impl<'c> Translation<'c> {
         let mut iter = DFExpr::new(&self.ast_context, expr_id.into());
         while let Some(x) = iter.next() {
             match x {
-                SomeId::Expr(e) => match self.ast_context[e].kind {
-                    CExprKind::DeclRef(_, d, _) if d == decl_id => return true,
-                    CExprKind::UnaryType(_, _, Some(_), _) => iter.prune(1),
-                    _ => {}
-                },
+                SomeId::Expr(e) => {
+                    match self.ast_context[self.ast_context.resolve_parens(e)].kind {
+                        CExprKind::DeclRef(_, d, _) if d == decl_id => return true,
+                        CExprKind::UnaryType(_, _, Some(_), _) => iter.prune(1),
+                        _ => {}
+                    }
+                }
                 SomeId::Type(t) => {
                     if let CTypeKind::TypeOfExpr(_) = self.ast_context[t].kind {
                         iter.prune(1);
@@ -3007,7 +3013,8 @@ impl<'c> Translation<'c> {
         ctypeid: CTypeId,
         initializer: Option<CExprId>,
     ) -> bool {
-        let initializer_kind = initializer.map(|expr_id| &self.ast_context[expr_id].kind);
+        let initializer_kind = initializer
+            .map(|expr_id| &self.ast_context[self.ast_context.resolve_parens(expr_id)].kind);
 
         // If the RHS is a func call, we should be able to skip type annotation
         // because we get a type from the function return type
@@ -3452,12 +3459,12 @@ impl<'c> Translation<'c> {
         let Located {
             loc: src_loc,
             kind: expr_kind,
-        } = &self.ast_context[expr_id];
+        } = &self.ast_context[self.ast_context.resolve_parens(expr_id)];
 
         trace!(
             "Converting expr {:?}: {:?}",
             expr_id,
-            self.ast_context[expr_id]
+            self.ast_context[self.ast_context.resolve_parens(expr_id)]
         );
 
         if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id, override_ty)? {
@@ -3731,7 +3738,7 @@ impl<'c> Translation<'c> {
                     _ => {}
                 }
 
-                let mut source_ty = self.ast_context[expr]
+                let mut source_ty = self.ast_context[self.ast_context.resolve_parens(expr)]
                     .kind
                     .get_qual_type()
                     .ok_or_else(|| format_err!("bad source type"))?;
@@ -3769,9 +3776,10 @@ impl<'c> Translation<'c> {
                     // But for literals, if we don't absolutely have to cast, we would rather the
                     // literal is translated according to the type we're expecting, and then we can
                     // skip the cast entirely.
-                    if let (Some(ty), CExprKind::Literal(_ty, lit)) =
-                        (override_ty, &self.ast_context[expr].kind)
-                    {
+                    if let (Some(ty), CExprKind::Literal(_ty, lit)) = (
+                        override_ty,
+                        &self.ast_context[self.ast_context.resolve_parens(expr)].kind,
+                    ) {
                         if self.literal_matches_ty(lit, ty) {
                             return self.convert_expr(ctx, expr, override_ty);
                         }
@@ -3903,14 +3911,15 @@ impl<'c> Translation<'c> {
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             Call(call_expr_ty, func, ref args) => {
-                let fn_ty =
-                    self.ast_context
-                        .get_pointee_qual_type(
-                            self.ast_context[func].kind.get_type().ok_or_else(|| {
-                                format_err!("Invalid callee expression {:?}", func)
-                            })?,
-                        )
-                        .map(|ty| &self.ast_context.resolve_type(ty.ctype).kind);
+                let fn_ty = self
+                    .ast_context
+                    .get_pointee_qual_type(
+                        self.ast_context[self.ast_context.resolve_parens(func)]
+                            .kind
+                            .get_type()
+                            .ok_or_else(|| format_err!("Invalid callee expression {:?}", func))?,
+                    )
+                    .map(|ty| &self.ast_context.resolve_type(ty.ctype).kind);
                 let is_variadic = match fn_ty {
                     Some(CTypeKind::Function(_, _, is_variadic, _, _)) => *is_variadic,
                     _ => false,
@@ -3924,12 +3933,12 @@ impl<'c> Translation<'c> {
                     None
                 };
 
-                let func = match self.ast_context[func].kind {
+                let func = match self.ast_context[self.ast_context.resolve_parens(func)].kind {
                     // Direct function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
                     // Only a direct function call with pointer decay if the
                     // callee is a declref
-                    if matches!(self.ast_context[fexp].kind, CExprKind::DeclRef(..)) =>
+                    if matches!(self.ast_context[self.ast_context.resolve_parens(fexp)].kind, CExprKind::DeclRef(..)) =>
                         {
                             self.convert_expr(ctx.used(), fexp, None)?
                         }
@@ -4127,8 +4136,10 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let mut val;
 
-        if (self.ast_context.index(expr_id).kind.get_qual_type())
-            .map_or(false, |qtype| self.ast_context.is_va_list(qtype.ctype))
+        if (self.ast_context[self.ast_context.resolve_parens(expr_id)]
+            .kind
+            .get_qual_type())
+        .map_or(false, |qtype| self.ast_context.is_va_list(qtype.ctype))
         {
             // No `override_ty` to avoid unwanted casting.
             val = self.convert_expr(ctx, expr_id, None)?;
@@ -4197,7 +4208,7 @@ impl<'c> Translation<'c> {
 
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
-        let expr_kind = &self.ast_context[expr_id].kind;
+        let expr_kind = &self.ast_context[self.ast_context.resolve_parens(expr_id)].kind;
         // TODO We'd like to get rid of this cast eventually (see #1321).
         // Currently, const macros do not get the correct `override_ty` themselves,
         // so they aren't declared with the correct portable type,
