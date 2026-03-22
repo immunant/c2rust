@@ -2,7 +2,6 @@
 //! requires the use of the c2rust-bitfields crate.
 
 use std::collections::HashSet;
-use std::ops::Index;
 
 use super::named_references::NamedReference;
 use super::TranslationError;
@@ -56,7 +55,7 @@ impl<'a> Translation<'a> {
 
         // Pre-declare all the field names, checking for duplicates
         for &x in fields {
-            if let CDeclKind::Field { ref name, .. } = self.ast_context.index(x).kind {
+            if let CDeclKind::Field { ref name, .. } = self.ast_context[x].kind {
                 self.type_converter
                     .borrow_mut()
                     .declare_field_name(decl_id, x, name);
@@ -72,13 +71,12 @@ impl<'a> Translation<'a> {
             derives.push("Copy");
             derives.push("Clone");
         };
-        let has_bitfields =
-            fields
-                .iter()
-                .any(|field_id| match self.ast_context.index(*field_id).kind {
-                    CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
-                    _ => unreachable!("Found non-field in record field list"),
-                });
+        let has_bitfields = fields
+            .iter()
+            .any(|field_id| match self.ast_context[*field_id].kind {
+                CDeclKind::Field { bitfield_width, .. } => bitfield_width.is_some(),
+                _ => unreachable!("Found non-field in record field list"),
+            });
         if has_bitfields {
             derives.push("BitfieldStruct");
             self.use_crate(ExternCrate::C2RustBitfields);
@@ -192,7 +190,7 @@ impl<'a> Translation<'a> {
 
         let mut field_syns = vec![];
         for &x in fields {
-            let field_decl = self.ast_context.index(x);
+            let field_decl = &self.ast_context[x];
             match field_decl.kind {
                 CDeclKind::Field { ref name, typ, .. } => {
                     let name = self
@@ -374,7 +372,7 @@ impl<'a> Translation<'a> {
         log::debug!("importing struct {name}, id {struct_id:?}");
         self.add_import(struct_id, &name);
 
-        let (field_decl_ids, platform_byte_size) = match self.ast_context.index(struct_id).kind {
+        let (field_decl_ids, platform_byte_size) = match self.ast_context[struct_id].kind {
             CDeclKind::Struct {
                 fields: Some(ref fields),
                 platform_byte_size,
@@ -444,30 +442,31 @@ impl<'a> Translation<'a> {
         // Bitfield widths of 0 should just be markers for clang,
         // we shouldn't need to explicitly handle it ourselves
         let is_packed = self.ast_context.is_packed_struct_decl(struct_id);
-        let field_info_iter = field_decl_ids.iter().filter_map(|field_id| {
-            match self.ast_context.index(*field_id).kind {
-                CDeclKind::Field {
-                    bitfield_width: Some(0),
-                    ..
-                } => None,
-                CDeclKind::Field {
-                    typ,
-                    bitfield_width,
-                    ..
-                } => {
-                    let field_name = self
-                        .type_converter
-                        .borrow()
-                        .resolve_field_name(None, *field_id)
-                        .unwrap();
+        let field_info_iter =
+            field_decl_ids
+                .iter()
+                .filter_map(|field_id| match self.ast_context[*field_id].kind {
+                    CDeclKind::Field {
+                        bitfield_width: Some(0),
+                        ..
+                    } => None,
+                    CDeclKind::Field {
+                        typ,
+                        bitfield_width,
+                        ..
+                    } => {
+                        let field_name = self
+                            .type_converter
+                            .borrow()
+                            .resolve_field_name(None, *field_id)
+                            .unwrap();
 
-                    let use_inner_type =
-                        is_packed && self.ast_context.is_aligned_struct_type(typ.ctype);
-                    Some((field_name, typ, bitfield_width, use_inner_type))
-                }
-                _ => None,
-            }
-        });
+                        let use_inner_type =
+                            is_packed && self.ast_context.is_aligned_struct_type(typ.ctype);
+                        Some((field_name, typ, bitfield_width, use_inner_type))
+                    }
+                    _ => None,
+                });
         let zipped_iter = field_expr_ids.iter().zip_longest(field_info_iter);
         let mut bitfield_inits = Vec::new();
 
@@ -578,7 +577,7 @@ impl<'a> Translation<'a> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let union_field_id = opt_union_field_id.expect("union field ID");
 
-        match self.ast_context.index(union_id).kind {
+        match self.ast_context[union_id].kind {
             CDeclKind::Union { .. } => {
                 let union_name = self
                     .type_converter
@@ -587,7 +586,7 @@ impl<'a> Translation<'a> {
                     .unwrap();
                 log::debug!("importing union {union_name}, id {union_id:?}");
                 self.add_import(union_id, &union_name);
-                match self.ast_context.index(union_field_id).kind {
+                match self.ast_context[union_field_id].kind {
                     CDeclKind::Field { typ: field_ty, .. } => {
                         let val = if ids.is_empty() {
                             self.implicit_default_expr(ctx, field_ty.ctype)?
@@ -840,7 +839,7 @@ impl<'a> Translation<'a> {
                 platform_bit_offset,
                 platform_type_bitwidth,
                 ..
-            } = self.ast_context.index(*field_id).kind
+            } = self.ast_context[*field_id].kind
             {
                 let field_name = self
                     .type_converter

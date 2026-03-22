@@ -11,7 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display};
 use std::iter;
 use std::mem;
-use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -304,10 +303,10 @@ impl TypedAstContext {
     pub fn get_src_loc(&self, id: SomeId) -> Option<SrcSpan> {
         use SomeId::*;
         match id {
-            Stmt(id) => self.index(id).loc,
-            Expr(id) => self.index(id).loc,
-            Decl(id) => self.index(id).loc,
-            Type(id) => self.index(id).loc,
+            Stmt(id) => self[id].loc,
+            Expr(id) => self[id].loc,
+            Decl(id) => self[id].loc,
+            Type(id) => self[id].loc,
         }
     }
 
@@ -325,7 +324,7 @@ impl TypedAstContext {
         //
         // In addition, mark any other (unused) function wanted if configured.
         for &decl_id in &self.c_decls_top {
-            let decl = self.index(decl_id);
+            let decl = &self[decl_id];
             use CDeclKind::*;
             let is_wanted = match decl.kind {
                 Function {
@@ -440,7 +439,7 @@ impl TypedAstContext {
     /// This preserves the order when we emit the converted declarations.
     pub fn sort_top_decls_for_emitting(&mut self) {
         let mut decls_top = mem::take(&mut self.c_decls_top);
-        decls_top.sort_unstable_by_key(|&decl| self.cmp_located_include(self.index(decl)));
+        decls_top.sort_unstable_by_key(|&decl| self.cmp_located_include(&self[decl]));
         self.c_decls_top = decls_top;
     }
 }

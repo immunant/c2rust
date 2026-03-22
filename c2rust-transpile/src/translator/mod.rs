@@ -2,7 +2,6 @@ use std::cell::{Cell, RefCell};
 use std::char;
 use std::collections::HashMap;
 use std::mem;
-use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -2006,7 +2005,7 @@ impl<'c> Translation<'c> {
                 let mut args: Vec<(CDeclId, String, CQualTypeId)> = vec![];
                 for param_id in parameters {
                     if let CDeclKind::Variable { ref ident, typ, .. } =
-                        self.ast_context.index(*param_id).kind
+                        self.ast_context[*param_id].kind
                     {
                         args.push((*param_id, ident.clone(), typ))
                     } else {
@@ -2485,7 +2484,7 @@ impl<'c> Translation<'c> {
                     Some(return_type) => {
                         let ret_type_id: CTypeId =
                             self.ast_context.resolve_type_id(return_type.ctype);
-                        if let CTypeKind::Void = self.ast_context.index(ret_type_id).kind {
+                        if let CTypeKind::Void = self.ast_context[ret_type_id].kind {
                             cfg::ImplicitReturnType::Void
                         } else if is_main {
                             cfg::ImplicitReturnType::Main
@@ -2501,7 +2500,7 @@ impl<'c> Translation<'c> {
                     body_stmts.append(&mut self.compute_variable_array_sizes(ctx, typ.ctype)?);
                 }
 
-                let body_ids = match self.ast_context.index(body).kind {
+                let body_ids = match self.ast_context[body].kind {
                     CStmtKind::Compound(ref stmts) => stmts,
                     _ => panic!("function body expects to be a compound statement"),
                 };
@@ -2812,7 +2811,7 @@ impl<'c> Translation<'c> {
             initializer,
             typ,
             ..
-        } = self.ast_context.index(decl_id).kind
+        } = self.ast_context[decl_id].kind
         {
             if self.static_initializer_is_uncompilable(initializer, typ) {
                 let ctx = ctx.static_().not_const();
@@ -2851,7 +2850,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        match self.ast_context.index(decl_id).kind {
+        match self.ast_context[decl_id].kind {
             CDeclKind::Variable {
                 has_static_duration: false,
                 has_thread_duration: false,
@@ -4635,7 +4634,7 @@ impl<'c> Translation<'c> {
         }
 
         let resolved_ty_id = self.ast_context.resolve_type_id(ty_id);
-        let resolved_ty = &self.ast_context.index(resolved_ty_id).kind;
+        let resolved_ty = &self.ast_context[resolved_ty_id].kind;
 
         if resolved_ty.is_bool() {
             Ok(WithStmts::new_val(mk().lit_expr(mk().bool_lit(false))))
@@ -4708,13 +4707,13 @@ impl<'c> Translation<'c> {
         log::debug!("deferring imports to save them for {name} in {func_name}");
         self.defer_imports();
 
-        let name_decl_id = match self.ast_context.index(type_id).kind {
+        let name_decl_id = match self.ast_context[type_id].kind {
             CTypeKind::Typedef(decl_id) => decl_id,
             _ => decl_id,
         };
 
         // Otherwise, construct the initializer
-        let mut init = match self.ast_context.index(decl_id).kind {
+        let mut init = match self.ast_context[decl_id].kind {
             // Zero initialize all of the fields
             CDeclKind::Struct {
                 fields: Some(ref fields),
@@ -4755,7 +4754,7 @@ impl<'c> Translation<'c> {
                     .first()
                     .ok_or_else(|| format_err!("A union should have a field"))?;
 
-                let field = match self.ast_context.index(field_id).kind {
+                let field = match self.ast_context[field_id].kind {
                     CDeclKind::Field { typ, .. } => self
                         .implicit_default_expr(ctx, typ.ctype)?
                         .map(|field_init| {

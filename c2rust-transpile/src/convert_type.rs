@@ -11,7 +11,6 @@ use c2rust_rust_tools::RustEdition;
 use failure::format_err;
 use indexmap::IndexSet;
 use std::collections::{HashMap, HashSet};
-use std::ops::Index;
 use syn::*;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -214,7 +213,7 @@ impl TypeConverter {
             return Ok(mk_va_list_ty(self.edition, None));
         }
 
-        match ctxt.index(ctype).kind {
+        match ctxt[ctype].kind {
             CTypeKind::Void => Ok(mk().tuple_ty(vec![])),
             CTypeKind::Bool => Ok(mk().path_ty(vec!["bool"])),
             CTypeKind::Short => Ok(mk().abs_path_ty(vec!["core", "ffi", "c_short"])),
@@ -359,7 +358,7 @@ impl TypeConverter {
         ctype: CTypeId,
         params: &Vec<CParamId>,
     ) -> TranslationResult<Option<Box<Type>>> {
-        match ctxt.index(ctype).kind {
+        match ctxt[ctype].kind {
             // ANSI/ISO C-style function
             CTypeKind::Function(.., true) => Ok(None),
 
@@ -393,7 +392,7 @@ impl TypeConverter {
             }
             CTypeKind::TypeOf(ty) => self.knr_function_type_with_parameters(ctxt, ty, params),
 
-            CTypeKind::Typedef(decl) => match &ctxt.index(decl).kind {
+            CTypeKind::Typedef(decl) => match &ctxt[decl].kind {
                 CDeclKind::Typedef { typ, .. } => {
                     self.knr_function_type_with_parameters(ctxt, typ.ctype, params)
                 }

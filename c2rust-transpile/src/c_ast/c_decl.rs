@@ -262,7 +262,7 @@ impl TypedAstContext {
     pub fn tys_of_params(&self, parameters: &[CDeclId]) -> Option<Vec<CQualTypeId>> {
         parameters
             .iter()
-            .map(|p| match self.index(*p).kind {
+            .map(|p| match self[*p].kind {
                 CDeclKind::Variable { typ, .. } => Some(CQualTypeId::new(typ.ctype)),
                 _ => None,
             })
@@ -292,7 +292,7 @@ impl TypedAstContext {
 
     pub fn has_inner_struct_decl(&self, decl_id: CDeclId) -> bool {
         matches!(
-            self.index(decl_id).kind,
+            self[decl_id].kind,
             CDeclKind::Struct {
                 manual_alignment: Some(_),
                 ..
@@ -303,7 +303,7 @@ impl TypedAstContext {
     pub fn is_packed_struct_decl(&self, decl_id: CDeclId) -> bool {
         use CDeclKind::*;
         matches!(
-            self.index(decl_id).kind,
+            self[decl_id].kind,
             Struct {
                 is_packed: true,
                 ..

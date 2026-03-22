@@ -124,7 +124,7 @@ impl<'c> Translation<'c> {
                 // expected type down to the translation of our argument expressions.
                 let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
                 let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
-                let expr_ty_kind = &self.ast_context.index(expr_type_id.ctype).kind;
+                let expr_ty_kind = &self.ast_context[expr_type_id.ctype].kind;
                 // Addition and subtraction can accept one pointer argument for .offset(), in which
                 // case we don't want to homogenize arg types.
                 if !lhs_resolved_ty.kind.is_pointer()

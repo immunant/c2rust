@@ -14,7 +14,7 @@ impl<'c> Translation<'c> {
             ref parameters,
             typ,
             ..
-        } = self.ast_context.index(main_id).kind
+        } = self.ast_context[main_id].kind
         {
             let ret: CTypeKind = match self.ast_context.resolve_type(typ).kind {
                 CTypeKind::Function(ret, _, _, _, _) => {
@@ -146,13 +146,13 @@ impl<'c> Translation<'c> {
                     mk().local(mk().mutbl().ident_pat("args_ptrs"), Some(ty), Some(init))
                 })));
 
-                let argc_ty: Box<Type> = match self.ast_context.index(parameters[0]).kind {
+                let argc_ty: Box<Type> = match self.ast_context[parameters[0]].kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'argc' argument in main function",
                     )),
                 }?;
-                let argv_ty: Box<Type> = match self.ast_context.index(parameters[1]).kind {
+                let argv_ty: Box<Type> = match self.ast_context[parameters[1]].kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'argv' argument in main function",
@@ -255,7 +255,7 @@ impl<'c> Translation<'c> {
                     ],
                 )));
 
-                let envp_ty: Box<Type> = match self.ast_context.index(parameters[2]).kind {
+                let envp_ty: Box<Type> = match self.ast_context[parameters[2]].kind {
                     CDeclKind::Variable { ref typ, .. } => self.convert_type(typ.ctype),
                     _ => Err(TranslationError::generic(
                         "Cannot find type of 'envp' argument in main function",

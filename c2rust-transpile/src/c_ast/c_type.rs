@@ -627,10 +627,10 @@ impl TypedAstContext {
     pub fn is_builtin_va_list(&self, mut typ: CTypeId) -> bool {
         loop {
             // Skip over Elaborated types
-            let mut kind = &self.index(typ).kind;
+            let mut kind = &self[typ].kind;
 
             while let &CTypeKind::Elaborated(typ) = kind {
-                kind = &self.index(typ).kind;
+                kind = &self[typ].kind;
             }
 
             // TODO: Rust 1.65: use let-else
@@ -638,7 +638,7 @@ impl TypedAstContext {
                 &CTypeKind::Typedef(decl) => decl,
                 _ => return false,
             };
-            let (name, qtyp) = match &self.index(decl).kind {
+            let (name, qtyp) = match &self[decl].kind {
                 &CDeclKind::Typedef { ref name, typ, .. } => (name, typ),
                 _ => panic!("Typedef decl did not point to a typedef"),
             };
@@ -779,13 +779,13 @@ impl TypedAstContext {
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
         use CTypeKind::*;
-        let ty = match self.index(typ).kind {
+        let ty = match self[typ].kind {
             Attributed(ty, _) => ty.ctype,
             Elaborated(ty) => ty,
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
             Paren(ty) => ty,
-            Typedef(decl) => match self.index(decl).kind {
+            Typedef(decl) => match self[decl].kind {
                 CDeclKind::Typedef { typ: ty, .. } => ty.ctype,
                 _ => panic!("Typedef decl did not point to a typedef"),
             },
@@ -796,7 +796,7 @@ impl TypedAstContext {
 
     pub fn resolve_type(&self, typ: CTypeId) -> &CType {
         let resolved_typ_id = self.resolve_type_id(typ);
-        self.index(resolved_typ_id)
+        &self[resolved_typ_id]
     }
 
     pub fn is_aligned_struct_type(&self, typ: CTypeId) -> bool {
@@ -804,7 +804,7 @@ impl TypedAstContext {
             if let CDeclKind::Struct {
                 manual_alignment: Some(_),
                 ..
-            } = self.index(decl_id).kind
+            } = self[decl_id].kind
             {
                 return true;
             }

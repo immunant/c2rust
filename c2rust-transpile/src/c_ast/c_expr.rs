@@ -622,7 +622,7 @@ impl TypedAstContext {
                 return self.resolve_expr_type_id(*subexpr);
             }
             DeclRef(_, decl_id, _) => {
-                let decl = self.index(*decl_id);
+                let decl = &self[*decl_id];
                 use CDeclKind::*;
                 match decl.kind {
                     Function { typ, .. } => {
@@ -647,7 +647,7 @@ impl TypedAstContext {
             self[self.resolve_parens(func_expr)].kind
         {
             if let CExprKind::DeclRef(_ty, decl_id, _rv) = &self[self.resolve_parens(fexp)].kind {
-                let decl = &self.index(*decl_id).kind;
+                let decl = &self[*decl_id].kind;
                 assert!(matches!(decl, CDeclKind::Function { .. }));
                 return Some(decl);
             }
@@ -726,12 +726,12 @@ impl TypedAstContext {
             None => return false,
             Some(t) => t,
         };
-        let pointed_id = match self.index(type_id).kind {
+        let pointed_id = match self[type_id].kind {
             CTypeKind::Pointer(pointer_qualtype) => pointer_qualtype.ctype,
             _ => return false,
         };
 
-        match self.index(pointed_id).kind {
+        match self[pointed_id].kind {
             CTypeKind::Function(_, _, _, no_return, _) => no_return,
             _ => false,
         }
