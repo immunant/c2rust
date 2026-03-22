@@ -5,6 +5,7 @@ use crate::c_ast::c_expr::{
 };
 use crate::c_ast::c_stmt::{AsmOperand, CStmt, CStmtId, CStmtKind};
 use crate::c_ast::c_type::{CQualTypeId, CType, CTypeId, CTypeKind, Qualifiers};
+use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor, SomeId};
 use crate::c_ast::{Attribute, DisplaySrcSpan, TypedAstContext};
 use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;
@@ -564,6 +565,116 @@ impl ConversionContext {
 
         self.typed_context.va_list_kind = untyped_context.va_list_kind;
         self.typed_context.target = untyped_context.target.clone();
+
+        self.bubble_expr_types();
+    }
+
+    /// Bubble types of unary and binary operators up from their args into the expression type.
+    ///
+    /// In Clang 15 and below, the Clang AST resolves typedefs in the expression type of unary and
+    /// binary expressions. For example, a BinaryExpr node adding two `size_t` expressions will be
+    /// given an `unsigned long` type rather than the `size_t` typedef type. This behavior changed
+    /// in Clang 16. This method adjusts AST node types to match those produced by Clang 16 and
+    /// newer; on these later Clang versions, it should have no effect.
+    ///
+    /// This pass is necessary because we reify some typedef types (such as `size_t`) into their own
+    /// distinct Rust types. As such, we need to make sure we know the exact type to generate when
+    /// we translate an expr, not just its resolved type (looking through typedefs).
+    fn bubble_expr_types(&mut self) {
+        struct BubbleExprTypes<'a> {
+            ast_context: &'a mut TypedAstContext,
+        }
+
+        impl<'a> NodeVisitor for BubbleExprTypes<'a> {
+            fn children(&mut self, id: SomeId) -> Vec<SomeId> {
+                immediate_children_all_types(self.ast_context, id)
+            }
+
+            fn post(&mut self, id: SomeId) {
+                let e = match id {
+                    SomeId::Expr(e) => e,
+                    _ => return,
+                };
+
+                let new_ty = match self.ast_context.c_exprs[&e].kind {
+                    CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
+                        let lhs_type_id =
+                            self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
+                        let rhs_type_id =
+                            self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+
+                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+
+                        if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                            Some(lhs_type_id)
+                        } else if CTypeKind::PULLBACK_KINDS.contains(&rhs_resolved_ty.kind) {
+                            Some(rhs_type_id)
+                        } else {
+                            None
+                        }
+                    }
+                    CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
+                        let rhs_type_id =
+                            self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
+                        let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
+                        let lhs_type_id = lhs_kind.get_qual_type().unwrap();
+
+                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+
+                        let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
+                            && !rhs_resolved_ty.kind.is_pointer();
+
+                        if op.all_types_same() && neither_ptr {
+                            if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                                Some(lhs_type_id)
+                            } else {
+                                Some(rhs_type_id)
+                            }
+                        } else if op == CBinOp::ShiftLeft || op == CBinOp::ShiftRight {
+                            Some(lhs_type_id)
+                        } else {
+                            return;
+                        }
+                    }
+                    CExprKind::Unary(_ty, op, e, _idk) => op.expected_result_type(
+                        self.ast_context,
+                        self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
+                    ),
+                    CExprKind::Paren(_ty, e) => self.ast_context.c_exprs[&e].kind.get_qual_type(),
+                    CExprKind::UnaryType(_, op, _, _) => {
+                        // All of these `CUnTypeOp`s should return `size_t`.
+                        let kind = match op {
+                            CUnTypeOp::SizeOf => CTypeKind::Size,
+                            CUnTypeOp::AlignOf => CTypeKind::Size,
+                            CUnTypeOp::PreferredAlignOf => CTypeKind::Size,
+                        };
+                        let ty = self
+                            .ast_context
+                            .type_for_kind(&kind)
+                            .expect("CTypeKind::Size should be size_t");
+                        Some(CQualTypeId::new(ty))
+                    }
+                    _ => return,
+                };
+                let ty = self
+                    .ast_context
+                    .c_exprs
+                    .get_mut(&e)
+                    .and_then(|e| e.kind.get_qual_type_mut());
+                if let (Some(ty), Some(new_ty)) = (ty, new_ty) {
+                    *ty = new_ty;
+                };
+            }
+        }
+
+        for decl in self.typed_context.c_decls_top.clone() {
+            BubbleExprTypes {
+                ast_context: &mut self.typed_context,
+            }
+            .visit_tree(SomeId::Decl(decl));
+        }
     }
 
     /// Visit child nodes of a `RecordDecl` (`struct` or `union`) and collect `FieldDecl` node IDs.
