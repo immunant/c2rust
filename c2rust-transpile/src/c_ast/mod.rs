@@ -1383,6 +1383,18 @@ impl TypedAstContext {
             _ => false,
         }
     }
+
+    /// Same as the `Index` trait, but doesn't bypass `Paren`.
+    pub fn index_expr_raw(&self, index: CExprId) -> &CExpr {
+        static BADEXPR: CExpr = Located {
+            loc: None,
+            kind: CExprKind::BadExpr,
+        };
+        match self.c_exprs.get(&index) {
+            None => &BADEXPR,
+            Some(e) => e,
+        }
+    }
 }
 
 impl CommentContext {

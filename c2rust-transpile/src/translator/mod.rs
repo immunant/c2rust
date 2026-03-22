@@ -30,6 +30,7 @@ use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
 use crate::rust_ast::set_span::SetSpan;
 use crate::rust_ast::{pos_to_span, SpanExt};
+use crate::translator::context::ContextVisitor;
 use crate::translator::named_references::NamedReference;
 use crate::translator::variadic::{mk_va_list_copy, mk_va_list_ty};
 use c2rust_ast_builder::{mk, properties::*, Builder};
@@ -49,6 +50,7 @@ mod assembly;
 mod atomics;
 mod builtins;
 mod comments;
+mod context;
 mod enums;
 mod functions;
 mod literals;
@@ -271,6 +273,11 @@ pub struct Translation<'c> {
     // Translation environment
     pub ast_context: TypedAstContext,
     pub tcfg: &'c TranspilerConfig,
+
+    /// The type expected by the surrounding expression context.
+    /// This can be different from the type of the AST node itself
+    /// and in many cases should override it.
+    pub expr_override_types: HashMap<CExprId, CQualTypeId>,
 
     // Accumulated outputs
     pub features: RefCell<IndexSet<&'static str>>,
@@ -721,6 +728,8 @@ pub fn translate(
         // binary and unary operators' expr types agree with their argument types
         // in the presence of typedefs.
         t.ast_context.bubble_expr_types();
+
+        t.set_contexts();
 
         enum Name<'a> {
             Var(&'a str),
@@ -1503,6 +1512,7 @@ impl<'c> Translation<'c> {
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
+            expr_override_types: HashMap::new(),
             // TODO: Use Renamer::value_namespace() for most renamings.
             renamer: RefCell::new(Renamer::global_value_namespace()),
             zero_inits: RefCell::new(IndexMap::new()),
@@ -1520,6 +1530,13 @@ impl<'c> Translation<'c> {
             extern_crates: RefCell::new(IndexSet::new()),
             cur_file: Default::default(),
         }
+    }
+
+    fn set_contexts(&mut self) {
+        let mut visitor = ContextVisitor::new(&self.ast_context);
+        visitor.visit(&self.ast_context.c_decls_top);
+
+        self.expr_override_types = visitor.expr_override_types;
     }
 
     fn use_crate(&self, extern_crate: ExternCrate) {
