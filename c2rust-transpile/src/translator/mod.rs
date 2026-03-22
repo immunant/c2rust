@@ -2620,7 +2620,7 @@ impl<'c> Translation<'c> {
 
         let null_pointer_case =
             |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
-                let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
+                let val = self.convert_expr(ctx.used().decay_ref(), ptr)?;
                 let ptr_type = self.ast_context[ptr]
                     .kind
                     .get_type()
@@ -2673,7 +2673,7 @@ impl<'c> Translation<'c> {
                 // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
                 // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
                 // specify Yes for that particular case, given enough analysis.
-                let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
+                let val = self.convert_expr(ctx.used().decay_ref(), cond_id)?;
                 val.result_map(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
@@ -2996,7 +2996,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
-            Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
+            Some(x) => self.convert_expr(ctx.used(), x),
             None => self.implicit_default_expr(ctx, typ.ctype),
         };
 
@@ -3174,26 +3174,24 @@ impl<'c> Translation<'c> {
                     type_id = elt;
 
                     // Convert this expression
-                    let expr = self
-                        .convert_expr(ctx.used(), expr_id, None)?
-                        .and_then(|expr| {
-                            let name = self
-                                .renamer
-                                .borrow_mut()
-                                .insert(CDeclId(expr_id.0), "vla")
-                                .unwrap(); // try using declref name?
-                                           // TODO: store the name corresponding to expr_id
+                    let expr = self.convert_expr(ctx.used(), expr_id)?.and_then(|expr| {
+                        let name = self
+                            .renamer
+                            .borrow_mut()
+                            .insert(CDeclId(expr_id.0), "vla")
+                            .unwrap(); // try using declref name?
+                                       // TODO: store the name corresponding to expr_id
 
-                            let local = mk().local(
-                                mk().ident_pat(name),
-                                None,
-                                Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
-                            );
+                        let local = mk().local(
+                            mk().ident_pat(name),
+                            None,
+                            Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
+                        );
 
-                            let res: TranslationResult<WithStmts<()>> =
-                                Ok(WithStmts::new(vec![mk().local_stmt(Box::new(local))], ()));
-                            res
-                        })?;
+                        let res: TranslationResult<WithStmts<()>> =
+                            Ok(WithStmts::new(vec![mk().local_stmt(Box::new(local))], ()));
+                        res
+                    })?;
 
                     stmts.extend(expr.into_stmts());
                 }
@@ -3217,7 +3215,7 @@ impl<'c> Translation<'c> {
 
             let elts = self.compute_size_of_type(ctx, elts, override_ty)?;
             return elts.and_then(|lhs| {
-                let len = self.convert_expr(ctx.used().not_static(), len, override_ty)?;
+                let len = self.convert_expr(ctx.used().not_static(), len)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
@@ -3299,13 +3297,10 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         exprs: &[CExprId],
-        arg_tys: Option<&[CQualTypeId]>,
     ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
-        assert!(arg_tys.map(|tys| tys.len() == exprs.len()).unwrap_or(true));
         exprs
             .iter()
-            .enumerate()
-            .map(|(n, arg)| self.convert_expr(ctx, *arg, arg_tys.map(|tys| tys[n])))
+            .map(|arg| self.convert_expr(ctx, *arg))
             .collect()
     }
 
@@ -3317,23 +3312,10 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         exprs: &[CExprId],
-        arg_tys: Option<&[CQualTypeId]>,
-        is_variadic: bool,
     ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
-        let arg_tys = if let Some(arg_tys) = arg_tys {
-            if !is_variadic {
-                assert!(arg_tys.len() == exprs.len());
-            }
-
-            arg_tys
-        } else {
-            &[]
-        };
-
         exprs
             .iter()
-            .enumerate()
-            .map(|(n, arg)| self.convert_call_arg(ctx, *arg, arg_tys.get(n).copied()))
+            .map(|arg| self.convert_call_arg(ctx, *arg))
             .collect()
     }
 
@@ -3354,7 +3336,6 @@ impl<'c> Translation<'c> {
         &self,
         mut ctx: ExprContext,
         expr_id: CExprId,
-        override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let Located {
             loc: src_loc,
@@ -3366,6 +3347,8 @@ impl<'c> Translation<'c> {
             expr_id,
             self.ast_context[expr_id]
         );
+
+        let override_ty = self.expr_override_types.get(&expr_id).copied();
 
         if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id, override_ty)? {
             return Ok(converted);
@@ -3427,11 +3410,11 @@ impl<'c> Translation<'c> {
                 Ok(result)
             }
 
-            ConstantExpr(ty, child, value) => {
+            ConstantExpr(_ty, child, value) => {
                 if let Some(constant) = value {
                     self.convert_constant(constant).map(WithStmts::new_val)
                 } else {
-                    self.convert_expr(ctx, child, Some(ty))
+                    self.convert_expr(ctx, child)
                 }
             }
 
@@ -3580,7 +3563,7 @@ impl<'c> Translation<'c> {
 
                     // Index Expr
                     let expr = self
-                        .convert_expr(ctx, *expr_id, None)?
+                        .convert_expr(ctx, *expr_id)?
                         .to_pure_expr()
                         .ok_or_else(|| {
                             format_err!("Expected Variable offsetof to be a side-effect free")
@@ -3672,7 +3655,7 @@ impl<'c> Translation<'c> {
                     WithStmts::new_val(self.panic_or_err("val is not supposed to be used"))
                 } else if is_explicit {
                     let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
-                    let mut val = self.convert_expr(ctx, expr, None)?;
+                    let mut val = self.convert_expr(ctx, expr)?;
                     val.prepend_stmts(stmts);
                     val
                 } else {
@@ -3683,11 +3666,11 @@ impl<'c> Translation<'c> {
                     // skip the cast entirely.
                     if let CExprKind::Literal(_ty, lit) = &self.ast_context[expr].kind {
                         if self.ast_context.literal_matches_ty(lit, target_ty) {
-                            return self.convert_expr(ctx, expr, Some(target_ty));
+                            return self.convert_expr(ctx, expr);
                         }
                     }
 
-                    self.convert_expr(ctx, expr, None)?
+                    self.convert_expr(ctx, expr)?
                 };
 
                 // Shuffle Vector "function" builtins will add a cast to the output of the
@@ -3711,7 +3694,7 @@ impl<'c> Translation<'c> {
                 self.convert_unary_operator(ctx, op, override_ty.unwrap_or(type_id), arg)
             }
 
-            Conditional(ty, cond, lhs, rhs) => {
+            Conditional(_ty, cond, lhs, rhs) => {
                 if ctx.is_const {
                     return Err(format_translation_err!(
                         self.ast_context.display_loc(src_loc),
@@ -3720,8 +3703,8 @@ impl<'c> Translation<'c> {
                 }
                 let cond = self.convert_condition(ctx, true, cond)?;
 
-                let lhs = self.convert_expr(ctx, lhs, Some(override_ty.unwrap_or(ty)))?;
-                let rhs = self.convert_expr(ctx, rhs, Some(override_ty.unwrap_or(ty)))?;
+                let lhs = self.convert_expr(ctx, lhs)?;
+                let rhs = self.convert_expr(ctx, rhs)?;
 
                 if ctx.is_unused() {
                     let is_unsafe = lhs.is_unsafe() || rhs.is_unsafe();
@@ -3755,7 +3738,7 @@ impl<'c> Translation<'c> {
             BinaryConditional(ty, lhs, rhs) => {
                 if ctx.is_unused() {
                     let mut lhs = self.convert_condition(ctx, false, lhs)?;
-                    let rhs = self.convert_expr(ctx, rhs, None)?;
+                    let rhs = self.convert_expr(ctx, rhs)?;
                     lhs.merge_unsafe(rhs.is_unsafe());
 
                     lhs.and_then(|val| {
@@ -3779,7 +3762,7 @@ impl<'c> Translation<'c> {
                             let ite = mk().ifte_expr(
                                 cond,
                                 mk().block(vec![mk().expr_stmt(lhs_val)]),
-                                Some(self.convert_expr(ctx, rhs, None)?.to_expr()),
+                                Some(self.convert_expr(ctx, rhs)?.to_expr()),
                             );
                             Ok(ite)
                         },
@@ -3817,14 +3800,6 @@ impl<'c> Translation<'c> {
                     _ => false,
                 };
 
-                let mut arg_tys = if let Some(CDeclKind::Function { parameters, .. }) =
-                    self.ast_context.fn_declref_decl(func)
-                {
-                    self.ast_context.tys_of_params(parameters)
-                } else {
-                    None
-                };
-
                 let func = match self.ast_context[func].kind {
                     // Direct function call
                     CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
@@ -3832,7 +3807,7 @@ impl<'c> Translation<'c> {
                     // callee is a declref
                     if matches!(self.ast_context[fexp].kind, CExprKind::DeclRef(..)) =>
                         {
-                            self.convert_expr(ctx.used(), fexp, None)?
+                            self.convert_expr(ctx.used(), fexp)?
                         }
 
                     // Builtin function call
@@ -3842,7 +3817,7 @@ impl<'c> Translation<'c> {
 
                     // Function pointer call
                     _ => {
-                        let mut callee = self.convert_expr(ctx.used(), func, None)?;
+                        let mut callee = self.convert_expr(ctx.used(), func)?;
                         let make_fn_ty = |ret_ty: Box<Type>| {
                             let ret_ty = match *ret_ty {
                                 Type::Tuple(TypeTuple { elems: ref v, .. }) if v.is_empty() => ReturnType::Default,
@@ -3875,8 +3850,7 @@ impl<'c> Translation<'c> {
                                     transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
                                 })
                             }
-                            Some(CTypeKind::Function(_, ty_arg_tys, ..)) => {
-                                arg_tys = Some(ty_arg_tys.clone());
+                            Some(CTypeKind::Function(..)) => {
                                 // Normal function pointer
                                 callee.map(unwrap_function_pointer)
                             }
@@ -3889,8 +3863,7 @@ impl<'c> Translation<'c> {
                     // We want to decay refs only when function is variadic
                     ctx.decay_ref = DecayRef::from(is_variadic);
 
-                    let args =
-                        self.convert_call_args(ctx.used(), args, arg_tys.as_deref(), is_variadic)?;
+                    let args = self.convert_call_args(ctx.used(), args)?;
 
                     let mut call_expr = args.map(|args| mk().call_expr(func, args));
                     if let Some(expected_ty) = override_ty {
@@ -3915,12 +3888,12 @@ impl<'c> Translation<'c> {
                 self.convert_member_expr(ctx, qual_ty, expr, decl, kind, lrvalue, override_ty)
             }
 
-            Paren(_, val) => self.convert_expr(ctx, val, override_ty),
+            Paren(_, val) => self.convert_expr(ctx, val),
 
             CompoundLiteral(qty, val) => {
                 if !ctx.needs_address() || ctx.is_const {
                     // consts have their intermediates' lifetimes extended.
-                    return self.convert_expr(ctx, val, override_ty);
+                    return self.convert_expr(ctx, val);
                 }
 
                 // C compound literals are lvalues, but equivalent Rust expressions generally are not.
@@ -3930,7 +3903,7 @@ impl<'c> Translation<'c> {
 
                 // Translate the expression to be assigned to the fresh variable.
                 // It will be assigned by value, so we don't need its address anymore.
-                let val = self.convert_expr(ctx.set_needs_address(false), val, override_ty)?;
+                let val = self.convert_expr(ctx.set_needs_address(false), val)?;
 
                 val.and_then(|val| {
                     let fresh_stmt = {
@@ -3961,7 +3934,7 @@ impl<'c> Translation<'c> {
 
             ImplicitValueInit(ty) => self.implicit_default_expr(ctx, ty.ctype),
 
-            Predefined(_, val_id) => self.convert_expr(ctx, val_id, override_ty),
+            Predefined(_, val_id) => self.convert_expr(ctx, val_id),
 
             Statements(_, compound_stmt_id) => {
                 self.convert_statement_expression(ctx, compound_stmt_id)
@@ -3971,9 +3944,9 @@ impl<'c> Translation<'c> {
 
             Choose(_, _cond, lhs, rhs, is_cond_true) => {
                 let chosen_expr = if is_cond_true {
-                    self.convert_expr(ctx, lhs, override_ty)?
+                    self.convert_expr(ctx, lhs)?
                 } else {
-                    self.convert_expr(ctx, rhs, override_ty)?
+                    self.convert_expr(ctx, rhs)?
                 };
 
                 // TODO: Support compile-time choice between lhs and rhs based on cond.
@@ -4023,18 +3996,16 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expr_id: CExprId,
-        override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let mut val;
 
         if (self.ast_context.index(expr_id).kind.get_qual_type())
             .map_or(false, |qtype| self.ast_context.is_va_list(qtype.ctype))
         {
-            // No `override_ty` to avoid unwanted casting.
-            val = self.convert_expr(ctx, expr_id, None)?;
+            val = self.convert_expr(ctx, expr_id)?;
             val = val.map(|val| mk_va_list_copy(self.tcfg.edition, val));
         } else {
-            val = self.convert_expr(ctx, expr_id, override_ty)?;
+            val = self.convert_expr(ctx, expr_id)?;
         }
 
         Ok(val)

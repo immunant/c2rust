@@ -156,7 +156,7 @@ impl<'c> Translation<'c> {
                 // Convert all of the provided initializer values
 
                 let to_array_element = |id: CExprId| -> TranslationResult<_> {
-                    self.convert_expr(ctx.used(), id, None)?.result_map(|x| {
+                    self.convert_expr(ctx.used(), id)?.result_map(|x| {
                         // Array literals require all of their elements to be
                         // the correct type; they will not use implicit casts to
                         // change mut to const. This becomes a problem when an
@@ -220,7 +220,7 @@ impl<'c> Translation<'c> {
                         // * `ptr_extra_braces`
                         // * `array_of_ptrs`
                         // * `array_of_arrays`
-                        self.convert_expr(ctx.used(), single, None)
+                        self.convert_expr(ctx.used(), single)
                     }
                     &[single] if is_zero_literal(single) && n > 1 => {
                         // This was likely a C array of the form `int x[16] = { 0 }`.
@@ -255,7 +255,7 @@ impl<'c> Translation<'c> {
             }
             ref kind if kind.is_scalar() => {
                 if let Some(&first) = ids.first() {
-                    self.convert_expr(ctx.used(), first, None)
+                    self.convert_expr(ctx.used(), first)
                 } else {
                     self.implicit_default_expr(ctx.used(), ty.ctype)
                 }
