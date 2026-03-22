@@ -74,8 +74,8 @@ impl<'c> Translation<'c> {
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
 
+                let expr = self.convert_expr(ctx, id)?;
                 let override_ty = self.expr_override_types.get(&id).copied();
-                let expr = self.convert_expr(ctx, id, override_ty)?;
                 let ty = override_ty
                     .or_else(|| self.ast_context[id].kind.get_qual_type())
                     .ok_or_else(|| format_err!("Invalid expression type"))?

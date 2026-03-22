@@ -496,8 +496,8 @@ impl<'a> Translation<'a> {
                     let field = init.map(|init| mk().field(field_name, init));
                     fields.push(field);
                 }
-                Both(field_id, (field_name, ty, bitfield_width, use_inner_type)) => {
-                    let mut expr = self.convert_expr(ctx.used(), *field_id, Some(ty))?;
+                Both(field_id, (field_name, _ty, bitfield_width, use_inner_type)) => {
+                    let mut expr = self.convert_expr(ctx.used(), *field_id)?;
 
                     if use_inner_type {
                         // See comment above
@@ -594,7 +594,7 @@ impl<'a> Translation<'a> {
                         let val = if ids.is_empty() {
                             self.implicit_default_expr(ctx, field_ty.ctype)?
                         } else {
-                            self.convert_expr(ctx.used(), ids[0], None)?
+                            self.convert_expr(ctx.used(), ids[0])?
                         };
 
                         Ok(val.map(|v| {
@@ -1027,20 +1027,20 @@ impl<'a> Translation<'a> {
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if ctx.is_unused() {
-            return self.convert_expr(ctx, expr, None);
+            return self.convert_expr(ctx, expr);
         }
 
         let mut val = match kind {
-            MemberKind::Dot => self.convert_expr(ctx, expr, None)?,
+            MemberKind::Dot => self.convert_expr(ctx, expr)?,
             MemberKind::Arrow => {
                 if let CExprKind::Unary(_, c_ast::UnOp::AddressOf, subexpr_id, _) =
                     self.ast_context[expr].kind
                 {
                     // Special-case the `(&x)->field` pattern
                     // Convert it directly into `x.field`
-                    self.convert_expr(ctx, subexpr_id, None)?
+                    self.convert_expr(ctx, subexpr_id)?
                 } else {
-                    let val = self.convert_expr(ctx, expr, None)?;
+                    let val = self.convert_expr(ctx, expr)?;
                     val.map(|v| mk().unary_expr(UnOp::Deref(Default::default()), v))
                 }
             }
