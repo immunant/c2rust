@@ -36,7 +36,7 @@ use crate::translator::variadic::{mk_va_list_copy, mk_va_list_ty};
 use c2rust_ast_builder::{mk, properties::*, Builder};
 use c2rust_ast_printer::pprust;
 
-use crate::c_ast::iterators::DFExpr;
+use crate::c_ast::iterators::{immediate_children_all_types, DFExpr, NodeVisitor};
 use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
@@ -272,6 +272,11 @@ pub struct Translation<'c> {
     // Translation environment
     pub ast_context: TypedAstContext,
     pub tcfg: &'c TranspilerConfig,
+
+    /// The type expected by the surrounding expression context.
+    /// This can be different from the type of the AST node itself
+    /// and in many cases should override it.
+    pub expr_override_types: HashMap<CExprId, CQualTypeId>,
 
     // Accumulated outputs
     pub features: RefCell<IndexSet<&'static str>>,
@@ -722,6 +727,8 @@ pub fn translate(
         // in the presence of typedefs.
         t.ast_context.bubble_expr_types();
 
+        t.set_override_types();
+
         enum Name<'a> {
             Var(&'a str),
             Type(&'a str),
@@ -1138,6 +1145,346 @@ pub fn translate(
     }
 }
 
+struct SetOverrideTypes<'a> {
+    ast_context: &'a TypedAstContext,
+    expr_override_types: &'a mut HashMap<CExprId, CQualTypeId>,
+}
+
+impl<'a> NodeVisitor for SetOverrideTypes<'a> {
+    fn children(&mut self, id: SomeId) -> Vec<SomeId> {
+        immediate_children_all_types(self.ast_context, id)
+    }
+
+    fn pre(&mut self, id: SomeId) -> bool {
+        match id {
+            SomeId::Stmt(stmt) => self.pre_stmt(stmt),
+            SomeId::Expr(expr) => self.pre_expr(expr),
+            SomeId::Decl(decl) => self.pre_decl(decl),
+            SomeId::Type(_) => {}
+        }
+
+        true
+    }
+}
+
+impl<'a> SetOverrideTypes<'a> {
+    fn pre_stmt(&mut self, stmt: CStmtId) {
+        match self.ast_context[stmt].kind {
+            CStmtKind::Return(Some(expr)) => {
+                let func_id = match self.ast_context.parent_function(stmt) {
+                    Some(func_id) => func_id,
+                    None => return,
+                };
+                let func_ty = match self.ast_context[func_id].kind {
+                    CDeclKind::Function { typ, .. } => typ,
+                    _ => return,
+                };
+                let return_ty = match self.ast_context.resolve_type(func_ty).kind {
+                    CTypeKind::Function(return_ty, _, _, false, _) => return_ty,
+                    _ => return,
+                };
+
+                self.expr_override_types.insert(expr, return_ty);
+            }
+
+            _ => {}
+        }
+    }
+
+    fn pre_expr(&mut self, expr: CExprId) {
+        let override_ty = self.expr_override_types.get(&expr).copied();
+
+        match self.ast_context.index_expr_raw(expr).kind {
+            CExprKind::Literal(..) => {}
+
+            CExprKind::Unary(ty, op, arg, _) => match op {
+                c_ast::UnOp::Plus
+                | c_ast::UnOp::Negate
+                | c_ast::UnOp::Complement
+                | c_ast::UnOp::Extension => {
+                    let cqual_type = override_ty.unwrap_or(ty);
+                    self.expr_override_types.insert(arg, cqual_type);
+                }
+                c_ast::UnOp::AddressOf
+                | c_ast::UnOp::Deref
+                | c_ast::UnOp::PostIncrement
+                | c_ast::UnOp::PreIncrement
+                | c_ast::UnOp::PostDecrement
+                | c_ast::UnOp::PreDecrement
+                | c_ast::UnOp::Not
+                | c_ast::UnOp::Real
+                | c_ast::UnOp::Imag
+                | c_ast::UnOp::Coawait => {}
+            },
+
+            CExprKind::UnaryType(..) => {}
+            CExprKind::OffsetOf(..) => {}
+
+            CExprKind::Binary(ty, op, lhs, rhs, _, _) => {
+                match op {
+                    c_ast::BinOp::Comma => {
+                        let expr_type_id = override_ty.unwrap_or(ty);
+                        self.expr_override_types.insert(rhs, expr_type_id);
+                    }
+
+                    // Boolean contexts don't care about type overrides.
+                    c_ast::BinOp::And | c_ast::BinOp::Or => {}
+
+                    c_ast::BinOp::AssignAdd
+                    | c_ast::BinOp::AssignSubtract
+                    | c_ast::BinOp::AssignMultiply
+                    | c_ast::BinOp::AssignDivide
+                    | c_ast::BinOp::AssignModulus
+                    | c_ast::BinOp::AssignBitXor
+                    | c_ast::BinOp::AssignShiftLeft
+                    | c_ast::BinOp::AssignShiftRight
+                    | c_ast::BinOp::AssignBitOr
+                    | c_ast::BinOp::AssignBitAnd
+                    | c_ast::BinOp::Assign => {}
+
+                    // Operands of == and != have no override for null pointer comparisons,
+                    // because only the non-null operand is converted.
+                    c_ast::BinOp::EqualEqual | c_ast::BinOp::NotEqual
+                        if self.ast_context.expr_is_condition(expr)
+                            && (self.ast_context.is_null_expr(lhs)
+                                || self.ast_context.is_null_expr(rhs)) => {}
+
+                    _ => {
+                        let expr_type_id = override_ty.unwrap_or(ty);
+
+                        let lhs_kind = &self.ast_context[lhs].kind;
+                        let mut lhs_type_id = match lhs_kind.get_qual_type() {
+                            Some(ty) => ty,
+                            None => return,
+                        };
+                        let rhs_kind = &self.ast_context[rhs].kind;
+                        let mut rhs_type_id = match rhs_kind.get_qual_type() {
+                            Some(ty) => ty,
+                            None => return,
+                        };
+
+                        // If this operation will (in Rust) take args of the same type, then
+                        // propagate our expected type down to the translation of our argument
+                        // expressions.
+                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
+                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+                        let expr_ty_kind = &self.ast_context.index(expr_type_id.ctype).kind;
+
+                        // Addition and subtraction can accept one pointer argument for .offset(),
+                        // in which case we don't want to homogenize arg types.
+                        if !lhs_resolved_ty.kind.is_pointer()
+                            && !rhs_resolved_ty.kind.is_pointer()
+                            && !expr_ty_kind.is_pointer()
+                        {
+                            if op.all_types_same() {
+                                // Ops like division and bitxor accept inputs of their expected
+                                // result type.
+                                lhs_type_id = expr_type_id;
+                                rhs_type_id = expr_type_id;
+                            } else if op.input_types_same()
+                                && lhs_resolved_ty.kind != rhs_resolved_ty.kind
+                            {
+                                // Ops like comparisons require argument types to match, but the
+                                // result type doesn't inform us what type to choose. Select a
+                                // synthetic definition of a portable rust type (e.g. u64 or usize)
+                                // if either arg is one.
+                                trace!(
+                                    "Binary op arg types differ: {:?} vs {:?}",
+                                    lhs_resolved_ty.kind,
+                                    rhs_resolved_ty.kind
+                                );
+
+                                if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                                    rhs_type_id = lhs_type_id;
+                                } else {
+                                    lhs_type_id = rhs_type_id;
+                                }
+                            } else if matches!(
+                                op,
+                                c_ast::BinOp::ShiftLeft | c_ast::BinOp::ShiftRight
+                            ) {
+                                lhs_type_id = expr_type_id;
+                            }
+                        }
+
+                        self.expr_override_types.insert(lhs, lhs_type_id);
+                        self.expr_override_types.insert(rhs, rhs_type_id);
+                    }
+                }
+            }
+
+            CExprKind::ImplicitCast(_, expr, kind, _, _) => {
+                if let Some(override_ty) = override_ty {
+                    // In general, if we are casting the result of an expression, then the inner
+                    // expression should be translated to whatever type it normally would.
+                    // But for literals, if we don't absolutely have to cast, we would rather the
+                    // literal is translated according to the type we're expecting, and then we can
+                    // skip the cast entirely.
+                    if let CExprKind::Literal(_ty, lit) = &self.ast_context[expr].kind {
+                        if self.ast_context.literal_matches_ty(lit, override_ty) {
+                            self.expr_override_types.insert(expr, override_ty);
+                        }
+                    }
+
+                    // LValueToRValue casts don't actually change the type, so it still makes sense
+                    // to translate their inner expression with the expected type from outside the
+                    // cast.
+                    if kind == CastKind::LValueToRValue {
+                        let source_ty = match self.ast_context[expr].kind.get_qual_type() {
+                            Some(ty) => ty,
+                            None => return,
+                        };
+
+                        if source_ty.ctype != override_ty.ctype {
+                            self.expr_override_types.insert(expr, override_ty);
+                        }
+                    }
+                }
+            }
+
+            CExprKind::ExplicitCast(..) => {}
+
+            CExprKind::ConstantExpr(ty, expr, _) => {
+                self.expr_override_types.insert(expr, ty);
+            }
+
+            CExprKind::DeclRef(..) => {}
+
+            CExprKind::Call(_, func, ref args) => {
+                if let CExprKind::ImplicitCast(_, _, CastKind::BuiltinFnToFnPtr, _, _) =
+                    self.ast_context[func].kind
+                {
+                    return;
+                }
+
+                // Try to get the Variable decl directly,
+                // or fall back to querying the function pointer type.
+                let tys_of_params = if let Some(CDeclKind::Function { parameters, .. }) =
+                    self.ast_context.fn_declref_decl(func)
+                {
+                    self.ast_context.tys_of_params(parameters)
+                } else {
+                    self.ast_context[func]
+                        .kind
+                        .get_type()
+                        .and_then(|fn_ptr_qty| self.ast_context.get_pointee_qual_type(fn_ptr_qty))
+                        .and_then(
+                            |fn_qty| match self.ast_context.resolve_type(fn_qty.ctype).kind {
+                                CTypeKind::Function(_, ref param_tys, ..) => {
+                                    Some(param_tys.clone())
+                                }
+                                _ => None,
+                            },
+                        )
+                };
+
+                if let Some(tys_of_params) = tys_of_params {
+                    for (&arg, param_ty) in args.iter().zip(tys_of_params) {
+                        if !(self.ast_context[arg].kind.get_qual_type())
+                            .map_or(false, |qtype| self.ast_context.is_va_list(qtype.ctype))
+                        {
+                            self.expr_override_types.insert(arg, param_ty);
+                        }
+                    }
+                }
+            }
+
+            CExprKind::Member(..) => {}
+            CExprKind::ArraySubscript(..) => {}
+
+            CExprKind::Conditional(ty, _, lhs, rhs) => {
+                self.expr_override_types
+                    .insert(lhs, override_ty.unwrap_or(ty));
+                self.expr_override_types
+                    .insert(rhs, override_ty.unwrap_or(ty));
+            }
+
+            CExprKind::BinaryConditional(..) => {}
+
+            CExprKind::InitList(ty, ref exprs, _, _) => {
+                match self.ast_context.resolve_type(ty.ctype).kind {
+                    CTypeKind::Struct(struct_id) => {
+                        let field_decl_ids = match self.ast_context[struct_id].kind {
+                            CDeclKind::Struct {
+                                fields: Some(ref fields),
+                                ..
+                            } => fields,
+                            _ => return,
+                        };
+
+                        let field_info_iter = field_decl_ids.iter().filter_map(|&field_id| {
+                            match self.ast_context[field_id].kind {
+                                CDeclKind::Field {
+                                    bitfield_width: Some(0),
+                                    ..
+                                } => None,
+                                CDeclKind::Field { typ, .. } => Some(typ),
+                                _ => None,
+                            }
+                        });
+
+                        for (&expr, typ) in exprs.iter().zip(field_info_iter) {
+                            self.expr_override_types.insert(expr, typ);
+                        }
+                    }
+
+                    _ => {}
+                }
+            }
+
+            CExprKind::ImplicitValueInit(..) => {}
+
+            CExprKind::Paren(_, expr) => {
+                if let Some(override_ty) = override_ty {
+                    self.expr_override_types.insert(expr, override_ty);
+                }
+            }
+
+            CExprKind::CompoundLiteral(_, expr) => {
+                if let Some(override_ty) = override_ty {
+                    self.expr_override_types.insert(expr, override_ty);
+                }
+            }
+
+            CExprKind::Predefined(_, expr) => {
+                if let Some(override_ty) = override_ty {
+                    self.expr_override_types.insert(expr, override_ty);
+                }
+            }
+
+            CExprKind::Statements(..) => {}
+            CExprKind::VAArg(..) => {}
+            CExprKind::ShuffleVector(..) => {}
+            CExprKind::ConvertVector(..) => {}
+            CExprKind::DesignatedInitExpr(..) => {}
+
+            CExprKind::Choose(_, _, lhs, rhs, _) => {
+                if let Some(override_ty) = override_ty {
+                    self.expr_override_types.insert(lhs, override_ty);
+                    self.expr_override_types.insert(rhs, override_ty);
+                }
+            }
+
+            CExprKind::Atomic { .. } => {}
+            CExprKind::BadExpr => {}
+        }
+    }
+
+    fn pre_decl(&mut self, decl: CDeclId) {
+        match self.ast_context[decl].kind {
+            CDeclKind::Variable {
+                typ,
+                initializer: Some(initializer),
+                ..
+            } => {
+                self.expr_override_types.insert(initializer, typ);
+            }
+
+            _ => {}
+        }
+    }
+}
+
 /// Represent the set of names made visible by a `use`: either a set of specific names, or a glob.
 enum IdentsOrGlob<'a> {
     Idents(Vec<&'a Ident>),
@@ -1546,6 +1893,7 @@ impl<'c> Translation<'c> {
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
+            expr_override_types: HashMap::new(),
             // TODO: Use Renamer::value_namespace() for most renamings.
             renamer: RefCell::new(Renamer::global_value_namespace()),
             zero_inits: RefCell::new(IndexMap::new()),
@@ -1563,6 +1911,20 @@ impl<'c> Translation<'c> {
             extern_crates: RefCell::new(IndexSet::new()),
             cur_file: Default::default(),
         }
+    }
+
+    fn set_override_types(&mut self) {
+        let mut expr_override_types = HashMap::new();
+
+        for &decl in &self.ast_context.c_decls_top {
+            SetOverrideTypes {
+                ast_context: &self.ast_context,
+                expr_override_types: &mut expr_override_types,
+            }
+            .visit_tree(SomeId::Decl(decl));
+        }
+
+        self.expr_override_types = expr_override_types;
     }
 
     fn use_crate(&self, extern_crate: ExternCrate) {

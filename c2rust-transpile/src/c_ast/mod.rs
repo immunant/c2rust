@@ -1,3 +1,4 @@
+use crate::c_ast;
 use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
 use crate::iterators::DFNodes;
 use c2rust_ast_exporter::clang_ast::LRValue;
@@ -602,6 +603,18 @@ impl TypedAstContext {
     pub fn parent_with_type<T: TryFrom<SomeId>>(&self, child: impl Into<SomeId>) -> Option<T> {
         self.parent(child)
             .and_then(|parent| T::try_from(parent).ok())
+    }
+
+    /// If `child` is inside a function, returns its `CDeclId`.
+    pub fn parent_function(&self, child: impl Into<SomeId>) -> Option<CDeclId> {
+        match self.parent(child)? {
+            SomeId::Stmt(stmt) => self.parent_function(stmt),
+            SomeId::Expr(expr) => self.parent_function(expr),
+            SomeId::Decl(decl) => {
+                matches!(self[decl].kind, CDeclKind::Function { .. }).then_some(decl)
+            }
+            SomeId::Type(ty) => self.parent_function(ty),
+        }
     }
 
     pub fn display_loc(&self, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
@@ -1650,6 +1663,65 @@ impl TypedAstContext {
                 ty_kind.guaranteed_float_in_range(value)
             }
             _ => false,
+        }
+    }
+
+    /// Returns whether `expr` is within a conditional context, meaning that it is in a context
+    /// where a Rust `bool` will be expected.
+    pub fn expr_is_condition(&self, expr: CExprId) -> bool {
+        let parent = match self.parent(expr) {
+            Some(parent) => parent,
+            None => return false,
+        };
+
+        match parent {
+            SomeId::Stmt(parent_stmt) => match self.c_stmts[&parent_stmt].kind {
+                CStmtKind::If {
+                    scrutinee: condition,
+                    ..
+                }
+                | CStmtKind::While { condition, .. }
+                | CStmtKind::DoWhile { condition, .. }
+                | CStmtKind::ForLoop {
+                    condition: Some(condition),
+                    ..
+                } => expr == condition,
+                _ => false,
+            },
+
+            SomeId::Expr(parent_expr) => match self.c_exprs[&parent_expr].kind {
+                CExprKind::Paren(..) => self.expr_is_condition(parent_expr),
+                CExprKind::Unary(_, c_ast::UnOp::Not, arg, _) => expr == arg,
+                CExprKind::Binary(_, c_ast::BinOp::And | c_ast::BinOp::Or, lhs, rhs, _, _) => {
+                    expr == lhs || expr == rhs
+                }
+                CExprKind::Conditional(_, condition, _, _)
+                | CExprKind::BinaryConditional(_, condition, _) => expr == condition,
+                CExprKind::ImplicitCast(_, arg, kind, _, _)
+                | CExprKind::ExplicitCast(_, arg, kind, _, _) => {
+                    matches!(
+                        kind,
+                        CastKind::IntegralToBoolean
+                            | CastKind::FloatingToBoolean
+                            | CastKind::PointerToBoolean
+                    ) && expr == arg
+                }
+                _ => false,
+            },
+
+            _ => false,
+        }
+    }
+
+    /// Same as the `Index` trait, but doesn't bypass `Paren`.
+    pub fn index_expr_raw(&self, index: CExprId) -> &CExpr {
+        static BADEXPR: CExpr = Located {
+            loc: None,
+            kind: CExprKind::BadExpr,
+        };
+        match self.c_exprs.get(&index) {
+            None => &BADEXPR,
+            Some(e) => e,
         }
     }
 }
