@@ -74,11 +74,12 @@ impl<'c> Translation<'c> {
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
 
-                let ty = self.ast_context[id]
-                    .kind
-                    .get_type()
-                    .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let expr = self.convert_expr(ctx, id, None)?;
+                let override_ty = self.expr_override_types.get(&id).copied();
+                let expr = self.convert_expr(ctx, id, override_ty)?;
+                let ty = override_ty
+                    .or_else(|| self.ast_context[id].kind.get_qual_type())
+                    .ok_or_else(|| format_err!("Invalid expression type"))?
+                    .ctype;
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
@@ -196,13 +197,12 @@ impl<'c> Translation<'c> {
 
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
-        let expr_kind = &self.ast_context[expr_id].kind;
-        // TODO We'd like to get rid of this cast eventually (see #1321).
-        // Currently, const macros do not get the correct `override_ty` themselves,
-        // so they aren't declared with the correct portable type,
-        // but its uses are expecting the correct portable type,
-        // so we need to cast it to the `override_ty` here.
-        let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
+        // Rust `const` variables have a single consistent type, determined by
+        // `recreate_const_macro_from_expansions`, while in C each macro expansion has its own type,
+        // determined by the surrounding context.
+        // Since the expansion sites are expecting a particular type, we need to cast it here
+        // if it differs from the `const` type.
+        let expr_ty = override_ty.or_else(|| self.ast_context[expr_id].kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
             self.convert_cast(
                 ctx,
