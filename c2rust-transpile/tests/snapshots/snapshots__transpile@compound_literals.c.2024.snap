@@ -13,18 +13,22 @@ expression: cat tests/snapshots/compound_literals.2024.rs
 #![deny(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub static mut static_single_int: ::core::ffi::c_int = 42;
+static mut c2rust_fresh0: ::core::ffi::c_int = 42;
 #[unsafe(no_mangle)]
 pub static mut static_single_int_ptr: *mut ::core::ffi::c_int =
-    &42 as *const ::core::ffi::c_int as *mut ::core::ffi::c_int;
+    &raw const c2rust_fresh0 as *mut ::core::ffi::c_int;
+static mut c2rust_fresh1: [::core::ffi::c_int; 2] = [42, 9001];
 #[unsafe(no_mangle)]
 pub static mut static_int_ptr_to_array: *mut ::core::ffi::c_int =
-    [42, 9001].as_ptr() as *mut ::core::ffi::c_int;
+    &raw const c2rust_fresh1 as *mut ::core::ffi::c_int;
+static mut c2rust_fresh2: [::core::ffi::c_int; 2] = [42, 9001];
 #[unsafe(no_mangle)]
 pub static mut static_volatile_int_ptr_to_array: *mut ::core::ffi::c_int =
-    [42, 9001].as_ptr() as *mut ::core::ffi::c_int as *mut ::core::ffi::c_int;
+    &raw const c2rust_fresh2 as *mut ::core::ffi::c_int as *mut ::core::ffi::c_int;
+static mut c2rust_fresh3: [::core::ffi::c_int; 2] = [42, 9001];
 #[unsafe(no_mangle)]
 pub static mut static_int_array_ptr: *mut [::core::ffi::c_int; 2] =
-    &[42, 9001] as *const [::core::ffi::c_int; 2] as *mut [::core::ffi::c_int; 2];
+    &raw const c2rust_fresh3 as *mut [::core::ffi::c_int; 2];
 pub const SINGLE_INT: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
 pub const INT_ARRAY: [::core::ffi::c_int; 2] =
     [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
@@ -34,22 +38,22 @@ pub const CHAR_ARRAY: [::core::ffi::c_char; 6] =
 pub unsafe extern "C" fn local_compound_literals() {
     unsafe {
         let mut single_int: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
-        let mut c2rust_fresh0: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
-        let mut single_int_ptr: *mut ::core::ffi::c_int = &raw mut c2rust_fresh0;
-        let mut c2rust_fresh1: [::core::ffi::c_int; 2] =
+        let mut c2rust_fresh4: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+        let mut single_int_ptr: *mut ::core::ffi::c_int = &raw mut c2rust_fresh4;
+        let mut c2rust_fresh5: [::core::ffi::c_int; 2] =
             [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
         let mut int_ptr_to_array: *mut ::core::ffi::c_int =
-            &raw mut c2rust_fresh1 as *mut ::core::ffi::c_int;
-        let mut c2rust_fresh2: [::core::ffi::c_char; 6] =
+            &raw mut c2rust_fresh5 as *mut ::core::ffi::c_int;
+        let mut c2rust_fresh6: [::core::ffi::c_char; 6] =
             ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
         let mut char_ptr_to_array: *mut ::core::ffi::c_char =
-            &raw mut c2rust_fresh2 as *mut ::core::ffi::c_char;
-        let mut c2rust_fresh3: [::core::ffi::c_int; 2] =
+            &raw mut c2rust_fresh6 as *mut ::core::ffi::c_char;
+        let mut c2rust_fresh7: [::core::ffi::c_int; 2] =
             [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
-        let mut int_array_ptr: *mut [::core::ffi::c_int; 2] = &raw mut c2rust_fresh3;
-        let mut c2rust_fresh4: [::core::ffi::c_char; 6] =
+        let mut int_array_ptr: *mut [::core::ffi::c_int; 2] = &raw mut c2rust_fresh7;
+        let mut c2rust_fresh8: [::core::ffi::c_char; 6] =
             ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
-        let mut char_array_ptr: *mut [::core::ffi::c_char; 6] = &raw mut c2rust_fresh4;
+        let mut char_array_ptr: *mut [::core::ffi::c_char; 6] = &raw mut c2rust_fresh8;
         let mut macro_single_int: ::core::ffi::c_int = SINGLE_INT;
         let mut macro_single_int_ptr: *mut ::core::ffi::c_int =
             &mut SINGLE_INT as *mut ::core::ffi::c_int;

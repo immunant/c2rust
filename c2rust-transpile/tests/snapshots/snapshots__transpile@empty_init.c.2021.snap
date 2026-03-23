@@ -11,12 +11,14 @@ expression: cat tests/snapshots/empty_init.2021.rs
     unused_mut
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Scope {
     pub next: *mut Scope,
 }
-#[no_mangle]
-pub static mut scope: *mut Scope = &Scope {
+static mut c2rust_fresh0: Scope = Scope {
     next: ::core::ptr::null::<Scope>() as *mut Scope,
-} as *const Scope as *mut Scope;
+};
+#[no_mangle]
+pub static mut scope: *mut Scope = unsafe { &raw const c2rust_fresh0 as *mut Scope };

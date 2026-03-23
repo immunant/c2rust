@@ -16,7 +16,8 @@ expression: cat tests/snapshots/empty_init.2024.rs
 pub struct Scope {
     pub next: *mut Scope,
 }
-#[unsafe(no_mangle)]
-pub static mut scope: *mut Scope = &Scope {
+static mut c2rust_fresh0: Scope = Scope {
     next: ::core::ptr::null::<Scope>() as *mut Scope,
-} as *const Scope as *mut Scope;
+};
+#[unsafe(no_mangle)]
+pub static mut scope: *mut Scope = &raw const c2rust_fresh0 as *mut Scope;

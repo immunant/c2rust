@@ -141,11 +141,7 @@ impl<'c> Translation<'c> {
         // and must be regular-borrowed first.
         // Borrowing in a const context will extend the lifetime to static.
         else if arg_is_macro
-            || ctx.is_const
-                && matches!(
-                    arg_expr_kind,
-                    Some(CExprKind::Literal(..) | CExprKind::CompoundLiteral(..))
-                )
+            || ctx.is_const && matches!(arg_expr_kind, Some(CExprKind::Literal(..)))
         {
             let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
 

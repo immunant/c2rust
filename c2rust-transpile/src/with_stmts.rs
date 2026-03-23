@@ -17,6 +17,15 @@ impl<T> WithStmts<T> {
             is_unsafe: false,
         }
     }
+
+    pub fn new_unsafe(stmts: Vec<Stmt>, val: T) -> Self {
+        WithStmts {
+            stmts,
+            val,
+            is_unsafe: true,
+        }
+    }
+
     pub fn new_val(val: T) -> Self {
         WithStmts {
             stmts: vec![],
