@@ -1683,7 +1683,6 @@ impl<'c> Translation<'c> {
 
             use CExprKind::*;
             match self.ast_context[expr_id].kind {
-                DeclRef(_, _, LRValue::LValue) => return true,
                 ImplicitCast(_, _, cast_kind, _, _) | ExplicitCast(_, _, cast_kind, _, _) => {
                     use CastKind::*;
                     match cast_kind {
@@ -3515,6 +3514,22 @@ impl<'c> Translation<'c> {
                                     val = mk().cast_expr(val, ty);
                                 }
                             }
+                        }
+                    }
+
+                    CDeclKind::Variable {
+                        has_static_duration,
+                        has_thread_duration,
+                        ..
+                    } => {
+                        // Accessing a static variable is unsafe.
+                        // In the current nightly, this applies also to taking a raw pointer,
+                        // but this requirement was removed in later versions of the
+                        // `raw_ref_op` feature.
+                        if (*has_static_duration || *has_thread_duration)
+                            && (self.tcfg.edition < Edition2024 || !ctx.needs_address())
+                        {
+                            set_unsafe = true;
                         }
                     }
 
