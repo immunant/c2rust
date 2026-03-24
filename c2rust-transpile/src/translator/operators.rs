@@ -927,17 +927,23 @@ impl<'c> Translation<'c> {
     fn convert_negate_operator(
         &self,
         ctx: ExprContext,
-        cqual_type: CQualTypeId,
-        arg: CExprId,
+        expr_type_id: CQualTypeId,
+        arg_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let CQualTypeId { ctype, .. } = cqual_type;
-        let resolved_ctype = self.ast_context.resolve_type(ctype);
-        let val = self.convert_expr(ctx.used(), arg, Some(cqual_type))?;
+        let is_unsigned_integral_type = self
+            .ast_context
+            .resolve_type(expr_type_id.ctype)
+            .kind
+            .is_unsigned_integral_type();
+        let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
+        let val = val.map(|val| {
+            if is_unsigned_integral_type {
+                wrapping_neg_expr(val)
+            } else {
+                neg_expr(val)
+            }
+        });
 
-        if resolved_ctype.kind.is_unsigned_integral_type() {
-            Ok(val.map(wrapping_neg_expr))
-        } else {
-            Ok(val.map(neg_expr))
-        }
+        Ok(val)
     }
 }
