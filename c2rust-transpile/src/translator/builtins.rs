@@ -75,15 +75,29 @@ impl<'c> Translation<'c> {
             "__builtin_huge_valf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
             )),
-            "__builtin_huge_val" | "__builtin_huge_vall" => Ok(WithStmts::new_val(
+            "__builtin_huge_val" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
             )),
+            "__builtin_huge_vall" => {
+                self.use_crate(ExternCrate::F128);
+
+                Ok(WithStmts::new_val(
+                    mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
+                ))
+            }
             "__builtin_inff" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
             )),
-            "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new_val(
+            "__builtin_inf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
             )),
+            "__builtin_infl" => {
+                self.use_crate(ExternCrate::F128);
+
+                Ok(WithStmts::new_val(
+                    mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
+                ))
+            }
             "__builtin_nanf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f32", "NAN"]),
             )),
