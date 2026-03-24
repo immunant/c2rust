@@ -875,9 +875,6 @@ impl<'c> Translation<'c> {
         arg: CExprId,
         lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let CQualTypeId { ctype, .. } = cqual_type;
-        let resolved_ctype = self.ast_context.resolve_type(ctype);
-
         let mut unary = match name {
             c_ast::UnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
@@ -887,15 +884,7 @@ impl<'c> Translation<'c> {
             c_ast::UnOp::Deref => self.convert_deref(ctx, cqual_type, arg, lrvalue),
             c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
-            c_ast::UnOp::Negate => {
-                let val = self.convert_expr(ctx.used(), arg, Some(cqual_type))?;
-
-                if resolved_ctype.kind.is_unsigned_integral_type() {
-                    Ok(val.map(wrapping_neg_expr))
-                } else {
-                    Ok(val.map(neg_expr))
-                }
-            }
+            c_ast::UnOp::Negate => self.convert_negate_operator(ctx, cqual_type, arg),
             c_ast::UnOp::Complement => Ok(self
                 .convert_expr(ctx.used(), arg, Some(cqual_type))?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
@@ -933,5 +922,22 @@ impl<'c> Translation<'c> {
             )?;
         }
         Ok(unary)
+    }
+
+    fn convert_negate_operator(
+        &self,
+        ctx: ExprContext,
+        cqual_type: CQualTypeId,
+        arg: CExprId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let CQualTypeId { ctype, .. } = cqual_type;
+        let resolved_ctype = self.ast_context.resolve_type(ctype);
+        let val = self.convert_expr(ctx.used(), arg, Some(cqual_type))?;
+
+        if resolved_ctype.kind.is_unsigned_integral_type() {
+            Ok(val.map(wrapping_neg_expr))
+        } else {
+            Ok(val.map(neg_expr))
+        }
     }
 }
