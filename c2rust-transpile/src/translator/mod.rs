@@ -3542,6 +3542,7 @@ impl<'c> Translation<'c> {
                     override_ty.unwrap_or(ty),
                     *val,
                     IntBase::Dec,
+                    false,
                 )?)),
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
                     self.use_crate(ExternCrate::Memoffset);

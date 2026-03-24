@@ -14,15 +14,21 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         val: u64,
         base: IntBase,
+        negative: bool,
     ) -> TranslationResult<Box<Expr>> {
         let lit = match base {
             IntBase::Dec => mk().int_unsuffixed_lit(val),
             IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
             IntBase::Oct => mk().float_unsuffixed_lit(&format!("0o{:o}", val)),
         };
+        let mut expr = mk().lit_expr(lit);
+
+        if negative {
+            expr = mk().unary_expr(UnOp::Neg(Default::default()), expr);
+        }
 
         let target_ty = self.convert_type(ty.ctype)?;
-        Ok(mk().cast_expr(mk().lit_expr(lit), target_ty))
+        Ok(mk().cast_expr(expr, target_ty))
     }
 
     /// Return whether the literal can be directly translated as this type.
@@ -49,7 +55,9 @@ impl<'c> Translation<'c> {
         lit: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         match *lit {
-            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
+            CLiteral::Integer(val, base) => {
+                Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base, false)?))
+            }
 
             CLiteral::Character(val) => {
                 let val = val as u32;

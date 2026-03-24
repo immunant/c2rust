@@ -935,15 +935,26 @@ impl<'c> Translation<'c> {
             .resolve_type(expr_type_id.ctype)
             .kind
             .is_unsigned_integral_type();
-        let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
-        let val = val.map(|val| {
-            if is_unsigned_integral_type {
-                wrapping_neg_expr(val)
-            } else {
-                neg_expr(val)
-            }
-        });
 
-        Ok(val)
+        if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false) =
+            (&self.ast_context[arg_id].kind, is_unsigned_integral_type)
+        {
+            // If we are negating a literal, generate a negated literal directly.
+            // This will create an expression like `-1 as ty` without parentheses,
+            // rather than `-(1 as ty)`.
+            let val = self.mk_int_lit(expr_type_id, val, base, true)?;
+            Ok(WithStmts::new_val(val))
+        } else {
+            let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
+            let val = val.map(|val| {
+                if is_unsigned_integral_type {
+                    wrapping_neg_expr(val)
+                } else {
+                    neg_expr(val)
+                }
+            });
+
+            Ok(val)
+        }
     }
 }
