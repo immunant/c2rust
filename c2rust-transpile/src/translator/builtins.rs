@@ -112,15 +112,9 @@ impl<'c> Translation<'c> {
                 ))
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
-                // Long doubles require the Float trait from num_traits to call this method
-                if builtin_name == "__builtin_signbitl" {
-                    self.with_cur_file_item_store(|item_store| {
-                        item_store.add_use(true, vec!["num_traits".into()], "Float");
-                    });
-                }
+                self.import_num_traits(args[0])?;
 
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
@@ -163,10 +157,14 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![])))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
+                self.import_num_traits(args[0])?;
+
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![])))
             }
             "__builtin_isfinite" | "__builtin_isnan" => {
+                self.import_num_traits(args[0])?;
+
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
 
                 let seg = match builtin_name {
@@ -180,6 +178,8 @@ impl<'c> Translation<'c> {
                 }))
             }
             "__builtin_isinf_sign" => {
+                self.import_num_traits(args[0])?;
+
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 Ok(val.map(|x| {
@@ -735,6 +735,26 @@ impl<'c> Translation<'c> {
                 builtin_name
             )),
         }
+    }
+
+    fn import_num_traits(&self, arg_id: CExprId) -> TranslationResult<()> {
+        let arg_type_id = self.ast_context[arg_id]
+            .kind
+            .get_qual_type()
+            .ok_or_else(|| format_err!("bad arg type"))?;
+        let arg_type_kind = &self.ast_context.resolve_type(arg_type_id.ctype).kind;
+
+        match arg_type_kind {
+            CTypeKind::LongDouble | CTypeKind::Float128 => {
+                self.use_crate(ExternCrate::NumTraits);
+                self.with_cur_file_item_store(|item_store| {
+                    item_store.add_use(true, vec!["num_traits".into()], "Float");
+                });
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 
     // This translation logic handles converting code that uses
