@@ -253,6 +253,8 @@ impl<'c> Translation<'c> {
                 val.result_map(|val| {
                     self.convert_cast_to_enum(ctx, lhs_type_id.ctype, enum_id, None, val)
                 })?
+            } else if let CTypeKind::Bool = resolve_lhs_kind {
+                val.result_map(|val| self.match_bool(ctx, true, compute_res_type_id.ctype, val))?
             } else if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
                 // We can't as-cast from a non primitive like f128 back to the result_type
                 self.f128_cast_to(val, resolve_lhs_kind)?
@@ -496,6 +498,8 @@ impl<'c> Translation<'c> {
                                         None,
                                         val,
                                     ))?
+                                } else if let CTypeKind::Bool = expr_resolved_ty_kind {
+                                    val.result_map(|val| self.match_bool(ctx, true, result_type_id.ctype, val))?
                                 } else {
                                     let expr_type = self.convert_type(expr_type_id.ctype)?;
                                     val.map(|val| mk().cast_expr(val, expr_type))
