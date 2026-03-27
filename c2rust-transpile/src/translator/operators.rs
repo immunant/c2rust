@@ -471,10 +471,9 @@ impl<'c> Translation<'c> {
                             } else {
                                 let lhs_type =
                                     self.convert_type(compute_lhs_type_id.unwrap().ctype)?;
-                                let write_type = self.convert_type(expr_type_id.ctype)?;
                                 let lhs = mk().cast_expr(read.clone(), lhs_type);
                                 let ty = self.convert_type(result_type_id.ctype)?;
-                                let mut val = self.convert_binary_operator(
+                                let val = self.convert_binary_operator(
                                     ctx,
                                     op,
                                     ty,
@@ -488,7 +487,7 @@ impl<'c> Translation<'c> {
 
                                 let expr_resolved_ty_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
 
-                                val = if let &CTypeKind::Enum(enum_id) = expr_resolved_ty_kind {
+                                if let &CTypeKind::Enum(enum_id) = expr_resolved_ty_kind {
                                     val.result_map(|val| self.convert_cast_to_enum(
                                         ctx,
                                         expr_type_id.ctype,
@@ -499,9 +498,7 @@ impl<'c> Translation<'c> {
                                 } else {
                                     let expr_type = self.convert_type(expr_type_id.ctype)?;
                                     val.map(|val| mk().cast_expr(val, expr_type))
-                                };
-
-                                val.map(|val| mk().cast_expr(val, write_type))
+                                }
                             };
 
                             #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
