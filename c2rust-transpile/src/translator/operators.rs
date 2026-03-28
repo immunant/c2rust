@@ -739,7 +739,7 @@ impl<'c> Translation<'c> {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
             CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
-            CTypeKind::LongDouble => {
+            CTypeKind::LongDouble | CTypeKind::Float128 => {
                 self.use_crate(ExternCrate::F128);
 
                 let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
@@ -802,7 +802,7 @@ impl<'c> Translation<'c> {
                     CTypeKind::Float | CTypeKind::Double => {
                         mk().lit_expr(mk().float_unsuffixed_lit("1."))
                     }
-                    CTypeKind::LongDouble => {
+                    CTypeKind::LongDouble | CTypeKind::Float128 => {
                         self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);

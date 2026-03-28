@@ -84,7 +84,7 @@ impl<'c> Translation<'c> {
                     c_str.to_owned()
                 };
                 let val = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::LongDouble => {
+                    CTypeKind::LongDouble | CTypeKind::Float128 => {
                         if ctx.is_const {
                             return Err(format_translation_err!(
                                 None,
