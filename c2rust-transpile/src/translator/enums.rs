@@ -40,7 +40,10 @@ impl<'c> Translation<'c> {
             .borrow_mut()
             .get(&enum_constant_id)
             .expect("Enum constant not named");
-        let enum_id = self.ast_context.parents[&enum_constant_id];
+        let enum_id = self
+            .ast_context
+            .parent_with_type(enum_constant_id)
+            .expect("Enum constant does not have a parent Enum");
         let enum_name = self
             .type_converter
             .borrow()
@@ -97,7 +100,7 @@ impl<'c> Translation<'c> {
                     if self.is_variant_of_enum(enum_id, enum_constant_id) =>
                 {
                     // `enum`s shouldn't need portable `override_ty`s.
-                    let expr_is_macro = self.expr_is_expanded_macro(ctx, expr, None);
+                    let expr_is_macro = self.expr_is_expanded_macro(ctx, expr);
 
                     // If this DeclRef expanded to a const macro, we actually need to insert a cast,
                     // because the translation of a const macro skips implicit casts in its context.

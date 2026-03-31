@@ -388,17 +388,23 @@ impl ConversionContext {
 
     /// Add a `CStmt` node into the `TypedAstContext`
     fn add_stmt(&mut self, id: ImporterId, stmt: CStmt) {
-        self.typed_context.c_stmts.insert(CStmtId(id), stmt);
+        let id = CStmtId(id);
+        self.typed_context.add_stmt_parents(id, &stmt.kind);
+        self.typed_context.c_stmts.insert(id, stmt);
     }
 
     /// Add a `CExpr` node into the `TypedAstContext`
     fn add_expr(&mut self, id: ImporterId, expr: CExpr) {
-        self.typed_context.c_exprs.insert(CExprId(id), expr);
+        let id = CExprId(id);
+        self.typed_context.add_expr_parents(id, &expr.kind);
+        self.typed_context.c_exprs.insert(id, expr);
     }
 
     /// Add a `CDecl` node into the `TypedAstContext`
     fn add_decl(&mut self, id: ImporterId, decl: CDecl) {
-        self.typed_context.c_decls.insert(CDeclId(id), decl);
+        let id = CDeclId(id);
+        self.typed_context.add_decl_parents(id, &decl.kind);
+        self.typed_context.c_decls.insert(id, decl);
     }
 
     /// Clang has `Expression <: Statement`, but we want to make that explicit via the
@@ -561,7 +567,6 @@ impl ConversionContext {
         &'a mut self,
         untyped_context: &'a AstContext,
         node: &'a AstNode,
-        new_id: ImporterId,
     ) -> impl Iterator<Item = CDeclId> + 'a {
         use self::node_types::*;
 
@@ -573,7 +578,6 @@ impl ConversionContext {
                 .expect("child node not found");
 
             let id = CDeclId(self.visit_node_type(decl, FIELD_DECL | ENUM_DECL | RECORD_DECL));
-            self.typed_context.parents.insert(id, CDeclId(new_id));
 
             if decl_node.tag == ASTEntryTag::TagFieldDecl {
                 Some(id)
@@ -2164,9 +2168,7 @@ impl ConversionContext {
                         .iter()
                         .map(|id| {
                             let con = id.expect("Enum constant not found");
-                            let id = CDeclId(self.visit_node_type(con, ENUM_CON));
-                            self.typed_context.parents.insert(id, CDeclId(new_id));
-                            id
+                            CDeclId(self.visit_node_type(con, ENUM_CON))
                         })
                         .collect();
 
@@ -2269,10 +2271,7 @@ impl ConversionContext {
                         from_value(node.extras[6].clone()).expect("Expected struct alignment");
 
                     let fields: Option<Vec<CDeclId>> = if has_def {
-                        Some(
-                            self.visit_record_children(untyped_context, node, new_id)
-                                .collect(),
-                        )
+                        Some(self.visit_record_children(untyped_context, node).collect())
                     } else {
                         None
                     };
@@ -2300,10 +2299,7 @@ impl ConversionContext {
                     let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
                         .expect("Expected attribute array on record");
                     let fields: Option<Vec<CDeclId>> = if has_def {
-                        Some(
-                            self.visit_record_children(untyped_context, node, new_id)
-                                .collect(),
-                        )
+                        Some(self.visit_record_children(untyped_context, node).collect())
                     } else {
                         None
                     };
