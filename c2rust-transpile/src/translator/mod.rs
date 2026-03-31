@@ -1721,7 +1721,7 @@ impl<'c> Translation<'c> {
 
         // The f128 crate doesn't currently provide a way to const initialize
         // values, except for common mathematical constants
-        if let CTypeKind::LongDouble = self.ast_context[qtype.ctype].kind {
+        if let CTypeKind::LongDouble | CTypeKind::Float128 = self.ast_context[qtype.ctype].kind {
             return true;
         }
 
@@ -2961,7 +2961,7 @@ impl<'c> Translation<'c> {
             // so type annotation is need for 0-init ints and floats at the moment, but
             // they could be simplified in favor of type suffixes
             Bool | Char | SChar | Short | Int | Long | LongLong | UChar | UShort | UInt | ULong
-            | ULongLong | LongDouble | Int128 | UInt128 => initializer.is_none(),
+            | ULongLong | LongDouble | Float128 | Int128 | UInt128 => initializer.is_none(),
             Float | Double => initializer.is_none(),
             Struct(_) | Union(_) | Enum(_) => false,
             Function(..) => unreachable!("Can't have a function directly as a type"),
@@ -4201,20 +4201,30 @@ impl<'c> Translation<'c> {
             | CastKind::BooleanToSignedIntegral => {
                 let target_ty = self.convert_type(target_cty.ctype)?;
 
-                if let CTypeKind::LongDouble = target_ty_kind {
-                    if ctx.is_const {
-                        return Err(format_translation_err!(
-                            None,
-                            "f128 cannot be used in constants because \
-                            `f128::f128::new` is not `const`",
-                        ));
+                if let CTypeKind::LongDouble | CTypeKind::Float128 = target_ty_kind {
+                    if let CTypeKind::LongDouble | CTypeKind::Float128 =
+                        self.ast_context[source_cty.ctype].kind
+                    {
+                        // These are both converted to `f128`, so a cast between the two should
+                        // just be a no-op.
+                        Ok(val)
+                    } else {
+                        if ctx.is_const {
+                            return Err(format_translation_err!(
+                                None,
+                                "f128 cannot be used in constants because \
+                                `f128::f128::new` is not `const`",
+                            ));
+                        }
+
+                        self.use_crate(ExternCrate::F128);
+
+                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
+                        Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
                     }
-
-                    self.use_crate(ExternCrate::F128);
-
-                    let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                    Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
-                } else if let CTypeKind::LongDouble = self.ast_context[source_cty.ctype].kind {
+                } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
+                    self.ast_context[source_cty.ctype].kind
+                {
                     self.f128_cast_to(val, target_ty_kind)
                 } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
                     // Casts targeting `enum` types...
@@ -4353,7 +4363,7 @@ impl<'c> Translation<'c> {
             ))
         } else if resolved_ty.is_floating_type() {
             match self.ast_context[ty_id].kind {
-                CTypeKind::LongDouble => {
+                CTypeKind::LongDouble | CTypeKind::Float128 => {
                     self.use_crate(ExternCrate::F128);
                     Ok(WithStmts::new_val(
                         mk().abs_path_expr(vec!["f128", "f128", "ZERO"]),

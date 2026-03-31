@@ -2733,7 +2733,10 @@ impl CTypeKind {
 
     pub fn is_floating_type(&self) -> bool {
         use CTypeKind::*;
-        matches!(self, Float | Double | LongDouble | Half | BFloat16)
+        matches!(
+            self,
+            Float | Double | LongDouble | Float128 | Half | BFloat16
+        )
     }
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
@@ -2788,6 +2791,7 @@ impl CTypeKind {
             (ULongLong, ty) | (ty, ULongLong) if int(ty) => ULongLong,
 
             (LongDouble, ty) | (ty, LongDouble) if float(ty) || int(ty) => LongDouble,
+            (Float128, ty) | (ty, Float128) if float(ty) || int(ty) => Float128,
 
             (Int128, ty) | (ty, Int128) if int(ty) => Int128,
             (UInt128, ty) | (ty, UInt128) if int(ty) => UInt128,
