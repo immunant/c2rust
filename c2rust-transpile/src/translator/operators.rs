@@ -2,14 +2,6 @@
 
 use super::*;
 
-fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
-    mk().unary_expr(UnOp::Neg(Default::default()), arg)
-}
-
-fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
-    mk().method_call_expr(arg, "wrapping_neg", vec![])
-}
-
 impl From<c_ast::BinOp> for BinOp {
     fn from(op: c_ast::BinOp) -> Self {
         match op {
@@ -823,11 +815,7 @@ impl<'c> Translation<'c> {
                         one = n
                     }
 
-                    let n = if up {
-                        one
-                    } else {
-                        mk().unary_expr(UnOp::Neg(Default::default()), one)
-                    };
+                    let n = if up { one } else { neg_expr(one) };
                     is_unsafe = true;
                     mk().method_call_expr(read, "offset", vec![n])
                 } else if self
@@ -875,9 +863,6 @@ impl<'c> Translation<'c> {
         arg: CExprId,
         lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let CQualTypeId { ctype, .. } = cqual_type;
-        let resolved_ctype = self.ast_context.resolve_type(ctype);
-
         let mut unary = match name {
             c_ast::UnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
             c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
@@ -887,15 +872,7 @@ impl<'c> Translation<'c> {
             c_ast::UnOp::Deref => self.convert_deref(ctx, cqual_type, arg, lrvalue),
             c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
-            c_ast::UnOp::Negate => {
-                let val = self.convert_expr(ctx.used(), arg, Some(cqual_type))?;
-
-                if resolved_ctype.kind.is_unsigned_integral_type() {
-                    Ok(val.map(wrapping_neg_expr))
-                } else {
-                    Ok(val.map(neg_expr))
-                }
-            }
+            c_ast::UnOp::Negate => self.convert_negate_operator(ctx, cqual_type, arg),
             c_ast::UnOp::Complement => Ok(self
                 .convert_expr(ctx.used(), arg, Some(cqual_type))?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
@@ -933,5 +910,39 @@ impl<'c> Translation<'c> {
             )?;
         }
         Ok(unary)
+    }
+
+    fn convert_negate_operator(
+        &self,
+        ctx: ExprContext,
+        expr_type_id: CQualTypeId,
+        arg_id: CExprId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let is_unsigned_integral_type = self
+            .ast_context
+            .resolve_type(expr_type_id.ctype)
+            .kind
+            .is_unsigned_integral_type();
+
+        if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false) =
+            (&self.ast_context[arg_id].kind, is_unsigned_integral_type)
+        {
+            // If we are negating a literal, generate a negated literal directly.
+            // This will create an expression like `-1 as ty` without parentheses,
+            // rather than `-(1 as ty)`.
+            let val = self.mk_int_lit(expr_type_id, val, base, true)?;
+            Ok(WithStmts::new_val(val))
+        } else {
+            let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
+            let val = val.map(|val| {
+                if is_unsigned_integral_type {
+                    wrapping_neg_expr(val)
+                } else {
+                    neg_expr(val)
+                }
+            });
+
+            Ok(val)
+        }
     }
 }

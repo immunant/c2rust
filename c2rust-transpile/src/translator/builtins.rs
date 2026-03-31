@@ -185,10 +185,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| {
                     let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
                     let one = mk().lit_expr(mk().int_lit(1, ""));
-                    let minus_one = mk().unary_expr(
-                        UnOp::Neg(Default::default()),
-                        mk().lit_expr(mk().int_lit(1, "")),
-                    );
+                    let minus_one = neg_expr(mk().lit_expr(mk().int_lit(1, "")));
                     let one_block = mk().block(vec![mk().expr_stmt(one)]);
                     let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
@@ -317,10 +314,7 @@ impl<'c> Translation<'c> {
                             type_and_2,
                             mk().lit_expr(mk().int_lit(0, "")),
                         );
-                        let minus_one = mk().unary_expr(
-                            UnOp::Neg(Default::default()),
-                            mk().lit_expr(mk().int_lit(1, "isize")),
-                        );
+                        let minus_one = neg_expr(mk().lit_expr(mk().int_lit(1, "isize")));
                         let if_expr = mk().ifte_expr(
                             if_cond,
                             mk().block(vec![mk().expr_stmt(minus_one)]),

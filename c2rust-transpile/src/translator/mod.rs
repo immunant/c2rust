@@ -418,10 +418,7 @@ fn mk_linkage(
 
 pub fn signed_int_expr(value: i64) -> Box<Expr> {
     if value < 0 {
-        mk().unary_expr(
-            UnOp::Neg(Default::default()),
-            mk().lit_expr(mk().int_lit(u128::from(value.unsigned_abs()), "")),
-        )
+        neg_expr(mk().lit_expr(mk().int_lit(u128::from(value.unsigned_abs()), "")))
     } else {
         mk().lit_expr(mk().int_lit(value as u128, ""))
     }
@@ -3542,6 +3539,7 @@ impl<'c> Translation<'c> {
                     override_ty.unwrap_or(ty),
                     *val,
                     IntBase::Dec,
+                    false,
                 )?)),
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
                     self.use_crate(ExternCrate::Memoffset);
@@ -4001,10 +3999,9 @@ impl<'c> Translation<'c> {
 
             ConstIntExpr::I(n) if n >= 0 => mk().lit_expr(mk().int_unsuffixed_lit(n as u128)),
 
-            ConstIntExpr::I(n) => mk().unary_expr(
-                UnOp::Neg(Default::default()),
-                mk().lit_expr(mk().int_unsuffixed_lit(n.unsigned_abs() as u128)),
-            ),
+            ConstIntExpr::I(n) => {
+                neg_expr(mk().lit_expr(mk().int_unsuffixed_lit(n.unsigned_abs() as u128)))
+            }
         };
         Ok(expr)
     }
@@ -4912,4 +4909,12 @@ fn strip_tail_return(stmts: &mut Vec<Stmt>) {
     if let Some(Stmt::Expr(Expr::Return(ExprReturn { expr: None, .. }), _)) = stmts.last() {
         stmts.pop();
     }
+}
+
+fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
+    mk().unary_expr(UnOp::Neg(Default::default()), arg)
+}
+
+fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
+    mk().method_call_expr(arg, "wrapping_neg", vec![])
 }
