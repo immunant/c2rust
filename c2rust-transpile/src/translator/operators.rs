@@ -727,6 +727,12 @@ impl<'c> Translation<'c> {
         } else {
             c_ast::BinOp::AssignSubtract
         };
+
+        let arg_type = self.ast_context[arg]
+            .kind
+            .get_qual_type()
+            .ok_or_else(|| format_err!("bad arg type"))?;
+
         let one = match self.ast_context.resolve_type(ty.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
@@ -741,19 +747,27 @@ impl<'c> Translation<'c> {
             }
             _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
         };
-        let arg_type = self.ast_context[arg]
-            .kind
-            .get_qual_type()
-            .ok_or_else(|| format_err!("bad arg type"))?;
+
+        let one_type_id =
+            if let CTypeKind::Pointer(..) = self.ast_context.resolve_type(arg_type.ctype).kind {
+                CQualTypeId::new(
+                    self.ast_context
+                        .type_for_kind(&CTypeKind::Int)
+                        .ok_or_else(|| format_err!("couldn't find type for CTypeKind::Int"))?,
+                )
+            } else {
+                arg_type
+            };
+
         self.convert_assignment_operator_with_rhs(
             ctx.used(),
             op,
-            arg_type,
-            arg,
             ty,
+            arg,
+            one_type_id,
             WithStmts::new_val(one),
             Some(arg_type),
-            Some(arg_type),
+            Some(ty),
         )
     }
 

@@ -28,7 +28,7 @@ pub unsafe extern "C" fn test_volatile() {
             ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(
                 &volatile_global_struct.p as *const *mut ::core::ffi::c_int,
             )
-            .offset_from(1) as *mut ::core::ffi::c_int,
+            .offset(-1),
         );
     }
 }
