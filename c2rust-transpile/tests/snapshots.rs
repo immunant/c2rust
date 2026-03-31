@@ -410,6 +410,11 @@ fn test_str_init() {
     transpile("str_init.c").run();
 }
 
+#[test]
+fn test_volatile() {
+    transpile("volatile.c").expect_compile_error(true).run();
+}
+
 // arch-specific
 
 #[test]

@@ -1,0 +1,34 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/volatile.2024.rs
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![deny(unsafe_op_in_unsafe_fn)]
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct S {
+    pub p: *mut ::core::ffi::c_int,
+}
+#[unsafe(no_mangle)]
+pub static mut volatile_global_struct: S = S {
+    p: ::core::ptr::null::<::core::ffi::c_int>() as *mut ::core::ffi::c_int,
+};
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_volatile() {
+    unsafe {
+        ::core::ptr::write_volatile(
+            &mut volatile_global_struct.p as *mut *mut ::core::ffi::c_int,
+            ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(
+                &volatile_global_struct.p as *const *mut ::core::ffi::c_int,
+            )
+            .offset_from(1) as *mut ::core::ffi::c_int,
+        );
+    }
+}
