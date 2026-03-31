@@ -23,6 +23,12 @@ pub static mut volatile_global_struct: S = S {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_volatile() {
     unsafe {
+        let mut vi: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        let mut i: ::core::ffi::c_int = vi;
+        ::core::ptr::write_volatile(&raw mut vi, i);
+        let mut pvi: *mut ::core::ffi::c_int = &raw mut vi;
+        i = *pvi;
+        ::core::ptr::write_volatile(pvi, i);
         ::core::ptr::write_volatile(
             &raw mut volatile_global_struct.p,
             ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(
