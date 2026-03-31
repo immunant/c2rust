@@ -84,8 +84,19 @@ pub fn find_llvm_config() -> Option<PathBuf> {
             env::var_os("LLVM_LIB_DIR")
                 .map(PathBuf::from)
                 .map(|mut lib_dir| {
-                    lib_dir.push("../bin/llvm-config");
-                    lib_dir.canonicalize().unwrap()
+                    lib_dir.push("../bin");
+                    lib_dir.push(if cfg!(target_os = "windows") {
+                        "llvm-config.exe"
+                    } else {
+                        "llvm-config"
+                    });
+                    let canonicalized_dir = lib_dir.canonicalize();
+                    lib_dir.canonicalize().unwrap_or_else(|_| {
+                        panic!(
+                            "LLVM_LIB_DIR is set but `{}` does not exist",
+                            lib_dir.display()
+                        );
+                    })
                 })
         })
         .or_else(|| {
