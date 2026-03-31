@@ -4157,75 +4157,14 @@ impl<'c> Translation<'c> {
         }
 
         let kind = kind.unwrap_or_else(|| {
-            match (source_ty_kind, target_ty_kind) {
-                (CTypeKind::VariableArray(..), CTypeKind::Pointer(..))
-                | (CTypeKind::ConstantArray(..), CTypeKind::Pointer(..))
-                | (CTypeKind::IncompleteArray(..), CTypeKind::Pointer(..)) => {
-                    CastKind::ArrayToPointerDecay
-                }
+            CastKind::from_types(source_ty_kind, target_ty_kind).unwrap_or_else(|| {
+                warn!(
+                    "Unknown CastKind for {source_ty_kind:?} to {target_ty_kind:?} cast. \
+                    Defaulting to BitCast",
+                );
 
-                (CTypeKind::Function(..), CTypeKind::Pointer(..)) => {
-                    CastKind::FunctionToPointerDecay
-                }
-
-                (_, CTypeKind::Pointer(..)) if source_ty_kind.is_integral_type() => {
-                    CastKind::IntegralToPointer
-                }
-
-                (CTypeKind::Pointer(..), CTypeKind::Bool) => CastKind::PointerToBoolean,
-
-                (CTypeKind::Pointer(..), _) if target_ty_kind.is_integral_type() => {
-                    CastKind::PointerToIntegral
-                }
-
-                (_, CTypeKind::Bool) if source_ty_kind.is_integral_type() => {
-                    CastKind::IntegralToBoolean
-                }
-
-                (CTypeKind::Bool, _) if target_ty_kind.is_signed_integral_type() => {
-                    CastKind::BooleanToSignedIntegral
-                }
-
-                (_, _)
-                    if source_ty_kind.is_integral_type() && target_ty_kind.is_integral_type() =>
-                {
-                    CastKind::IntegralCast
-                }
-
-                (_, _)
-                    if source_ty_kind.is_integral_type() && target_ty_kind.is_floating_type() =>
-                {
-                    CastKind::IntegralToFloating
-                }
-
-                (_, CTypeKind::Bool) if source_ty_kind.is_floating_type() => {
-                    CastKind::FloatingToBoolean
-                }
-
-                (_, _)
-                    if source_ty_kind.is_floating_type() && target_ty_kind.is_integral_type() =>
-                {
-                    CastKind::FloatingToIntegral
-                }
-
-                (_, _)
-                    if source_ty_kind.is_floating_type() && target_ty_kind.is_floating_type() =>
-                {
-                    CastKind::FloatingCast
-                }
-
-                (CTypeKind::Pointer(..), CTypeKind::Pointer(..)) => CastKind::BitCast,
-
-                // Ignoring Complex casts for now
-                _ => {
-                    warn!(
-                        "Unknown CastKind for {:?} to {:?} cast. Defaulting to BitCast",
-                        source_ty_kind, target_ty_kind,
-                    );
-
-                    CastKind::BitCast
-                }
-            }
+                CastKind::BitCast
+            })
         });
 
         match kind {
