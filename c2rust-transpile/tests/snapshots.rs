@@ -414,6 +414,17 @@ fn test_str_init() {
 // arch-specific
 
 #[test]
+fn test_asm() {
+    #[cfg(target_arch = "x86_64")]
+    transpile("asm.c")
+        .arch_specific(true)
+        .expect_unresolved_import("c2rust_asm_casts")
+        .run();
+    #[cfg(not(target_arch = "x86_64"))]
+    transpile("asm.c").arch_specific(true).run();
+}
+
+#[test]
 fn test_spin() {
     transpile("spin.c").arch_specific(true).run();
 }

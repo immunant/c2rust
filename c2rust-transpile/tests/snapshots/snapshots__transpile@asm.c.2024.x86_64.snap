@@ -1,0 +1,33 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/arch-specific/asm.2024.x86_64.rs
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![deny(unsafe_op_in_unsafe_fn)]
+use ::c2rust_asm_casts::AsmCastTrait;
+use ::core::arch::asm;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn six() -> ::core::ffi::c_int {
+    unsafe {
+        let mut out: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+        let mut six_0: ::core::ffi::c_int = 6 as ::core::ffi::c_int;
+        let c2rust_fresh0 = &mut out;
+        let c2rust_fresh1;
+        let c2rust_fresh2 = out;
+        asm!(
+            "add {0}, {1}\n", "\t\n", inlateout(reg)
+            c2rust_asm_casts::AsmCast::cast_in(c2rust_fresh0, c2rust_fresh2) =>
+            c2rust_fresh1, inlateout(reg) six_0 => _, options(preserves_flags, pure,
+            readonly, att_syntax)
+        );
+        c2rust_asm_casts::AsmCast::cast_out(c2rust_fresh0, c2rust_fresh2, c2rust_fresh1);
+        return out;
+    }
+}
