@@ -2,14 +2,6 @@
 
 use super::*;
 
-fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
-    mk().unary_expr(UnOp::Neg(Default::default()), arg)
-}
-
-fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
-    mk().method_call_expr(arg, "wrapping_neg", vec![])
-}
-
 impl From<c_ast::BinOp> for BinOp {
     fn from(op: c_ast::BinOp) -> Self {
         match op {
@@ -823,11 +815,7 @@ impl<'c> Translation<'c> {
                         one = n
                     }
 
-                    let n = if up {
-                        one
-                    } else {
-                        mk().unary_expr(UnOp::Neg(Default::default()), one)
-                    };
+                    let n = if up { one } else { neg_expr(one) };
                     is_unsafe = true;
                     mk().method_call_expr(read, "offset", vec![n])
                 } else if self

@@ -9,7 +9,9 @@ use crate::{
     c_ast,
     diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
     format_translation_err,
-    translator::{cast_int, transmute_expr, unwrap_function_pointer, ExprContext, Translation},
+    translator::{
+        cast_int, neg_expr, transmute_expr, unwrap_function_pointer, ExprContext, Translation,
+    },
     with_stmts::WithStmts,
     CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind, ExternCrate,
 };
@@ -386,7 +388,7 @@ impl<'c> Translation<'c> {
         }
 
         if neg {
-            offset = mk().unary_expr(UnOp::Neg(Default::default()), offset);
+            offset = neg_expr(offset);
         }
 
         let mut res = mk().method_call_expr(ptr, "offset", vec![offset]);

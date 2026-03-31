@@ -24,7 +24,7 @@ impl<'c> Translation<'c> {
         let mut expr = mk().lit_expr(lit);
 
         if negative {
-            expr = mk().unary_expr(UnOp::Neg(Default::default()), expr);
+            expr = neg_expr(expr);
         }
 
         let target_ty = self.convert_type(ty.ctype)?;
@@ -61,26 +61,24 @@ impl<'c> Translation<'c> {
 
             CLiteral::Character(val) => {
                 let val = val as u32;
-                let expr = match char::from_u32(val) {
-                    Some(c) => {
-                        let expr = mk().lit_expr(c);
-                        let i32_type = mk().path_ty(vec!["i32"]);
-                        mk().cast_expr(expr, i32_type)
-                    }
-                    None => {
-                        // Fallback for characters outside of the valid Unicode range
-                        if (val as i32) < 0 {
-                            mk().unary_expr(
-                                UnOp::Neg(Default::default()),
-                                mk().lit_expr(
-                                    mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
-                                ),
-                            )
-                        } else {
-                            mk().lit_expr(mk().int_lit(val as u128, "i32"))
+                let expr =
+                    match char::from_u32(val) {
+                        Some(c) => {
+                            let expr = mk().lit_expr(c);
+                            let i32_type = mk().path_ty(vec!["i32"]);
+                            mk().cast_expr(expr, i32_type)
                         }
-                    }
-                };
+                        None => {
+                            // Fallback for characters outside of the valid Unicode range
+                            if (val as i32) < 0 {
+                                neg_expr(mk().lit_expr(
+                                    mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
+                                ))
+                            } else {
+                                mk().lit_expr(mk().int_lit(val as u128, "i32"))
+                            }
+                        }
+                    };
                 Ok(WithStmts::new_val(expr))
             }
 
