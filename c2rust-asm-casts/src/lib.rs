@@ -14,7 +14,14 @@ pub struct AsmCast<Out, In>(PhantomData<(Out, In)>);
 pub trait AsmCastTrait<Out, In> {
     type Type;
 
+    /// # Safety
+    ///
+    /// `out` must be dereferenceable.
     unsafe fn cast_in(_: *mut Out, x: In) -> Self::Type;
+
+    /// # Safety
+    ///
+    /// `out` must be dereferenceable.
     unsafe fn cast_out(out: *mut Out, _: In, x: Self::Type);
 }
 
@@ -126,7 +133,9 @@ mod tests {
 
                     let x = 42usize as $ty1;
                     let mut y: $ty2 = 0 as $ty2;
+                    // SAFETY: decayed reference is always dereferenceable.
                     let z = unsafe { AsmCast::cast_in(&mut y, x) } + 1;
+                    // SAFETY: decayed reference is always dereferenceable.
                     unsafe { AsmCast::cast_out(&mut y, x, z) };
                     assert_eq!(y as u64, 43);
                 })*
