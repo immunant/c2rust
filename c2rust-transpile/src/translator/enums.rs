@@ -2,8 +2,8 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
+use crate::c_ast::CUnOp;
 use crate::{
-    c_ast,
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
     with_stmts::WithStmts,
@@ -110,7 +110,7 @@ impl<'c> Translation<'c> {
                     return Ok(self.enum_for_i64(enum_type_id, i as i64));
                 }
 
-                CExprKind::Unary(_, c_ast::UnOp::Negate, subexpr_id, _) => {
+                CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
                     if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
                         &self.ast_context[subexpr_id].kind
                     {

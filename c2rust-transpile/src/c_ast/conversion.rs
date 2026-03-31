@@ -1366,30 +1366,30 @@ impl ConversionContext {
                         .expect("Expected operator")
                         .as_str()
                     {
-                        "&" => UnOp::AddressOf,
-                        "*" => UnOp::Deref,
-                        "+" => UnOp::Plus,
-                        "-" => UnOp::Negate,
-                        "~" => UnOp::Complement,
-                        "!" => UnOp::Not,
+                        "&" => CUnOp::AddressOf,
+                        "*" => CUnOp::Deref,
+                        "+" => CUnOp::Plus,
+                        "-" => CUnOp::Negate,
+                        "~" => CUnOp::Complement,
+                        "!" => CUnOp::Not,
                         "++" => {
                             if prefix {
-                                UnOp::PreIncrement
+                                CUnOp::PreIncrement
                             } else {
-                                UnOp::PostIncrement
+                                CUnOp::PostIncrement
                             }
                         }
                         "--" => {
                             if prefix {
-                                UnOp::PreDecrement
+                                CUnOp::PreDecrement
                             } else {
-                                UnOp::PostDecrement
+                                CUnOp::PostDecrement
                             }
                         }
-                        "__real" => UnOp::Real,
-                        "__imag" => UnOp::Imag,
-                        "__extension__" => UnOp::Extension,
-                        "co_await" => UnOp::Coawait,
+                        "__real" => CUnOp::Real,
+                        "__imag" => CUnOp::Imag,
+                        "__extension__" => CUnOp::Extension,
+                        "co_await" => CUnOp::Coawait,
                         o => panic!("Unexpected operator: {}", o),
                     };
 
@@ -1495,36 +1495,36 @@ impl ConversionContext {
                         .expect("Expected operator")
                         .as_str()
                     {
-                        "*" => BinOp::Multiply,
-                        "/" => BinOp::Divide,
-                        "%" => BinOp::Modulus,
-                        "+" => BinOp::Add,
-                        "-" => BinOp::Subtract,
-                        "<<" => BinOp::ShiftLeft,
-                        ">>" => BinOp::ShiftRight,
-                        "<" => BinOp::Less,
-                        ">" => BinOp::Greater,
-                        "<=" => BinOp::LessEqual,
-                        ">=" => BinOp::GreaterEqual,
-                        "==" => BinOp::EqualEqual,
-                        "!=" => BinOp::NotEqual,
-                        "&" => BinOp::BitAnd,
-                        "^" => BinOp::BitXor,
-                        "|" => BinOp::BitOr,
-                        "&&" => BinOp::And,
-                        "||" => BinOp::Or,
-                        "+=" => BinOp::AssignAdd,
-                        "-=" => BinOp::AssignSubtract,
-                        "*=" => BinOp::AssignMultiply,
-                        "/=" => BinOp::AssignDivide,
-                        "%=" => BinOp::AssignModulus,
-                        "^=" => BinOp::AssignBitXor,
-                        "<<=" => BinOp::AssignShiftLeft,
-                        ">>=" => BinOp::AssignShiftRight,
-                        "|=" => BinOp::AssignBitOr,
-                        "&=" => BinOp::AssignBitAnd,
-                        "=" => BinOp::Assign,
-                        "," => BinOp::Comma,
+                        "*" => CBinOp::Multiply,
+                        "/" => CBinOp::Divide,
+                        "%" => CBinOp::Modulus,
+                        "+" => CBinOp::Add,
+                        "-" => CBinOp::Subtract,
+                        "<<" => CBinOp::ShiftLeft,
+                        ">>" => CBinOp::ShiftRight,
+                        "<" => CBinOp::Less,
+                        ">" => CBinOp::Greater,
+                        "<=" => CBinOp::LessEqual,
+                        ">=" => CBinOp::GreaterEqual,
+                        "==" => CBinOp::EqualEqual,
+                        "!=" => CBinOp::NotEqual,
+                        "&" => CBinOp::BitAnd,
+                        "^" => CBinOp::BitXor,
+                        "|" => CBinOp::BitOr,
+                        "&&" => CBinOp::And,
+                        "||" => CBinOp::Or,
+                        "+=" => CBinOp::AssignAdd,
+                        "-=" => CBinOp::AssignSubtract,
+                        "*=" => CBinOp::AssignMultiply,
+                        "/=" => CBinOp::AssignDivide,
+                        "%=" => CBinOp::AssignModulus,
+                        "^=" => CBinOp::AssignBitXor,
+                        "<<=" => CBinOp::AssignShiftLeft,
+                        ">>=" => CBinOp::AssignShiftRight,
+                        "|=" => CBinOp::AssignBitOr,
+                        "&=" => CBinOp::AssignBitAnd,
+                        "=" => CBinOp::Assign,
+                        "," => CBinOp::Comma,
                         _ => unimplemented!(),
                     };
 
@@ -1629,9 +1629,9 @@ impl ConversionContext {
                     let kind_name =
                         from_value::<String>(node.extras[0].clone()).expect("expected kind");
                     let kind = match kind_name.as_str() {
-                        "sizeof" => UnTypeOp::SizeOf,
-                        "alignof" => UnTypeOp::AlignOf,
-                        "preferredalignof" => UnTypeOp::PreferredAlignOf,
+                        "sizeof" => CUnTypeOp::SizeOf,
+                        "alignof" => CUnTypeOp::AlignOf,
+                        "preferredalignof" => CUnTypeOp::PreferredAlignOf,
                         str => panic!("Unsupported operation: {}", str),
                     };
 

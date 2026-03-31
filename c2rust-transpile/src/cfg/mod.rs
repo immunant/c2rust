@@ -1783,7 +1783,7 @@ impl CfgBuilder {
                 // This case typically happens in macros from system headers.
                 // We simply inline the common statement at this point rather
                 // than to try and create new control-flow blocks.
-                let blk_or_wip = if let CExprKind::Unary(_, UnOp::Extension, sube, _) =
+                let blk_or_wip = if let CExprKind::Unary(_, CUnOp::Extension, sube, _) =
                     translator.ast_context[expr].kind
                 {
                     if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind {
