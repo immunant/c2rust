@@ -4159,8 +4159,8 @@ impl<'c> Translation<'c> {
         let kind = kind.unwrap_or_else(|| {
             CastKind::from_types(source_ty_kind, target_ty_kind).unwrap_or_else(|| {
                 warn!(
-                    "Unknown CastKind for {:?} to {:?} cast. Defaulting to BitCast",
-                    source_ty_kind, target_ty_kind,
+                    "Unknown CastKind for {source_ty_kind:?} to {target_ty_kind:?} cast. \
+                    Defaulting to BitCast",
                 );
 
                 CastKind::BitCast
