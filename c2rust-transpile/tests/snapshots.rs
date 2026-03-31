@@ -185,7 +185,6 @@ impl<'a> TranspileTest<'a> {
         }
     }
 
-    #[allow(unused)] // TODO remove once used
     pub fn expect_compile_error_edition_2021(
         self,
         expect_compile_error_edition_2021: bool,
@@ -196,7 +195,6 @@ impl<'a> TranspileTest<'a> {
         }
     }
 
-    #[allow(unused)] // TODO remove once used
     pub fn expect_compile_error_edition_2024(
         self,
         expect_compile_error_edition_2024: bool,
@@ -205,6 +203,12 @@ impl<'a> TranspileTest<'a> {
             expect_compile_error_edition_2024,
             ..self
         }
+    }
+
+    #[allow(unused)] // TODO remove once used
+    pub fn expect_compile_error(self, expect_error: bool) -> Self {
+        self.expect_compile_error_edition_2021(expect_error)
+            .expect_compile_error_edition_2024(expect_error)
     }
 
     pub fn run(self) {
