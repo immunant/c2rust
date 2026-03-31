@@ -4149,7 +4149,7 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn convert_cast(
+    pub fn convert_cast(
         &self,
         ctx: ExprContext,
         source_cty: CQualTypeId,

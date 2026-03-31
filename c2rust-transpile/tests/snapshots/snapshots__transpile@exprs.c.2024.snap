@@ -66,8 +66,8 @@ pub unsafe extern "C" fn unsigned_compound_desugaring() {
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         let mut u: ::core::ffi::c_uint = 0 as ::core::ffi::c_uint;
         let mut e: E = EA;
-        e = (e as ::core::ffi::c_uint).wrapping_add(u) as E as E;
-        i = (i as ::core::ffi::c_uint).wrapping_add(u) as ::core::ffi::c_int as ::core::ffi::c_int;
+        e = (e as ::core::ffi::c_uint).wrapping_add(u) as E;
+        i = (i as ::core::ffi::c_uint).wrapping_add(u) as ::core::ffi::c_int;
     }
 }
 #[unsafe(no_mangle)]

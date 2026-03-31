@@ -52,6 +52,6 @@ pub unsafe extern "C" fn test_bool() {
         if MACRO_IDENT1 != 0 {
         } else {
         };
-        int0 = (int0 as ::core::ffi::c_int | int1 as ::core::ffi::c_int) as bool;
+        int0 = int0 as ::core::ffi::c_int | int1 as ::core::ffi::c_int != 0;
     }
 }
