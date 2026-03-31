@@ -4606,7 +4606,10 @@ impl<'c> Translation<'c> {
             };
 
             // The backup is to just compare against zero
-            let zero = if ty.is_floating_type() {
+            let zero = if let CTypeKind::LongDouble | CTypeKind::Float128 = ty {
+                self.use_crate(ExternCrate::F128);
+                mk().abs_path_expr(vec!["f128", "f128", "ZERO"])
+            } else if ty.is_floating_type() {
                 mk().lit_expr(mk().float_unsuffixed_lit("0."))
             } else {
                 mk().lit_expr(mk().int_unsuffixed_lit(0))
