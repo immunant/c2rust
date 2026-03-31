@@ -7,6 +7,7 @@ use std::str::FromStr;
 use c2rust_rust_tools::rustfmt;
 use c2rust_rust_tools::RustEdition::Edition2024;
 use handlebars::Handlebars;
+use itertools::Itertools;
 use pathdiff::diff_paths;
 use serde_derive::Serialize;
 use serde_json::json;
@@ -166,10 +167,17 @@ fn convert_module_list(
     module_subset: ModuleSubset,
 ) -> Vec<Module> {
     modules.retain(|m| {
-        let is_binary = tcfg.is_binary(m);
+        let is_binary = tcfg.is_thin_or_full_binary(m);
         let is_binary_subset = module_subset == ModuleSubset::Binaries;
         // Don't add binary modules to lib.rs, these are emitted to
         // standalone, separate binary modules.
+        // Retain "thin" binaries in both lists because
+        // we include the code in the library crate,
+        // but also wrap calls to their `main` functions
+        // separately in the `c2rust-bin-{name}.rs` binary crates.
+        if tcfg.thin_binaries {
+            return is_binary || !is_binary_subset;
+        }
         is_binary == is_binary_subset
     });
 
@@ -201,6 +209,44 @@ fn convert_module_list(
     }
     module_tree.linearize(&mut res);
     res
+}
+
+fn emit_thin_binaries(
+    tcfg: &TranspilerConfig,
+    build_dir: &Path,
+    crate_name: &str,
+    modules: &mut Vec<Module>,
+) {
+    let mut crate_path = vec![crate_name.to_owned()];
+    modules.retain_mut(|m| {
+        if m.open {
+            crate_path.push(m.name.to_owned());
+            return false;
+        }
+        if m.close {
+            let _ = crate_path.pop();
+            return false;
+        }
+
+        // Emit a `c2rust-bin-{module_name}.rs` that just wraps the `main`
+        // function from the actual module inside the crate.
+        let Module { name, .. } = m;
+        let file_name = format!("c2rust-bin-{name}.rs");
+        let output_path = build_dir.join(&file_name);
+        let main_path = crate_path.iter().join("::");
+        let output = format!(
+            r"
+fn main() {{
+    ::{main_path}::{name}::main()
+}}
+"
+        );
+        maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing);
+
+        // Update the path written to `Cargo.toml`
+        m.path = Some(file_name.into());
+        true
+    });
 }
 
 fn convert_dependencies_list(
@@ -315,12 +361,16 @@ fn emit_cargo_toml<'lcmd>(
         "workspace_members": workspace_members.unwrap_or_default(),
     });
     if let Some(ccfg) = crate_cfg {
-        let binaries = convert_module_list(
+        let mut binaries = convert_module_list(
             tcfg,
             build_dir,
             ccfg.modules.to_owned(),
             ModuleSubset::Binaries,
         );
+        if tcfg.thin_binaries {
+            emit_thin_binaries(tcfg, build_dir, &ccfg.crate_name, &mut binaries);
+        }
+
         let dependencies =
             convert_dependencies_list(ccfg.crates.clone(), tcfg.c2rust_dir.as_deref());
         let crate_json = json!({
