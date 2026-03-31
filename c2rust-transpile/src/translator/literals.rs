@@ -253,18 +253,10 @@ impl<'c> Translation<'c> {
             CTypeKind::Union(union_id) => {
                 self.convert_union_literal(ctx, union_id, ids.as_ref(), ty, opt_union_field_id)
             }
-            CTypeKind::Pointer(_) => {
-                let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id, None)
-            }
-            CTypeKind::Enum(_) => {
-                let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id, None)
-            }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
-            ref kind if kind.is_integral_type() => {
+            ref kind if kind.is_scalar() => {
                 let id = ids.first().unwrap();
                 self.convert_expr(ctx.used(), *id, None)
             }
