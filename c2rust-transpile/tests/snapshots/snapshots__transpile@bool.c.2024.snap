@@ -20,15 +20,15 @@ pub const MACRO_IDENT1: ::core::ffi::c_int = true_0;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_bool() {
     unsafe {
-        let mut int0: bool = 0 as ::core::ffi::c_int != 0;
+        let mut int0: bool = false;
         let mut ident0: bool = false_0 != 0;
         let mut macro_int0: bool = MACRO_INT0 != 0;
         let mut macro_ident0: bool = MACRO_IDENT0 != 0;
-        let mut int1: bool = 1 as ::core::ffi::c_int != 0;
+        let mut int1: bool = true;
         let mut ident1: bool = true_0 != 0;
         let mut macro_int1: bool = MACRO_INT1 != 0;
         let mut macro_ident1: bool = MACRO_IDENT1 != 0;
-        if 0 as ::core::ffi::c_int != 0 {
+        if false {
         } else {
         };
         if false_0 != 0 {
@@ -40,7 +40,7 @@ pub unsafe extern "C" fn test_bool() {
         if MACRO_IDENT0 != 0 {
         } else {
         };
-        if 1 as ::core::ffi::c_int != 0 {
+        if true {
         } else {
         };
         if true_0 != 0 {

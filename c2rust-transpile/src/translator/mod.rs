@@ -2634,6 +2634,16 @@ impl<'c> Translation<'c> {
                 null_pointer_case(ptr, !target)
             }
 
+            CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
+                if !self.expr_is_expanded_macro(ctx, cond_id, None) =>
+            {
+                // If there is a literal `0` or `1` here, translate them directly rather than
+                // with a comparison. But not if they're inside a macro; we want to keep that.
+                // TODO: What about the `false` and `true` macros in stdbool.h?
+                let val = mk().lit_expr(mk().bool_lit(target == literal.get_bool()));
+                Ok(WithStmts::new_val(val))
+            }
+
             CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
                 self.convert_condition(ctx, !target, subexpr_id)
             }
