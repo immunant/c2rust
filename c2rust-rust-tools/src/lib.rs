@@ -3,6 +3,8 @@ use log::warn;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::io;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
@@ -206,10 +208,13 @@ fn run_rustc(rs_path: &Path, edition: RustEdition, crate_name: &str, expect_erro
         "-o",
     ]);
     cmd.args([&rlib_path, rs_path]);
-    let status = cmd.status().unwrap();
+    let output = cmd.output().unwrap();
+    let status = output.status;
     if status.success() {
         fs_err::remove_file(&rlib_path).unwrap();
     }
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
     if expect_error {
         assert!(
             !status.success(),
