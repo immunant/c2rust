@@ -18,7 +18,7 @@ pub unsafe extern "C" fn six() -> ::core::ffi::c_int {
     unsafe {
         let mut out: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
         let mut six_0: ::core::ffi::c_int = 6 as ::core::ffi::c_int;
-        let c2rust_fresh0 = &mut out;
+        let c2rust_fresh0 = &raw mut out;
         let c2rust_fresh1;
         let c2rust_fresh2 = out;
         asm!(

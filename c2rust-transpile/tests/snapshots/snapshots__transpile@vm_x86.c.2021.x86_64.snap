@@ -64,11 +64,11 @@ pub unsafe extern "C" fn VM_CallCompiled(
             "movq ({2}), %rax\n", "movq ({0}), %r8\n", "movq ({1}), %r9\n",
             "push %r15\n", "push %r14\n", "push %r13\n", "push %r12\n", "callq *%rax\n",
             "pop %r12\n", "pop %r13\n", "pop %r14\n", "pop %r15\n", "\n",
-            "mov {restmp0:x}, %bx\n", in (reg) & (* vm).instructionPointers, in (reg) &
-            (* vm).dataBase, in (reg) & entryPoint, restmp0 = inlateout(reg) opStackOfs,
-            inlateout("di") opStack, inlateout("si") programStack, out("rax") _,
-            out("rcx") _, out("rdx") _, out("r8") _, out("r9") _, out("r10") _,
-            out("r11") _, options(att_syntax)
+            "mov {restmp0:x}, %bx\n", in (reg) & raw const (* vm).instructionPointers, in
+            (reg) & raw const (* vm).dataBase, in (reg) & raw const entryPoint, restmp0 =
+            inlateout(reg) opStackOfs, inlateout("di") opStack, inlateout("si")
+            programStack, out("rax") _, out("rcx") _, out("rdx") _, out("r8") _,
+            out("r9") _, out("r10") _, out("r11") _, options(att_syntax)
         );
         if opStackOfs != 1 as ::core::ffi::c_int
             || *opStack as ::core::ffi::c_uint != 0xdeadbeef as ::core::ffi::c_uint
