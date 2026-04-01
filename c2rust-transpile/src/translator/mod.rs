@@ -3055,12 +3055,8 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
-                let addr_lhs = mk().set_mutbl(mutbl).borrow_expr(lhs);
-
-                let lhs_type = self.convert_type(lhs_type.ctype)?;
-                let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
-
-                mk().cast_expr(addr_lhs, ty)
+                self.use_feature("raw_ref_op");
+                mk().set_mutbl(mutbl).raw_borrow_expr(lhs)
             }
         };
         Ok(addr_lhs)
