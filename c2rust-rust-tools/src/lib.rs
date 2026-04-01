@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use log::warn;
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -7,6 +8,7 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
+use std::str;
 use std::str::FromStr;
 
 use crate::RustEdition::Edition2021;
@@ -148,6 +150,7 @@ pub struct Rustc<'a> {
     edition: RustEdition,
     crate_name: Option<&'a str>,
     expect_error: bool,
+    imported_crates: &'a [&'a str],
 }
 
 pub fn rustc(rs_path: &Path) -> Rustc {
@@ -156,6 +159,7 @@ pub fn rustc(rs_path: &Path) -> Rustc {
         edition: Default::default(),
         crate_name: None,
         expect_error: false,
+        imported_crates: Default::default(),
     }
 }
 
@@ -178,20 +182,39 @@ impl<'a> Rustc<'a> {
         }
     }
 
+    pub fn expect_unresolved_imports(self, imported_crates: &'a [&'a str]) -> Self {
+        Self {
+            imported_crates,
+            ..self
+        }
+    }
+
     pub fn run(self) {
         let Self {
             rs_path,
             edition,
             crate_name,
             expect_error,
+            imported_crates,
         } = self;
         let crate_name =
             crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
-        run_rustc(rs_path, edition, crate_name, expect_error);
+        run_rustc(rs_path, edition, crate_name, expect_error, &imported_crates);
     }
 }
 
-fn run_rustc(rs_path: &Path, edition: RustEdition, crate_name: &str, expect_error: bool) {
+fn run_rustc(
+    rs_path: &Path,
+    edition: RustEdition,
+    crate_name: &str,
+    expect_error: bool,
+    imported_crates: &[&str],
+) {
+    let rs = fs_err::read_to_string(rs_path).unwrap();
+    for imported_crate in imported_crates {
+        assert!(rs.contains(&format!("::{imported_crate}")));
+    }
+
     // There's no good way to not create an output with `rustc`,
     // so just create an `.rlib` and then delete it immediately.
     let rlib_path = rs_path.with_file_name(format!("lib{crate_name}.rlib"));
@@ -215,6 +238,49 @@ fn run_rustc(rs_path: &Path, edition: RustEdition, crate_name: &str, expect_erro
     }
     io::stdout().write_all(&output.stdout).unwrap();
     io::stderr().write_all(&output.stderr).unwrap();
+
+    // Using rustc itself to build snapshots that reference crates (like libc) is difficult because we don't know
+    // the appropriate --extern libc=/path/to/liblibc-XXXXXXXXXXXXXXXX.rlib to pass.
+    // Skip for now, as we've already compared the literal text,
+    // and we're checking the error messages here.
+    let stderr = str::from_utf8(&output.stderr).unwrap();
+    let error_lines = stderr
+        .split('\n')
+        // .split(|&b| b == b'\n')
+        .filter(|line| line.starts_with("error[E"))
+        .collect::<HashSet<_>>();
+    dbg!(&error_lines);
+    for imported_crate in imported_crates {
+        // For `::{imported_crate}::*`.
+        let absolute_path = match edition {
+            Edition2021 => format!("error[E0433]: failed to resolve: could not find `{imported_crate}` in the list of imported crates"),
+            Edition2024 => format!("error[E0433]: cannot find `{imported_crate}` in the crate root"),
+        };
+        // For `use ::{imported_crate}*`.
+        let absolute_use_path = format!("error[E0432]: unresolved import `{imported_crate}`");
+        // For `{imported_crate}::*`.
+        let relative_path = match edition {
+            Edition2021 => format!("error[E0433]: failed to resolve: use of undeclared crate or module `{imported_crate}`"),
+            Edition2024 => format!("error[E0433]: cannot find module or crate `{imported_crate}` in this scope"),
+        };
+
+        let absolute_path = absolute_path.as_str();
+        let absolute_use_path = absolute_use_path.as_str();
+        let relative_path = relative_path.as_str();
+        dbg!(absolute_path);
+        dbg!(absolute_use_path);
+        dbg!(relative_path);
+
+        assert!(
+            error_lines.contains(absolute_path)
+                || error_lines.contains(absolute_use_path)
+                || error_lines.contains(relative_path)
+        );
+    }
+    if !imported_crates.is_empty() {
+        return;
+    }
+
     if expect_error {
         assert!(
             !status.success(),
