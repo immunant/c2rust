@@ -244,7 +244,7 @@ fn run_rustc(
     // Skip for now, as we've already compared the literal text,
     // and we're checking the error messages here.
     let stderr = str::from_utf8(&output.stderr).unwrap();
-    let error_lines = stderr
+    let mut error_lines = stderr
         .split('\n')
         // .split(|&b| b == b'\n')
         .filter(|line| line.starts_with("error[E"))
@@ -271,13 +271,16 @@ fn run_rustc(
         dbg!(absolute_use_path);
         dbg!(relative_path);
 
-        assert!(
-            error_lines.contains(absolute_path)
-                || error_lines.contains(absolute_use_path)
-                || error_lines.contains(relative_path)
-        );
+        // Pre-compute to avoid `||` short-circuiting.
+        let absolute_path = error_lines.remove(absolute_path);
+        let absolute_use_path = error_lines.remove(absolute_use_path);
+        let relative_path = error_lines.remove(relative_path);
+
+        assert!(absolute_path || absolute_use_path || relative_path);
     }
     if !imported_crates.is_empty() {
+        dbg!(&error_lines);
+        assert!(error_lines.is_empty());
         return;
     }
 
