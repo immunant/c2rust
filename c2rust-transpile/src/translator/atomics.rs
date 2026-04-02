@@ -350,8 +350,14 @@ impl<'c> Translation<'c> {
                     let order = static_order(order);
                     let val =
                         val1.expect("__atomic arithmetic operations must have a val argument");
+                    let val_type_id = self.ast_context[val1_id.unwrap()]
+                        .kind
+                        .get_qual_type()
+                        .ok_or_else(|| format_err!("bad val1 type"))?;
                     ptr.and_then(|ptr| {
-                        val.and_then(|val| self.convert_atomic_op(ctx, atomic_op, order, ptr, val))
+                        val.and_then(|val| {
+                            self.convert_atomic_op(ctx, atomic_op, order, ptr, val, val_type_id)
+                        })
                     })
                 } else {
                     unimplemented!("atomic not implemented: {}", name)
@@ -390,6 +396,7 @@ impl<'c> Translation<'c> {
         order: Ordering,
         dst: Box<Expr>,
         src: Box<Expr>,
+        src_type_id: CQualTypeId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Emit `atomic_func(a0, a1) (op a1)?`
         let atomic_func =
@@ -424,13 +431,24 @@ impl<'c> Translation<'c> {
                 atomic_func,
                 vec![mk().ident_expr(&arg0_name), mk().ident_expr(&arg1_name)],
             );
-            let val = mk().binary_expr(atomic_op.rust_bin_op(), call, mk().ident_expr(arg1_name));
-            let val = if atomic_op.is_nand() {
-                // For nand, return `!(atomic_nand(arg0, arg1) & arg1)`
-                mk().unary_expr(UnOp::Not(Default::default()), val)
+
+            let src_type_kind = &self.ast_context.resolve_type(src_type_id.ctype).kind;
+            let arg1 = mk().ident_expr(arg1_name);
+
+            let mut val = if let Some(wrapping_arith_fn) = atomic_op
+                .rust_wrapping_arith_fn()
+                .filter(|_| src_type_kind.is_unsigned_integral_type())
+            {
+                mk().method_call_expr(call, wrapping_arith_fn, vec![arg1])
             } else {
-                val
+                mk().binary_expr(atomic_op.rust_bin_op(), call, arg1)
             };
+
+            if atomic_op.is_nand() {
+                // For nand, return `!(atomic_nand(arg0, arg1) & arg1)`
+                val = mk().unary_expr(UnOp::Not(Default::default()), val);
+            }
+
             self.convert_side_effects_expr(
                 ctx,
                 WithStmts::new(vec![arg0_let, arg1_let], val),
@@ -594,5 +612,13 @@ impl CAtomicBinOp {
             // See uses of `Self::is_nand`.
             Self::FetchNand | Self::NandFetch => BinOp::BitAnd(Default::default()),
         }
+    }
+
+    pub fn rust_wrapping_arith_fn(self) -> Option<&'static str> {
+        Some(match self {
+            Self::FetchAdd | Self::AddFetch => "wrapping_add",
+            Self::FetchSub | Self::SubFetch => "wrapping_sub",
+            _ => return None,
+        })
     }
 }

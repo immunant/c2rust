@@ -644,9 +644,13 @@ impl<'c> Translation<'c> {
                 if let Some(atomic_op) = CAtomicBinOp::from_sync_builtin_fn(builtin_name) {
                     let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                     let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
+                    let arg1_type_id = self.ast_context[args[1]]
+                        .kind
+                        .get_qual_type()
+                        .ok_or_else(|| format_err!("bad arg1 type"))?;
                     arg0.and_then(|arg0| {
                         arg1.and_then(|arg1| {
-                            self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1)
+                            self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
                         })
                     })
                 } else {

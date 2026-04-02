@@ -116,13 +116,15 @@ pub unsafe extern "C" fn fetch_after_atomics_unsigned(
         ::core::intrinsics::atomic_xadd::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
             c2rust_fresh12,
             c2rust_fresh13,
-        ) + c2rust_fresh13;
+        )
+        .wrapping_add(c2rust_fresh13);
         let c2rust_fresh14 = &raw mut x;
         let c2rust_fresh15 = 1 as ::core::ffi::c_int as ::core::ffi::c_uint;
         ::core::intrinsics::atomic_xsub::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
             c2rust_fresh14,
             c2rust_fresh15,
-        ) - c2rust_fresh15;
+        )
+        .wrapping_sub(c2rust_fresh15);
         let c2rust_fresh16 = &raw mut x;
         let c2rust_fresh17 = 0xf as ::core::ffi::c_int as ::core::ffi::c_uint;
         ::core::intrinsics::atomic_and::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
