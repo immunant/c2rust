@@ -68,4 +68,82 @@ pub unsafe extern "C" fn c11_atomics(mut x: ::core::ffi::c_int) -> ::core::ffi::
         return x;
     }
 }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fetch_after_atomics_signed(
+    mut x: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    unsafe {
+        let c2rust_fresh2 = &raw mut x;
+        let c2rust_fresh3 = 2 as ::core::ffi::c_int;
+        ::core::intrinsics::atomic_xadd::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh2,
+            c2rust_fresh3,
+        ) + c2rust_fresh3;
+        let c2rust_fresh4 = &raw mut x;
+        let c2rust_fresh5 = 1 as ::core::ffi::c_int;
+        ::core::intrinsics::atomic_xsub::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh4,
+            c2rust_fresh5,
+        ) - c2rust_fresh5;
+        let c2rust_fresh6 = &raw mut x;
+        let c2rust_fresh7 = 0xf as ::core::ffi::c_int;
+        ::core::intrinsics::atomic_and::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh6,
+            c2rust_fresh7,
+        ) & c2rust_fresh7;
+        let c2rust_fresh8 = &raw mut x;
+        let c2rust_fresh9 = 0x10 as ::core::ffi::c_int;
+        ::core::intrinsics::atomic_or::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh8,
+            c2rust_fresh9,
+        ) | c2rust_fresh9;
+        let c2rust_fresh10 = &raw mut x;
+        let c2rust_fresh11 = 0xff as ::core::ffi::c_int;
+        !(::core::intrinsics::atomic_nand::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh10,
+            c2rust_fresh11,
+        ) & c2rust_fresh11);
+        return x;
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fetch_after_atomics_unsigned(
+    mut x: ::core::ffi::c_uint,
+) -> ::core::ffi::c_uint {
+    unsafe {
+        let c2rust_fresh12 = &raw mut x;
+        let c2rust_fresh13 = 2 as ::core::ffi::c_int as ::core::ffi::c_uint;
+        ::core::intrinsics::atomic_xadd::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh12,
+            c2rust_fresh13,
+        )
+        .wrapping_add(c2rust_fresh13);
+        let c2rust_fresh14 = &raw mut x;
+        let c2rust_fresh15 = 1 as ::core::ffi::c_int as ::core::ffi::c_uint;
+        ::core::intrinsics::atomic_xsub::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh14,
+            c2rust_fresh15,
+        )
+        .wrapping_sub(c2rust_fresh15);
+        let c2rust_fresh16 = &raw mut x;
+        let c2rust_fresh17 = 0xf as ::core::ffi::c_int as ::core::ffi::c_uint;
+        ::core::intrinsics::atomic_and::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh16,
+            c2rust_fresh17,
+        ) & c2rust_fresh17;
+        let c2rust_fresh18 = &raw mut x;
+        let c2rust_fresh19 = 0x10 as ::core::ffi::c_int as ::core::ffi::c_uint;
+        ::core::intrinsics::atomic_or::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh18,
+            c2rust_fresh19,
+        ) | c2rust_fresh19;
+        let c2rust_fresh20 = &raw mut x;
+        let c2rust_fresh21 = 0xff as ::core::ffi::c_int as ::core::ffi::c_uint;
+        !(::core::intrinsics::atomic_nand::<_, _, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+            c2rust_fresh20,
+            c2rust_fresh21,
+        ) & c2rust_fresh21);
+        return x;
+    }
+}
 pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;

@@ -4,6 +4,7 @@
 use super::*;
 
 use crate::format_translation_err;
+use crate::translator::atomics::CAtomicBinOp;
 use c2rust_rust_tools::RustEdition::Edition2024;
 use std::sync::atomic::Ordering::Acquire;
 use std::sync::atomic::Ordering::Release;
@@ -565,90 +566,6 @@ impl<'c> Translation<'c> {
                     })
                 })
             }
-            "__sync_fetch_and_add_1"
-            | "__sync_fetch_and_add_2"
-            | "__sync_fetch_and_add_4"
-            | "__sync_fetch_and_add_8"
-            | "__sync_fetch_and_add_16"
-            | "__sync_fetch_and_sub_1"
-            | "__sync_fetch_and_sub_2"
-            | "__sync_fetch_and_sub_4"
-            | "__sync_fetch_and_sub_8"
-            | "__sync_fetch_and_sub_16"
-            | "__sync_fetch_and_or_1"
-            | "__sync_fetch_and_or_2"
-            | "__sync_fetch_and_or_4"
-            | "__sync_fetch_and_or_8"
-            | "__sync_fetch_and_or_16"
-            | "__sync_fetch_and_and_1"
-            | "__sync_fetch_and_and_2"
-            | "__sync_fetch_and_and_4"
-            | "__sync_fetch_and_and_8"
-            | "__sync_fetch_and_and_16"
-            | "__sync_fetch_and_xor_1"
-            | "__sync_fetch_and_xor_2"
-            | "__sync_fetch_and_xor_4"
-            | "__sync_fetch_and_xor_8"
-            | "__sync_fetch_and_xor_16"
-            | "__sync_fetch_and_nand_1"
-            | "__sync_fetch_and_nand_2"
-            | "__sync_fetch_and_nand_4"
-            | "__sync_fetch_and_nand_8"
-            | "__sync_fetch_and_nand_16"
-            | "__sync_add_and_fetch_1"
-            | "__sync_add_and_fetch_2"
-            | "__sync_add_and_fetch_4"
-            | "__sync_add_and_fetch_8"
-            | "__sync_add_and_fetch_16"
-            | "__sync_sub_and_fetch_1"
-            | "__sync_sub_and_fetch_2"
-            | "__sync_sub_and_fetch_4"
-            | "__sync_sub_and_fetch_8"
-            | "__sync_sub_and_fetch_16"
-            | "__sync_or_and_fetch_1"
-            | "__sync_or_and_fetch_2"
-            | "__sync_or_and_fetch_4"
-            | "__sync_or_and_fetch_8"
-            | "__sync_or_and_fetch_16"
-            | "__sync_and_and_fetch_1"
-            | "__sync_and_and_fetch_2"
-            | "__sync_and_and_fetch_4"
-            | "__sync_and_and_fetch_8"
-            | "__sync_and_and_fetch_16"
-            | "__sync_xor_and_fetch_1"
-            | "__sync_xor_and_fetch_2"
-            | "__sync_xor_and_fetch_4"
-            | "__sync_xor_and_fetch_8"
-            | "__sync_xor_and_fetch_16"
-            | "__sync_nand_and_fetch_1"
-            | "__sync_nand_and_fetch_2"
-            | "__sync_nand_and_fetch_4"
-            | "__sync_nand_and_fetch_8"
-            | "__sync_nand_and_fetch_16" => {
-                let base_name = if builtin_name.contains("_add_") {
-                    "xadd"
-                } else if builtin_name.contains("_sub_") {
-                    "xsub"
-                } else if builtin_name.contains("_or_") {
-                    "or"
-                } else if builtin_name.contains("_xor_") {
-                    "xor"
-                } else if builtin_name.contains("_nand_") {
-                    "nand"
-                } else {
-                    // We can't explicitly check for "_and_" since they all contain it
-                    "and"
-                };
-
-                let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-                let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
-                let fetch_first = builtin_name.starts_with("__sync_fetch");
-                arg0.and_then(|arg0| {
-                    arg1.and_then(|arg1| {
-                        self.convert_atomic_op(ctx, base_name, SeqCst, arg0, arg1, fetch_first)
-                    })
-                })
-            }
 
             "__sync_synchronize" => {
                 let atomic_func = self.atomic_intrinsic_expr("fence", &[SeqCst]);
@@ -723,11 +640,27 @@ impl<'c> Translation<'c> {
             | "__builtin_rotateright32"
             | "__builtin_rotateright64" => self.convert_builtin_rotate(ctx, args, "rotate_right"),
 
-            _ => Err(format_translation_err!(
-                self.ast_context.display_loc(src_loc),
-                "Unimplemented builtin {}",
-                builtin_name
-            )),
+            _ => {
+                if let Some(atomic_op) = CAtomicBinOp::from_sync_builtin_fn(builtin_name) {
+                    let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
+                    let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
+                    let arg1_type_id = self.ast_context[args[1]]
+                        .kind
+                        .get_qual_type()
+                        .ok_or_else(|| format_err!("bad arg1 type"))?;
+                    arg0.and_then(|arg0| {
+                        arg1.and_then(|arg1| {
+                            self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
+                        })
+                    })
+                } else {
+                    Err(format_translation_err!(
+                        self.ast_context.display_loc(src_loc),
+                        "Unimplemented builtin {}",
+                        builtin_name
+                    ))
+                }
+            }
         }
     }
 
