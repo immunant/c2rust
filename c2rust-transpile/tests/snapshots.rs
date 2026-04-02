@@ -362,6 +362,11 @@ fn test_keywords() {
 }
 
 #[test]
+fn test_lift_const() {
+    transpile("lift_const.c").run();
+}
+
+#[test]
 fn test_macrocase() {
     transpile("macrocase.c").run();
 }
