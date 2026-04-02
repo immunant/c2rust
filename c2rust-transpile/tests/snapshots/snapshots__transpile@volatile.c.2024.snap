@@ -24,9 +24,9 @@ pub static mut volatile_global_struct: S = S {
 pub unsafe extern "C" fn test_volatile() {
     unsafe {
         ::core::ptr::write_volatile(
-            &mut volatile_global_struct.p as *mut *mut ::core::ffi::c_int,
+            &raw mut volatile_global_struct.p,
             ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(
-                &volatile_global_struct.p as *const *mut ::core::ffi::c_int,
+                &raw const volatile_global_struct.p,
             )
             .offset(-1),
         );

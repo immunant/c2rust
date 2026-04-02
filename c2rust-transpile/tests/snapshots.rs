@@ -417,10 +417,7 @@ fn test_str_init() {
 
 #[test]
 fn test_volatile() {
-    transpile("volatile.c")
-        // https://github.com/immunant/c2rust/pull/1689#discussion_r3015140974
-        .expect_compile_error_edition_2024(true)
-        .run();
+    transpile("volatile.c").run();
 }
 
 // arch-specific
