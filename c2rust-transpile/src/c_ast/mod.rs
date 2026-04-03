@@ -1,5 +1,5 @@
 use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
-use crate::iterators::{DFNodes, SomeId};
+use crate::iterators::DFNodes;
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
@@ -55,11 +55,15 @@ pub struct TypedAstContext {
     /// iterated over export all defined types during translation.
     c_decls: IndexMap<CDeclId, CDecl>,
 
+    /// The parent nodes of each CExprId, CStmtId or CDeclId node.
+    /// Most nodes have exactly one parent, or zero if they are a top-level node.
+    ///
+    /// Expressions appearing inside an `InitListExpr` can have two parents,
+    /// as they are shared between the semantic form and the syntactic form.
+    parents: HashMap<SomeId, Vec<SomeId>>,
+
     pub c_decls_top: Vec<CDeclId>,
     pub c_main: Option<CDeclId>,
-
-    /// record fields and enum constants
-    pub parents: HashMap<CDeclId, CDeclId>,
 
     /// Mapping from [`FileId`] to [`SrcFile`]. Deduplicated by file path.
     files: Vec<SrcFile>,
@@ -238,6 +242,366 @@ impl TypedAstContext {
             include_map,
             ..Default::default()
         }
+    }
+
+    fn add_parent(&mut self, child: impl Into<SomeId>, parent: impl Into<SomeId>) {
+        self.parents
+            .entry(child.into())
+            .or_default()
+            .push(parent.into());
+    }
+
+    fn add_stmt_parents(&mut self, id: CStmtId, kind: &CStmtKind) {
+        use CStmtKind::*;
+        let parent = SomeId::Stmt(id);
+
+        match *kind {
+            Label(stmt) => {
+                self.add_parent(stmt, parent);
+            }
+
+            Case(expr, stmt, _) => {
+                self.add_parent(expr, parent);
+                self.add_parent(stmt, parent);
+            }
+
+            Default(stmt) => {
+                self.add_parent(stmt, parent);
+            }
+
+            Compound(ref stmts) => {
+                for &stmt in stmts {
+                    self.add_parent(stmt, parent);
+                }
+            }
+
+            Expr(expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Empty => {}
+
+            If {
+                scrutinee,
+                true_variant,
+                false_variant,
+            } => {
+                self.add_parent(scrutinee, parent);
+                self.add_parent(true_variant, parent);
+
+                if let Some(false_variant) = false_variant {
+                    self.add_parent(false_variant, parent);
+                }
+            }
+            Switch { scrutinee, body } => {
+                self.add_parent(scrutinee, parent);
+                self.add_parent(body, parent);
+            }
+
+            While { condition, body } => {
+                self.add_parent(condition, parent);
+                self.add_parent(body, parent);
+            }
+
+            DoWhile { body, condition } => {
+                self.add_parent(body, parent);
+                self.add_parent(condition, parent);
+            }
+
+            ForLoop {
+                init,
+                condition,
+                increment,
+                body,
+            } => {
+                if let Some(init) = init {
+                    self.add_parent(init, parent);
+                }
+
+                if let Some(condition) = condition {
+                    self.add_parent(condition, parent);
+                }
+
+                if let Some(increment) = increment {
+                    self.add_parent(increment, parent);
+                }
+
+                self.add_parent(body, parent);
+            }
+
+            Goto(..) => {}
+            Break => {}
+            Continue => {}
+
+            Return(expr) => {
+                if let Some(expr) = expr {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            Decls(ref decls) => {
+                for &decl in decls {
+                    self.add_parent(decl, parent);
+                }
+            }
+
+            Asm { .. } => {}
+
+            Attributed {
+                attributes: _,
+                substatement,
+            } => {
+                self.add_parent(substatement, parent);
+            }
+        }
+    }
+
+    fn add_expr_parents(&mut self, id: CExprId, kind: &CExprKind) {
+        use CExprKind::*;
+        let parent = SomeId::Expr(id);
+
+        match *kind {
+            Literal(..) => {}
+
+            Unary(_, _, expr, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            UnaryType(_, _, expr, _) => {
+                if let Some(expr) = expr {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            OffsetOf(_, ref kind) => match *kind {
+                OffsetOfKind::Constant(..) => {}
+                OffsetOfKind::Variable(_, _, expr) => {
+                    self.add_parent(expr, parent);
+                }
+            },
+
+            Binary(_, _, lhs, rhs, _, _) => {
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            ImplicitCast(_, expr, _, _, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            ExplicitCast(_, expr, _, _, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            ConstantExpr(_, expr, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            DeclRef(..) => {}
+
+            Call(_, func, ref args) => {
+                self.add_parent(func, parent);
+
+                for &arg in args {
+                    self.add_parent(arg, parent);
+                }
+            }
+
+            Member(_, expr, _, _, _) => {
+                self.add_parent(expr, parent);
+            }
+
+            ArraySubscript(_, lhs, rhs, _) => {
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            Conditional(_, cond, lhs, rhs) => {
+                self.add_parent(cond, parent);
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            BinaryConditional(_, cond, rhs) => {
+                self.add_parent(cond, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            InitList(_, ref exprs, _, syntactic_form) => {
+                for &expr in exprs {
+                    self.add_parent(expr, parent);
+                }
+
+                if let Some(syntactic_form) = syntactic_form {
+                    self.add_parent(syntactic_form, parent);
+                }
+            }
+
+            ImplicitValueInit(..) => {}
+
+            Paren(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            CompoundLiteral(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Predefined(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Statements(_, stmt) => {
+                self.add_parent(stmt, parent);
+            }
+
+            VAArg(_, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            ShuffleVector(_, ref exprs) => {
+                for &expr in exprs {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            ConvertVector(_, ref exprs) => {
+                for &expr in exprs {
+                    self.add_parent(expr, parent);
+                }
+            }
+
+            DesignatedInitExpr(_, _, expr) => {
+                self.add_parent(expr, parent);
+            }
+
+            Choose(_, cond, lhs, rhs, _) => {
+                self.add_parent(cond, parent);
+                self.add_parent(lhs, parent);
+                self.add_parent(rhs, parent);
+            }
+
+            Atomic {
+                ptr,
+                order,
+                val1,
+                order_fail,
+                val2,
+                weak,
+                ..
+            } => {
+                self.add_parent(ptr, parent);
+                self.add_parent(order, parent);
+
+                if let Some(val1) = val1 {
+                    self.add_parent(val1, parent);
+                }
+
+                if let Some(order_fail) = order_fail {
+                    self.add_parent(order_fail, parent);
+                }
+
+                if let Some(val2) = val2 {
+                    self.add_parent(val2, parent);
+                }
+
+                if let Some(weak) = weak {
+                    self.add_parent(weak, parent);
+                }
+            }
+
+            BadExpr => {}
+        }
+    }
+
+    fn add_decl_parents(&mut self, id: CDeclId, kind: &CDeclKind) {
+        use CDeclKind::*;
+        let parent = SomeId::Decl(id);
+
+        match *kind {
+            Function {
+                ref parameters,
+                body,
+                ..
+            } => {
+                for &parameter in parameters {
+                    self.add_parent(parameter, parent);
+                }
+
+                if let Some(body) = body {
+                    self.add_parent(body, parent);
+                }
+            }
+
+            Variable { initializer, .. } => {
+                if let Some(initializer) = initializer {
+                    self.add_parent(initializer, parent);
+                }
+            }
+
+            Enum {
+                ref variants,
+                integral_type,
+                ..
+            } => {
+                if integral_type.is_some() {
+                    for &variant in variants {
+                        self.add_parent(variant, parent);
+                    }
+                }
+            }
+
+            EnumConstant { .. } => {}
+
+            Typedef { .. } => {}
+
+            Struct { ref fields, .. } => {
+                if let Some(fields) = fields {
+                    for &field in fields {
+                        self.add_parent(field, parent);
+                    }
+                }
+            }
+
+            Union { ref fields, .. } => {
+                if let Some(fields) = fields {
+                    for &field in fields {
+                        self.add_parent(field, parent);
+                    }
+                }
+            }
+
+            Field { .. } => {}
+
+            MacroObject { .. } => {}
+
+            MacroFunction { .. } => {}
+
+            NonCanonicalDecl { .. } => {}
+
+            StaticAssert { assert_expr, .. } => {
+                self.add_parent(assert_expr, parent);
+            }
+        }
+    }
+
+    /// Returns the parent nodes of `child`.
+    pub fn parents(&self, child: impl Into<SomeId>) -> &[SomeId] {
+        self.parents
+            .get(&child.into())
+            .map(AsRef::as_ref)
+            .unwrap_or_default()
+    }
+
+    /// If `child` has a parent node, returns the first one.
+    pub fn parent(&self, child: impl Into<SomeId>) -> Option<SomeId> {
+        self.parents(child).get(0).copied()
+    }
+
+    /// If `child` has a parent node, and the first one is of the given type `T`, returns it.
+    pub fn parent_with_type<T: TryFrom<SomeId>>(&self, child: impl Into<SomeId>) -> Option<T> {
+        self.parent(child)
+            .and_then(|parent| T::try_from(parent).ok())
     }
 
     pub fn display_loc(&self, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan> {
@@ -1091,7 +1455,9 @@ impl TypedAstContext {
                         if let CDeclKind::EnumConstant { .. } = self.c_decls[&decl_id].kind {
                             // Special case for enums.  The enum constant is used, so the whole
                             // enum is also used.
-                            let parent_id = self.parents[&decl_id];
+                            let parent_id = self
+                                .parent_with_type(decl_id)
+                                .expect("Enum constant does not have a parent Enum");
                             if wanted.insert(parent_id) {
                                 to_walk.push(parent_id);
                             }
@@ -3100,3 +3466,44 @@ c = {c}
         locs.sort_unstable_by_key(|&loc| ctx.cmp_loc_include(loc));
     }
 }
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+pub enum SomeId {
+    Stmt(CStmtId),
+    Expr(CExprId),
+    Decl(CDeclId),
+    Type(CTypeId),
+}
+
+macro_rules! from_some_id {
+    ( $field_type:ty, $con_name:ident, $proj_name:ident ) => {
+        impl From<$field_type> for SomeId {
+            fn from(a: $field_type) -> Self {
+                SomeId::$con_name(a)
+            }
+        }
+        impl TryFrom<SomeId> for $field_type {
+            type Error = ();
+
+            fn try_from(id: SomeId) -> Result<Self, Self::Error> {
+                match id {
+                    SomeId::$con_name(x) => Ok(x),
+                    _ => Err(()),
+                }
+            }
+        }
+        impl SomeId {
+            pub fn $proj_name(self) -> Option<$field_type> {
+                match self {
+                    SomeId::$con_name(x) => Some(x),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+from_some_id!(CExprId, Expr, expr);
+from_some_id!(CStmtId, Stmt, stmt);
+from_some_id!(CDeclId, Decl, decl);
+from_some_id!(CTypeId, Type, type_);
