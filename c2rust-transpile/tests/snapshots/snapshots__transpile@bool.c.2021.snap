@@ -10,7 +10,6 @@ expression: cat tests/snapshots/bool.2021.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 pub const true_0: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const false_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const MACRO_INT0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
