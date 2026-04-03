@@ -1645,6 +1645,14 @@ impl<'c> Translation<'c> {
         ))
     }
 
+    fn mk(&self) -> Builder {
+        let mut b = mk();
+        if self.tcfg.deny_unsafe_op_in_unsafe_fn {
+            b = b.deny_unsafe_op_in_unsafe_fn();
+        }
+        b
+    }
+
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
         if self.tcfg.cross_checks {
             mk.call_attr("cross_check", args)
@@ -1849,7 +1857,7 @@ impl<'c> Translation<'c> {
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
         let fn_bare_decl = (vec![], None, fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
-        let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
+        let fn_attributes = self.mk_cross_check(self.mk(), vec!["none"]);
         let fn_item = fn_attributes
             .unsafe_()
             .extern_("C")
@@ -2435,6 +2443,12 @@ impl<'c> Translation<'c> {
                 } else {
                     mk().extern_("C")
                 };
+
+                // In Edition2024, `unsafe_op_in_unsafe_fn` is deny-by-default so we emit an allow pragma
+                // to silence warnings. Was this overridden by the `--deny_unsafe_op_in_unsafe_fn` flag?
+                if self.tcfg.deny_unsafe_op_in_unsafe_fn {
+                    mk_ = mk_.deny_unsafe_op_in_unsafe_fn();
+                }
 
                 for attr in attrs {
                     mk_ = match attr {
