@@ -17,7 +17,5 @@ pub use ::core::arch::aarch64::__yield;
 pub use ::core::arch::arm::__yield;
 #[no_mangle]
 pub unsafe extern "C" fn spin() {
-    unsafe {
-        __yield();
-    }
+    __yield();
 }

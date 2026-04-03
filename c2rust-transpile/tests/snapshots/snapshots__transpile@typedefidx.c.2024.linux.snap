@@ -15,7 +15,5 @@ pub type __uint64_t = u64;
 pub type uint64_t = __uint64_t;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn index_typedef(mut arr: *mut uint64_t) {
-    unsafe {
-        let mut foo3: size_t = *arr.offset(25 as ::core::ffi::c_int as isize) as size_t;
-    }
+    let mut foo3: size_t = *arr.offset(25 as ::core::ffi::c_int as isize) as size_t;
 }
