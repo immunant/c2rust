@@ -17,14 +17,13 @@ use log::{error, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::{
-    AttrStyle, BareVariadic, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast, ExprField,
-    ExprIndex, ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn,
+    AttrStyle, BareVariadic, BinOp, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast,
+    ExprField, ExprIndex, ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn,
     ForeignItemMacro, ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum,
     ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct,
     ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment,
-    ReturnType, Stmt, Type, TypeTuple, UseTree, Visibility,
+    ReturnType, Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
 };
-use syn::{BinOp, UnOp}; // To override `c_ast::{BinOp,UnOp}` from glob import.
 
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::comment_store::CommentStore;
@@ -1707,9 +1706,9 @@ impl<'c> Translation<'c> {
         expr_id: Option<CExprId>,
         qtype: CQualTypeId,
     ) -> bool {
-        use crate::c_ast::BinOp::{Add, Divide, Modulus, Multiply, Subtract};
+        use crate::c_ast::CBinOp::{Add, Divide, Modulus, Multiply, Subtract};
+        use crate::c_ast::CUnOp::{AddressOf, Negate};
         use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
-        use crate::c_ast::UnOp::{AddressOf, Negate};
 
         let expr_id = match expr_id {
             Some(expr_id) => expr_id,
@@ -2607,25 +2606,25 @@ impl<'c> Translation<'c> {
             };
 
         match self.ast_context[cond_id].kind {
-            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, null_expr, ptr, _, _)
+            CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(ptr, target)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::EqualEqual, ptr, null_expr, _, _)
+            CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(ptr, target)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::NotEqual, null_expr, ptr, _, _)
+            CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(ptr, !target)
             }
 
-            CExprKind::Binary(_, c_ast::BinOp::NotEqual, ptr, null_expr, _, _)
+            CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
                 null_pointer_case(ptr, !target)
@@ -2641,7 +2640,7 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(val))
             }
 
-            CExprKind::Unary(_, c_ast::UnOp::Not, subexpr_id, _) => {
+            CExprKind::Unary(_, CUnOp::Not, subexpr_id, _) => {
                 self.convert_condition(ctx, !target, subexpr_id)
             }
 
@@ -2944,8 +2943,7 @@ impl<'c> Translation<'c> {
                         }
 
                         // ref decayed ptrs generally need a type annotation
-                        if let Some(CExprKind::Unary(_, c_ast::UnOp::AddressOf, _, _)) =
-                            initializer_kind
+                        if let Some(CExprKind::Unary(_, CUnOp::AddressOf, _, _)) = initializer_kind
                         {
                             return true;
                         }
@@ -3377,7 +3375,7 @@ impl<'c> Translation<'c> {
 
             UnaryType(_ty, kind, opt_expr, arg_ty) => {
                 let result = match kind {
-                    UnTypeOp::SizeOf => match opt_expr {
+                    CUnTypeOp::SizeOf => match opt_expr {
                         None => self.compute_size_of_type(ctx, arg_ty.ctype, override_ty)?,
                         Some(_) => {
                             let inner = self.variable_array_base_type(arg_ty.ctype);
@@ -3393,10 +3391,10 @@ impl<'c> Translation<'c> {
                             }
                         }
                     },
-                    UnTypeOp::AlignOf => {
+                    CUnTypeOp::AlignOf => {
                         self.compute_align_of_type(arg_ty.ctype, false, src_loc)?
                     }
-                    UnTypeOp::PreferredAlignOf => {
+                    CUnTypeOp::PreferredAlignOf => {
                         self.compute_align_of_type(arg_ty.ctype, true, src_loc)?
                     }
                 };
