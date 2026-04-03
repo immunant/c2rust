@@ -1413,7 +1413,7 @@ impl Builder {
     {
         let sig = sig.make(&self);
 
-        if sig.unsafety.is_some() && !block.stmts.is_empty() {
+        if sig.unsafety.is_some() {
             // In edition 2024, `#[warn(unsafe_op_in_unsafe_fn)]` is on,
             // so we need to wrap any `unsafe` operation in an `unsafe` block.
             // For now, just wrap the whole function body in an `unsafe` block,
