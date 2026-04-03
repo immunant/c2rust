@@ -313,10 +313,7 @@ fn test_atomics() {
 
 #[test]
 fn test_bool() {
-    transpile("bool.c")
-        .expect_compile_error_edition_2021(true)
-        .expect_compile_error_edition_2024(true)
-        .run();
+    transpile("bool.c").run();
 }
 
 #[test]

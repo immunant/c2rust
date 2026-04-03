@@ -27,7 +27,6 @@ void test_bool() {
     MACRO_INT1 ? 2 : 3;
     MACRO_IDENT1 ? 2 : 3;
 
-    // Doesn't compile currently.
-    // See https://github.com/immunant/c2rust/issues/340.
+    // Tests https://github.com/immunant/c2rust/issues/340
     int0 |= int1;
 }

@@ -198,6 +198,7 @@ impl<'c> Translation<'c> {
         read: Box<Expr>,
         write: Box<Expr>,
         rhs: Box<Expr>,
+        initial_lhs_type_id: CQualTypeId,
         compute_lhs_type_id: CQualTypeId,
         compute_res_type_id: CQualTypeId,
         lhs_type_id: CQualTypeId,
@@ -212,46 +213,33 @@ impl<'c> Translation<'c> {
                 rhs,
             )))
         } else {
-            let compute_lhs_resolved_ty = &self.ast_context.resolve_type(compute_lhs_type_id.ctype);
-            let lhs_type = self.convert_type(compute_lhs_type_id.ctype)?;
-
-            // We can't simply as-cast into a non primitive like f128
-            let lhs = if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
-                self.use_crate(ExternCrate::F128);
-
-                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "from"]);
-                let args = vec![read];
-
-                mk().call_expr(fn_path, args)
-            } else {
-                mk().cast_expr(read, lhs_type)
-            };
-            let ty = self.convert_type(compute_res_type_id.ctype)?;
-            let mut val = self.convert_binary_operator(
+            let lhs = self.convert_cast(
                 ctx,
-                bin_op,
-                ty,
-                compute_res_type_id.ctype,
+                initial_lhs_type_id,
                 compute_lhs_type_id,
-                rhs_type_id,
-                lhs,
-                rhs,
+                WithStmts::new_val(read.clone()),
+                None,
+                None,
                 None,
             )?;
 
-            let resolve_lhs_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+            let ty = self.convert_type(compute_res_type_id.ctype)?;
+            let val = lhs.and_then(|lhs| {
+                self.convert_binary_operator(
+                    ctx,
+                    bin_op,
+                    ty,
+                    compute_res_type_id.ctype,
+                    compute_lhs_type_id,
+                    rhs_type_id,
+                    lhs,
+                    rhs,
+                    None,
+                )
+            })?;
 
-            val = if let &CTypeKind::Enum(enum_id) = resolve_lhs_kind {
-                val.result_map(|val| {
-                    self.convert_cast_to_enum(ctx, lhs_type_id.ctype, enum_id, None, val)
-                })?
-            } else if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
-                // We can't as-cast from a non primitive like f128 back to the result_type
-                self.f128_cast_to(val, resolve_lhs_kind)?
-            } else {
-                let result_type = self.convert_type(lhs_type_id.ctype)?;
-                val.map(|val| mk().cast_expr(val, result_type))
-            };
+            let val =
+                self.convert_cast(ctx, compute_res_type_id, lhs_type_id, val, None, None, None)?;
 
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
@@ -444,29 +432,26 @@ impl<'c> Translation<'c> {
 
                         // Anything volatile needs to be desugared into explicit reads and writes
                         op if is_volatile || is_unsigned_arith => {
+                            // Cast the lhs to the compute lhs type, do the compute, and then
+                            // cast the compute result to the final lhs type.
+
                             let op = op
                                 .underlying_assignment()
                                 .expect("Cannot convert non-assignment operator");
 
-                            let val = if expr_or_comp_type_id.ctype == initial_lhs_type_id.ctype {
+                            let lhs = self.convert_cast(
+                                ctx,
+                                initial_lhs_type_id,
+                                expr_or_comp_type_id,
+                                WithStmts::new_val(read.clone()),
+                                None,
+                                None,
+                                None,
+                            )?;
+
+                            let ty = self.convert_type(result_type_id.ctype)?;
+                            let val = lhs.and_then(|lhs|
                                 self.convert_binary_operator(
-                                    ctx,
-                                    op,
-                                    ty,
-                                    expr_type_id.ctype,
-                                    initial_lhs_type_id,
-                                    rhs_type_id,
-                                    read.clone(),
-                                    rhs,
-                                    None,
-                                )?
-                            } else {
-                                let lhs_type =
-                                    self.convert_type(compute_lhs_type_id.unwrap().ctype)?;
-                                let write_type = self.convert_type(expr_type_id.ctype)?;
-                                let lhs = mk().cast_expr(read.clone(), lhs_type);
-                                let ty = self.convert_type(result_type_id.ctype)?;
-                                let mut val = self.convert_binary_operator(
                                     ctx,
                                     op,
                                     ty,
@@ -476,25 +461,18 @@ impl<'c> Translation<'c> {
                                     lhs,
                                     rhs,
                                     None,
-                                )?;
+                                )
+                            )?;
 
-                                let expr_resolved_ty_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
-
-                                val = if let &CTypeKind::Enum(enum_id) = expr_resolved_ty_kind {
-                                    val.result_map(|val| self.convert_cast_to_enum(
-                                        ctx,
-                                        expr_type_id.ctype,
-                                        enum_id,
-                                        None,
-                                        val,
-                                    ))?
-                                } else {
-                                    let expr_type = self.convert_type(expr_type_id.ctype)?;
-                                    val.map(|val| mk().cast_expr(val, expr_type))
-                                };
-
-                                val.map(|val| mk().cast_expr(val, write_type))
-                            };
+                            let val = self.convert_cast(
+                                ctx,
+                                result_type_id,
+                                expr_type_id,
+                                val,
+                                None,
+                                None,
+                                None,
+                            )?;
 
                             #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
                             let write = if is_volatile {
@@ -546,6 +524,7 @@ impl<'c> Translation<'c> {
                                 read.clone(),
                                 write,
                                 rhs,
+                                initial_lhs_type_id,
                                 compute_lhs_type_id.unwrap(),
                                 compute_res_type_id.unwrap(),
                                 expr_type_id,
