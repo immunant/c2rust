@@ -3659,10 +3659,41 @@ impl<'c> Translation<'c> {
                             return self.convert_expr(ctx, expr, override_ty);
                         }
                     }
+                    if kind == CastKind::ArrayToPointerDecay && override_ty.is_some() {
+                        let target_elem = match &self
+                            .ast_context
+                            .resolve_type(override_ty.unwrap().ctype)
+                            .kind
+                        {
+                            CTypeKind::Pointer(qtype) => qtype.ctype,
+                            k => panic!("ArrayToPointerDecay producing non-pointer type {k:?}"),
+                        };
+                        let new_array_override_ty_kind =
+                            match &self.ast_context.resolve_type(source_ty.ctype).kind {
+                                CTypeKind::ConstantArray(_elem, len) => {
+                                    CTypeKind::ConstantArray(target_elem, *len)
+                                }
+                                CTypeKind::VariableArray(_elem, len) => {
+                                    CTypeKind::VariableArray(target_elem, *len)
+                                }
+                                k => panic!("ArrayToPointerDecay on non-array type {k:?}"),
+                            };
+                        //
+                        //           && Some(source_ty.ctype) != override_ty.map(|x| x.ctype)
+                        let new_array_override_ty = self
+                            .ast_context
+                            .type_for_kind(&new_array_override_ty_kind)
+                            .expect(&format!(
+                                "type id did not already exist for {:?}",
+                                new_array_override_ty_kind
+                            ));
+
+                        self.convert_expr(ctx, expr, Some(CQualTypeId::new(new_array_override_ty)))?
+                    }
                     // LValueToRValue casts don't actually change the type, so it still makes sense
                     // to translate their inner expression with the expected type from outside the
                     // cast.
-                    if kind == CastKind::LValueToRValue
+                    else if kind == CastKind::LValueToRValue
                         && Some(source_ty.ctype) != override_ty.map(|x| x.ctype)
                     {
                         self.convert_expr(ctx, expr, override_ty)?

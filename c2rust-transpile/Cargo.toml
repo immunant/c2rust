@@ -18,6 +18,7 @@ c2rust-ast-printer = { path = "../c2rust-ast-printer", version = "0.22.1" }
 c2rust-bitfields = { path = "../c2rust-bitfields", version = "0.22.1" }
 c2rust-rust-tools = { path = "../c2rust-rust-tools", version = "0.22.1" }
 colored = "2.0"
+dashmap = "4.0"
 dtoa = "1.0"
 failure = "0.1.5"
 fern = { version = "0.6", features = ["colored"] }
