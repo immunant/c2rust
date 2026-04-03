@@ -151,6 +151,7 @@ enum TypeTag {
 
     TagFloat128,
     TagAtomicType,
+    TagPredefinedSugarType,
 };
 
 enum StringTypeTag {
