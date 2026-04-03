@@ -1601,10 +1601,13 @@ impl<'c> Translation<'c> {
             "unused_mut",
             "unused_assignments",
         ];
-        if self.tcfg.edition >= Edition2024 {
+        if self.tcfg.edition >= Edition2024 && !self.tcfg.deny_unsafe_op_in_unsafe_fn {
             allow.push("unsafe_op_in_unsafe_fn");
         }
         let mut pragmas: PragmaVec = vec![("allow", allow)];
+        if self.tcfg.deny_unsafe_op_in_unsafe_fn {
+            pragmas.push(("deny", vec!["unsafe_op_in_unsafe_fn"]));
+        }
         if self.tcfg.cross_checks {
             features.append(&mut vec!["plugin"]);
             pragmas.push(("cross_check", vec!["yes"]));
