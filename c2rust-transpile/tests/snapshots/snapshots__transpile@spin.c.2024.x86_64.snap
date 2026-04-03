@@ -7,6 +7,7 @@ expression: cat tests/snapshots/arch-specific/spin.2024.x86_64.rs
     non_camel_case_types,
     non_snake_case,
     non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
     unused_assignments,
     unused_mut
 )]
