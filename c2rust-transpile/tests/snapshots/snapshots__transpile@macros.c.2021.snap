@@ -263,7 +263,9 @@ static mut global_static_const_ref_struct: *const S = &LITERAL_STRUCT as *const 
 static mut global_static_const_ternary: ::core::ffi::c_int = 0;
 static mut global_static_const_member: ::core::ffi::c_int = 0;
 #[no_mangle]
-pub unsafe extern "C" fn global_static_consts() {}
+pub unsafe extern "C" fn global_static_consts() {
+    unsafe {}
+}
 #[no_mangle]
 pub static mut global_const_literal_int: ::core::ffi::c_int = LITERAL_INT;
 #[no_mangle]
