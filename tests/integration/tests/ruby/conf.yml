@@ -9,7 +9,7 @@ requirements:
 
 transpile:
   autogen: true
-  tflags: --reorganize-definitions --disable-refactoring
+  tflags: --emit-refactor-annotations
   binary: ruby
   # cflags: "-O0"
 
