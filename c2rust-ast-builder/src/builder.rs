@@ -455,6 +455,7 @@ pub struct Builder {
     ext: Extern,
     attrs: Vec<Attribute>,
     span: Span,
+    deny_unsafe_op_in_unsafe_fn: bool,
 }
 
 impl Default for Builder {
@@ -468,6 +469,7 @@ impl Default for Builder {
             ext: Extern::None,
             attrs: Vec::new(),
             span: Span::call_site(),
+            deny_unsafe_op_in_unsafe_fn: false,
         }
     }
 }
@@ -505,6 +507,13 @@ impl Builder {
 
     pub fn unsafe_(self) -> Self {
         self.unsafety(Unsafety::Unsafe)
+    }
+
+    pub fn deny_unsafe_op_in_unsafe_fn(self) -> Self {
+        Builder {
+            deny_unsafe_op_in_unsafe_fn: true,
+            ..self
+        }
     }
 
     pub fn constness<C: Make<Constness>>(self, constness: C) -> Self {
@@ -1407,11 +1416,21 @@ impl Builder {
         }))
     }
 
-    pub fn fn_item<S>(self, sig: S, block: Block) -> Box<Item>
+    pub fn fn_item<S>(self, sig: S, mut block: Block) -> Box<Item>
     where
         S: Make<Signature>,
     {
         let sig = sig.make(&self);
+
+        if sig.unsafety.is_some() && !block.stmts.is_empty() && self.deny_unsafe_op_in_unsafe_fn {
+            // When `#[deny(unsafe_op_in_unsafe_fn)]` is in effect, unsafe operations
+            // inside an `unsafe fn` must be wrapped in an `unsafe` block.
+            // Wrap the whole function body for now; this can later be narrowed to
+            // individual operations.
+            let unsafe_expr = mk().unsafe_block_expr(block);
+            block = mk().block(vec![mk().expr_stmt(unsafe_expr)]);
+        }
+
         Box::new(Item::Fn(ItemFn {
             attrs: self.attrs,
             vis: self.vis,
