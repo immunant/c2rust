@@ -133,6 +133,12 @@ struct Args {
     #[clap(short = 'b', long = "binary", multiple = true, number_of_values = 1)]
     binary: Option<Vec<String>>,
 
+    /// Whether to fold the translation units for the binaries into the Rust
+    /// library, and emit thin `.rs` files that just import the corresponding
+    /// `main` for every binary from the library.
+    #[clap(long)]
+    thin_binaries: bool,
+
     /// Emit files even if it causes existing files to be overwritten
     #[clap(long)]
     overwrite_existing: bool,
@@ -306,6 +312,7 @@ fn main() {
         c2rust_dir: args.c2rust_dir,
         output_dir: args.output_dir,
         binaries: args.binary.unwrap_or_default(),
+        thin_binaries: args.thin_binaries,
         panic_on_translator_failure: args.invalid_code == InvalidCodes::Panic,
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: args.emit_no_std,

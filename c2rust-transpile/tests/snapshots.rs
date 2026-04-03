@@ -59,6 +59,7 @@ fn config(edition: RustEdition) -> TranspilerConfig {
         postprocess: false,
         emit_build_files: false,
         binaries: Vec::new(),
+        thin_binaries: false,
         c2rust_dir: Some(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .parent()

@@ -118,6 +118,7 @@ pub struct TranspilerConfig {
     /// Names of translation units containing main functions that we should make
     /// into binaries
     pub binaries: Vec<String>,
+    pub thin_binaries: bool,
 
     pub c2rust_dir: Option<PathBuf>,
 }
@@ -128,9 +129,15 @@ impl TranspilerConfig {
         get_module_name(file, false, false, false).unwrap()
     }
 
-    fn is_binary(&self, file: &Path) -> bool {
+    fn is_thin_or_full_binary(&self, file: &Path) -> bool {
         let module_name = Self::binary_name_from_path(file);
         self.binaries.contains(&module_name)
+    }
+
+    fn is_binary(&self, file: &Path) -> bool {
+        // When `--thin-binaries` is enabled, we add all translation
+        // units to the main library and emit thin wrappers separately.
+        !self.thin_binaries && self.is_thin_or_full_binary(file)
     }
 
     fn check_if_all_binaries_used(
