@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/wide_strings.2024.macos.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
     unsafe fn wcslen(_: *const wchar_t) -> ::core::ffi::c_ulong;
 }

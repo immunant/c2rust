@@ -10,7 +10,6 @@ expression: cat tests/snapshots/macrocase.2021.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 pub type ZSTD_dParameter = ::core::ffi::c_uint;
 pub const ZSTD_d_experimentalParam1: ZSTD_dParameter = 1000;
 pub const ZSTD_d_windowLogMax: ZSTD_dParameter = 100;

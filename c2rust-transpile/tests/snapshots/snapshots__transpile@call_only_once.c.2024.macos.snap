@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/call_only_once.2024.macos.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 unsafe extern "C" {
     unsafe fn __assert_rtn(
         _: *const ::core::ffi::c_char,

@@ -10,7 +10,6 @@ expression: cat tests/snapshots/arch-specific/spin.2021.x86_64.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(stdsimd)]
 #[cfg(target_arch = "x86")]
 pub use ::core::arch::x86::_mm_pause;

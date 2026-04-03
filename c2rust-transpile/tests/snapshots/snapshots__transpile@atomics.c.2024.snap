@@ -10,7 +10,6 @@ expression: cat tests/snapshots/atomics.2024.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(core_intrinsics)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn c11_atomics(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {

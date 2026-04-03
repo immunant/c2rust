@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/call_only_once.2021.linux.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(label_break_value)]
 extern "C" {
     fn __assert_fail(
