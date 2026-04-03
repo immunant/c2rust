@@ -10,7 +10,6 @@ expression: cat tests/snapshots/compound_literals.2021.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(raw_ref_op)]
 #[no_mangle]
 pub static mut static_single_int: ::core::ffi::c_int = 42;

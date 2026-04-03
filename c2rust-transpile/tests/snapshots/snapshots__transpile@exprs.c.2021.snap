@@ -10,7 +10,6 @@ expression: cat tests/snapshots/exprs.2021.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(label_break_value, raw_ref_op)]
 extern "C" {
     fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;

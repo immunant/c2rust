@@ -10,4 +10,3 @@ expression: cat tests/snapshots/incomplete_arrays.2024.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]

@@ -10,7 +10,6 @@ expression: cat tests/snapshots/macros.2021.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(raw_ref_op)]
 extern "C" {
     fn extern_fn() -> ::core::ffi::c_int;

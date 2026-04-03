@@ -10,7 +10,6 @@ expression: cat tests/snapshots/keywords.2024.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #[unsafe(export_name = "as")]
 pub unsafe extern "C" fn as_0() {}
 #[unsafe(export_name = "async")]

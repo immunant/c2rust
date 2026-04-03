@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/out_of_range_lit.2021.macos.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 pub type int32_t = i32;
 #[no_mangle]
 pub unsafe extern "C" fn f() {

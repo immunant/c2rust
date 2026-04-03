@@ -10,7 +10,6 @@ expression: cat tests/snapshots/empty_init.2024.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Scope {

@@ -10,7 +10,6 @@ expression: cat tests/snapshots/alloca.2024.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #[unsafe(no_mangle)]
 pub static mut TRUE: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 #[unsafe(no_mangle)]

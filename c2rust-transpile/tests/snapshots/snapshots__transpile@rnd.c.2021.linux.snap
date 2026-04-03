@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/rnd.2021.linux.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 extern "C" {
     fn abs(__x: ::core::ffi::c_int) -> ::core::ffi::c_int;
 }

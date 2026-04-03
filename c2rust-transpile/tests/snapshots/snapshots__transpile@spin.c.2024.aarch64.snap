@@ -10,7 +10,6 @@ expression: cat tests/snapshots/arch-specific/spin.2024.aarch64.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(stdarch_arm_hints)]
 #[cfg(target_arch = "aarch64")]
 pub use ::core::arch::aarch64::__yield;

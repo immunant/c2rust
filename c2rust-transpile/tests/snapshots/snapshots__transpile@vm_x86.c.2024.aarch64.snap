@@ -10,7 +10,6 @@ expression: cat tests/snapshots/arch-specific/vm_x86.2024.aarch64.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct vm_t {

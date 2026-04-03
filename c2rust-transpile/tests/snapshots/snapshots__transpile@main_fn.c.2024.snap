@@ -10,7 +10,6 @@ expression: cat tests/snapshots/main_fn.2024.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 unsafe fn main_0(
     mut argc: ::core::ffi::c_int,
     mut argv: *mut *mut ::core::ffi::c_char,

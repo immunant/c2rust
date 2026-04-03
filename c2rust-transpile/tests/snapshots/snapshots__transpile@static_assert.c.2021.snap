@@ -10,6 +10,5 @@ expression: cat tests/snapshots/static_assert.2021.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #[no_mangle]
 pub unsafe extern "C" fn static_assert() {}
