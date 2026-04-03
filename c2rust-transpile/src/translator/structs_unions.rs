@@ -16,6 +16,7 @@ use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX}
 use crate::with_stmts::WithStmts;
 use crate::ExternCrate;
 use c2rust_ast_builder::mk;
+use c2rust_ast_exporter::clang_ast::LRValue;
 use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
 use syn::{
@@ -1019,6 +1020,7 @@ impl<'a> Translation<'a> {
         expr: CExprId,
         decl: CDeclId,
         kind: MemberKind,
+        lrvalue: LRValue,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if ctx.is_unused() {
@@ -1079,7 +1081,7 @@ impl<'a> Translation<'a> {
 
         // if the context wants a different type, add a cast
         if let Some(expected_ty) = override_ty {
-            if expected_ty != qual_ty {
+            if lrvalue.is_rvalue() && expected_ty != qual_ty {
                 let ty = self.convert_type(expected_ty.ctype)?;
                 val = val.map(|v| mk().cast_expr(v, ty));
             }
