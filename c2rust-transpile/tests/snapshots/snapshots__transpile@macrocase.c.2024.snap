@@ -16,19 +16,17 @@ pub const ZSTD_d_windowLogMax: ZSTD_dParameter = 100;
 pub const ZSTD_d_format: ::core::ffi::c_uint = 1000 as ::core::ffi::c_uint;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ZSTD_dParam_getBounds(mut dParam: ZSTD_dParameter) -> ::core::ffi::c_int {
-    unsafe {
-        let mut bounds: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-        match dParam as ::core::ffi::c_uint {
-            100 => {
-                bounds = 1 as ::core::ffi::c_int;
-                return bounds;
-            }
-            1000 => {
-                bounds = 5 as ::core::ffi::c_int;
-                return bounds;
-            }
-            _ => {}
+    let mut bounds: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    match dParam as ::core::ffi::c_uint {
+        100 => {
+            bounds = 1 as ::core::ffi::c_int;
+            return bounds;
         }
-        return bounds;
+        1000 => {
+            bounds = 5 as ::core::ffi::c_int;
+            return bounds;
+        }
+        _ => {}
     }
+    return bounds;
 }

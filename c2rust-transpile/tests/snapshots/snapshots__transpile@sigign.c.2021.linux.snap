@@ -13,11 +13,9 @@ expression: cat tests/snapshots/os-specific/sigign.2021.linux.rs
 pub type __sighandler_t = Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>;
 #[no_mangle]
 pub unsafe extern "C" fn foo() {
-    unsafe {
-        let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
-            ::core::mem::transmute::<
-                ::libc::intptr_t,
-                Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>,
-            >(1 as ::core::ffi::c_int as ::libc::intptr_t);
-    }
+    let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
+        ::core::mem::transmute::<
+            ::libc::intptr_t,
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>,
+        >(1 as ::core::ffi::c_int as ::libc::intptr_t);
 }
