@@ -71,8 +71,8 @@ impl<'a> Translation<'a> {
 
         let mut derives = vec![];
         if !contains_va_list {
-            derives.push("Copy");
-            derives.push("Clone");
+            derives.push(mk().meta_path("Copy"));
+            derives.push(mk().meta_path("Clone"));
         };
         let has_bitfields =
             fields
@@ -82,7 +82,7 @@ impl<'a> Translation<'a> {
                     _ => unreachable!("Found non-field in record field list"),
                 });
         if has_bitfields {
-            derives.push("BitfieldStruct");
+            derives.push(mk().abs_meta_path(vec!["c2rust_bitfields", "BitfieldStruct"]));
             self.use_crate(ExternCrate::C2RustBitfields);
         }
 
@@ -240,9 +240,7 @@ impl<'a> Translation<'a> {
     /// Here we output a struct derive to generate bitfield data that looks like this:
     ///
     /// ```no_run
-    /// # use c2rust_bitfields::BitfieldStruct;
-    /// #
-    /// #[derive(BitfieldStruct, Clone, Copy)]
+    /// #[derive(::c2rust_bitfields::BitfieldStruct, Clone, Copy)]
     /// #[repr(C, align(2))]
     /// struct Foo {
     ///     #[bitfield(name = "bf1", ty = "std::ffi::c_char", bits = "0..=9")]
@@ -341,9 +339,7 @@ impl<'a> Translation<'a> {
     /// It looks like this in locals and (sectioned) statics:
     ///
     /// ```no_run
-    /// # use c2rust_bitfields::BitfieldStruct;
-    /// #
-    /// # #[derive(BitfieldStruct, Clone, Copy)]
+    /// # #[derive(::c2rust_bitfields::BitfieldStruct, Clone, Copy)]
     /// # #[repr(C, align(2))]
     /// # struct Foo {
     /// #     #[bitfield(name = "bf1", ty = "std::ffi::c_char", bits = "0..=9")]
