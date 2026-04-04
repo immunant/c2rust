@@ -3032,20 +3032,15 @@ impl<'c> Translation<'c> {
         lhs_type: CQualTypeId,
         write: bool,
     ) -> TranslationResult<Box<Expr>> {
-        let mutbl = if write {
-            Mutability::Mutable
-        } else {
-            Mutability::Immutable
-        };
         let addr_lhs = match *lhs {
             Expr::Unary(ExprUnary {
                 op: UnOp::Deref(_),
                 expr: e,
                 ..
             }) => {
-                if write == lhs_type.qualifiers.is_const {
+                if write && lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
-                    let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
+                    let ty = mk().set_mutbl(Mutability::Mutable).ptr_ty(lhs_type);
 
                     mk().cast_expr(e, ty)
                 } else {
@@ -3053,6 +3048,12 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
+                let mutbl = if write {
+                    Mutability::Mutable
+                } else {
+                    Mutability::Immutable
+                };
+
                 self.use_feature("raw_ref_op");
                 mk().set_mutbl(mutbl).raw_borrow_expr(lhs)
             }
@@ -3456,12 +3457,6 @@ impl<'c> Translation<'c> {
 
                 let mut val = mk().path_expr(vec![rustname]);
 
-                // If the variable is volatile and used as something that isn't an LValue, this
-                // constitutes a volatile read.
-                if lrvalue.is_rvalue() && qual_ty.qualifiers.is_volatile {
-                    val = self.volatile_read(val, qual_ty)?;
-                }
-
                 // If the variable is actually an `EnumConstant`, we need to add a cast to the
                 // expected integral type.
                 if let &CDeclKind::EnumConstant { .. } = decl {
@@ -3518,7 +3513,7 @@ impl<'c> Translation<'c> {
 
                 // if the context wants a different type, add a cast
                 if let Some(expected_ty) = override_ty {
-                    if expected_ty != qual_ty {
+                    if lrvalue.is_rvalue() && expected_ty != qual_ty {
                         val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
                     }
                 }
@@ -3659,16 +3654,8 @@ impl<'c> Translation<'c> {
                             return self.convert_expr(ctx, expr, override_ty);
                         }
                     }
-                    // LValueToRValue casts don't actually change the type, so it still makes sense
-                    // to translate their inner expression with the expected type from outside the
-                    // cast.
-                    if kind == CastKind::LValueToRValue
-                        && Some(source_ty.ctype) != override_ty.map(|x| x.ctype)
-                    {
-                        self.convert_expr(ctx, expr, override_ty)?
-                    } else {
-                        self.convert_expr(ctx, expr, None)?
-                    }
+
+                    self.convert_expr(ctx, expr, None)?
                 };
                 // Shuffle Vector "function" builtins will add a cast to the output of the
                 // builtin call which is unnecessary for translation purposes
@@ -3689,8 +3676,8 @@ impl<'c> Translation<'c> {
                 )
             }
 
-            Unary(type_id, op, arg, lrvalue) => {
-                self.convert_unary_operator(ctx, op, override_ty.unwrap_or(type_id), arg, lrvalue)
+            Unary(type_id, op, arg, _lrvalue) => {
+                self.convert_unary_operator(ctx, op, override_ty.unwrap_or(type_id), arg)
             }
 
             Conditional(ty, cond, lhs, rhs) => {
@@ -3781,8 +3768,8 @@ impl<'c> Translation<'c> {
                 )
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
-            ArraySubscript(_, lhs, rhs, _) => self
-                .convert_array_subscript(ctx, lhs, rhs, override_ty, true)
+            ArraySubscript(_, lhs, rhs, lrvalue) => self
+                .convert_array_subscript(ctx, lhs, rhs, lrvalue, override_ty, true)
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             Call(call_expr_ty, func, ref args) => {
@@ -3893,8 +3880,8 @@ impl<'c> Translation<'c> {
                 )
             }
 
-            Member(qual_ty, expr, decl, kind, _) => {
-                self.convert_member_expr(ctx, qual_ty, expr, decl, kind, override_ty)
+            Member(qual_ty, expr, decl, kind, lrvalue) => {
+                self.convert_member_expr(ctx, qual_ty, expr, decl, kind, lrvalue, override_ty)
             }
 
             Paren(_, val) => self.convert_expr(ctx, val, override_ty),
@@ -4153,10 +4140,6 @@ impl<'c> Translation<'c> {
         let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
         let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
 
-        if source_ty_kind == target_ty_kind {
-            return Ok(val);
-        }
-
         let kind = kind.unwrap_or_else(|| {
             CastKind::from_types(source_ty_kind, target_ty_kind).unwrap_or_else(|| {
                 warn!(
@@ -4167,6 +4150,10 @@ impl<'c> Translation<'c> {
                 CastKind::BitCast
             })
         });
+
+        if source_ty_kind == target_ty_kind && kind != CastKind::LValueToRValue {
+            return Ok(val);
+        }
 
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
@@ -4241,7 +4228,25 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            CastKind::LValueToRValue | CastKind::ToVoid | CastKind::ConstCast => Ok(val),
+            CastKind::LValueToRValue => {
+                let mut val = if source_cty.qualifiers.is_volatile {
+                    // If the expression is volatile and used as something that isn't an LValue,
+                    // this constitutes a volatile read.
+                    val.result_map(|val| self.volatile_read(val, target_cty))?
+                } else {
+                    val
+                };
+
+                // if the context wants a different type, add a cast
+                if target_cty.ctype != source_cty.ctype {
+                    let ty = self.convert_type(target_cty.ctype)?;
+                    val = val.map(|val| mk().cast_expr(val, ty));
+                }
+
+                Ok(val)
+            }
+
+            CastKind::ToVoid | CastKind::ConstCast => Ok(val),
 
             CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
                 Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))

@@ -36,9 +36,10 @@ impl<'c> Translation<'c> {
                     ctx.used().set_needs_address(true),
                     lhs,
                     rhs,
+                    LRValue::RValue, // if we bypass the deref, we stay an RValue
                     Some(cqual_type),
-                    false,
-                )
+                    false, // don't deref, keep as pointer
+                );
             }
             // An AddrOf DeclRef/Member is safe to not decay
             // if the translator isn't already giving a hard yes to decaying (ie, BitCasts).
@@ -203,7 +204,6 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         cqual_type: CQualTypeId,
         arg: CExprId,
-        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let arg_expr_kind = &self.ast_context.index(arg).kind;
 
@@ -220,14 +220,7 @@ impl<'c> Translation<'c> {
                 } else if let Some(_vla) = self.compute_size_of_expr(cqual_type.ctype) {
                     Ok(val)
                 } else {
-                    let mut val = mk().unary_expr(UnOp::Deref(Default::default()), val);
-
-                    // If the type on the other side of the pointer we are dereferencing is volatile and
-                    // this whole expression is not an LValue, we should make this a volatile read
-                    if lrvalue.is_rvalue() && cqual_type.qualifiers.is_volatile {
-                        val = self.volatile_read(val, cqual_type)?
-                    }
-                    Ok(val)
+                    Ok(mk().unary_expr(UnOp::Deref(Default::default()), val))
                 }
             })
     }
@@ -237,6 +230,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         lhs: CExprId,
         rhs: CExprId,
+        lrvalue: LRValue,
         override_ty: Option<CQualTypeId>,
         deref: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -359,7 +353,7 @@ impl<'c> Translation<'c> {
                         self.convert_pointer_offset(lhs, rhs, pointee_type_id.ctype, false, deref);
                     // if the context wants a different type, add a cast
                     if let Some(expected_ty) = override_ty {
-                        if expected_ty != pointee_type_id {
+                        if lrvalue.is_rvalue() && expected_ty != pointee_type_id {
                             let ty = self.convert_type(expected_ty.ctype)?;
                             val = val.map(|val| mk().cast_expr(val, ty));
                         }

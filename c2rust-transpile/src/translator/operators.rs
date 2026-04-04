@@ -850,7 +850,6 @@ impl<'c> Translation<'c> {
         name: CUnOp,
         cqual_type: CQualTypeId,
         arg: CExprId,
-        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let mut unary = match name {
             CUnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
@@ -858,7 +857,7 @@ impl<'c> Translation<'c> {
             CUnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
             CUnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
             CUnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
-            CUnOp::Deref => self.convert_deref(ctx, cqual_type, arg, lrvalue),
+            CUnOp::Deref => self.convert_deref(ctx, cqual_type, arg),
             CUnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
             CUnOp::Negate => self.convert_negate_operator(ctx, cqual_type, arg),
