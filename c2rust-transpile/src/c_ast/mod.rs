@@ -2739,6 +2739,10 @@ impl CTypeKind {
         )
     }
 
+    pub fn is_scalar(&self) -> bool {
+        self.is_integral_type() || self.is_floating_type() || self.is_enum() || self.is_pointer()
+    }
+
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
         use CTypeKind::*;
         match *self {

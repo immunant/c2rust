@@ -253,20 +253,15 @@ impl<'c> Translation<'c> {
             CTypeKind::Union(union_id) => {
                 self.convert_union_literal(ctx, union_id, ids.as_ref(), ty, opt_union_field_id)
             }
-            CTypeKind::Pointer(_) => {
-                let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id, None)
-            }
-            CTypeKind::Enum(_) => {
-                let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id, None)
-            }
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
-            ref kind if kind.is_integral_type() => {
-                let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id, None)
+            ref kind if kind.is_scalar() => {
+                if let Some(&first) = ids.first() {
+                    self.convert_expr(ctx.used(), first, None)
+                } else {
+                    self.implicit_default_expr(ctx.used(), ty.ctype)
+                }
             }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }

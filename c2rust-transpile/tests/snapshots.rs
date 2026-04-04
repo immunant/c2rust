@@ -402,6 +402,13 @@ fn test_rotate() {
 }
 
 #[test]
+fn test_scalar_init() {
+    transpile("scalar_init.c")
+        .expect_unresolved_import("f128")
+        .run();
+}
+
+#[test]
 fn test_static_assert() {
     transpile("static_assert.c").run();
 }
