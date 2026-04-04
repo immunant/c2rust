@@ -578,7 +578,7 @@ components = ["rustfmt"]
                 args += ["--target", self.target]
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
-        
+
         if retcode != 0:
             _, lib_file_path_short = os.path.split(lib_file.path)
 
@@ -591,7 +591,7 @@ components = ["rustfmt"]
                 if "... ok" in line:
                     self.print_status(Colors.OKGREEN, "OK", "{}".format(line))
                     sys.stdout.write('\n')
-        
+
         # Don't distinguish between expected and unexpected failures.
         # `#[should_panic]` is used for that instead of `// xfail` now.
         # Also, `cargo test -- --format json` is unstable, so it's easier to just parse very simply.
@@ -655,6 +655,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
     parser.add_argument(
+        '--transpiler', dest='transpiler',
+        default=None, help='Override the path to the c2rust transpiler binary'
+    )
+    parser.add_argument(
         '--only-files', dest='regex_files', type=regex,
         default='.*', help="Regular expression to filter which tests to run"
     )
@@ -681,6 +685,10 @@ def main() -> None:
 
     args = parser.parse_args()
     c.update_args(args)
+
+    if args.transpiler is not None:
+        c.TRANSPILER = args.transpiler
+
     test_directories = get_testdirectories(args.directory,
                                            args.regex_files,
                                            args.keep,
@@ -689,11 +697,13 @@ def main() -> None:
 
     logging.debug("args: %s", " ".join(sys.argv))
 
+
     # Set whether we are using nix.
     C2RUST_USE_NIX=args.use_nix
 
     # check that the binaries have been built first
     bins = [c.TRANSPILER]
+
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run cargo build --release first?"
