@@ -478,10 +478,9 @@ private:
             case BuiltinType::Bool: return TagBool;
             case BuiltinType::WChar_S: return TagSWChar;
             case BuiltinType::WChar_U: return TagUWChar;
-
-#if CLANG_VERSION_MAJOR >= 17
             case BuiltinType::Float128: return TagFloat128;
 
+#if CLANG_VERSION_MAJOR >= 17
             // From `clang/include/clang/Basic/AArch64ACLETypes.def`,
             // but we can't `#include` it in an external clang tool.
             case BuiltinType::SveInt8:

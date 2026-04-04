@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/f128.2024.rs
+expression: cat tests/snapshots/os-specific/f128.c.2021.linux.rs
 ---
 #![allow(
     dead_code,
@@ -11,8 +11,8 @@ expression: cat tests/snapshots/f128.2024.rs
     unused_mut
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
-use ::num_traits::Float;
-#[unsafe(no_mangle)]
+use ::num_traits::{Float, ToPrimitive};
+#[no_mangle]
 pub unsafe extern "C" fn long_double_test() {
     unsafe {
         let mut one: ::f128::f128 = ::f128::f128::new(1.0);
@@ -24,7 +24,11 @@ pub unsafe extern "C" fn long_double_test() {
         let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
         let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
         let mut is_inf: bool = if huge.is_infinite() {
-            if huge.is_sign_positive() { 1 } else { -1 }
+            if huge.is_sign_positive() {
+                1
+            } else {
+                -1
+            }
         } else {
             0
         } != 0;
@@ -33,7 +37,7 @@ pub unsafe extern "C" fn long_double_test() {
         }
     }
 }
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub unsafe extern "C" fn float128_test() {
     unsafe {
         let mut one: ::f128::f128 = ::f128::f128::new(1.0);
@@ -46,7 +50,11 @@ pub unsafe extern "C" fn float128_test() {
         let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
         let mut ld_from_float128: ::f128::f128 = one;
         let mut is_inf: bool = if huge.is_infinite() {
-            if huge.is_sign_positive() { 1 } else { -1 }
+            if huge.is_sign_positive() {
+                1
+            } else {
+                -1
+            }
         } else {
             0
         } != 0;
