@@ -25,4 +25,12 @@ pub unsafe extern "C" fn scalar_init() {
     let mut ld: ::f128::f128 = ::f128::f128::new(42.0);
     let mut e: E = A;
     let mut p: *mut ::core::ffi::c_int = &raw mut i;
+    let mut eb: bool = false;
+    let mut ec: ::core::ffi::c_char = 0;
+    let mut ei: ::core::ffi::c_int = 0;
+    let mut el: ::core::ffi::c_long = 0;
+    let mut ef: ::core::ffi::c_float = 0.;
+    let mut ed: ::core::ffi::c_double = 0.;
+    let mut eld: ::f128::f128 = ::f128::f128::ZERO;
+    let mut ep: *mut ::core::ffi::c_int = ::core::ptr::null_mut::<::core::ffi::c_int>();
 }
