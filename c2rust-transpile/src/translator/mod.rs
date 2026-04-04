@@ -3032,20 +3032,15 @@ impl<'c> Translation<'c> {
         lhs_type: CQualTypeId,
         write: bool,
     ) -> TranslationResult<Box<Expr>> {
-        let mutbl = if write {
-            Mutability::Mutable
-        } else {
-            Mutability::Immutable
-        };
         let addr_lhs = match *lhs {
             Expr::Unary(ExprUnary {
                 op: UnOp::Deref(_),
                 expr: e,
                 ..
             }) => {
-                if write == lhs_type.qualifiers.is_const {
+                if write && lhs_type.qualifiers.is_const {
                     let lhs_type = self.convert_type(lhs_type.ctype)?;
-                    let ty = mk().set_mutbl(mutbl).ptr_ty(lhs_type);
+                    let ty = mk().set_mutbl(Mutability::Mutable).ptr_ty(lhs_type);
 
                     mk().cast_expr(e, ty)
                 } else {
@@ -3053,6 +3048,12 @@ impl<'c> Translation<'c> {
                 }
             }
             _ => {
+                let mutbl = if write {
+                    Mutability::Mutable
+                } else {
+                    Mutability::Immutable
+                };
+
                 self.use_feature("raw_ref_op");
                 mk().set_mutbl(mutbl).raw_borrow_expr(lhs)
             }
