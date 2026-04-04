@@ -10,7 +10,6 @@ expression: cat tests/snapshots/os-specific/wide_strings.2021.macos.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #![feature(raw_ref_op)]
 extern "C" {
     fn wcslen(_: *const wchar_t) -> ::core::ffi::c_ulong;
@@ -30,13 +29,11 @@ pub static mut static_array_shorter: [wchar_t; 1] =
     unsafe { ::core::mem::transmute::<[u8; 4], [wchar_t; 1]>(*b"x\0\0\0") };
 #[no_mangle]
 pub unsafe extern "C" fn func() {
-    unsafe {
-        let mut array: [wchar_t; 2] =
-            ::core::mem::transmute::<[u8; 8], [wchar_t; 2]>(*b"x\0\0\0\0\0\0\0");
-        let mut array_longer: [wchar_t; 3] =
-            ::core::mem::transmute::<[u8; 12], [wchar_t; 3]>(*b"x\0\0\0\0\0\0\0\0\0\0\0");
-        let mut array_shorter: [wchar_t; 1] =
-            ::core::mem::transmute::<[u8; 4], [wchar_t; 1]>(*b"x\0\0\0");
-        let mut len: size_t = wcslen(&raw mut array as *mut wchar_t) as size_t;
-    }
+    let mut array: [wchar_t; 2] =
+        ::core::mem::transmute::<[u8; 8], [wchar_t; 2]>(*b"x\0\0\0\0\0\0\0");
+    let mut array_longer: [wchar_t; 3] =
+        ::core::mem::transmute::<[u8; 12], [wchar_t; 3]>(*b"x\0\0\0\0\0\0\0\0\0\0\0");
+    let mut array_shorter: [wchar_t; 1] =
+        ::core::mem::transmute::<[u8; 4], [wchar_t; 1]>(*b"x\0\0\0");
+    let mut len: size_t = wcslen(&raw mut array as *mut wchar_t) as size_t;
 }

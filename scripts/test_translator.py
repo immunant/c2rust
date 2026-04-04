@@ -441,6 +441,9 @@ class TestDirectory:
                 "stdsimd",
             ])
         rust_file_builder.add_pragma("register_tool", ["c2rust"])
+        if self.edition >= 2024:
+            # TODO We should emit `unsafe` blocks for this instead of silencing the warning.
+            rust_file_builder.add_pragma("allow", ["unsafe_op_in_unsafe_fn"])
 
         # Ensure that path to rustc's lib dir is in`LD_LIBRARY_PATH`
         ld_lib_path = get_rust_toolchain_libpath()

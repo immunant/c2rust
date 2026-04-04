@@ -107,6 +107,7 @@ pub struct TranspilerConfig {
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
     pub edition: RustEdition,
+    pub deny_unsafe_op_in_unsafe_fn: bool,
 
     /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
     pub postprocess: bool,

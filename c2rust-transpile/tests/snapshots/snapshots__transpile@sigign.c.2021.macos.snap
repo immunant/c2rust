@@ -10,14 +10,11 @@ expression: cat tests/snapshots/os-specific/sigign.2021.macos.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 #[no_mangle]
 pub unsafe extern "C" fn foo() {
-    unsafe {
-        let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
-            ::core::mem::transmute::<
-                ::libc::intptr_t,
-                Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>,
-            >(1 as ::core::ffi::c_int as ::libc::intptr_t);
-    }
+    let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
+        ::core::mem::transmute::<
+            ::libc::intptr_t,
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>,
+        >(1 as ::core::ffi::c_int as ::libc::intptr_t);
 }
