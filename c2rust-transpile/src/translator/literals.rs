@@ -257,8 +257,11 @@ impl<'c> Translation<'c> {
                 self.vector_list_initializer(ctx, ids, ctype, len)
             }
             ref kind if kind.is_scalar() => {
-                let id = ids.first().unwrap();
-                self.convert_expr(ctx.used(), *id, None)
+                if let Some(&first) = ids.first() {
+                    self.convert_expr(ctx.used(), first, None)
+                } else {
+                    self.implicit_default_expr(ctx.used(), ty.ctype)
+                }
             }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }
