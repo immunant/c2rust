@@ -18,6 +18,8 @@ void long_double_test(void) {
     }
 }
 
+#if defined(__x86_64__) || defined(__i386__)
+
 void float128_test(void) {
     __float128 one = 1.0q;
     __float128 zero;
@@ -35,3 +37,5 @@ void float128_test(void) {
         int dummy;
     }
 }
+
+#endif

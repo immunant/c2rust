@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/f128.2021.rs
+expression: cat tests/snapshots/os-specific/f128.c.2024.linux.rs
 ---
 #![allow(
     dead_code,
@@ -11,8 +11,8 @@ expression: cat tests/snapshots/f128.2021.rs
     unused_mut
 )]
 #![deny(unsafe_op_in_unsafe_fn)]
-use ::num_traits::Float;
-#[no_mangle]
+use ::num_traits::{Float, ToPrimitive};
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn long_double_test() {
     unsafe {
         let mut one: ::f128::f128 = ::f128::f128::new(1.0);
@@ -33,7 +33,7 @@ pub unsafe extern "C" fn long_double_test() {
         }
     }
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn float128_test() {
     unsafe {
         let mut one: ::f128::f128 = ::f128::f128::new(1.0);

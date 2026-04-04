@@ -437,6 +437,14 @@ fn test_call_only_once() {
 }
 
 #[test]
+fn test_f128() {
+    transpile("f128.c")
+        .expect_compile_error(true)
+        .os_specific(true)
+        .run();
+}
+
+#[test]
 fn test_macros_os_specific() {
     transpile("macros.c").os_specific(true).run();
 }
