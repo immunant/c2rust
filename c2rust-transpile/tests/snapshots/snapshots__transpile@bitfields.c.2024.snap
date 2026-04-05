@@ -14,7 +14,7 @@ expression: cat tests/snapshots/bitfields.2024.rs
 unsafe extern "C" {
     unsafe fn printf(_: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
 }
-#[derive(Copy, Clone, BitfieldStruct)]
+#[derive(Copy, Clone, ::c2rust_bitfields::BitfieldStruct)]
 #[repr(C)]
 pub struct PacketHeader {
     #[bitfield(padding)]
