@@ -7,6 +7,7 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 #![register_tool(c2rust)]
 
 pub mod baz_h {
+    pub use crate::foreign1::Foo;
 
     pub type FooPtr = *mut Foo;
 }

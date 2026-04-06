@@ -425,7 +425,6 @@ fn test_reorganize_definitions() {
 fn test_reorganize_foreign_types() {
     refactor("reorganize_definitions")
         .named("reorganize_foreign_types.rs")
-        .new_expect_compile_error(true)
         .test();
 }
 

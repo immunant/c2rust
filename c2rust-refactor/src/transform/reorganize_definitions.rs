@@ -1562,8 +1562,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             for existing_decl in existing_decls {
                 match &existing_decl.kind {
                     DeclKind::Item(existing_item) => match (&existing_item.kind, &item.kind) {
-                        // Replace a use with a real definition
+                        // Replace a use with a real definition, but a use of
+                        // an internal definition takes precedence over a foreign one.
                         (ItemKind::Use(..), _) => {
+                            if is_use_of_foreign(&item, &self.cx) {
+                                return ContainsDecl::Definition(existing_decl);
+                            }
                             return ContainsDecl::Use(existing_decl);
                         }
 
