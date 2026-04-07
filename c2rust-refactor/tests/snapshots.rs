@@ -422,6 +422,14 @@ fn test_reorganize_definitions() {
 }
 
 #[test]
+fn test_reorganize_foreign_types() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_types.rs")
+        .new_expect_compile_error(true)
+        .test();
+}
+
+#[test]
 fn test_sink_lets() {
     refactor("sink_lets").test();
 }

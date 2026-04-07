@@ -1,0 +1,21 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_foreign_types.rs --edition 2021
+---
+#![feature(extern_types)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+
+pub mod baz_h {
+
+    pub type FooPtr = *mut Foo;
+}
+pub mod foreign1 {
+    pub struct Foo(i32);
+}
+
+pub mod foreign2 {}
+
+fn main() {
+    println!("hello!");
+}
