@@ -9,7 +9,7 @@ requirements:
 transpile:
   autogen: true
   # blocked on https://github.com/immunant/c2rust/issues/266
-  tflags: --reorganize-definitions --disable-refactoring
+  tflags: --emit-refactor-annotations
   binary: nginx
 
 cargo.transpile:

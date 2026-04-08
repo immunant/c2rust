@@ -1,4 +1,4 @@
-//! translate_const_macros, reorganize_definitions
+//! translate_const_macros, refactor
 
 #include <stddef.h>
 #include "other_mod2.h"

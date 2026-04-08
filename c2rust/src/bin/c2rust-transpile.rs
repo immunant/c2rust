@@ -141,9 +141,14 @@ struct Args {
     #[clap(long)]
     reduce_type_annotations: bool,
 
-    /// Output file in such a way that the refactoring tool can deduplicate code
-    #[clap(short = 'r', long)]
-    reorganize_definitions: bool,
+    /// Run `c2rust-refactor` after transpiling (and before `--postprocess`).
+    #[clap(long)]
+    refactor: bool,
+
+    /// Emit annotations needed by the refactorer for certain transforms, such as `reorganize_definitions`.
+    /// Implied by `--refactor`.
+    #[clap(long)]
+    emit_refactor_annotations: bool,
 
     /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
     ///
@@ -291,7 +296,6 @@ fn main() {
         translate_const_macros: args.translate_const_macros.into(),
         translate_fn_macros: args.translate_fn_macros.into(),
         disable_rustfmt: args.disable_rustfmt,
-        disable_refactoring: args.disable_refactoring,
         preserve_unused_functions: args.preserve_unused_functions,
 
         use_c_loop_info: !args.ignore_c_loop_info,
@@ -299,7 +303,8 @@ fn main() {
         simplify_structures: !args.no_simplify_structures,
         overwrite_existing: args.overwrite_existing,
         reduce_type_annotations: args.reduce_type_annotations,
-        reorganize_definitions: args.reorganize_definitions,
+        refactor: args.refactor,
+        emit_refactor_annotations: args.emit_refactor_annotations || args.refactor,
         postprocess: args.remote_llm_postprocess,
         emit_modules: args.emit_modules,
         emit_build_files: args.emit_build_files,

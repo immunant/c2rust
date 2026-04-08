@@ -7,7 +7,7 @@ requirements:
 
 transpile:
   autogen: true
-  tflags: --reorganize-definitions --disable-refactoring
+  tflags: --emit-refactor-annotations
   binary: lua
 
 cargo.transpile:
