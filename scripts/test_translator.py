@@ -591,7 +591,7 @@ components = ["rustfmt"]
                 if "... ok" in line:
                     self.print_status(Colors.OKGREEN, "OK", "{}".format(line))
                     sys.stdout.write('\n')
-
+        
         # Don't distinguish between expected and unexpected failures.
         # `#[should_panic]` is used for that instead of `// xfail` now.
         # Also, `cargo test -- --format json` is unstable, so it's easier to just parse very simply.
