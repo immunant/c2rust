@@ -697,13 +697,11 @@ def main() -> None:
 
     logging.debug("args: %s", " ".join(sys.argv))
 
-
     # Set whether we are using nix.
     C2RUST_USE_NIX=args.use_nix
 
     # check that the binaries have been built first
     bins = [c.TRANSPILER]
-
     for b in bins:
         if not os.path.isfile(b):
             msg = b + " not found; run cargo build --release first?"
