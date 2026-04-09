@@ -578,7 +578,7 @@ components = ["rustfmt"]
                 args += ["--target", self.target]
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
-
+        
         if retcode != 0:
             _, lib_file_path_short = os.path.split(lib_file.path)
 
