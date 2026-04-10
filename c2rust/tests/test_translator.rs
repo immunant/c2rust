@@ -5,8 +5,10 @@ fn test_translator() {
     let transpile_path = env!("CARGO_BIN_EXE_c2rust-transpile");
 
     let mut cmd = Command::new("../scripts/test_translator.py");
-    cmd.args(["../tests/unit", "--transpiler"]);
-    cmd.arg(transpile_path);
+    cmd.args(["../tests/unit", "--transpiler", transpile_path]);
+    
+    // `test_translator.py` needs to be able to re-select the toolchain for different editions.
+    cmd.env_remove("RUSTUP_TOOLCHAIN");
 
     let status = cmd
         .status()
