@@ -1601,13 +1601,19 @@ impl<'c> Translation<'c> {
             "unused_mut",
             "unused_assignments",
         ];
-        if self.tcfg.edition >= Edition2024 && !self.tcfg.deny_unsafe_op_in_unsafe_fn {
+        let mut pragmas: PragmaVec = vec![];
+        if self.tcfg.deny_unsafe_op_in_unsafe_fn {
+            // Edition 2024 defaults to deny `unsafe_op_in_unsafe_fn` so the
+            // deny pragma only has an effect on older versions. Go for brevity.
+            if self.tcfg.edition < Edition2024 {
+                pragmas.push(("deny", vec!["unsafe_op_in_unsafe_fn"]));
+            }
+        } else if self.tcfg.edition >= Edition2024 {
+            // Allow generation of less verbose code (fn bodies not wrapped in unsafe).
             allow.push("unsafe_op_in_unsafe_fn");
         }
-        let mut pragmas: PragmaVec = vec![("allow", allow)];
-        if self.tcfg.deny_unsafe_op_in_unsafe_fn {
-            pragmas.push(("deny", vec!["unsafe_op_in_unsafe_fn"]));
-        }
+        pragmas.push(("allow", allow));
+
         if self.tcfg.cross_checks {
             features.append(&mut vec!["plugin"]);
             pragmas.push(("cross_check", vec!["yes"]));

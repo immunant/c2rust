@@ -200,7 +200,7 @@ struct Args {
     #[clap(long, value_enum, default_value_t)]
     cross_check_backend: CrossCheckBackend,
 
-    /// Emit `#[deny(unsafe_op_in_unsafe_fn)]` instead of `#[allow(...)]`                                                                                                                                          
+    /// Deny `unsafe_op_in_unsafe_fn` and wrap unsafe fn bodies in unsafe blocks
     #[clap(long)]
     deny_unsafe_op_in_unsafe_fn: bool,
 }
