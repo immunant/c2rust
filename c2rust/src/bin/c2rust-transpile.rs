@@ -199,6 +199,10 @@ struct Args {
 
     #[clap(long, value_enum, default_value_t)]
     cross_check_backend: CrossCheckBackend,
+
+    /// Deny `unsafe_op_in_unsafe_fn` and wrap unsafe fn bodies in unsafe blocks
+    #[clap(long)]
+    deny_unsafe_op_in_unsafe_fn: bool,
 }
 
 // TODO Eventually move this code into `c2rust-transpile`
@@ -321,6 +325,7 @@ fn main() {
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
         edition: args.edition,
+        deny_unsafe_op_in_unsafe_fn: args.deny_unsafe_op_in_unsafe_fn,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {

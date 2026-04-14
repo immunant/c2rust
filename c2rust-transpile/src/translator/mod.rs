@@ -1592,20 +1592,28 @@ impl<'c> Translation<'c> {
         let mut features = vec![];
         features.extend(self.features.borrow().iter());
         features.extend(self.type_converter.borrow().features_used());
-        let mut pragmas: PragmaVec = vec![
-            (
-                "allow",
-                vec![
-                    "non_upper_case_globals",
-                    "non_camel_case_types",
-                    "non_snake_case",
-                    "dead_code",
-                    "unused_mut",
-                    "unused_assignments",
-                ],
-            ),
-            ("deny", vec!["unsafe_op_in_unsafe_fn"]),
+
+        let mut allow = vec![
+            "non_upper_case_globals",
+            "non_camel_case_types",
+            "non_snake_case",
+            "dead_code",
+            "unused_mut",
+            "unused_assignments",
         ];
+        let mut pragmas: PragmaVec = vec![];
+        if self.tcfg.deny_unsafe_op_in_unsafe_fn {
+            // Edition 2024 defaults to deny `unsafe_op_in_unsafe_fn` so the
+            // deny pragma only has an effect on older versions. Go for brevity.
+            if self.tcfg.edition < Edition2024 {
+                pragmas.push(("deny", vec!["unsafe_op_in_unsafe_fn"]));
+            }
+        } else if self.tcfg.edition >= Edition2024 {
+            // Allow generation of less verbose code (fn bodies not wrapped in unsafe).
+            allow.push("unsafe_op_in_unsafe_fn");
+        }
+        pragmas.push(("allow", allow));
+
         if self.tcfg.cross_checks {
             features.append(&mut vec!["plugin"]);
             pragmas.push(("cross_check", vec!["yes"]));
@@ -1641,6 +1649,14 @@ impl<'c> Translation<'c> {
             macro_msg,
             MacroDelimiter::Paren(Default::default()),
         ))
+    }
+
+    fn mk(&self) -> Builder {
+        let mut b = mk();
+        if self.tcfg.deny_unsafe_op_in_unsafe_fn {
+            b = b.deny_unsafe_op_in_unsafe_fn();
+        }
+        b
     }
 
     fn mk_cross_check(&self, mk: Builder, args: Vec<&str>) -> Builder {
@@ -1847,7 +1863,7 @@ impl<'c> Translation<'c> {
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
         let fn_bare_decl = (vec![], None, fn_ty);
         let fn_block = mk().block(sectioned_static_initializers);
-        let fn_attributes = self.mk_cross_check(mk(), vec!["none"]);
+        let fn_attributes = self.mk_cross_check(self.mk(), vec!["none"]);
         let fn_item = fn_attributes
             .unsafe_()
             .extern_("C")
@@ -2433,6 +2449,12 @@ impl<'c> Translation<'c> {
                 } else {
                     mk().extern_("C")
                 };
+
+                // In Edition2024, `unsafe_op_in_unsafe_fn` is deny-by-default so we emit an allow pragma
+                // to silence warnings. Was this overridden by the `--deny_unsafe_op_in_unsafe_fn` flag?
+                if self.tcfg.deny_unsafe_op_in_unsafe_fn {
+                    mk_ = mk_.deny_unsafe_op_in_unsafe_fn();
+                }
 
                 for attr in attrs {
                     mk_ = match attr {

@@ -10,13 +10,10 @@ expression: cat tests/snapshots/os-specific/typedefidx.2021.macos.rs
     unused_assignments,
     unused_mut
 )]
-#![deny(unsafe_op_in_unsafe_fn)]
 pub type __darwin_size_t = usize;
 pub type size_t = __darwin_size_t;
 pub type uint64_t = u64;
 #[no_mangle]
 pub unsafe extern "C" fn index_typedef(mut arr: *mut uint64_t) {
-    unsafe {
-        let mut foo3: size_t = *arr.offset(25 as ::core::ffi::c_int as isize) as size_t;
-    }
+    let mut foo3: size_t = *arr.offset(25 as ::core::ffi::c_int as isize) as size_t;
 }
