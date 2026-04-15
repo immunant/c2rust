@@ -547,9 +547,8 @@ impl<'c> Translation<'c> {
                 )))
             })
         } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            let expr = expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
             val.result_map(|val| {
-                self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, Some(expr), val)
+                self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
             })
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
