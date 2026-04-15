@@ -1171,19 +1171,18 @@ impl TypedAstContext {
             }
         }
 
-        // Unset c_main if we are not retaining its declaration
-        if let Some(main_id) = self.c_main {
-            if !wanted.contains(&main_id) {
-                self.c_main = None;
-            }
-        }
-
         // Prune any declaration that isn't considered live
         self.c_decls
             .retain(|&decl_id, _decl| wanted.contains(&decl_id));
 
-        // Prune top declarations that are not considered live
-        self.c_decls_top.retain(|x| wanted.contains(x));
+        // Remove references to removed decls that are held elsewhere.
+        self.c_decls_top.retain(|x| self.c_decls.contains_key(x));
+
+        if let Some(main_id) = self.c_main {
+            if !self.c_decls.contains_key(&main_id) {
+                self.c_main = None;
+            }
+        }
     }
 
     /// Bubble types of unary and binary operators up from their args into the expression type.
