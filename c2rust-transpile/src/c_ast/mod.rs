@@ -1177,6 +1177,8 @@ impl TypedAstContext {
 
         // Remove references to removed decls that are held elsewhere.
         self.c_decls_top.retain(|x| self.c_decls.contains_key(x));
+        self.prenamed_decls
+            .retain(|x, _| self.c_decls.contains_key(x));
 
         if let Some(main_id) = self.c_main {
             if !self.c_decls.contains_key(&main_id) {

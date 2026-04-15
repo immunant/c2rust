@@ -708,6 +708,10 @@ pub fn translate(
             None
         };
 
+        // Identify typedefs that name unnamed types and collapse the two declarations
+        // into a single name and declaration, eliminating the typedef altogether.
+        t.ast_context.set_prenamed_decls();
+
         // Headers often pull in declarations that are unused;
         // we simplify the translator output by omitting those.
         t.ast_context
@@ -736,10 +740,6 @@ pub fn translate(
         if let Some(ref prefix) = t.tcfg.prefix_function_names {
             prefix_names(&mut t, prefix);
         }
-
-        // Identify typedefs that name unnamed types and collapse the two declarations
-        // into a single name and declaration, eliminating the typedef altogether.
-        t.ast_context.set_prenamed_decls();
 
         for (&decl_id, &subdecl_id) in &t.ast_context.prenamed_decls {
             if let CDeclKind::Typedef { ref name, .. } = t.ast_context[decl_id].kind {
