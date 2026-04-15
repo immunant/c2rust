@@ -1803,17 +1803,17 @@ impl CastKind {
 
             (CTypeKind::Function(..), CTypeKind::Pointer(..)) => CastKind::FunctionToPointerDecay,
 
-            (_, CTypeKind::Pointer(..)) if source_ty_kind.is_integral_type() => {
+            (_, CTypeKind::Pointer(..)) if source_ty_kind.is_enum_or_integral_type() => {
                 CastKind::IntegralToPointer
             }
 
             (CTypeKind::Pointer(..), CTypeKind::Bool) => CastKind::PointerToBoolean,
 
-            (CTypeKind::Pointer(..), _) if target_ty_kind.is_integral_type() => {
+            (CTypeKind::Pointer(..), _) if target_ty_kind.is_enum_or_integral_type() => {
                 CastKind::PointerToIntegral
             }
 
-            (_, CTypeKind::Bool) if source_ty_kind.is_integral_type() => {
+            (_, CTypeKind::Bool) if source_ty_kind.is_enum_or_integral_type() => {
                 CastKind::IntegralToBoolean
             }
 
@@ -1821,11 +1821,17 @@ impl CastKind {
                 CastKind::BooleanToSignedIntegral
             }
 
-            (_, _) if source_ty_kind.is_integral_type() && target_ty_kind.is_integral_type() => {
+            (_, _)
+                if source_ty_kind.is_enum_or_integral_type()
+                    && target_ty_kind.is_enum_or_integral_type() =>
+            {
                 CastKind::IntegralCast
             }
 
-            (_, _) if source_ty_kind.is_integral_type() && target_ty_kind.is_floating_type() => {
+            (_, _)
+                if source_ty_kind.is_enum_or_integral_type()
+                    && target_ty_kind.is_floating_type() =>
+            {
                 CastKind::IntegralToFloating
             }
 
@@ -1833,7 +1839,10 @@ impl CastKind {
                 CastKind::FloatingToBoolean
             }
 
-            (_, _) if source_ty_kind.is_floating_type() && target_ty_kind.is_integral_type() => {
+            (_, _)
+                if source_ty_kind.is_floating_type()
+                    && target_ty_kind.is_enum_or_integral_type() =>
+            {
                 CastKind::FloatingToIntegral
             }
 
@@ -2682,6 +2691,10 @@ impl CTypeKind {
 
     pub fn is_enum(&self) -> bool {
         matches!(*self, Self::Enum { .. })
+    }
+
+    pub fn is_enum_or_integral_type(&self) -> bool {
+        self.is_integral_type() || self.is_enum()
     }
 
     pub fn is_integral_type(&self) -> bool {
