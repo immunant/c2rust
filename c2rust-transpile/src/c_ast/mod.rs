@@ -1014,6 +1014,54 @@ impl TypedAstContext {
         }
     }
 
+    /// Identifies typedefs that name unnamed types.
+    /// Later, the two declarations can be collapsed into a single name and declaration,
+    /// eliminating the typedef altogether.
+    pub fn set_prenamed_decls(&mut self) {
+        let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
+
+        for (&decl_id, decl) in self.iter_decls() {
+            if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
+                if let Some(subdecl_id) = self.resolve_type(typ.ctype).kind.as_underlying_decl() {
+                    use CDeclKind::*;
+                    let is_unnamed = match self[subdecl_id].kind {
+                        Struct { name: None, .. }
+                        | Union { name: None, .. }
+                        | Enum { name: None, .. } => true,
+
+                        // Detect case where typedef and struct share the same name.
+                        // In this case the purpose of the typedef was simply to eliminate
+                        // the need for the 'struct' tag when referring to the type name.
+                        Struct {
+                            name: Some(ref target_name),
+                            ..
+                        }
+                        | Union {
+                            name: Some(ref target_name),
+                            ..
+                        }
+                        | Enum {
+                            name: Some(ref target_name),
+                            ..
+                        } => name == target_name,
+
+                        _ => false,
+                    };
+
+                    if is_unnamed
+                        && !prenamed_decls
+                            .values()
+                            .any(|decl_id| *decl_id == subdecl_id)
+                    {
+                        prenamed_decls.insert(decl_id, subdecl_id);
+                    }
+                }
+            }
+        }
+
+        self.prenamed_decls = prenamed_decls;
+    }
+
     pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
         // Starting from a set of root declarations, walk each one to find declarations it
         // depends on. Then walk each of those, recursively.
