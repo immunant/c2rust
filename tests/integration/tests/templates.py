@@ -5,7 +5,7 @@ import stat
 from collections.abc import Mapping
 from typing import Any, Generator
 
-from tests.util import *
+from tests.util import Config
 from jinja2 import Template
 
 TRANSPILE_SH: str = r"""#!/usr/bin/env bash
@@ -88,7 +88,7 @@ LOG_FILE="$SCRIPT_DIR/$(basename "$0")".log
 
 cd "${SCRIPT_DIR}"
 
-c2rust-postprocess --update-rust {{args}} repo/lib.rs > "$LOG_FILE"
+c2rust-postprocess --update-rust {{args}} repo/lib.rs 2>&1 | tee "$LOG_FILE"
 """
 
 CARGO_SH: str = r"""#!/usr/bin/env bash
@@ -167,9 +167,7 @@ def autogen_refactor(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, N
     # Get list of transformations from config
     transforms = refactor.get("transforms")
     if transforms and isinstance(transforms, list):
-        lines = [
-            t.strip() for t in transforms if isinstance(t, str) and t.strip()
-        ]
+        lines = [t.strip() for t in transforms if isinstance(t, str) and t.strip()]
         if lines:
             params["transform_lines"] = "\n".join(lines)
     elif transforms and isinstance(transforms, str):
@@ -184,7 +182,9 @@ def autogen_refactor(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, N
         yield Path(out_path)
 
 
-def autogen_postprocess(conf: str, yaml: dict[str, Any]) -> Generator[Path, None, None]:
+def autogen_postprocess(
+    conf: str, yaml: dict[str, Any], verbose: bool
+) -> Generator[Path, None, None]:
     """
     Yield generated paths.
     """
@@ -204,7 +204,12 @@ def autogen_postprocess(conf: str, yaml: dict[str, Any]) -> Generator[Path, None
     exclude_file = conf.with_name("postprocess-exclude.yml")
     if exclude_file.exists():
         # args are relative to script dir
-        params["args"] = shlex.join(["--exclude-file", str(exclude_file.relative_to(conf.parent))])
+        params["args"] = shlex.join(
+            ["--exclude-file", str(exclude_file.relative_to(conf.parent))]
+        )
+
+    if verbose:
+        params["args"] = f"--log-level DEBUG {params['args']}".rstrip()
 
     out_path = conf.with_name("postprocess.gen.sh")
     render_script(POSTPROCESS_SH, out_path, params)
@@ -257,5 +262,5 @@ def autogen(conf: Config) -> Generator[Path, None, None]:
     for cf, yaml in conf.project_conf.items():
         yield from autogen_transpile(cf, yaml)
         yield from autogen_refactor(cf, yaml)
-        yield from autogen_postprocess(cf, yaml)
+        yield from autogen_postprocess(cf, yaml, conf.verbose)
         yield from autogen_cargo(cf, yaml)
