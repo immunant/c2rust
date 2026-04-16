@@ -295,11 +295,13 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let param_translation = self.convert_exprs(ctx, ids, None)?;
         param_translation.and_then(|mut params| {
+            let mut is_unsafe = false;
+
             // When used in a const context, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
             let call = if ctx.is_const {
+                is_unsafe = true;
                 let tuple = mk().tuple_expr(params);
-
                 transmute_expr(mk().infer_ty(), mk().infer_ty(), tuple)
             } else {
                 let fn_call_name = match (&self.ast_context[ctype].kind, len) {
@@ -332,14 +334,17 @@ impl<'c> Translation<'c> {
                 mk().call_expr(mk().ident_expr(fn_call_name), params)
             };
 
-            if ctx.is_used() {
-                Ok(WithStmts::new_val(call))
+            let mut val = if ctx.is_used() {
+                WithStmts::new_val(call)
             } else {
-                Ok(WithStmts::new(
+                WithStmts::new(
                     vec![mk().expr_stmt(call)],
                     self.panic_or_err("No value for unused shuffle vector return"),
-                ))
-            }
+                )
+            };
+            val.merge_unsafe(is_unsafe);
+
+            Ok(val)
         })
     }
 
