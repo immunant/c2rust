@@ -28,6 +28,11 @@ pub static mut static_array_longer: [wchar_t; 3] =
 pub static mut static_array_shorter: [wchar_t; 1] =
     unsafe { ::core::mem::transmute::<[u8; 4], [wchar_t; 1]>(*b"x\0\0\0") };
 #[unsafe(no_mangle)]
+pub static mut static_ptr: *const wchar_t = unsafe {
+    const { ::core::mem::transmute::<[u8; 8], [::core::ffi::c_int; 2]>(*b"x\0\0\0\0\0\0\0") }
+        .as_ptr() as *const wchar_t
+};
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn func() {
     let mut array: [wchar_t; 2] =
         ::core::mem::transmute::<[u8; 8], [wchar_t; 2]>(*b"x\0\0\0\0\0\0\0");
@@ -35,5 +40,8 @@ pub unsafe extern "C" fn func() {
         ::core::mem::transmute::<[u8; 12], [wchar_t; 3]>(*b"x\0\0\0\0\0\0\0\0\0\0\0");
     let mut array_shorter: [wchar_t; 1] =
         ::core::mem::transmute::<[u8; 4], [wchar_t; 1]>(*b"x\0\0\0");
+    let mut ptr: *const wchar_t =
+        const { ::core::mem::transmute::<[u8; 8], [::core::ffi::c_int; 2]>(*b"x\0\0\0\0\0\0\0") }
+            .as_ptr() as *const wchar_t;
     let mut len: size_t = wcslen(&raw mut array as *mut wchar_t) as size_t;
 }
