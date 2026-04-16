@@ -1631,53 +1631,6 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn static_initializer_is_unsafe(&self, expr_id: Option<CExprId>, qty: CQualTypeId) -> bool {
-        // SIMD types are always unsafe in statics
-        match self.ast_context.resolve_type(qty.ctype).kind {
-            CTypeKind::Vector(..) => return true,
-            CTypeKind::ConstantArray(ctype, ..) => {
-                let kind = &self.ast_context.resolve_type(ctype).kind;
-
-                if let CTypeKind::Vector(..) = kind {
-                    return true;
-                }
-            }
-            _ => {}
-        }
-
-        // Get the initializer if there is one
-        let expr_id = match expr_id {
-            Some(expr_id) => expr_id,
-            None => return false,
-        };
-
-        // Look for code which can only be translated unsafely
-        let iter = DFExpr::new(&self.ast_context, expr_id.into());
-
-        for i in iter {
-            let expr_id = match i {
-                SomeId::Expr(expr_id) => expr_id,
-                _ => unreachable!("Found static initializer type other than expr"),
-            };
-
-            use CExprKind::*;
-            match self.ast_context[expr_id].kind {
-                ImplicitCast(_, _, cast_kind, _, _) | ExplicitCast(_, _, cast_kind, _, _) => {
-                    use CastKind::*;
-                    match cast_kind {
-                        IntegralToPointer | FunctionToPointerDecay | PointerToIntegral => {
-                            return true;
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        false
-    }
-
     /// The purpose of this function is to decide on whether or not a static initializer's
     /// translation is able to be compiled as a valid rust static initializer
     fn static_initializer_is_uncompilable(
@@ -2126,12 +2079,6 @@ impl<'c> Translation<'c> {
                     let mut items = init.stmts_to_items().ok_or_else(|| {
                         format_err!("Expected only item statements in static initializer")
                     })?;
-
-                    // TODO: Replace this by relying entirely on
-                    // WithStmts.is_unsafe() of the translated variable
-                    if self.static_initializer_is_unsafe(initializer, typ) {
-                        init.set_unsafe()
-                    }
                     let init = init.wrap_unsafe().to_pure_expr().unwrap();
                     let item = static_def.span(span).static_item(new_name, ty, init);
                     items.push(item);
