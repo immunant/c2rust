@@ -1,0 +1,94 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/if_else.rs
+input_file: c2rust-transpile/tests/snapshots/if_else.c
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#[no_mangle]
+pub unsafe extern "C" fn simple_if_else(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    if x != 0 {
+        x += 1 as ::core::ffi::c_int;
+    } else {
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn if_no_else(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    if x > 0 as ::core::ffi::c_int {
+        x += 1 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn multiple_ifs(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    if x != 0 {
+        x += 1 as ::core::ffi::c_int;
+    }
+    if x != 0 {
+        x += 2 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn nested_if_else(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    if x > 0 as ::core::ffi::c_int {
+        if x < 10 as ::core::ffi::c_int {
+            x += 1 as ::core::ffi::c_int;
+        } else {
+            x += 2 as ::core::ffi::c_int;
+        }
+    } else {
+        x -= 1 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn nested_if_no_else(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    if x > 0 as ::core::ffi::c_int {
+        if x < 10 as ::core::ffi::c_int {
+            x += 1 as ::core::ffi::c_int;
+        }
+        x += 2 as ::core::ffi::c_int;
+    } else {
+        x -= 1 as ::core::ffi::c_int;
+    }
+    return x;
+}
+#[no_mangle]
+pub unsafe extern "C" fn early_returns(mut a: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    if a == 2 as ::core::ffi::c_int {
+        return 2 as ::core::ffi::c_int;
+    }
+    if a == 3 as ::core::ffi::c_int {
+        a += 1 as ::core::ffi::c_int;
+    }
+    if a == 4 as ::core::ffi::c_int {
+        return 1 as ::core::ffi::c_int;
+    }
+    return 0 as ::core::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn nested_early_returns(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    if x != 0 {
+        if x != 0 {
+            x += 1 as ::core::ffi::c_int;
+            return x;
+        }
+        x += 2 as ::core::ffi::c_int;
+    } else {
+        if x != 0 {
+            x += 3 as ::core::ffi::c_int;
+            return x;
+        }
+        x += 4 as ::core::ffi::c_int;
+    }
+    return x;
+}
