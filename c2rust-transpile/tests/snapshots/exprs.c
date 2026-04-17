@@ -34,6 +34,16 @@ void unary_with_side_effect(){
     arr[side_effect()]--;
 }
 
+void unsigned_compound_desugaring(void) {
+    enum E { EA };
+
+    int i = 0;
+    unsigned int u = 0;
+    enum E e = EA;
+    e += u;
+    i += u;
+}
+
 void compound_literal(){
     /// https://github.com/immunant/c2rust/issues/1234
     int i = (enum {A, B, C}){1};

@@ -1,12 +1,10 @@
-//! feature_raw_ref_op
-
 use crate::arrays::rust_entry;
 use crate::incomplete_arrays::{rust_check_some_ints, rust_entry2, rust_test_sized_array};
 use crate::variable_arrays::{rust_alloca_arrays, rust_variable_arrays};
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
 
     fn entry2(_: c_uint, _: *mut c_int);
@@ -20,9 +18,10 @@ extern "C" {
     fn check_some_ints() -> bool;
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static SOME_INTS: [u32; 4] = [2, 0, 1, 8];
-#[no_mangle]
+
+#[unsafe(no_mangle)]
 pub static rust_SOME_INTS: [u32; 4] = [2, 0, 1, 8];
 
 const BUFFER_SIZE: usize = 49;

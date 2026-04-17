@@ -1,9 +1,14 @@
 #![deny(missing_docs)]
 //! Implementations of clang's builtin functions
 
-use crate::format_translation_err;
-
 use super::*;
+
+use crate::format_translation_err;
+use crate::translator::atomics::CAtomicBinOp;
+use c2rust_rust_tools::RustEdition::Edition2024;
+use std::sync::atomic::Ordering::Acquire;
+use std::sync::atomic::Ordering::Release;
+use std::sync::atomic::Ordering::SeqCst;
 
 /// The argument type for a libc builtin function
 #[derive(Copy, Clone, PartialEq)]
@@ -71,15 +76,29 @@ impl<'c> Translation<'c> {
             "__builtin_huge_valf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
             )),
-            "__builtin_huge_val" | "__builtin_huge_vall" => Ok(WithStmts::new_val(
+            "__builtin_huge_val" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
             )),
+            "__builtin_huge_vall" => {
+                self.use_crate(ExternCrate::F128);
+
+                Ok(WithStmts::new_val(
+                    mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
+                ))
+            }
             "__builtin_inff" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
             )),
-            "__builtin_inf" | "__builtin_infl" => Ok(WithStmts::new_val(
+            "__builtin_inf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
             )),
+            "__builtin_infl" => {
+                self.use_crate(ExternCrate::F128);
+
+                Ok(WithStmts::new_val(
+                    mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
+                ))
+            }
             "__builtin_nanf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f32", "NAN"]),
             )),
@@ -94,15 +113,9 @@ impl<'c> Translation<'c> {
                 ))
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
-                // Long doubles require the Float trait from num_traits to call this method
-                if builtin_name == "__builtin_signbitl" {
-                    self.with_cur_file_item_store(|item_store| {
-                        item_store.add_use(true, vec!["num_traits".into()], "Float");
-                    });
-                }
+                self.import_num_traits(args[0])?;
 
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
@@ -145,10 +158,14 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![])))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
+                self.import_num_traits(args[0])?;
+
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![])))
             }
             "__builtin_isfinite" | "__builtin_isnan" => {
+                self.import_num_traits(args[0])?;
+
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
 
                 let seg = match builtin_name {
@@ -162,15 +179,14 @@ impl<'c> Translation<'c> {
                 }))
             }
             "__builtin_isinf_sign" => {
+                self.import_num_traits(args[0])?;
+
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 Ok(val.map(|x| {
                     let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
                     let one = mk().lit_expr(mk().int_lit(1, ""));
-                    let minus_one = mk().unary_expr(
-                        UnOp::Neg(Default::default()),
-                        mk().lit_expr(mk().int_lit(1, "")),
-                    );
+                    let minus_one = neg_expr(mk().lit_expr(mk().int_lit(1, "")));
                     let one_block = mk().block(vec![mk().expr_stmt(one)]);
                     let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
@@ -299,10 +315,7 @@ impl<'c> Translation<'c> {
                             type_and_2,
                             mk().lit_expr(mk().int_lit(0, "")),
                         );
-                        let minus_one = mk().unary_expr(
-                            UnOp::Neg(Default::default()),
-                            mk().lit_expr(mk().int_lit(1, "isize")),
-                        );
+                        let minus_one = neg_expr(mk().lit_expr(mk().int_lit(1, "isize")));
                         let if_expr = mk().ifte_expr(
                             if_cond,
                             mk().block(vec![mk().expr_stmt(minus_one)]),
@@ -358,7 +371,7 @@ impl<'c> Translation<'c> {
             "__builtin_va_end" => {
                 if ctx.is_unused() && args.len() == 1 {
                     if let Some(_va_id) = self.match_vaend(args[0]) {
-                        // nothing to do since `VaListImpl`s get `Drop`'ed.
+                        // nothing to do since the translated Rust `va_list` values get `Drop`'ed.
                         return Ok(WithStmts::new_val(self.panic("va_end stub")));
                     }
                 }
@@ -414,13 +427,16 @@ impl<'c> Translation<'c> {
 
             "__builtin_arm_yield" => {
                 let fn_name = "__yield";
-                self.use_feature("stdsimd");
-                // TODO See #1298.
-                // In Rust 1.7, `#![feature(stdsimd)]` was removed and split into (at least):
-                // `#![feature("stdarch_arm_hints")]` and
-                // `#![cfg_attr(target_arch = "arm", feature(stdarch_arm_neon_intrinsics))]`.
-                // self.use_feature("stdarch_arm_hints");
-                // self.use_feature("stdarch_arm_neon_intrinsics"); // TODO need to add `cfg_attr` support.
+                if self.tcfg.edition < Edition2024 {
+                    self.use_feature("stdsimd");
+                } else {
+                    // Edition 2024 was released in Rust 1.85.
+                    // In Rust 1.78, `#![feature(stdsimd)]` was removed and split into (at least):
+                    // `#![feature(stdarch_arm_hints)]` and
+                    // `#![cfg_attr(target_arch = "arm", feature(stdarch_arm_neon_intrinsics))]`.
+                    self.use_feature("stdarch_arm_hints");
+                    // self.use_feature("stdarch_arm_neon_intrinsics"); // TODO need to add `cfg_attr` support.
+                }
                 self.import_arch_function("arm", fn_name);
                 self.import_arch_function("aarch64", fn_name);
                 let ident = mk().ident_expr(fn_name);
@@ -538,7 +554,9 @@ impl<'c> Translation<'c> {
                             let returns_val = builtin_name.starts_with("__sync_val");
                             self.convert_atomic_cxchg(
                                 ctx,
-                                "atomic_cxchg_seqcst_seqcst",
+                                false,
+                                SeqCst,
+                                SeqCst,
                                 arg0,
                                 arg1,
                                 arg2,
@@ -548,96 +566,9 @@ impl<'c> Translation<'c> {
                     })
                 })
             }
-            "__sync_fetch_and_add_1"
-            | "__sync_fetch_and_add_2"
-            | "__sync_fetch_and_add_4"
-            | "__sync_fetch_and_add_8"
-            | "__sync_fetch_and_add_16"
-            | "__sync_fetch_and_sub_1"
-            | "__sync_fetch_and_sub_2"
-            | "__sync_fetch_and_sub_4"
-            | "__sync_fetch_and_sub_8"
-            | "__sync_fetch_and_sub_16"
-            | "__sync_fetch_and_or_1"
-            | "__sync_fetch_and_or_2"
-            | "__sync_fetch_and_or_4"
-            | "__sync_fetch_and_or_8"
-            | "__sync_fetch_and_or_16"
-            | "__sync_fetch_and_and_1"
-            | "__sync_fetch_and_and_2"
-            | "__sync_fetch_and_and_4"
-            | "__sync_fetch_and_and_8"
-            | "__sync_fetch_and_and_16"
-            | "__sync_fetch_and_xor_1"
-            | "__sync_fetch_and_xor_2"
-            | "__sync_fetch_and_xor_4"
-            | "__sync_fetch_and_xor_8"
-            | "__sync_fetch_and_xor_16"
-            | "__sync_fetch_and_nand_1"
-            | "__sync_fetch_and_nand_2"
-            | "__sync_fetch_and_nand_4"
-            | "__sync_fetch_and_nand_8"
-            | "__sync_fetch_and_nand_16"
-            | "__sync_add_and_fetch_1"
-            | "__sync_add_and_fetch_2"
-            | "__sync_add_and_fetch_4"
-            | "__sync_add_and_fetch_8"
-            | "__sync_add_and_fetch_16"
-            | "__sync_sub_and_fetch_1"
-            | "__sync_sub_and_fetch_2"
-            | "__sync_sub_and_fetch_4"
-            | "__sync_sub_and_fetch_8"
-            | "__sync_sub_and_fetch_16"
-            | "__sync_or_and_fetch_1"
-            | "__sync_or_and_fetch_2"
-            | "__sync_or_and_fetch_4"
-            | "__sync_or_and_fetch_8"
-            | "__sync_or_and_fetch_16"
-            | "__sync_and_and_fetch_1"
-            | "__sync_and_and_fetch_2"
-            | "__sync_and_and_fetch_4"
-            | "__sync_and_and_fetch_8"
-            | "__sync_and_and_fetch_16"
-            | "__sync_xor_and_fetch_1"
-            | "__sync_xor_and_fetch_2"
-            | "__sync_xor_and_fetch_4"
-            | "__sync_xor_and_fetch_8"
-            | "__sync_xor_and_fetch_16"
-            | "__sync_nand_and_fetch_1"
-            | "__sync_nand_and_fetch_2"
-            | "__sync_nand_and_fetch_4"
-            | "__sync_nand_and_fetch_8"
-            | "__sync_nand_and_fetch_16" => {
-                let func_name = if builtin_name.contains("_add_") {
-                    "atomic_xadd_seqcst"
-                } else if builtin_name.contains("_sub_") {
-                    "atomic_xsub_seqcst"
-                } else if builtin_name.contains("_or_") {
-                    "atomic_or_seqcst"
-                } else if builtin_name.contains("_xor_") {
-                    "atomic_xor_seqcst"
-                } else if builtin_name.contains("_nand_") {
-                    "atomic_nand_seqcst"
-                } else {
-                    // We can't explicitly check for "_and_" since they all contain it
-                    "atomic_and_seqcst"
-                };
-
-                let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-                let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
-                let fetch_first = builtin_name.starts_with("__sync_fetch");
-                arg0.and_then(|arg0| {
-                    arg1.and_then(|arg1| {
-                        self.convert_atomic_op(ctx, func_name, arg0, arg1, fetch_first)
-                    })
-                })
-            }
 
             "__sync_synchronize" => {
-                self.use_feature("core_intrinsics");
-
-                let atomic_func =
-                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_fence_seqcst"]);
+                let atomic_func = self.atomic_intrinsic_expr("fence", &[SeqCst]);
                 let call_expr = mk().call_expr(atomic_func, vec![]);
                 self.convert_side_effects_expr(
                     ctx,
@@ -651,11 +582,8 @@ impl<'c> Translation<'c> {
             | "__sync_lock_test_and_set_4"
             | "__sync_lock_test_and_set_8"
             | "__sync_lock_test_and_set_16" => {
-                self.use_feature("core_intrinsics");
-
                 // Emit `atomic_xchg_acquire(arg0, arg1)`
-                let atomic_func =
-                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_xchg_acquire"]);
+                let atomic_func = self.atomic_intrinsic_expr("xchg", &[Acquire]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 arg0.and_then(|arg0| {
@@ -675,11 +603,8 @@ impl<'c> Translation<'c> {
             | "__sync_lock_release_4"
             | "__sync_lock_release_8"
             | "__sync_lock_release_16" => {
-                self.use_feature("core_intrinsics");
-
                 // Emit `atomic_store_release(arg0, 0)`
-                let atomic_func =
-                    mk().abs_path_expr(vec!["core", "intrinsics", "atomic_store_release"]);
+                let atomic_func = self.atomic_intrinsic_expr("store", &[Release]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
@@ -715,12 +640,48 @@ impl<'c> Translation<'c> {
             | "__builtin_rotateright32"
             | "__builtin_rotateright64" => self.convert_builtin_rotate(ctx, args, "rotate_right"),
 
-            _ => Err(format_translation_err!(
-                self.ast_context.display_loc(src_loc),
-                "Unimplemented builtin {}",
-                builtin_name
-            )),
+            _ => {
+                if let Some(atomic_op) = CAtomicBinOp::from_sync_builtin_fn(builtin_name) {
+                    let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
+                    let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
+                    let arg1_type_id = self.ast_context[args[1]]
+                        .kind
+                        .get_qual_type()
+                        .ok_or_else(|| format_err!("bad arg1 type"))?;
+                    arg0.and_then(|arg0| {
+                        arg1.and_then(|arg1| {
+                            self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
+                        })
+                    })
+                } else {
+                    Err(format_translation_err!(
+                        self.ast_context.display_loc(src_loc),
+                        "Unimplemented builtin {}",
+                        builtin_name
+                    ))
+                }
+            }
         }
+    }
+
+    fn import_num_traits(&self, arg_id: CExprId) -> TranslationResult<()> {
+        let arg_type_id = self.ast_context[arg_id]
+            .kind
+            .get_qual_type()
+            .ok_or_else(|| format_err!("bad arg type"))?;
+        let arg_type_kind = &self.ast_context.resolve_type(arg_type_id.ctype).kind;
+
+        match arg_type_kind {
+            CTypeKind::LongDouble | CTypeKind::Float128 => {
+                self.use_crate(ExternCrate::NumTraits);
+                self.with_cur_file_item_store(|item_store| {
+                    item_store.add_use(true, vec!["num_traits".into()], "Float");
+                });
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 
     // This translation logic handles converting code that uses

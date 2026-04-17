@@ -5,7 +5,7 @@ use crate::goto_switch_cf::rust_goto_switch;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn goto_linear(_: c_uint, _: *mut c_int);
 
     fn goto_loop(_: c_uint, _: *mut c_int);

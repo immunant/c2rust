@@ -2,7 +2,7 @@ use crate::linking::{rust_l, rust_w};
 use std::ffi::c_int;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn l() -> c_int;
 
     fn w() -> c_int;

@@ -20,7 +20,8 @@ use std::process::Command;
 use std::{env, io};
 
 use crate::compile_cmds::CompileCmd;
-use c2rust_rust_tools::rustfmt;
+use crate::renamer::RUST_KEYWORDS;
+use c2rust_rust_tools::{rustfmt, RustEdition};
 use failure::{format_err, Error};
 use itertools::Itertools;
 use log::{info, warn};
@@ -36,7 +37,6 @@ use c2rust_ast_exporter as ast_exporter;
 
 use crate::build_files::{emit_build_files, get_build_dir, CrateConfig};
 use crate::compile_cmds::get_compile_commands;
-use crate::convert_type::RESERVED_NAMES;
 pub use crate::translator::ReplaceMode;
 use std::prelude::v1::Vec;
 
@@ -106,6 +106,8 @@ pub struct TranspilerConfig {
     pub disable_refactoring: bool,
     pub preserve_unused_functions: bool,
     pub log_level: log::LevelFilter,
+    pub edition: RustEdition,
+    pub deny_unsafe_op_in_unsafe_fn: bool,
 
     /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
     pub postprocess: bool,
@@ -117,6 +119,7 @@ pub struct TranspilerConfig {
     /// Names of translation units containing main functions that we should make
     /// into binaries
     pub binaries: Vec<String>,
+    pub thin_binaries: bool,
 
     pub c2rust_dir: Option<PathBuf>,
 }
@@ -127,9 +130,15 @@ impl TranspilerConfig {
         get_module_name(file, false, false, false).unwrap()
     }
 
-    fn is_binary(&self, file: &Path) -> bool {
+    fn is_thin_or_full_binary(&self, file: &Path) -> bool {
         let module_name = Self::binary_name_from_path(file);
         self.binaries.contains(&module_name)
+    }
+
+    fn is_binary(&self, file: &Path) -> bool {
+        // When `--thin-binaries` is enabled, we add all translation
+        // units to the main library and emit thin wrappers separately.
+        !self.thin_binaries && self.is_thin_or_full_binary(file)
     }
 
     fn check_if_all_binaries_used(
@@ -247,7 +256,7 @@ fn str_to_ident_checked(s: &str, check_reserved: bool) -> String {
     let s = str_to_ident(s);
 
     // make sure the name does not clash with keywords
-    if check_reserved && RESERVED_NAMES.contains(&s.as_str()) {
+    if check_reserved && RUST_KEYWORDS.contains(&s.as_str()) {
         format!("r#{}", s)
     } else {
         s
@@ -755,7 +764,7 @@ fn transpile_single(
     };
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path).run();
+        rustfmt(&output_path).edition(tcfg.edition).run();
     }
 
     Ok((output_path, pragmas, crates))

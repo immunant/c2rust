@@ -1,7 +1,7 @@
 use crate::functions::rust_coreutils_static_assert;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn coreutils_static_assert();
 }
 

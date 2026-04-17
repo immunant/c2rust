@@ -3,7 +3,7 @@
 use crate::implicit_int::{identity as rust_identity, implicit_int as rust_implicit_int};
 use std::ffi::{c_int, c_uint};
 
-extern "C" {
+unsafe extern "C" {
     fn identity(_: c_int) -> c_int;
 
     fn implicit_int();

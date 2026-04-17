@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
-use std::iter::FromIterator;
 
 struct Scope<T> {
     name_map: HashMap<T, String>,
@@ -37,6 +36,125 @@ impl<T: Clone + Eq + Hash> Scope<T> {
     }
 }
 
+// Keywords obtained from https://doc.rust-lang.org/reference/keywords.html
+#[rustfmt::skip] // Preserve one keyword per line.
+pub const RUST_KEYWORDS: &[&str] = &[
+    // Strict keywords
+    "as",
+    "async", // 2018 Edition
+    "await", // 2018 Edition
+    "break",
+    "const",
+    "continue",
+    "crate",
+    "dyn", // 2018 Edition
+    "else",
+    "enum",
+    "extern",
+    "false",
+    "fn",
+    "for",
+    "if",
+    "impl",
+    "in",
+    "let",
+    "loop",
+    "match",
+    "mod",
+    "move",
+    "mut",
+    "pub",
+    "ref",
+    "return",
+    "self",
+    "Self",
+    "static",
+    "struct",
+    "super",
+    "trait",
+    "true",
+    "type",
+    "unsafe",
+    "use",
+    "where",
+    "while",
+    // Reserved keywords
+    "abstract",
+    "become",
+    "box",
+    "do",
+    "final",
+    "gen", // 2024 Edition
+    "macro",
+    "override",
+    "priv",
+    "try", // 2018 Edition
+    "typeof",
+    "unsized",
+    "virtual",
+    "yield",
+];
+
+const PRELUDE_TYPE_NAMESPACE: &[&str] = &[
+    "Copy",
+    "Send",
+    "Sized",
+    "Sync",
+    "Drop",
+    "Fn",
+    "FnMut",
+    "FnOnce",
+    "Box",
+    "ToOwned",
+    "Clone",
+    "PartialEq",
+    "PartialOrd",
+    "Eq",
+    "Ord",
+    "AsRef",
+    "AsMut",
+    "Into",
+    "From",
+    "Default",
+    "Iterator",
+    "Extend",
+    "IntoIterator",
+    "DoubleEndedIterator",
+    "ExactSizeIterator",
+    "Option",
+    "Result",
+    "SliceConcatExt",
+    "String",
+    "ToString",
+    "Vec",
+    "bool",
+    "char",
+    "f32",
+    "f64",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "i128",
+    "isize",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "u128",
+    "usize",
+    "str",
+];
+
+#[rustfmt::skip] // Preserve one symbol per line.
+const PRELUDE_VALUE_NAMESPACE: &[&str] = &[
+    "drop",
+    "Some",
+    "None",
+    "Ok",
+    "Err",
+];
+
 pub struct Renamer<T> {
     scopes: Vec<Scope<T>>,
     next_fresh: u64,
@@ -46,12 +164,32 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// Creates a new renaming environment with a single, empty scope. The given set of
     /// reserved names will exclude those names from being chosen as the mangled names from
     /// the insert method.
-    pub fn new(reserved_names: &[&str]) -> Self {
-        let set: HashSet<String> = HashSet::from_iter(reserved_names.iter().map(|&x| x.to_owned()));
+    pub fn new(reserved_names: &[&[&str]]) -> Self {
+        let set = reserved_names
+            .iter()
+            .flat_map(|&names| names)
+            .map(|&s| s.to_owned())
+            .collect::<HashSet<_>>();
         Renamer {
             scopes: vec![Scope::new_with_reserved(set)],
             next_fresh: 0,
         }
+    }
+
+    pub fn keywords() -> Self {
+        Renamer::new(&[RUST_KEYWORDS])
+    }
+
+    pub fn type_namespace() -> Self {
+        Renamer::new(&[RUST_KEYWORDS, PRELUDE_TYPE_NAMESPACE])
+    }
+
+    pub fn value_namespace() -> Self {
+        Renamer::new(&[RUST_KEYWORDS, PRELUDE_VALUE_NAMESPACE])
+    }
+
+    pub fn global_value_namespace() -> Self {
+        Renamer::new(&[RUST_KEYWORDS, PRELUDE_VALUE_NAMESPACE, &["main"]])
     }
 
     /// Introduces a new name binding scope
@@ -190,7 +328,7 @@ mod tests {
 
     #[test]
     fn simple() {
-        let mut renamer = Renamer::new(&["reserved"]);
+        let mut renamer = Renamer::new(&[&["reserved"]]);
 
         let one1 = renamer.insert(1, "one").unwrap();
         let one2 = renamer.get(&1).unwrap();

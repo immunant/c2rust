@@ -999,7 +999,7 @@ impl StructureState {
                             let e = mk().while_expr(
                                 not(cond),
                                 mk().span(body_span)
-                                    .block(body.iter().skip(1).cloned().collect()),
+                                    .block(body.iter().skip(1).cloned().collect::<Vec<_>>()),
                                 lbl.map(|l| l.pretty_print()),
                             );
                             return (vec![mk().span(span).expr_stmt(e)], ast.span);

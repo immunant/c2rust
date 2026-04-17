@@ -3,7 +3,7 @@ use crate::compound_assignment::rust_compound_assignment;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn compound_assignment(_: c_uint, _: *mut c_int);
 }
 

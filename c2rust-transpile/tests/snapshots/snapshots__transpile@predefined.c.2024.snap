@@ -1,0 +1,25 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/predefined.2024.rs
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn predefined() {
+    let mut line: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+    let mut file_name: *const ::core::ffi::c_char =
+        b"predefined.c\0".as_ptr() as *const ::core::ffi::c_char;
+    let mut func: *const ::core::ffi::c_char =
+        b"predefined\0".as_ptr() as *const ::core::ffi::c_char;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn extension_operator() -> *const ::core::ffi::c_char {
+    return b"const char *extension_operator()\0".as_ptr() as *const ::core::ffi::c_char;
+}

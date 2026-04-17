@@ -5,11 +5,16 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use c2rust_rust_tools::rustc;
-use c2rust_transpile::convert_type::RESERVED_NAMES;
-use c2rust_transpile::{ReplaceMode, TranspilerConfig};
+use c2rust_rust_tools::sanitize_file_name;
+use c2rust_rust_tools::RustEdition;
+use c2rust_rust_tools::RustEdition::Edition2021;
+use c2rust_rust_tools::RustEdition::Edition2024;
+use c2rust_transpile::renamer::RUST_KEYWORDS;
+use c2rust_transpile::ReplaceMode;
+use c2rust_transpile::TranspilerConfig;
 use itertools::Itertools;
 
-fn config() -> TranspilerConfig {
+fn config(edition: RustEdition) -> TranspilerConfig {
     TranspilerConfig {
         dump_untyped_context: false,
         dump_typed_context: false,
@@ -50,9 +55,12 @@ fn config() -> TranspilerConfig {
         disable_refactoring: false,
         preserve_unused_functions: false,
         log_level: log::LevelFilter::Warn,
+        edition,
+        deny_unsafe_op_in_unsafe_fn: false,
         postprocess: false,
         emit_build_files: false,
         binaries: Vec::new(),
+        thin_binaries: false,
         c2rust_dir: Some(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .parent()
@@ -87,28 +95,33 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
 }
 
 /// Transpile one input and compare output against the corresponding snapshot.
-/// For outputs that vary in different environments, `platform` can be any platform-specific string.
-/// It could be the `target_arch`, `target_os`, some combination, or something else.
-fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
-    compile_and_transpile_file(c_path, config());
+/// For outputs that vary in different environments,
+/// `platform` should be a slice of the platform-specific parts,
+/// such as the `target_arch` or  `target_os` or both.
+fn transpile_snapshot(
+    platform: &[&str],
+    c_path: &Path,
+    edition: RustEdition,
+    expect_compile_error: bool,
+) {
+    let cfg = config(edition);
+    compile_and_transpile_file(c_path, cfg);
     let cwd = current_dir().unwrap();
-    let c_path = c_path.strip_prefix(&cwd).unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
     // This is also why we set it explicitly with `--crate-name`,
     // as once we add `.{platform}`, the crate name derived from
     // the file name won't be valid anymore.
     let crate_name = c_path.file_stem().unwrap().to_str().unwrap();
     let rs_path = c_path.with_extension("rs");
-    // We need to move the `.rs` file to a platform-specific name
+    // We need to move the `.rs` file to a platform/edition-specific name
     // so that they don't overwrite each other.
-    let rs_path = match platform {
-        None => rs_path,
-        Some(platform) => {
-            let platform_rs_path = rs_path.with_extension(format!("{platform}.rs"));
-            fs::rename(&rs_path, &platform_rs_path).unwrap();
-            platform_rs_path
-        }
-    };
+    let ext = [&[edition.as_str()][..], platform]
+        .into_iter()
+        .flatten()
+        .join(".");
+    let old_rs_path = rs_path;
+    let rs_path = old_rs_path.with_extension(format!("{ext}.rs"));
+    fs::rename(&old_rs_path, &rs_path).unwrap();
 
     let rs = fs::read_to_string(&rs_path).unwrap();
     let debug_expr = format!("cat {}", rs_path.display());
@@ -116,10 +129,10 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
     // Replace real paths with placeholders
     let rs = rs.replace(cwd.to_str().unwrap(), ".");
 
-    let snapshot_name = match platform {
-        None => "transpile".into(),
-        Some(platform) => format!("transpile-{platform}"),
-    };
+    let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
+    let c_file_name = sanitize_file_name(&c_file_name);
+    let snapshot_name = format!("transpile@{c_file_name}.{ext}");
+
     insta::assert_snapshot!(snapshot_name, &rs, &debug_expr);
 
     // Using rustc itself to build snapshots that reference libc is difficult because we don't know
@@ -133,56 +146,138 @@ fn transpile_snapshot(platform: Option<&str>, c_path: &Path) {
         return;
     }
 
-    rustc(&rs_path).crate_name(crate_name).run();
+    rustc(&rs_path)
+        .edition(edition)
+        .crate_name(crate_name)
+        .expect_error(expect_compile_error)
+        .run();
 }
 
-#[test]
-fn transpile_all_snapshots() {
-    generate_keywords_test();
+#[must_use]
+struct TranspileTest<'a> {
+    c_file_name: &'a str,
+    arch_specific: bool,
+    os_specific: bool,
+    expect_compile_error_edition_2021: bool,
+    expect_compile_error_edition_2024: bool,
+}
 
-    // TODO parallelize these `insta::glob!`s across multiple `#[test]`s
-    // now that we use `cargo nextest`.
+fn transpile(c_file_name: &str) -> TranspileTest {
+    TranspileTest {
+        c_file_name,
+        arch_specific: false,
+        os_specific: false,
+        expect_compile_error_edition_2021: false,
+        expect_compile_error_edition_2024: false,
+    }
+}
 
-    insta::glob!("snapshots/*.c", |x| transpile_snapshot(None, x));
+impl<'a> TranspileTest<'a> {
+    pub fn arch_specific(self, arch_specific: bool) -> Self {
+        Self {
+            arch_specific,
+            ..self
+        }
+    }
 
-    // Some things transpile differently on Linux vs. macOS,
-    // as they use `unsigned long` and `unsigned long long` differently for builtins.
-    // This makes snapshot tests trickier, as the output will be OS-dependent.
-    // We handle this by adding OS name to the snapshot result filename.
-    #[allow(unused)]
-    let os = "unknown";
+    pub fn os_specific(self, os_specific: bool) -> Self {
+        Self {
+            os_specific,
+            ..self
+        }
+    }
 
-    #[cfg(target_os = "linux")]
-    let os = "linux";
-    #[cfg(target_os = "macos")]
-    let os = "macos";
+    pub fn expect_compile_error_edition_2021(
+        self,
+        expect_compile_error_edition_2021: bool,
+    ) -> Self {
+        Self {
+            expect_compile_error_edition_2021,
+            ..self
+        }
+    }
 
-    // Similarly, some things transpile differently on different architectures.
-    #[allow(unused)]
-    let arch = "unknown";
+    pub fn expect_compile_error_edition_2024(
+        self,
+        expect_compile_error_edition_2024: bool,
+    ) -> Self {
+        Self {
+            expect_compile_error_edition_2024,
+            ..self
+        }
+    }
 
-    #[cfg(target_arch = "x86")]
-    let arch = "x86";
-    #[cfg(target_arch = "x86_64")]
-    let arch = "x86_64";
-    #[cfg(target_arch = "arm")]
-    let arch = "arm";
-    #[cfg(target_arch = "aarch64")]
-    let arch = "aarch64";
+    #[allow(unused)] // TODO remove once used
+    pub fn expect_compile_error(self, expect_error: bool) -> Self {
+        self.expect_compile_error_edition_2021(expect_error)
+            .expect_compile_error_edition_2024(expect_error)
+    }
 
-    let arch_os = format!("{}-{}", arch, os);
+    pub fn run(self) {
+        let Self {
+            c_file_name,
+            arch_specific,
+            os_specific,
+            expect_compile_error_edition_2021,
+            expect_compile_error_edition_2024,
+        } = self;
 
-    insta::with_settings!({snapshot_suffix => os}, {
-        insta::glob!("snapshots/os-specific/*.c", |path| transpile_snapshot(Some(os), path));
-    });
+        let specific_dir_prefix = [arch_specific.then_some("arch"), os_specific.then_some("os")]
+            .into_iter()
+            .flatten()
+            .join("-");
+        let c_path = {
+            let mut path = Path::new("tests/snapshots").to_owned();
+            if !specific_dir_prefix.is_empty() {
+                path.push(format!("{specific_dir_prefix}-specific"))
+            }
+            path.push(c_file_name);
+            path
+        };
 
-    insta::with_settings!({snapshot_suffix => arch}, {
-        insta::glob!("snapshots/arch-specific/*.c", |path| transpile_snapshot(Some(arch), path));
-    });
+        // Some things transpile differently on Linux vs. macOS,
+        // as they use `unsigned long` and `unsigned long long` differently for builtins.
+        // This makes snapshot tests trickier, as the output will be OS-dependent.
+        // We handle this by adding OS name to the snapshot result filename.
+        #[allow(unused)]
+        let os = "unknown";
 
-    insta::with_settings!({snapshot_suffix => arch_os.as_str()}, {
-        insta::glob!("snapshots/arch-os-specific/*.c", |path| transpile_snapshot(Some(arch_os.as_str()), path));
-    });
+        #[cfg(target_os = "linux")]
+        let os = "linux";
+        #[cfg(target_os = "macos")]
+        let os = "macos";
+
+        // Similarly, some things transpile differently on different architectures.
+        #[allow(unused)]
+        let arch = "unknown";
+
+        #[cfg(target_arch = "x86")]
+        let arch = "x86";
+        #[cfg(target_arch = "x86_64")]
+        let arch = "x86_64";
+        #[cfg(target_arch = "arm")]
+        let arch = "arm";
+        #[cfg(target_arch = "aarch64")]
+        let arch = "aarch64";
+
+        let platform = [arch_specific.then_some(arch), os_specific.then_some(os)]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        transpile_snapshot(
+            &platform,
+            &c_path,
+            Edition2021,
+            expect_compile_error_edition_2021,
+        );
+        transpile_snapshot(
+            &platform,
+            &c_path,
+            Edition2024,
+            expect_compile_error_edition_2024,
+        );
+    }
 }
 
 fn generate_keywords_test() {
@@ -191,12 +286,9 @@ fn generate_keywords_test() {
         "break", "const", "continue", "else", "enum", "extern", "for", "if", "return", "static",
         "struct", "while", "do", "typeof", "char",
     ];
-    // These don't work yet.  We need to fix these.
-    let broken_rust_keywords = ["await"];
-    let mut c_code = RESERVED_NAMES
+    let mut c_code = RUST_KEYWORDS
         .into_iter()
         .filter(|keyword| !c_keywords.contains(keyword))
-        .filter(|keyword| !broken_rust_keywords.contains(keyword))
         .map(|name| format!("void {name}(void) {{}}"))
         .join("\n\n");
     c_code.push_str("\n");
@@ -204,18 +296,211 @@ fn generate_keywords_test() {
     fs_err::write(c_path, c_code).unwrap();
 }
 
+// NOTE: Tests should be listed in alphabetical order.
+
 #[test]
-fn check_c_decl_map() {
-    insta::glob!("c_decls_snapshots/*.c", transpile_with_c_decl_map_snapshot);
+fn test_alloca() {
+    transpile("alloca.c").run();
+}
+
+#[test]
+fn test_arrays() {
+    transpile("arrays.c").run();
+}
+
+#[test]
+fn test_atomics() {
+    transpile("atomics.c").run();
+}
+
+#[test]
+fn test_bool() {
+    transpile("bool.c").run();
+}
+
+#[test]
+fn test_compound_literals() {
+    transpile("compound_literals.c").run();
+}
+
+#[test]
+fn test_empty_init() {
+    transpile("empty_init.c").run();
+}
+
+#[test]
+fn test_exprs() {
+    transpile("exprs.c").run();
+}
+
+#[test]
+fn test_factorial() {
+    transpile("factorial.c").run();
+}
+
+#[test]
+fn test_fn_attrs() {
+    transpile("fn_attrs.c").run();
+}
+
+#[test]
+fn test_gotos() {
+    transpile("gotos.c").run();
+}
+
+#[test]
+fn test_incomplete_arrays() {
+    transpile("incomplete_arrays.c").run();
+}
+
+#[test]
+fn test_insertion() {
+    transpile("insertion.c").run();
+}
+
+#[test]
+fn test_keywords() {
+    generate_keywords_test();
+    transpile("keywords.c").run();
+}
+
+#[test]
+fn test_lift_const() {
+    transpile("lift_const.c").run();
+}
+
+#[test]
+fn test_macrocase() {
+    transpile("macrocase.c").run();
+}
+
+#[test]
+fn test_macros() {
+    transpile("macros.c").run();
+}
+
+#[test]
+fn test_main_fn() {
+    transpile("main_fn.c").run();
+}
+
+#[test]
+fn test_predefined() {
+    transpile("predefined.c").run();
+}
+
+#[test]
+fn test_records() {
+    transpile("records.c").run();
+}
+
+#[test]
+fn test_ref_ub() {
+    transpile("ref_ub.c").run();
+}
+
+#[test]
+fn test_rotate() {
+    transpile("rotate.c").run();
+}
+
+#[test]
+fn test_static_assert() {
+    transpile("static_assert.c").run();
+}
+
+#[test]
+fn test_str_init() {
+    transpile("str_init.c").run();
+}
+
+#[test]
+fn test_volatile() {
+    transpile("volatile.c").run();
+}
+
+// arch-specific
+
+#[test]
+fn test_spin() {
+    transpile("spin.c").arch_specific(true).run();
+}
+
+#[test]
+fn test_vm_x86() {
+    transpile("vm_x86.c").arch_specific(true).run();
+}
+
+// os-specific
+
+#[test]
+fn test_call_only_once() {
+    transpile("call_only_once.c").os_specific(true).run();
+}
+
+#[test]
+fn test_macros_os_specific() {
+    transpile("macros.c").os_specific(true).run();
+}
+
+#[test]
+fn test_out_of_range_lit() {
+    transpile("out_of_range_lit.c").os_specific(true).run();
+}
+
+#[test]
+fn test_rnd() {
+    transpile("rnd.c").os_specific(true).run();
+}
+
+#[test]
+fn test_rotate_os_specific() {
+    transpile("rotate.c").os_specific(true).run();
+}
+
+#[test]
+fn test_sigign() {
+    transpile("sigign.c").os_specific(true).run();
+}
+
+#[test]
+fn test_typedefidx() {
+    transpile("typedefidx.c").os_specific(true).run();
+}
+
+#[test]
+fn test_types() {
+    transpile("types.c").os_specific(true).run();
+}
+
+#[test]
+fn test_wide_strings() {
+    transpile("wide_strings.c").os_specific(true).run();
+}
+
+// arch-os-specific
+
+#[test]
+fn test_varargs() {
+    transpile("varargs.c")
+        .arch_specific(true)
+        .os_specific(true)
+        .run();
 }
 
 fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
-    compile_and_transpile_file(c_path, config());
+    compile_and_transpile_file(c_path, config(Default::default()));
 
     let c_decls_path = c_path.with_extension("c_decls.json");
-    let snapshot_name = format!("c_decls-{}", c_path.file_name().unwrap().to_str().unwrap());
+    let snapshot_name = format!("c_decls@{}", c_path.file_name().unwrap().to_str().unwrap());
     let debug_expr = format!("cat {}", c_decls_path.display());
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&c_decls_path).unwrap()).unwrap();
     insta::assert_json_snapshot!(snapshot_name, json, &debug_expr);
+}
+
+#[test]
+fn test_c_decls_nh() {
+    let c_path = Path::new("tests/c_decls_snapshots/nh.c");
+    transpile_with_c_decl_map_snapshot(c_path);
 }

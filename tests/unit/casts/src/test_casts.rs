@@ -1,5 +1,3 @@
-//! feature_raw_ref_op
-
 use crate::cast_funptr::{rust_entry, rust_get_identity, rust_identity};
 use crate::casts::rust_cast_stuff;
 
@@ -8,7 +6,7 @@ use std::ffi::{c_int, c_uint, c_void};
 use std::mem::transmute;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn cast_stuff();
 
     fn identity(_: c_int) -> c_int;

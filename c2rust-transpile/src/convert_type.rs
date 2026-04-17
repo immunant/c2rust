@@ -2,8 +2,11 @@ use crate::c_ast::CDeclId;
 use crate::c_ast::*;
 use crate::diagnostics::TranslationResult;
 use crate::renamer::*;
+use crate::translator::variadic::mk_va_list_ty;
+use crate::TranspilerConfig;
 use crate::{CrateSet, ExternCrate};
 use c2rust_ast_builder::{mk, properties::*};
+use c2rust_rust_tools::RustEdition;
 use failure::format_err;
 use indexmap::IndexSet;
 use std::collections::{HashMap, HashSet};
@@ -17,6 +20,7 @@ enum FieldKey {
 }
 
 pub struct TypeConverter {
+    pub edition: RustEdition,
     pub translate_valist: bool,
     renamer: Renamer<CDeclId>,
     fields: HashMap<CDeclId, Renamer<FieldKey>>,
@@ -25,124 +29,12 @@ pub struct TypeConverter {
     extern_crates: CrateSet,
 }
 
-pub const RESERVED_NAMES: [&str; 100] = [
-    // Keywords currently in use
-    "as",
-    "async",
-    "await",
-    "break",
-    "const",
-    "continue",
-    "crate",
-    "dyn",
-    "else",
-    "enum",
-    "extern",
-    "false",
-    "fn",
-    "for",
-    "if",
-    "impl",
-    "in",
-    "let",
-    "loop",
-    "match",
-    "mod",
-    "move",
-    "mut",
-    "pub",
-    "ref",
-    "return",
-    "self",
-    "Self",
-    "static",
-    "struct",
-    "super",
-    "trait",
-    "true",
-    "type",
-    "unsafe",
-    "use",
-    "where",
-    "while",
-    // Keywords reserved for future use
-    "abstract",
-    "become",
-    "box",
-    "do",
-    "final",
-    "gen",
-    "macro",
-    "override",
-    "priv",
-    "try",
-    "typeof",
-    "unsized",
-    "virtual",
-    "yield",
-    // Types exported in prelude
-    "Copy",
-    "Send",
-    "Sized",
-    "Sync",
-    "Drop",
-    "Fn",
-    "FnMut",
-    "FnOnce",
-    "Box",
-    "ToOwned",
-    "Clone",
-    "PartialEq",
-    "PartialOrd",
-    "Eq",
-    "Ord",
-    "AsRef",
-    "AsMut",
-    "Into",
-    "From",
-    "Default",
-    "Iterator",
-    "Extend",
-    "IntoIterator",
-    "DoubleEndedIterator",
-    "ExactSizeIterator",
-    "Option",
-    "Result",
-    "SliceConcatExt",
-    "String",
-    "ToString",
-    "Vec",
-    "bool",
-    "char",
-    "f32",
-    "f64",
-    "i8",
-    "i16",
-    "i32",
-    "i64",
-    "i128",
-    "isize",
-    "u8",
-    "u16",
-    "u32",
-    "u64",
-    "u128",
-    "usize",
-    "str",
-];
-
 impl TypeConverter {
-    // We don't provide a `Default` impl to simplify future compatibility:
-    // if `TypeConverter` ever gets fields incompatible with `Default`, then
-    // cleaning out the uses of `impl Default for TypeConverter` can be a pain.
-    // More practically, there is a single use of `TypeConverter::new` and no
-    // current plans to use a `Default` impl, so providing it isn't worth the
-    // potential breakage.
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> TypeConverter {
+    pub fn new(tcfg: &TranspilerConfig) -> TypeConverter {
         TypeConverter {
-            translate_valist: false,
-            renamer: Renamer::new(&RESERVED_NAMES),
+            edition: tcfg.edition,
+            translate_valist: tcfg.translate_valist,
+            renamer: Renamer::type_namespace(),
             fields: HashMap::new(),
             suffix_names: HashMap::new(),
             features: HashSet::new(),
@@ -199,7 +91,7 @@ impl TypeConverter {
 
         self.fields
             .entry(record_id)
-            .or_insert_with(|| Renamer::new(&RESERVED_NAMES))
+            .or_insert_with(|| Renamer::keywords())
             .insert(FieldKey::Field(field_id), name)
             .expect("Field already declared")
     }
@@ -208,7 +100,7 @@ impl TypeConverter {
         let field = self
             .fields
             .entry(record_id)
-            .or_insert_with(|| Renamer::new(&RESERVED_NAMES));
+            .or_insert_with(|| Renamer::keywords());
         let key = FieldKey::Padding(padding_idx);
         if let Some(name) = field.get(&key) {
             name
@@ -318,8 +210,7 @@ impl TypeConverter {
         ctype: CTypeId,
     ) -> TranslationResult<Box<Type>> {
         if self.translate_valist && ctxt.is_va_list(ctype) {
-            let ty = mk().abs_path_ty(vec!["core", "ffi", "VaListImpl"]);
-            return Ok(ty);
+            return Ok(mk_va_list_ty(self.edition, None));
         }
 
         match ctxt.index(ctype).kind {

@@ -12,7 +12,7 @@ use crate::top_enum::{rust_entry4, E as otherE};
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
 
     fn entry2(_: c_uint, _: *mut c_int);

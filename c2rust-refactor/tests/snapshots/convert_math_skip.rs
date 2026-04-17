@@ -11,7 +11,6 @@ mod custom_math {
     }
 }
 extern "C" {
-    #[no_mangle]
     fn sin(x: f64) -> f64;
 }
 
