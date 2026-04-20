@@ -78,8 +78,10 @@ fn cleanup_labels(
             cleanup_labels(body, label_place, &mut inner_labels);
 
             // Remove the loop's label if it's never used in the loop's body.
-            if let Some(label) = label_place && !inner_labels.contains(label) {
-                *label_place = None;
+            if let Some(label) = label_place {
+                if !inner_labels.contains(label) {
+                    *label_place = None;
+                }
             }
 
             encountered_labels.extend(inner_labels);
