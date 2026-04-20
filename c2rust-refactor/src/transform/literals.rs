@@ -604,9 +604,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 if let Some(&[ref input_key_trees @ .., output_key_tree]) =
                     callee_key_tree.get().children()
                 {
-                    for (arg_expr, arg_key_tree) in std::iter::once(recv)
-                        .chain(args.iter())
-                        .zip(input_key_trees.iter())
+                    for (arg_expr, arg_key_tree) in
+                        std::iter::once(recv).chain(args).zip(input_key_trees)
                     {
                         self.visit_expr_unify(arg_expr, arg_key_tree);
                     }
