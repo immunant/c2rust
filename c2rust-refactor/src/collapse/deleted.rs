@@ -83,7 +83,7 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
                 self.handle_seq(x.id, elements);
             }
             ExprKind::MethodCall(_, receiver, elements, _) => {
-                self.handle_seq(x.id, std::iter::once(receiver).chain(elements.iter()));
+                self.handle_seq(x.id, std::iter::once(receiver).chain(elements));
             }
             _ => {}
         }
@@ -259,17 +259,17 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
             ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
             }
-            ExprKind::MethodCall(_, receiver, elements, _) => {
+            ExprKind::MethodCall(_, recv, args, _) => {
                 // Merge the receiver and args into a single list.
-                let mut all = Vec::with_capacity(elements.len() + 1);
-                all.push(std::mem::replace(receiver, mk().err_expr()));
-                all.extend(std::mem::take(elements).into_iter());
+                let mut all = std::iter::once(mem::replace(recv, mk().err_expr()))
+                    .chain(mem::take(args))
+                    .collect();
 
                 self.restore_seq(id, &mut all);
 
                 // Pull the new receiver and elements out of the merged list.
-                *receiver = all.remove(0);
-                *elements = all;
+                *recv = all.remove(0);
+                *args = all;
             }
             _ => {}
         }
