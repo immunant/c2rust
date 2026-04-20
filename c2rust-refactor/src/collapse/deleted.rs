@@ -83,8 +83,8 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
             ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
             }
-            ExprKind::MethodCall(_, receiver, elements, _) => {
-                self.handle_seq(x.id, std::iter::once(receiver).chain(elements));
+            ExprKind::MethodCall(_, recv, args, _) => {
+                self.handle_seq(x.id, std::iter::once(recv).chain(args));
             }
             _ => {}
         }
