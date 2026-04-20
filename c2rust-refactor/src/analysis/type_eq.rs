@@ -650,11 +650,10 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 self.ltt.unify(rty, self.fn_output(func_lty));
             }
 
-            ExprKind::MethodCall(_, ref recv, ref args, _) => {
+            ExprKind::MethodCall(_, recv, args, _) => {
                 let sig = self.method_sig(e);
-                self.ltt.unify(sig.inputs[0], self.expr_lty(recv));
-                for (i, arg) in args.iter().enumerate() {
-                    self.ltt.unify(sig.inputs[i + 1], self.expr_lty(arg));
+                for (i, arg) in std::iter::once(recv).chain(args).enumerate() {
+                    self.ltt.unify(sig.inputs[i], self.expr_lty(arg));
                 }
                 self.ltt.unify(rty, sig.output);
             }

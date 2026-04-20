@@ -157,11 +157,8 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             }
             ExprKind::MethodCall(_seg, recv, args, _span) => {
                 if let Some(fn_sig) = opt_fn_sig {
-                    if let Some(&ty) = fn_sig.inputs().get(0) {
-                        illtyped |= self.ensure(recv, ty);
-                    }
-                    for (i, arg) in args.iter_mut().enumerate() {
-                        if let Some(&ty) = fn_sig.inputs().get(i + 1) {
+                    for (i, arg) in std::iter::once(recv).chain(args).enumerate() {
+                        if let Some(&ty) = fn_sig.inputs().get(i) {
                             illtyped |= self.ensure(arg, ty);
                         }
                     }
