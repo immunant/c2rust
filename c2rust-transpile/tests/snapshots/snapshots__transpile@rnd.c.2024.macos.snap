@@ -1,0 +1,34 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/os-specific/rnd.2024.macos.rs
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+unsafe extern "C" {
+    unsafe fn abs(_: ::core::ffi::c_int) -> ::core::ffi::c_int;
+}
+pub type int32_t = i32;
+pub type uint32_t = u32;
+#[unsafe(no_mangle)]
+pub static mut cur_rand_seed: uint32_t = 0 as uint32_t;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn set_rand_seed(mut s: uint32_t) {
+    cur_rand_seed = s;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_rand_seed() -> uint32_t {
+    let INCREMENT: uint32_t = 1 as uint32_t;
+    let MULTIPLIER: uint32_t = 0x15a4e35 as uint32_t;
+    cur_rand_seed = MULTIPLIER
+        .wrapping_mul(cur_rand_seed)
+        .wrapping_add(INCREMENT);
+    let mut ret: uint32_t = abs(cur_rand_seed as ::core::ffi::c_int) as uint32_t;
+    return ret;
+}

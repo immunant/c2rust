@@ -2,7 +2,7 @@ use crate::modules::rust_modules;
 use std::ffi::c_uint;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn modules();
 }
 

@@ -1,0 +1,24 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_definitions_opaque_type.rs --edition 2021
+---
+#![feature(extern_types)]
+#![feature(rustc_private)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code)]
+#![allow(non_camel_case_types)]
+
+pub mod foo_h {
+    pub type Foo = *mut crate::FooStruct;
+}
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct FooStruct {
+    pub x: i32,
+}
+
+pub unsafe fn takes_foo(_foo: crate::foo_h::Foo) {}
+
+fn main() {}

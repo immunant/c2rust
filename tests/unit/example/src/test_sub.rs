@@ -2,7 +2,7 @@ use crate::sub::rust_sub;
 use std::ffi::c_uint;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn sub(left: c_uint, right: c_uint) -> c_uint;
 }
 

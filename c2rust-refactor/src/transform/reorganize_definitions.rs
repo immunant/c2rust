@@ -1563,8 +1563,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             for existing_decl in existing_decls {
                 match &existing_decl.kind {
                     DeclKind::Item(existing_item) => match (&existing_item.kind, &item.kind) {
-                        // Replace a use with a real definition
+                        // Replace a use with a real definition, but a use of
+                        // an internal definition takes precedence over a foreign one.
                         (ItemKind::Use(..), _) => {
+                            if is_use_of_foreign(&item, &self.cx) {
+                                return ContainsDecl::Definition(existing_decl);
+                            }
                             return ContainsDecl::Use(existing_decl);
                         }
 
@@ -1586,15 +1590,9 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         if let ItemKind::Use(..) = item.kind {
                             // If the import refers to an existing foreign item, do
                             // not replace it.
-                            let path = self.cx.resolve_use_id(item.id);
-                            if let Some(did) = path.res.opt_def_id() {
-                                if let Some(Node::ForeignItem(_)) =
-                                    self.cx.hir_map().get_if_local(did)
-                                {
-                                    return ContainsDecl::Definition(existing_decl);
-                                }
+                            if is_use_of_foreign(&item, &self.cx) {
+                                return ContainsDecl::Definition(existing_decl);
                             }
-
                             return ContainsDecl::Equivalent(existing_decl);
                         }
                         if foreign_equiv(&existing_foreign, &item) {
@@ -1630,15 +1628,9 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                             return ContainsDecl::Equivalent(existing_decl);
                         } else if let ItemKind::Use(_) = existing_item.kind {
                             // A use takes precedence over a foreign declaration
-                            // unless the use refers to the foreign declaration are
-                            // attempting to insert.
-                            let path = self.cx.resolve_use_id(existing_item.id);
-                            if let Some(did) = path.res.opt_def_id() {
-                                if let Some(Node::ForeignItem(_)) =
-                                    self.cx.hir_map().get_if_local(did)
-                                {
-                                    return ContainsDecl::Definition(existing_decl);
-                                }
+                            // unless the use also refers to a foreign.
+                            if is_use_of_foreign(&existing_item, &self.cx) {
+                                return ContainsDecl::Definition(existing_decl);
                             }
                             return ContainsDecl::Equivalent(existing_decl);
                         }
@@ -1717,6 +1709,19 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
 
         _ => false,
     }
+}
+
+/// Check if the [`Item`] is a [`Use`] of another [`ForeignItem`].
+fn is_use_of_foreign(item: &Item, cx: &RefactorCtxt) -> bool {
+    if !matches!(item.kind, ItemKind::Use(..)) {
+        return false;
+    }
+
+    let path = cx.resolve_use_id(item.id);
+    let Some(did) = path.res.opt_def_id() else {
+        return false;
+    };
+    matches!(cx.hir_map().get_if_local(did), Some(Node::ForeignItem(_)))
 }
 
 /// Check if the `Item` has the `#[header_src = "/some/path"]` attribute

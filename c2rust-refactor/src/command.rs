@@ -28,7 +28,7 @@ use crate::ast_manip::number_nodes::{
     number_nodes, number_nodes_with, reset_node_ids, NodeIdCounter,
 };
 use crate::ast_manip::AstSpanMaps;
-use crate::ast_manip::{collect_comments, gather_comments, Comment, CommentMap};
+use crate::ast_manip::{collect_comments, Comment, CommentMap};
 use crate::ast_manip::{load_modules, remove_paren, ListNodeIds, MutVisit, Visit};
 use crate::collapse::CollapseInfo;
 use crate::driver::{self, Phase};
@@ -148,26 +148,6 @@ pub struct RefactorState {
 //     krate
 // }
 
-#[cfg_attr(feature = "profile", flame)]
-fn parse_extras(source_map: &SourceMap, session: &Lrc<Session>) -> Vec<Comment> {
-    let mut comments = vec![];
-    for file in source_map.files().iter() {
-        if let Some(src) = &file.src {
-            let mut new_comments =
-                gather_comments(&session.parse_sess, file.name.clone(), src.deref().clone());
-
-            // gather_comments_and_literals starts positions at 0 each time, so
-            // we need to adjust by the file offset
-            for c in &mut new_comments {
-                c.pos = c.pos + file.start_pos;
-            }
-            comments.append(&mut new_comments);
-        }
-    }
-
-    comments
-}
-
 pub const FRESH_NODE_ID_START: u32 = 0x8000_0000;
 
 impl DiskState {
@@ -189,8 +169,7 @@ impl DiskState {
         // let parsed_nodes = ParsedNodes::default();
         // let node_id_counter = NodeIdCounter::new(FRESH_NODE_ID_START);
 
-        let comments = parse_extras(source_map, session);
-        let comment_map = collect_comments(&krate, &comments);
+        let comment_map = collect_comments(&krate, source_map, &session.parse_sess);
 
         DiskState {
             orig_krate: krate,

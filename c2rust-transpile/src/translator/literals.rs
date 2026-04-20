@@ -14,15 +14,21 @@ impl<'c> Translation<'c> {
         ty: CQualTypeId,
         val: u64,
         base: IntBase,
+        negative: bool,
     ) -> TranslationResult<Box<Expr>> {
         let lit = match base {
             IntBase::Dec => mk().int_unsuffixed_lit(val),
             IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
             IntBase::Oct => mk().float_unsuffixed_lit(&format!("0o{:o}", val)),
         };
+        let mut expr = mk().lit_expr(lit);
+
+        if negative {
+            expr = neg_expr(expr);
+        }
 
         let target_ty = self.convert_type(ty.ctype)?;
-        Ok(mk().cast_expr(mk().lit_expr(lit), target_ty))
+        Ok(mk().cast_expr(expr, target_ty))
     }
 
     /// Return whether the literal can be directly translated as this type.
@@ -49,30 +55,30 @@ impl<'c> Translation<'c> {
         lit: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         match *lit {
-            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base)?)),
+            CLiteral::Integer(val, base) => {
+                Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base, false)?))
+            }
 
             CLiteral::Character(val) => {
                 let val = val as u32;
-                let expr = match char::from_u32(val) {
-                    Some(c) => {
-                        let expr = mk().lit_expr(c);
-                        let i32_type = mk().path_ty(vec!["i32"]);
-                        mk().cast_expr(expr, i32_type)
-                    }
-                    None => {
-                        // Fallback for characters outside of the valid Unicode range
-                        if (val as i32) < 0 {
-                            mk().unary_expr(
-                                UnOp::Neg(Default::default()),
-                                mk().lit_expr(
-                                    mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
-                                ),
-                            )
-                        } else {
-                            mk().lit_expr(mk().int_lit(val as u128, "i32"))
+                let expr =
+                    match char::from_u32(val) {
+                        Some(c) => {
+                            let expr = mk().lit_expr(c);
+                            let i32_type = mk().path_ty(vec!["i32"]);
+                            mk().cast_expr(expr, i32_type)
                         }
-                    }
-                };
+                        None => {
+                            // Fallback for characters outside of the valid Unicode range
+                            if (val as i32) < 0 {
+                                neg_expr(mk().lit_expr(
+                                    mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
+                                ))
+                            } else {
+                                mk().lit_expr(mk().int_lit(val as u128, "i32"))
+                            }
+                        }
+                    };
                 Ok(WithStmts::new_val(expr))
             }
 
@@ -84,7 +90,7 @@ impl<'c> Translation<'c> {
                     c_str.to_owned()
                 };
                 let val = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::LongDouble => {
+                    CTypeKind::LongDouble | CTypeKind::Float128 => {
                         if ctx.is_const {
                             return Err(format_translation_err!(
                                 None,
@@ -263,51 +269,6 @@ impl<'c> Translation<'c> {
                 self.convert_expr(ctx.used(), *id, None)
             }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
-        }
-    }
-
-    fn convert_union_literal(
-        &self,
-        ctx: ExprContext,
-        union_id: CRecordId,
-        ids: &[CExprId],
-        _ty: CQualTypeId,
-        opt_union_field_id: Option<CFieldId>,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let union_field_id = opt_union_field_id.expect("union field ID");
-
-        match self.ast_context.index(union_id).kind {
-            CDeclKind::Union { .. } => {
-                let union_name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(union_id)
-                    .unwrap();
-                log::debug!("importing union {union_name}, id {union_id:?}");
-                self.add_import(union_id, &union_name);
-                match self.ast_context.index(union_field_id).kind {
-                    CDeclKind::Field { typ: field_ty, .. } => {
-                        let val = if ids.is_empty() {
-                            self.implicit_default_expr(ctx, field_ty.ctype)?
-                        } else {
-                            self.convert_expr(ctx.used(), ids[0], None)?
-                        };
-
-                        Ok(val.map(|v| {
-                            let name = vec![mk().path_segment(union_name)];
-                            let field_name = self
-                                .type_converter
-                                .borrow()
-                                .resolve_field_name(Some(union_id), union_field_id)
-                                .unwrap();
-                            let fields = vec![mk().field(field_name, v)];
-                            mk().struct_expr(name, fields)
-                        }))
-                    }
-                    _ => panic!("Union field decl mismatch"),
-                }
-            }
-            _ => panic!("Expected union decl"),
         }
     }
 }

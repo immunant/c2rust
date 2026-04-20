@@ -61,3 +61,7 @@ c2rust-transpile/tests/c_decls_snapshots/**/*.c_decls.json
 
 # c2rust-analyze test outputs
 c2rust-analyze/c2rust_analysis_tests_minimal-*
+
+# Debug info dumps
+/dumps
+c2rust-transpile/dumps

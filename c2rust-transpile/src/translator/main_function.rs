@@ -278,9 +278,7 @@ impl<'c> Translation<'c> {
 
             if let CTypeKind::Void = ret {
                 let call_main = mk().call_expr(main_fn, main_args);
-                let unsafe_block = mk().unsafe_block(vec![mk().expr_stmt(call_main)]);
-
-                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(unsafe_block)));
+                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(vec![mk().expr_stmt(call_main)])));
 
                 let exit_arg = mk().lit_expr(mk().int_lit(0, "i32"));
                 let call_exit = mk().call_expr(exit_fn, vec![exit_arg]);
@@ -293,9 +291,7 @@ impl<'c> Translation<'c> {
                 );
 
                 let call_exit = mk().call_expr(exit_fn, vec![call_main]);
-                let unsafe_block = mk().unsafe_block(vec![mk().expr_stmt(call_exit)]);
-
-                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(unsafe_block)));
+                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(vec![mk().expr_stmt(call_exit)])));
             };
 
             let block = mk().block(stmts);

@@ -61,11 +61,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--model-id",
+        "--llm-model",
         type=str,
         required=False,
         default="gemini-3-flash-preview",
-        help="ID of the LLM model to use (default: gemini-3-pro-preview)",
+        help="ID of the LLM model to use (default: gemini-3-flash-preview)",
     )
 
     parser.add_argument(
@@ -93,8 +93,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update the Rust in-place",
     )
 
-    # TODO: add option to select model
-    # TODO: add option to configure cache
     # TODO: add option to select what transforms to apply
 
     return parser
@@ -131,7 +129,7 @@ def main(argv: Sequence[str] | None = None):
         if not args.update_cache:
             cache = FrozenCache(cache)
 
-        model = get_model(args.model_id)
+        model = get_model(args.llm_model)
 
         # TODO: instantiate transform(s) based on command line args
         xform = CommentTransfer(cache, model)

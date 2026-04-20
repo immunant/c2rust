@@ -287,11 +287,11 @@ impl<W: Write> Printer<W> {
         Ok(())
     }
 
-    pub fn print_unop(&mut self, op: &UnOp, _context: &TypedAstContext) -> Result<()> {
+    pub fn print_unop(&mut self, op: &CUnOp, _context: &TypedAstContext) -> Result<()> {
         self.writer.write_all(op.as_str().as_bytes())
     }
 
-    pub fn print_binop(&mut self, op: &BinOp, _context: &TypedAstContext) -> Result<()> {
+    pub fn print_binop(&mut self, op: &CBinOp, _context: &TypedAstContext) -> Result<()> {
         self.writer.write_all(op.as_str().as_bytes())
     }
 

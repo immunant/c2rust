@@ -4,7 +4,7 @@ use crate::sizeofs::rust_sizeofs;
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn sizeofs(_: c_uint, _: *mut c_int);
 }
 

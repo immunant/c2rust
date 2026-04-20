@@ -275,6 +275,7 @@ version = "0.22.1"
 dependencies = [
  "anyhow",
  "c2rust-build-paths",
+ "c2rust-rust-tools",
  "c2rust-transpile",
  "clap 3.2.25",
  "env_logger 0.10.0",
@@ -477,6 +478,7 @@ name = "c2rust-rust-tools"
 version = "0.22.1"
 dependencies = [
  "fs-err",
+ "itertools 0.14.0",
  "log",
 ]
 
@@ -2533,9 +2535,9 @@ dependencies = [
 
 [[package]]
 name = "tar"
-version = "0.4.38"
+version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b55807c0344e1e6c04d7c965f5289c39a8d94ae23ed5c0b57aabac549f871c6"
+checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
 dependencies = [
  "filetime",
  "libc",

@@ -6,7 +6,7 @@ use c2rust_refactor::RustcArgSource;
 use c2rust_rust_tools::rustc;
 use c2rust_rust_tools::rustfmt;
 use c2rust_rust_tools::sanitize_file_name;
-use c2rust_rust_tools::EDITION;
+use c2rust_rust_tools::RustEdition;
 use insta::assert_snapshot;
 use itertools::Itertools;
 use std::path::Path;
@@ -16,6 +16,7 @@ struct RefactorTest<'a> {
     command: &'a str,
     command_args: &'a [&'a str],
     path: Option<&'a str>,
+    edition: RustEdition,
     old_expect_format_error: bool,
     new_expect_format_error: bool,
     old_expect_compile_error: bool,
@@ -27,6 +28,7 @@ fn refactor(command: &str) -> RefactorTest {
         command,
         command_args: &[],
         path: None,
+        edition: Default::default(),
         old_expect_format_error: false,
         new_expect_format_error: false,
         old_expect_compile_error: false,
@@ -48,6 +50,11 @@ impl<'a> RefactorTest<'a> {
             path: Some(path),
             ..self
         }
+    }
+
+    #[allow(unused)] // TODO remove once `c2rust-refactor` is upgraded to edition 2024.
+    pub fn edition(self, edition: RustEdition) -> Self {
+        Self { edition, ..self }
     }
 
     pub fn old_expect_format_error(self, expect_error: bool) -> Self {
@@ -93,6 +100,7 @@ impl<'a> RefactorTest<'a> {
             command,
             path,
             command_args,
+            edition,
             old_expect_format_error,
             new_expect_format_error,
             old_expect_compile_error,
@@ -110,6 +118,7 @@ impl<'a> RefactorTest<'a> {
             command,
             command_args,
             path,
+            edition,
             old_expect_format_error,
             new_expect_format_error,
             old_expect_compile_error,
@@ -122,6 +131,7 @@ fn test_refactor(
     command: &str,
     command_args: &[&str],
     path: &str,
+    edition: RustEdition,
     old_expect_format_error: bool,
     new_expect_format_error: bool,
     old_expect_compile_error: bool,
@@ -131,17 +141,19 @@ fn test_refactor(
     let old_path = tests_dir.join(path);
 
     rustfmt(&old_path)
+        .edition(edition)
         .check(true)
         .expect_error(old_expect_format_error)
         .run();
     rustc(&old_path)
+        .edition(edition)
         .expect_error(old_expect_compile_error)
         .run();
 
     let new_path = old_path.with_extension("new"); // Output from `alongside`.
 
     let old_path = old_path.to_str().unwrap();
-    let rustc_args = [old_path, "--edition", EDITION];
+    let rustc_args = [old_path, "--edition", edition.as_str()];
 
     lib_main(Options {
         rewrite_modes: vec![OutputMode::Alongside],
@@ -164,9 +176,11 @@ fn test_refactor(
     // TODO Run `rustfmt` by default as part of `c2rust-refactor`
     // with the same `--disable-rustfmt` flag that `c2rust-transpile` has.
     rustfmt(&new_path)
+        .edition(edition)
         .expect_error(new_expect_format_error)
         .run();
     rustc(&new_path)
+        .edition(edition)
         .expect_error(new_expect_compile_error)
         .run();
 
@@ -287,6 +301,14 @@ fn test_convert_math_skip() {
 #[test]
 fn test_fix_unused_unsafe() {
     refactor("fix_unused_unsafe").test();
+}
+
+#[test]
+fn test_fix_unused_unsafe_compile_error() {
+    refactor("fix_unused_unsafe")
+        .named("fix_unused_unsafe_compile_error.rs")
+        .expect_compile_error(true)
+        .test();
 }
 
 #[test]
@@ -420,6 +442,13 @@ fn test_reorder_derives() {
 fn test_reorganize_definitions() {
     refactor("reorganize_definitions")
         .new_expect_compile_error(true)
+        .test();
+}
+
+#[test]
+fn test_reorganize_foreign_types() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_types.rs")
         .test();
 }
 

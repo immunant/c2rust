@@ -2,7 +2,7 @@ use crate::call_only_once::rust_assert_call_only_once;
 use std::ffi::c_int;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn assert_call_only_once() -> c_int;
 }
 

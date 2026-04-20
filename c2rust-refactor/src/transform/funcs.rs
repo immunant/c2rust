@@ -9,9 +9,12 @@ use rustc_span::{sym, DUMMY_SP};
 use rustc_type_ir::sty::TyKind;
 use smallvec::{smallvec, SmallVec};
 use std::collections::{HashMap, HashSet};
+use std::mem;
 
 use crate::ast_builder::{mk, IntoSymbol};
-use crate::ast_manip::{fold_modules, visit_nodes, FlatMapNodes, MutVisit, MutVisitNodes};
+use crate::ast_manip::{
+    collect_comments, fold_modules, visit_nodes, CommentMap, FlatMapNodes, MutVisit, MutVisitNodes,
+};
 use crate::command::{CommandState, Registry};
 use crate::driver::{parse_expr, Phase};
 use crate::matcher::{mut_visit_match_with, BindingType, MatchCtxt, Subst};
@@ -291,36 +294,172 @@ impl Transform for ToMethod {
 ///
 /// Usage: `fix_unused_unsafe`
 ///
-/// Find unused `unsafe` blocks and turn them into ordinary blocks. This relies
-/// on the compiler's `#[warn(unused_unsafe)]` warnings, and will not work with warnings
+/// Find unused `unsafe` blocks and turn them into ordinary blocks, removing the
+/// block entirely where possible. This relies on the compiler's
+/// `#[warn(unused_unsafe)]` warnings, and will not work with warnings
 /// suppressed.
+///
+/// Blocks are removed entirely (preserving their contents) if:
+///
+/// - The block is unlabeled.
+/// - There are no comments on the block.
+/// - There are no values in the block that require drop.
+/// - And either:
+///   - The block is used as a statement, in which case its inner statements are
+///     lifted into the surrounding block (possibly multiple statements).
+///   - The block is used as an expression and consists only of a tail expression,
+///     in which case the block is replaced by that expression.
 pub struct FixUnusedUnsafe;
 
 impl Transform for FixUnusedUnsafe {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        MutVisitNodes::visit(krate, |b: &mut P<Block>| {
-            if let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules {
-                let hir_id = cx.hir_map().node_to_hir_id(b.id);
-                let parent = cx.hir_map().get_parent_item(hir_id);
-                let result = cx.ty_ctxt().unsafety_check_result(parent);
-                let unused = result
-                    .unused_unsafes
-                    .as_deref()
-                    .unwrap_or_default()
-                    .iter()
-                    .any(|&(id, _)| {
-                        // TODO: do we need to check the UnusedUnsafe argument?
-                        id == cx.hir_map().node_to_hir_id(b.id)
-                    });
-                if unused {
-                    b.rules = BlockCheckMode::Default;
-                }
-            }
+        // HACK: Check if there have been compilation errors before running the
+        // transformation. When there are errors, rustc's unsafe checker can produce
+        // incorrect results, incorrectly marking blocks with actual unsafe
+        // operations as "unused". This would cause us to remove the `unsafe`
+        // keyword from blocks that still need it, so we bail out in that case
+        // instead of corrupting the code.
+        if cx.session().diagnostic().has_errors().is_some() {
+            warn!("Skipping fix_unused_unsafe transform due to compilation errors");
+            return;
+        }
+
+        let comment_map =
+            collect_comments(krate, cx.session().source_map(), &cx.session().parse_sess);
+
+        krate.visit(&mut FixUnusedUnsafeFolder {
+            cx,
+            comment_map: &comment_map,
         });
     }
 
     fn min_phase(&self) -> Phase {
         Phase::Phase3
+    }
+}
+
+struct FixUnusedUnsafeFolder<'a, 'tcx> {
+    cx: &'a RefactorCtxt<'a, 'tcx>,
+    comment_map: &'a CommentMap,
+}
+
+impl<'a, 'tcx> FixUnusedUnsafeFolder<'a, 'tcx> {
+    fn is_unused_unsafe_block(&self, b: &Block) -> bool {
+        let BlockCheckMode::Unsafe(UnsafeSource::UserProvided) = b.rules else {
+            return false;
+        };
+
+        let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
+        let parent = self.cx.hir_map().get_parent_item(hir_id);
+        let result = self.cx.ty_ctxt().unsafety_check_result(parent);
+        result
+            .unused_unsafes
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
+    }
+}
+
+impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
+    fn flat_map_stmt(&mut self, mut stmt: Stmt) -> SmallVec<[Stmt; 1]> {
+        'noop: {
+            let (StmtKind::Expr(expr) | StmtKind::Semi(expr)) = &mut stmt.kind else {
+                break 'noop;
+            };
+
+            let expr_id = expr.id;
+            let ExprKind::Block(block, None) = &mut expr.kind else {
+                break 'noop;
+            };
+
+            if !self.is_unused_unsafe_block(block) {
+                break 'noop;
+            }
+
+            let block_id = block.id;
+            let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
+            let parent = self.cx.hir_map().get_parent_item(hir_id);
+            let param_env = self.cx.ty_ctxt().param_env(parent);
+
+            let has_comments = [stmt.id, expr_id, block_id].iter().any(|id| {
+                self.comment_map
+                    .get(id)
+                    .map_or(false, |comments| !comments.is_empty())
+            });
+
+            let has_drop = block.stmts.iter().any(|stmt| match stmt.kind {
+                StmtKind::Local(ref local) => {
+                    let ty = self
+                        .cx
+                        .opt_node_type(local.id)
+                        .or_else(|| self.cx.opt_node_type(local.pat.id));
+                    ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
+                }
+                _ => false,
+            });
+
+            // Remove the block if there's nothing preventing us from doing so.
+            if !has_comments && !has_drop {
+                let mut stmts = mem::take(&mut block.stmts);
+
+                // If the block has a tail expr, turn it into a statement. This is valid
+                // because this is a block statement, which means that the tail expr isn't
+                // being used as part of an expression and so can (and must be) turned into
+                // a statement.
+                if let Some(last) = stmts.last_mut() && let StmtKind::Expr(expr) = &mut last.kind {
+                    let expr = std::mem::replace(expr, mk().tuple_expr(Vec::<P<Expr>>::new()));
+                    last.kind = StmtKind::Semi(expr);
+                }
+
+                return SmallVec::from_vec(stmts);
+            }
+        }
+
+        mut_visit::noop_flat_map_stmt(stmt, self)
+    }
+
+    fn visit_expr(&mut self, expr: &mut P<Expr>) {
+        'noop: {
+            // We only want to touch unsafe block exprs where the unsafe is unused.
+            let ExprKind::Block(block, None) = &mut expr.kind else {
+                break 'noop;
+            };
+            if !self.is_unused_unsafe_block(block) {
+                break 'noop;
+            }
+
+            // We only remove the block if it consists of a single tail expr.
+            let [stmt] = &mut block.stmts[..] else {
+                break 'noop;
+            };
+
+            // We don't want to remove the block if our tail expr has a comment on it, since
+            // doing so would delete the comment.
+            let has_comments = self
+                .comment_map
+                .get(&stmt.id)
+                .map_or(false, |comments| !comments.is_empty());
+            if has_comments {
+                break 'noop;
+            }
+
+            let StmtKind::Expr(inner) = &mut stmt.kind else {
+                break 'noop;
+            };
+
+            *expr = std::mem::replace(inner, mk().tuple_expr(Vec::<P<Expr>>::new()));
+        }
+
+        mut_visit::noop_visit_expr(expr, self)
+    }
+
+    fn visit_block(&mut self, b: &mut P<Block>) {
+        if self.is_unused_unsafe_block(b) {
+            b.rules = BlockCheckMode::Default;
+        }
+
+        mut_visit::noop_visit_block(b, self)
     }
 }
 

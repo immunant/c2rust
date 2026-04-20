@@ -1,4 +1,5 @@
 #!/usr/bin/env -S uv run
+import toml
 
 import errno
 import os
@@ -28,7 +29,7 @@ from rust_file import (
     RustMod,
     RustVisibility,
 )
-from typing import Any, Dict, Generator, List, Optional, Set, Iterable
+from typing import Any, Dict, Generator, List, Optional, Set, Iterable, Literal, cast
 
 # Tools we will need
 clang = get_cmd_or_die("clang")
@@ -54,6 +55,9 @@ class TestOutcome(Enum):
     UnexpectedSuccess = "unexpected successes"
 
 
+RustEdition = Literal[2021] | Literal[2024]
+
+
 class CStaticLibrary:
     def __init__(self, path: str, link_name: str,
                  obj_files: List[str]) -> None:
@@ -73,7 +77,7 @@ class CFile:
         self.reorganize_definitions = "reorganize_definitions" in flags
         self.emit_build_files = "emit_build_files" in flags
 
-    def translate(self, cc_db: str, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
+    def translate(self, cc_db: str, edition: RustEdition, ld_lib_path: str, extra_args: List[str] = []) -> RustFile:
         extensionless_file, _ = os.path.splitext(self.path)
 
         # run the transpiler
@@ -84,6 +88,8 @@ class CFile:
             "--prefix-function-names",
             "rust_",
             "--overwrite-existing",
+            "--edition",
+            str(edition),
         ]
 
         # return nonzero if translation fails
@@ -218,6 +224,7 @@ class TestFile(RustFile):
 
 class TestDirectory:
     rs_test_files: list[TestFile]
+    edition: RustEdition
 
     def __init__(self, full_path: str, files: 're.Pattern', keep: List[str], log_level: str) -> None:
         self.c_files = []
@@ -234,6 +241,15 @@ class TestDirectory:
             "c_lib": [],
             "cc_db": [],
         }
+
+        cargo_toml_path = Path(full_path) / "Cargo.toml"
+        cargo_toml = toml.loads(cargo_toml_path.read_text())
+        edition = int(cargo_toml["package"]["edition"])
+        match edition:
+            case 2021 | 2024:
+                self.edition = cast(RustEdition, edition)
+            case _:
+                raise ValueError(f"unsupported Rust edition: {edition}")
 
         # if the test is arch-specific, check if we can run it natively; if not,
         # set self.target to a known-working target tuple for it
@@ -417,11 +433,17 @@ class TestDirectory:
         rust_file_builder.add_features([
             "extern_types",
             "simd_ffi",
-            "stdsimd",
             "linkage",
             "register_tool",
         ])
+        if self.edition < 2024:
+            rust_file_builder.add_features([
+                "stdsimd",
+            ])
         rust_file_builder.add_pragma("register_tool", ["c2rust"])
+        if self.edition >= 2024:
+            # TODO We should emit `unsafe` blocks for this instead of silencing the warning.
+            rust_file_builder.add_pragma("allow", ["unsafe_op_in_unsafe_fn"])
 
         # Ensure that path to rustc's lib dir is in`LD_LIBRARY_PATH`
         ld_lib_path = get_rust_toolchain_libpath()
@@ -441,9 +463,12 @@ class TestDirectory:
 
             try:
                 logging.debug("translating %s", c_file_short)
-                translated_rust_file = c_file.translate(self.generated_files["cc_db"][0],
-                                                        ld_lib_path,
-                                                        extra_args=target_args(self.target))
+                translated_rust_file = c_file.translate(
+                    cc_db=self.generated_files["cc_db"][0],
+                    edition=self.edition,
+                    ld_lib_path=ld_lib_path,
+                    extra_args=target_args(self.target),
+                )
             except NonZeroReturn as exception:
                 self.print_status(Colors.FAIL, "FAILED", "translate " +
                                   c_file_short)
@@ -504,19 +529,27 @@ class TestDirectory:
 
         self.generated_files["rust_src"].append(lib_file)
 
-        # Copy `generated-rust-toolchain.toml`.
         # We `c2rust-transpile` `*.c` files individually, so `--emit-build-files` doesn't work
         # (if it's generated, it's in the wrong directory and may be different for each transpiled file).
         # We could also change things to transpile all `*.c` files at once, but that's more involved.
-        generated_rust_toolchain = Path(c.TRANSPILE_CRATE_DIR) / "src/build_files/generated-rust-toolchain.toml"
+        # This logic needs to stay in sync with `fn emit_rust_toolchain`.
+        match self.edition:
+            case 2021:
+                toolchain = "nightly-2023-04-15"
+            case 2024:
+                toolchain = "nightly-2026-03-03"
+        rust_toolchain_toml = f"""\
+[toolchain]
+channel = "{toolchain}"
+components = ["rustfmt"]
+"""
         rust_toolchain = Path(self.full_path) / "rust-toolchain.toml"
-        rust_toolchain.unlink(missing_ok=True)
-        rust_toolchain.symlink_to(generated_rust_toolchain)
+        rust_toolchain.write_text(rust_toolchain_toml)
         self.generated_files["rust_src"].append(str(rust_toolchain))
 
         # Build
         with pb.local.cwd(self.full_path):
-            args = ["build"]
+            args = ["build", "--color", "always"]
 
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
@@ -539,7 +572,7 @@ class TestDirectory:
 
         # Test
         with pb.local.cwd(self.full_path):
-            args = ["test"]
+            args = ["test", "--color", "always"]
 
             if c.BUILD_TYPE == 'release':
                 args.append('--release')
@@ -548,7 +581,7 @@ class TestDirectory:
                 args += ["--target", self.target]
 
             retcode, stdout, stderr = cargo[args].run(retcode=None)
-        
+
         if retcode != 0:
             _, lib_file_path_short = os.path.split(lib_file.path)
 
@@ -561,7 +594,7 @@ class TestDirectory:
                 if "... ok" in line:
                     self.print_status(Colors.OKGREEN, "OK", "{}".format(line))
                     sys.stdout.write('\n')
-        
+
         # Don't distinguish between expected and unexpected failures.
         # `#[should_panic]` is used for that instead of `// xfail` now.
         # Also, `cargo test -- --format json` is unstable, so it's easier to just parse very simply.
@@ -662,11 +695,24 @@ def main() -> None:
     # Set whether we are using nix.
     C2RUST_USE_NIX=args.use_nix
 
+    # Build the project to ensure binaries are up-to-date
+    logging.info("Building project with cargo build --release...")
+    build_args = ["build", "--release"]
+    retcode, stdout, stderr = cargo[build_args].run(retcode=None)
+
+    if retcode != 0:
+        logging.error("Build failed with return code %d", retcode)
+        logging.error("stdout: %s", stdout)
+        logging.error("stderr: %s", stderr)
+        die("cargo build --release failed", retcode)
+
+    logging.info("Build completed successfully")
+
     # check that the binaries have been built first
     bins = [c.TRANSPILER]
     for b in bins:
         if not os.path.isfile(b):
-            msg = b + " not found; run cargo build --release first?"
+            msg = b + " not found; build may have failed"
             die(msg, errno.ENOENT)
 
     # NOTE: it seems safe to disable this check since we now

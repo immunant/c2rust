@@ -1,5 +1,3 @@
-//! feature_raw_ref_op
-
 use crate::binary_conditional::rust_entry3;
 use crate::conditional::rust_entry;
 use crate::conditionals::{rust_entry2, rust_ternaries};
@@ -10,7 +8,7 @@ use crate::unused_conditionals::{
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
 
     fn entry2(_: c_uint, _: *mut c_int);

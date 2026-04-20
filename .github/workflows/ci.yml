@@ -60,6 +60,8 @@ jobs:
             --profile minimal --component rustfmt,rustc-dev
           rustup toolchain install nightly-2023-04-15 \
             --profile minimal --component rustfmt
+          rustup toolchain install nightly-2026-03-03 \
+            --profile minimal --component rustfmt
       
       - uses: taiki-e/install-action@nextest
 
@@ -126,7 +128,7 @@ jobs:
         run: |
           export RUSTFLAGS="$RUSTFLAGS -D warnings"
           export RUSTDOCFLAGS="-D warnings"
-          cargo nextest run --release --workspace
+          cargo nextest run --release --workspace --no-fail-fast
       - name: Test translator
         run: |
           # `test_translator.py` compiles translated code,
@@ -212,6 +214,6 @@ jobs:
 
       - run: cargo build --release
 
-      - run: cargo nextest run --release --no-tests warn
+      - run: cargo nextest run --release --no-tests warn --no-fail-fast
 
       - run: cargo doc --document-private-items --no-deps

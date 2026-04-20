@@ -20,3 +20,23 @@ _Atomic(int) c11_atomics(_Atomic(int) x) {
 
     return x;
 }
+
+int fetch_after_atomics_signed(int x) {
+    __atomic_add_fetch(&x, 2, __ATOMIC_SEQ_CST);
+    __atomic_sub_fetch(&x, 1, __ATOMIC_SEQ_CST);
+    __atomic_and_fetch(&x, 0xF, __ATOMIC_SEQ_CST);
+    __atomic_or_fetch(&x, 0x10, __ATOMIC_SEQ_CST);
+    __atomic_nand_fetch(&x, 0xFF, __ATOMIC_SEQ_CST);
+
+    return x;
+}
+
+unsigned int fetch_after_atomics_unsigned(unsigned int x) {
+    __atomic_add_fetch(&x, 2, __ATOMIC_SEQ_CST);
+    __atomic_sub_fetch(&x, 1, __ATOMIC_SEQ_CST);
+    __atomic_and_fetch(&x, 0xF, __ATOMIC_SEQ_CST);
+    __atomic_or_fetch(&x, 0x10, __ATOMIC_SEQ_CST);
+    __atomic_nand_fetch(&x, 0xFF, __ATOMIC_SEQ_CST);
+
+    return x;
+}

@@ -2,7 +2,7 @@ use crate::shadowing::{rust_shadow, rust_twice};
 use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn twice(_: c_int) -> c_int;
 
     fn shadow(_: c_uint, _: *mut c_int);

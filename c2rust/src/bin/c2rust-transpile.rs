@@ -3,6 +3,7 @@ use log::LevelFilter;
 use regex::Regex;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
+use c2rust_rust_tools::RustEdition;
 use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
 
 #[derive(Debug, Parser)]
@@ -97,6 +98,11 @@ struct Args {
     #[clap(long, value_enum, default_value_t = InvalidCodes::CompileError)]
     invalid_code: InvalidCodes,
 
+    /// Rust edition to target.
+    /// 2021 and 2024 are supported.
+    #[clap(long, default_value_t)]
+    edition: RustEdition,
+
     /// Emit .rs files as modules instead of crates, excluding the crate preambles
     #[clap(long)]
     emit_modules: bool,
@@ -127,6 +133,14 @@ struct Args {
     #[clap(short = 'b', long = "binary", multiple = true, number_of_values = 1)]
     binary: Option<Vec<String>>,
 
+    /// Whether to fold the contents of the binary crates into the library crate
+    /// and emit thin `c2rust-bin-{name}.rs` binary crates that just call the
+    /// corresponding `main` for every binary from the library.
+    /// This makes the binary crates trivial and allows intra-crate processing
+    /// of everything within the library crate.
+    #[clap(long)]
+    thin_binaries: bool,
+
     /// Emit files even if it causes existing files to be overwritten
     #[clap(long)]
     overwrite_existing: bool,
@@ -140,8 +154,10 @@ struct Args {
     reorganize_definitions: bool,
 
     /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
+    ///
+    /// See `c2rust-postprocess/README.md` for more information.
     #[clap(long)]
-    postprocess: bool,
+    remote_llm_postprocess: bool,
 
     /// Extra arguments to pass to clang frontend during parsing the input C file
     #[clap(multiple = true, last(true))]
@@ -183,6 +199,10 @@ struct Args {
 
     #[clap(long, value_enum, default_value_t)]
     cross_check_backend: CrossCheckBackend,
+
+    /// Deny `unsafe_op_in_unsafe_fn` and wrap unsafe fn bodies in unsafe blocks
+    #[clap(long)]
+    deny_unsafe_op_in_unsafe_fn: bool,
 }
 
 // TODO Eventually move this code into `c2rust-transpile`
@@ -292,17 +312,20 @@ fn main() {
         overwrite_existing: args.overwrite_existing,
         reduce_type_annotations: args.reduce_type_annotations,
         reorganize_definitions: args.reorganize_definitions,
-        postprocess: args.postprocess,
+        postprocess: args.remote_llm_postprocess,
         emit_modules: args.emit_modules,
         emit_build_files: args.emit_build_files,
         c2rust_dir: args.c2rust_dir,
         output_dir: args.output_dir,
         binaries: args.binary.unwrap_or_default(),
+        thin_binaries: args.thin_binaries,
         panic_on_translator_failure: args.invalid_code == InvalidCodes::Panic,
         replace_unsupported_decls: ReplaceMode::Extern,
         emit_no_std: args.emit_no_std,
         enabled_warnings: args.warn.into_iter().collect(),
         log_level: args.log_level,
+        edition: args.edition,
+        deny_unsafe_op_in_unsafe_fn: args.deny_unsafe_op_in_unsafe_fn,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {

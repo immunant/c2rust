@@ -4,7 +4,7 @@ use crate::noop::rust_noop;
 use std::ffi::c_int;
 
 #[link(name = "test")]
-extern "C" {
+unsafe extern "C" {
     fn noop();
 
     fn nofnargs() -> c_int;

@@ -5,12 +5,15 @@ use c2rust_ast_exporter::clang_ast::LRValue;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
+use crate::c_ast::CUnOp;
 use crate::{
-    c_ast,
     diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
-    translator::{cast_int, unwrap_function_pointer, ExprContext, Translation},
+    format_translation_err,
+    translator::{
+        cast_int, neg_expr, transmute_expr, unwrap_function_pointer, ExprContext, Translation,
+    },
     with_stmts::WithStmts,
-    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind,
+    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind, ExternCrate,
 };
 
 impl<'c> Translation<'c> {
@@ -24,7 +27,7 @@ impl<'c> Translation<'c> {
 
         match arg_kind {
             // C99 6.5.3.2 para 4
-            CExprKind::Unary(_, c_ast::UnOp::Deref, target, _) => {
+            CExprKind::Unary(_, CUnOp::Deref, target, _) => {
                 return self.convert_expr(ctx, *target, None)
             }
             // Array subscript functions as a deref too.
@@ -33,9 +36,10 @@ impl<'c> Translation<'c> {
                     ctx.used().set_needs_address(true),
                     lhs,
                     rhs,
+                    LRValue::RValue, // if we bypass the deref, we stay an RValue
                     Some(cqual_type),
-                    false,
-                )
+                    false, // don't deref, keep as pointer
+                );
             }
             // An AddrOf DeclRef/Member is safe to not decay
             // if the translator isn't already giving a hard yes to decaying (ie, BitCasts).
@@ -102,12 +106,7 @@ impl<'c> Translation<'c> {
             .ast_context
             .get_pointee_qual_type(pointer_cty.ctype)
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
-        let arg_is_macro = arg.map_or(false, |arg| {
-            matches!(
-                self.convert_const_macro_expansion(ctx, arg, None),
-                Ok(Some(_))
-            )
-        });
+        let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
@@ -205,11 +204,10 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         cqual_type: CQualTypeId,
         arg: CExprId,
-        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let arg_expr_kind = &self.ast_context.index(arg).kind;
 
-        if let &CExprKind::Unary(_, c_ast::UnOp::AddressOf, arg, _) = arg_expr_kind {
+        if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
             return self.convert_expr(ctx.used(), arg, None);
         }
 
@@ -222,14 +220,7 @@ impl<'c> Translation<'c> {
                 } else if let Some(_vla) = self.compute_size_of_expr(cqual_type.ctype) {
                     Ok(val)
                 } else {
-                    let mut val = mk().unary_expr(UnOp::Deref(Default::default()), val);
-
-                    // If the type on the other side of the pointer we are dereferencing is volatile and
-                    // this whole expression is not an LValue, we should make this a volatile read
-                    if lrvalue.is_rvalue() && cqual_type.qualifiers.is_volatile {
-                        val = self.volatile_read(val, cqual_type)?
-                    }
-                    Ok(val)
+                    Ok(mk().unary_expr(UnOp::Deref(Default::default()), val))
                 }
             })
     }
@@ -239,6 +230,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         lhs: CExprId,
         rhs: CExprId,
+        lrvalue: LRValue,
         override_ty: Option<CQualTypeId>,
         deref: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -361,7 +353,7 @@ impl<'c> Translation<'c> {
                         self.convert_pointer_offset(lhs, rhs, pointee_type_id.ctype, false, deref);
                     // if the context wants a different type, add a cast
                     if let Some(expected_ty) = override_ty {
-                        if expected_ty != pointee_type_id {
+                        if lrvalue.is_rvalue() && expected_ty != pointee_type_id {
                             let ty = self.convert_type(expected_ty.ctype)?;
                             val = val.map(|val| mk().cast_expr(val, ty));
                         }
@@ -390,7 +382,7 @@ impl<'c> Translation<'c> {
         }
 
         if neg {
-            offset = mk().unary_expr(UnOp::Neg(Default::default()), offset);
+            offset = neg_expr(offset);
         }
 
         let mut res = mk().method_call_expr(ptr, "offset", vec![offset]);
@@ -448,5 +440,146 @@ impl<'c> Translation<'c> {
         self.type_converter
             .borrow_mut()
             .convert_pointee(&self.ast_context, type_id)
+    }
+
+    pub fn convert_pointer_to_pointer_cast(
+        &self,
+        source_cty: CTypeId,
+        target_cty: CTypeId,
+        val: WithStmts<Box<Expr>>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if self.ast_context.is_function_pointer(target_cty)
+            || self.ast_context.is_function_pointer(source_cty)
+        {
+            let source_ty = self
+                .type_converter
+                .borrow_mut()
+                .convert(&self.ast_context, source_cty)?;
+            let target_ty = self
+                .type_converter
+                .borrow_mut()
+                .convert(&self.ast_context, target_cty)?;
+
+            if source_ty == target_ty {
+                return Ok(val);
+            }
+
+            self.import_type(source_cty);
+            self.import_type(target_cty);
+
+            val.and_then(|val| {
+                Ok(WithStmts::new_unsafe_val(transmute_expr(
+                    source_ty, target_ty, val,
+                )))
+            })
+        } else {
+            // Normal case
+            let target_ty = self.convert_type(target_cty)?;
+            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+        }
+    }
+
+    pub fn convert_integral_to_pointer_cast(
+        &self,
+        ctx: ExprContext,
+        source_cty: CTypeId,
+        target_cty: CTypeId,
+        val: WithStmts<Box<Expr>>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let source_ty_kind = &self.ast_context.resolve_type(source_cty).kind;
+        let target_ty = self.convert_type(target_cty)?;
+
+        if self.ast_context.is_function_pointer(target_cty) {
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "cannot transmute integers to Option<fn ...> in `const` context",
+                ));
+            }
+
+            self.use_crate(ExternCrate::Libc);
+            val.and_then(|mut val| {
+                // First cast the integer to pointer size
+                let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
+                val = mk().cast_expr(val, intptr_t.clone());
+
+                Ok(WithStmts::new_unsafe_val(transmute_expr(
+                    intptr_t, target_ty, val,
+                )))
+            })
+        } else if source_ty_kind.is_bool() {
+            self.use_crate(ExternCrate::Libc);
+            Ok(val.map(|mut val| {
+                // First cast the boolean to pointer size
+                val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
+                mk().cast_expr(val, target_ty)
+            }))
+        } else if let &CTypeKind::Enum(..) = source_ty_kind {
+            val.result_map(|val| self.convert_cast_from_enum(target_cty, val))
+        } else {
+            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+        }
+    }
+
+    pub fn convert_pointer_to_integral_cast(
+        &self,
+        ctx: ExprContext,
+        source_cty: CTypeId,
+        target_cty: CTypeId,
+        val: WithStmts<Box<Expr>>,
+        expr: Option<CExprId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if ctx.is_const {
+            return Err(format_translation_err!(
+                None,
+                "cannot observe pointer values in `const` context",
+            ));
+        }
+
+        let target_ty = self.convert_type(target_cty)?;
+        let source_ty = self.convert_type(source_cty)?;
+        let target_ty_kind = &self.ast_context.resolve_type(target_cty).kind;
+
+        if self.ast_context.is_function_pointer(source_cty) {
+            val.and_then(|val| {
+                Ok(WithStmts::new_unsafe_val(transmute_expr(
+                    source_ty, target_ty, val,
+                )))
+            })
+        } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
+            let expr = expr.ok_or_else(|| format_err!("Casts to enums require a C ExprId"))?;
+            val.result_map(|val| {
+                self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, Some(expr), val)
+            })
+        } else {
+            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+        }
+    }
+
+    pub fn convert_pointer_is_null(
+        &self,
+        ctx: ExprContext,
+        ptr_type: CTypeId,
+        val: Box<Expr>,
+        is_null: bool,
+    ) -> TranslationResult<Box<Expr>> {
+        Ok(if self.ast_context.is_function_pointer(ptr_type) {
+            let method = if is_null { "is_none" } else { "is_some" };
+            mk().method_call_expr(val, method, vec![])
+        } else {
+            // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "cannot check nullity of pointer in `const` context",
+                ));
+            }
+            let val = mk().method_call_expr(val, "is_null", vec![]);
+            if !is_null {
+                mk().unary_expr(UnOp::Not(Default::default()), val)
+            } else {
+                val
+            }
+        })
     }
 }

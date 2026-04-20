@@ -2,37 +2,29 @@
 
 use super::*;
 
-fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
-    mk().unary_expr(UnOp::Neg(Default::default()), arg)
-}
-
-fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
-    mk().method_call_expr(arg, "wrapping_neg", vec![])
-}
-
-impl From<c_ast::BinOp> for BinOp {
-    fn from(op: c_ast::BinOp) -> Self {
+impl From<CBinOp> for BinOp {
+    fn from(op: CBinOp) -> Self {
         match op {
-            c_ast::BinOp::Multiply => BinOp::Mul(Default::default()),
-            c_ast::BinOp::Divide => BinOp::Div(Default::default()),
-            c_ast::BinOp::Modulus => BinOp::Rem(Default::default()),
-            c_ast::BinOp::Add => BinOp::Add(Default::default()),
-            c_ast::BinOp::Subtract => BinOp::Sub(Default::default()),
-            c_ast::BinOp::ShiftLeft => BinOp::Shl(Default::default()),
-            c_ast::BinOp::ShiftRight => BinOp::Shr(Default::default()),
-            c_ast::BinOp::Less => BinOp::Lt(Default::default()),
-            c_ast::BinOp::Greater => BinOp::Gt(Default::default()),
-            c_ast::BinOp::LessEqual => BinOp::Le(Default::default()),
-            c_ast::BinOp::GreaterEqual => BinOp::Ge(Default::default()),
-            c_ast::BinOp::EqualEqual => BinOp::Eq(Default::default()),
-            c_ast::BinOp::NotEqual => BinOp::Ne(Default::default()),
-            c_ast::BinOp::BitAnd => BinOp::BitAnd(Default::default()),
-            c_ast::BinOp::BitXor => BinOp::BitXor(Default::default()),
-            c_ast::BinOp::BitOr => BinOp::BitOr(Default::default()),
-            c_ast::BinOp::And => BinOp::And(Default::default()),
-            c_ast::BinOp::Or => BinOp::Or(Default::default()),
+            CBinOp::Multiply => BinOp::Mul(Default::default()),
+            CBinOp::Divide => BinOp::Div(Default::default()),
+            CBinOp::Modulus => BinOp::Rem(Default::default()),
+            CBinOp::Add => BinOp::Add(Default::default()),
+            CBinOp::Subtract => BinOp::Sub(Default::default()),
+            CBinOp::ShiftLeft => BinOp::Shl(Default::default()),
+            CBinOp::ShiftRight => BinOp::Shr(Default::default()),
+            CBinOp::Less => BinOp::Lt(Default::default()),
+            CBinOp::Greater => BinOp::Gt(Default::default()),
+            CBinOp::LessEqual => BinOp::Le(Default::default()),
+            CBinOp::GreaterEqual => BinOp::Ge(Default::default()),
+            CBinOp::EqualEqual => BinOp::Eq(Default::default()),
+            CBinOp::NotEqual => BinOp::Ne(Default::default()),
+            CBinOp::BitAnd => BinOp::BitAnd(Default::default()),
+            CBinOp::BitXor => BinOp::BitXor(Default::default()),
+            CBinOp::BitOr => BinOp::BitOr(Default::default()),
+            CBinOp::And => BinOp::And(Default::default()),
+            CBinOp::Or => BinOp::Or(Default::default()),
 
-            _ => panic!("C BinOp {:?} is not a valid Rust BinOp", op),
+            _ => panic!("CBinOp {:?} is not a valid Rust BinOp", op),
         }
     }
 }
@@ -42,7 +34,7 @@ impl<'c> Translation<'c> {
         &self,
         mut ctx: ExprContext,
         expr_type_id: CQualTypeId,
-        op: c_ast::BinOp,
+        op: CBinOp,
         lhs: CExprId,
         rhs: CExprId,
         opt_lhs_type_id: Option<CQualTypeId>,
@@ -56,7 +48,7 @@ impl<'c> Translation<'c> {
 
         let lhs_loc = &self.ast_context[lhs].loc;
         let rhs_loc = &self.ast_context[rhs].loc;
-        use c_ast::BinOp::*;
+        use CBinOp::*;
         match op {
             Comma => {
                 // The value of the LHS of a comma expression is always discarded
@@ -98,7 +90,7 @@ impl<'c> Translation<'c> {
                 // and so we need to decay references to pointers to do so. See
                 // https://github.com/rust-lang/rust/issues/53772. This might be removable
                 // once the above issue is resolved.
-                if op == c_ast::BinOp::EqualEqual || op == c_ast::BinOp::NotEqual {
+                if op == CBinOp::EqualEqual || op == CBinOp::NotEqual {
                     ctx = ctx.decay_ref();
                 }
 
@@ -167,7 +159,7 @@ impl<'c> Translation<'c> {
                     // When we use methods on pointers (ie wrapping_offset_from or offset)
                     // we must ensure we have an explicit raw ptr for the self param, as
                     // self references do not decay
-                    if op == c_ast::BinOp::Subtract || op == c_ast::BinOp::Add {
+                    if op == CBinOp::Subtract || op == CBinOp::Add {
                         let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
 
                         if let CTypeKind::Pointer(_) = ty_kind {
@@ -181,6 +173,7 @@ impl<'c> Translation<'c> {
                                 .and_then(|rhs_val| {
                                     let expr_ids = Some((lhs, rhs));
                                     self.convert_binary_operator(
+                                        ctx,
                                         op,
                                         ty,
                                         expr_type_id.ctype,
@@ -201,10 +194,11 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         bin_op_kind: BinOp,
-        bin_op: c_ast::BinOp,
+        bin_op: CBinOp,
         read: Box<Expr>,
         write: Box<Expr>,
         rhs: Box<Expr>,
+        initial_lhs_type_id: CQualTypeId,
         compute_lhs_type_id: CQualTypeId,
         compute_res_type_id: CQualTypeId,
         lhs_type_id: CQualTypeId,
@@ -219,45 +213,33 @@ impl<'c> Translation<'c> {
                 rhs,
             )))
         } else {
-            let compute_lhs_resolved_ty = &self.ast_context.resolve_type(compute_lhs_type_id.ctype);
-            let lhs_type = self.convert_type(compute_lhs_type_id.ctype)?;
-
-            // We can't simply as-cast into a non primitive like f128
-            let lhs = if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
-                self.use_crate(ExternCrate::F128);
-
-                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "from"]);
-                let args = vec![read];
-
-                mk().call_expr(fn_path, args)
-            } else {
-                mk().cast_expr(read, lhs_type)
-            };
-            let ty = self.convert_type(compute_res_type_id.ctype)?;
-            let mut val = self.convert_binary_operator(
-                bin_op,
-                ty,
-                compute_res_type_id.ctype,
+            let lhs = self.convert_cast(
+                ctx,
+                initial_lhs_type_id,
                 compute_lhs_type_id,
-                rhs_type_id,
-                lhs,
-                rhs,
+                WithStmts::new_val(read.clone()),
+                None,
+                None,
                 None,
             )?;
 
-            let resolve_lhs_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+            let ty = self.convert_type(compute_res_type_id.ctype)?;
+            let val = lhs.and_then(|lhs| {
+                self.convert_binary_operator(
+                    ctx,
+                    bin_op,
+                    ty,
+                    compute_res_type_id.ctype,
+                    compute_lhs_type_id,
+                    rhs_type_id,
+                    lhs,
+                    rhs,
+                    None,
+                )
+            })?;
 
-            val = if let &CTypeKind::Enum(enum_id) = resolve_lhs_kind {
-                val.result_map(|val| {
-                    self.convert_cast_to_enum(ctx, lhs_type_id.ctype, enum_id, None, val)
-                })?
-            } else if compute_lhs_resolved_ty.kind == CTypeKind::LongDouble {
-                // We can't as-cast from a non primitive like f128 back to the result_type
-                self.f128_cast_to(val, resolve_lhs_kind)?
-            } else {
-                let result_type = self.convert_type(lhs_type_id.ctype)?;
-                val.map(|val| mk().cast_expr(val, result_type))
-            };
+            let val =
+                self.convert_cast(ctx, compute_res_type_id, lhs_type_id, val, None, None, None)?;
 
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
@@ -271,14 +253,14 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator(
         &self,
         ctx: ExprContext,
-        op: c_ast::BinOp,
+        op: CBinOp,
         expr_type_id: CQualTypeId,
         lhs: CExprId,
         rhs: CExprId,
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if op == c_ast::BinOp::Assign {
+        if op == CBinOp::Assign {
             assert!(compute_lhs_type_id.is_none());
             assert!(compute_res_type_id.is_none());
         } else {
@@ -307,7 +289,7 @@ impl<'c> Translation<'c> {
             let neither_ptr =
                 !lhs_resolved_ty.kind.is_pointer() && !rhs_resolved_ty.kind.is_pointer();
 
-            use c_ast::BinOp::*;
+            use CBinOp::*;
             match op.underlying_assignment() {
                 Some(Add) => neither_ptr,
                 Some(Subtract) => neither_ptr,
@@ -350,7 +332,7 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator_with_rhs(
         &self,
         ctx: ExprContext,
-        op: c_ast::BinOp,
+        op: CBinOp,
         expr_type_id: CQualTypeId,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
@@ -358,7 +340,7 @@ impl<'c> Translation<'c> {
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if op == c_ast::BinOp::Assign {
+        if op == CBinOp::Assign {
             assert!(compute_lhs_type_id.is_none());
             assert!(compute_res_type_id.is_none());
         } else {
@@ -409,11 +391,11 @@ impl<'c> Translation<'c> {
         };
 
         let is_unsigned_arith = match op {
-            c_ast::BinOp::AssignAdd
-            | c_ast::BinOp::AssignSubtract
-            | c_ast::BinOp::AssignMultiply
-            | c_ast::BinOp::AssignDivide
-            | c_ast::BinOp::AssignModulus => compute_resolved_ty.kind.is_unsigned_integral_type(),
+            CBinOp::AssignAdd
+            | CBinOp::AssignSubtract
+            | CBinOp::AssignMultiply
+            | CBinOp::AssignDivide
+            | CBinOp::AssignModulus => compute_resolved_ty.kind.is_unsigned_integral_type(),
             _ => false,
         };
 
@@ -438,7 +420,7 @@ impl<'c> Translation<'c> {
                      rvalue: read,
                  }| {
                     // Assignment expression itself
-                    use c_ast::BinOp::*;
+                    use CBinOp::*;
                     let assign_stmt = match op {
                         // Regular (possibly volatile) assignment
                         Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
@@ -450,28 +432,27 @@ impl<'c> Translation<'c> {
 
                         // Anything volatile needs to be desugared into explicit reads and writes
                         op if is_volatile || is_unsigned_arith => {
+                            // Cast the lhs to the compute lhs type, do the compute, and then
+                            // cast the compute result to the final lhs type.
+
                             let op = op
                                 .underlying_assignment()
                                 .expect("Cannot convert non-assignment operator");
 
-                            let val = if expr_or_comp_type_id.ctype == initial_lhs_type_id.ctype {
+                            let lhs = self.convert_cast(
+                                ctx,
+                                initial_lhs_type_id,
+                                expr_or_comp_type_id,
+                                WithStmts::new_val(read.clone()),
+                                None,
+                                None,
+                                None,
+                            )?;
+
+                            let ty = self.convert_type(result_type_id.ctype)?;
+                            let val = lhs.and_then(|lhs|
                                 self.convert_binary_operator(
-                                    op,
-                                    ty,
-                                    expr_type_id.ctype,
-                                    initial_lhs_type_id,
-                                    rhs_type_id,
-                                    read.clone(),
-                                    rhs,
-                                    None,
-                                )?
-                            } else {
-                                let lhs_type =
-                                    self.convert_type(compute_lhs_type_id.unwrap().ctype)?;
-                                let write_type = self.convert_type(expr_type_id.ctype)?;
-                                let lhs = mk().cast_expr(read.clone(), lhs_type);
-                                let ty = self.convert_type(result_type_id.ctype)?;
-                                let mut val = self.convert_binary_operator(
+                                    ctx,
                                     op,
                                     ty,
                                     result_type_id.ctype,
@@ -480,25 +461,18 @@ impl<'c> Translation<'c> {
                                     lhs,
                                     rhs,
                                     None,
-                                )?;
+                                )
+                            )?;
 
-                                let expr_resolved_ty_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
-
-                                val = if let &CTypeKind::Enum(enum_id) = expr_resolved_ty_kind {
-                                    val.result_map(|val| self.convert_cast_to_enum(
-                                        ctx,
-                                        expr_type_id.ctype,
-                                        enum_id,
-                                        None,
-                                        val,
-                                    ))?
-                                } else {
-                                    let expr_type = self.convert_type(expr_type_id.ctype)?;
-                                    val.map(|val| mk().cast_expr(val, expr_type))
-                                };
-
-                                val.map(|val| mk().cast_expr(val, write_type))
-                            };
+                            let val = self.convert_cast(
+                                ctx,
+                                result_type_id,
+                                expr_type_id,
+                                val,
+                                None,
+                                None,
+                                None,
+                            )?;
 
                             #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
                             let write = if is_volatile {
@@ -550,6 +524,7 @@ impl<'c> Translation<'c> {
                                 read.clone(),
                                 write,
                                 rhs,
+                                initial_lhs_type_id,
                                 compute_lhs_type_id.unwrap(),
                                 compute_res_type_id.unwrap(),
                                 expr_type_id,
@@ -570,7 +545,8 @@ impl<'c> Translation<'c> {
     /// arguments be usable as rvalues.
     fn convert_binary_operator(
         &self,
-        op: c_ast::BinOp,
+        ctx: ExprContext,
+        op: CBinOp,
         ty: Box<Type>,
         ctype: CTypeId,
         lhs_type: CQualTypeId,
@@ -586,90 +562,63 @@ impl<'c> Translation<'c> {
             .is_unsigned_integral_type();
 
         Ok(WithStmts::new_val(match op {
-            c_ast::BinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
-            c_ast::BinOp::Subtract => {
-                return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs)
-            }
+            CBinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
+            CBinOp::Subtract => return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
 
-            c_ast::BinOp::Multiply if is_unsigned_integral_type => {
+            CBinOp::Multiply if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_mul", vec![rhs])
             }
-            c_ast::BinOp::Multiply => mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs),
+            CBinOp::Multiply => mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::Divide if is_unsigned_integral_type => {
+            CBinOp::Divide if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_div", vec![rhs])
             }
-            c_ast::BinOp::Divide => mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs),
+            CBinOp::Divide => mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::Modulus if is_unsigned_integral_type => {
+            CBinOp::Modulus if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_rem", vec![rhs])
             }
-            c_ast::BinOp::Modulus => mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs),
+            CBinOp::Modulus => mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::BitXor => mk().binary_expr(BinOp::BitXor(Default::default()), lhs, rhs),
+            CBinOp::BitXor => mk().binary_expr(BinOp::BitXor(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::ShiftRight => mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs),
-            c_ast::BinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
+            CBinOp::ShiftRight => mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs),
+            CBinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
 
-            c_ast::BinOp::EqualEqual => {
-                // Using is_none method for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
-                let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
-                    let fn_eq_null = self.ast_context.is_function_pointer(lhs_type.ctype)
-                        && self.ast_context.is_null_expr(rhs_expr_id);
-                    let null_eq_fn = self.ast_context.is_function_pointer(rhs_type.ctype)
-                        && self.ast_context.is_null_expr(lhs_expr_id);
-
-                    if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_none", vec![])
-                    } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_none", vec![])
-                    } else {
-                        mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs)
+            CBinOp::EqualEqual | CBinOp::NotEqual => {
+                // Using `.is_none()` and `.is_some()` for null comparison means
+                // we don't have to rely on `trait PartialEq` as much
+                // and it is also more idiomatic.
+                let (is_null, bin_op) = match op {
+                    CBinOp::EqualEqual => (true, BinOp::Eq(Default::default())),
+                    CBinOp::NotEqual => (false, BinOp::Ne(Default::default())),
+                    _ => unreachable!(),
+                };
+                let expr = match lhs_rhs_ids {
+                    Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
+                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, is_null)?
                     }
-                } else {
-                    mk().binary_expr(BinOp::Eq(Default::default()), lhs, rhs)
+                    Some((_, rhs_expr_id)) if self.ast_context.is_null_expr(rhs_expr_id) => {
+                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, is_null)?
+                    }
+                    _ => mk().binary_expr(bin_op, lhs, rhs),
                 };
 
                 bool_to_int(expr)
             }
-            c_ast::BinOp::NotEqual => {
-                // Using is_some method for null comparison means we don't have to
-                // rely on the PartialEq trait as much and is also more idiomatic
-                let expr = if let Some((lhs_expr_id, rhs_expr_id)) = lhs_rhs_ids {
-                    let fn_eq_null = self.ast_context.is_function_pointer(lhs_type.ctype)
-                        && self.ast_context.is_null_expr(rhs_expr_id);
-                    let null_eq_fn = self.ast_context.is_function_pointer(rhs_type.ctype)
-                        && self.ast_context.is_null_expr(lhs_expr_id);
-
-                    if fn_eq_null {
-                        mk().method_call_expr(lhs, "is_some", vec![])
-                    } else if null_eq_fn {
-                        mk().method_call_expr(rhs, "is_some", vec![])
-                    } else {
-                        mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs)
-                    }
-                } else {
-                    mk().binary_expr(BinOp::Ne(Default::default()), lhs, rhs)
-                };
-
-                bool_to_int(expr)
-            }
-            c_ast::BinOp::Less => {
-                bool_to_int(mk().binary_expr(BinOp::Lt(Default::default()), lhs, rhs))
-            }
-            c_ast::BinOp::Greater => {
+            CBinOp::Less => bool_to_int(mk().binary_expr(BinOp::Lt(Default::default()), lhs, rhs)),
+            CBinOp::Greater => {
                 bool_to_int(mk().binary_expr(BinOp::Gt(Default::default()), lhs, rhs))
             }
-            c_ast::BinOp::GreaterEqual => {
+            CBinOp::GreaterEqual => {
                 bool_to_int(mk().binary_expr(BinOp::Ge(Default::default()), lhs, rhs))
             }
-            c_ast::BinOp::LessEqual => {
+            CBinOp::LessEqual => {
                 bool_to_int(mk().binary_expr(BinOp::Le(Default::default()), lhs, rhs))
             }
 
-            c_ast::BinOp::BitAnd => mk().binary_expr(BinOp::BitAnd(Default::default()), lhs, rhs),
-            c_ast::BinOp::BitOr => mk().binary_expr(BinOp::BitOr(Default::default()), lhs, rhs),
+            CBinOp::BitAnd => mk().binary_expr(BinOp::BitAnd(Default::default()), lhs, rhs),
+            CBinOp::BitOr => mk().binary_expr(BinOp::BitOr(Default::default()), lhs, rhs),
 
             op => unimplemented!("Translation of binary operator {:?}", op),
         }))
@@ -749,15 +698,21 @@ impl<'c> Translation<'c> {
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let op = if up {
-            c_ast::BinOp::AssignAdd
+            CBinOp::AssignAdd
         } else {
-            c_ast::BinOp::AssignSubtract
+            CBinOp::AssignSubtract
         };
+
+        let arg_type = self.ast_context[arg]
+            .kind
+            .get_qual_type()
+            .ok_or_else(|| format_err!("bad arg type"))?;
+
         let one = match self.ast_context.resolve_type(ty.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
             CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
-            CTypeKind::LongDouble => {
+            CTypeKind::LongDouble | CTypeKind::Float128 => {
                 self.use_crate(ExternCrate::F128);
 
                 let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
@@ -767,19 +722,27 @@ impl<'c> Translation<'c> {
             }
             _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
         };
-        let arg_type = self.ast_context[arg]
-            .kind
-            .get_qual_type()
-            .ok_or_else(|| format_err!("bad arg type"))?;
+
+        let one_type_id =
+            if let CTypeKind::Pointer(..) = self.ast_context.resolve_type(arg_type.ctype).kind {
+                CQualTypeId::new(
+                    self.ast_context
+                        .type_for_kind(&CTypeKind::Int)
+                        .ok_or_else(|| format_err!("couldn't find type for CTypeKind::Int"))?,
+                )
+            } else {
+                arg_type
+            };
+
         self.convert_assignment_operator_with_rhs(
             ctx.used(),
             op,
-            arg_type,
-            arg,
             ty,
+            arg,
+            one_type_id,
             WithStmts::new_val(one),
             Some(arg_type),
-            Some(arg_type),
+            Some(ty),
         )
     }
 
@@ -820,7 +783,7 @@ impl<'c> Translation<'c> {
                     CTypeKind::Float | CTypeKind::Double => {
                         mk().lit_expr(mk().float_unsuffixed_lit("1."))
                     }
-                    CTypeKind::LongDouble => {
+                    CTypeKind::LongDouble | CTypeKind::Float128 => {
                         self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
@@ -841,11 +804,7 @@ impl<'c> Translation<'c> {
                         one = n
                     }
 
-                    let n = if up {
-                        one
-                    } else {
-                        mk().unary_expr(UnOp::Neg(Default::default()), one)
-                    };
+                    let n = if up { one } else { neg_expr(one) };
                     is_unsafe = true;
                     mk().method_call_expr(read, "offset", vec![n])
                 } else if self
@@ -888,45 +847,33 @@ impl<'c> Translation<'c> {
     pub fn convert_unary_operator(
         &self,
         ctx: ExprContext,
-        name: c_ast::UnOp,
+        name: CUnOp,
         cqual_type: CQualTypeId,
         arg: CExprId,
-        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let CQualTypeId { ctype, .. } = cqual_type;
-        let resolved_ctype = self.ast_context.resolve_type(ctype);
-
         let mut unary = match name {
-            c_ast::UnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
-            c_ast::UnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
-            c_ast::UnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
-            c_ast::UnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
-            c_ast::UnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
-            c_ast::UnOp::Deref => self.convert_deref(ctx, cqual_type, arg, lrvalue),
-            c_ast::UnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
+            CUnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
+            CUnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
+            CUnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
+            CUnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
+            CUnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
+            CUnOp::Deref => self.convert_deref(ctx, cqual_type, arg),
+            CUnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
-            c_ast::UnOp::Negate => {
-                let val = self.convert_expr(ctx.used(), arg, Some(cqual_type))?;
-
-                if resolved_ctype.kind.is_unsigned_integral_type() {
-                    Ok(val.map(wrapping_neg_expr))
-                } else {
-                    Ok(val.map(neg_expr))
-                }
-            }
-            c_ast::UnOp::Complement => Ok(self
+            CUnOp::Negate => self.convert_negate_operator(ctx, cqual_type, arg),
+            CUnOp::Complement => Ok(self
                 .convert_expr(ctx.used(), arg, Some(cqual_type))?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
-            c_ast::UnOp::Not => {
+            CUnOp::Not => {
                 let val = self.convert_condition(ctx, false, arg)?;
                 Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
             }
-            c_ast::UnOp::Extension => {
+            CUnOp::Extension => {
                 let arg = self.convert_expr(ctx, arg, Some(cqual_type))?;
                 Ok(arg)
             }
-            c_ast::UnOp::Real | c_ast::UnOp::Imag | c_ast::UnOp::Coawait => {
+            CUnOp::Real | CUnOp::Imag | CUnOp::Coawait => {
                 panic!("Unsupported extension operator")
             }
         }?;
@@ -938,11 +885,11 @@ impl<'c> Translation<'c> {
         // it's a no-op around the inner expression.
         if !matches!(
             name,
-            c_ast::UnOp::PreDecrement
-                | c_ast::UnOp::PreIncrement
-                | c_ast::UnOp::PostDecrement
-                | c_ast::UnOp::PostIncrement
-                | c_ast::UnOp::Extension
+            CUnOp::PreDecrement
+                | CUnOp::PreIncrement
+                | CUnOp::PostDecrement
+                | CUnOp::PostIncrement
+                | CUnOp::Extension
         ) {
             unary = self.convert_side_effects_expr(
                 ctx,
@@ -951,5 +898,39 @@ impl<'c> Translation<'c> {
             )?;
         }
         Ok(unary)
+    }
+
+    fn convert_negate_operator(
+        &self,
+        ctx: ExprContext,
+        expr_type_id: CQualTypeId,
+        arg_id: CExprId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let is_unsigned_integral_type = self
+            .ast_context
+            .resolve_type(expr_type_id.ctype)
+            .kind
+            .is_unsigned_integral_type();
+
+        if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false) =
+            (&self.ast_context[arg_id].kind, is_unsigned_integral_type)
+        {
+            // If we are negating a literal, generate a negated literal directly.
+            // This will create an expression like `-1 as ty` without parentheses,
+            // rather than `-(1 as ty)`.
+            let val = self.mk_int_lit(expr_type_id, val, base, true)?;
+            Ok(WithStmts::new_val(val))
+        } else {
+            let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
+            let val = val.map(|val| {
+                if is_unsigned_integral_type {
+                    wrapping_neg_expr(val)
+                } else {
+                    neg_expr(val)
+                }
+            });
+
+            Ok(val)
+        }
     }
 }

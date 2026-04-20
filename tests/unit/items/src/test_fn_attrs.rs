@@ -164,11 +164,10 @@ unsafe extern "C" fn rust_gnu_inline_non_canonical_definition_extern
         let aliased_fn_syntax = |public| {
             format!(
                 r#"
-extern "C" {{
+unsafe extern "C" {{
     #[link_name = "inline_extern"]
-    {}fn aliased_fn();
-"#,
-                public
+    {public}unsafe fn aliased_fn();
+"#
             )
         };
         assert!(

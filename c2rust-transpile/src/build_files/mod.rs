@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use c2rust_rust_tools::rustfmt;
+use c2rust_rust_tools::RustEdition::Edition2024;
 use handlebars::Handlebars;
+use itertools::Itertools;
 use pathdiff::diff_paths;
 use serde_derive::Serialize;
 use serde_json::json;
@@ -165,10 +167,17 @@ fn convert_module_list(
     module_subset: ModuleSubset,
 ) -> Vec<Module> {
     modules.retain(|m| {
-        let is_binary = tcfg.is_binary(m);
+        let is_binary = tcfg.is_thin_or_full_binary(m);
         let is_binary_subset = module_subset == ModuleSubset::Binaries;
         // Don't add binary modules to lib.rs, these are emitted to
         // standalone, separate binary modules.
+        // Retain "thin" binaries in both lists because
+        // we include the code in the library crate,
+        // but also wrap calls to their `main` functions
+        // separately in the `c2rust-bin-{name}.rs` binary crates.
+        if tcfg.thin_binaries {
+            return is_binary || !is_binary_subset;
+        }
         is_binary == is_binary_subset
     });
 
@@ -202,6 +211,44 @@ fn convert_module_list(
     res
 }
 
+fn emit_thin_binaries(
+    tcfg: &TranspilerConfig,
+    build_dir: &Path,
+    crate_name: &str,
+    modules: &mut Vec<Module>,
+) {
+    let mut crate_path = vec![crate_name.to_owned()];
+    modules.retain_mut(|m| {
+        if m.open {
+            crate_path.push(m.name.to_owned());
+            return false;
+        }
+        if m.close {
+            let _ = crate_path.pop();
+            return false;
+        }
+
+        // Emit a `c2rust-bin-{module_name}.rs` that just wraps the `main`
+        // function from the actual module inside the crate.
+        let Module { name, .. } = m;
+        let file_name = format!("c2rust-bin-{name}.rs");
+        let output_path = build_dir.join(&file_name);
+        let main_path = crate_path.iter().join("::");
+        let output = format!(
+            r"
+fn main() {{
+    ::{main_path}::{name}::main()
+}}
+"
+        );
+        maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing);
+
+        // Update the path written to `Cargo.toml`
+        m.path = Some(file_name.into());
+        true
+    });
+}
+
 fn convert_dependencies_list(
     crates: CrateSet,
     c2rust_dir: Option<&Path>,
@@ -232,10 +279,10 @@ fn emit_build_rs(
     });
     let output = reg.render("build.rs", &json).unwrap();
     let output_path = build_dir.join("build.rs");
-    let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
+    let path = maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path).run();
+        rustfmt(&output_path).edition(tcfg.edition).run();
     }
 
     Some(path)
@@ -264,8 +311,6 @@ fn emit_lib_rs(
     let rs_xcheck_backend = tcfg.cross_check_backend.replace('-', "_");
     let json = json!({
         "lib_rs_file": file_name,
-        "reorganize_definitions": tcfg.reorganize_definitions,
-        "translate_valist": tcfg.translate_valist,
         "cross_checks": tcfg.cross_checks,
         "cross_check_backend": rs_xcheck_backend,
         "plugin_args": plugin_args,
@@ -276,10 +321,10 @@ fn emit_lib_rs(
 
     let output_path = build_dir.join(file_name);
     let output = reg.render("lib.rs", &json).unwrap();
-    let path = maybe_write_to_file(&output_path, output, tcfg.overwrite_existing)?;
+    let path = maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing)?;
 
     if !tcfg.disable_rustfmt {
-        rustfmt(&output_path).run();
+        rustfmt(&output_path).edition(tcfg.edition).run();
     }
 
     Some(path)
@@ -289,7 +334,15 @@ fn emit_lib_rs(
 /// on a nightly toolchain until the `c_variadics` feature is stable.
 fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     let output_path = build_dir.join("rust-toolchain.toml");
-    let output = include_str!("generated-rust-toolchain.toml").to_string();
+    let toolchain = tcfg.edition.toolchain().strip_prefix("+").unwrap();
+    let output = format!(
+        r#"
+[toolchain]
+channel = "{toolchain}"
+components = ["rustfmt"]
+"#
+    );
+    let output = output.trim_start();
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
@@ -308,17 +361,25 @@ fn emit_cargo_toml<'lcmd>(
         "workspace_members": workspace_members.unwrap_or_default(),
     });
     if let Some(ccfg) = crate_cfg {
-        let binaries = convert_module_list(
+        let mut binaries = convert_module_list(
             tcfg,
             build_dir,
             ccfg.modules.to_owned(),
             ModuleSubset::Binaries,
         );
+        if tcfg.thin_binaries {
+            emit_thin_binaries(tcfg, build_dir, &ccfg.crate_name, &mut binaries);
+        }
+
         let dependencies =
             convert_dependencies_list(ccfg.crates.clone(), tcfg.c2rust_dir.as_deref());
         let crate_json = json!({
             "crate_name": ccfg.crate_name,
             "crate_rust_name": ccfg.crate_name.replace('-', "_"),
+            "edition": tcfg.edition.as_str(),
+            // This is already the default in Rust 1.77,
+            // and edition 2024 was released in Rust 1.85.
+            "strip_debuginfo_release": tcfg.edition < Edition2024,
             "crate_types": ccfg.link_cmd.r#type.as_cargo_types(),
             "is_library": ccfg.link_cmd.r#type.is_library(),
             "lib_rs_file": get_lib_rs_file_name(tcfg),
@@ -338,10 +399,10 @@ fn emit_cargo_toml<'lcmd>(
     let file_name = "Cargo.toml";
     let output_path = build_dir.join(file_name);
     let output = reg.render(file_name, &json).unwrap();
-    maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
+    maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing);
 }
 
-fn maybe_write_to_file(output_path: &Path, output: String, overwrite: bool) -> Option<PathBuf> {
+fn maybe_write_to_file(output_path: &Path, output: &str, overwrite: bool) -> Option<PathBuf> {
     if output_path.exists() && !overwrite {
         eprintln!("Skipping existing file {}", output_path.display());
         return None;

@@ -14,8 +14,15 @@ pub struct AsmCast<Out, In>(PhantomData<(Out, In)>);
 pub trait AsmCastTrait<Out, In> {
     type Type;
 
-    fn cast_in(_: &mut Out, x: In) -> Self::Type;
-    fn cast_out(out: &mut Out, _: In, x: Self::Type);
+    /// # Safety
+    ///
+    /// `out` must be dereferenceable.
+    unsafe fn cast_in(_: *mut Out, x: In) -> Self::Type;
+
+    /// # Safety
+    ///
+    /// `out` must be dereferenceable.
+    unsafe fn cast_out(out: *mut Out, _: In, x: Self::Type);
 }
 
 macro_rules! impl_triple {
@@ -23,11 +30,11 @@ macro_rules! impl_triple {
 		impl<$($param),*> AsmCastTrait<$out, $in> for AsmCast<$out, $in> {
 			type Type = $inner;
 
-			fn cast_in(_: &mut $out, x: $in) -> Self::Type {
+			unsafe fn cast_in(_: *mut $out, x: $in) -> Self::Type {
 				x as Self::Type
 			}
 
-			fn cast_out(out: &mut $out, _: $in, x: Self::Type) {
+			unsafe fn cast_out(out: *mut $out, _: $in, x: Self::Type) {
 				*out = x as $out;
 			}
 		}
@@ -126,8 +133,10 @@ mod tests {
 
                     let x = 42usize as $ty1;
                     let mut y: $ty2 = 0 as $ty2;
-                    let z = AsmCast::cast_in(&mut y, x) + 1;
-                    AsmCast::cast_out(&mut y, x, z);
+                    // SAFETY: decayed reference is always dereferenceable.
+                    let z = unsafe { AsmCast::cast_in(&mut y, x) } + 1;
+                    // SAFETY: decayed reference is always dereferenceable.
+                    unsafe { AsmCast::cast_out(&mut y, x, z) };
                     assert_eq!(y as u64, 43);
                 })*
             }

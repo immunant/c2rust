@@ -1,11 +1,11 @@
 //! Helpers for building AST nodes.  Normally used by calling `mk().some_node(args...)`.
 
-use std::str;
-
 use itertools::intersperse;
 use proc_macro2::{Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 use std::default::Default;
 use std::iter::FromIterator;
+use std::mem;
+use std::str;
 use syn::{__private::ToTokens, punctuated::Punctuated, *};
 
 pub mod properties {
@@ -49,11 +49,12 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     pub enum Unsafety {
         Normal,
         Unsafe,
     }
+
     impl ToToken for Unsafety {
         type Token = Token![unsafe];
         fn to_token(&self) -> Option<Self::Token> {
@@ -412,6 +413,35 @@ impl Make<String> for u128 {
     }
 }
 
+impl Make<Block> for Vec<Stmt> {
+    fn make(self, mk: &Builder) -> Block {
+        Block {
+            stmts: self,
+            brace_token: token::Brace(mk.span),
+        }
+    }
+}
+
+impl<B: Make<Block>> Make<ExprConst> for B {
+    fn make(self, mk: &Builder) -> ExprConst {
+        ExprConst {
+            attrs: mk.attrs.clone(),
+            const_token: Token![const](mk.span),
+            block: self.make(mk),
+        }
+    }
+}
+
+impl<B: Make<Block>> Make<ExprUnsafe> for B {
+    fn make(self, mk: &Builder) -> ExprUnsafe {
+        ExprUnsafe {
+            attrs: mk.attrs.clone(),
+            unsafe_token: Token![unsafe](mk.span),
+            block: self.make(mk),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Builder {
     // The builder holds a set of "modifiers", such as visibility and mutability.  Functions for
@@ -425,6 +455,7 @@ pub struct Builder {
     ext: Extern,
     attrs: Vec<Attribute>,
     span: Span,
+    deny_unsafe_op_in_unsafe_fn: bool,
 }
 
 impl Default for Builder {
@@ -438,6 +469,7 @@ impl Default for Builder {
             ext: Extern::None,
             attrs: Vec::new(),
             span: Span::call_site(),
+            deny_unsafe_op_in_unsafe_fn: false,
         }
     }
 }
@@ -477,6 +509,13 @@ impl Builder {
         self.unsafety(Unsafety::Unsafe)
     }
 
+    pub fn deny_unsafe_op_in_unsafe_fn(self) -> Self {
+        Builder {
+            deny_unsafe_op_in_unsafe_fn: true,
+            ..self
+        }
+    }
+
     pub fn constness<C: Make<Constness>>(self, constness: C) -> Self {
         let constness = constness.make(&self);
         Builder { constness, ..self }
@@ -513,7 +552,7 @@ impl Builder {
         K: Make<Path>,
         V: Make<Lit>,
     {
-        let meta = mk().meta_namevalue(key, value);
+        let meta = self.clone().meta_namevalue(key, value);
         self.prepared_attr(meta)
     }
 
@@ -521,7 +560,7 @@ impl Builder {
     where
         K: Make<Path>,
     {
-        let meta = mk().meta_path(key);
+        let meta = self.clone().meta_path(key);
         self.prepared_attr(meta)
     }
 
@@ -530,7 +569,7 @@ impl Builder {
         K: Make<Path>,
         V: Make<TokenStream>,
     {
-        let meta = mk().meta_list(func, arguments);
+        let meta = self.clone().meta_list(func, arguments);
         self.prepared_attr(meta)
     }
 
@@ -758,12 +797,12 @@ impl Builder {
         }))
     }
 
-    pub fn const_block_expr(self, const_blk: ExprConst) -> Box<Expr> {
-        Box::new(Expr::Const(const_blk))
+    pub fn const_block_expr<B: Make<ExprConst>>(self, const_blk: B) -> Box<Expr> {
+        Box::new(Expr::Const(const_blk.make(&self)))
     }
 
-    pub fn unsafe_block_expr(self, unsafe_blk: ExprUnsafe) -> Box<Expr> {
-        Box::new(Expr::Unsafe(unsafe_blk))
+    pub fn unsafe_block_expr<B: Make<ExprUnsafe>>(self, unsafe_blk: B) -> Box<Expr> {
+        Box::new(Expr::Unsafe(unsafe_blk.make(&self)))
     }
 
     pub fn assign_expr(self, lhs: Box<Expr>, rhs: Box<Expr>) -> Box<Expr> {
@@ -1377,11 +1416,21 @@ impl Builder {
         }))
     }
 
-    pub fn fn_item<S>(self, sig: S, block: Block) -> Box<Item>
+    pub fn fn_item<S>(self, sig: S, mut block: Block) -> Box<Item>
     where
         S: Make<Signature>,
     {
         let sig = sig.make(&self);
+
+        if sig.unsafety.is_some() && !block.stmts.is_empty() && self.deny_unsafe_op_in_unsafe_fn {
+            // When `#[deny(unsafe_op_in_unsafe_fn)]` is in effect, unsafe operations
+            // inside an `unsafe fn` must be wrapped in an `unsafe` block.
+            // Wrap the whole function body for now; this can later be narrowed to
+            // individual operations.
+            let unsafe_expr = mk().unsafe_block_expr(block);
+            block = mk().block(vec![mk().expr_stmt(unsafe_expr)]);
+        }
+
         Box::new(Item::Fn(ItemFn {
             attrs: self.attrs,
             vis: self.vis,
@@ -1684,7 +1733,7 @@ impl Builder {
 
         Box::new(Item::ForeignMod(ItemForeignMod {
             attrs: self.attrs,
-            unsafety: None,
+            unsafety: self.unsafety.to_token(),
             brace_token: token::Brace(self.span),
             items,
             abi,
@@ -1823,27 +1872,16 @@ impl Builder {
 
     // Misc nodes
 
-    pub fn block(self, stmts: Vec<Stmt>) -> Block {
-        Block {
-            stmts,
-            brace_token: token::Brace(self.span),
-        }
+    pub fn block<B: Make<Block>>(self, b: B) -> Block {
+        b.make(&self)
     }
 
-    pub fn const_block(self, stmts: Vec<Stmt>) -> ExprConst {
-        ExprConst {
-            attrs: self.attrs,
-            const_token: Token![const](self.span),
-            block: mk().block(stmts),
-        }
+    pub fn const_block<B: Make<ExprConst>>(self, b: B) -> ExprConst {
+        b.make(&self)
     }
 
-    pub fn unsafe_block(self, stmts: Vec<Stmt>) -> ExprUnsafe {
-        ExprUnsafe {
-            attrs: self.attrs,
-            unsafe_token: Token![unsafe](self.span),
-            block: mk().block(stmts),
-        }
+    pub fn unsafe_block<B: Make<ExprUnsafe>>(self, b: B) -> ExprUnsafe {
+        b.make(&self)
     }
 
     pub fn label<L>(self, lbl: L) -> Label
@@ -1951,6 +1989,13 @@ impl Builder {
         }
     }
 
+    pub fn meta(self, meta: Meta) -> Meta {
+        match self.unsafety {
+            Unsafety::Normal => meta,
+            Unsafety::Unsafe => mk().meta_list("unsafe", vec![meta]),
+        }
+    }
+
     /// makes a meta item with just a path
     /// # Examples
     ///
@@ -1960,7 +2005,7 @@ impl Builder {
         Pa: Make<Path>,
     {
         let path = path.make(&self);
-        Meta::Path(path)
+        self.meta(Meta::Path(path))
     }
 
     /// makes a meta item with the given path and some arguments
@@ -1974,18 +2019,19 @@ impl Builder {
     {
         let path = path.make(&self);
         let args = args.make(&self);
-        Meta::List(MetaList {
+        let span = self.span;
+        self.meta(Meta::List(MetaList {
             path,
-            delimiter: MacroDelimiter::Paren(token::Paren(self.span)),
+            delimiter: MacroDelimiter::Paren(token::Paren(span)),
             tokens: args,
-        })
+        }))
     }
 
     /// makes a meta item with key value argument
     /// # Examples
     ///
     /// mk().meta_namevalue("target_os", "linux") // ->  `target_os = "linux"`
-    pub fn meta_namevalue<K, V>(self, key: K, value: V) -> Meta
+    pub fn meta_namevalue<K, V>(mut self, key: K, value: V) -> Meta
     where
         K: Make<Path>,
         V: Make<Lit>,
@@ -1993,15 +2039,15 @@ impl Builder {
         let key = key.make(&self);
         let lit = value.make(&self);
         let value = Expr::Lit(ExprLit {
-            attrs: self.attrs,
+            attrs: mem::take(&mut self.attrs),
             lit,
         });
-
-        Meta::NameValue(MetaNameValue {
+        let span = self.span;
+        self.meta(Meta::NameValue(MetaNameValue {
             path: key,
-            eq_token: Token![=](self.span),
+            eq_token: Token![=](span),
             value,
-        })
+        }))
     }
 
     pub fn empty_mac<Pa>(self, path: Pa, delim: MacroDelimiter) -> Macro
