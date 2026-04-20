@@ -321,7 +321,7 @@ fn test_matcher_lit_parse() {
 #[test]
 fn test_matcher_pat_mut() {
     refactor("rewrite_stmts")
-        .command_args(&["let mut __p = __e;", "let __p = __e + 1;"])
+        .command_args(&["let __p = __e;", "let __p = __e + 1;"])
         .named("matcher_pat_mut.rs")
         .test();
 }
