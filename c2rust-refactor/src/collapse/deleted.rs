@@ -50,7 +50,8 @@ impl<'a, 'ast> CollectDeletedNodes<'a, 'ast> {
         I: IntoIterator<Item = &'ast T>,
         T: GetNodeId + ListNodeIds + AsMacNodeRef + 'ast,
     {
-        let mut history = Vec::new();
+        let nodes = nodes.into_iter();
+        let mut history = Vec::with_capacity(nodes.size_hint().0);
         for n in nodes {
             let id = n.get_node_id();
             if self.table.empty_invocs.contains_key(&id) {
