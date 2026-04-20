@@ -206,8 +206,8 @@ impl ActionsBuilder {
                 }
                 NonDivergingIntrinsic::CopyNonOverlapping(cno) => {
                     self.push_operand(&cno.src, loc, WhichPlace::Operand(0));
-                    self.push_operand(&cno.dst, loc, WhichPlace::Operand(0));
-                    self.push_operand(&cno.count, loc, WhichPlace::Operand(0));
+                    self.push_operand(&cno.dst, loc, WhichPlace::Operand(1));
+                    self.push_operand(&cno.count, loc, WhichPlace::Operand(2));
                 }
             },
             StatementKind::Nop => {}
