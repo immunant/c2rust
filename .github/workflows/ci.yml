@@ -56,7 +56,7 @@ jobs:
       # Run after `rust-cache` so that this is cached.
       - name: Install Rust toolchains
         run: |
-          rustup toolchain install nightly-2022-08-08 \
+          rustup toolchain install nightly-2022-11-03 \
             --profile minimal --component rustfmt,rustc-dev
           rustup toolchain install nightly-2023-04-15 \
             --profile minimal --component rustfmt
