@@ -865,7 +865,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                     self.ltt.unify(expected, self.pat_lty(p));
                 }
             }
-            PatKind::Tuple(ref _ps, _dotdot) => {} // TODO
+            PatKind::Tuple(ref _ps, _dotdot) => todo!("Tuple pattern with .."),
 
             PatKind::Box(ref p) => {
                 self.ltt.unify(rty.args[0], self.pat_lty(p));
