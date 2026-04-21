@@ -90,8 +90,8 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
         // We do not have a SpanNodeKind for certain nodes
         Some(Node::TypeBinding(_)) => None,
         Some(Node::TraitRef(_)) => None,
-        Some(Node::ExprField(_)) => None,
-        Some(Node::PatField(_)) => None,
+        Some(Node::ExprField(field)) => Some(NodeSpan::new(field.span, ExprField)),
+        Some(Node::PatField(field)) => Some(NodeSpan::new(field.span, PatField)),
         Some(Node::Pat(pat)) => Some(NodeSpan::new(pat.span, Pat)),
         Some(Node::Arm(arm)) => Some(NodeSpan::new(arm.span, Arm)),
         Some(Node::Block(block)) => Some(NodeSpan::new(block.span, Block)),
