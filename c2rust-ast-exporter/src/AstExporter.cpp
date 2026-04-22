@@ -2625,11 +2625,20 @@ class TranslateASTVisitor final
 
 void TypeEncoder::VisitEnumType(const EnumType *T) {
     auto ed = T->getDecl()->getDefinition();
+
+    // getDefinition can return NULL if there is only a forward declaration like `enum Foo;`
+    // Forward declarations of enums are not actually allowed by the C standard,
+    // but are supported by LLVM and are used in real code, see
+    // https://github.com/immunant/c2rust/pull/1743#discussion_r3120875668
+    if (!ed) {
+        ed = T->getDecl()->getCanonicalDecl();
+    }
+
     encodeType(T, TagEnumType, [T, ed](CborEncoder *local) {
         cbor_encode_uint(local, uintptr_t(ed));
     });
 
-    if (ed != nullptr) astEncoder->TraverseDecl(ed);
+    astEncoder->TraverseDecl(ed);
 }
 
 void TypeEncoder::VisitRecordType(const RecordType *T) {
