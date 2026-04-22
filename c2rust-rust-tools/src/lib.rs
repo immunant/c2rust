@@ -13,7 +13,7 @@ use crate::RustEdition::Edition2024;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Debug)]
 pub enum RustEdition {
     /// The default is edition 2021 because `c2rust-refactor`,
-    /// based on `nightly-2022-08-08`, only understands up to edition 2021.
+    /// based on `nightly-2022-11-03`, only understands up to edition 2021.
     #[default]
     Edition2021,
     Edition2024,
