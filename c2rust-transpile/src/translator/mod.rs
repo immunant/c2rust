@@ -4460,7 +4460,7 @@ impl<'c> Translation<'c> {
         log::debug!("deferring imports to save them for {name} in {func_name}");
         self.defer_imports();
 
-        let name_decl_id = match self.ast_context.index(type_id).kind {
+        let name_decl_id = match self.ast_context.resolve_type_no_typedef(type_id).kind {
             CTypeKind::Typedef(decl_id) => decl_id,
             _ => decl_id,
         };

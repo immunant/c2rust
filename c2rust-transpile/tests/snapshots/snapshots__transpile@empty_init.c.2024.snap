@@ -28,5 +28,5 @@ pub static mut scope: *mut Scope = &Scope {
 } as *const Scope as *mut Scope;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn foo() {
-    let mut f: Foo_t = Foo_s { x: 0 };
+    let mut f: Foo_t = Foo_t { x: 0 };
 }
