@@ -1,0 +1,53 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/os-specific/f128.c.2024.linux.rs
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+use ::num_traits::{Float, ToPrimitive};
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn long_double_test() {
+    let mut one: ::f128::f128 = ::f128::f128::new(1.0);
+    let mut zero: ::f128::f128 = ::f128::f128::ZERO;
+    let mut add: ::f128::f128 = one + zero;
+    let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
+    let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
+    let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
+    let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
+    let mut is_inf: bool = if huge.is_infinite() {
+        if huge.is_sign_positive() { 1 } else { -1 }
+    } else {
+        0
+    } != 0;
+    if one != ::f128::f128::ZERO {
+        let mut dummy: ::core::ffi::c_int = 0;
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn float128_test() {
+    let mut one: ::f128::f128 = ::f128::f128::new(1.0);
+    let mut zero: ::f128::f128 = ::f128::f128::ZERO;
+    let mut add: ::f128::f128 = one + zero;
+    let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
+    let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
+    let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
+    let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
+    let mut ld_from_float128: ::f128::f128 = one;
+    let mut is_inf: bool = if huge.is_infinite() {
+        if huge.is_sign_positive() { 1 } else { -1 }
+    } else {
+        0
+    } != 0;
+    if one != ::f128::f128::ZERO {
+        let mut dummy: ::core::ffi::c_int = 0;
+    }
+}
