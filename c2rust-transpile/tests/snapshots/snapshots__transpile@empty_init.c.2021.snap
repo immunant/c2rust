@@ -15,7 +15,17 @@ expression: cat tests/snapshots/empty_init.2021.rs
 pub struct Scope {
     pub next: *mut Scope,
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct Foo_s {
+    pub x: ::core::ffi::c_int,
+}
+pub type Foo_t = Foo_s;
 #[no_mangle]
 pub static mut scope: *mut Scope = &Scope {
     next: ::core::ptr::null::<Scope>() as *mut Scope,
 } as *const Scope as *mut Scope;
+#[no_mangle]
+pub unsafe extern "C" fn foo() {
+    let mut f: Foo_t = Foo_s { x: 0 };
+}
