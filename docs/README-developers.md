@@ -89,6 +89,8 @@ More details about tests can be found in the [tests folder](../tests/).
 *Note*: These run integration tests that invoke `c2rust transpile`.
 `cargo test` only runs unit tests and doc tests as of now.
 
+*Note*: The tests executed by `test_translator.py` can also be invoked simply by running `cargo nextest run` in the main c2rust workspace. `cargo nextest run` even ensures that the repo tests use the latest version of `c2rust-transpile` binary.
+
 ## Documentation
 
 Local documentation can be built with the normal `cargo doc` and `cargo doc --open`.
