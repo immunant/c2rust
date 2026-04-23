@@ -145,6 +145,15 @@ impl Transform for RenameUnnamed {
             renamer
                 .new_idents
                 .insert(cx.hir_map().node_to_hir_id(i.id), new_name);
+
+            if let ItemKind::Struct(variant_data, _) | ItemKind::Union(variant_data, _) = &i.kind {
+                if let Some(ctor_id) = variant_data.ctor_id() {
+                    renamer
+                        .new_idents
+                        .insert(cx.hir_map().node_to_hir_id(ctor_id), new_name);
+                }
+            }
+
             renamer.new_to_old.insert(new_name, i.ident);
             counter += 1;
             smallvec![i.map(|i| Item {

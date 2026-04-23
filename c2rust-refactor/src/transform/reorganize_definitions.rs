@@ -12,7 +12,7 @@ use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, item_to_string, PrintState};
 use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_hir::def::{DefKind, Namespace, PerNS, Res};
-use rustc_hir::def_id::DefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::{self as hir, Node};
 use rustc_middle::metadata::ModChild;
 use rustc_middle::ty::{self, ParamEnv};
@@ -123,6 +123,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         self.update_module_info_items(krate);
 
         self.move_items(header_decls, krate);
+        self.add_ctor_mappings();
 
         self.update_paths(krate)
     }
@@ -764,6 +765,42 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 .retain(|attr| !is_c2rust_attr(attr, "header_src"));
             smallvec![item]
         });
+    }
+
+    fn add_ctor_mappings(&mut self) {
+        let get_ctor = |def_id: DefId| -> Option<LocalDefId> {
+            self.cx.hir_map().get_if_local(def_id).and_then(|node| {
+                let item = match node {
+                    hir::Node::Item(item) => item,
+                    _ => return None,
+                };
+                let hir_id = match &item.kind {
+                    hir::ItemKind::Struct(variant_data, _)
+                    | hir::ItemKind::Union(variant_data, _) => variant_data.ctor_hir_id()?,
+                    _ => return None,
+                };
+                self.cx.hir_map().opt_local_def_id(hir_id)
+            })
+        };
+
+        let ctor_mapping: HashMap<DefId, Replacement> = self
+            .path_mapping
+            .iter()
+            .filter_map(|(&def_id, replacement)| {
+                Some((
+                    get_ctor(def_id)?.to_def_id(),
+                    Replacement {
+                        def: replacement
+                            .def
+                            .and_then(|def| get_ctor(def))
+                            .map(LocalDefId::to_def_id),
+                        ..replacement.clone()
+                    },
+                ))
+            })
+            .collect();
+
+        self.path_mapping.extend(ctor_mapping);
     }
 
     /// Update paths to moved items and remove redundant imports.
