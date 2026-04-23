@@ -462,6 +462,7 @@ dependencies = [
  "json",
  "kstring",
  "libc",
+ "libloading",
  "log",
  "petgraph",
  "quickcheck",
