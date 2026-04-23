@@ -150,6 +150,7 @@ pub struct Rustc<'a> {
     edition: RustEdition,
     crate_name: Option<&'a str>,
     expect_error: bool,
+    error_filter: Option<&'a dyn Fn(&str) -> bool>,
     imported_crates: &'a [&'a str],
 }
 
@@ -159,6 +160,7 @@ pub fn rustc(rs_path: &Path) -> Rustc {
         edition: Default::default(),
         crate_name: None,
         expect_error: false,
+        error_filter: None,
         imported_crates: Default::default(),
     }
 }
@@ -182,6 +184,14 @@ impl<'a> Rustc<'a> {
         }
     }
 
+    /// Ignore errors that match (i.e. return true from) `error_filter`.
+    pub fn expect_errors_matching(self, error_filter: Option<&'a dyn Fn(&str) -> bool>) -> Self {
+        Self {
+            error_filter,
+            ..self
+        }
+    }
+
     pub fn expect_unresolved_imports(self, imported_crates: &'a [&'a str]) -> Self {
         Self {
             imported_crates,
@@ -195,11 +205,19 @@ impl<'a> Rustc<'a> {
             edition,
             crate_name,
             expect_error,
+            error_filter,
             imported_crates,
         } = self;
         let crate_name =
             crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
-        run_rustc(rs_path, edition, crate_name, expect_error, &imported_crates);
+        run_rustc(
+            rs_path,
+            edition,
+            crate_name,
+            expect_error,
+            error_filter,
+            &imported_crates,
+        );
     }
 }
 
@@ -208,6 +226,7 @@ fn run_rustc(
     edition: RustEdition,
     crate_name: &str,
     expect_error: bool,
+    error_filter: Option<&dyn Fn(&str) -> bool>,
     imported_crates: &[&str],
 ) {
     let rs = fs_err::read_to_string(rs_path).unwrap();
@@ -251,6 +270,7 @@ fn run_rustc(
         .filter(|line| line.starts_with("error[E"))
         .collect::<HashSet<_>>();
     dbg!(&error_lines);
+
     for imported_crate in imported_crates {
         // For `::{imported_crate}::*`.
         let absolute_path = match edition {
@@ -279,7 +299,12 @@ fn run_rustc(
 
         assert!(absolute_path || absolute_use_path || relative_path);
     }
-    if !imported_crates.is_empty() {
+
+    if let Some(error_filter) = error_filter {
+        error_lines.retain(|error| !error_filter(error));
+    }
+
+    if error_filter.is_some() || !imported_crates.is_empty() {
         dbg!(&error_lines);
         assert!(error_lines.is_empty());
         return;

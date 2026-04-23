@@ -103,6 +103,7 @@ fn transpile_snapshot(
     c_path: &Path,
     edition: RustEdition,
     expect_compile_error: bool,
+    error_filter: Option<&dyn Fn(&str) -> bool>,
     imported_crates: &[&str],
 ) {
     let cfg = config(edition);
@@ -140,6 +141,7 @@ fn transpile_snapshot(
         .edition(edition)
         .crate_name(crate_name)
         .expect_error(expect_compile_error)
+        .expect_errors_matching(error_filter)
         .expect_unresolved_imports(imported_crates)
         .run();
 }
@@ -151,6 +153,7 @@ struct TranspileTest<'a> {
     os_specific: bool,
     expect_compile_error_edition_2021: bool,
     expect_compile_error_edition_2024: bool,
+    error_filter: Option<&'a dyn Fn(&str) -> bool>,
     imported_crates: Vec<&'a str>,
 }
 
@@ -161,6 +164,7 @@ fn transpile(c_file_name: &str) -> TranspileTest {
         os_specific: false,
         expect_compile_error_edition_2021: false,
         expect_compile_error_edition_2024: false,
+        error_filter: None,
         imported_crates: Default::default(),
     }
 }
@@ -200,6 +204,14 @@ impl<'a> TranspileTest<'a> {
         }
     }
 
+    /// Ignore errors that match (i.e. return true from) `error_filter`.
+    pub fn expect_errors_matching(self, error_filter: &'a dyn Fn(&str) -> bool) -> Self {
+        Self {
+            error_filter: Some(error_filter),
+            ..self
+        }
+    }
+
     #[allow(unused)] // TODO remove once used
     pub fn expect_compile_error(self, expect_error: bool) -> Self {
         self.expect_compile_error_edition_2021(expect_error)
@@ -218,6 +230,7 @@ impl<'a> TranspileTest<'a> {
             os_specific,
             expect_compile_error_edition_2021,
             expect_compile_error_edition_2024,
+            error_filter,
             imported_crates,
         } = self;
 
@@ -269,6 +282,7 @@ impl<'a> TranspileTest<'a> {
             &c_path,
             Edition2021,
             expect_compile_error_edition_2021,
+            error_filter,
             &imported_crates,
         );
         transpile_snapshot(
@@ -276,6 +290,7 @@ impl<'a> TranspileTest<'a> {
             &c_path,
             Edition2024,
             expect_compile_error_edition_2024,
+            error_filter,
             &imported_crates,
         );
     }
@@ -316,7 +331,14 @@ fn test_atomics() {
 
 #[test]
 fn test_bitfields() {
-    transpile("bitfields.c").expect_compile_error(true).run();
+    transpile("bitfields.c")
+        .expect_unresolved_import("c2rust_bitfields")
+        .expect_errors_matching(&|error| {
+            error.starts_with("error[E0599]: no method named `")
+                && error.ends_with(" found for struct `PacketHeader` in the current scope")
+        })
+        .expect_compile_error(true)
+        .run();
 }
 
 #[test]
