@@ -26,7 +26,7 @@
           in
           (fenix.packages.${system}.fromToolchainName {
             name = toml.channel;
-            sha256 = "sha256-r/8YBFuFa4hpwgE3FnME7nQA2Uc1uqj0eCE1NWmI1u0";
+            sha256 = "sha256-uKdO6izw+PivrIfXdPq65XQtww3Va8pi/+c6SaeuW74";
           })."completeToolchain";
 
         pkgs = import nixpkgs {
