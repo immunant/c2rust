@@ -461,6 +461,7 @@ fn test_call_only_once() {
 fn test_f128() {
     transpile("f128.c")
         .expect_unresolved_import("f128")
+        .expect_unresolved_import("num_traits")
         .os_specific(true)
         .run();
 }
