@@ -285,7 +285,7 @@ where
                 }
             }
 
-            AssocItemKind::TyAlias(box TyAlias {
+            AssocItemKind::Type(box TyAlias {
                 ty: Some(ref ast_ty),
                 ..
             }) => {

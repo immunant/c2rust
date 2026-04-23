@@ -1,0 +1,7 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: "c2rust-refactor rewrite_stmts 'let __p = __e;' 'let __p = __e + 1;' --rewrite-mode alongside -- tests/snapshots/matcher_pat_mut.rs --edition 2021"
+---
+fn main() {
+    let mut x = 1 + 1;
+}

@@ -20,6 +20,7 @@ use rustc_span::symbol::{kw, Ident};
 use rustc_span::{BytePos, Symbol, DUMMY_SP};
 use rustc_target::spec::abi::{self, Abi};
 use smallvec::smallvec;
+use thin_vec::ThinVec;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::util::{
@@ -1188,7 +1189,7 @@ impl HasAttrs for DeclKind {
         }
     }
 
-    fn visit_attrs(&mut self, f: impl FnOnce(&mut Vec<Attribute>)) {
+    fn visit_attrs(&mut self, f: impl FnOnce(&mut ThinVec<Attribute>)) {
         match self {
             DeclKind::Item(i) => i.visit_attrs(f),
             DeclKind::ForeignItem(i, _) => i.visit_attrs(f),

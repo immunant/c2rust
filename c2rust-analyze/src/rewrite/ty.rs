@@ -178,7 +178,7 @@ fn hir_generic_ty_args<'tcx>(ty: &hir::Ty<'tcx>) -> Option<Vec<&'tcx hir::Ty<'tc
         args.args
             .iter()
             .filter_map(|arg| match arg {
-                hir::GenericArg::Type(ty) => Some(ty),
+                hir::GenericArg::Type(ty) => Some(*ty),
                 _ => None,
             })
             .collect()

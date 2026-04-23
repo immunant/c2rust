@@ -270,7 +270,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 return;
             }
 
-            hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, args, _) => {
+            hir::ExprKind::Call(_, args) | hir::ExprKind::MethodCall(_, _, args, _) => {
                 // Handle adjustments on the call's output first.
                 let (_mir_pl, mut cursor) = match self.make_visit_expr_cursor(&locs) {
                     Some(x @ (pl, _)) if is_var(pl) => x,
@@ -313,7 +313,15 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                 self.finish_visit_expr_cursor(ex, cursor);
 
                 self.record(loc, &[SubLoc::Rvalue], ex);
-                for (i, (arg, mir_arg)) in args.iter().zip(mir_args).enumerate() {
+
+                // Put method call receiver at the front of the args list.
+                let method_recv = match ex.kind {
+                    hir::ExprKind::MethodCall(_, recv, _, _) => Some(recv),
+                    _ => None,
+                };
+                let hir_args = method_recv.into_iter().chain(args.iter());
+
+                for (i, (arg, mir_arg)) in hir_args.zip(mir_args).enumerate() {
                     let sub_loc = vec![SubLoc::Rvalue, SubLoc::CallArg(i)];
                     self.record_operand(loc, &sub_loc, arg, mir_arg);
                     self.visit_expr_operand(arg, loc, sub_loc, mir_arg, &[]);
@@ -324,9 +332,9 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                     // emitted with the same span as the `MethodCall` itself, and thus show up as
                     // leftover `extra_locs` here.  We associate them with the child instead so all
                     // of the child's statements can be processed together.
-                    if matches!(ex.kind, hir::ExprKind::MethodCall(..)) {
+                    if let Some(recv) = method_recv {
                         self.append_extra_locations
-                            .entry(args[0].hir_id)
+                            .entry(recv.hir_id)
                             .or_insert_with(Vec::new)
                             .extend_from_slice(extra_locs);
                     } else {
@@ -1067,7 +1075,7 @@ fn filter_term(_term: &mir::Terminator) -> bool {
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
     debug!("building span index for {:?}:", mir.source);
     let mut span_index_items = Vec::new();
-    for (bb, bb_data) in mir.basic_blocks().iter_enumerated() {
+    for (bb, bb_data) in mir.basic_blocks.iter_enumerated() {
         for (i, stmt) in bb_data.statements.iter().enumerate() {
             if !filter_stmt(stmt) {
                 continue;
