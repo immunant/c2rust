@@ -743,6 +743,24 @@ impl TypedAstContext {
         self.index(resolved_typ_id)
     }
 
+    pub fn resolve_type_id_no_typedef(&self, typ: CTypeId) -> CTypeId {
+        use CTypeKind::*;
+        let ty = match self.index(typ).kind {
+            Attributed(ty, _) => ty.ctype,
+            Elaborated(ty) => ty,
+            Decayed(ty) => ty,
+            TypeOf(ty) => ty,
+            Paren(ty) => ty,
+            _ => return typ,
+        };
+        self.resolve_type_id_no_typedef(ty)
+    }
+
+    pub fn resolve_type_no_typedef(&self, typ: CTypeId) -> &CType {
+        let resolved_typ_id = self.resolve_type_id_no_typedef(typ);
+        self.index(resolved_typ_id)
+    }
+
     /// Extract decl of referenced function.
     /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
     pub fn fn_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
