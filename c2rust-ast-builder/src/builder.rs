@@ -2008,6 +2008,14 @@ impl Builder {
         self.meta(Meta::Path(path))
     }
 
+    pub fn abs_meta_path<Pa>(self, path: Pa) -> Meta
+    where
+        Pa: Make<Path>,
+    {
+        let path = mk().abs_path(path);
+        self.meta_path(path)
+    }
+
     /// makes a meta item with the given path and some arguments
     /// # Examples
     ///

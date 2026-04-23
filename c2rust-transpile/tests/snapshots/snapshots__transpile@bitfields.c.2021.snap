@@ -1,0 +1,49 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/bitfields.2021.rs
+---
+#![allow(
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+extern "C" {
+    fn printf(_: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
+}
+#[derive(Copy, Clone, ::c2rust_bitfields::BitfieldStruct)]
+#[repr(C)]
+pub struct PacketHeader {
+    #[bitfield(padding)]
+    pub c2rust_padding: [u8; 1],
+    #[bitfield(name = "version", ty = "::core::ffi::c_uchar", bits = "0..=2")]
+    #[bitfield(name = "type_0", ty = "::core::ffi::c_uchar", bits = "3..=4")]
+    #[bitfield(name = "flags", ty = "::core::ffi::c_uchar", bits = "5..=7")]
+    #[bitfield(name = "sequence", ty = "::core::ffi::c_ushort", bits = "16..=25")]
+    #[bitfield(name = "length", ty = "::core::ffi::c_ushort", bits = "26..=31")]
+    pub version_type_0_flags_sequence_length: [u8; 3],
+}
+#[no_mangle]
+pub unsafe extern "C" fn test_bitfields() {
+    let mut h: PacketHeader = {
+        let mut init = PacketHeader {
+            c2rust_padding: [0; 1],
+            version_type_0_flags_sequence_length: [0; 3],
+        };
+        init.set_version(0 as ::core::ffi::c_uchar);
+        init.set_type_0(0);
+        init.set_flags(0);
+        init.set_sequence(0);
+        init.set_length(0);
+        init
+    };
+    h.set_version(5 as ::core::ffi::c_uchar as ::core::ffi::c_uchar);
+    h.set_sequence(513 as ::core::ffi::c_ushort as ::core::ffi::c_ushort);
+    printf(
+        b"version=%u sequence=%u\n\0".as_ptr() as *const ::core::ffi::c_char,
+        h.version() as ::core::ffi::c_int,
+        h.sequence() as ::core::ffi::c_int,
+    );
+}
