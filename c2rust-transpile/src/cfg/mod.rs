@@ -16,8 +16,8 @@
 //!
 //! See the [`relooper`] module for more details about the Relooper algorithm.
 
-use crate::c_ast::iterators::{DFExpr, SomeId};
-use crate::c_ast::CLabelId;
+use crate::c_ast::iterators::DFExpr;
+use crate::c_ast::{CLabelId, SomeId};
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::SpanExt;
 use c2rust_ast_printer::pprust;

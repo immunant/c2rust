@@ -1039,7 +1039,11 @@ impl<'a> Translation<'a> {
             }
         };
 
-        let record_id = self.ast_context.parents[&decl];
+        let record_id = self
+            .ast_context
+            .parent_with_type(decl)
+            .expect("Field does not have a parent Struct or Union");
+
         if self.ast_context.has_inner_struct_decl(record_id) {
             // The structure is split into an outer and an inner,
             // so we need to go through the outer structure to the inner one
@@ -1092,7 +1096,10 @@ impl<'a> Translation<'a> {
         opt_field_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let field_id = opt_field_id.expect("Missing field ID in union cast");
-        let union_id = self.ast_context.parents[&field_id];
+        let union_id = self
+            .ast_context
+            .parent_with_type(field_id)
+            .expect("Union field does not have a parent Union");
 
         let union_name = self
             .type_converter
