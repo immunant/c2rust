@@ -3605,6 +3605,11 @@ impl<'c> Translation<'c> {
                 // A reference must be decayed if a bitcast is required. Const casts in
                 // LLVM 8 are now NoOp casts, so we need to include it as well.
                 match kind {
+                    CastKind::IntegralToBoolean
+                    | CastKind::FloatingToBoolean
+                    | CastKind::PointerToBoolean => {
+                        return self.convert_condition(ctx, true, expr);
+                    }
                     CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
                         ctx.decay_ref = DecayRef::Yes
                     }
@@ -4264,11 +4269,7 @@ impl<'c> Translation<'c> {
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
             | CastKind::PointerToBoolean => {
-                if let Some(expr) = expr {
-                    self.convert_condition(ctx, true, expr)
-                } else {
-                    val.result_map(|e| self.match_bool(ctx, true, source_cty.ctype, e))
-                }
+                val.result_map(|e| self.match_bool(ctx, true, source_cty.ctype, e))
             }
 
             CastKind::FloatingRealToComplex
