@@ -16,12 +16,31 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 pub mod bar_h {
     #[derive(Clone, Copy)]
     #[repr(transparent)]
+    pub struct C2Rust_Unnamed_3(pub ::core::ffi::c_uint);
+
+    impl crate::bar_h::C2Rust_Unnamed_3 {
+        pub const V: Self = Self(42);
+    }
+
+    #[derive(Clone, Copy)]
+    #[repr(transparent)]
+
     pub struct SomeEnum(pub ::core::ffi::c_uint);
+
+    impl crate::bar_h::SomeEnum {
+        pub const A: Self = Self(0);
+
+        pub const B: Self = Self(1);
+    }
 
     #[derive(Clone, Copy)]
     #[repr(transparent)]
 
     pub struct C2Rust_Unnamed_2(pub ::core::ffi::c_uint);
+
+    impl crate::bar_h::C2Rust_Unnamed_2 {
+        pub const U: Self = Self(42);
+    }
 }
 pub mod bar {}
 
@@ -31,7 +50,7 @@ pub mod foo {
         let e1 = crate::bar_h::SomeEnum::A;
         let e2 = crate::bar_h::SomeEnum::B;
         let e3 = crate::bar_h::C2Rust_Unnamed_2::U;
-        let e4 = crate::bar_h::C2Rust_Unnamed_2::V;
+        let e4 = crate::bar_h::C2Rust_Unnamed_3::V;
     }
 }
 

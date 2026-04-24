@@ -449,7 +449,6 @@ fn test_reorganize_definitions() {
 fn test_reorganize_assoc_items() {
     refactor("reorganize_definitions")
         .named("reorganize_assoc_items.rs")
-        .new_expect_compile_error(true)
         .test();
 }
 

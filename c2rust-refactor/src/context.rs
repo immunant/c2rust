@@ -4,8 +4,8 @@ use std::ops::Deref;
 
 use rustc_ast::ptr::P;
 use rustc_ast::{
-    Expr, ExprKind, FnDecl, FnRetTy, ForeignItem, ForeignItemKind, Item, ItemKind, NodeId, Path,
-    QSelf, UseTreeKind, DUMMY_NODE_ID,
+    AssocItem, Expr, ExprKind, FnDecl, FnRetTy, ForeignItem, ForeignItemKind, Item, ItemKind,
+    NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
 };
 use rustc_data_structures::fx::FxHashMap;
 use rustc_errors::{DiagnosticBuilder, Level};
@@ -1073,6 +1073,16 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
     pub fn compatible_types(&self, item1: &Item, item2: &Item, match_vis: bool) -> bool {
         use rustc_ast::ItemKind::*;
         match (&item1.kind, &item2.kind) {
+            (Impl(box ref impl1), Impl(box ref impl2)) => {
+                if impl1.items.len() != impl2.items.len() {
+                    return false;
+                }
+
+                (impl1.items.iter())
+                    .zip(impl2.items.iter())
+                    .all(|(item1, item2)| self.compatible_assoc_items(item1, item2, match_vis))
+            }
+
             // * Assure that these two items are in fact of the same type, just to be safe.
             (TyAlias(box ref ta1), TyAlias(box ref ta2)) => {
                 match (
@@ -1224,6 +1234,40 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 // Fall back on AST equivalence for other items
                 item1.unnamed_equiv(item2)
             }
+        }
+    }
+
+    pub fn compatible_assoc_items(
+        &self,
+        item1: &AssocItem,
+        item2: &AssocItem,
+        match_vis: bool,
+    ) -> bool {
+        use rustc_ast::AssocItemKind::*;
+
+        // Unlike for regular items, associated items must also match by name.
+        if item1.ident.as_str() != item2.ident.as_str() {
+            return false;
+        }
+
+        match (&item1.kind, &item2.kind) {
+            (Const(def1, ty1, expr1), Const(def2, ty2, expr2)) => match (
+                self.cx.opt_node_type(item1.id),
+                self.cx.opt_node_type(item2.id),
+            ) {
+                (Some(ty1), Some(ty2)) => {
+                    self.structural_eq_tys(ty1, ty2)
+                        && expr1.unnamed_equiv(expr2)
+                        && def1.unnamed_equiv(def2)
+                }
+                _ => {
+                    self.structural_eq_ast_tys(ty1, ty2, match_vis)
+                        && expr1.unnamed_equiv(expr2)
+                        && def1.unnamed_equiv(def2)
+                }
+            },
+
+            _ => false,
         }
     }
 
