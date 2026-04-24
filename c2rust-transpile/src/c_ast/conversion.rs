@@ -813,6 +813,21 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, expected_ty);
                 }
 
+                TypeTag::TagPredefinedSugarType => {
+                    let kind = from_value(ty_node.extras[0].clone())
+                        .expect("Predefined sugar type kind not found");
+
+                    // See `clang::PredefinedSugarKind`.
+                    let predef_sugar_ty = match kind {
+                        0 => CTypeKind::Size,
+                        1 => CTypeKind::SSize,
+                        2 => CTypeKind::PtrDiff,
+                        _ => panic!("Predefined sugar type kind {kind} not known"),
+                    };
+                    self.add_type(new_id, not_located(predef_sugar_ty));
+                    self.processed_nodes.insert(new_id, expected_ty);
+                }
+
                 TypeTag::TagEnumType if expected_ty & OTHER_TYPE != 0 => {
                     let decl = from_value(ty_node.extras[0].clone()).expect("Enum decl not found");
                     let decl_new = CDeclId(self.visit_node_type(decl, ENUM_DECL));
