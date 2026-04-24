@@ -31,22 +31,6 @@ impl<'c> Translation<'c> {
         Ok(mk().cast_expr(expr, target_ty))
     }
 
-    /// Return whether the literal can be directly translated as this type.
-    pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId) -> bool {
-        let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
-        match *lit {
-            CLiteral::Integer(value, _) if ty_kind.is_integral_type() && !ty_kind.is_bool() => {
-                ty_kind.guaranteed_integer_in_range(value)
-            }
-            // `convert_literal` always casts these to i32.
-            CLiteral::Character(_value) => matches!(ty_kind, CTypeKind::Int32),
-            CLiteral::Floating(value, _) if ty_kind.is_floating_type() => {
-                ty_kind.guaranteed_float_in_range(value)
-            }
-            _ => false,
-        }
-    }
-
     /// Convert a C literal expression to a Rust expression
     pub fn convert_literal(
         &self,
@@ -172,7 +156,7 @@ impl<'c> Translation<'c> {
                 // Convert all of the provided initializer values
 
                 let to_array_element = |id: CExprId| -> TranslationResult<_> {
-                    self.convert_expr(ctx.used(), id, None)?.result_map(|x| {
+                    self.convert_expr(ctx.used(), id)?.result_map(|x| {
                         // Array literals require all of their elements to be
                         // the correct type; they will not use implicit casts to
                         // change mut to const. This becomes a problem when an
@@ -236,7 +220,7 @@ impl<'c> Translation<'c> {
                         // * `ptr_extra_braces`
                         // * `array_of_ptrs`
                         // * `array_of_arrays`
-                        self.convert_expr(ctx.used(), single, None)
+                        self.convert_expr(ctx.used(), single)
                     }
                     &[single] if is_zero_literal(single) && n > 1 => {
                         // This was likely a C array of the form `int x[16] = { 0 }`.
@@ -271,7 +255,7 @@ impl<'c> Translation<'c> {
             }
             ref kind if kind.is_scalar() => {
                 if let Some(&first) = ids.first() {
-                    self.convert_expr(ctx.used(), first, None)
+                    self.convert_expr(ctx.used(), first)
                 } else {
                     self.implicit_default_expr(ctx.used(), ty.ctype)
                 }

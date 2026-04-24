@@ -15,15 +15,13 @@ expression: cat tests/snapshots/os-specific/rotate.2024.linux.rs
 pub unsafe extern "C" fn rotate_left_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {
-    return (x as ::core::ffi::c_ulong)
-        .rotate_left(4 as ::core::ffi::c_int as ::core::ffi::c_ulong as u32)
+    return (x as ::core::ffi::c_ulong).rotate_left(4 as ::core::ffi::c_ulong as u32)
         as ::core::ffi::c_ulonglong;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rotate_right_64(
     mut x: ::core::ffi::c_ulonglong,
 ) -> ::core::ffi::c_ulonglong {
-    return (x as ::core::ffi::c_ulong)
-        .rotate_right(4 as ::core::ffi::c_int as ::core::ffi::c_ulong as u32)
+    return (x as ::core::ffi::c_ulong).rotate_right(4 as ::core::ffi::c_ulong as u32)
         as ::core::ffi::c_ulonglong;
 }

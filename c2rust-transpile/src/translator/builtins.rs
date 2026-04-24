@@ -5,6 +5,7 @@ use super::*;
 
 use crate::format_translation_err;
 use crate::translator::atomics::CAtomicBinOp;
+use crate::translator::simd::simd_fn_from_builtin_fn;
 use c2rust_rust_tools::RustEdition::Edition2024;
 use std::sync::atomic::Ordering::Acquire;
 use std::sync::atomic::Ordering::Release;
@@ -30,8 +31,8 @@ impl<'c> Translation<'c> {
         rotate_method_name: &'static str,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Emit `arg0.{method_name}(arg1)`
-        let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-        let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
+        let arg0 = self.convert_expr(ctx.used(), args[0])?;
+        let arg1 = self.convert_expr(ctx.used(), args[1])?;
         arg0.and_then(|arg0| {
             arg1.and_then(|arg1| {
                 let arg1 = mk().cast_expr(arg1, mk().path_ty(vec!["u32"]));
@@ -115,7 +116,7 @@ impl<'c> Translation<'c> {
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 self.import_num_traits(args[0])?;
 
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
@@ -123,7 +124,7 @@ impl<'c> Translation<'c> {
                 }))
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
 
                 Ok(val.map(|x| {
                     let add = BinOp::Add(Default::default());
@@ -140,33 +141,33 @@ impl<'c> Translation<'c> {
                 }))
             }
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![])))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
                 self.import_num_traits(args[0])?;
 
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![])))
             }
             "__builtin_isfinite" | "__builtin_isnan" => {
                 self.import_num_traits(args[0])?;
 
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
 
                 let seg = match builtin_name {
                     "__builtin_isfinite" => "is_finite",
@@ -182,7 +183,7 @@ impl<'c> Translation<'c> {
                 self.import_num_traits(args[0])?;
 
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
                     let one = mk().lit_expr(mk().int_lit(1, ""));
@@ -201,18 +202,18 @@ impl<'c> Translation<'c> {
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
                 Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(1, "i32"))))
             }
-            "__builtin_expect" => self.convert_expr(ctx.used(), args[0], None),
+            "__builtin_expect" => self.convert_expr(ctx.used(), args[0]),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx.used(), args[0])?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_bzero" => {
-                let ptr_stmts = self.convert_expr(ctx.used(), args[0], None)?;
-                let n_stmts = self.convert_expr(ctx.used(), args[1], None)?;
+                let ptr_stmts = self.convert_expr(ctx.used(), args[0])?;
+                let n_stmts = self.convert_expr(ctx.used(), args[1])?;
                 let write_bytes = mk().abs_path_expr(vec!["core", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
                 ptr_stmts.and_then(|ptr| {
@@ -223,7 +224,7 @@ impl<'c> Translation<'c> {
             // If the target does not support data prefetch, the address expression is evaluated if
             // it includes side effects but no other code is generated and GCC does not issue a warning.
             // void __builtin_prefetch (const void *addr, ...);
-            "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0], None),
+            "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0]),
 
             "__builtin_memcpy" | "__builtin_memcmp" | "__builtin_memmove" | "__builtin_strncmp"
             | "__builtin_strncpy" | "__builtin_strncat" => self.convert_libc_fns(
@@ -301,8 +302,8 @@ impl<'c> Translation<'c> {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
                 // (depending on the value of `type`), so we emit the following:
                 // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
-                let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
-                let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
+                let ptr_arg = self.convert_expr(ctx.unused(), args[0])?;
+                let type_arg = self.convert_expr(ctx.used(), args[1])?;
                 ptr_arg.and_then(|_| {
                     Ok(type_arg.map(|type_arg| {
                         let type_and_2 = mk().binary_expr(
@@ -332,7 +333,7 @@ impl<'c> Translation<'c> {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
                         if self.ast_context.get_decl(&va_id).is_some() {
-                            let dst = self.convert_expr(ctx.used(), args[0], None)?;
+                            let dst = self.convert_expr(ctx.used(), args[0])?;
                             let fn_ctx = self.function_context.borrow();
                             let src = fn_ctx.get_va_list_arg_name();
 
@@ -353,8 +354,8 @@ impl<'c> Translation<'c> {
             "__builtin_va_copy" => {
                 if ctx.is_unused() && args.len() == 2 {
                     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
-                        let dst = self.convert_expr(ctx.used(), args[0], None)?;
-                        let src = self.convert_expr(ctx.used(), args[1], None)?;
+                        let dst = self.convert_expr(ctx.used(), args[0])?;
+                        let src = self.convert_expr(ctx.used(), args[1])?;
 
                         let call_expr = mk().method_call_expr(src.to_expr(), "clone", vec![]);
                         let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
@@ -379,7 +380,7 @@ impl<'c> Translation<'c> {
             }
 
             "__builtin_alloca" => {
-                let count = self.convert_expr(ctx.used(), args[0], None)?;
+                let count = self.convert_expr(ctx.used(), args[0])?;
                 count.and_then(|count| {
                     // Get `alloca` allocation storage.
                     let mut fn_ctx = self.function_context.borrow_mut();
@@ -448,93 +449,6 @@ impl<'c> Translation<'c> {
                 )
             }
 
-            // SIMD builtins:
-            "__builtin_ia32_aeskeygenassist128" => {
-                self.convert_simd_builtin(ctx, "_mm_aeskeygenassist_si128", args)
-            }
-            "__builtin_ia32_aesimc128" => self.convert_simd_builtin(ctx, "_mm_aesimc_si128", args),
-            "__builtin_ia32_aesenc128" => self.convert_simd_builtin(ctx, "_mm_aesenc_si128", args),
-            "__builtin_ia32_aesenclast128" => {
-                self.convert_simd_builtin(ctx, "_mm_aesenclast_si128", args)
-            }
-            "__builtin_ia32_aesdec128" => self.convert_simd_builtin(ctx, "_mm_aesdec_si128", args),
-            "__builtin_ia32_aesdeclast128" => {
-                self.convert_simd_builtin(ctx, "_mm_aesdeclast_si128", args)
-            }
-            "__builtin_ia32_pshufw" => self.convert_simd_builtin(ctx, "_mm_shuffle_pi16", args),
-            "__builtin_ia32_shufps" => self.convert_simd_builtin(ctx, "_mm_shuffle_ps", args),
-            "__builtin_ia32_shufpd" => self.convert_simd_builtin(ctx, "_mm_shuffle_pd", args),
-            "__builtin_ia32_shufps256" => self.convert_simd_builtin(ctx, "_mm256_shuffle_ps", args),
-            "__builtin_ia32_shufpd256" => self.convert_simd_builtin(ctx, "_mm256_shuffle_pd", args),
-            "__builtin_ia32_pshufd" => self.convert_simd_builtin(ctx, "_mm_shuffle_epi32", args),
-            "__builtin_ia32_pshufhw" => self.convert_simd_builtin(ctx, "_mm_shufflehi_epi16", args),
-            "__builtin_ia32_pshuflw" => self.convert_simd_builtin(ctx, "_mm_shufflelo_epi16", args),
-            "__builtin_ia32_pslldqi128_byteshift" => {
-                self.convert_simd_builtin(ctx, "_mm_slli_si128", args)
-            }
-            "__builtin_ia32_pshufd256" => {
-                self.convert_simd_builtin(ctx, "_mm256_shuffle_epi32", args)
-            }
-            "__builtin_ia32_pshufhw256" => {
-                self.convert_simd_builtin(ctx, "_mm256_shufflehi_epi16", args)
-            }
-            "__builtin_ia32_pshuflw256" => {
-                self.convert_simd_builtin(ctx, "_mm256_shufflelo_epi16", args)
-            }
-            "__builtin_ia32_palignr128" => self.convert_simd_builtin(ctx, "_mm_alignr_epi8", args),
-            "__builtin_ia32_palignr256" => {
-                self.convert_simd_builtin(ctx, "_mm256_alignr_epi8", args)
-            }
-            "__builtin_ia32_permti256" => {
-                self.convert_simd_builtin(ctx, "_mm256_permute2x128_si256", args)
-            }
-            "__builtin_ia32_vec_ext_v4si" => {
-                self.convert_simd_builtin(ctx, "_mm_extract_epi32", args)
-            }
-            "__builtin_ia32_vec_ext_v16qi" => {
-                self.convert_simd_builtin(ctx, "_mm_extract_epi8", args)
-            }
-            "__builtin_ia32_vec_ext_v2di" => {
-                self.convert_simd_builtin(ctx, "_mm_extract_epi64", args)
-            }
-            "__builtin_ia32_vperm2f128_pd256" => {
-                self.convert_simd_builtin(ctx, "_mm256_permute2f128_pd", args)
-            }
-            "__builtin_ia32_roundps" => self.convert_simd_builtin(ctx, "_mm_round_ps", args),
-            "__builtin_ia32_roundss" => self.convert_simd_builtin(ctx, "_mm_round_ss", args),
-            "__builtin_ia32_roundpd" => self.convert_simd_builtin(ctx, "_mm_round_pd", args),
-            "__builtin_ia32_roundsd" => self.convert_simd_builtin(ctx, "_mm_round_sd", args),
-            "__builtin_ia32_blendpd" => self.convert_simd_builtin(ctx, "_mm_blend_pd", args),
-            "__builtin_ia32_blendps" => self.convert_simd_builtin(ctx, "_mm_blend_ps", args),
-            "__builtin_ia32_pblendw128" => self.convert_simd_builtin(ctx, "_mm_blend_epi16", args),
-            "__builtin_ia32_dpps" => self.convert_simd_builtin(ctx, "_mm_dp_ps", args),
-            "__builtin_ia32_dppd" => self.convert_simd_builtin(ctx, "_mm_dp_pd", args),
-            "__builtin_ia32_insertps128" => self.convert_simd_builtin(ctx, "_mm_insert_ps", args),
-            "__builtin_ia32_vec_ext_v4sf" => self.convert_simd_builtin(ctx, "_mm_extract_ps", args),
-            "__builtin_ia32_vec_set_v16qi" => {
-                self.convert_simd_builtin(ctx, "_mm_insert_epi8", args)
-            }
-            "__builtin_ia32_vec_set_v2di" => {
-                self.convert_simd_builtin(ctx, "_mm_insert_epi64", args)
-            }
-            "__builtin_ia32_vec_ext_v8si" => {
-                self.convert_simd_builtin(ctx, "_mm256_extract_epi32", args)
-            }
-            "__builtin_ia32_mpsadbw128" => self.convert_simd_builtin(ctx, "_mm_mpsadbw_epu8", args),
-            "__builtin_ia32_pcmpistrm128" => self.convert_simd_builtin(ctx, "_mm_cmpistrm", args),
-            "__builtin_ia32_pcmpistri128" => self.convert_simd_builtin(ctx, "_mm_cmpistri", args),
-            "__builtin_ia32_pcmpestrm128" => self.convert_simd_builtin(ctx, "_mm_cmpestrm", args),
-            "__builtin_ia32_pcmpistria128" => self.convert_simd_builtin(ctx, "_mm_cmpistra", args),
-            "__builtin_ia32_pcmpistric128" => self.convert_simd_builtin(ctx, "_mm_cmpistrc", args),
-            "__builtin_ia32_pcmpistrio128" => self.convert_simd_builtin(ctx, "_mm_cmpistro", args),
-            "__builtin_ia32_pcmpistris128" => self.convert_simd_builtin(ctx, "_mm_cmpistrs", args),
-            "__builtin_ia32_pcmpistriz128" => self.convert_simd_builtin(ctx, "_mm_cmpistrz", args),
-            "__builtin_ia32_pcmpestria128" => self.convert_simd_builtin(ctx, "_mm_cmpestra", args),
-            "__builtin_ia32_pcmpestric128" => self.convert_simd_builtin(ctx, "_mm_cmpestrc", args),
-            "__builtin_ia32_pcmpestrio128" => self.convert_simd_builtin(ctx, "_mm_cmpestro", args),
-            "__builtin_ia32_pcmpestris128" => self.convert_simd_builtin(ctx, "_mm_cmpestrs", args),
-            "__builtin_ia32_pcmpestriz128" => self.convert_simd_builtin(ctx, "_mm_cmpestrz", args),
-
             "__sync_val_compare_and_swap_1"
             | "__sync_val_compare_and_swap_2"
             | "__sync_val_compare_and_swap_4"
@@ -545,9 +459,9 @@ impl<'c> Translation<'c> {
             | "__sync_bool_compare_and_swap_4"
             | "__sync_bool_compare_and_swap_8"
             | "__sync_bool_compare_and_swap_16" => {
-                let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-                let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
-                let arg2 = self.convert_expr(ctx.used(), args[2], None)?;
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                let arg1 = self.convert_expr(ctx.used(), args[1])?;
+                let arg2 = self.convert_expr(ctx.used(), args[2])?;
                 arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
                         arg2.and_then(|arg2| {
@@ -584,8 +498,8 @@ impl<'c> Translation<'c> {
             | "__sync_lock_test_and_set_16" => {
                 // Emit `atomic_xchg_acquire(arg0, arg1)`
                 let atomic_func = self.atomic_intrinsic_expr("xchg", &[Acquire]);
-                let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-                let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                let arg1 = self.convert_expr(ctx.used(), args[1])?;
                 arg0.and_then(|arg0| {
                     arg1.and_then(|arg1| {
                         let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
@@ -605,7 +519,7 @@ impl<'c> Translation<'c> {
             | "__sync_lock_release_16" => {
                 // Emit `atomic_store_release(arg0, 0)`
                 let atomic_func = self.atomic_intrinsic_expr("store", &[Release]);
-                let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
+                let arg0 = self.convert_expr(ctx.used(), args[0])?;
                 arg0.and_then(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
                     let call_expr = mk().call_expr(atomic_func, vec![arg0, zero]);
@@ -618,7 +532,7 @@ impl<'c> Translation<'c> {
             }
             // There's currently no way to replicate this functionality in Rust, so we just
             // pass the ptr input param in its place.
-            "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0], None)?),
+            "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0])?),
             // Skip over, there's no way to implement it in Rust
             "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => Ok(WithStmts::new(
@@ -642,8 +556,8 @@ impl<'c> Translation<'c> {
 
             _ => {
                 if let Some(atomic_op) = CAtomicBinOp::from_sync_builtin_fn(builtin_name) {
-                    let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-                    let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
+                    let arg0 = self.convert_expr(ctx.used(), args[0])?;
+                    let arg1 = self.convert_expr(ctx.used(), args[1])?;
                     let arg1_type_id = self.ast_context[args[1]]
                         .kind
                         .get_qual_type()
@@ -653,6 +567,8 @@ impl<'c> Translation<'c> {
                             self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
                         })
                     })
+                } else if let Some(fn_name) = simd_fn_from_builtin_fn(builtin_name) {
+                    self.convert_simd_builtin(ctx, fn_name, args)
                 } else {
                     Err(format_translation_err!(
                         self.ast_context.display_loc(src_loc),
@@ -692,7 +608,7 @@ impl<'c> Translation<'c> {
         method_name: &str,
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let args = self.convert_exprs(ctx.used(), args, None)?;
+        let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
             let [a, b, c]: [_; 3] = args
                 .try_into()
@@ -732,7 +648,7 @@ impl<'c> Translation<'c> {
         let name = &builtin_name[10..];
         self.use_crate(ExternCrate::Libc);
         let mem = mk().abs_path_expr(vec!["libc", name]);
-        let args = self.convert_exprs(ctx.used(), args, None)?;
+        let args = self.convert_exprs(ctx.used(), args)?;
         args.and_then(|args| {
             if args.len() != arg_types.len() {
                 // This should not generally happen, as the C frontend checks these first

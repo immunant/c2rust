@@ -222,7 +222,7 @@ impl<'c> Translation<'c> {
                 .map(|arg| self.clean_int_or_vector_param(*arg)),
         );
 
-        let param_translation = self.convert_exprs(ctx.used(), &processed_args, None)?;
+        let param_translation = self.convert_exprs(ctx.used(), &processed_args)?;
         param_translation.and_then(|call_params| {
             let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
@@ -293,7 +293,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let param_translation = self.convert_exprs(ctx, ids, None)?;
+        let param_translation = self.convert_exprs(ctx, ids)?;
         param_translation.and_then(|mut params| {
             // When used in a const context, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
@@ -380,11 +380,8 @@ impl<'c> Translation<'c> {
         }
 
         let mask_expr_id = self.get_shuffle_vector_mask(&child_expr_ids[2..])?;
-        let param_translation = self.convert_exprs(
-            ctx.used(),
-            &[first_expr_id, second_expr_id, mask_expr_id],
-            None,
-        )?;
+        let param_translation =
+            self.convert_exprs(ctx.used(), &[first_expr_id, second_expr_id, mask_expr_id])?;
         param_translation.and_then(|params| {
             let [first, second, third]: [_; 3] = params
                 .try_into()
@@ -567,4 +564,63 @@ impl<'c> Translation<'c> {
             _ => false,
         }
     }
+}
+
+pub fn simd_fn_from_builtin_fn(builtin_name: &str) -> Option<&'static str> {
+    Some(match builtin_name {
+        "__builtin_ia32_aeskeygenassist128" => "_mm_aeskeygenassist_si128",
+        "__builtin_ia32_aesimc128" => "_mm_aesimc_si128",
+        "__builtin_ia32_aesenc128" => "_mm_aesenc_si128",
+        "__builtin_ia32_aesenclast128" => "_mm_aesenclast_si128",
+        "__builtin_ia32_aesdec128" => "_mm_aesdec_si128",
+        "__builtin_ia32_aesdeclast128" => "_mm_aesdeclast_si128",
+        "__builtin_ia32_pshufw" => "_mm_shuffle_pi16",
+        "__builtin_ia32_shufps" => "_mm_shuffle_ps",
+        "__builtin_ia32_shufpd" => "_mm_shuffle_pd",
+        "__builtin_ia32_shufps256" => "_mm256_shuffle_ps",
+        "__builtin_ia32_shufpd256" => "_mm256_shuffle_pd",
+        "__builtin_ia32_pshufd" => "_mm_shuffle_epi32",
+        "__builtin_ia32_pshufhw" => "_mm_shufflehi_epi16",
+        "__builtin_ia32_pshuflw" => "_mm_shufflelo_epi16",
+        "__builtin_ia32_pslldqi128_byteshift" => "_mm_slli_si128",
+        "__builtin_ia32_pshufd256" => "_mm256_shuffle_epi32",
+        "__builtin_ia32_pshufhw256" => "_mm256_shufflehi_epi16",
+        "__builtin_ia32_pshuflw256" => "_mm256_shufflelo_epi16",
+        "__builtin_ia32_palignr128" => "_mm_alignr_epi8",
+        "__builtin_ia32_palignr256" => "_mm256_alignr_epi8",
+        "__builtin_ia32_permti256" => "_mm256_permute2x128_si256",
+        "__builtin_ia32_vec_ext_v4si" => "_mm_extract_epi32",
+        "__builtin_ia32_vec_ext_v16qi" => "_mm_extract_epi8",
+        "__builtin_ia32_vec_ext_v2di" => "_mm_extract_epi64",
+        "__builtin_ia32_vperm2f128_pd256" => "_mm256_permute2f128_pd",
+        "__builtin_ia32_roundps" => "_mm_round_ps",
+        "__builtin_ia32_roundss" => "_mm_round_ss",
+        "__builtin_ia32_roundpd" => "_mm_round_pd",
+        "__builtin_ia32_roundsd" => "_mm_round_sd",
+        "__builtin_ia32_blendpd" => "_mm_blend_pd",
+        "__builtin_ia32_blendps" => "_mm_blend_ps",
+        "__builtin_ia32_pblendw128" => "_mm_blend_epi16",
+        "__builtin_ia32_dpps" => "_mm_dp_ps",
+        "__builtin_ia32_dppd" => "_mm_dp_pd",
+        "__builtin_ia32_insertps128" => "_mm_insert_ps",
+        "__builtin_ia32_vec_ext_v4sf" => "_mm_extract_ps",
+        "__builtin_ia32_vec_set_v16qi" => "_mm_insert_epi8",
+        "__builtin_ia32_vec_set_v2di" => "_mm_insert_epi64",
+        "__builtin_ia32_vec_ext_v8si" => "_mm256_extract_epi32",
+        "__builtin_ia32_mpsadbw128" => "_mm_mpsadbw_epu8",
+        "__builtin_ia32_pcmpistrm128" => "_mm_cmpistrm",
+        "__builtin_ia32_pcmpistri128" => "_mm_cmpistri",
+        "__builtin_ia32_pcmpestrm128" => "_mm_cmpestrm",
+        "__builtin_ia32_pcmpistria128" => "_mm_cmpistra",
+        "__builtin_ia32_pcmpistric128" => "_mm_cmpistrc",
+        "__builtin_ia32_pcmpistrio128" => "_mm_cmpistro",
+        "__builtin_ia32_pcmpistris128" => "_mm_cmpistrs",
+        "__builtin_ia32_pcmpistriz128" => "_mm_cmpistrz",
+        "__builtin_ia32_pcmpestria128" => "_mm_cmpestra",
+        "__builtin_ia32_pcmpestric128" => "_mm_cmpestrc",
+        "__builtin_ia32_pcmpestrio128" => "_mm_cmpestro",
+        "__builtin_ia32_pcmpestris128" => "_mm_cmpestrs",
+        "__builtin_ia32_pcmpestriz128" => "_mm_cmpestrz",
+        _ => return None,
+    })
 }

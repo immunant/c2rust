@@ -1337,6 +1337,34 @@ impl TypedAstContext {
         }
         false
     }
+
+    /// Return whether the literal can be directly translated as this type.
+    pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId) -> bool {
+        let ty_kind = &self.resolve_type(ty.ctype).kind;
+        match *lit {
+            CLiteral::Integer(value, _) if ty_kind.is_integral_type() && !ty_kind.is_bool() => {
+                ty_kind.guaranteed_integer_in_range(value)
+            }
+            // `convert_literal` always casts these to i32.
+            CLiteral::Character(_value) => matches!(ty_kind, CTypeKind::Int32),
+            CLiteral::Floating(value, _) if ty_kind.is_floating_type() => {
+                ty_kind.guaranteed_float_in_range(value)
+            }
+            _ => false,
+        }
+    }
+
+    /// Same as the `Index` trait, but doesn't bypass `Paren`.
+    pub fn index_expr_raw(&self, index: CExprId) -> &CExpr {
+        static BADEXPR: CExpr = Located {
+            loc: None,
+            kind: CExprKind::BadExpr,
+        };
+        match self.c_exprs.get(&index) {
+            None => &BADEXPR,
+            Some(e) => e,
+        }
+    }
 }
 
 impl CommentContext {
