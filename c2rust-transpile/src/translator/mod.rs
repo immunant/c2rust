@@ -3644,7 +3644,16 @@ impl<'c> Translation<'c> {
                 };
                 let target_ty = override_ty.unwrap_or(ty);
 
-                let val = if is_explicit {
+                let val = if matches!(
+                    kind,
+                    CastKind::IntegralToBoolean
+                        | CastKind::FloatingToBoolean
+                        | CastKind::PointerToBoolean
+                ) {
+                    // `convert_cast` discards the translated expression for these casts,
+                    // so we might as well not bother to translate here.
+                    WithStmts::new_val(self.panic_or_err("val is not supposed to be used"))
+                } else if is_explicit {
                     let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
                     let mut val = self.convert_expr(ctx, expr, None)?;
                     val.prepend_stmts(stmts);
