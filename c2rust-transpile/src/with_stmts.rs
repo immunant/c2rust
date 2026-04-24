@@ -1,6 +1,6 @@
 use c2rust_ast_builder::mk;
 use std::iter::FromIterator;
-use syn::{Block, Expr, Stmt};
+use syn::{Block, Expr, Item, Stmt};
 
 #[derive(Clone, Debug)]
 pub struct WithStmts<T> {
@@ -17,6 +17,15 @@ impl<T> WithStmts<T> {
             is_unsafe: false,
         }
     }
+
+    pub fn new_unsafe(stmts: Vec<Stmt>, val: T) -> Self {
+        WithStmts {
+            stmts,
+            val,
+            is_unsafe: true,
+        }
+    }
+
     pub fn new_val(val: T) -> Self {
         WithStmts {
             stmts: vec![],
@@ -88,6 +97,21 @@ impl<T> WithStmts<T> {
     }
     pub fn stmts_mut(&mut self) -> &mut Vec<Stmt> {
         &mut self.stmts
+    }
+
+    /// If all statements in self.stmts are [`Item`] statements, returns the contained [`Item`]s.
+    /// Otherwise, returns [`None`].
+    pub fn stmts_to_items(&mut self) -> Option<Vec<Box<Item>>> {
+        let all_are_items = self.stmts.iter().all(|stmt| matches!(stmt, Stmt::Item(_)));
+        all_are_items.then(|| {
+            std::mem::take(&mut self.stmts)
+                .into_iter()
+                .map(|stmt| match stmt {
+                    Stmt::Item(item) => Box::new(item),
+                    _ => unreachable!(),
+                })
+                .collect()
+        })
     }
 
     pub fn is_unsafe(&self) -> bool {
