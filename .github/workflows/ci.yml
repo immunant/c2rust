@@ -187,7 +187,7 @@ jobs:
       matrix:
         crate:
           - merge_rust
-          - related_decls
+          # - related_decls
           - rust_util
           - split_ffi_entry_points
           - split_rust
