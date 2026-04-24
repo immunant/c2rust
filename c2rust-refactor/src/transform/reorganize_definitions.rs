@@ -289,10 +289,87 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             keep_items
         }
 
+        // First, remove and store `impl` items, indexing them by the type they belong to.
+        let mut impls: HashMap<DefId, MovedDeclImpl> = HashMap::new();
+        FlatMapNodes::visit(krate, |mut item: P<Item>| {
+            if let Some((path, _)) = parse_source_header(&item.attrs) {
+                let header_ident = item.ident;
+                if let ItemKind::Mod(_, ModKind::Loaded(ref mut mod_items, _, _)) = &mut item.kind {
+                    mod_items.retain(|item| {
+                        if let ItemKind::Impl(r#impl) = &item.kind {
+                            // Only keep `impl` items with simple path types, and only if they
+                            // contain nothing but `const` items.
+                            fn impl_parent_decl<'hir>(
+                                cx: &'hir RefactorCtxt,
+                                r#impl: &Impl,
+                            ) -> Option<(DefId, &'hir hir::Path<'hir>)>
+                            {
+                                // Only inherent `impl`s that contain no items other than `const`.
+                                if r#impl.of_trait.is_some()
+                                    || !r#impl
+                                        .items
+                                        .iter()
+                                        .all(|item| matches!(item.kind, AssocItemKind::Const(..)))
+                                {
+                                    return None;
+                                };
+                                let ty = match cx.hir_map().find(r#impl.self_ty.id)? {
+                                    hir::Node::Ty(ty) => ty,
+                                    _ => return None,
+                                };
+                                let ty_path = match &ty.kind {
+                                    hir::TyKind::Path(hir::QPath::Resolved(None, path)) => path,
+                                    _ => return None,
+                                };
+                                match ty_path.res {
+                                    Res::Def(_, def_id) => Some((def_id, ty_path)),
+                                    _ => None,
+                                }
+                            }
+
+                            if let Some((decl_def_id, impl_type_path)) =
+                                impl_parent_decl(&self.cx, &r#impl)
+                            {
+                                match impls.entry(decl_def_id) {
+                                    Entry::Occupied(_) => warn!(
+                                        "decl {decl_def_id:?} ({impl_type_path:?}) \
+                                        has more than one `impl` block, dropping the others"
+                                    ),
+                                    Entry::Vacant(entry) => {
+                                        let parent_header =
+                                            HeaderInfo::new(header_ident, path.clone());
+                                        entry.insert(MovedDeclImpl {
+                                            item: item.clone(),
+                                            parent_header,
+                                        });
+                                    }
+                                }
+                            }
+
+                            false
+                        } else {
+                            true
+                        }
+                    });
+
+                    if mod_items.is_empty() {
+                        smallvec![]
+                    } else {
+                        smallvec![item]
+                    }
+                } else {
+                    panic!("Unexpected Item kind with header_src attribute");
+                }
+            } else {
+                smallvec![item]
+            }
+        });
+
+        // Process all the remaining items.
         let mut declarations = HeaderDeclarations::new(self.cx);
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             if let Some((path, _)) = parse_source_header(&item.attrs) {
-                let header_item = item.clone();
+                let header_ident = item.ident;
                 // TODO: handle use's at the top of the crate
                 if let ItemKind::Mod(_, ModKind::Loaded(ref mut mod_items, _, _)) = &mut item.kind {
                     // Split complex uses before iterating over the items
@@ -323,8 +400,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             }
                         }
 
-                        let header_info = HeaderInfo::new(header_item.ident, path.clone());
-                        let inserted = declarations.insert_item(item.clone(), header_info);
+                        let new_def_id = self.cx.node_def_id(item.id);
+                        let header_info = HeaderInfo::new(header_ident, path.clone());
+                        let inserted = declarations.insert_item(
+                            item.clone(),
+                            header_info,
+                            impls.remove(&new_def_id),
+                        );
                         // Keep the item if we are not collapsing it
                         !inserted
                     });
@@ -678,7 +760,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         } else {
                             let namespace = self.cx.item_namespace(&item);
                             if let Some(namespace) = namespace {
-                                match declarations.find_item(item, namespace) {
+                                match declarations.find_item(item, namespace, None) {
                                     ContainsDecl::NotContained => false,
                                     ContainsDecl::Equivalent(_) => true,
                                     ContainsDecl::Definition(_) => true,
@@ -752,6 +834,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // Remove src_loc attributes
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             item.attrs.retain(|attr| !is_c2rust_attr(attr, "src_loc"));
+
+            if let ItemKind::Impl(r#impl) = &mut item.kind {
+                for item in &mut r#impl.items {
+                    item.attrs.retain(|attr| !is_c2rust_attr(attr, "src_loc"));
+                }
+            }
+
             smallvec![item]
         });
         FlatMapNodes::visit(krate, |mut item: P<ForeignItem>| {
@@ -1123,10 +1212,25 @@ struct MovedDecl {
     namespace: Namespace,
     loc: Option<SrcLoc>,
     parent_header: HeaderInfo,
+
+    /// The `impl` block that belongs to the definition, if any.
+    r#impl: Option<MovedDeclImpl>,
+}
+
+#[derive(Debug, Clone)]
+struct MovedDeclImpl {
+    item: P<Item>,
+    parent_header: HeaderInfo,
 }
 
 impl MovedDecl {
-    fn new<T>(decl: T, def_id: DefId, namespace: Namespace, parent_header: HeaderInfo) -> Self
+    fn new<T>(
+        decl: T,
+        def_id: DefId,
+        namespace: Namespace,
+        parent_header: HeaderInfo,
+        r#impl: Option<MovedDeclImpl>,
+    ) -> Self
     where
         T: Into<DeclKind>,
     {
@@ -1143,6 +1247,7 @@ impl MovedDecl {
             namespace,
             loc,
             parent_header,
+            r#impl,
         }
     }
 
@@ -1329,14 +1434,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
     /// Add an item into the module. If it has a name conflict with an existing
     /// item, choose the definition item over any declarations.
-    pub fn insert_item(&mut self, mut item: P<Item>, parent_header: HeaderInfo) -> bool {
-        let namespace = self.cx.item_namespace(&item);
-        let new_def_id = self.cx.node_def_id(item.id);
-        let ident = if let ItemKind::Use(tree) = &item.kind {
-            tree.ident()
-        } else {
-            item.ident
-        };
+    pub fn insert_item(
+        &mut self,
+        mut item: P<Item>,
+        parent_header: HeaderInfo,
+        r#impl: Option<MovedDeclImpl>,
+    ) -> bool {
         match &item.kind {
             // We have to disambiguate anonymous items by contents,
             // since we don't have a proper Ident.
@@ -1345,7 +1448,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             // ident_map.
             ItemKind::Use(tree) if is_nested(tree) => {
                 for u in split_uses(item).into_iter() {
-                    self.insert_item(u, parent_header.clone());
+                    self.insert_item(u, parent_header.clone(), r#impl.clone());
                 }
                 true
             }
@@ -1373,11 +1476,24 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             // we don't have any items with the same name but different
             // contents.
             _ => {
+                let namespace = self.cx.item_namespace(&item);
+                let new_def_id = self.cx.node_def_id(item.id);
+                let ident = if let ItemKind::Use(tree) = &item.kind {
+                    tree.ident()
+                } else {
+                    item.ident
+                };
                 let unnamed = ident.as_str().contains("C2Rust_Unnamed");
-                let def_id_mapping = match self.find_item(&item, namespace.unwrap()) {
+                let impl_item = r#impl.as_ref().map(|r#impl| &*r#impl.item);
+                let def_id_mapping = match self.find_item(&item, namespace.unwrap(), impl_item) {
                     ContainsDecl::NotContained => {
-                        let new_item =
-                            MovedDecl::new(item, new_def_id, namespace.unwrap(), parent_header);
+                        let new_item = MovedDecl::new(
+                            item,
+                            new_def_id,
+                            namespace.unwrap(),
+                            parent_header,
+                            r#impl,
+                        );
                         if unnamed {
                             self.unnamed_items[namespace.unwrap()].push(new_item);
                         } else {
@@ -1397,8 +1513,13 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     ContainsDecl::Use(existing) => {
                         let existing_def_id = existing.def_id;
                         existing.join_visibility(&item.vis.kind);
-                        *existing =
-                            MovedDecl::new(item, new_def_id, namespace.unwrap(), parent_header);
+                        *existing = MovedDecl::new(
+                            item,
+                            new_def_id,
+                            namespace.unwrap(),
+                            parent_header,
+                            r#impl,
+                        );
                         Some((existing_def_id, new_def_id))
                     }
 
@@ -1406,8 +1527,13 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         let existing_def_id = existing.def_id;
                         item.vis.kind =
                             join_visibility(&existing.visibility().kind, &item.vis.kind);
-                        *existing =
-                            MovedDecl::new(item, new_def_id, namespace.unwrap(), parent_header);
+                        *existing = MovedDecl::new(
+                            item,
+                            new_def_id,
+                            namespace.unwrap(),
+                            parent_header,
+                            r#impl,
+                        );
                         Some((existing_def_id, new_def_id))
                     }
 
@@ -1433,6 +1559,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     new_def_id,
                     namespace,
                     parent_header.clone(),
+                    None,
                 );
                 if unnamed {
                     self.unnamed_items[namespace].push(new_item);
@@ -1452,6 +1579,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     new_def_id,
                     namespace,
                     parent_header.clone(),
+                    None,
                 );
                 Some((existing_def_id, new_def_id))
             }
@@ -1545,6 +1673,17 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     foreign_items.entry(abi).or_default().push(fi);
                 }
             }
+
+            // If there is an impl item, add it now.
+            if let Some(r#impl) = item.r#impl {
+                let cur_mod_name = r#impl.parent_header.ident;
+                let i = r#impl.item;
+                if last_item_mod != Some(cur_mod_name) {
+                    st.add_comment(i.id, make_header_comment(last_item_mod, cur_mod_name));
+                    last_item_mod = Some(cur_mod_name);
+                }
+                items.push(i);
+            }
         }
 
         let foreign_mods = foreign_items
@@ -1554,13 +1693,29 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         foreign_mods.chain(items.into_iter()).collect()
     }
 
-    fn find_item<'b>(&'b mut self, item: &Item, namespace: Namespace) -> ContainsDecl<'b> {
+    fn find_item<'b>(
+        &'b mut self,
+        item: &Item,
+        namespace: Namespace,
+        impl_item: Option<&Item>,
+    ) -> ContainsDecl<'b> {
         let ident = if let ItemKind::Use(tree) = &item.kind {
             tree.ident()
         } else {
             item.ident
         };
         assert!(ident.name != kw::Empty);
+
+        let impl_is_compatible = |existing_decl: &MovedDecl| -> bool {
+            match (impl_item, &existing_decl.r#impl) {
+                (None, None) => true,
+                (Some(impl_item), Some(existing_impl)) => {
+                    self.cx
+                        .compatible_types(impl_item, &existing_impl.item, false)
+                }
+                _ => false,
+            }
+        };
 
         if ident.as_str().contains("C2Rust_Unnamed") {
             for existing_decl in self.unnamed_items[namespace].iter_mut() {
@@ -1572,7 +1727,9 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         | ItemKind::Enum(..) => {
                             // Does the new item match the existing item, except
                             // for unnamed names?
-                            if item.kind.unnamed_equiv(&existing_item.kind) {
+                            if item.kind.unnamed_equiv(&existing_item.kind)
+                                && impl_is_compatible(existing_decl)
+                            {
                                 return ContainsDecl::Equivalent(existing_decl);
                             }
                         }
@@ -1617,7 +1774,9 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         // Otherwise make sure these items are structurally
                         // equivalent.
                         _ => {
-                            if self.cx.compatible_types(&item, &existing_item, true) {
+                            if self.cx.compatible_types(&item, &existing_item, true)
+                                && impl_is_compatible(existing_decl)
+                            {
                                 return ContainsDecl::Equivalent(existing_decl);
                             }
                         }
