@@ -4211,10 +4211,10 @@ impl<'c> Translation<'c> {
                     self.ast_context[source_cty.ctype].kind
                 {
                     self.f128_cast_to(val, target_ty_kind)
-                } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
+                } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
                     // Casts targeting `enum` types...
                     val.result_map(|val| {
-                        self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, expr, val)
+                        self.convert_cast_to_enum(ctx, enum_id, expr, source_cty.ctype, val)
                     })
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     Ok(val.map(|val| {
@@ -4491,7 +4491,7 @@ impl<'c> Translation<'c> {
             }
 
             // Transmute the number `0` into the enum type
-            CDeclKind::Enum { .. } => self.convert_enum_zero_initializer(type_id),
+            CDeclKind::Enum { .. } => self.convert_enum_zero_initializer(decl_id),
 
             _ => {
                 return Err(TranslationError::generic(
@@ -4595,7 +4595,7 @@ impl<'c> Translation<'c> {
             }
 
             let val = if ty.is_enum() {
-                mk().cast_expr(val, mk().path_ty(vec!["u64"]))
+                mk().anon_field_expr(val, 0)
             } else {
                 val
             };
