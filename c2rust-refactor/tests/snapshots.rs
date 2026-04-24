@@ -446,6 +446,14 @@ fn test_reorganize_definitions() {
 }
 
 #[test]
+fn test_reorganize_assoc_items() {
+    refactor("reorganize_definitions")
+        .named("reorganize_assoc_items.rs")
+        .new_expect_compile_error(true)
+        .test();
+}
+
+#[test]
 fn test_reorganize_foreign_types() {
     refactor("reorganize_definitions")
         .named("reorganize_foreign_types.rs")
