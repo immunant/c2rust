@@ -10,4 +10,4 @@ struct _Evas_Func
 };
 
 // dummy item imported by `test_enums.rs`
-int foo(int i) { return i;}
+struct _Evas_Func foo(struct _Evas_Func i) { return i;}
