@@ -7,8 +7,8 @@ use crate::{
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
     with_stmts::WithStmts,
-    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
-    CTypeKind, ConstIntExpr,
+    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeKind,
+    ConstIntExpr,
 };
 
 impl<'c> Translation<'c> {
@@ -23,10 +23,18 @@ impl<'c> Translation<'c> {
             .borrow()
             .resolve_decl_name(enum_id)
             .expect("Enums should already be renamed");
-        let ty = self.convert_type(integral_type.ctype)?;
-        Ok(ConvertedDecl::Item(
-            mk().span(span).pub_().type_item(enum_name, ty),
-        ))
+
+        let field = mk()
+            .pub_()
+            .enum_field(self.convert_type(integral_type.ctype)?);
+        let item = mk()
+            .span(span)
+            .call_attr("derive", vec!["Clone", "Copy"])
+            .call_attr("repr", vec!["transparent"])
+            .pub_()
+            .struct_item(enum_name, vec![field], true);
+
+        Ok(ConvertedDecl::Item(item))
     }
 
     pub fn convert_enum_constant(
@@ -46,48 +54,53 @@ impl<'c> Translation<'c> {
             .borrow()
             .resolve_decl_name(enum_id)
             .expect("Enums should already be renamed");
-        self.add_import(enum_id, &enum_name);
 
-        let ty = mk().ident_ty(enum_name);
+        let ty = mk().ident_ty(enum_name.clone());
         let val = match value {
             ConstIntExpr::I(value) => signed_int_expr(value),
             ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
         };
+        let init = self.enum_constructor_expr(enum_id, val);
 
         Ok(ConvertedDecl::Item(
-            mk().span(span).pub_().const_item(name, ty, val),
+            mk().span(span).pub_().const_item(name, ty, init),
         ))
     }
 
-    pub fn convert_enum_zero_initializer(&self, type_id: CTypeId) -> WithStmts<Box<Expr>> {
-        WithStmts::new_val(self.enum_for_i64(type_id, 0))
+    pub fn convert_enum_zero_initializer(&self, enum_id: CEnumId) -> WithStmts<Box<Expr>> {
+        WithStmts::new_val(self.enum_for_i64(enum_id, 0))
     }
 
     /// Translate a cast where the source type, but not the target type, is an `enum` type.
     pub fn convert_cast_from_enum(
         &self,
-        target_cty: CTypeId,
-        val: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
-        // Convert it to the expected integral type.
-        let ty = self.convert_type(target_cty)?;
-        Ok(mk().cast_expr(val, ty))
+        ctx: ExprContext,
+        enum_id: CEnumId,
+        target_cty: CQualTypeId,
+        mut val: WithStmts<Box<Expr>>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        // First extract the enum's inner type...
+        val = val.map(|val| self.integer_from_enum(val));
+
+        // Then cast to the expected integral type.
+        let source_cty = self.enum_integral_type(enum_id);
+        self.convert_cast(ctx, source_cty, target_cty, val, None, None, None)
     }
 
-    /// Translate a cast where the target type is an `enum` type.
-    ///
-    /// When translating variable references to `EnumConstant`s, we always insert casts to the
-    /// expected type. In C, `EnumConstant`s have some integral type, _not_ the enum type. However,
-    /// if we then immediately have a cast to convert this variable back into an enum type, we would
-    /// like to produce Rust with _no_ casts. This function handles this simplification.
+    /// Gets the inner integral value of an enum value.
+    pub fn integer_from_enum(&self, val: Box<Expr>) -> Box<Expr> {
+        mk().anon_field_expr(val, 0)
+    }
+
+    /// Translates a cast where the target type is an `enum` type.
     pub fn convert_cast_to_enum(
         &self,
         ctx: ExprContext,
-        enum_type_id: CTypeId,
+        mut source_cty: CQualTypeId,
         enum_id: CEnumId,
         expr: Option<CExprId>,
-        val: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
+        mut val: WithStmts<Box<Expr>>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if let Some(expr) = expr {
             match self.ast_context[expr].kind {
                 // This is the case of finding a variable which is an `EnumConstant` of the same
@@ -102,19 +115,22 @@ impl<'c> Translation<'c> {
                     // If this DeclRef expanded to a const macro, we actually need to insert a cast,
                     // because the translation of a const macro skips implicit casts in its context.
                     if !expr_is_macro {
-                        return Ok(self.enum_constant_expr(enum_constant_id));
+                        val = WithStmts::new_val(self.enum_constant_expr(enum_constant_id));
+                        return Ok(val);
                     }
                 }
 
                 CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                    return Ok(self.enum_for_i64(enum_type_id, i as i64));
+                    val = WithStmts::new_val(self.enum_for_i64(enum_id, i as i64));
+                    return Ok(val);
                 }
 
                 CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
                     if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
                         &self.ast_context[subexpr_id].kind
                     {
-                        return Ok(self.enum_for_i64(enum_type_id, -(i as i64)));
+                        val = WithStmts::new_val(self.enum_for_i64(enum_id, -(i as i64)));
+                        return Ok(val);
                     }
                 }
 
@@ -122,18 +138,26 @@ impl<'c> Translation<'c> {
             }
         }
 
-        let target_ty = self.convert_type(enum_type_id)?;
-        Ok(mk().cast_expr(val, target_ty))
+        // C allows directly casting from enum to enum. In Rust, it needs to be translated
+        // via the inner value as an intermediate.
+        if let CTypeKind::Enum(source_enum_id) =
+            self.ast_context.resolve_type(source_cty.ctype).kind
+        {
+            val = val.map(|val| self.integer_from_enum(val));
+            source_cty = self.enum_integral_type(source_enum_id);
+        }
+
+        // First cast to the enum's inner type, then construct a new enum value.
+        let target_cty = self.enum_integral_type(enum_id);
+        val = self.convert_cast(ctx, source_cty, target_cty, val, None, None, None)?;
+        val = val.map(|val| self.enum_constructor_expr(enum_id, val));
+
+        Ok(val)
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it converts a number to the enum type.
-    fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
-        let enum_id = match self.ast_context.resolve_type(enum_type_id).kind {
-            CTypeKind::Enum(enum_id) => enum_id,
-            _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
-        };
-
+    fn enum_for_i64(&self, enum_id: CEnumId, value: i64) -> Box<Expr> {
         if let Some(enum_constant_id) = self.enum_variant_for_i64(enum_id, value) {
             return self.enum_constant_expr(enum_constant_id);
         }
@@ -145,8 +169,7 @@ impl<'c> Translation<'c> {
             _ => signed_int_expr(value),
         };
 
-        let target_ty = self.convert_type(enum_type_id).unwrap();
-        mk().cast_expr(value, target_ty)
+        self.enum_constructor_expr(enum_id, value)
     }
 
     /// Returns the id of the variant of `enum_id` whose value matches `value`, if any.
@@ -167,6 +190,16 @@ impl<'c> Translation<'c> {
             })
     }
 
+    fn enum_constructor_expr(&self, enum_id: CEnumId, value: Box<Expr>) -> Box<Expr> {
+        let enum_name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(enum_id)
+            .unwrap();
+        self.add_import(enum_id, &enum_name);
+        mk().call_expr(mk().ident_expr(enum_name), vec![value])
+    }
+
     fn enum_constant_expr(&self, enum_constant_id: CEnumConstantId) -> Box<Expr> {
         let name = self.renamer.borrow().get(&enum_constant_id).unwrap();
         self.add_import(enum_constant_id, &name);
@@ -182,7 +215,7 @@ impl<'c> Translation<'c> {
         variants.contains(&enum_constant_id)
     }
 
-    fn enum_integral_type(&self, enum_id: CEnumId) -> CQualTypeId {
+    pub fn enum_integral_type(&self, enum_id: CEnumId) -> CQualTypeId {
         match self.ast_context[enum_id].kind {
             CDeclKind::Enum {
                 integral_type: Some(integral_type),
