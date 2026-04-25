@@ -66,12 +66,14 @@ impl<'c> Translation<'c> {
     /// Translate a cast where the source type, but not the target type, is an `enum` type.
     pub fn convert_cast_from_enum(
         &self,
-        target_cty: CTypeId,
-        val: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
+        target_cty: CQualTypeId,
+        mut val: Box<Expr>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Convert it to the expected integral type.
-        let ty = self.convert_type(target_cty)?;
-        Ok(mk().cast_expr(val, ty))
+        let ty = self.convert_type(target_cty.ctype)?;
+        val = mk().cast_expr(val, ty);
+
+        Ok(WithStmts::new_val(val))
     }
 
     /// Translate a cast where the target type is an `enum` type.
@@ -83,11 +85,11 @@ impl<'c> Translation<'c> {
     pub fn convert_cast_to_enum(
         &self,
         ctx: ExprContext,
-        enum_type_id: CTypeId,
+        enum_type_id: CQualTypeId,
         enum_id: CEnumId,
         expr: Option<CExprId>,
-        val: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
+        mut val: Box<Expr>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if let Some(expr) = expr {
             match self.ast_context[expr].kind {
                 // This is the case of finding a variable which is an `EnumConstant` of the same
@@ -102,19 +104,22 @@ impl<'c> Translation<'c> {
                     // If this DeclRef expanded to a const macro, we actually need to insert a cast,
                     // because the translation of a const macro skips implicit casts in its context.
                     if !expr_is_macro {
-                        return Ok(self.enum_constant_expr(enum_constant_id));
+                        val = self.enum_constant_expr(enum_constant_id);
+                        return Ok(WithStmts::new_val(val));
                     }
                 }
 
                 CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                    return Ok(self.enum_for_i64(enum_type_id, i as i64));
+                    val = self.enum_for_i64(enum_type_id.ctype, i as i64);
+                    return Ok(WithStmts::new_val(val));
                 }
 
                 CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
                     if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
                         &self.ast_context[subexpr_id].kind
                     {
-                        return Ok(self.enum_for_i64(enum_type_id, -(i as i64)));
+                        val = self.enum_for_i64(enum_type_id.ctype, -(i as i64));
+                        return Ok(WithStmts::new_val(val));
                     }
                 }
 
@@ -122,8 +127,10 @@ impl<'c> Translation<'c> {
             }
         }
 
-        let target_ty = self.convert_type(enum_type_id)?;
-        Ok(mk().cast_expr(val, target_ty))
+        let target_ty = self.convert_type(enum_type_id.ctype)?;
+        val = mk().cast_expr(val, target_ty);
+
+        Ok(WithStmts::new_val(val))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum

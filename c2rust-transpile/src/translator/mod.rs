@@ -3385,7 +3385,7 @@ impl<'c> Translation<'c> {
             CDeclKind::EnumConstant { .. } => {
                 // If the variable is actually an `EnumConstant`, we need to add a cast to
                 // the expected integral type.
-                val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
+                return self.convert_cast_from_enum(qual_ty, val);
             }
 
             CDeclKind::Function { parameters, .. } => {
@@ -3620,20 +3620,16 @@ impl<'c> Translation<'c> {
 
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
-                self.convert_pointer_to_pointer_cast(source_cty.ctype, target_cty.ctype, val)
+                self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
             }
 
             CastKind::IntegralToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty.ctype, target_cty.ctype, val)
+                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
             }
 
-            CastKind::PointerToIntegral => self.convert_pointer_to_integral_cast(
-                ctx,
-                source_cty.ctype,
-                target_cty.ctype,
-                val,
-                expr,
-            ),
+            CastKind::PointerToIntegral => {
+                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val, expr)
+            }
 
             CastKind::IntegralCast
             | CastKind::FloatingCast
@@ -3668,16 +3664,15 @@ impl<'c> Translation<'c> {
                 {
                     self.f128_cast_to(val, target_ty_kind)
                 } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-                    // Casts targeting `enum` types...
-                    val.try_map(|val| {
-                        self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, expr, val)
+                    val.and_then_try(|val| {
+                        self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
                     })
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     Ok(val.map(|val| {
                         mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
                     }))
                 } else if let &CTypeKind::Enum(..) = source_ty_kind {
-                    val.try_map(|val| self.convert_cast_from_enum(target_cty.ctype, val))
+                    val.and_then_try(|val| self.convert_cast_from_enum(target_cty, val))
                 } else {
                     Ok(val.map(|val| mk().cast_expr(val, target_ty)))
                 }
