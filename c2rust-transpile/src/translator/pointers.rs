@@ -440,28 +440,28 @@ impl<'c> Translation<'c> {
 
     pub fn convert_pointer_to_pointer_cast(
         &self,
-        source_cty: CTypeId,
-        target_cty: CTypeId,
+        source_cty: CQualTypeId,
+        target_cty: CQualTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if self.ast_context.is_function_pointer(target_cty)
-            || self.ast_context.is_function_pointer(source_cty)
+        if self.ast_context.is_function_pointer(target_cty.ctype)
+            || self.ast_context.is_function_pointer(source_cty.ctype)
         {
             let source_ty = self
                 .type_converter
                 .borrow_mut()
-                .convert(&self.ast_context, source_cty)?;
+                .convert(&self.ast_context, source_cty.ctype)?;
             let target_ty = self
                 .type_converter
                 .borrow_mut()
-                .convert(&self.ast_context, target_cty)?;
+                .convert(&self.ast_context, target_cty.ctype)?;
 
             if source_ty == target_ty {
                 return Ok(val);
             }
 
-            self.import_type(source_cty);
-            self.import_type(target_cty);
+            self.import_type(source_cty.ctype);
+            self.import_type(target_cty.ctype);
 
             val.and_then(|val| {
                 Ok(WithStmts::new_unsafe_val(transmute_expr(
@@ -470,7 +470,7 @@ impl<'c> Translation<'c> {
             })
         } else {
             // Normal case
-            let target_ty = self.convert_type(target_cty)?;
+            let target_ty = self.convert_type(target_cty.ctype)?;
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
     }
@@ -478,14 +478,14 @@ impl<'c> Translation<'c> {
     pub fn convert_integral_to_pointer_cast(
         &self,
         ctx: ExprContext,
-        source_cty: CTypeId,
-        target_cty: CTypeId,
+        source_cty: CQualTypeId,
+        target_cty: CQualTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let source_ty_kind = &self.ast_context.resolve_type(source_cty).kind;
-        let target_ty = self.convert_type(target_cty)?;
+        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
+        let target_ty = self.convert_type(target_cty.ctype)?;
 
-        if self.ast_context.is_function_pointer(target_cty) {
+        if self.ast_context.is_function_pointer(target_cty.ctype) {
             if ctx.is_const {
                 return Err(format_translation_err!(
                     None,
@@ -511,7 +511,7 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(val, target_ty)
             }))
         } else if let &CTypeKind::Enum(..) = source_ty_kind {
-            val.result_map(|val| self.convert_cast_from_enum(target_cty, val))
+            self.convert_cast_from_enum(target_cty, val)
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
@@ -520,8 +520,8 @@ impl<'c> Translation<'c> {
     pub fn convert_pointer_to_integral_cast(
         &self,
         ctx: ExprContext,
-        source_cty: CTypeId,
-        target_cty: CTypeId,
+        source_cty: CQualTypeId,
+        target_cty: CQualTypeId,
         val: WithStmts<Box<Expr>>,
         expr: Option<CExprId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -532,20 +532,18 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        let target_ty = self.convert_type(target_cty)?;
-        let source_ty = self.convert_type(source_cty)?;
-        let target_ty_kind = &self.ast_context.resolve_type(target_cty).kind;
+        let target_ty = self.convert_type(target_cty.ctype)?;
+        let source_ty = self.convert_type(source_cty.ctype)?;
+        let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
 
-        if self.ast_context.is_function_pointer(source_cty) {
+        if self.ast_context.is_function_pointer(source_cty.ctype) {
             val.and_then(|val| {
                 Ok(WithStmts::new_unsafe_val(transmute_expr(
                     source_ty, target_ty, val,
                 )))
             })
         } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            val.result_map(|val| {
-                self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
-            })
+            self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
