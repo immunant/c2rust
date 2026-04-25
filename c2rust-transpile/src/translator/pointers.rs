@@ -249,6 +249,10 @@ impl<'c> Translation<'c> {
         let lhs_node_type = lhs_node
             .get_type()
             .ok_or_else(|| format_err!("lhs node bad type"))?;
+        let rhs_node_type = rhs_node
+            .get_type()
+            .ok_or_else(|| format_err!("rhs node bad type"))?;
+
         if self
             .ast_context
             .resolve_type(lhs_node_type)
@@ -262,7 +266,12 @@ impl<'c> Translation<'c> {
         }
 
         let rhs = self.convert_expr(ctx.used(), rhs, None)?;
-        rhs.and_then(|rhs| {
+        rhs.and_then(|mut rhs| {
+            // C allows enums to index arrays directly without inserting a numeric cast.
+            if let CTypeKind::Enum(..) = self.ast_context.resolve_type(rhs_node_type).kind {
+                rhs = self.integer_from_enum(rhs);
+            }
+
             let simple_index_array = if ctx.needs_address() {
                 // We can't necessarily index into an array if we're using
                 // that element to compute an address.
@@ -510,8 +519,8 @@ impl<'c> Translation<'c> {
                 val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
                 mk().cast_expr(val, target_ty)
             }))
-        } else if let &CTypeKind::Enum(..) = source_ty_kind {
-            self.convert_cast_from_enum(target_cty, val)
+        } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
+            self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
@@ -543,7 +552,7 @@ impl<'c> Translation<'c> {
                 )))
             })
         } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
+            self.convert_cast_to_enum(ctx, source_cty, enum_decl_id, expr, val)
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
