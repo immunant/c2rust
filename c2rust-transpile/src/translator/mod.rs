@@ -3462,17 +3462,16 @@ impl<'c> Translation<'c> {
                     // }
                 }
 
-                let mut val = mk().path_expr(vec![rustname]);
+                let mut val = WithStmts::new_val(mk().path_expr(vec![rustname]));
 
                 // If the variable is actually an `EnumConstant`, we need to add a cast to the
                 // expected integral type.
                 if let &CDeclKind::EnumConstant { .. } = decl {
-                    val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
+                    val = val.result_map(|val| self.convert_cast_from_enum(qual_ty.ctype, val))?;
                 }
 
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
-                let mut set_unsafe = false;
                 if ctx.needs_address() {
                     if let CDeclKind::Function { parameters, .. } = decl {
                         let ty = self.convert_type(qual_ty.ctype)?;
@@ -3490,8 +3489,8 @@ impl<'c> Translation<'c> {
                                 // a K&R function pointer type, use transmute
                                 self.import_type(qual_ty.ctype);
 
-                                val = transmute_expr(actual_ty, ty, val);
-                                set_unsafe = true;
+                                val = val.map(|val| transmute_expr(actual_ty, ty, val));
+                                val.set_unsafe();
                             }
                         } else {
                             let decl_kind = &self.ast_context[decl_id].kind;
@@ -3504,9 +3503,9 @@ impl<'c> Translation<'c> {
                                 .map(CQualTypeId::new)
                             {
                                 let ty = self.convert_type(ty.ctype)?;
-                                val = mk().cast_expr(val, ty);
+                                val = val.map(|val| mk().cast_expr(val, ty));
                             } else {
-                                val = mk().cast_expr(val, ty);
+                                val = val.map(|val| mk().cast_expr(val, ty));
                             }
                         }
                     }
@@ -3515,19 +3514,18 @@ impl<'c> Translation<'c> {
                 if let CTypeKind::VariableArray(..) =
                     self.ast_context.resolve_type(qual_ty.ctype).kind
                 {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
+                    val = val.map(|val| mk().method_call_expr(val, "as_mut_ptr", vec![]));
                 }
 
                 // if the context wants a different type, add a cast
                 if let Some(expected_ty) = override_ty {
                     if lrvalue.is_rvalue() && expected_ty != qual_ty {
-                        val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
+                        let ty = self.convert_type(expected_ty.ctype)?;
+                        val = val.map(|val| mk().cast_expr(val, ty));
                     }
                 }
 
-                let mut res = WithStmts::new_val(val);
-                res.merge_unsafe(set_unsafe);
-                Ok(res)
+                Ok(val)
             }
 
             OffsetOf(ty, ref kind) => match kind {
@@ -4212,7 +4210,6 @@ impl<'c> Translation<'c> {
                 {
                     self.f128_cast_to(val, target_ty_kind)
                 } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-                    // Casts targeting `enum` types...
                     val.result_map(|val| {
                         self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, expr, val)
                     })
