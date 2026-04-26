@@ -3063,117 +3063,9 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            DeclRef(qual_ty, decl_id, lrvalue) => {
-                let decl = &self
-                    .ast_context
-                    .get_decl(&decl_id)
-                    .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
-                    .kind;
-                if ctx.expanding_macro.is_some() {
-                    // TODO Determining which declarations have been declared within the scope of the const macro expr
-                    // vs. which are out-of-scope of the const macro is non-trivial,
-                    // so for now, we don't allow const macros referencing any declarations.
-                    return Err(format_translation_err!(
-                        self.ast_context.display_loc(src_loc),
-                        "Cannot yet refer to declarations in a const expr",
-                    ));
-
-                    #[allow(unreachable_code)] // TODO temporary (see above).
-                    if let CDeclKind::Variable {
-                        has_static_duration: true,
-                        ..
-                    } = decl
-                    {
-                        return Err(format_translation_err!(
-                            self.ast_context.display_loc(src_loc),
-                            "Cannot refer to static duration variable in a const expression",
-                        ));
-                    }
-                }
-
-                let varname = decl.get_name().expect("expected variable name").to_owned();
-                let rustname = self
-                    .renamer
-                    .borrow_mut()
-                    .get(&decl_id)
-                    .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
-
-                // Import the referenced global decl into our submodule
-                if self.tcfg.reorganize_definitions {
-                    self.add_import(decl_id, &rustname);
-                    // match decl {
-                    //     CDeclKind::Variable { is_defn: false, .. } => {}
-                    //     _ => self.add_import(decl_id, &rustname),
-                    // }
-                }
-
-                let mut val = mk().path_expr(vec![rustname]);
-
-                // If the variable is actually an `EnumConstant`, we need to add a cast to the
-                // expected integral type.
-                if let &CDeclKind::EnumConstant { .. } = decl {
-                    val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
-                }
-
-                // If we are referring to a function and need its address, we
-                // need to cast it to fn() to ensure that it has a real address.
-                let mut set_unsafe = false;
-                if ctx.needs_address() {
-                    if let CDeclKind::Function { parameters, .. } = decl {
-                        let ty = self.convert_type(qual_ty.ctype)?;
-                        let actual_ty = self
-                            .type_converter
-                            .borrow_mut()
-                            .knr_function_type_with_parameters(
-                                &self.ast_context,
-                                qual_ty.ctype,
-                                parameters,
-                            )?;
-                        if let Some(actual_ty) = actual_ty {
-                            if actual_ty != ty {
-                                // If we're casting a concrete function to
-                                // a K&R function pointer type, use transmute
-                                self.import_type(qual_ty.ctype);
-
-                                val = transmute_expr(actual_ty, ty, val);
-                                set_unsafe = true;
-                            }
-                        } else {
-                            let decl_kind = &self.ast_context[decl_id].kind;
-                            let kind_with_declared_args =
-                                self.ast_context.fn_decl_ty_with_declared_args(decl_kind);
-
-                            if let Some(ty) = self
-                                .ast_context
-                                .type_for_kind(&kind_with_declared_args)
-                                .map(CQualTypeId::new)
-                            {
-                                let ty = self.convert_type(ty.ctype)?;
-                                val = mk().cast_expr(val, ty);
-                            } else {
-                                val = mk().cast_expr(val, ty);
-                            }
-                        }
-                    }
-                }
-
-                if let CTypeKind::VariableArray(..) =
-                    self.ast_context.resolve_type(qual_ty.ctype).kind
-                {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
-                }
-
-                // if the context wants a different type, add a cast
-                if let Some(expected_ty) = override_ty {
-                    if lrvalue.is_rvalue() && expected_ty != qual_ty {
-                        val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
-                    }
-                }
-
-                let mut res = WithStmts::new_val(val);
-                res.merge_unsafe(set_unsafe);
-                Ok(res)
-            }
+            DeclRef(qual_ty, decl_id, lrvalue) => self
+                .convert_decl_ref(ctx, qual_ty, decl_id, lrvalue, override_ty)
+                .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => Ok(WithStmts::new_val(self.mk_int_lit(
@@ -3533,6 +3425,124 @@ impl<'c> Translation<'c> {
                 ..
             } => self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak),
         }
+    }
+
+    fn convert_decl_ref(
+        &self,
+        ctx: ExprContext,
+        qual_ty: CQualTypeId,
+        decl_id: CDeclId,
+        lrvalue: LRValue,
+        override_ty: Option<CQualTypeId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let decl = &self
+            .ast_context
+            .get_decl(&decl_id)
+            .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
+            .kind;
+        if ctx.expanding_macro.is_some() {
+            // TODO Determining which declarations have been declared within the scope of the const macro expr
+            // vs. which are out-of-scope of the const macro is non-trivial,
+            // so for now, we don't allow const macros referencing any declarations.
+            return Err(format_translation_err!(
+                None,
+                "Cannot yet refer to declarations in a const expr",
+            ));
+
+            #[allow(unreachable_code)] // TODO temporary (see above).
+            if let CDeclKind::Variable {
+                has_static_duration: true,
+                ..
+            } = decl
+            {
+                return Err(format_translation_err!(
+                    None,
+                    "Cannot refer to static duration variable in a const expression",
+                ));
+            }
+        }
+
+        let varname = decl.get_name().expect("expected variable name").to_owned();
+        let rustname = self
+            .renamer
+            .borrow_mut()
+            .get(&decl_id)
+            .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
+
+        // Import the referenced global decl into our submodule
+        if self.tcfg.reorganize_definitions {
+            self.add_import(decl_id, &rustname);
+            // match decl {
+            //     CDeclKind::Variable { is_defn: false, .. } => {}
+            //     _ => self.add_import(decl_id, &rustname),
+            // }
+        }
+
+        let mut val = mk().path_expr(vec![rustname]);
+
+        // If the variable is actually an `EnumConstant`, we need to add a cast to the
+        // expected integral type.
+        if let &CDeclKind::EnumConstant { .. } = decl {
+            val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
+        }
+
+        // If we are referring to a function and need its address, we
+        // need to cast it to fn() to ensure that it has a real address.
+        let mut set_unsafe = false;
+        if ctx.needs_address() {
+            if let CDeclKind::Function { parameters, .. } = decl {
+                let ty = self.convert_type(qual_ty.ctype)?;
+                let actual_ty = self
+                    .type_converter
+                    .borrow_mut()
+                    .knr_function_type_with_parameters(
+                        &self.ast_context,
+                        qual_ty.ctype,
+                        parameters,
+                    )?;
+
+                if let Some(actual_ty) = actual_ty {
+                    if actual_ty != ty {
+                        // If we're casting a concrete function to
+                        // a K&R function pointer type, use transmute
+                        self.import_type(qual_ty.ctype);
+
+                        val = transmute_expr(actual_ty, ty, val);
+                        set_unsafe = true;
+                    }
+                } else {
+                    let decl_kind = &self.ast_context[decl_id].kind;
+                    let kind_with_declared_args =
+                        self.ast_context.fn_decl_ty_with_declared_args(decl_kind);
+
+                    if let Some(ty) = self
+                        .ast_context
+                        .type_for_kind(&kind_with_declared_args)
+                        .map(CQualTypeId::new)
+                    {
+                        let ty = self.convert_type(ty.ctype)?;
+                        val = mk().cast_expr(val, ty);
+                    } else {
+                        val = mk().cast_expr(val, ty);
+                    }
+                }
+            }
+        }
+
+        if let CTypeKind::VariableArray(..) = self.ast_context.resolve_type(qual_ty.ctype).kind {
+            val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
+        }
+
+        // if the context wants a different type, add a cast
+        if let Some(expected_ty) = override_ty {
+            if lrvalue.is_rvalue() && expected_ty != qual_ty {
+                val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
+            }
+        }
+
+        let mut res = WithStmts::new_val(val);
+        res.merge_unsafe(set_unsafe);
+        Ok(res)
     }
 
     pub fn convert_constant(&self, constant: ConstIntExpr) -> TranslationResult<Box<Expr>> {
