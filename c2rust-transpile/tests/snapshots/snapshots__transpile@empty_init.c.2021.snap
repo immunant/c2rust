@@ -11,6 +11,7 @@ expression: cat tests/snapshots/empty_init.2021.rs
     unused_assignments,
     unused_mut
 )]
+#![feature(raw_ref_op)]
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Scope {
@@ -22,10 +23,11 @@ pub struct Foo_s {
     pub x: ::core::ffi::c_int,
 }
 pub type Foo_t = Foo_s;
-#[no_mangle]
-pub static mut scope: *mut Scope = &Scope {
+static mut c2rust_fresh0: Scope = Scope {
     next: ::core::ptr::null_mut::<Scope>(),
-} as *const Scope as *mut Scope;
+};
+#[no_mangle]
+pub static mut scope: *mut Scope = unsafe { &raw const c2rust_fresh0 as *mut Scope };
 #[no_mangle]
 pub unsafe extern "C" fn foo() {
     let mut f: Foo_t = Foo_t { x: 0 };

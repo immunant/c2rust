@@ -167,13 +167,12 @@ impl<'c> Translation<'c> {
         val: CExprId,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if !ctx.needs_address() || ctx.is_const {
-            // consts have their intermediates' lifetimes extended.
+        // C compound literals are lvalues, but equivalent Rust expressions generally are not.
+        // So if an address is needed, store it in an intermediate variable first.
+        if !ctx.needs_address() || ctx.expanding_macro.is_some() {
             return self.convert_expr(ctx, val, override_ty);
         }
 
-        // C compound literals are lvalues, but equivalent Rust expressions generally are not.
-        // So if an address is needed, store it in an intermediate variable first.
         let fresh_name = self.renamer.borrow_mut().fresh();
         let fresh_ty = self.convert_type(override_ty.unwrap_or(qty).ctype)?;
 
@@ -181,27 +180,43 @@ impl<'c> Translation<'c> {
         // It will be assigned by value, so we don't need its address anymore.
         let val = self.convert_expr(ctx.set_needs_address(false), val, override_ty)?;
 
-        val.and_then(|val| {
-            let fresh_stmt = {
+        // If we are translating a static variable,
+        // then the fresh variable should also be static.
+        if ctx.is_static {
+            val.wrap_unsafe().and_then(|val| {
+                let item = mk().mutbl().static_item(&fresh_name, fresh_ty, val);
+                let fresh_stmt = mk().item_stmt(item);
+                let mut val = WithStmts::new(vec![fresh_stmt], mk().ident_expr(fresh_name));
+
+                // Accessing a static variable is unsafe.
+                // In the current nightly, this applies also to taking a raw pointer,
+                // but this requirement was removed in later versions of the
+                // `raw_ref_op` feature.
+                if self.tcfg.edition < Edition2024 {
+                    val.set_unsafe();
+                }
+
+                Ok(val)
+            })
+        } else {
+            val.and_then(|val| {
                 let mutbl = if qty.qualifiers.is_const {
                     Mutability::Immutable
                 } else {
                     Mutability::Mutable
                 };
-
                 let local = mk().local(
                     mk().set_mutbl(mutbl).ident_pat(&fresh_name),
                     Some(fresh_ty),
                     Some(val),
                 );
-                mk().local_stmt(Box::new(local))
-            };
-
-            Ok(WithStmts::new(
-                vec![fresh_stmt],
-                mk().ident_expr(fresh_name),
-            ))
-        })
+                let fresh_stmt = mk().local_stmt(Box::new(local));
+                Ok(WithStmts::new(
+                    vec![fresh_stmt],
+                    mk().ident_expr(fresh_name),
+                ))
+            })
+        }
     }
 
     /// Convert an initialization list into an expression. These initialization lists can be
