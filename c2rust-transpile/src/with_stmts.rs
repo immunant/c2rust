@@ -1,5 +1,6 @@
 use c2rust_ast_builder::mk;
 use std::iter::FromIterator;
+use std::mem;
 use syn::{Block, Expr, Item, Stmt};
 
 #[derive(Clone, Debug)]
@@ -139,15 +140,13 @@ impl WithStmts<Box<Expr>> {
         mk().block(self.stmts)
     }
 
-    pub fn to_unsafe_pure_expr(self) -> Option<Box<Expr>> {
-        let is_unsafe = self.is_unsafe;
-        self.to_pure_expr().map(|expr| {
-            if is_unsafe {
-                mk().unsafe_block_expr(vec![mk().expr_stmt(expr)])
-            } else {
-                expr
-            }
-        })
+    /// If `is_unsafe` is true, wraps `val` in an `unsafe` block and unsets `is_unsafe`.
+    pub fn wrap_unsafe(mut self) -> Self {
+        if mem::take(&mut self.is_unsafe) {
+            self.val = mk().unsafe_block_expr(vec![mk().expr_stmt(self.val)]);
+        }
+
+        self
     }
 
     pub fn to_pure_expr(self) -> Option<Box<Expr>> {

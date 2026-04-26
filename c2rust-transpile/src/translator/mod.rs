@@ -2132,7 +2132,7 @@ impl<'c> Translation<'c> {
                     if self.static_initializer_is_unsafe(initializer, typ) {
                         init.set_unsafe()
                     }
-                    let init = init.to_unsafe_pure_expr().unwrap();
+                    let init = init.wrap_unsafe().to_pure_expr().unwrap();
                     let item = static_def.span(span).static_item(new_name, ty, init);
                     items.push(item);
 
@@ -2480,7 +2480,8 @@ impl<'c> Translation<'c> {
                 // (since we translate all `fn`s as `unsafe`). Therefore, in `const` contexts,
                 // expose any underlying unsafety in the initializer with an `unsafe` block.
                 let init = if ctx.is_const {
-                    init.to_unsafe_pure_expr()
+                    init.wrap_unsafe()
+                        .to_pure_expr()
                         .expect("init should not have any statements")
                 } else {
                     init.into_value()
@@ -2488,7 +2489,7 @@ impl<'c> Translation<'c> {
 
                 let zeroed = self.implicit_default_expr(ctx, typ.ctype)?;
                 let zeroed = if ctx.is_const {
-                    zeroed.to_unsafe_pure_expr()
+                    zeroed.wrap_unsafe().to_pure_expr()
                 } else {
                     zeroed.to_pure_expr()
                 }

@@ -102,7 +102,8 @@ impl<'c> Translation<'c> {
             })?
             .ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
 
-        val.to_unsafe_pure_expr()
+        val.wrap_unsafe()
+            .to_pure_expr()
             .map(|val| (val, ty))
             .ok_or_else(|| TranslationError::generic("Macro expansion is not a pure expression"))
 
