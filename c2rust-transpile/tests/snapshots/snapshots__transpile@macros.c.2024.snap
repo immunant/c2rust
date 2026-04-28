@@ -86,7 +86,7 @@ pub unsafe extern "C" fn local_muts() {
         3 as ::core::ffi::c_int,
     ];
     let mut nested_struct: S = NESTED_STRUCT;
-    let mut negative_int: ::core::ffi::c_int = -0xffff as ::core::ffi::c_int;
+    let mut negative_int: ::core::ffi::c_int = -LITERAL_INT;
     let mut int_arithmetic: ::core::ffi::c_int = NESTED_INT + LITERAL_INT + 1 as ::core::ffi::c_int;
     let mut mixed_arithmetic: ::core::ffi::c_float = (LITERAL_INT as ::core::ffi::c_double
         + NESTED_FLOAT * LITERAL_CHAR as ::core::ffi::c_double
@@ -159,7 +159,7 @@ pub unsafe extern "C" fn local_consts() {
         3 as ::core::ffi::c_int,
     ];
     let nested_struct: S = NESTED_STRUCT;
-    let negative_int: ::core::ffi::c_int = -0xffff as ::core::ffi::c_int;
+    let negative_int: ::core::ffi::c_int = -LITERAL_INT;
     let int_arithmetic: ::core::ffi::c_int = NESTED_INT + LITERAL_INT + 1 as ::core::ffi::c_int;
     let mixed_arithmetic: ::core::ffi::c_float = (LITERAL_INT as ::core::ffi::c_double
         + NESTED_FLOAT * LITERAL_CHAR as ::core::ffi::c_double
@@ -232,7 +232,7 @@ static mut global_static_const_nested_array: [::core::ffi::c_int; 3] = [
     3 as ::core::ffi::c_int,
 ];
 static mut global_static_const_nested_struct: S = NESTED_STRUCT;
-static mut global_static_const_negative_int: ::core::ffi::c_int = -0xffff as ::core::ffi::c_int;
+static mut global_static_const_negative_int: ::core::ffi::c_int = -LITERAL_INT;
 static mut global_static_const_int_arithmetic: ::core::ffi::c_int =
     NESTED_INT + LITERAL_INT + 1 as ::core::ffi::c_int;
 static mut global_static_const_mixed_arithmetic: ::core::ffi::c_float =
@@ -303,7 +303,7 @@ pub static mut global_const_nested_array: [::core::ffi::c_int; 3] = [
 #[unsafe(no_mangle)]
 pub static mut global_const_nested_struct: S = NESTED_STRUCT;
 #[unsafe(no_mangle)]
-pub static mut global_const_negative_int: ::core::ffi::c_int = -0xffff as ::core::ffi::c_int;
+pub static mut global_const_negative_int: ::core::ffi::c_int = -LITERAL_INT;
 #[unsafe(no_mangle)]
 pub static mut global_const_int_arithmetic: ::core::ffi::c_int =
     NESTED_INT + LITERAL_INT + 1 as ::core::ffi::c_int;

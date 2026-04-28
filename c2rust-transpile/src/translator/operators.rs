@@ -912,9 +912,11 @@ impl<'c> Translation<'c> {
             .kind
             .is_unsigned_integral_type();
 
-        if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false) =
-            (&self.ast_context[arg_id].kind, is_unsigned_integral_type)
-        {
+        if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false, false) = (
+            &self.ast_context[arg_id].kind,
+            is_unsigned_integral_type,
+            self.expr_is_expanded_macro(ctx, arg_id, Some(expr_type_id)),
+        ) {
             // If we are negating a literal, generate a negated literal directly.
             // This will create an expression like `-1 as ty` without parentheses,
             // rather than `-(1 as ty)`.
