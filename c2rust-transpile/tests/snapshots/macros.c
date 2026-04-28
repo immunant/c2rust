@@ -22,6 +22,7 @@ struct S {
 #define NESTED_ARRAY LITERAL_ARRAY
 #define NESTED_STRUCT LITERAL_STRUCT
 
+#define NEGATIVE_INT -LITERAL_INT
 #define INT_ARITHMETIC NESTED_INT + LITERAL_INT + 1
 #define MIXED_ARITHMETIC LITERAL_INT + NESTED_FLOAT *LITERAL_CHAR - true
 #define PARENS (NESTED_INT * (LITERAL_CHAR + true))
@@ -67,6 +68,7 @@ void local_muts() {
   int nested_array[] = NESTED_ARRAY;
   struct S nested_struct = NESTED_STRUCT;
 
+  int negative_int = NEGATIVE_INT;
   int int_arithmetic = INT_ARITHMETIC;
   float mixed_arithmetic = MIXED_ARITHMETIC;
   int parens = PARENS;
@@ -104,6 +106,7 @@ void local_consts() {
   const int nested_array[] = NESTED_ARRAY;
   const struct S nested_struct = NESTED_STRUCT;
 
+  const int negative_int = NEGATIVE_INT;
   const int int_arithmetic = INT_ARITHMETIC;
   const float mixed_arithmetic = MIXED_ARITHMETIC;
   const int parens = PARENS;
@@ -183,6 +186,7 @@ static const char global_static_const_nested_str[] = NESTED_STR;
 static const int global_static_const_nested_array[] = NESTED_ARRAY;
 static const struct S global_static_const_nested_struct = NESTED_STRUCT;
 
+static const int global_static_const_negative_int = NEGATIVE_INT;
 static const int global_static_const_int_arithmetic = INT_ARITHMETIC;
 static const float global_static_const_mixed_arithmetic = MIXED_ARITHMETIC;
 static const int global_static_const_parens = PARENS;
@@ -222,6 +226,7 @@ void global_static_consts() {
   (void)global_static_const_nested_array;
   (void)global_static_const_nested_struct;
 
+  (void)global_static_const_negative_int;
   (void)global_static_const_int_arithmetic;
   (void)global_static_const_mixed_arithmetic;
   (void)global_static_const_parens;
@@ -260,6 +265,7 @@ const char global_const_nested_str[] = NESTED_STR;
 const int global_const_nested_array[] = NESTED_ARRAY;
 const struct S global_const_nested_struct = NESTED_STRUCT;
 
+const int global_const_negative_int = NEGATIVE_INT;
 const int global_const_int_arithmetic = INT_ARITHMETIC;
 const float global_const_mixed_arithmetic = MIXED_ARITHMETIC;
 const int global_const_parens = PARENS;
