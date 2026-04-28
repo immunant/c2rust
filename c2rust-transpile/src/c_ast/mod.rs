@@ -1861,6 +1861,10 @@ pub enum CastKind {
 
 impl CastKind {
     pub fn from_types(source_ty_kind: &CTypeKind, target_ty_kind: &CTypeKind) -> Option<Self> {
+        if source_ty_kind == target_ty_kind {
+            return Some(CastKind::NoOp);
+        }
+
         Some(match (source_ty_kind, target_ty_kind) {
             (CTypeKind::VariableArray(..), CTypeKind::Pointer(..))
             | (CTypeKind::ConstantArray(..), CTypeKind::Pointer(..))
