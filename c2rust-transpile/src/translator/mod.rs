@@ -4257,7 +4257,7 @@ impl<'c> Translation<'c> {
 
             CastKind::NullToPointer => {
                 assert!(val.stmts().is_empty());
-                Ok(WithStmts::new_val(self.null_ptr(ctx, target_cty.ctype)?))
+                Ok(WithStmts::new_val(self.null_ptr(target_cty.ctype)?))
             }
 
             CastKind::ToUnion => self.convert_cast_to_union(val, opt_field_id),
@@ -4369,7 +4369,7 @@ impl<'c> Translation<'c> {
                 )),
             }
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
-            self.null_ptr(ctx, resolved_ty_id).map(WithStmts::new_val)
+            self.null_ptr(resolved_ty_id).map(WithStmts::new_val)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
             let sz = mk().lit_expr(mk().int_unsuffixed_lit(sz as u128));
             Ok(self

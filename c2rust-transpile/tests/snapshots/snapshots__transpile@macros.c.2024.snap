@@ -364,7 +364,7 @@ pub unsafe extern "C" fn reference_define() -> ::core::ffi::c_int {
 }
 #[unsafe(no_mangle)]
 pub static mut fns: fn_ptrs = fn_ptrs {
-    v: ::core::ptr::null::<::core::ffi::c_void>() as *mut ::core::ffi::c_void,
+    v: ::core::ptr::null_mut::<::core::ffi::c_void>(),
     fn1: None,
     fn2: None,
 };

@@ -19,7 +19,7 @@ pub struct S {
 }
 #[unsafe(no_mangle)]
 pub static mut volatile_global_struct: S = S {
-    p: ::core::ptr::null::<::core::ffi::c_int>() as *mut ::core::ffi::c_int,
+    p: ::core::ptr::null_mut::<::core::ffi::c_int>(),
 };
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_volatile() {

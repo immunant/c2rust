@@ -392,7 +392,7 @@ impl<'c> Translation<'c> {
 
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
-    pub fn null_ptr(&self, ctx: ExprContext, type_id: CTypeId) -> TranslationResult<Box<Expr>> {
+    pub fn null_ptr(&self, type_id: CTypeId) -> TranslationResult<Box<Expr>> {
         if self.ast_context.is_function_pointer(type_id) {
             return Ok(mk().path_expr(vec!["None"]));
         }
@@ -402,18 +402,14 @@ impl<'c> Translation<'c> {
             .get_pointee_qual_type(type_id)
             .ok_or_else(|| TranslationError::generic("null_ptr requires a pointer"))?;
 
-        let func = if pointer_qty.qualifiers.is_const
-            // mutable references/pointers are not allowed in const context
-            // TODO: Rust 1.83: Allowed, so this can be removed.
-            || ctx.is_const
-        {
+        let func = if pointer_qty.qualifiers.is_const {
             "null"
         } else {
             "null_mut"
         };
         let pointee_ty = self.convert_pointee_type(pointer_qty.ctype)?;
         let type_args = mk().angle_bracketed_args(vec![pointee_ty.clone()]);
-        let mut val = mk().call_expr(
+        let val = mk().call_expr(
             mk().abs_path_expr(vec![
                 mk().path_segment("core"),
                 mk().path_segment("ptr"),
@@ -421,11 +417,6 @@ impl<'c> Translation<'c> {
             ]),
             vec![],
         );
-
-        // TODO: Rust 1.83: Remove.
-        if ctx.is_const && !pointer_qty.qualifiers.is_const {
-            val = mk().cast_expr(val, mk().mutbl().ptr_ty(pointee_ty));
-        }
 
         Ok(val)
     }
