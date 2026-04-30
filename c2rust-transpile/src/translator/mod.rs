@@ -3729,9 +3729,10 @@ impl<'c> Translation<'c> {
             }
 
             BinaryConditional(ty, lhs, rhs) => {
+                let rhs = self.convert_expr(ctx, rhs, None)?;
+
                 if ctx.is_unused() {
                     let mut lhs = self.convert_condition(ctx, false, lhs)?;
-                    let rhs = self.convert_expr(ctx, rhs, None)?;
                     lhs.merge_unsafe(rhs.is_unsafe());
 
                     lhs.and_then(|val| {
@@ -3747,19 +3748,27 @@ impl<'c> Translation<'c> {
                         ))
                     })
                 } else {
-                    self.name_reference_write_read(ctx, lhs)?.result_map(
-                        |NamedReference {
-                             rvalue: lhs_val, ..
-                         }| {
-                            let cond = self.match_bool(ctx, true, ty.ctype, lhs_val.clone())?;
-                            let ite = mk().ifte_expr(
-                                cond,
-                                mk().block(vec![mk().expr_stmt(lhs_val)]),
-                                Some(self.convert_expr(ctx, rhs, None)?.to_expr()),
-                            );
-                            Ok(ite)
-                        },
-                    )
+                    let mut lhs = self.convert_expr(ctx.used(), lhs, None)?;
+                    lhs.merge_unsafe(rhs.is_unsafe());
+                    let fresh_name = self.renamer.borrow_mut().fresh();
+
+                    lhs.and_then(|lhs| {
+                        let fresh_stmt = mk().local_stmt(Box::new(mk().local(
+                            mk().ident_pat(&fresh_name),
+                            None,
+                            Some(lhs),
+                        )));
+
+                        let cond =
+                            self.match_bool(ctx, true, ty.ctype, mk().ident_expr(&fresh_name))?;
+                        let ite = mk().ifte_expr(
+                            cond,
+                            mk().block(vec![mk().expr_stmt(mk().ident_expr(&fresh_name))]),
+                            Some(rhs.to_expr()),
+                        );
+
+                        Ok(WithStmts::new(vec![fresh_stmt], ite))
+                    })
                 }
             }
 
