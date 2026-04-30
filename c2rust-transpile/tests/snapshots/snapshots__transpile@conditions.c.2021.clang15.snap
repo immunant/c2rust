@@ -128,17 +128,17 @@ pub unsafe extern "C" fn binary_conditional_operator(
     sz: ::core::ffi::c_uint,
     buf: *mut ::core::ffi::c_int,
 ) {
-    let ref mut c2rust_lvalue = id(0 as ::core::ffi::c_int);
+    let c2rust_fresh0 = id(0 as ::core::ffi::c_int);
     *(buf as *mut ::core::ffi::c_int).offset(0 as ::core::ffi::c_int as isize) =
-        if *c2rust_lvalue != 0 {
-            *c2rust_lvalue
+        if c2rust_fresh0 != 0 {
+            c2rust_fresh0
         } else {
             id(1 as ::core::ffi::c_int)
         };
-    let ref mut c2rust_lvalue_0 = id(2 as ::core::ffi::c_int);
+    let c2rust_fresh1 = id(2 as ::core::ffi::c_int);
     *(buf as *mut ::core::ffi::c_int).offset(1 as ::core::ffi::c_int as isize) =
-        if *c2rust_lvalue_0 != 0 {
-            *c2rust_lvalue_0
+        if c2rust_fresh1 != 0 {
+            c2rust_fresh1
         } else {
             id(3 as ::core::ffi::c_int)
         };
