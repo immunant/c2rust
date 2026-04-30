@@ -447,7 +447,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        let call = func.and_then(|func| {
+        let call = func.and_then_try(|func| {
             // We want to decay refs only when function is variadic
             ctx.decay_ref = DecayRef::from(is_variadic);
 

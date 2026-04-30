@@ -163,14 +163,14 @@ impl<'c> Translation<'c> {
         }
 
         match name {
-            "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
+            "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then_try(|ptr| {
                 let order = static_order(order);
 
                 let atomic_load = self.atomic_intrinsic_expr("load", &[order]);
                 let call = mk().call_expr(atomic_load, vec![ptr]);
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
-                    ret.and_then(|ret| {
+                    ret.and_then_try(|ret| {
                         let assignment = mk().assign_expr(
                             mk().unary_expr(UnOp::Deref(Default::default()), ret),
                             call,
@@ -193,8 +193,8 @@ impl<'c> Translation<'c> {
             "__atomic_store" | "__atomic_store_n" | "__c11_atomic_store" => {
                 let order = static_order(order);
                 let val = val1.expect("__atomic_store must have a val argument");
-                ptr.and_then(|ptr| {
-                    val.and_then(|val| {
+                ptr.and_then_try(|ptr| {
+                    val.and_then_try(|val| {
                         let atomic_store = self.atomic_intrinsic_expr("store", &[order]);
                         let val = if name == "__atomic_store" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
@@ -214,8 +214,8 @@ impl<'c> Translation<'c> {
             // NOTE: there is no corresponding __atomic_init builtin in clang
             "__c11_atomic_init" => {
                 let val = val1.expect("__atomic_init must have a val argument");
-                ptr.and_then(|ptr| {
-                    val.and_then(|val| {
+                ptr.and_then_try(|ptr| {
+                    val.and_then_try(|val| {
                         let assignment = mk().assign_expr(
                             mk().unary_expr(UnOp::Deref(Default::default()), ptr),
                             val,
@@ -232,8 +232,8 @@ impl<'c> Translation<'c> {
             "__atomic_exchange" | "__atomic_exchange_n" | "__c11_atomic_exchange" => {
                 let order = static_order(order);
                 let val = val1.expect("__atomic_store must have a val argument");
-                ptr.and_then(|ptr| {
-                    val.and_then(|val| {
+                ptr.and_then_try(|ptr| {
+                    val.and_then_try(|val| {
                         let fn_path = self.atomic_intrinsic_expr("xchg", &[order]);
                         let val = if name == "__atomic_exchange" {
                             mk().unary_expr(UnOp::Deref(Default::default()), val)
@@ -247,7 +247,7 @@ impl<'c> Translation<'c> {
                                 .map(|x| self.convert_expr(ctx.used(), x, None))
                                 .transpose()?
                                 .expect("__atomic_exchange must have a ret pointer argument")
-                                .and_then(|ret| {
+                                .and_then_try(|ret| {
                                     let assignment = mk().assign_expr(
                                         mk().unary_expr(UnOp::Deref(Default::default()), ret),
                                         call,
@@ -287,9 +287,9 @@ impl<'c> Translation<'c> {
                 let order_fail = static_order(order_fail);
                 let weak = static_order(weak);
 
-                ptr.and_then(|ptr| {
-                    expected.and_then(|expected| {
-                        desired.and_then(|desired| {
+                ptr.and_then_try(|ptr| {
+                    expected.and_then_try(|expected| {
+                        desired.and_then_try(|desired| {
                             use Ordering::*;
                             let (order, order_fail) = match (order, order_fail) {
                                 (_, Release | AcqRel) => None,
@@ -354,8 +354,8 @@ impl<'c> Translation<'c> {
                         .kind
                         .get_qual_type()
                         .ok_or_else(|| format_err!("bad val1 type"))?;
-                    ptr.and_then(|ptr| {
-                        val.and_then(|val| {
+                    ptr.and_then_try(|ptr| {
+                        val.and_then_try(|val| {
                             self.convert_atomic_op(ctx, atomic_op, order, ptr, val, val_type_id)
                         })
                     })

@@ -230,7 +230,7 @@ impl<'c> Translation<'c> {
                     .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"]));
             }
 
-            val.and_then(|val| {
+            val.and_then_try(|val| {
                 let path = mk().path_segment_with_args(
                     mk().ident("arg"),
                     mk().angle_bracketed_args(vec![arg_ty]),

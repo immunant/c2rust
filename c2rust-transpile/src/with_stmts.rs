@@ -35,7 +35,7 @@ impl<T> WithStmts<T> {
         }
     }
 
-    pub fn and_then<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
+    pub fn and_then_try<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
     where
         F: FnOnce(T) -> Result<WithStmts<U>, E>,
     {
@@ -60,7 +60,7 @@ impl<T> WithStmts<T> {
         }
     }
 
-    pub fn result_map<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
+    pub fn try_map<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
     where
         F: FnOnce(T) -> Result<U, E>,
     {

@@ -33,8 +33,8 @@ impl<'c> Translation<'c> {
         // Emit `arg0.{method_name}(arg1)`
         let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
         let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
-        arg0.and_then(|arg0| {
-            arg1.and_then(|arg1| {
+        arg0.and_then_try(|arg0| {
+            arg1.and_then_try(|arg1| {
                 let arg1 = mk().cast_expr(arg1, mk().path_ty(vec!["u32"]));
                 let method_call_expr = mk().method_call_expr(arg0, rotate_method_name, vec![arg1]);
                 self.convert_side_effects_expr(
@@ -216,7 +216,7 @@ impl<'c> Translation<'c> {
                 let n_stmts = self.convert_expr(ctx.used(), args[1], None)?;
                 let write_bytes = mk().abs_path_expr(vec!["core", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
-                ptr_stmts.and_then(|ptr| {
+                ptr_stmts.and_then_try(|ptr| {
                     Ok(n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n])))
                 })
             }
@@ -304,7 +304,7 @@ impl<'c> Translation<'c> {
                 // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
                 let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
-                ptr_arg.and_then(|_| {
+                ptr_arg.and_then_try(|_| {
                     Ok(type_arg.map(|type_arg| {
                         let type_and_2 = mk().binary_expr(
                             BinOp::BitAnd(Default::default()),
@@ -381,7 +381,7 @@ impl<'c> Translation<'c> {
 
             "__builtin_alloca" => {
                 let count = self.convert_expr(ctx.used(), args[0], None)?;
-                count.and_then(|count| {
+                count.and_then_try(|count| {
                     // Get `alloca` allocation storage.
                     let mut fn_ctx = self.function_context.borrow_mut();
                     let alloca_allocations_name =
@@ -462,9 +462,9 @@ impl<'c> Translation<'c> {
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 let arg2 = self.convert_expr(ctx.used(), args[2], None)?;
-                arg0.and_then(|arg0| {
-                    arg1.and_then(|arg1| {
-                        arg2.and_then(|arg2| {
+                arg0.and_then_try(|arg0| {
+                    arg1.and_then_try(|arg1| {
+                        arg2.and_then_try(|arg2| {
                             let returns_val = builtin_name.starts_with("__sync_val");
                             self.convert_atomic_cxchg(
                                 ctx,
@@ -500,8 +500,8 @@ impl<'c> Translation<'c> {
                 let atomic_func = self.atomic_intrinsic_expr("xchg", &[Acquire]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
-                arg0.and_then(|arg0| {
-                    arg1.and_then(|arg1| {
+                arg0.and_then_try(|arg0| {
+                    arg1.and_then_try(|arg1| {
                         let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
                         self.convert_side_effects_expr(
                             ctx,
@@ -520,7 +520,7 @@ impl<'c> Translation<'c> {
                 // Emit `atomic_store_release(arg0, 0)`
                 let atomic_func = self.atomic_intrinsic_expr("store", &[Release]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-                arg0.and_then(|arg0| {
+                arg0.and_then_try(|arg0| {
                     let zero = mk().lit_expr(mk().int_lit(0, ""));
                     let call_expr = mk().call_expr(atomic_func, vec![arg0, zero]);
                     self.convert_side_effects_expr(
@@ -562,8 +562,8 @@ impl<'c> Translation<'c> {
                         .kind
                         .get_qual_type()
                         .ok_or_else(|| format_err!("bad arg1 type"))?;
-                    arg0.and_then(|arg0| {
-                        arg1.and_then(|arg1| {
+                    arg0.and_then_try(|arg0| {
+                        arg1.and_then_try(|arg1| {
                             self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
                         })
                     })
@@ -609,7 +609,7 @@ impl<'c> Translation<'c> {
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let args = self.convert_exprs(ctx.used(), args, None)?;
-        args.and_then(|args| {
+        args.and_then_try(|args| {
             let [a, b, c]: [_; 3] = args
                 .try_into()
                 .map_err(|_| "`convert_overflow_arith` must have exactly 3 arguments")?;
@@ -649,7 +649,7 @@ impl<'c> Translation<'c> {
         self.use_crate(ExternCrate::Libc);
         let mem = mk().abs_path_expr(vec!["libc", name]);
         let args = self.convert_exprs(ctx.used(), args, None)?;
-        args.and_then(|args| {
+        args.and_then_try(|args| {
             if args.len() != arg_types.len() {
                 // This should not generally happen, as the C frontend checks these first
                 Err(err_msg(format!(

@@ -223,7 +223,7 @@ impl<'c> Translation<'c> {
         );
 
         let param_translation = self.convert_exprs(ctx.used(), &processed_args, None)?;
-        param_translation.and_then(|call_params| {
+        param_translation.and_then_try(|call_params| {
             let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
             if ctx.is_used() {
@@ -294,7 +294,7 @@ impl<'c> Translation<'c> {
         len: usize,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let param_translation = self.convert_exprs(ctx, ids, None)?;
-        param_translation.and_then(|mut params| {
+        param_translation.and_then_try(|mut params| {
             // When used in a const context, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
             let call = if ctx.is_const {
@@ -385,7 +385,7 @@ impl<'c> Translation<'c> {
             &[first_expr_id, second_expr_id, mask_expr_id],
             None,
         )?;
-        param_translation.and_then(|params| {
+        param_translation.and_then_try(|params| {
             let [first, second, third]: [_; 3] = params
                 .try_into()
                 .map_err(|_| "`convert_shuffle_vector` must have exactly 3 parameters")?;

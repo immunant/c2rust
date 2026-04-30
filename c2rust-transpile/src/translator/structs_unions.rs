@@ -518,7 +518,7 @@ impl<'a> Translation<'a> {
         let mut val = fields.map(|fields| mk().struct_expr(name.as_str(), fields));
 
         if !bitfield_inits.is_empty() {
-            val = val.and_then(|val| -> TranslationResult<_> {
+            val = val.and_then_try(|val| -> TranslationResult<_> {
                 let local_pat = mk().mutbl().ident_pat("init");
                 let local_variable = Box::new(mk().local(local_pat, None, Some(val)));
 
@@ -715,7 +715,7 @@ impl<'a> Translation<'a> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ctx = ctx.set_bitfield_write(true);
         let named_reference = self.name_reference_write_read(ctx, lhs)?;
-        named_reference.and_then(
+        named_reference.and_then_try(
             |NamedReference {
                  lvalue: lhs_expr, ..
              }| {
