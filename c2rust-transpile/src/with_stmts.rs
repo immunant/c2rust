@@ -18,6 +18,7 @@ impl<T> WithStmts<T> {
             is_unsafe: false,
         }
     }
+
     pub fn new_val(val: T) -> Self {
         WithStmts {
             stmts: vec![],
@@ -25,6 +26,7 @@ impl<T> WithStmts<T> {
             is_unsafe: false,
         }
     }
+
     pub fn new_unsafe_val(val: T) -> Self {
         WithStmts {
             stmts: vec![],
@@ -32,6 +34,7 @@ impl<T> WithStmts<T> {
             is_unsafe: true,
         }
     }
+
     pub fn and_then<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
     where
         F: FnOnce(T) -> Result<WithStmts<U>, E>,
@@ -45,6 +48,7 @@ impl<T> WithStmts<T> {
             is_unsafe: self.is_unsafe || next.is_unsafe,
         })
     }
+
     pub fn map<U, F>(self, f: F) -> WithStmts<U>
     where
         F: FnOnce(T) -> U,
@@ -55,6 +59,7 @@ impl<T> WithStmts<T> {
             is_unsafe: self.is_unsafe,
         }
     }
+
     pub fn result_map<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
     where
         F: FnOnce(T) -> Result<U, E>,
@@ -77,9 +82,11 @@ impl<T> WithStmts<T> {
     pub fn into_stmts(self) -> Vec<Stmt> {
         self.stmts
     }
+
     pub fn into_value(self) -> T {
         self.val
     }
+
     pub fn discard_unsafe(self) -> (Vec<Stmt>, T) {
         (self.stmts, self.val)
     }
@@ -87,6 +94,7 @@ impl<T> WithStmts<T> {
     pub fn stmts(&self) -> &[Stmt] {
         &self.stmts
     }
+
     pub fn stmts_mut(&mut self) -> &mut Vec<Stmt> {
         &mut self.stmts
     }
