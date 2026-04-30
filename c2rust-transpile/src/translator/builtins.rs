@@ -216,9 +216,9 @@ impl<'c> Translation<'c> {
                 let n_stmts = self.convert_expr(ctx.used(), args[1], None)?;
                 let write_bytes = mk().abs_path_expr(vec!["core", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
-                ptr_stmts.and_then_try(|ptr| {
-                    Ok(n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n])))
-                })
+                Ok(ptr_stmts.and_then(|ptr| {
+                    n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n]))
+                }))
             }
 
             // If the target does not support data prefetch, the address expression is evaluated if
@@ -304,8 +304,8 @@ impl<'c> Translation<'c> {
                 // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
                 let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
-                ptr_arg.and_then_try(|_| {
-                    Ok(type_arg.map(|type_arg| {
+                Ok(ptr_arg.and_then(|_| {
+                    type_arg.map(|type_arg| {
                         let type_and_2 = mk().binary_expr(
                             BinOp::BitAnd(Default::default()),
                             type_arg,
@@ -325,8 +325,8 @@ impl<'c> Translation<'c> {
                         self.use_crate(ExternCrate::Libc);
                         let size_t = mk().abs_path_ty(vec!["libc", "size_t"]);
                         mk().cast_expr(if_expr, size_t)
-                    }))
-                })
+                    })
+                }))
             }
 
             "__builtin_va_start" => {
@@ -381,7 +381,7 @@ impl<'c> Translation<'c> {
 
             "__builtin_alloca" => {
                 let count = self.convert_expr(ctx.used(), args[0], None)?;
-                count.and_then_try(|count| {
+                Ok(count.and_then(|count| {
                     // Get `alloca` allocation storage.
                     let mut fn_ctx = self.function_context.borrow_mut();
                     let alloca_allocations_name =
@@ -410,8 +410,8 @@ impl<'c> Translation<'c> {
                     let pointee_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
                     let expr = mk().cast_expr(expr, mk().mutbl().ptr_ty(pointee_ty));
 
-                    Ok(WithStmts::new(vec![push_stmt], expr))
-                })
+                    WithStmts::new(vec![push_stmt], expr)
+                }))
             }
 
             "__builtin_ia32_pause" => {

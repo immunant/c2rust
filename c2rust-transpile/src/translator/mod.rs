@@ -2829,26 +2829,24 @@ impl<'c> Translation<'c> {
                     type_id = elt;
 
                     // Convert this expression
-                    let expr =
-                        self.convert_expr(ctx.used(), expr_id, None)?
-                            .and_then_try(|expr| {
-                                let name = self
-                                    .renamer
-                                    .borrow_mut()
-                                    .insert(CDeclId(expr_id.0), "vla")
-                                    .unwrap(); // try using declref name?
-                                               // TODO: store the name corresponding to expr_id
+                    let expr = self
+                        .convert_expr(ctx.used(), expr_id, None)?
+                        .and_then(|expr| {
+                            let name = self
+                                .renamer
+                                .borrow_mut()
+                                .insert(CDeclId(expr_id.0), "vla")
+                                .unwrap(); // try using declref name?
+                                           // TODO: store the name corresponding to expr_id
 
-                                let local = mk().local(
-                                    mk().ident_pat(name),
-                                    None,
-                                    Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
-                                );
+                            let local = mk().local(
+                                mk().ident_pat(name),
+                                None,
+                                Some(mk().cast_expr(expr, mk().path_ty(vec!["usize"]))),
+                            );
 
-                                let res: TranslationResult<WithStmts<()>> =
-                                    Ok(WithStmts::new(vec![mk().local_stmt(Box::new(local))], ()));
-                                res
-                            })?;
+                            WithStmts::new(vec![mk().local_stmt(Box::new(local))], ())
+                        });
 
                     stmts.extend(expr.into_stmts());
                 }
@@ -3381,12 +3379,12 @@ impl<'c> Translation<'c> {
                     let then = mk().block(lhs.into_stmts());
                     let else_ = mk().block_expr(mk().block(rhs.into_stmts()));
 
-                    let mut res = cond.and_then_try(|c| -> TranslationResult<_> {
-                        Ok(WithStmts::new(
+                    let mut res = cond.and_then(|c| {
+                        WithStmts::new(
                             vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(else_)))],
                             self.panic_or_err("Conditional expression is not supposed to be used"),
-                        ))
-                    })?;
+                        )
+                    });
                     res.merge_unsafe(is_unsafe);
                     Ok(res)
                 } else {
@@ -3411,8 +3409,8 @@ impl<'c> Translation<'c> {
                     let rhs = self.convert_expr(ctx, rhs, None)?;
                     lhs.merge_unsafe(rhs.is_unsafe());
 
-                    lhs.and_then_try(|val| {
-                        Ok(WithStmts::new(
+                    Ok(lhs.and_then(|val| {
+                        WithStmts::new(
                             vec![mk().semi_stmt(mk().ifte_expr(
                                 val,
                                 mk().block(rhs.into_stmts()),
@@ -3421,8 +3419,8 @@ impl<'c> Translation<'c> {
                             self.panic_or_err(
                                 "Binary conditional expression is not supposed to be used",
                             ),
-                        ))
-                    })
+                        )
+                    }))
                 } else {
                     self.name_reference_write_read(ctx, lhs)?.try_map(
                         |NamedReference {
@@ -3542,12 +3540,9 @@ impl<'c> Translation<'c> {
         if ctx.is_unused() {
             // Recall that if `used` is false, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
-            expr.and_then_try(|expr| {
-                Ok(WithStmts::new(
-                    vec![mk().semi_stmt(expr)],
-                    self.panic_or_err(panic_msg),
-                ))
-            })
+            Ok(expr.and_then(|expr| {
+                WithStmts::new(vec![mk().semi_stmt(expr)], self.panic_or_err(panic_msg))
+            }))
         } else {
             Ok(expr)
         }

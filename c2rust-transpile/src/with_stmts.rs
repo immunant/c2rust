@@ -35,6 +35,20 @@ impl<T> WithStmts<T> {
         }
     }
 
+    pub fn and_then<U, F>(self, f: F) -> WithStmts<U>
+    where
+        F: FnOnce(T) -> WithStmts<U>,
+    {
+        let mut next = f(self.val);
+        let mut stmts = self.stmts;
+        stmts.append(&mut next.stmts);
+        WithStmts {
+            val: next.val,
+            stmts,
+            is_unsafe: self.is_unsafe || next.is_unsafe,
+        }
+    }
+
     pub fn and_then_try<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
     where
         F: FnOnce(T) -> Result<WithStmts<U>, E>,

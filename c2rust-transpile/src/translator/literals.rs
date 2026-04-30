@@ -180,7 +180,7 @@ impl<'c> Translation<'c> {
         // If we are translating a static variable,
         // then the fresh variable should also be static.
         if ctx.is_static {
-            val.wrap_unsafe().and_then_try(|val| {
+            Ok(val.wrap_unsafe().and_then(|val| {
                 let item = mk().mutbl().static_item(&fresh_name, fresh_ty, val);
                 let fresh_stmt = mk().item_stmt(item);
                 let mut val = WithStmts::new(vec![fresh_stmt], mk().ident_expr(fresh_name));
@@ -193,10 +193,10 @@ impl<'c> Translation<'c> {
                     val.set_unsafe();
                 }
 
-                Ok(val)
-            })
+                val
+            }))
         } else {
-            val.and_then_try(|val| {
+            Ok(val.and_then(|val| {
                 let mutbl = if qty.qualifiers.is_const {
                     Mutability::Immutable
                 } else {
@@ -208,11 +208,8 @@ impl<'c> Translation<'c> {
                     Some(val),
                 );
                 let fresh_stmt = mk().local_stmt(Box::new(local));
-                Ok(WithStmts::new(
-                    vec![fresh_stmt],
-                    mk().ident_expr(fresh_name),
-                ))
-            })
+                WithStmts::new(vec![fresh_stmt], mk().ident_expr(fresh_name))
+            }))
         }
     }
 

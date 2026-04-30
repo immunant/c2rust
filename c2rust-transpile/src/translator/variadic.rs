@@ -230,7 +230,7 @@ impl<'c> Translation<'c> {
                     .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"]));
             }
 
-            val.and_then_try(|val| {
+            Ok(val.and_then(|val| {
                 let path = mk().path_segment_with_args(
                     mk().ident("arg"),
                     mk().angle_bracketed_args(vec![arg_ty]),
@@ -241,10 +241,10 @@ impl<'c> Translation<'c> {
                 }
 
                 if ctx.is_unused() {
-                    Ok(WithStmts::new(
+                    WithStmts::new(
                         vec![mk().semi_stmt(val)],
                         self.panic_or_err("convert_vaarg unused"),
-                    ))
+                    )
                 } else {
                     let val = if have_fn_ptr {
                         // transmute result of call to `arg` when expecting a function pointer
@@ -253,9 +253,9 @@ impl<'c> Translation<'c> {
                         val
                     };
 
-                    Ok(WithStmts::new_val(val))
+                    WithStmts::new_val(val)
                 }
-            })
+            }))
         } else {
             Err(format_err!("Variable argument list translation is not enabled.").into())
         }

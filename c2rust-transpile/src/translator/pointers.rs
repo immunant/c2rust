@@ -308,19 +308,17 @@ impl<'c> Translation<'c> {
                 };
 
                 let lhs = self.convert_expr(ctx.used(), arr, None)?;
-                lhs.and_then_try(|lhs| {
+                Ok(lhs.and_then(|lhs| {
                     // stmts.extend(lhs.stmts_mut());
                     // is_unsafe = is_unsafe || lhs.is_unsafe();
 
                     // Don't dereference the offset if we're still within the variable portion
                     if let Some(elt_type_id) = var_elt_type_id {
-                        Ok(self.convert_pointer_offset(lhs, rhs, elt_type_id, false, deref))
+                        self.convert_pointer_offset(lhs, rhs, elt_type_id, false, deref)
                     } else {
-                        Ok(WithStmts::new_val(
-                            mk().index_expr(lhs, cast_int(rhs, "usize", false)),
-                        ))
+                        WithStmts::new_val(mk().index_expr(lhs, cast_int(rhs, "usize", false)))
                     }
-                })
+                }))
             } else {
                 // LHS must be ref decayed for the offset method call's self param
                 let lhs = self.convert_expr(ctx.used().decay_ref(), lhs, None)?;
@@ -451,11 +449,9 @@ impl<'c> Translation<'c> {
             self.import_type(source_cty);
             self.import_type(target_cty);
 
-            val.and_then_try(|val| {
-                Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    source_ty, target_ty, val,
-                )))
-            })
+            Ok(val.and_then(|val| {
+                WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, val))
+            }))
         } else {
             // Normal case
             let target_ty = self.convert_type(target_cty)?;
@@ -482,15 +478,13 @@ impl<'c> Translation<'c> {
             }
 
             self.use_crate(ExternCrate::Libc);
-            val.and_then_try(|mut val| {
+            Ok(val.and_then(|mut val| {
                 // First cast the integer to pointer size
                 let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
                 val = mk().cast_expr(val, intptr_t.clone());
 
-                Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    intptr_t, target_ty, val,
-                )))
-            })
+                WithStmts::new_unsafe_val(transmute_expr(intptr_t, target_ty, val))
+            }))
         } else if source_ty_kind.is_bool() {
             self.use_crate(ExternCrate::Libc);
             Ok(val.map(|mut val| {
@@ -525,11 +519,9 @@ impl<'c> Translation<'c> {
         let target_ty_kind = &self.ast_context.resolve_type(target_cty).kind;
 
         if self.ast_context.is_function_pointer(source_cty) {
-            val.and_then_try(|val| {
-                Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    source_ty, target_ty, val,
-                )))
-            })
+            Ok(val.and_then(|val| {
+                WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, val))
+            }))
         } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
             val.try_map(|val| self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val))
         } else {

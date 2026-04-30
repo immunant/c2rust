@@ -223,18 +223,18 @@ impl<'c> Translation<'c> {
         );
 
         let param_translation = self.convert_exprs(ctx.used(), &processed_args, None)?;
-        param_translation.and_then_try(|call_params| {
+        Ok(param_translation.and_then(|call_params| {
             let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
             if ctx.is_used() {
-                Ok(WithStmts::new_val(call))
+                WithStmts::new_val(call)
             } else {
-                Ok(WithStmts::new(
+                WithStmts::new(
                     vec![mk().semi_stmt(call)],
                     self.panic_or_err("No value for unused shuffle vector return"),
-                ))
+                )
             }
-        })
+        }))
     }
 
     /// Generate a zero value to be used for initialization of a given vector type. The type

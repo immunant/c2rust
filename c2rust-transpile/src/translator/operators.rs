@@ -32,17 +32,18 @@ impl<'c> Translation<'c> {
             And | Or => {
                 let lhs = self.convert_condition(ctx, true, lhs)?;
                 let rhs = self.convert_condition(ctx, true, rhs)?;
-                lhs.map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
-                    .and_then_try(|out| {
+                Ok(lhs
+                    .map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
+                    .and_then(|out| {
                         if ctx.is_unused() {
-                            Ok(WithStmts::new(
+                            WithStmts::new(
                                 vec![mk().semi_stmt(out)],
                                 self.panic_or_err("Binary expression is not supposed to be used"),
-                            ))
+                            )
                         } else {
-                            Ok(WithStmts::new_val(out))
+                            WithStmts::new_val(out)
                         }
-                    })
+                    }))
             }
 
             // No sequence-point cases
@@ -517,9 +518,9 @@ impl<'c> Translation<'c> {
                         }
                     };
 
-                    assign_stmt.and_then_try(|assign_stmt| {
-                        Ok(WithStmts::new(vec![mk().semi_stmt(assign_stmt)], read))
-                    })
+                    Ok(assign_stmt.and_then(|assign_stmt| {
+                        WithStmts::new(vec![mk().semi_stmt(assign_stmt)], read)
+                    }))
                 },
             )
         })
