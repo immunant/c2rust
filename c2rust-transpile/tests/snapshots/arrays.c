@@ -4,6 +4,8 @@ char static_char_array[] = "mystring";
 char *static_char_ptr = "mystring";
 void *static_void_ptr = (void*) static_char_array;
 
+typedef int int_t;
+
 void entry(void) {
     int int_2d[1][1] = { 1 };
     int_2d[0][0] += 9;
@@ -13,6 +15,9 @@ void entry(void) {
     int int_zero[0] = { 1234 };
     int int_too_short[16] = {0};
     int_too_short[15] += 9;
+
+    int_t override_ty[] = { 1 };
+    int_t override_ty_neg[] = { -1 };
 
     struct {char* x; int y;} struct_init_too_short[1] = {};
     struct_init_too_short[0].y += 9;
