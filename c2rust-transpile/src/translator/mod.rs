@@ -3404,7 +3404,7 @@ impl<'c> Translation<'c> {
             CompoundLiteral(qty, val) => self.convert_compound_literal(ctx, qty, val, override_ty),
 
             InitList(ty, ref ids, opt_union_field_id, _) => {
-                self.convert_init_list(ctx, ty, ids, opt_union_field_id)
+                self.convert_init_list(ctx, override_ty.unwrap_or(ty), ids, opt_union_field_id)
             }
 
             ImplicitValueInit(ty) => self.implicit_default_expr(ctx, ty.ctype),
