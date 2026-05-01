@@ -67,8 +67,8 @@ pub unsafe extern "C" fn unsigned_compound_desugaring() {
 pub unsafe extern "C" fn cast_literals() {
     let mut i: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
     let mut it: int_t = 1 as int_t;
-    let mut i_neg: ::core::ffi::c_int = -1 as ::core::ffi::c_long as ::core::ffi::c_int;
-    let mut it_neg: int_t = -1 as ::core::ffi::c_long as int_t;
+    let mut i_neg: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut it_neg: int_t = -1 as int_t;
 }
 #[no_mangle]
 pub unsafe extern "C" fn compound_literal() {

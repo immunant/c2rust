@@ -3621,6 +3621,7 @@ impl<'c> Translation<'c> {
                     _ => {}
                 }
 
+                let expr_kind = &self.ast_context[expr].kind;
                 let target_ty = override_ty.unwrap_or(ty);
 
                 // In general, if we are casting the result of an expression, then the inner
@@ -3628,9 +3629,19 @@ impl<'c> Translation<'c> {
                 // But for literals, if we don't absolutely have to cast, we would rather the
                 // literal is translated according to the type we're expecting, and then we can
                 // skip the cast entirely.
-                if let CExprKind::Literal(_ty, lit) = &self.ast_context[expr].kind {
-                    if !is_explicit && self.literal_matches_ty(lit, target_ty) {
-                        return self.convert_expr(ctx, expr, Some(target_ty));
+                if !is_explicit {
+                    let mut literal_expr_kind = expr_kind;
+                    let mut is_negated = false;
+
+                    if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
+                        literal_expr_kind = &self.ast_context[subexpr_id].kind;
+                        is_negated = true;
+                    }
+
+                    if let CExprKind::Literal(_, lit) = literal_expr_kind {
+                        if self.literal_matches_ty(lit, target_ty, is_negated) {
+                            return self.convert_expr(ctx, expr, Some(target_ty));
+                        }
                     }
                 }
 
