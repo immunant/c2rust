@@ -44,6 +44,15 @@ void unsigned_compound_desugaring(void) {
     i += u;
 }
 
+typedef int int_t;
+
+void cast_literals(void) {
+    int i = 1L;
+    int_t it = 1L;
+    int i_neg = -1L;
+    int_t it_neg = -1L;
+}
+
 void compound_literal(){
     /// https://github.com/immunant/c2rust/issues/1234
     int i = (enum {A, B, C}){1};

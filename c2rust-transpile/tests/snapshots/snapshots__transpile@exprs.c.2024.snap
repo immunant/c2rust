@@ -17,6 +17,7 @@ unsafe extern "C" {
 }
 pub type E = ::core::ffi::c_uint;
 pub const EA: E = 0;
+pub type int_t = ::core::ffi::c_int;
 pub type C2Rust_Unnamed = ::core::ffi::c_uint;
 pub const C: C2Rust_Unnamed = 2;
 pub const B: C2Rust_Unnamed = 1;
@@ -61,6 +62,13 @@ pub unsafe extern "C" fn unsigned_compound_desugaring() {
     let mut e: E = EA;
     e = (e as ::core::ffi::c_uint).wrapping_add(u) as E;
     i = (i as ::core::ffi::c_uint).wrapping_add(u) as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cast_literals() {
+    let mut i: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+    let mut it: int_t = 1 as int_t;
+    let mut i_neg: ::core::ffi::c_int = -1 as ::core::ffi::c_int;
+    let mut it_neg: int_t = -1 as int_t;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn compound_literal() {
