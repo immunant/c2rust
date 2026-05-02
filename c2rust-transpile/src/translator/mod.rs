@@ -2289,7 +2289,7 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
-                if !self.expr_is_expanded_macro(ctx, cond_id, None) =>
+                if !self.expr_is_expanded_macro(ctx, cond_id) =>
             {
                 // If there is a literal `0` or `1` here, translate them directly rather than
                 // with a comparison. But not if they're inside a macro; we want to keep that.
@@ -2947,7 +2947,7 @@ impl<'c> Translation<'c> {
 
         let override_ty = self.expr_override_types.get(&expr_id).copied();
 
-        if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id, override_ty)? {
+        if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id)? {
             return Ok(converted);
         }
 

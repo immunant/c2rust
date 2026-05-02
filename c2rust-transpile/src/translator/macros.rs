@@ -149,7 +149,6 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expr_id: CExprId,
-        override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<Option<WithStmts<Box<Expr>>>> {
         let macros = match self.ast_context.macro_invocations.get(&expr_id) {
             Some(macros) => macros.as_slice(),
@@ -202,6 +201,7 @@ impl<'c> Translation<'c> {
         // determined by the surrounding context.
         // Since the expansion sites are expecting a particular type, we need to cast it here
         // if it differs from the `const` type.
+        let override_ty = self.expr_override_types.get(&expr_id).copied();
         let expr_ty = override_ty.or_else(|| self.ast_context[expr_id].kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
             self.convert_cast(
@@ -250,14 +250,9 @@ impl<'c> Translation<'c> {
         ))))
     }
 
-    pub fn expr_is_expanded_macro(
-        &self,
-        ctx: ExprContext,
-        expr_id: CExprId,
-        override_ty: Option<CQualTypeId>,
-    ) -> bool {
+    pub fn expr_is_expanded_macro(&self, ctx: ExprContext, expr_id: CExprId) -> bool {
         matches!(
-            self.convert_const_macro_expansion(ctx, expr_id, override_ty),
+            self.convert_const_macro_expansion(ctx, expr_id),
             Ok(Some(_))
         )
     }

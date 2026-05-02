@@ -97,7 +97,7 @@ impl<'c> Translation<'c> {
                     if self.is_variant_of_enum(enum_id, enum_constant_id) =>
                 {
                     // `enum`s shouldn't need portable `override_ty`s.
-                    let expr_is_macro = self.expr_is_expanded_macro(ctx, expr, None);
+                    let expr_is_macro = self.expr_is_expanded_macro(ctx, expr);
 
                     // If this DeclRef expanded to a const macro, we actually need to insert a cast,
                     // because the translation of a const macro skips implicit casts in its context.
