@@ -93,3 +93,77 @@ pub unsafe extern "C" fn nested_early_returns(mut x: ::core::ffi::c_int) -> ::co
     }
     return x;
 }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn conditional_operator(
+    sz: ::core::ffi::c_uint,
+    buf: *mut ::core::ffi::c_int,
+) {
+    let mut x: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut y: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+    *if false { &raw mut y } else { &raw mut x } = 10 as ::core::ffi::c_int;
+    *(buf as *mut ::core::ffi::c_int).offset(2 as ::core::ffi::c_int as isize) = if true {
+        2 as ::core::ffi::c_int
+    } else {
+        3 as ::core::ffi::c_int
+    };
+    *(buf as *mut ::core::ffi::c_int).offset(3 as ::core::ffi::c_int as isize) = if false {
+        2 as ::core::ffi::c_int
+    } else {
+        3 as ::core::ffi::c_int
+    };
+}
+unsafe extern "C" fn id(mut i: ::core::ffi::c_int) -> ::core::ffi::c_int {
+    return i;
+}
+unsafe extern "C" fn add(
+    mut p: *mut ::core::ffi::c_int,
+    mut i: ::core::ffi::c_int,
+    mut r: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    *p += i;
+    return r;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn binary_conditional_operator(
+    sz: ::core::ffi::c_uint,
+    buf: *mut ::core::ffi::c_int,
+) {
+    let ref mut c2rust_lvalue = id(0 as ::core::ffi::c_int);
+    *(buf as *mut ::core::ffi::c_int).offset(0 as ::core::ffi::c_int as isize) =
+        if *c2rust_lvalue != 0 {
+            *c2rust_lvalue
+        } else {
+            id(1 as ::core::ffi::c_int)
+        };
+    let ref mut c2rust_lvalue_0 = id(2 as ::core::ffi::c_int);
+    *(buf as *mut ::core::ffi::c_int).offset(1 as ::core::ffi::c_int as isize) =
+        if *c2rust_lvalue_0 != 0 {
+            *c2rust_lvalue_0
+        } else {
+            id(3 as ::core::ffi::c_int)
+        };
+    if add(
+        (buf as *mut ::core::ffi::c_int).offset(2 as ::core::ffi::c_int as isize),
+        2 as ::core::ffi::c_int,
+        0 as ::core::ffi::c_int,
+    ) == 0
+    {
+        add(
+            (buf as *mut ::core::ffi::c_int).offset(3 as ::core::ffi::c_int as isize),
+            3 as ::core::ffi::c_int,
+            0 as ::core::ffi::c_int,
+        );
+    }
+    if add(
+        (buf as *mut ::core::ffi::c_int).offset(4 as ::core::ffi::c_int as isize),
+        4 as ::core::ffi::c_int,
+        1 as ::core::ffi::c_int,
+    ) == 0
+    {
+        add(
+            (buf as *mut ::core::ffi::c_int).offset(5 as ::core::ffi::c_int as isize),
+            5 as ::core::ffi::c_int,
+            0 as ::core::ffi::c_int,
+        );
+    }
+}
