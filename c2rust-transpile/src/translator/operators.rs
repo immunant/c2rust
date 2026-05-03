@@ -473,23 +473,11 @@ impl<'c> Translation<'c> {
                         }
 
                         _ => {
-                            fn eq<Token: Default, F: Fn(Token) -> BinOp>(f: F) -> BinOp {
-                                f(Default::default())
-                            }
+                            let bin_op = op
+                                .underlying_assignment()
+                                .expect("Cannot convert non-assignment operator");
+                            let bin_op_kind = BinOp::from(op);
 
-                            let (bin_op, bin_op_kind) = match op {
-                                AssignAdd => (Add, eq(BinOp::AddAssign)),
-                                AssignSubtract => (Subtract, eq(BinOp::SubAssign)),
-                                AssignMultiply => (Multiply, eq(BinOp::MulAssign)),
-                                AssignDivide => (Divide, eq(BinOp::DivAssign)),
-                                AssignModulus => (Modulus, eq(BinOp::RemAssign)),
-                                AssignBitXor => (BitXor, eq(BinOp::BitXorAssign)),
-                                AssignShiftLeft => (ShiftLeft, eq(BinOp::ShlAssign)),
-                                AssignShiftRight => (ShiftRight, eq(BinOp::ShrAssign)),
-                                AssignBitOr => (BitOr, eq(BinOp::BitOrAssign)),
-                                AssignBitAnd => (BitAnd, eq(BinOp::BitAndAssign)),
-                                _ => panic!("Cannot convert non-assignment operator"),
-                            };
                             self.convert_assignment_operator_aux(
                                 ctx,
                                 bin_op_kind,

@@ -2167,6 +2167,17 @@ impl From<CBinOp> for BinOp {
             CBinOp::And => BinOp::And(Default::default()),
             CBinOp::Or => BinOp::Or(Default::default()),
 
+            CBinOp::AssignAdd => BinOp::AddAssign(Default::default()),
+            CBinOp::AssignSubtract => BinOp::SubAssign(Default::default()),
+            CBinOp::AssignMultiply => BinOp::MulAssign(Default::default()),
+            CBinOp::AssignDivide => BinOp::DivAssign(Default::default()),
+            CBinOp::AssignModulus => BinOp::RemAssign(Default::default()),
+            CBinOp::AssignBitXor => BinOp::BitXorAssign(Default::default()),
+            CBinOp::AssignShiftLeft => BinOp::ShlAssign(Default::default()),
+            CBinOp::AssignShiftRight => BinOp::ShrAssign(Default::default()),
+            CBinOp::AssignBitOr => BinOp::BitOrAssign(Default::default()),
+            CBinOp::AssignBitAnd => BinOp::BitAndAssign(Default::default()),
+
             _ => panic!("CBinOp {:?} is not a valid Rust BinOp", op),
         }
     }
