@@ -140,13 +140,41 @@ impl<'c> Translation<'c> {
                         }
                     }
 
+                    // Using `.is_none()` and `.is_some()` for null comparison means we don't
+                    // have to rely on `trait PartialEq` as much and it is also more idiomatic.
+                    if matches!(op, CBinOp::EqualEqual | CBinOp::NotEqual) {
+                        let is_null = op == CBinOp::EqualEqual;
+
+                        if self.ast_context.is_null_expr(lhs) {
+                            let val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
+                            let val = val.result_map(|rhs_rs| {
+                                self.convert_pointer_is_null(
+                                    ctx,
+                                    rhs_type_id.ctype,
+                                    rhs_rs,
+                                    is_null,
+                                )
+                            })?;
+                            return Ok(val.map(bool_to_int));
+                        } else if self.ast_context.is_null_expr(rhs) {
+                            let val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
+                            let val = val.result_map(|lhs_rs| {
+                                self.convert_pointer_is_null(
+                                    ctx,
+                                    lhs_type_id.ctype,
+                                    lhs_rs,
+                                    is_null,
+                                )
+                            })?;
+                            return Ok(val.map(bool_to_int));
+                        }
+                    }
+
                     self.convert_expr(ctx, lhs, Some(lhs_type_id))?
                         .and_then(|lhs_val| {
                             self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?
                                 .and_then(|rhs_val| {
-                                    let expr_ids = Some((lhs, rhs));
                                     self.convert_binary_operator(
-                                        ctx,
                                         op,
                                         ty,
                                         expr_type_id.ctype,
@@ -154,7 +182,6 @@ impl<'c> Translation<'c> {
                                         rhs_type_id,
                                         lhs_val,
                                         rhs_val,
-                                        expr_ids,
                                     )
                                 })
                         })
@@ -199,7 +226,6 @@ impl<'c> Translation<'c> {
             let ty = self.convert_type(compute_res_type_id.ctype)?;
             let val = lhs.and_then(|lhs| {
                 self.convert_binary_operator(
-                    ctx,
                     bin_op,
                     ty,
                     compute_res_type_id.ctype,
@@ -207,7 +233,6 @@ impl<'c> Translation<'c> {
                     rhs_type_id,
                     lhs,
                     rhs,
-                    None,
                 )
             })?;
 
@@ -425,7 +450,6 @@ impl<'c> Translation<'c> {
                             let ty = self.convert_type(result_type_id.ctype)?;
                             let val = lhs.and_then(|lhs|
                                 self.convert_binary_operator(
-                                    ctx,
                                     op,
                                     ty,
                                     result_type_id.ctype,
@@ -433,7 +457,6 @@ impl<'c> Translation<'c> {
                                     rhs_type_id,
                                     lhs,
                                     rhs,
-                                    None,
                                 )
                             )?;
 
@@ -506,7 +529,6 @@ impl<'c> Translation<'c> {
     /// arguments be usable as rvalues.
     fn convert_binary_operator(
         &self,
-        ctx: ExprContext,
         op: CBinOp,
         ty: Box<Type>,
         ctype: CTypeId,
@@ -514,7 +536,6 @@ impl<'c> Translation<'c> {
         rhs_type: CQualTypeId,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
-        lhs_rhs_ids: Option<(CExprId, CExprId)>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let is_unsigned_integral_type = self
             .ast_context
@@ -539,27 +560,12 @@ impl<'c> Translation<'c> {
             | CBinOp::ShiftRight
             | CBinOp::ShiftLeft => mk().binary_expr(BinOp::from(op), lhs, rhs),
 
-            CBinOp::EqualEqual | CBinOp::NotEqual => {
-                // Using `.is_none()` and `.is_some()` for null comparison means
-                // we don't have to rely on `trait PartialEq` as much
-                // and it is also more idiomatic.
-                let is_null = op == CBinOp::EqualEqual;
-                let bin_op = BinOp::from(op);
-                let expr = match lhs_rhs_ids {
-                    Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, is_null)?
-                    }
-                    Some((_, rhs_expr_id)) if self.ast_context.is_null_expr(rhs_expr_id) => {
-                        self.convert_pointer_is_null(ctx, lhs_type.ctype, lhs, is_null)?
-                    }
-                    _ => mk().binary_expr(bin_op, lhs, rhs),
-                };
-
-                bool_to_int(expr)
-            }
-            CBinOp::Less | CBinOp::Greater | CBinOp::GreaterEqual | CBinOp::LessEqual => {
-                bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs))
-            }
+            CBinOp::EqualEqual
+            | CBinOp::NotEqual
+            | CBinOp::Less
+            | CBinOp::Greater
+            | CBinOp::GreaterEqual
+            | CBinOp::LessEqual => bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs)),
 
             op => unimplemented!("Translation of binary operator {:?}", op),
         }))
