@@ -360,6 +360,11 @@ fn test_empty_init() {
 }
 
 #[test]
+fn test_enums() {
+    transpile("enums.c").run();
+}
+
+#[test]
 fn test_exprs() {
     transpile("exprs.c").run();
 }

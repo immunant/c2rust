@@ -1,0 +1,60 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/enums.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct Foo(pub ::core::ffi::c_uint);
+pub const Foo3: Foo = Foo(3);
+pub const Foo2: Foo = Foo(2);
+pub const Foo1: Foo = Foo(1);
+pub const Foo0: Foo = Foo(0);
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct Bar(pub ::core::ffi::c_int);
+pub const Bar3: Bar = Bar(3);
+pub const Bar2: Bar = Bar(2);
+pub const Bar1: Bar = Bar(1);
+pub const Bar0: Bar = Bar(0);
+pub const BarN1: Bar = Bar(-1);
+pub const FOO1_MACRO: ::core::ffi::c_uint = 1 as ::core::ffi::c_uint;
+pub const BAR1_MACRO: ::core::ffi::c_int = 1;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_enums() {
+    let mut foo: Foo = Foo0;
+    let mut bar: Bar = Bar0;
+    foo = Foo1;
+    bar = BarN1;
+    foo = Foo(Bar0.0 as ::core::ffi::c_uint);
+    bar = Bar(Foo0.0 as ::core::ffi::c_int);
+    foo = Foo1;
+    bar = Bar1;
+    foo = Foo3;
+    bar = Bar3;
+    foo = Foo(foo.0.wrapping_sub(2 as ::core::ffi::c_uint));
+    bar = Bar(bar.0 - 2 as ::core::ffi::c_int);
+    let mut e: Foo = Foo1;
+    let mut enum_enum: ::core::ffi::c_int = (e.0 == foo.0) as ::core::ffi::c_int;
+    let mut enum_constant: ::core::ffi::c_int =
+        (e.0 == Foo0.0 as ::core::ffi::c_int as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    let mut wrong_enum_enum: ::core::ffi::c_int =
+        (e.0 == bar.0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    let mut wrong_enum_constant: ::core::ffi::c_int =
+        (e.0 == Bar0.0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    match foo.0 {
+        0 | 1 | 2 | 3 | 42 | 4294967254 | _ => {}
+    }
+    match bar.0 {
+        0 | BAR1_MACRO | 2 | 3 | -1 | 42 | -42 | _ => {}
+    };
+}
