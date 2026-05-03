@@ -20,7 +20,7 @@ pub unsafe extern "C" fn lift_const(
     mut argv: *mut *mut ::core::ffi::c_char,
 ) {
     let mut starts_with_a: ::core::ffi::c_int = 0;
-    if !(argc == 3 as ::core::ffi::c_int) {
+    if argc != 3 as ::core::ffi::c_int {
         starts_with_a = (**argv.offset(0 as ::core::ffi::c_int as isize) as ::core::ffi::c_int
             == 'a' as ::core::ffi::c_int) as ::core::ffi::c_int;
         if starts_with_a != 0 {
