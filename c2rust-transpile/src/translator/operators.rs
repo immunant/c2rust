@@ -541,32 +541,28 @@ impl<'c> Translation<'c> {
             CBinOp::Multiply if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_mul", vec![rhs])
             }
-            CBinOp::Multiply => mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs),
-
             CBinOp::Divide if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_div", vec![rhs])
             }
-            CBinOp::Divide => mk().binary_expr(BinOp::Div(Default::default()), lhs, rhs),
-
             CBinOp::Modulus if is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, "wrapping_rem", vec![rhs])
             }
-            CBinOp::Modulus => mk().binary_expr(BinOp::Rem(Default::default()), lhs, rhs),
 
-            CBinOp::BitXor => mk().binary_expr(BinOp::BitXor(Default::default()), lhs, rhs),
-
-            CBinOp::ShiftRight => mk().binary_expr(BinOp::Shr(Default::default()), lhs, rhs),
-            CBinOp::ShiftLeft => mk().binary_expr(BinOp::Shl(Default::default()), lhs, rhs),
+            CBinOp::Multiply
+            | CBinOp::Divide
+            | CBinOp::Modulus
+            | CBinOp::BitAnd
+            | CBinOp::BitOr
+            | CBinOp::BitXor
+            | CBinOp::ShiftRight
+            | CBinOp::ShiftLeft => mk().binary_expr(BinOp::from(op), lhs, rhs),
 
             CBinOp::EqualEqual | CBinOp::NotEqual => {
                 // Using `.is_none()` and `.is_some()` for null comparison means
                 // we don't have to rely on `trait PartialEq` as much
                 // and it is also more idiomatic.
-                let (is_null, bin_op) = match op {
-                    CBinOp::EqualEqual => (true, BinOp::Eq(Default::default())),
-                    CBinOp::NotEqual => (false, BinOp::Ne(Default::default())),
-                    _ => unreachable!(),
-                };
+                let is_null = op == CBinOp::EqualEqual;
+                let bin_op = BinOp::from(op);
                 let expr = match lhs_rhs_ids {
                     Some((lhs_expr_id, _)) if self.ast_context.is_null_expr(lhs_expr_id) => {
                         self.convert_pointer_is_null(ctx, rhs_type.ctype, rhs, is_null)?
@@ -579,19 +575,9 @@ impl<'c> Translation<'c> {
 
                 bool_to_int(expr)
             }
-            CBinOp::Less => bool_to_int(mk().binary_expr(BinOp::Lt(Default::default()), lhs, rhs)),
-            CBinOp::Greater => {
-                bool_to_int(mk().binary_expr(BinOp::Gt(Default::default()), lhs, rhs))
+            CBinOp::Less | CBinOp::Greater | CBinOp::GreaterEqual | CBinOp::LessEqual => {
+                bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs))
             }
-            CBinOp::GreaterEqual => {
-                bool_to_int(mk().binary_expr(BinOp::Ge(Default::default()), lhs, rhs))
-            }
-            CBinOp::LessEqual => {
-                bool_to_int(mk().binary_expr(BinOp::Le(Default::default()), lhs, rhs))
-            }
-
-            CBinOp::BitAnd => mk().binary_expr(BinOp::BitAnd(Default::default()), lhs, rhs),
-            CBinOp::BitOr => mk().binary_expr(BinOp::BitOr(Default::default()), lhs, rhs),
 
             op => unimplemented!("Translation of binary operator {:?}", op),
         }))

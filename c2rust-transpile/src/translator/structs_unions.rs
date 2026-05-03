@@ -728,39 +728,12 @@ impl<'a> Translation<'a> {
                 let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, Vec::new());
                 // Allow the value of this assignment to be used as the RHS of other assignments
                 let val = lhs_expr_read.clone();
-                let param_expr = match op {
-                    CBinOp::AssignAdd => {
-                        mk().binary_expr(BinOp::Add(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignSubtract => {
-                        mk().binary_expr(BinOp::Sub(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignMultiply => {
-                        mk().binary_expr(BinOp::Mul(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignDivide => {
-                        mk().binary_expr(BinOp::Div(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignModulus => {
-                        mk().binary_expr(BinOp::Rem(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignBitXor => {
-                        mk().binary_expr(BinOp::BitXor(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignShiftLeft => {
-                        mk().binary_expr(BinOp::Shl(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignShiftRight => {
-                        mk().binary_expr(BinOp::Shr(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignBitOr => {
-                        mk().binary_expr(BinOp::BitOr(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::AssignBitAnd => {
-                        mk().binary_expr(BinOp::BitAnd(Default::default()), lhs_expr_read, rhs_expr)
-                    }
-                    CBinOp::Assign => rhs_expr,
-                    _ => panic!("Cannot convert non-assignment operator"),
+                let param_expr = if let Some(op) = op.underlying_assignment() {
+                    mk().binary_expr(BinOp::from(op), lhs_expr_read, rhs_expr)
+                } else if op == CBinOp::Assign {
+                    rhs_expr
+                } else {
+                    panic!("Cannot convert non-assignment operator")
                 };
 
                 let mut stmts = vec![];
