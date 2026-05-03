@@ -6,7 +6,7 @@ use crate::{
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
     with_stmts::WithStmts,
-    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CQualTypeId, CTypeKind, ConstIntExpr,
+    CDeclKind, CEnumConstantId, CEnumId, CQualTypeId, CTypeId, CTypeKind, ConstIntExpr,
 };
 
 impl<'c> Translation<'c> {
@@ -76,6 +76,10 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let val = self.enum_constant_expr(enum_constant_id);
 
+        if self.enum_constant_matches_type(expr_type_id.ctype, enum_constant_id) {
+            return Ok(WithStmts::new_val(val));
+        }
+
         // Add a cast to the expected integral type.
         let enum_id = self.ast_context.parents[&enum_constant_id];
         self.convert_cast_from_enum(ctx, enum_id, expr_type_id, val)
@@ -108,32 +112,8 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         mut source_cty: CQualTypeId,
         enum_id: CEnumId,
-        expr: Option<CExprId>,
         mut val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if let Some(expr) = expr {
-            match self.ast_context.index_unwrap_parens(expr).kind {
-                // This is the case of finding a variable which is an `EnumConstant` of the same
-                // enum we are casting to. Here, we can just remove the extraneous cast instead of
-                // generating a new one.
-                CExprKind::DeclRef(_, enum_constant_id, _)
-                    if self.is_variant_of_enum(enum_id, enum_constant_id) =>
-                {
-                    // `enum`s shouldn't need portable `override_ty`s.
-                    let expr_is_macro = self.expr_is_expanded_macro(ctx, expr, None);
-
-                    // If this DeclRef expanded to a const macro, we actually need to insert a cast,
-                    // because the translation of a const macro skips implicit casts in its context.
-                    if !expr_is_macro {
-                        val = self.enum_constant_expr(enum_constant_id);
-                        return Ok(WithStmts::new_val(val));
-                    }
-                }
-
-                _ => {}
-            }
-        }
-
         // We could be casting from enum to enum...
         if let CTypeKind::Enum(source_enum_id) =
             self.ast_context.resolve_type(source_cty.ctype).kind
@@ -208,13 +188,16 @@ impl<'c> Translation<'c> {
         mk().call_expr(mk().ident_expr(enum_name), vec![value])
     }
 
-    fn is_variant_of_enum(&self, enum_id: CEnumId, enum_constant_id: CEnumConstantId) -> bool {
-        let variants = match self.ast_context[enum_id].kind {
-            CDeclKind::Enum { ref variants, .. } => variants,
-            _ => panic!("{:?} does not point to an `enum` declaration", enum_id),
+    pub(crate) fn enum_constant_matches_type(
+        &self,
+        type_id: CTypeId,
+        enum_constant_id: CEnumConstantId,
+    ) -> bool {
+        let CTypeKind::Enum(type_enum_id) = self.ast_context.resolve_type(type_id).kind else {
+            return false;
         };
-
-        variants.contains(&enum_constant_id)
+        let constant_enum_id = self.ast_context.parents[&enum_constant_id];
+        type_enum_id == constant_enum_id
     }
 
     pub(crate) fn enum_integral_type(&self, enum_id: CEnumId) -> CQualTypeId {
