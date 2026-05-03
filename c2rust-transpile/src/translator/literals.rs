@@ -48,12 +48,12 @@ impl<'c> Translation<'c> {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
             CLiteral::Integer(_, _) if ty_kind.is_enum() => true,
-            CLiteral::Integer(value, _) if ty_kind.is_integral_type() && !ty_kind.is_bool() => {
+            CLiteral::Integer(value, _) | CLiteral::Character(value)
+                if ty_kind.is_integral_type() && !ty_kind.is_bool() =>
+            {
                 ty_kind.guaranteed_integer_in_range(value)
                     && (!is_negated || ty_kind.is_signed_integral_type())
             }
-            // `convert_literal` always casts these to i32.
-            CLiteral::Character(_value) => matches!(ty_kind, CTypeKind::Int32),
             CLiteral::Floating(value, _) if ty_kind.is_floating_type() => {
                 ty_kind.guaranteed_float_in_range(value)
             }
@@ -75,25 +75,22 @@ impl<'c> Translation<'c> {
 
             CLiteral::Character(val) => {
                 let val = val as u32;
-                let expr =
-                    match char::from_u32(val) {
-                        Some(c) => {
-                            let expr = mk().lit_expr(c);
-                            let i32_type = mk().path_ty(vec!["i32"]);
-                            mk().cast_expr(expr, i32_type)
+                let expr = match char::from_u32(val) {
+                    Some(c) => mk().lit_expr(c),
+                    None => {
+                        // Fallback for characters outside of the valid Unicode range
+                        if (val as i32) < 0 {
+                            neg_expr(mk().lit_expr(
+                                mk().int_unsuffixed_lit((val as i32).unsigned_abs() as u128),
+                            ))
+                        } else {
+                            mk().lit_expr(mk().int_unsuffixed_lit(val as u128))
                         }
-                        None => {
-                            // Fallback for characters outside of the valid Unicode range
-                            if (val as i32) < 0 {
-                                neg_expr(mk().lit_expr(
-                                    mk().int_lit((val as i32).unsigned_abs() as u128, "i32"),
-                                ))
-                            } else {
-                                mk().lit_expr(mk().int_lit(val as u128, "i32"))
-                            }
-                        }
-                    };
-                Ok(WithStmts::new_val(expr))
+                    }
+                };
+
+                let type_rs = self.convert_type(ty.ctype)?;
+                Ok(WithStmts::new_val(mk().cast_expr(expr, type_rs)))
             }
 
             CLiteral::Floating(val, ref c_str) => {
