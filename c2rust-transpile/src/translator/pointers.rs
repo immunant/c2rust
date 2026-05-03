@@ -522,8 +522,8 @@ impl<'c> Translation<'c> {
             Ok(val.and_then(|val| {
                 WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, val))
             }))
-        } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            val.try_map(|val| self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val))
+        } else if let &CTypeKind::Enum(_) = target_ty_kind {
+            val.try_map(|val| self.convert_cast_to_enum(target_cty, expr, val))
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
