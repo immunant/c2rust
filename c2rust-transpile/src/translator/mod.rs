@@ -3230,28 +3230,15 @@ impl<'c> Translation<'c> {
                     _ => {}
                 }
 
-                let expr_kind = &self.ast_context[expr].kind;
                 let target_ty = override_ty.unwrap_or(ty);
 
                 // In general, if we are casting the result of an expression, then the inner
                 // expression should be translated to whatever type it normally would.
-                // But for literals, if we don't absolutely have to cast, we would rather the
-                // literal is translated according to the type we're expecting, and then we can
-                // skip the cast entirely.
-                if !is_explicit {
-                    let mut literal_expr_kind = expr_kind;
-                    let mut is_negated = false;
-
-                    if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
-                        literal_expr_kind = &self.ast_context[subexpr_id].kind;
-                        is_negated = true;
-                    }
-
-                    if let CExprKind::Literal(_, lit) = literal_expr_kind {
-                        if self.literal_matches_ty(lit, target_ty, is_negated) {
-                            return self.convert_expr(ctx, expr, Some(target_ty));
-                        }
-                    }
+                // But for some expression types, if we don't absolutely have to cast,
+                // we would rather the expression is translated according to the type we're
+                // expecting, and then we can skip the cast entirely.
+                if self.can_propagate_cast(expr, target_ty, is_explicit) {
+                    return self.convert_expr(ctx, expr, Some(target_ty));
                 }
 
                 let mut val = self.convert_expr(ctx, expr, None)?;
@@ -3461,6 +3448,36 @@ impl<'c> Translation<'c> {
                 ..
             } => self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak),
         }
+    }
+
+    fn can_propagate_cast(
+        &self,
+        expr_id: CExprId,
+        target_type_id: CQualTypeId,
+        is_explicit: bool,
+    ) -> bool {
+        // Always preserve explicit casts.
+        if is_explicit {
+            return false;
+        }
+
+        let expr_kind = &self.ast_context[expr_id].kind;
+        let mut literal_expr_kind = expr_kind;
+        let mut is_negated = false;
+
+        if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
+            literal_expr_kind = &self.ast_context[subexpr_id].kind;
+            is_negated = true;
+        }
+
+        if let CExprKind::Literal(_, lit) = literal_expr_kind {
+            // Does the inner literal fit in the type we're casting to?
+            if self.literal_matches_ty(lit, target_type_id, is_negated) {
+                return true;
+            }
+        }
+
+        false
     }
 
     pub fn convert_constant(&self, constant: ConstIntExpr) -> TranslationResult<Box<Expr>> {
