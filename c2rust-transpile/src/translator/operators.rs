@@ -635,15 +635,9 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         ty: CQualTypeId,
-        up: bool,
+        op: CBinOp,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let op = if up {
-            CBinOp::AssignAdd
-        } else {
-            CBinOp::AssignSubtract
-        };
-
         let arg_type = self.ast_context[arg]
             .kind
             .get_qual_type()
@@ -691,14 +685,17 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         ty: CQualTypeId,
-        up: bool,
+        op: CBinOp,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // If we aren't going to be using the result, may as well do a simple pre-increment
         if ctx.is_unused() {
-            return self.convert_pre_increment(ctx, ty, up, arg);
+            return self.convert_pre_increment(ctx, ty, op, arg);
         }
 
+        let op = op
+            .underlying_assignment()
+            .expect("not an valid assignment operator");
         let ty = self
             .ast_context
             .index(arg)
@@ -745,7 +742,11 @@ impl<'c> Translation<'c> {
                         one = n
                     }
 
-                    let n = if up { one } else { neg_expr(one) };
+                    let n = if op == CBinOp::Subtract {
+                        neg_expr(one)
+                    } else {
+                        one
+                    };
                     is_unsafe = true;
                     mk().method_call_expr(read, "offset", vec![n])
                 } else if self
@@ -754,15 +755,9 @@ impl<'c> Translation<'c> {
                     .kind
                     .is_unsigned_integral_type()
                 {
-                    let m = if up { "wrapping_add" } else { "wrapping_sub" };
-                    mk().method_call_expr(read, m, vec![one])
+                    mk().method_call_expr(read, op.wrapping_method(), vec![one])
                 } else {
-                    let k = if up {
-                        BinOp::Add(Default::default())
-                    } else {
-                        BinOp::Sub(Default::default())
-                    };
-                    mk().binary_expr(k, read, one)
+                    mk().binary_expr(BinOp::from(op), read, one)
                 };
 
                 // *p = *p + rhs
@@ -794,10 +789,18 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let mut unary = match name {
             CUnOp::AddressOf => self.convert_address_of(ctx, cqual_type, arg),
-            CUnOp::PreIncrement => self.convert_pre_increment(ctx, cqual_type, true, arg),
-            CUnOp::PreDecrement => self.convert_pre_increment(ctx, cqual_type, false, arg),
-            CUnOp::PostIncrement => self.convert_post_increment(ctx, cqual_type, true, arg),
-            CUnOp::PostDecrement => self.convert_post_increment(ctx, cqual_type, false, arg),
+            CUnOp::PreIncrement => {
+                self.convert_pre_increment(ctx, cqual_type, CBinOp::AssignAdd, arg)
+            }
+            CUnOp::PreDecrement => {
+                self.convert_pre_increment(ctx, cqual_type, CBinOp::AssignSubtract, arg)
+            }
+            CUnOp::PostIncrement => {
+                self.convert_post_increment(ctx, cqual_type, CBinOp::AssignAdd, arg)
+            }
+            CUnOp::PostDecrement => {
+                self.convert_post_increment(ctx, cqual_type, CBinOp::AssignSubtract, arg)
+            }
             CUnOp::Deref => self.convert_deref(ctx, cqual_type, arg),
             CUnOp::Plus => self.convert_expr(ctx.used(), arg, Some(cqual_type)), // promotion is explicit in the clang AST
 
