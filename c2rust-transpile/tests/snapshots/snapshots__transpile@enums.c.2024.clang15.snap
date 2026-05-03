@@ -45,8 +45,7 @@ pub unsafe extern "C" fn test_enums() {
     bar = Bar(bar.0 - 2 as ::core::ffi::c_int);
     let mut e: Foo = Foo1;
     let mut enum_enum: ::core::ffi::c_int = (e.0 == foo.0) as ::core::ffi::c_int;
-    let mut enum_constant: ::core::ffi::c_int =
-        (e.0 == Foo0.0 as ::core::ffi::c_int as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    let mut enum_constant: ::core::ffi::c_int = (e.0 == Foo0.0) as ::core::ffi::c_int;
     let mut wrong_enum_enum: ::core::ffi::c_int =
         (e.0 == bar.0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
     let mut wrong_enum_constant: ::core::ffi::c_int =
