@@ -2,33 +2,6 @@
 
 use super::*;
 
-impl From<CBinOp> for BinOp {
-    fn from(op: CBinOp) -> Self {
-        match op {
-            CBinOp::Multiply => BinOp::Mul(Default::default()),
-            CBinOp::Divide => BinOp::Div(Default::default()),
-            CBinOp::Modulus => BinOp::Rem(Default::default()),
-            CBinOp::Add => BinOp::Add(Default::default()),
-            CBinOp::Subtract => BinOp::Sub(Default::default()),
-            CBinOp::ShiftLeft => BinOp::Shl(Default::default()),
-            CBinOp::ShiftRight => BinOp::Shr(Default::default()),
-            CBinOp::Less => BinOp::Lt(Default::default()),
-            CBinOp::Greater => BinOp::Gt(Default::default()),
-            CBinOp::LessEqual => BinOp::Le(Default::default()),
-            CBinOp::GreaterEqual => BinOp::Ge(Default::default()),
-            CBinOp::EqualEqual => BinOp::Eq(Default::default()),
-            CBinOp::NotEqual => BinOp::Ne(Default::default()),
-            CBinOp::BitAnd => BinOp::BitAnd(Default::default()),
-            CBinOp::BitXor => BinOp::BitXor(Default::default()),
-            CBinOp::BitOr => BinOp::BitOr(Default::default()),
-            CBinOp::And => BinOp::And(Default::default()),
-            CBinOp::Or => BinOp::Or(Default::default()),
-
-            _ => panic!("CBinOp {:?} is not a valid Rust BinOp", op),
-        }
-    }
-}
-
 impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
