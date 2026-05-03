@@ -3058,11 +3058,10 @@ impl<'c> Translation<'c> {
                     CDeclKind::EnumConstant { .. } => {
                         // If the variable is actually an `EnumConstant`, we need to add a cast to
                         // the expected integral type.
-                        if !self.enum_constant_matches_type(
-                            override_ty.unwrap_or(qual_ty).ctype,
-                            decl_id,
-                        ) {
-                            val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
+                        let target_type_id = override_ty.unwrap_or(qual_ty);
+
+                        if !self.enum_constant_matches_type(target_type_id.ctype, decl_id) {
+                            val = self.convert_cast_from_enum(target_type_id.ctype, val)?;
                         }
 
                         return Ok(WithStmts::new_val(val));
@@ -3477,6 +3476,18 @@ impl<'c> Translation<'c> {
                 // However, if we then immediately have a cast to convert this variable back into
                 // the enum type, we would like to produce Rust with _no_ casts.
                 if self.enum_constant_matches_type(target_type_id.ctype, decl_id) {
+                    return true;
+                }
+
+                let source_enum_id = self.ast_context.parents[&decl_id];
+                let source_integral_type_id = self.enum_integral_type(source_enum_id);
+                let target_type_resolved_id = self
+                    .ast_context
+                    .resolve_type_id_no_typedef(target_type_id.ctype);
+
+                // Likewise, if we are casting to the inner integral type of the enum, then
+                // translate the enum constant directly as that.
+                if target_type_resolved_id == source_integral_type_id.ctype {
                     return true;
                 }
             }
