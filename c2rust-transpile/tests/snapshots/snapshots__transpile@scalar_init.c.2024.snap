@@ -17,7 +17,7 @@ pub const true_0: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scalar_init() {
     let mut b: bool = true_0 != 0;
-    let mut c: ::core::ffi::c_char = 'c' as i32 as ::core::ffi::c_char;
+    let mut c: ::core::ffi::c_char = 'c' as ::core::ffi::c_char;
     let mut i: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
     let mut l: ::core::ffi::c_long = 42 as ::core::ffi::c_long;
     let mut f: ::core::ffi::c_float = 42.0f32;

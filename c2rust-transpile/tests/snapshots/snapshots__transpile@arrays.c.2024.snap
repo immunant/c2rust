@@ -67,9 +67,9 @@ pub unsafe extern "C" fn entry() {
     let mut char_with_string: [::core::ffi::c_char; 4] =
         ::core::mem::transmute::<[u8; 4], [::core::ffi::c_char; 4]>(*b"abc\0");
     let mut char_with_chars: [::core::ffi::c_char; 3] = [
-        'd' as i32 as ::core::ffi::c_char,
-        'e' as i32 as ::core::ffi::c_char,
-        'f' as i32 as ::core::ffi::c_char,
+        'd' as ::core::ffi::c_char,
+        'e' as ::core::ffi::c_char,
+        'f' as ::core::ffi::c_char,
     ];
     let mut char_with_ints: [::core::ffi::c_char; 2] = [1 as ::core::ffi::c_char, 0];
     let mut char_with_init: [::core::ffi::c_char; 5] =
