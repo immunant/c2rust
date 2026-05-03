@@ -526,14 +526,8 @@ impl<'c> Translation<'c> {
             CBinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
             CBinOp::Subtract => return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
 
-            CBinOp::Multiply if is_unsigned_integral_type => {
-                mk().method_call_expr(lhs, "wrapping_mul", vec![rhs])
-            }
-            CBinOp::Divide if is_unsigned_integral_type => {
-                mk().method_call_expr(lhs, "wrapping_div", vec![rhs])
-            }
-            CBinOp::Modulus if is_unsigned_integral_type => {
-                mk().method_call_expr(lhs, "wrapping_rem", vec![rhs])
+            CBinOp::Multiply | CBinOp::Divide | CBinOp::Modulus if is_unsigned_integral_type => {
+                mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs])
             }
 
             CBinOp::Multiply

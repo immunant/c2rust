@@ -2121,6 +2121,20 @@ impl CBinOp {
         }
     }
 
+    pub fn wrapping_method(&self) -> &'static str {
+        match self {
+            CBinOp::Add => "wrapping_add",
+            CBinOp::Subtract => "wrapping_sub",
+            CBinOp::Multiply => "wrapping_mul",
+            CBinOp::Divide => "wrapping_div",
+            CBinOp::Modulus => "wrapping_rem",
+            _ => panic!(
+                "CBinOp {:?} is not a valid Rust wrapping arithmetic method",
+                self
+            ),
+        }
+    }
+
     /// Does the rust equivalent of this operator have type (T, T) -> U?
     #[rustfmt::skip]
     pub fn input_types_same(&self) -> bool {
