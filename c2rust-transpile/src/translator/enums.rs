@@ -2,13 +2,11 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
-use crate::c_ast::CUnOp;
 use crate::{
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, EnumMode, ExprContext, Translation},
     with_stmts::WithStmts,
-    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
-    CTypeKind, ConstIntExpr,
+    CDeclKind, CEnumConstantId, CEnumId, CQualTypeId, CTypeId, CTypeKind, ConstIntExpr,
 };
 
 impl<'c> Translation<'c> {
@@ -138,29 +136,8 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         mut source_cty: CQualTypeId,
         enum_id: CEnumId,
-        expr: Option<CExprId>,
         mut val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if let Some(expr) = expr {
-            match self.ast_context.index_unwrap_parens(expr).kind {
-                CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                    val = self.enum_for_i64(enum_id, i as i64);
-                    return Ok(WithStmts::new_val(val));
-                }
-
-                CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
-                    if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
-                        &self.ast_context.index_unwrap_parens(subexpr_id).kind
-                    {
-                        val = self.enum_for_i64(enum_id, -(i as i64));
-                        return Ok(WithStmts::new_val(val));
-                    }
-                }
-
-                _ => {}
-            }
-        }
-
         // We could be casting from enum to enum...
         if let CTypeKind::Enum(source_enum_id) =
             self.ast_context.resolve_type(source_cty.ctype).kind
@@ -205,7 +182,7 @@ impl<'c> Translation<'c> {
 
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it converts a number to the enum type.
-    fn enum_for_i64(&self, enum_id: CEnumId, value: i64) -> Box<Expr> {
+    pub fn enum_for_i64(&self, enum_id: CEnumId, value: i64) -> Box<Expr> {
         if let Some(enum_constant_id) = self.enum_variant_for_i64(enum_id, value) {
             return self.enum_constant_expr(enum_constant_id);
         }
