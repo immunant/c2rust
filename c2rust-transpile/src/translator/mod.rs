@@ -3660,7 +3660,7 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::PointerToIntegral => {
-                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val, expr)
+                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
             }
 
             CastKind::IntegralCast
@@ -3696,9 +3696,7 @@ impl<'c> Translation<'c> {
                 {
                     self.f128_cast_to(val, target_ty_kind)
                 } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-                    val.and_then_try(|val| {
-                        self.convert_cast_to_enum(ctx, source_cty, enum_id, expr, val)
-                    })
+                    val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     Ok(val.map(|val| {
                         mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
