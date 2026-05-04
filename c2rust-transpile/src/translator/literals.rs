@@ -16,6 +16,18 @@ impl<'c> Translation<'c> {
         base: IntBase,
         negative: bool,
     ) -> TranslationResult<Box<Expr>> {
+        let type_resolved_id = self.ast_context.resolve_type_id(ty.ctype);
+
+        if self.ast_context[type_resolved_id].kind.is_enum() {
+            let mut val = val as i64;
+
+            if negative {
+                val = -val;
+            }
+
+            return Ok(self.enum_for_i64(type_resolved_id, val));
+        }
+
         let lit = match base {
             IntBase::Dec => mk().int_unsuffixed_lit(val),
             IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
@@ -35,6 +47,7 @@ impl<'c> Translation<'c> {
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId, is_negated: bool) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
+            CLiteral::Integer(_, _) if ty_kind.is_enum() => true,
             CLiteral::Integer(value, _) if ty_kind.is_integral_type() && !ty_kind.is_bool() => {
                 ty_kind.guaranteed_integer_in_range(value)
                     && (!is_negated || ty_kind.is_signed_integral_type())
