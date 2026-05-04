@@ -2,13 +2,11 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
-use crate::c_ast::CUnOp;
 use crate::{
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, Translation},
     with_stmts::WithStmts,
-    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
-    CTypeKind, ConstIntExpr,
+    CDeclKind, CEnumConstantId, CEnumId, CQualTypeId, CTypeId, CTypeKind, ConstIntExpr,
 };
 
 impl<'c> Translation<'c> {
@@ -78,34 +76,15 @@ impl<'c> Translation<'c> {
     pub fn convert_cast_to_enum(
         &self,
         enum_type_id: CTypeId,
-        expr: Option<CExprId>,
         val: Box<Expr>,
     ) -> TranslationResult<Box<Expr>> {
-        if let Some(expr) = expr {
-            match self.ast_context[expr].kind {
-                CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                    return Ok(self.enum_for_i64(enum_type_id, i as i64));
-                }
-
-                CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
-                    if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
-                        &self.ast_context[subexpr_id].kind
-                    {
-                        return Ok(self.enum_for_i64(enum_type_id, -(i as i64)));
-                    }
-                }
-
-                _ => {}
-            }
-        }
-
         let target_ty = self.convert_type(enum_type_id)?;
         Ok(mk().cast_expr(val, target_ty))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it converts a number to the enum type.
-    fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
+    pub fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
         let enum_id = match self.ast_context.resolve_type(enum_type_id).kind {
             CTypeKind::Enum(enum_id) => enum_id,
             _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
