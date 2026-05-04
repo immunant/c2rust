@@ -3211,25 +3211,6 @@ impl<'c> Translation<'c> {
             ImplicitCast(ty, expr, kind, opt_field_id, _)
             | ExplicitCast(ty, expr, kind, opt_field_id, _) => {
                 let is_explicit = matches!(expr_kind, CExprKind::ExplicitCast(..));
-                // A reference must be decayed if a bitcast is required. Const casts in
-                // LLVM 8 are now NoOp casts, so we need to include it as well.
-                match kind {
-                    CastKind::IntegralToBoolean
-                    | CastKind::FloatingToBoolean
-                    | CastKind::PointerToBoolean => {
-                        return self.convert_condition(ctx, true, expr);
-                    }
-                    CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
-                        ctx.decay_ref = DecayRef::Yes
-                    }
-                    CastKind::ArrayToPointerDecay
-                    | CastKind::FunctionToPointerDecay
-                    | CastKind::BuiltinFnToFnPtr => {
-                        ctx.needs_address = true;
-                    }
-                    _ => {}
-                }
-
                 let target_ty = override_ty.unwrap_or(ty);
 
                 // In general, if we are casting the result of an expression, then the inner
@@ -3239,6 +3220,26 @@ impl<'c> Translation<'c> {
                 // expecting, and then we can skip the cast entirely.
                 if self.can_propagate_cast(expr, target_ty, is_explicit) {
                     return self.convert_expr(ctx, expr, Some(target_ty));
+                }
+
+                match kind {
+                    CastKind::IntegralToBoolean
+                    | CastKind::FloatingToBoolean
+                    | CastKind::PointerToBoolean => {
+                        return self.convert_condition(ctx, true, expr);
+                    }
+
+                    // A reference must be decayed if a bitcast is required. Const casts in
+                    // LLVM 8 are now NoOp casts, so we need to include it as well.
+                    CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
+                        ctx.decay_ref = DecayRef::Yes
+                    }
+                    CastKind::ArrayToPointerDecay
+                    | CastKind::FunctionToPointerDecay
+                    | CastKind::BuiltinFnToFnPtr => {
+                        ctx.needs_address = true;
+                    }
+                    _ => {}
                 }
 
                 let mut val = self.convert_expr(ctx, expr, None)?;
