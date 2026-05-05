@@ -2,6 +2,7 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
+use crate::c_ast::iterators::SomeId;
 use crate::c_ast::CUnOp;
 use crate::{
     diagnostics::TranslationResult,
@@ -46,8 +47,6 @@ impl<'c> Translation<'c> {
     pub fn convert_enum_constant(
         &self,
         enum_constant_id: CEnumConstantId,
-        span: Span,
-        value: ConstIntExpr,
     ) -> TranslationResult<ConvertedDecl> {
         let name = self
             .renamer
@@ -62,15 +61,29 @@ impl<'c> Translation<'c> {
             .expect("Enums should already be renamed");
 
         let ty = mk().ident_ty(enum_name);
-        let val = match value {
-            ConstIntExpr::I(value) => signed_int_expr(value),
-            ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
-        };
-        let init = self.enum_constructor_expr(enum_id, val);
+        let (span, init) = self.make_enum_constant_init(enum_constant_id);
 
         Ok(ConvertedDecl::Item(
             mk().span(span).pub_().const_item(name, ty, init),
         ))
+    }
+
+    fn make_enum_constant_init(&self, enum_constant_id: CEnumConstantId) -> (Span, Box<Expr>) {
+        let value = match self.ast_context[enum_constant_id].kind {
+            CDeclKind::EnumConstant { value, .. } => value,
+            _ => panic!("{:?} does not point to an enum variant", enum_constant_id),
+        };
+        let value_rs = match value {
+            ConstIntExpr::I(value) => signed_int_expr(value),
+            ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
+        };
+        let enum_id = self.ast_context.parents[&enum_constant_id];
+        let init = self.enum_constructor_expr(enum_id, value_rs);
+        let span = self
+            .get_span(SomeId::Decl(enum_constant_id))
+            .unwrap_or_else(Span::call_site);
+
+        (span, init)
     }
 
     pub fn convert_enum_zero_initializer(&self, enum_id: CEnumId) -> WithStmts<Box<Expr>> {

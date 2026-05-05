@@ -1931,7 +1931,7 @@ impl<'c> Translation<'c> {
                 ..
             } => self.convert_enum(decl_id, span, integral_type),
 
-            EnumConstant { value, .. } => self.convert_enum_constant(decl_id, span, value),
+            EnumConstant { .. } => self.convert_enum_constant(decl_id),
 
             // We can allow non top level function declarations (i.e. extern
             // declarations) without any problem. Clang doesn't support nested
