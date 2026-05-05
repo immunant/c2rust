@@ -7,8 +7,8 @@ use crate::{
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
     with_stmts::WithStmts,
-    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId,
-    CTypeKind, ConstIntExpr,
+    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeKind,
+    ConstIntExpr,
 };
 
 impl<'c> Translation<'c> {
@@ -59,8 +59,8 @@ impl<'c> Translation<'c> {
         ))
     }
 
-    pub fn convert_enum_zero_initializer(&self, type_id: CTypeId) -> WithStmts<Box<Expr>> {
-        WithStmts::new_val(self.enum_for_i64(type_id, 0))
+    pub fn convert_enum_zero_initializer(&self, enum_id: CEnumId) -> WithStmts<Box<Expr>> {
+        WithStmts::new_val(self.enum_for_i64(enum_id, 0))
     }
 
     /// Translates a `DeclRef` for an `EnumConstant`.
@@ -97,7 +97,6 @@ impl<'c> Translation<'c> {
     pub fn convert_cast_to_enum(
         &self,
         ctx: ExprContext,
-        enum_type_id: CQualTypeId,
         enum_id: CEnumId,
         expr: Option<CExprId>,
         mut val: Box<Expr>,
@@ -122,7 +121,7 @@ impl<'c> Translation<'c> {
                 }
 
                 CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                    val = self.enum_for_i64(enum_type_id.ctype, i as i64);
+                    val = self.enum_for_i64(enum_id, i as i64);
                     return Ok(WithStmts::new_val(val));
                 }
 
@@ -130,7 +129,7 @@ impl<'c> Translation<'c> {
                     if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
                         &self.ast_context[subexpr_id].kind
                     {
-                        val = self.enum_for_i64(enum_type_id.ctype, -(i as i64));
+                        val = self.enum_for_i64(enum_id, -(i as i64));
                         return Ok(WithStmts::new_val(val));
                     }
                 }
@@ -139,20 +138,14 @@ impl<'c> Translation<'c> {
             }
         }
 
-        let target_ty = self.convert_type(enum_type_id.ctype)?;
-        val = mk().cast_expr(val, target_ty);
+        val = self.enum_constructor_expr(enum_id, val);
 
         Ok(WithStmts::new_val(val))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
     /// variant directly, otherwise it converts a number to the enum type.
-    fn enum_for_i64(&self, enum_type_id: CTypeId, value: i64) -> Box<Expr> {
-        let enum_id = match self.ast_context.resolve_type(enum_type_id).kind {
-            CTypeKind::Enum(enum_id) => enum_id,
-            _ => panic!("{:?} does not point to an `enum` type", enum_type_id),
-        };
-
+    fn enum_for_i64(&self, enum_id: CEnumId, value: i64) -> Box<Expr> {
         if let Some(enum_constant_id) = self.enum_variant_for_i64(enum_id, value) {
             return self.enum_constant_expr(enum_constant_id);
         }
@@ -164,8 +157,7 @@ impl<'c> Translation<'c> {
             _ => signed_int_expr(value),
         };
 
-        let target_ty = self.convert_type(enum_type_id).unwrap();
-        mk().cast_expr(value, target_ty)
+        self.enum_constructor_expr(enum_id, value)
     }
 
     /// Returns the id of the variant of `enum_id` whose value matches `value`, if any.
@@ -190,6 +182,17 @@ impl<'c> Translation<'c> {
         let name = self.renamer.borrow().get(&enum_constant_id).unwrap();
         self.add_import(enum_constant_id, &name);
         mk().ident_expr(name)
+    }
+
+    fn enum_constructor_expr(&self, enum_id: CEnumId, value: Box<Expr>) -> Box<Expr> {
+        let enum_name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(enum_id)
+            .unwrap();
+        self.add_import(enum_id, &enum_name);
+
+        mk().cast_expr(value, mk().ident_ty(enum_name))
     }
 
     fn is_variant_of_enum(&self, enum_id: CEnumId, enum_constant_id: CEnumConstantId) -> bool {
