@@ -25,6 +25,15 @@ impl<'c> Translation<'c> {
             .expect("Enums should already be renamed");
         let integral_type_rs = self.convert_type(integral_type.ctype)?;
         let item = match self.tcfg.enum_mode {
+            EnumMode::NewType => {
+                let field = mk().pub_().enum_field(integral_type_rs);
+                mk().span(span)
+                    .call_attr("derive", vec!["Clone", "Copy"])
+                    .call_attr("repr", vec!["transparent"])
+                    .pub_()
+                    .struct_item(enum_name, vec![field], true)
+            }
+
             EnumMode::Consts => mk()
                 .span(span)
                 .pub_()
@@ -51,16 +60,16 @@ impl<'c> Translation<'c> {
             .borrow()
             .resolve_decl_name(enum_id)
             .expect("Enums should already be renamed");
-        self.add_import(enum_id, &enum_name);
 
         let ty = mk().ident_ty(enum_name);
         let val = match value {
             ConstIntExpr::I(value) => signed_int_expr(value),
             ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
         };
+        let init = self.enum_constructor_expr(enum_id, val);
 
         Ok(ConvertedDecl::Item(
-            mk().span(span).pub_().const_item(name, ty, val),
+            mk().span(span).pub_().const_item(name, ty, init),
         ))
     }
 
@@ -88,8 +97,14 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         enum_id: CEnumId,
         target_cty: CQualTypeId,
-        val: Box<Expr>,
+        mut val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        match self.tcfg.enum_mode {
+            // First extract the enum's inner type...
+            EnumMode::NewType => val = self.integer_from_enum(val),
+            EnumMode::Consts => {}
+        }
+
         // Cast from the enum's integral type to the expected integral type.
         let source_cty = self.enum_integral_type(enum_id);
         self.convert_cast(
@@ -103,12 +118,15 @@ impl<'c> Translation<'c> {
         )
     }
 
-    /// Translate a cast where the target type is an `enum` type.
-    ///
-    /// When translating variable references to `EnumConstant`s, we always insert casts to the
-    /// expected type. In C, `EnumConstant`s have some integral type, _not_ the enum type. However,
-    /// if we then immediately have a cast to convert this variable back into an enum type, we would
-    /// like to produce Rust with _no_ casts. This function handles this simplification.
+    /// Gets the inner integral value of an enum value.
+    pub fn integer_from_enum(&self, val: Box<Expr>) -> Box<Expr> {
+        match self.tcfg.enum_mode {
+            EnumMode::NewType => mk().anon_field_expr(val, 0),
+            EnumMode::Consts => val,
+        }
+    }
+
+    /// Translates a cast where the target type is an `enum` type.
     pub fn convert_cast_to_enum(
         &self,
         ctx: ExprContext,
@@ -163,6 +181,12 @@ impl<'c> Translation<'c> {
                 return Ok(WithStmts::new_val(val));
             }
 
+            match self.tcfg.enum_mode {
+                // Enum-to-enum casts need to be translated via the inner value as an intermediate.
+                EnumMode::NewType => val = self.integer_from_enum(val),
+                EnumMode::Consts => {}
+            }
+
             source_cty = self.enum_integral_type(source_enum_id);
         }
 
@@ -170,6 +194,12 @@ impl<'c> Translation<'c> {
         let mut val = WithStmts::new_val(val);
 
         match self.tcfg.enum_mode {
+            EnumMode::NewType => {
+                val =
+                    self.convert_cast(ctx, source_cty, enum_integral_type, val, None, None, None)?;
+                val = val.map(|val| self.enum_constructor_expr(enum_id, val));
+            }
+
             EnumMode::Consts => {
                 let source_type_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
                 let enum_integral_type_kind =
@@ -234,6 +264,7 @@ impl<'c> Translation<'c> {
         self.add_import(enum_id, &enum_name);
 
         match self.tcfg.enum_mode {
+            EnumMode::NewType => mk().call_expr(mk().ident_expr(enum_name), vec![value]),
             EnumMode::Consts => mk().cast_expr(value, mk().ident_ty(enum_name)),
         }
     }
