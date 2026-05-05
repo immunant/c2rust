@@ -4100,7 +4100,6 @@ impl<'c> Translation<'c> {
                 field.map(|field| mk().struct_expr(vec![name], vec![field]))
             }
 
-            // Transmute the number `0` into the enum type
             CDeclKind::Enum { .. } => self.convert_enum_zero_initializer(decl_id),
 
             _ => {
@@ -4205,7 +4204,7 @@ impl<'c> Translation<'c> {
             }
 
             let val = if ty.is_enum() {
-                mk().cast_expr(val, mk().path_ty(vec!["u64"]))
+                self.integer_from_enum(val)
             } else {
                 val
             };
@@ -4530,5 +4529,6 @@ fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnumMode {
+    NewType,
     Consts,
 }

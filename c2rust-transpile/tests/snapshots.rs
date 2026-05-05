@@ -67,7 +67,7 @@ fn config(edition: RustEdition) -> TranspilerConfig {
                 .unwrap()
                 .to_path_buf(),
         ),
-        enum_mode: EnumMode::Consts,
+        enum_mode: EnumMode::NewType,
     }
 }
 
