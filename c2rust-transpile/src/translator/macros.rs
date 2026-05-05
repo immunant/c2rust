@@ -177,7 +177,7 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to expand it yet.
             None => {
-                self.convert_decl(ctx, *macro_id)?;
+                self.convert_decl(ctx.not_pattern(), *macro_id)?;
                 if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
                     expansion.ty
                 } else {

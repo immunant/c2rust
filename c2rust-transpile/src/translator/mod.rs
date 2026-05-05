@@ -127,6 +127,10 @@ pub struct ExprContext {
     /// translation.
     is_const: bool,
 
+    /// In a context where a pattern is expected, such as for `match` arms.
+    /// This restricts what kinds of expressions can be emitted.
+    is_pattern: bool,
+
     /// Evaluating a C global/static variable.
     /// This is usually in a const context, but doesn't have to be, for example with initializers
     /// that are executed by the `c2rust_run_static_initializers` function.
@@ -177,6 +181,18 @@ impl ExprContext {
     pub fn not_const(self) -> Self {
         ExprContext {
             is_const: false,
+            ..self
+        }
+    }
+    pub fn pattern(self) -> Self {
+        ExprContext {
+            is_pattern: true,
+            ..self
+        }
+    }
+    pub fn not_pattern(self) -> Self {
+        ExprContext {
+            is_pattern: false,
             ..self
         }
     }
@@ -688,8 +704,9 @@ pub fn translate(
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
-        is_static: false,
         is_const: false,
+        is_pattern: false,
+        is_static: false,
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
@@ -3006,6 +3023,17 @@ impl<'c> Translation<'c> {
             {
                 return Ok(converted);
             }
+        }
+
+        if ctx.is_pattern
+            && !matches!(
+                expr_kind,
+                CExprKind::Paren(..) | CExprKind::ConstantExpr(..) | CExprKind::Literal(..)
+            )
+        {
+            return Err(TranslationError::generic(
+                "expr kind is not supported in patterns",
+            ));
         }
 
         use CExprKind::*;
