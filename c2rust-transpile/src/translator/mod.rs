@@ -3211,6 +3211,7 @@ impl<'c> Translation<'c> {
 
             OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => Ok(WithStmts::new_val(self.mk_int_lit(
+                    ctx,
                     override_ty.unwrap_or(ty),
                     *val,
                     IntBase::Dec,
