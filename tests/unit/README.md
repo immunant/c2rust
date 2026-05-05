@@ -66,7 +66,7 @@ $ ./scripts/test_translator.py --keep=all                 tests/unit
 $ ./scripts/test_translator.py --help
 ```
 
-*Note*: The tests executed by `test_translator.py` can also be invoked simply by running `cargo nextest run` in the main c2rust workspace. `cargo nextest run` even ensures that the repo tests use the latest version of `c2rust-transpile` binary
+*Note*: The tests in [`tests/unit`](../tests/unit) can also be executed by running `cargo nextest run` in the main c2rust workspace.
 
 ## What happens under the hood
 
