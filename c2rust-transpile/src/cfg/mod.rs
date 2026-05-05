@@ -1861,8 +1861,9 @@ impl CfgBuilder {
                 let branch = match translator.ast_context.index(resolved).kind {
                     CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
                         match translator
-                            .convert_expr(ctx.used(), resolved, None)?
-                            .to_pure_expr()
+                            .convert_expr(ctx.used(), resolved, None)
+                            .ok()
+                            .and_then(WithStmts::to_pure_expr)
                         {
                             Some(expr) => match *expr {
                                 Expr::Lit(lit) => Some(mk().lit_pat(lit.lit)),
