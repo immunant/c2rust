@@ -5,7 +5,7 @@ use syn::Expr;
 use crate::c_ast::CUnOp;
 use crate::{
     diagnostics::TranslationResult,
-    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
+    translator::{signed_int_expr, ConvertedDecl, EnumMode, ExprContext, Translation},
     with_stmts::WithStmts,
     CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeKind,
     ConstIntExpr,
@@ -23,10 +23,15 @@ impl<'c> Translation<'c> {
             .borrow()
             .resolve_decl_name(enum_id)
             .expect("Enums should already be renamed");
-        let ty = self.convert_type(integral_type.ctype)?;
-        Ok(ConvertedDecl::Item(
-            mk().span(span).pub_().type_item(enum_name, ty),
-        ))
+        let integral_type_rs = self.convert_type(integral_type.ctype)?;
+        let item = match self.tcfg.enum_mode {
+            EnumMode::Consts => mk()
+                .span(span)
+                .pub_()
+                .type_item(enum_name, integral_type_rs),
+        };
+
+        Ok(ConvertedDecl::Item(item))
     }
 
     pub fn convert_enum_constant(
@@ -163,11 +168,17 @@ impl<'c> Translation<'c> {
 
         let enum_integral_type = self.enum_integral_type(enum_id);
         let mut val = WithStmts::new_val(val);
-        let source_type_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
-        let enum_integral_type_kind = &self.ast_context.resolve_type(enum_integral_type.ctype).kind;
 
-        if source_type_kind != enum_integral_type_kind {
-            val = val.map(|val| self.enum_constructor_expr(enum_id, val));
+        match self.tcfg.enum_mode {
+            EnumMode::Consts => {
+                let source_type_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
+                let enum_integral_type_kind =
+                    &self.ast_context.resolve_type(enum_integral_type.ctype).kind;
+
+                if source_type_kind != enum_integral_type_kind {
+                    val = val.map(|val| self.enum_constructor_expr(enum_id, val));
+                }
+            }
         }
 
         Ok(val)
@@ -222,7 +233,9 @@ impl<'c> Translation<'c> {
             .unwrap();
         self.add_import(enum_id, &enum_name);
 
-        mk().cast_expr(value, mk().ident_ty(enum_name))
+        match self.tcfg.enum_mode {
+            EnumMode::Consts => mk().cast_expr(value, mk().ident_ty(enum_name)),
+        }
     }
 
     fn is_variant_of_enum(&self, enum_id: CEnumId, enum_constant_id: CEnumConstantId) -> bool {
