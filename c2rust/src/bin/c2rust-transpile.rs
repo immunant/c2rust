@@ -4,7 +4,7 @@ use regex::Regex;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
 use c2rust_rust_tools::RustEdition;
-use c2rust_transpile::{Diagnostic, ReplaceMode, TranspilerConfig};
+use c2rust_transpile::{Diagnostic, EnumMode, ReplaceMode, TranspilerConfig};
 
 #[derive(Debug, Parser)]
 #[clap(
@@ -326,6 +326,7 @@ fn main() {
         log_level: args.log_level,
         edition: args.edition,
         deny_unsafe_op_in_unsafe_fn: args.deny_unsafe_op_in_unsafe_fn,
+        enum_mode: EnumMode::NewType,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {
