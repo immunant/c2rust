@@ -34,7 +34,7 @@ use std::ops::Index;
 use std::rc::Rc;
 use std::{fmt, io};
 use syn::Lit;
-use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
+use syn::{punctuated::Punctuated, spanned::Spanned, Arm, Expr, Pat, Stmt};
 
 use failure::format_err;
 use indexmap::indexset;
@@ -1949,11 +1949,7 @@ impl CfgBuilder {
                         val.to_pure_expr()
                             .ok_or_else(|| ("to_pure_expr", "".to_string()))
                     })
-                    .and_then(|expr| match *expr {
-                        Expr::Lit(lit) => Ok(mk().lit_pat(lit.lit)),
-                        Expr::Path(path) => Ok(mk().path_pat(path.path, path.qself)),
-                        _ => Err(("match", "wrong Expr".to_string())),
-                    })
+                    .and_then(|expr| expr_to_pat(*expr).map_err(|err| ("expr_to_pat", err)))
                     .unwrap_or_else(|(src, err)| {
                         log::trace!(
                             "Converting `case` {:?} failed in {}: {}",
@@ -2422,4 +2418,174 @@ impl Cfg<Label, StmtOrDecl> {
 
         Ok(())
     }
+}
+
+fn expr_to_pat(expr: Expr) -> Result<Pat, String> {
+    use syn::{
+        ExprArray, ExprCall, ExprLit, ExprParen, ExprPath, ExprReference, ExprStruct, ExprTuple,
+        ExprUnary, FieldPat, FieldValue, LitInt, PatLit, PatParen, PatPath, PatReference, PatSlice,
+        PatStruct, PatTuple, PatTupleStruct, UnOp,
+    };
+
+    match expr {
+        Expr::Array(ExprArray {
+            attrs,
+            bracket_token,
+            elems,
+        }) => {
+            let elems = punctuated_expr_to_pat(elems)?;
+
+            Ok(Pat::Slice(PatSlice {
+                attrs,
+                bracket_token,
+                elems,
+            }))
+        }
+
+        Expr::Call(ExprCall {
+            attrs,
+            func,
+            paren_token,
+            args,
+        }) => {
+            let (qself, path) = match *func {
+                Expr::Path(ExprPath { qself, path, .. }) => (qself, path),
+                _ => return Err("`ExprCall::func` is not an `ExprPath`".into()),
+            };
+            let elems = punctuated_expr_to_pat(args)?;
+
+            Ok(Pat::TupleStruct(PatTupleStruct {
+                attrs,
+                qself,
+                path,
+                paren_token,
+                elems,
+            }))
+        }
+
+        Expr::Lit(ExprLit { attrs, lit }) => Ok(Pat::Lit(PatLit { attrs, lit })),
+
+        Expr::Paren(ExprParen {
+            attrs,
+            paren_token,
+            expr,
+        }) => {
+            let pat = Box::new(expr_to_pat(*expr)?);
+            Ok(Pat::Paren(PatParen {
+                attrs,
+                paren_token,
+                pat,
+            }))
+        }
+
+        Expr::Path(ExprPath { attrs, qself, path }) => {
+            Ok(Pat::Path(PatPath { attrs, qself, path }))
+        }
+
+        Expr::Range(range) => Ok(Pat::Range(range)),
+
+        Expr::Reference(ExprReference {
+            attrs,
+            and_token,
+            mutability,
+            expr,
+        }) => {
+            let pat = Box::new(expr_to_pat(*expr)?);
+
+            Ok(Pat::Reference(PatReference {
+                attrs,
+                and_token,
+                mutability,
+                pat,
+            }))
+        }
+
+        Expr::Struct(ExprStruct {
+            attrs,
+            qself,
+            path,
+            brace_token,
+            fields,
+            dot2_token: None,
+            rest: None,
+        }) => {
+            let fields = fields
+                .into_iter()
+                .map(|field| {
+                    let FieldValue {
+                        attrs,
+                        member,
+                        colon_token,
+                        expr,
+                    } = field;
+                    let pat = Box::new(expr_to_pat(expr)?);
+
+                    Ok(FieldPat {
+                        attrs,
+                        member,
+                        colon_token,
+                        pat,
+                    })
+                })
+                .collect::<Result<_, String>>()?;
+
+            Ok(Pat::Struct(PatStruct {
+                attrs,
+                qself,
+                path,
+                brace_token,
+                fields,
+                rest: None,
+            }))
+        }
+
+        Expr::Tuple(ExprTuple {
+            attrs,
+            paren_token,
+            elems,
+        }) => {
+            let elems = punctuated_expr_to_pat(elems)?;
+
+            Ok(Pat::Tuple(PatTuple {
+                attrs,
+                paren_token,
+                elems,
+            }))
+        }
+
+        // There is no equivalent `PatUnary`, but the negative sign can be folded into the literal.
+        Expr::Unary(ExprUnary {
+            attrs,
+            op: UnOp::Neg(_),
+            expr,
+        }) => {
+            let Expr::Lit(ExprLit {
+                attrs: _,
+                lit: Lit::Int(lit_int),
+            }) = *expr else {
+                return Err("`ExprUnary::expr` is not an `ExprLit` with `lit: Lit::Int`".into());
+            };
+
+            let repr = format!("-{}{}", lit_int.base10_digits(), lit_int.suffix());
+            let lit = Lit::Int(LitInt::new(&repr, lit_int.span()));
+            Ok(Pat::Lit(PatLit { attrs, lit }))
+        }
+
+        _ => Err("`Expr` with no equivalent `Pat`".into()),
+    }
+}
+
+fn punctuated_expr_to_pat(
+    elems: Punctuated<Expr, syn::Token![,]>,
+) -> Result<Punctuated<Pat, syn::Token![,]>, String> {
+    use syn::punctuated::Pair;
+
+    elems
+        .into_pairs()
+        .map(|pair| {
+            let (expr, token) = pair.into_tuple();
+            let pat = expr_to_pat(expr)?;
+            Ok(Pair::new(pat, token))
+        })
+        .collect()
 }
