@@ -624,9 +624,7 @@ impl<'c> Translation<'c> {
             let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
 
             if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-                val.and_then_try(|val| {
-                    self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
-                })
+                val.and_then_try(|val| self.convert_cast_to_enum(ctx, enum_decl_id, expr, val))
             } else {
                 Ok(val.map(|val| mk().cast_expr(val, target_type_rs)))
             }
