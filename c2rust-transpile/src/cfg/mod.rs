@@ -34,7 +34,7 @@ use std::ops::Index;
 use std::rc::Rc;
 use std::{fmt, io};
 use syn::Lit;
-use syn::{spanned::Spanned, Arm, Expr, Pat, Stmt};
+use syn::{punctuated::Punctuated, spanned::Spanned, Arm, Expr, Pat, Stmt};
 
 use failure::format_err;
 use indexmap::indexset;
@@ -1859,20 +1859,11 @@ impl CfgBuilder {
                 // Case
                 let resolved = translator.ast_context.unwrap_cast_expr(case_expr);
                 let branch = match translator.ast_context.index(resolved).kind {
-                    CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
-                        match translator
-                            .convert_expr(ctx.const_().pattern().used(), resolved, None)
-                            .ok()
-                            .and_then(WithStmts::to_pure_expr)
-                        {
-                            Some(expr) => match *expr {
-                                Expr::Lit(lit) => Some(mk().lit_pat(lit.lit)),
-                                Expr::Path(path) => Some(mk().path_pat(path.path, path.qself)),
-                                _ => None,
-                            },
-                            _ => None,
-                        }
-                    }
+                    CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => translator
+                        .convert_expr(ctx.const_().pattern().used(), resolved, None)
+                        .ok()
+                        .and_then(WithStmts::to_pure_expr)
+                        .and_then(|expr| expr_to_pat(*expr)),
                     _ => None,
                 };
 
@@ -2317,4 +2308,174 @@ impl Cfg<Label, StmtOrDecl> {
 
         Ok(())
     }
+}
+
+fn expr_to_pat(expr: Expr) -> Option<Pat> {
+    use syn::{
+        ExprArray, ExprCall, ExprLit, ExprParen, ExprPath, ExprReference, ExprStruct, ExprTuple,
+        ExprUnary, FieldPat, FieldValue, LitInt, PatLit, PatParen, PatPath, PatReference, PatSlice,
+        PatStruct, PatTuple, PatTupleStruct, UnOp,
+    };
+
+    match expr {
+        Expr::Array(ExprArray {
+            attrs,
+            bracket_token,
+            elems,
+        }) => {
+            let elems = punctuated_expr_to_pat(elems)?;
+
+            Some(Pat::Slice(PatSlice {
+                attrs,
+                bracket_token,
+                elems,
+            }))
+        }
+
+        Expr::Call(ExprCall {
+            attrs,
+            func,
+            paren_token,
+            args,
+        }) => {
+            let (qself, path) = match *func {
+                Expr::Path(ExprPath { qself, path, .. }) => (qself, path),
+                _ => return None,
+            };
+            let elems = punctuated_expr_to_pat(args)?;
+
+            Some(Pat::TupleStruct(PatTupleStruct {
+                attrs,
+                qself,
+                path,
+                paren_token,
+                elems,
+            }))
+        }
+
+        Expr::Lit(ExprLit { attrs, lit }) => Some(Pat::Lit(PatLit { attrs, lit })),
+
+        Expr::Paren(ExprParen {
+            attrs,
+            paren_token,
+            expr,
+        }) => {
+            let pat = Box::new(expr_to_pat(*expr)?);
+            Some(Pat::Paren(PatParen {
+                attrs,
+                paren_token,
+                pat,
+            }))
+        }
+
+        Expr::Path(ExprPath { attrs, qself, path }) => {
+            Some(Pat::Path(PatPath { attrs, qself, path }))
+        }
+
+        Expr::Range(range) => Some(Pat::Range(range)),
+
+        Expr::Reference(ExprReference {
+            attrs,
+            and_token,
+            mutability,
+            expr,
+        }) => {
+            let pat = Box::new(expr_to_pat(*expr)?);
+
+            Some(Pat::Reference(PatReference {
+                attrs,
+                and_token,
+                mutability,
+                pat,
+            }))
+        }
+
+        Expr::Struct(ExprStruct {
+            attrs,
+            qself,
+            path,
+            brace_token,
+            fields,
+            dot2_token: None,
+            rest: None,
+        }) => {
+            let fields = fields
+                .into_iter()
+                .map(|field| {
+                    let FieldValue {
+                        attrs,
+                        member,
+                        colon_token,
+                        expr,
+                    } = field;
+                    let pat = Box::new(expr_to_pat(expr)?);
+
+                    Some(FieldPat {
+                        attrs,
+                        member,
+                        colon_token,
+                        pat,
+                    })
+                })
+                .collect::<Option<_>>()?;
+
+            Some(Pat::Struct(PatStruct {
+                attrs,
+                qself,
+                path,
+                brace_token,
+                fields,
+                rest: None,
+            }))
+        }
+
+        Expr::Tuple(ExprTuple {
+            attrs,
+            paren_token,
+            elems,
+        }) => {
+            let elems = punctuated_expr_to_pat(elems)?;
+
+            Some(Pat::Tuple(PatTuple {
+                attrs,
+                paren_token,
+                elems,
+            }))
+        }
+
+        // There is no equivalent `PatUnary`, but the negative sign can be folded into the literal.
+        Expr::Unary(ExprUnary {
+            attrs,
+            op: UnOp::Neg(_),
+            expr,
+        }) => {
+            let Expr::Lit(ExprLit {
+                attrs: _,
+                lit: Lit::Int(lit_int),
+            }) = *expr else {
+                return None
+            };
+
+            let repr = format!("-{}{}", lit_int.base10_digits(), lit_int.suffix());
+            let lit = Lit::Int(LitInt::new(&repr, lit_int.span()));
+            Some(Pat::Lit(PatLit { attrs, lit }))
+        }
+
+        _ => None,
+    }
+}
+
+fn punctuated_expr_to_pat(
+    elems: Punctuated<Expr, syn::Token![,]>,
+) -> Option<Punctuated<Pat, syn::Token![,]>> {
+    use syn::punctuated::Pair;
+
+    elems
+        .into_pairs()
+        .map(|pair| {
+            let (expr, token) = pair.into_tuple();
+            let pat = expr_to_pat(expr)?;
+            Some(Pair::new(pat, token))
+        })
+        .collect()
 }
