@@ -10,8 +10,7 @@ use c2rust_rust_tools::RustEdition;
 use c2rust_rust_tools::RustEdition::Edition2021;
 use c2rust_rust_tools::RustEdition::Edition2024;
 use c2rust_transpile::renamer::RUST_KEYWORDS;
-use c2rust_transpile::ReplaceMode;
-use c2rust_transpile::TranspilerConfig;
+use c2rust_transpile::{EnumMode, ReplaceMode, TranspilerConfig};
 use itertools::Itertools;
 
 fn config(edition: RustEdition) -> TranspilerConfig {
@@ -67,6 +66,7 @@ fn config(edition: RustEdition) -> TranspilerConfig {
                 .unwrap()
                 .to_path_buf(),
         ),
+        enum_mode: EnumMode::Consts,
     }
 }
 
