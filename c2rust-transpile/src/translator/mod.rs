@@ -2967,7 +2967,11 @@ impl<'c> Translation<'c> {
         if ctx.is_pattern
             && !matches!(
                 expr_kind,
-                CExprKind::Paren(..) | CExprKind::ConstantExpr(..) | CExprKind::Literal(..)
+                CExprKind::Paren(..)
+                    | CExprKind::ConstantExpr(..)
+                    | CExprKind::Literal(..)
+                    | CExprKind::ImplicitCast(..)
+                    | CExprKind::ExplicitCast(..)
             )
         {
             return Err(TranslationError::generic(
@@ -3701,6 +3705,12 @@ impl<'c> Translation<'c> {
 
         if source_ty_kind == target_ty_kind && kind != CastKind::LValueToRValue {
             return Ok(val);
+        }
+
+        if ctx.is_pattern && !matches!(kind, CastKind::ToVoid | CastKind::ConstCast) {
+            return Err(TranslationError::generic(
+                "cast kind is not supported in patterns",
+            ));
         }
 
         match kind {
