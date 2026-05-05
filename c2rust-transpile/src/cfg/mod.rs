@@ -1942,7 +1942,7 @@ impl CfgBuilder {
                 let pat = result
                     .and_then(|_| {
                         translator
-                            .convert_expr(ctx.used(), resolved, None)
+                            .convert_expr(ctx.const_().pattern().used(), resolved, None)
                             .map_err(|err| ("convert_expr", err.to_string()))
                     })
                     .and_then(|val| {
