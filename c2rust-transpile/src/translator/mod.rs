@@ -4364,3 +4364,8 @@ fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
 fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![])
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnumMode {
+    Consts,
+}
