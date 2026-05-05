@@ -326,7 +326,7 @@ fn main() {
         log_level: args.log_level,
         edition: args.edition,
         deny_unsafe_op_in_unsafe_fn: args.deny_unsafe_op_in_unsafe_fn,
-        enum_mode: EnumMode::Consts,
+        enum_mode: EnumMode::NewType,
     };
     // binaries imply emit-build-files
     if !tcfg.binaries.is_empty() {

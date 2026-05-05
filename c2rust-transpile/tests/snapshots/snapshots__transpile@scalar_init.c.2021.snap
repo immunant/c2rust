@@ -12,8 +12,10 @@ expression: cat tests/snapshots/scalar_init.2021.rs
     unused_mut
 )]
 #![feature(raw_ref_op)]
-pub type E = ::core::ffi::c_uint;
-pub const A: E = 0;
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct E(pub ::core::ffi::c_uint);
+pub const A: E = E(0);
 pub const true_0: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn scalar_init() {
