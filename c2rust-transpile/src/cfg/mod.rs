@@ -1857,23 +1857,16 @@ impl CfgBuilder {
                 self.add_wip_block(wip, Jump(this_label.clone()));
 
                 // Case
-                let resolved = translator.ast_context.unwrap_cast_expr(case_expr);
-                let branch = match translator.ast_context.index(resolved).kind {
-                    CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => translator
-                        .convert_expr(ctx.const_().pattern().used(), resolved, None)
-                        .ok()
-                        .and_then(WithStmts::to_pure_expr)
-                        .and_then(|expr| expr_to_pat(*expr)),
-                    _ => None,
-                };
-
-                let pat = match branch {
-                    Some(pat) => pat,
-                    None => match cie {
+                let expr = translator
+                    .convert_expr(ctx.const_().pattern().used(), case_expr, None)
+                    .ok()
+                    .and_then(WithStmts::to_pure_expr);
+                let pat = expr
+                    .and_then(|expr| expr_to_pat(*expr))
+                    .unwrap_or_else(|| match cie {
                         ConstIntExpr::U(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
                         ConstIntExpr::I(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
-                    },
-                };
+                    });
 
                 self.switch_expr_cases
                     .last_mut()

@@ -49,7 +49,7 @@ pub unsafe extern "C" fn test_enums() {
         == Bar0 as ::core::ffi::c_int as ::core::ffi::c_uint)
         as ::core::ffi::c_int;
     match foo as ::core::ffi::c_uint {
-        0 | 1 | 2 | 3 | 42 | 4294967254 | _ => {}
+        0 | FOO1_MACRO | 2 | 3 | 42 | 4294967254 | _ => {}
     }
     match bar as ::core::ffi::c_int {
         0 | BAR1_MACRO | 2 | 3 | -1 | 42 | -42 | _ => {}
