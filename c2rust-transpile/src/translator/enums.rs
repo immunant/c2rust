@@ -66,26 +66,36 @@ impl<'c> Translation<'c> {
     /// Translates a `DeclRef` for an `EnumConstant`.
     pub fn convert_enum_constant_decl_ref(
         &self,
+        ctx: ExprContext,
         enum_constant_id: CEnumConstantId,
         target_type_id: CQualTypeId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let enum_id = self.ast_context.parents[&enum_constant_id];
         let val = self.enum_constant_expr(enum_constant_id);
 
         // Add a cast to the expected integral type.
-        self.convert_cast_from_enum(target_type_id, val)
+        self.convert_cast_from_enum(ctx, enum_id, target_type_id, val)
     }
 
     /// Translate a cast where the source type, but not the target type, is an `enum` type.
     pub fn convert_cast_from_enum(
         &self,
+        ctx: ExprContext,
+        enum_id: CEnumId,
         target_cty: CQualTypeId,
-        mut val: Box<Expr>,
+        val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        // Convert it to the expected integral type.
-        let ty = self.convert_type(target_cty.ctype)?;
-        val = mk().cast_expr(val, ty);
-
-        Ok(WithStmts::new_val(val))
+        // Cast from the enum's integral type to the expected integral type.
+        let source_cty = self.enum_integral_type(enum_id);
+        self.convert_cast(
+            ctx,
+            source_cty,
+            target_cty,
+            WithStmts::new_val(val),
+            None,
+            None,
+            None,
+        )
     }
 
     /// Translate a cast where the target type is an `enum` type.
@@ -97,6 +107,7 @@ impl<'c> Translation<'c> {
     pub fn convert_cast_to_enum(
         &self,
         ctx: ExprContext,
+        mut source_cty: CQualTypeId,
         enum_id: CEnumId,
         expr: Option<CExprId>,
         mut val: Box<Expr>,
@@ -138,9 +149,28 @@ impl<'c> Translation<'c> {
             }
         }
 
-        val = self.enum_constructor_expr(enum_id, val);
+        // We could be casting from enum to enum...
+        if let CTypeKind::Enum(source_enum_id) =
+            self.ast_context.resolve_type(source_cty.ctype).kind
+        {
+            // Casting to ourselves, the audacity!
+            if source_enum_id == enum_id {
+                return Ok(WithStmts::new_val(val));
+            }
 
-        Ok(WithStmts::new_val(val))
+            source_cty = self.enum_integral_type(source_enum_id);
+        }
+
+        let enum_integral_type = self.enum_integral_type(enum_id);
+        let mut val = WithStmts::new_val(val);
+        let source_type_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
+        let enum_integral_type_kind = &self.ast_context.resolve_type(enum_integral_type.ctype).kind;
+
+        if source_type_kind != enum_integral_type_kind {
+            val = val.map(|val| self.enum_constructor_expr(enum_id, val));
+        }
+
+        Ok(val)
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum

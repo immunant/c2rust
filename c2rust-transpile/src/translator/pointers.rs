@@ -501,8 +501,8 @@ impl<'c> Translation<'c> {
                 val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
                 mk().cast_expr(val, target_ty)
             }))
-        } else if let &CTypeKind::Enum(..) = source_ty_kind {
-            val.and_then(|val| self.convert_cast_from_enum(target_cty, val))
+        } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
+            val.and_then(|val| self.convert_cast_from_enum(ctx, enum_id, target_cty, val))
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
@@ -534,7 +534,7 @@ impl<'c> Translation<'c> {
                 )))
             })
         } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-            val.and_then(|val| self.convert_cast_to_enum(ctx, enum_id, expr, val))
+            val.and_then(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, expr, val))
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
