@@ -19,7 +19,7 @@
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
 use crate::diagnostics::TranslationResult;
-use crate::rust_ast::SpanExt;
+use crate::rust_ast::{self, SpanExt};
 use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
 use std::collections::hash_map::DefaultHasher;
@@ -1949,10 +1949,8 @@ impl CfgBuilder {
                         val.to_pure_expr()
                             .ok_or_else(|| ("to_pure_expr", "".to_string()))
                     })
-                    .and_then(|expr| match *expr {
-                        Expr::Lit(lit) => Ok(mk().lit_pat(lit.lit)),
-                        Expr::Path(path) => Ok(mk().path_pat(path.path, path.qself)),
-                        _ => Err(("match", "wrong Expr".to_string())),
+                    .and_then(|expr| {
+                        rust_ast::expr_to_pat(*expr).map_err(|err| ("expr_to_pat", err))
                     })
                     .unwrap_or_else(|(src, err)| {
                         log::trace!(

@@ -5,6 +5,7 @@ pub mod traverse;
 
 pub use c2rust_ast_printer::pprust::BytePos;
 use proc_macro2::Span;
+use syn::{punctuated::Punctuated, Expr, Pat};
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -180,4 +181,180 @@ impl SpanExt for Span {
     fn inner(&self) -> (u32, u32) {
         get_inner(self)
     }
+}
+
+pub(crate) fn expr_to_pat(expr: Expr) -> Result<Pat, String> {
+    use syn::{
+        ExprArray, ExprCall, ExprLit, ExprParen, ExprPath, ExprReference, ExprStruct, ExprTuple,
+        ExprUnary, FieldPat, FieldValue, Lit, LitInt, PatLit, PatParen, PatReference, PatSlice,
+        PatStruct, PatTuple, PatTupleStruct, UnOp,
+    };
+
+    match expr {
+        Expr::Array(ExprArray {
+            attrs,
+            bracket_token,
+            elems,
+        }) => {
+            let elems = punctuated_expr_to_pat(elems)?;
+
+            Ok(Pat::Slice(PatSlice {
+                attrs,
+                bracket_token,
+                elems,
+            }))
+        }
+
+        Expr::Call(ExprCall {
+            attrs,
+            func,
+            paren_token,
+            args,
+        }) => {
+            let (qself, path) = match *func {
+                Expr::Path(ExprPath { qself, path, .. }) => (qself, path),
+                _ => return Err("`ExprCall::func` is not an `ExprPath`".into()),
+            };
+            let elems = punctuated_expr_to_pat(args)?;
+
+            Ok(Pat::TupleStruct(PatTupleStruct {
+                attrs,
+                qself,
+                path,
+                paren_token,
+                elems,
+            }))
+        }
+
+        // `PatLit` is aliased to `ExprLit`.
+        Expr::Lit(lit) => Ok(Pat::Lit(lit)),
+
+        Expr::Paren(ExprParen {
+            attrs,
+            paren_token,
+            expr,
+        }) => {
+            let pat = Box::new(expr_to_pat(*expr)?);
+            Ok(Pat::Paren(PatParen {
+                attrs,
+                paren_token,
+                pat,
+            }))
+        }
+
+        // `PatPath` is aliased to `ExprPath`.
+        Expr::Path(path) => Ok(Pat::Path(path)),
+
+        // `PatRange` is aliased to `ExprRange`.
+        Expr::Range(range) => Ok(Pat::Range(range)),
+
+        Expr::Reference(ExprReference {
+            attrs,
+            and_token,
+            mutability,
+            expr,
+        }) => {
+            let pat = Box::new(expr_to_pat(*expr)?);
+
+            Ok(Pat::Reference(PatReference {
+                attrs,
+                and_token,
+                mutability,
+                pat,
+            }))
+        }
+
+        Expr::Struct(ExprStruct {
+            attrs,
+            qself,
+            path,
+            brace_token,
+            fields,
+            dot2_token: None,
+            rest: None,
+        }) => {
+            let fields = fields
+                .into_iter()
+                .map(|field| {
+                    let FieldValue {
+                        attrs,
+                        member,
+                        colon_token,
+                        expr,
+                    } = field;
+                    let pat = Box::new(expr_to_pat(expr)?);
+
+                    Ok(FieldPat {
+                        attrs,
+                        member,
+                        colon_token,
+                        pat,
+                    })
+                })
+                .collect::<Result<_, String>>()?;
+
+            Ok(Pat::Struct(PatStruct {
+                attrs,
+                qself,
+                path,
+                brace_token,
+                fields,
+                rest: None,
+            }))
+        }
+
+        Expr::Tuple(ExprTuple {
+            attrs,
+            paren_token,
+            elems,
+        }) => {
+            let elems = punctuated_expr_to_pat(elems)?;
+
+            Ok(Pat::Tuple(PatTuple {
+                attrs,
+                paren_token,
+                elems,
+            }))
+        }
+
+        // There is no equivalent `PatUnary`, but the negative sign can be folded into the literal.
+        Expr::Unary(ExprUnary {
+            attrs,
+            op: UnOp::Neg(_),
+            expr,
+        }) => {
+            let Expr::Lit(ExprLit {
+                attrs: _,
+                lit: Lit::Int(lit_int),
+            }) = *expr else {
+                return Err("`ExprUnary::expr` is not an `ExprLit` with `lit: Lit::Int`".into());
+            };
+            let digits = lit_int.base10_digits();
+
+            if digits.starts_with('-') {
+                return Err("`Neg` of `Lit::Int` that also contains - sign".into());
+            }
+
+            let repr = format!("-{}{}", digits, lit_int.suffix());
+            let lit = Lit::Int(LitInt::new(&repr, lit_int.span()));
+            Ok(Pat::Lit(PatLit { attrs, lit }))
+        }
+
+        _ => Err("`Expr` with no equivalent `Pat`".into()),
+    }
+}
+
+pub(crate) fn punctuated_expr_to_pat(
+    elems: Punctuated<Expr, syn::Token![,]>,
+) -> Result<Punctuated<Pat, syn::Token![,]>, String> {
+    use syn::punctuated::Pair;
+
+    elems
+        .into_pairs()
+        .map(|pair| {
+            let (expr, token) = pair.into_tuple();
+            let pat = expr_to_pat(expr)?;
+            Ok(Pair::new(pat, token))
+        })
+        .collect()
 }
