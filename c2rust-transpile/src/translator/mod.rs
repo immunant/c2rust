@@ -769,7 +769,10 @@ pub fn translate(
                 Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
                 Typedef { ref name, .. } => Name::Type(name),
                 Function { ref name, .. } => Name::Var(name),
-                EnumConstant { ref name, .. } => Name::Var(name),
+                EnumConstant { ref name, .. } => match t.tcfg.enum_mode {
+                    EnumMode::NewType => Name::None,
+                    EnumMode::Consts => Name::Var(name),
+                },
                 Variable { ref ident, .. } if t.ast_context.c_decls_top.contains(&decl_id) => {
                     Name::Var(ident)
                 }
@@ -847,7 +850,6 @@ pub fn translate(
                 let needs_export = match decl.kind {
                     Struct { .. } => true,
                     Enum { .. } => true,
-                    EnumConstant { .. } => true,
                     Union { .. } => true,
                     Typedef { .. } => {
                         // Only check the key as opposed to `contains`
@@ -3469,6 +3471,11 @@ impl<'c> Translation<'c> {
         }
 
         let varname = decl.get_name().expect("expected variable name").to_owned();
+
+        if let &CDeclKind::EnumConstant { .. } = decl {
+            return self.convert_enum_constant_decl_ref(ctx, decl_id, qual_ty);
+        }
+
         let rustname = self
             .renamer
             .borrow_mut()
