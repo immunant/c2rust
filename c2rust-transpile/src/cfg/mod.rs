@@ -1934,17 +1934,9 @@ impl CfgBuilder {
                 self.add_wip_block(wip, Jump(this_label.clone()));
 
                 // Case
-                let resolved = translator.ast_context.unwrap_cast_expr(case_expr);
-                let result = match translator.ast_context.index_unwrap_parens(resolved).kind {
-                    CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => Ok(()),
-                    _ => Err(("match", "wrong CExprKind".to_string())),
-                };
-                let pat = result
-                    .and_then(|_| {
-                        translator
-                            .convert_expr(ctx.const_().pattern().used(), resolved, None)
-                            .map_err(|err| ("convert_expr", err.to_string()))
-                    })
+                let pat = translator
+                    .convert_expr(ctx.const_().pattern().used(), case_expr, None)
+                    .map_err(|err| ("convert_expr", err.to_string()))
                     .and_then(|val| {
                         val.to_pure_expr()
                             .ok_or_else(|| ("to_pure_expr", "".to_string()))
