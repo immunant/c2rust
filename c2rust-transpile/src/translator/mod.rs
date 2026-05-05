@@ -3085,7 +3085,11 @@ impl<'c> Translation<'c> {
 
             ConstantExpr(ty, child, value) => {
                 if let Some(constant) = value {
-                    self.convert_constant(constant).map(WithStmts::new_val)
+                    if ctx.is_pattern {
+                        self.convert_expr(ctx, child, override_ty)
+                    } else {
+                        self.convert_constant(constant).map(WithStmts::new_val)
+                    }
                 } else {
                     self.convert_expr(ctx, child, Some(ty))
                 }
@@ -3289,7 +3293,7 @@ impl<'c> Translation<'c> {
                 // But for some expression types, if we don't absolutely have to cast,
                 // we would rather the expression is translated according to the type we're
                 // expecting, and then we can skip the cast entirely.
-                if self.can_propagate_cast(expr, target_ty, is_explicit) {
+                if self.can_propagate_cast(ctx, expr, target_ty, is_explicit) {
                     return self.convert_expr(ctx, expr, Some(target_ty));
                 }
 
@@ -3560,6 +3564,7 @@ impl<'c> Translation<'c> {
 
     fn can_propagate_cast(
         &self,
+        ctx: ExprContext,
         expr_id: CExprId,
         target_type_id: CQualTypeId,
         is_explicit: bool,
@@ -3569,7 +3574,14 @@ impl<'c> Translation<'c> {
             return false;
         }
 
-        let expr_kind = &self.ast_context[expr_id].kind;
+        let mut expr_kind = &self.ast_context[expr_id].kind;
+
+        // In patterns, skip over `ConstantExpr`s.
+        if ctx.is_pattern {
+            if let &CExprKind::ConstantExpr(_, expr_id, _) = expr_kind {
+                expr_kind = &self.ast_context[expr_id].kind;
+            }
+        }
 
         if let &CExprKind::DeclRef(_, decl_id, _) = expr_kind {
             if let CDeclKind::EnumConstant { .. } = self.ast_context[decl_id].kind {
