@@ -16,6 +16,7 @@ impl<'c> Translation<'c> {
         enum_id: CEnumId,
         span: Span,
         integral_type: CQualTypeId,
+        variants: &[CEnumConstantId],
     ) -> TranslationResult<ConvertedDecl> {
         let enum_name = &self
             .type_converter
@@ -24,38 +25,32 @@ impl<'c> Translation<'c> {
             .expect("Enums should already be renamed");
         let integral_type_rs = self.convert_type(integral_type.ctype)?;
         let field = mk().pub_().enum_field(integral_type_rs);
-        let item = mk()
+        let enum_item = mk()
             .span(span)
             .call_attr("derive", vec!["Clone", "Copy"])
             .call_attr("repr", vec!["transparent"])
             .pub_()
             .struct_item(enum_name, vec![field], true);
 
-        Ok(ConvertedDecl::Item(item))
-    }
+        if variants.is_empty() {
+            return Ok(ConvertedDecl::Item(enum_item));
+        }
 
-    pub fn convert_enum_constant(
-        &self,
-        enum_constant_id: CEnumConstantId,
-    ) -> TranslationResult<ConvertedDecl> {
-        let name = self
-            .renamer
-            .borrow_mut()
-            .get(&enum_constant_id)
-            .expect("Enum constant not named");
-        let enum_id = self.ast_context.parents[&enum_constant_id];
-        let enum_name = self
-            .type_converter
-            .borrow()
-            .resolve_decl_name(enum_id)
-            .expect("Enums should already be renamed");
+        let enum_type = mk().ident_ty(enum_name);
+        let constants_iter = variants.iter().map(|&enum_constant_id| {
+            let name = self
+                .renamer
+                .borrow_mut()
+                .get(&enum_constant_id)
+                .expect("Enum constant not named");
+            let (span, init) = self.make_enum_constant_init(enum_constant_id);
+            mk().span(span)
+                .pub_()
+                .const_item(name, enum_type.clone(), init)
+        });
 
-        let ty = mk().ident_ty(enum_name);
-        let (span, init) = self.make_enum_constant_init(enum_constant_id);
-
-        Ok(ConvertedDecl::Item(
-            mk().span(span).pub_().const_item(name, ty, init),
-        ))
+        let items = std::iter::once(enum_item).chain(constants_iter).collect();
+        Ok(ConvertedDecl::Items(items))
     }
 
     fn make_enum_constant_init(&self, enum_constant_id: CEnumConstantId) -> (Span, Box<Expr>) {
