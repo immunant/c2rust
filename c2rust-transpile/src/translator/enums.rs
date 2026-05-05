@@ -234,7 +234,7 @@ impl<'c> Translation<'c> {
         variants.contains(&enum_constant_id)
     }
 
-    fn enum_integral_type(&self, enum_id: CEnumId) -> CQualTypeId {
+    pub fn enum_integral_type(&self, enum_id: CEnumId) -> CQualTypeId {
         match self.ast_context[enum_id].kind {
             CDeclKind::Enum {
                 integral_type: Some(integral_type),

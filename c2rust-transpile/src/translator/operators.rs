@@ -638,26 +638,35 @@ impl<'c> Translation<'c> {
             _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
         };
 
-        let one_type_id =
-            if let CTypeKind::Pointer(..) = self.ast_context.resolve_type(arg_type.ctype).kind {
-                CQualTypeId::new(
+        let mut rhs_type_id = arg_type;
+        let mut compute_lhs_type_id = arg_type;
+        let mut compute_res_type_id = ty;
+
+        match self.ast_context.resolve_type(arg_type.ctype).kind {
+            CTypeKind::Pointer(..) => {
+                rhs_type_id = CQualTypeId::new(
                     self.ast_context
                         .type_for_kind(&CTypeKind::Int)
                         .ok_or_else(|| format_err!("couldn't find type for CTypeKind::Int"))?,
-                )
-            } else {
-                arg_type
-            };
+                );
+            }
+            CTypeKind::Enum(enum_id) => {
+                rhs_type_id = self.enum_integral_type(enum_id);
+                compute_lhs_type_id = rhs_type_id;
+                compute_res_type_id = rhs_type_id;
+            }
+            _ => {}
+        };
 
         self.convert_assignment_operator_with_rhs(
             ctx.used(),
             op,
             ty,
             arg,
-            one_type_id,
+            rhs_type_id,
             WithStmts::new_val(one),
-            Some(arg_type),
-            Some(ty),
+            Some(compute_lhs_type_id),
+            Some(compute_res_type_id),
         )
     }
 
