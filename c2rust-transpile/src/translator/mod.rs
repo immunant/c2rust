@@ -1332,7 +1332,14 @@ fn arrange_header(t: &Translation, is_binary: bool) -> (Vec<syn::Attribute>, Vec
         for (key, mut values) in pragmas {
             values.sort_unstable();
             // generate #[key(values)]
-            let meta = mk().meta_list(vec![key], values);
+            let args: Vec<_> = values
+                .into_iter()
+                .map(|path_str| {
+                    let path_vec: Vec<_> = path_str.split("::").collect();
+                    mk().meta_path(path_vec)
+                })
+                .collect();
+            let meta = mk().meta_list(vec![key], args);
             let attr = mk().attribute(AttrStyle::Inner(Default::default()), meta);
             out_attrs.push(attr);
         }
@@ -1550,6 +1557,7 @@ impl<'c> Translation<'c> {
         features.extend(self.type_converter.borrow().features_used());
 
         let mut allow = vec![
+            "clippy::missing_safety_doc",
             "non_upper_case_globals",
             "non_camel_case_types",
             "non_snake_case",
