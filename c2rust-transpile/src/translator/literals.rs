@@ -124,6 +124,12 @@ impl<'c> Translation<'c> {
             }
 
             CLiteral::String(ref bytes, element_size) => {
+                if ctx.is_pattern {
+                    return Err(TranslationError::generic(
+                        "CLiteral::String is not supported in patterns",
+                    ));
+                }
+
                 let bytes_padded = self.string_literal_bytes(ty.ctype, bytes, element_size);
                 let len = bytes_padded.len();
                 let val = mk().lit_expr(bytes_padded);
