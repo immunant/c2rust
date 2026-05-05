@@ -1935,30 +1935,38 @@ impl CfgBuilder {
 
                 // Case
                 let resolved = translator.ast_context.unwrap_cast_expr(case_expr);
-                let branch = match translator.ast_context.index_unwrap_parens(resolved).kind {
-                    CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
-                        match translator
-                            .convert_expr(ctx.used(), resolved, None)?
-                            .to_pure_expr()
-                        {
-                            Some(expr) => match *expr {
-                                Expr::Lit(lit) => Some(mk().lit_pat(lit.lit)),
-                                Expr::Path(path) => Some(mk().path_pat(path.path, path.qself)),
-                                _ => None,
-                            },
-                            _ => None,
-                        }
-                    }
-                    _ => None,
+                let result = match translator.ast_context.index_unwrap_parens(resolved).kind {
+                    CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => Ok(()),
+                    _ => Err(("match", "wrong CExprKind".to_string())),
                 };
+                let pat = result
+                    .and_then(|_| {
+                        translator
+                            .convert_expr(ctx.used(), resolved, None)
+                            .map_err(|err| ("convert_expr", err.to_string()))
+                    })
+                    .and_then(|val| {
+                        val.to_pure_expr()
+                            .ok_or_else(|| ("to_pure_expr", "".to_string()))
+                    })
+                    .and_then(|expr| match *expr {
+                        Expr::Lit(lit) => Ok(mk().lit_pat(lit.lit)),
+                        Expr::Path(path) => Ok(mk().path_pat(path.path, path.qself)),
+                        _ => Err(("match", "wrong Expr".to_string())),
+                    })
+                    .unwrap_or_else(|(src, err)| {
+                        log::trace!(
+                            "Converting `case` {:?} failed in {}: {}",
+                            case_expr,
+                            src,
+                            err
+                        );
 
-                let pat = match branch {
-                    Some(pat) => pat,
-                    None => match cie {
-                        ConstIntExpr::U(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
-                        ConstIntExpr::I(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
-                    },
-                };
+                        match cie {
+                            ConstIntExpr::U(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
+                            ConstIntExpr::I(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
+                        }
+                    });
 
                 self.switch_expr_cases
                     .last_mut()
