@@ -63,6 +63,18 @@ impl<'c> Translation<'c> {
         WithStmts::new_val(self.enum_for_i64(type_id, 0))
     }
 
+    /// Translates a `DeclRef` for an `EnumConstant`.
+    pub fn convert_enum_constant_decl_ref(
+        &self,
+        enum_constant_id: CEnumConstantId,
+        target_type_id: CQualTypeId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let val = self.enum_constant_expr(enum_constant_id);
+
+        // Add a cast to the expected integral type.
+        self.convert_cast_from_enum(target_type_id, val)
+    }
+
     /// Translate a cast where the source type, but not the target type, is an `enum` type.
     pub fn convert_cast_from_enum(
         &self,
