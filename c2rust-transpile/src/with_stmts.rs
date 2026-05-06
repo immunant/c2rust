@@ -85,6 +85,16 @@ impl<T> WithStmts<T> {
         })
     }
 
+    pub fn zip<U>(self, mut next: WithStmts<U>) -> WithStmts<(T, U)> {
+        let mut stmts = self.stmts;
+        stmts.append(&mut next.stmts);
+        WithStmts {
+            val: (self.val, next.val),
+            stmts,
+            is_unsafe: self.is_unsafe || next.is_unsafe,
+        }
+    }
+
     pub fn set_unsafe(&mut self) {
         self.is_unsafe = true;
     }

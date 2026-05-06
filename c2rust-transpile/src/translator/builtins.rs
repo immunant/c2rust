@@ -33,16 +33,14 @@ impl<'c> Translation<'c> {
         // Emit `arg0.{method_name}(arg1)`
         let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
         let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
-        arg0.and_then_try(|arg0| {
-            arg1.and_then_try(|arg1| {
-                let arg1 = mk().cast_expr(arg1, mk().path_ty(vec!["u32"]));
-                let method_call_expr = mk().method_call_expr(arg0, rotate_method_name, vec![arg1]);
-                self.convert_side_effects_expr(
-                    ctx,
-                    WithStmts::new_val(method_call_expr),
-                    "Builtin is not supposed to be used",
-                )
-            })
+        arg0.zip(arg1).and_then_try(|(arg0, arg1)| {
+            let arg1 = mk().cast_expr(arg1, mk().path_ty(vec!["u32"]));
+            let method_call_expr = mk().method_call_expr(arg0, rotate_method_name, vec![arg1]);
+            self.convert_side_effects_expr(
+                ctx,
+                WithStmts::new_val(method_call_expr),
+                "Builtin is not supposed to be used",
+            )
         })
     }
 
@@ -462,23 +460,21 @@ impl<'c> Translation<'c> {
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 let arg2 = self.convert_expr(ctx.used(), args[2], None)?;
-                arg0.and_then_try(|arg0| {
-                    arg1.and_then_try(|arg1| {
-                        arg2.and_then_try(|arg2| {
-                            let returns_val = builtin_name.starts_with("__sync_val");
-                            self.convert_atomic_cxchg(
-                                ctx,
-                                false,
-                                SeqCst,
-                                SeqCst,
-                                arg0,
-                                arg1,
-                                arg2,
-                                returns_val,
-                            )
-                        })
+                arg0.zip(arg1)
+                    .zip(arg2)
+                    .and_then_try(|((arg0, arg1), arg2)| {
+                        let returns_val = builtin_name.starts_with("__sync_val");
+                        self.convert_atomic_cxchg(
+                            ctx,
+                            false,
+                            SeqCst,
+                            SeqCst,
+                            arg0,
+                            arg1,
+                            arg2,
+                            returns_val,
+                        )
                     })
-                })
             }
 
             "__sync_synchronize" => {
@@ -500,15 +496,13 @@ impl<'c> Translation<'c> {
                 let atomic_func = self.atomic_intrinsic_expr("xchg", &[Acquire]);
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
-                arg0.and_then_try(|arg0| {
-                    arg1.and_then_try(|arg1| {
-                        let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
-                        self.convert_side_effects_expr(
-                            ctx,
-                            WithStmts::new_val(call_expr),
-                            "Builtin is not supposed to be used",
-                        )
-                    })
+                arg0.zip(arg1).and_then_try(|(arg0, arg1)| {
+                    let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
+                    self.convert_side_effects_expr(
+                        ctx,
+                        WithStmts::new_val(call_expr),
+                        "Builtin is not supposed to be used",
+                    )
                 })
             }
 
@@ -562,10 +556,8 @@ impl<'c> Translation<'c> {
                         .kind
                         .get_qual_type()
                         .ok_or_else(|| format_err!("bad arg1 type"))?;
-                    arg0.and_then_try(|arg0| {
-                        arg1.and_then_try(|arg1| {
-                            self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
-                        })
+                    arg0.zip(arg1).and_then_try(|(arg0, arg1)| {
+                        self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
                     })
                 } else if let Some(fn_name) = simd_fn_from_builtin_fn(builtin_name) {
                     self.convert_simd_builtin(ctx, fn_name, args)
