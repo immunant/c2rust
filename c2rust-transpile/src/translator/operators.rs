@@ -187,7 +187,7 @@ impl<'c> Translation<'c> {
             )))
         } else {
             let lhs = self.convert_cast(
-                ctx,
+                ctx.used(),
                 initial_lhs_type_id,
                 compute_lhs_type_id,
                 WithStmts::new_val(read.clone()),
@@ -199,7 +199,7 @@ impl<'c> Translation<'c> {
             let ty = self.convert_type(compute_res_type_id.ctype)?;
             let val = lhs.and_then(|lhs| {
                 self.convert_binary_operator(
-                    ctx,
+                    ctx.used(),
                     bin_op,
                     ty,
                     compute_res_type_id.ctype,
@@ -211,8 +211,15 @@ impl<'c> Translation<'c> {
                 )
             })?;
 
-            let val =
-                self.convert_cast(ctx, compute_res_type_id, lhs_type_id, val, None, None, None)?;
+            let val = self.convert_cast(
+                ctx.used(),
+                compute_res_type_id,
+                lhs_type_id,
+                val,
+                None,
+                None,
+                None,
+            )?;
 
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
@@ -413,7 +420,7 @@ impl<'c> Translation<'c> {
                                 .expect("Cannot convert non-assignment operator");
 
                             let lhs = self.convert_cast(
-                                ctx,
+                                ctx.used(),
                                 initial_lhs_type_id,
                                 expr_or_comp_type_id,
                                 WithStmts::new_val(read.clone()),
@@ -425,7 +432,7 @@ impl<'c> Translation<'c> {
                             let ty = self.convert_type(result_type_id.ctype)?;
                             let val = lhs.and_then(|lhs|
                                 self.convert_binary_operator(
-                                    ctx,
+                                    ctx.used(),
                                     op,
                                     ty,
                                     result_type_id.ctype,
@@ -438,7 +445,7 @@ impl<'c> Translation<'c> {
                             )?;
 
                             let val = self.convert_cast(
-                                ctx,
+                                ctx.used(),
                                 result_type_id,
                                 expr_type_id,
                                 val,
@@ -670,7 +677,7 @@ impl<'c> Translation<'c> {
             };
 
         self.convert_assignment_operator_with_rhs(
-            ctx.used(),
+            ctx,
             op,
             ty,
             arg,
@@ -810,7 +817,7 @@ impl<'c> Translation<'c> {
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
             CUnOp::Not => {
-                let val = self.convert_condition(ctx, false, arg)?;
+                let val = self.convert_condition(ctx.used(), false, arg)?;
                 Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
             }
             CUnOp::Extension => {
