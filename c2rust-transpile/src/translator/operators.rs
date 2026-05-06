@@ -723,7 +723,7 @@ impl<'c> Translation<'c> {
         let op = op
             .underlying_assignment()
             .expect("not an valid assignment operator");
-        let ty = self
+        let arg_type = self
             .ast_context
             .index_unwrap_parens(arg)
             .kind
@@ -742,7 +742,7 @@ impl<'c> Translation<'c> {
                     Some(read.clone()),
                 )));
 
-                let mut one = match self.ast_context[ty.ctype].kind {
+                let mut one = match self.ast_context.resolve_type(arg_type.ctype).kind {
                     // TODO: If rust gets f16 support:
                     // CTypeKind::Half |
                     CTypeKind::Float | CTypeKind::Double => {
@@ -762,7 +762,7 @@ impl<'c> Translation<'c> {
                 let mut is_unsafe = false; // Track unsafety if we call `pointer::offset`.
 
                 // *p + 1
-                let mut type_kind = &self.ast_context.resolve_type(ty.ctype).kind;
+                let mut type_kind = &self.ast_context.resolve_type(arg_type.ctype).kind;
 
                 let val = if let &CTypeKind::Pointer(pointee) = type_kind {
                     if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
@@ -790,9 +790,9 @@ impl<'c> Translation<'c> {
                 };
 
                 // *p = *p + rhs
-                let assign_stmt = if ty.qualifiers.is_volatile {
+                let assign_stmt = if arg_type.qualifiers.is_volatile {
                     is_unsafe = true;
-                    self.volatile_write(write, ty, val)?
+                    self.volatile_write(write, arg_type, val)?
                 } else {
                     mk().assign_expr(write, val)
                 };
