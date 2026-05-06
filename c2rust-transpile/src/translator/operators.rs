@@ -462,10 +462,8 @@ impl<'c> Translation<'c> {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if matches!(op, CBinOp::Add) {
-            self.convert_addition(lhs_type, rhs_type, lhs, rhs)
-        } else if matches!(op, CBinOp::Subtract) {
-            self.convert_subtraction(ctx, expr_type_id, lhs_type, rhs_type, lhs, rhs)
+        if matches!(op, CBinOp::Add | CBinOp::Subtract) {
+            self.convert_arithmetic_operator(ctx, expr_type_id, op, lhs_type, rhs_type, lhs, rhs)
         } else {
             let is_unsigned_integral_type = self
                 .ast_context
@@ -487,62 +485,39 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn convert_addition(
-        &self,
-        lhs_type_id: CQualTypeId,
-        rhs_type_id: CQualTypeId,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-        let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
-
-        if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, false, false))
-        } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false))
-        } else if lhs_type.is_unsigned_integral_type() {
-            Ok(WithStmts::new_val(mk().method_call_expr(
-                lhs,
-                "wrapping_add",
-                vec![rhs],
-            )))
-        } else {
-            Ok(WithStmts::new_val(mk().binary_expr(
-                BinOp::Add(Default::default()),
-                lhs,
-                rhs,
-            )))
-        }
-    }
-
-    fn convert_subtraction(
+    fn convert_arithmetic_operator(
         &self,
         ctx: ExprContext,
         expr_type_id: CQualTypeId,
+        op: CBinOp,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-        let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
+        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+        let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        if let &CTypeKind::Pointer(pointee) = rhs_type {
-            let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
-            let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
-            self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
-        } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
-        } else if lhs_type.is_unsigned_integral_type() {
+        if let &CTypeKind::Pointer(pointee) = rhs_type_kind {
+            if op == CBinOp::Subtract {
+                let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
+                let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
+                self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
+            } else {
+                Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false))
+            }
+        } else if let &CTypeKind::Pointer(pointee) = lhs_type_kind {
+            let is_negative = op == CBinOp::Subtract;
+            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, is_negative, false))
+        } else if lhs_type_kind.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,
-                "wrapping_sub",
+                op.wrapping_method(),
                 vec![rhs],
             )))
         } else {
             Ok(WithStmts::new_val(mk().binary_expr(
-                BinOp::Sub(Default::default()),
+                BinOp::from(op),
                 lhs,
                 rhs,
             )))
