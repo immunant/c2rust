@@ -24,7 +24,7 @@ pub unsafe extern "C" fn ZSTD_dParam_getBounds(mut dParam: ZSTD_dParameter) -> :
             bounds = 1 as ::core::ffi::c_int;
             return bounds;
         }
-        1000 => {
+        ZSTD_d_format => {
             bounds = 5 as ::core::ffi::c_int;
             return bounds;
         }

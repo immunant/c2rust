@@ -752,6 +752,14 @@ impl TypedAstContext {
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
             Paren(ty) => ty,
+
+            // As an exception, resolve typedefs in `prenamed_decls`, because they do not
+            // get translated as type aliases in the final code.
+            Typedef(decl) if self.prenamed_decls.contains_key(&decl) => match self[decl].kind {
+                CDeclKind::Typedef { typ: ty, .. } => ty.ctype,
+                _ => panic!("Typedef decl did not point to a typedef"),
+            },
+
             _ => return typ,
         };
         self.resolve_type_id_no_typedef(ty)

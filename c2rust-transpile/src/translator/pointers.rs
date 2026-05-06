@@ -514,7 +514,6 @@ impl<'c> Translation<'c> {
         source_cty: CTypeId,
         target_cty: CTypeId,
         val: WithStmts<Box<Expr>>,
-        expr: Option<CExprId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if ctx.is_const {
             return Err(format_translation_err!(
@@ -533,10 +532,8 @@ impl<'c> Translation<'c> {
                     source_ty, target_ty, val,
                 )))
             })
-        } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            val.result_map(|val| {
-                self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
-            })
+        } else if let &CTypeKind::Enum(_) = target_ty_kind {
+            val.result_map(|val| self.convert_cast_to_enum(target_cty, val))
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }

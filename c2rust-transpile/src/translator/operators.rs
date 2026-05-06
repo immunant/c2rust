@@ -864,7 +864,7 @@ impl<'c> Translation<'c> {
             // If we are negating a literal, generate a negated literal directly.
             // This will create an expression like `-1 as ty` without parentheses,
             // rather than `-(1 as ty)`.
-            let val = self.mk_int_lit(expr_type_id, val, base, true)?;
+            let val = self.mk_int_lit(ctx, expr_type_id, val, base, true)?;
             Ok(WithStmts::new_val(val))
         } else {
             let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
