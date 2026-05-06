@@ -530,12 +530,16 @@ impl<'c> Translation<'c> {
             }
         };
 
-        let assign_result = self.make_cast(
-            ctx,
-            result_type_id,
-            expected_type_id.unwrap_or(result_type_id),
-            WithStmts::new_val(read),
-        )?;
+        let assign_result = if ctx.is_used() {
+            self.make_cast(
+                ctx,
+                result_type_id,
+                expected_type_id.unwrap_or(result_type_id),
+                WithStmts::new_val(read),
+            )?
+        } else {
+            WithStmts::new_val(self.panic_or_err("assignment result is not supposed to be used"))
+        };
 
         Ok(assign_stmt
             .zip(assign_result)
