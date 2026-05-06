@@ -2169,7 +2169,15 @@ impl Display for CUnTypeOp {
 }
 
 impl CUnOp {
-    /// Check is the operator is rendered before or after is operand.
+    pub fn underlying_compound_assignment(&self) -> Option<CBinOp> {
+        Some(match self {
+            CUnOp::PreIncrement | CUnOp::PostIncrement => CBinOp::AssignAdd,
+            CUnOp::PreDecrement | CUnOp::PostDecrement => CBinOp::AssignSubtract,
+            _ => return None,
+        })
+    }
+
+    /// Returns whether the operator is placed before its operand.
     pub fn is_prefix(&self) -> bool {
         !matches!(*self, CUnOp::PostIncrement | CUnOp::PostDecrement)
     }

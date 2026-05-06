@@ -648,12 +648,12 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn convert_pre_increment(
+    fn convert_indecrement_operator(
         &self,
         ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
         result_type_id: CQualTypeId,
-        op: CBinOp,
+        op: CUnOp,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let arg_type = self
@@ -663,7 +663,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad arg type"))?;
 
-        let one = match self.ast_context.resolve_type(arg_type.ctype).kind {
+        let mut one = match self.ast_context.resolve_type(arg_type.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
             CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
@@ -694,118 +694,87 @@ impl<'c> Translation<'c> {
             _ => {}
         };
 
-        self.convert_assignment_operator_with_rhs(
-            ctx,
-            expected_type_id,
-            result_type_id,
-            op,
-            arg,
-            one_type_id,
-            WithStmts::new_val(one),
-            Some(compute_lhs_type_id),
-            Some(compute_res_type_id),
-        )
-    }
-
-    fn convert_post_increment(
-        &self,
-        ctx: ExprContext,
-        expected_type_id: Option<CQualTypeId>,
-        result_type_id: CQualTypeId,
-        op: CBinOp,
-        arg: CExprId,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // If we aren't going to be using the result, may as well do a simple pre-increment
-        if ctx.is_unused() {
-            return self.convert_pre_increment(ctx, expected_type_id, result_type_id, op, arg);
-        }
+        let dont_yield_old_value = op.is_prefix() || ctx.is_unused();
+        let op = op.underlying_compound_assignment().unwrap();
 
-        let op = op
-            .underlying_assignment()
-            .expect("not an valid assignment operator");
-        let arg_type = self
-            .ast_context
-            .index_unwrap_parens(arg)
-            .kind
-            .get_qual_type()
-            .ok_or_else(|| format_err!("bad post inc type"))?;
+        if dont_yield_old_value {
+            self.convert_assignment_operator_with_rhs(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                op,
+                arg,
+                one_type_id,
+                WithStmts::new_val(one),
+                Some(compute_lhs_type_id),
+                Some(compute_res_type_id),
+            )
+        } else {
+            let op = op
+                .underlying_assignment()
+                .expect("not an valid assignment operator");
 
-        self.name_reference_write_read(ctx, arg)?.and_then_try(
-            |NamedReference {
-                 lvalue: write,
-                 rvalue: read,
-             }| {
-                let val_name = self.renamer.borrow_mut().fresh();
-                let save_old_val = mk().local_stmt(Box::new(mk().local(
-                    mk().ident_pat(&val_name),
-                    None,
-                    Some(read.clone()),
-                )));
+            self.name_reference_write_read(ctx, arg)?.and_then_try(
+                |NamedReference {
+                     lvalue: write,
+                     rvalue: read,
+                 }| {
+                    let val_name = self.renamer.borrow_mut().fresh();
+                    let save_old_val = mk().local_stmt(Box::new(mk().local(
+                        mk().ident_pat(&val_name),
+                        None,
+                        Some(read.clone()),
+                    )));
 
-                let mut one = match self.ast_context.resolve_type(arg_type.ctype).kind {
-                    // TODO: If rust gets f16 support:
-                    // CTypeKind::Half |
-                    CTypeKind::Float | CTypeKind::Double => {
-                        mk().lit_expr(mk().float_unsuffixed_lit("1."))
-                    }
-                    CTypeKind::LongDouble | CTypeKind::Float128 => {
-                        self.use_crate(ExternCrate::F128);
+                    let mut is_unsafe = false; // Track unsafety if we call `pointer::offset`.
 
-                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        let args = vec![mk().lit_expr(mk().float_unsuffixed_lit("1."))];
+                    // *p + 1
+                    let mut type_kind = &self.ast_context.resolve_type(arg_type.ctype).kind;
 
-                        mk().call_expr(fn_path, args)
-                    }
-                    _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
-                };
+                    let val = if let &CTypeKind::Pointer(pointee) = type_kind {
+                        if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
+                            one = n
+                        }
 
-                let mut is_unsafe = false; // Track unsafety if we call `pointer::offset`.
-
-                // *p + 1
-                let mut type_kind = &self.ast_context.resolve_type(arg_type.ctype).kind;
-
-                let val = if let &CTypeKind::Pointer(pointee) = type_kind {
-                    if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
-                        one = n
-                    }
-
-                    let n = if op == CBinOp::Subtract {
-                        neg_expr(one)
+                        let n = if op == CBinOp::Subtract {
+                            neg_expr(one)
+                        } else {
+                            one
+                        };
+                        is_unsafe = true;
+                        mk().method_call_expr(read, "offset", vec![n])
                     } else {
-                        one
+                        if let &CTypeKind::Enum(enum_id) = type_kind {
+                            let integral_type = self.enum_integral_type(enum_id);
+                            type_kind = &self.ast_context.resolve_type(integral_type.ctype).kind;
+                        }
+
+                        if type_kind.is_unsigned_integral_type() {
+                            mk().method_call_expr(read, op.wrapping_method(), vec![one])
+                        } else {
+                            mk().binary_expr(BinOp::from(op), read, one)
+                        }
                     };
-                    is_unsafe = true;
-                    mk().method_call_expr(read, "offset", vec![n])
-                } else {
-                    if let &CTypeKind::Enum(enum_id) = type_kind {
-                        let integral_type = self.enum_integral_type(enum_id);
-                        type_kind = &self.ast_context.resolve_type(integral_type.ctype).kind;
-                    }
 
-                    if type_kind.is_unsigned_integral_type() {
-                        mk().method_call_expr(read, op.wrapping_method(), vec![one])
+                    // *p = *p + rhs
+                    let assign_stmt = if arg_type.qualifiers.is_volatile {
+                        is_unsafe = true;
+                        self.volatile_write(write, arg_type, val)?
                     } else {
-                        mk().binary_expr(BinOp::from(op), read, one)
-                    }
-                };
+                        mk().assign_expr(write, val)
+                    };
 
-                // *p = *p + rhs
-                let assign_stmt = if arg_type.qualifiers.is_volatile {
-                    is_unsafe = true;
-                    self.volatile_write(write, arg_type, val)?
-                } else {
-                    mk().assign_expr(write, val)
-                };
+                    let val = WithStmts::new(
+                        vec![save_old_val, mk().expr_stmt(assign_stmt)],
+                        mk().ident_expr(val_name),
+                    )
+                    .merge_unsafe(is_unsafe);
 
-                let val = WithStmts::new(
-                    vec![save_old_val, mk().expr_stmt(assign_stmt)],
-                    mk().ident_expr(val_name),
-                )
-                .merge_unsafe(is_unsafe);
-
-                Ok(val)
-            },
-        )
+                    Ok(val)
+                },
+            )
+        }
     }
 
     pub fn convert_unary_operator(
@@ -819,34 +788,14 @@ impl<'c> Translation<'c> {
         let expr_type_id = expected_type_id.unwrap_or(result_type_id);
         let mut unary = match op {
             CUnOp::AddressOf => self.convert_address_of(ctx, expr_type_id, arg),
-            CUnOp::PreIncrement => self.convert_pre_increment(
-                ctx,
-                expected_type_id,
-                result_type_id,
-                CBinOp::AssignAdd,
-                arg,
-            ),
-            CUnOp::PreDecrement => self.convert_pre_increment(
-                ctx,
-                expected_type_id,
-                result_type_id,
-                CBinOp::AssignSubtract,
-                arg,
-            ),
-            CUnOp::PostIncrement => self.convert_post_increment(
-                ctx,
-                expected_type_id,
-                result_type_id,
-                CBinOp::AssignAdd,
-                arg,
-            ),
-            CUnOp::PostDecrement => self.convert_post_increment(
-                ctx,
-                expected_type_id,
-                result_type_id,
-                CBinOp::AssignSubtract,
-                arg,
-            ),
+
+            CUnOp::PreIncrement
+            | CUnOp::PreDecrement
+            | CUnOp::PostIncrement
+            | CUnOp::PostDecrement => {
+                self.convert_indecrement_operator(ctx, expected_type_id, result_type_id, op, arg)
+            }
+
             CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg),
             CUnOp::Plus => self.convert_expr(ctx.used(), arg, expected_type_id), // promotion is explicit in the clang AST
 
