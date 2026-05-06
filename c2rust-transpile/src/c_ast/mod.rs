@@ -11,6 +11,7 @@ use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::{iter, mem};
+use syn::BinOp;
 
 pub use self::conversion::*;
 pub use self::print::Printer;
@@ -2120,6 +2121,20 @@ impl CBinOp {
         }
     }
 
+    pub fn wrapping_method(&self) -> &'static str {
+        match self {
+            CBinOp::Add => "wrapping_add",
+            CBinOp::Subtract => "wrapping_sub",
+            CBinOp::Multiply => "wrapping_mul",
+            CBinOp::Divide => "wrapping_div",
+            CBinOp::Modulus => "wrapping_rem",
+            _ => panic!(
+                "CBinOp {:?} is not a valid Rust wrapping arithmetic method",
+                self
+            ),
+        }
+    }
+
     /// Does the rust equivalent of this operator have type (T, T) -> U?
     #[rustfmt::skip]
     pub fn input_types_same(&self) -> bool {
@@ -2141,6 +2156,44 @@ impl CBinOp {
             self,
             Multiply | Divide | Modulus | Add | Subtract | BitAnd | BitXor | BitOr
         )
+    }
+}
+
+impl From<CBinOp> for BinOp {
+    fn from(op: CBinOp) -> Self {
+        match op {
+            CBinOp::Multiply => BinOp::Mul(Default::default()),
+            CBinOp::Divide => BinOp::Div(Default::default()),
+            CBinOp::Modulus => BinOp::Rem(Default::default()),
+            CBinOp::Add => BinOp::Add(Default::default()),
+            CBinOp::Subtract => BinOp::Sub(Default::default()),
+            CBinOp::ShiftLeft => BinOp::Shl(Default::default()),
+            CBinOp::ShiftRight => BinOp::Shr(Default::default()),
+            CBinOp::Less => BinOp::Lt(Default::default()),
+            CBinOp::Greater => BinOp::Gt(Default::default()),
+            CBinOp::LessEqual => BinOp::Le(Default::default()),
+            CBinOp::GreaterEqual => BinOp::Ge(Default::default()),
+            CBinOp::EqualEqual => BinOp::Eq(Default::default()),
+            CBinOp::NotEqual => BinOp::Ne(Default::default()),
+            CBinOp::BitAnd => BinOp::BitAnd(Default::default()),
+            CBinOp::BitXor => BinOp::BitXor(Default::default()),
+            CBinOp::BitOr => BinOp::BitOr(Default::default()),
+            CBinOp::And => BinOp::And(Default::default()),
+            CBinOp::Or => BinOp::Or(Default::default()),
+
+            CBinOp::AssignAdd => BinOp::AddAssign(Default::default()),
+            CBinOp::AssignSubtract => BinOp::SubAssign(Default::default()),
+            CBinOp::AssignMultiply => BinOp::MulAssign(Default::default()),
+            CBinOp::AssignDivide => BinOp::DivAssign(Default::default()),
+            CBinOp::AssignModulus => BinOp::RemAssign(Default::default()),
+            CBinOp::AssignBitXor => BinOp::BitXorAssign(Default::default()),
+            CBinOp::AssignShiftLeft => BinOp::ShlAssign(Default::default()),
+            CBinOp::AssignShiftRight => BinOp::ShrAssign(Default::default()),
+            CBinOp::AssignBitOr => BinOp::BitOrAssign(Default::default()),
+            CBinOp::AssignBitAnd => BinOp::BitAndAssign(Default::default()),
+
+            _ => panic!("CBinOp {:?} is not a valid Rust BinOp", op),
+        }
     }
 }
 
