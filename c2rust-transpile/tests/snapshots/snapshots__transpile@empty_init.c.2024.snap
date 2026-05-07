@@ -23,10 +23,11 @@ pub struct Foo_s {
     pub x: ::core::ffi::c_int,
 }
 pub type Foo_t = Foo_s;
-#[unsafe(no_mangle)]
-pub static mut scope: *mut Scope = &Scope {
+static mut c2rust_fresh0: Scope = Scope {
     next: ::core::ptr::null_mut::<Scope>(),
-} as *const Scope as *mut Scope;
+};
+#[unsafe(no_mangle)]
+pub static mut scope: *mut Scope = &raw const c2rust_fresh0 as *mut Scope;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn foo() {
     let mut f: Foo_t = Foo_t { x: 0 };

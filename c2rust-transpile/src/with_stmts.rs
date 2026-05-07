@@ -1,6 +1,7 @@
 use c2rust_ast_builder::mk;
 use std::iter::FromIterator;
-use syn::{Block, Expr, Stmt};
+use std::mem;
+use syn::{Block, Expr, Item, Stmt};
 
 #[derive(Clone, Debug)]
 pub struct WithStmts<T> {
@@ -90,6 +91,21 @@ impl<T> WithStmts<T> {
         &mut self.stmts
     }
 
+    /// If all statements in self.stmts are [`Item`] statements, returns the contained [`Item`]s.
+    /// Otherwise, returns [`None`].
+    pub fn stmts_to_items(&mut self) -> Option<Vec<Box<Item>>> {
+        let all_are_items = self.stmts.iter().all(|stmt| matches!(stmt, Stmt::Item(_)));
+        all_are_items.then(|| {
+            std::mem::take(&mut self.stmts)
+                .into_iter()
+                .map(|stmt| match stmt {
+                    Stmt::Item(item) => Box::new(item),
+                    _ => unreachable!(),
+                })
+                .collect()
+        })
+    }
+
     pub fn is_unsafe(&self) -> bool {
         self.is_unsafe
     }
@@ -124,15 +140,13 @@ impl WithStmts<Box<Expr>> {
         mk().block(self.stmts)
     }
 
-    pub fn to_unsafe_pure_expr(self) -> Option<Box<Expr>> {
-        let is_unsafe = self.is_unsafe;
-        self.to_pure_expr().map(|expr| {
-            if is_unsafe {
-                mk().unsafe_block_expr(vec![mk().expr_stmt(expr)])
-            } else {
-                expr
-            }
-        })
+    /// If `is_unsafe` is true, wraps `val` in an `unsafe` block and unsets `is_unsafe`.
+    pub fn wrap_unsafe(mut self) -> Self {
+        if mem::take(&mut self.is_unsafe) {
+            self.val = mk().unsafe_block_expr(vec![mk().expr_stmt(self.val)]);
+        }
+
+        self
     }
 
     pub fn to_pure_expr(self) -> Option<Box<Expr>> {

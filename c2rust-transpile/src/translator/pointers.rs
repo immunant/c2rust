@@ -140,10 +140,7 @@ impl<'c> Translation<'c> {
         }
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
-        else if arg_is_macro
-            || matches!(arg_expr_kind, Some(CExprKind::Literal(..)))
-            || ctx.is_const && matches!(arg_expr_kind, Some(CExprKind::CompoundLiteral(..)))
-        {
+        else if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
             let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
 
             if is_array_decay {
