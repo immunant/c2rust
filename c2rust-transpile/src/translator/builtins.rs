@@ -415,17 +415,18 @@ impl<'c> Translation<'c> {
                 })
             }
 
-            "__builtin_return_address" => {
-                // GCC's `__builtin_return_address` has no Rust equivalent: Rust
-                // does not surface LLVM's `@llvm.returnaddress` intrinsic, and
+            "__builtin_return_address" | "__builtin_frame_address" => {
+                // GCC's `__builtin_return_address` and `__builtin_frame_address`
+                // have no Rust equivalent: Rust does not surface LLVM's
+                // `@llvm.returnaddress` / `@llvm.frameaddress` intrinsics, and
                 // an inline-asm implementation would depend on frame-pointer
                 // codegen we don't control. Translating to a null pointer keeps
                 // the output compilable; consumers using the value for debug
                 // logging will see null instead of a meaningful address.
                 if let Some(loc) = self.ast_context.display_loc(src_loc) {
-                    warn!("{loc}: __builtin_return_address has no Rust equivalent; emitting null pointer");
+                    warn!("{loc}: {builtin_name} has no Rust equivalent; emitting null pointer");
                 } else {
-                    warn!("__builtin_return_address has no Rust equivalent; emitting null pointer");
+                    warn!("{builtin_name} has no Rust equivalent; emitting null pointer");
                 }
                 let level = self.convert_expr(ctx.unused(), args[0], None)?;
                 Ok(level.and_then(|_| -> TranslationResult<_> {

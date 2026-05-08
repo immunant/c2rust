@@ -423,6 +423,11 @@ fn test_static_assert() {
 }
 
 #[test]
+fn test_frame_address() {
+    transpile("frame_address.c").run();
+}
+
+#[test]
 fn test_return_address() {
     transpile("return_address.c").run();
 }
