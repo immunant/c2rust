@@ -315,6 +315,11 @@ fn test_atomics() {
 }
 
 #[test]
+fn test_auto_type() {
+    transpile("auto_type.c").run();
+}
+
+#[test]
 fn test_bitfields() {
     transpile("bitfields.c").expect_compile_error(true).run();
 }

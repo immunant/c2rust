@@ -329,6 +329,7 @@ impl TypeConverter {
             }
 
             CTypeKind::TypeOf(ty) => self.convert(ctxt, ty),
+            CTypeKind::Auto(ty) => self.convert(ctxt, ty),
 
             ref t => Err(format_err!("Unsupported type {:?}", t).into()),
         }

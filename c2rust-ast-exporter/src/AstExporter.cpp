@@ -674,6 +674,22 @@ private:
 
         VisitQualType(t);
     }
+
+    void VisitAutoType(const AutoType *T) {
+        if (!T->isGNUAutoType()) {
+            printDiag(Context, DiagnosticsEngine::Warning,
+                      "Encountered unexpected auto type",
+                      src_loc, src_range);
+            return;
+        }
+
+        auto t = T->desugar();
+        auto qt = encodeQualType(t);
+        encodeType(T, TagAutoType,
+                   [qt](CborEncoder *local) { cbor_encode_uint(local, qt); });
+
+        VisitQualType(t);
+    }
 };
 
 class TranslateASTVisitor final

@@ -294,6 +294,7 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
         Decayed(ctype)
         | Paren(ctype)
         | TypeOf(ctype)
+        | Auto(ctype)
         | Complex(ctype)
         | ConstantArray(ctype, _)
         | IncompleteArray(ctype) => intos![ctype],

@@ -152,6 +152,8 @@ enum TypeTag {
 
     TagFloat128,
     TagAtomicType,
+
+    TagAutoType,
 };
 
 enum StringTypeTag {
