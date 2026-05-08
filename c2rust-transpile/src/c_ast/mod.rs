@@ -760,6 +760,7 @@ impl TypedAstContext {
                 CDeclKind::Typedef { typ: ty, .. } => ty.ctype,
                 _ => panic!("Typedef decl did not point to a typedef"),
             },
+            Auto(ty) => ty,
             _ => return typ,
         };
         self.resolve_type_id(ty)
@@ -778,6 +779,7 @@ impl TypedAstContext {
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
             Paren(ty) => ty,
+            Auto(ty) => ty,
             _ => return typ,
         };
         self.resolve_type_id_no_typedef(ty)
@@ -2549,6 +2551,9 @@ pub enum CTypeKind {
     SSize,
     PtrDiff,
     WChar,
+
+    // `__auto_type` with its deduced actual type.
+    Auto(CTypeId),
 }
 
 impl CTypeKind {
@@ -2678,6 +2683,8 @@ impl CTypeKind {
             Float128 => false,
 
             // Non-scalars.
+            // TODO: we should investigate if all of these are dead code,
+            // and replace them with panics in that case.
             Complex(_) => false,
             Pointer(_) => false,
             Reference(_) => false,
@@ -2700,6 +2707,7 @@ impl CTypeKind {
             Vector(_, _) => false,
             UnhandledSveType => false,
             Atomic(_) => false,
+            Auto(_) => false,
         }
     }
 
@@ -2787,6 +2795,7 @@ impl CTypeKind {
             SSize => false,
             PtrDiff => false,
             WChar => false,
+            Auto(_) => false,
         }
     }
 }

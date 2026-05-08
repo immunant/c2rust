@@ -947,6 +947,16 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, OTHER_TYPE);
                 }
 
+                TypeTag::TagAutoType if expected_ty & TYPE != 0 => {
+                    let auto_id =
+                        from_value(ty_node.extras[0].clone()).expect("Auto type child not found");
+                    let auto = self.visit_type(auto_id);
+
+                    let auto_ty = CTypeKind::Auto(auto);
+                    self.add_type(new_id, not_located(auto_ty));
+                    self.processed_nodes.insert(new_id, TYPE);
+                }
+
                 t => panic!(
                     "Type conversion not implemented for {:?} expecting {:?}",
                     t, expected_ty

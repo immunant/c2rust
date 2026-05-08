@@ -4243,6 +4243,7 @@ impl<'c> Translation<'c> {
             | Reference(CQualTypeId { ctype, .. })
             | BlockPointer(CQualTypeId { ctype, .. })
             | TypeOf(ctype)
+            | Auto(ctype)
             | Complex(ctype) => imports.extend(self.imports_for_type(*ctype)),
             Enum(decl_id) | Typedef(decl_id) | Union(decl_id) | Struct(decl_id) => {
                 let mut decl_id = *decl_id;
