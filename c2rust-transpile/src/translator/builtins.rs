@@ -427,7 +427,7 @@ impl<'c> Translation<'c> {
                     warn!("{builtin_name} has no Rust equivalent; emitting null pointer");
                 }
                 let level = self.convert_expr(ctx.unused(), args[0], None)?;
-                Ok(level.and_then(|_| -> TranslationResult<_> {
+                Ok(level.and_then(|_| {
                     let void_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
                     let type_args = mk().angle_bracketed_args(vec![void_ty]);
                     let null_expr = mk().call_expr(
@@ -438,8 +438,8 @@ impl<'c> Translation<'c> {
                         ]),
                         vec![],
                     );
-                    Ok(WithStmts::new_val(null_expr))
-                })?)
+                    WithStmts::new_val(null_expr)
+                }))
             }
 
             "__builtin_extract_return_addr" | "__builtin_frob_return_addr" => {
