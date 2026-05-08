@@ -444,6 +444,14 @@ impl<'c> Translation<'c> {
                 })?)
             }
 
+            "__builtin_extract_return_addr" | "__builtin_frob_return_addr" => {
+                // GCC documents these as identity functions on most
+                // architectures (only used to mask/unmask hardware-specific
+                // bits like the ARM Thumb mode bit). Pass the argument
+                // through unchanged.
+                self.convert_expr(ctx, args[0], None)
+            }
+
             "__builtin_ia32_pause" => {
                 let fn_name = "_mm_pause";
                 self.import_simd_function(fn_name)?;
