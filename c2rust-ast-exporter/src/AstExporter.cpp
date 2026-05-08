@@ -18,6 +18,7 @@
 #include "clang/Tooling/CommonOptionsParser.h"
 
 #include "clang/AST/DeclVisitor.h"
+#include "clang/AST/ExprCXX.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtVisitor.h"
@@ -25,6 +26,7 @@
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/TypeTraits.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CompilerInstance.h"
 #if CLANG_VERSION_MAJOR < 10
@@ -1432,6 +1434,32 @@ class TranslateASTVisitor final
     bool VisitVAArgExpr(VAArgExpr *E) {
         std::vector<void *> childIds{E->getSubExpr()};
         encode_entry(E, TagVAArgExpr, childIds);
+        return true;
+    }
+
+    bool VisitTypeTraitExpr(TypeTraitExpr *E) {
+        if (E->getTrait() != BTT_TypeCompatible) {
+            printDiag(Context, DiagnosticsEngine::Warning,
+                      "Encountered unsupported type trait expression", E);
+            return true;
+        }
+
+        std::vector<void *> childIds;
+
+        encode_entry(E, TagTypeTraitExpr, childIds,
+                     [E, this](CborEncoder *extras) {
+                         cbor_encode_text_stringz(extras, "__builtin_types_compatible_p");
+#if CLANG_VERSION_MAJOR >= 21
+                         cbor_encode_boolean(extras, E->getBoolValue());
+#else
+                         cbor_encode_boolean(extras, E->getValue());
+#endif
+                     });
+
+        for (TypeSourceInfo *Arg : E->getArgs()) {
+            typeEncoder.VisitQualTypeOf(Arg->getType(), E);
+        }
+
         return true;
     }
 

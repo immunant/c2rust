@@ -1643,6 +1643,23 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, operator);
                 }
 
+                ASTEntryTag::TagTypeTraitExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let ty = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty);
+
+                    let kind_name =
+                        from_value::<String>(node.extras[0].clone()).expect("expected kind");
+                    if kind_name != "__builtin_types_compatible_p" {
+                        panic!("Unsupported type trait expression: {}", kind_name);
+                    }
+                    let value = from_value::<bool>(node.extras[1].clone()).expect("expected value");
+
+                    let literal =
+                        CExprKind::Literal(ty, CLiteral::Integer(u64::from(value), IntBase::Dec));
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, literal);
+                }
+
                 ASTEntryTag::TagCompoundLiteralExpr => {
                     let ty_old = node
                         .type_id
