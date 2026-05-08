@@ -7,6 +7,7 @@ use crate::format_translation_err;
 use crate::translator::atomics::CAtomicBinOp;
 use crate::translator::simd::simd_fn_from_builtin_fn;
 use c2rust_rust_tools::RustEdition::Edition2024;
+use log::warn;
 use std::sync::atomic::Ordering::Acquire;
 use std::sync::atomic::Ordering::Release;
 use std::sync::atomic::Ordering::SeqCst;
@@ -412,6 +413,34 @@ impl<'c> Translation<'c> {
 
                     Ok(WithStmts::new(vec![push_stmt], expr))
                 })
+            }
+
+            "__builtin_return_address" => {
+                // GCC's `__builtin_return_address` has no Rust equivalent: Rust
+                // does not surface LLVM's `@llvm.returnaddress` intrinsic, and
+                // an inline-asm implementation would depend on frame-pointer
+                // codegen we don't control. Translating to a null pointer keeps
+                // the output compilable; consumers using the value for debug
+                // logging will see null instead of a meaningful address.
+                if let Some(loc) = self.ast_context.display_loc(src_loc) {
+                    warn!("{loc}: __builtin_return_address has no Rust equivalent; emitting null pointer");
+                } else {
+                    warn!("__builtin_return_address has no Rust equivalent; emitting null pointer");
+                }
+                let level = self.convert_expr(ctx.unused(), args[0], None)?;
+                Ok(level.and_then(|_| -> TranslationResult<_> {
+                    let void_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
+                    let type_args = mk().angle_bracketed_args(vec![void_ty]);
+                    let null_expr = mk().call_expr(
+                        mk().abs_path_expr(vec![
+                            mk().path_segment("core"),
+                            mk().path_segment("ptr"),
+                            mk().path_segment_with_args("null_mut", type_args),
+                        ]),
+                        vec![],
+                    );
+                    Ok(WithStmts::new_val(null_expr))
+                })?)
             }
 
             "__builtin_ia32_pause" => {
