@@ -433,6 +433,11 @@ fn test_return_address() {
 }
 
 #[test]
+fn test_return_addr_helpers() {
+    transpile("return_addr_helpers.c").run();
+}
+
+#[test]
 fn test_str_init() {
     transpile("str_init.c").run();
 }
