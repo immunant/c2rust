@@ -1,0 +1,30 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/auto_type.2021.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(raw_ref_op)]
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct bar {
+    pub x: ::core::ffi::c_int,
+}
+#[no_mangle]
+pub unsafe extern "C" fn foo() -> ::core::ffi::c_int {
+    let mut x: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut px: *mut ::core::ffi::c_int = &raw mut x;
+    let mut sx: ::core::ffi::c_ulong =
+        ::core::mem::size_of::<::core::ffi::c_int>() as ::core::ffi::c_ulong;
+    let mut y: bar = bar {
+        x: x as ::core::ffi::c_int,
+    } as bar;
+    return y.x;
+}
