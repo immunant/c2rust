@@ -428,6 +428,11 @@ fn test_str_init() {
 }
 
 #[test]
+fn test_types_compatible() {
+    transpile("types_compatible.c").run();
+}
+
+#[test]
 fn test_volatile() {
     transpile("volatile.c").run();
 }
