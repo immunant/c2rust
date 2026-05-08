@@ -180,7 +180,7 @@ impl<'c> Translation<'c> {
         // If we are translating a static variable,
         // then the fresh variable should also be static.
         if ctx.is_static {
-            val.wrap_unsafe().and_then(|val| {
+            Ok(val.wrap_unsafe().and_then(|val| {
                 let item = mk().mutbl().static_item(&fresh_name, fresh_ty, val);
                 let fresh_stmt = mk().item_stmt(item);
                 let mut val = WithStmts::new(vec![fresh_stmt], mk().ident_expr(fresh_name));
@@ -193,10 +193,10 @@ impl<'c> Translation<'c> {
                     val.set_unsafe();
                 }
 
-                Ok(val)
-            })
+                val
+            }))
         } else {
-            val.and_then(|val| {
+            Ok(val.and_then(|val| {
                 let mutbl = if qty.qualifiers.is_const {
                     Mutability::Immutable
                 } else {
@@ -208,11 +208,8 @@ impl<'c> Translation<'c> {
                     Some(val),
                 );
                 let fresh_stmt = mk().local_stmt(Box::new(local));
-                Ok(WithStmts::new(
-                    vec![fresh_stmt],
-                    mk().ident_expr(fresh_name),
-                ))
-            })
+                WithStmts::new(vec![fresh_stmt], mk().ident_expr(fresh_name))
+            }))
         }
     }
 
@@ -230,7 +227,7 @@ impl<'c> Translation<'c> {
                 // Convert all of the provided initializer values
 
                 let to_array_element = |id: CExprId| -> TranslationResult<_> {
-                    self.convert_expr(ctx.used(), id, None)?.result_map(|x| {
+                    self.convert_expr(ctx.used(), id, None)?.try_map(|x| {
                         // Array literals require all of their elements to be
                         // the correct type; they will not use implicit casts to
                         // change mut to const. This becomes a problem when an

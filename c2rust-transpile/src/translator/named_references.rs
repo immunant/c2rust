@@ -108,7 +108,7 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad reference type"))?;
         let read = |write| self.read(reference_ty, write);
         let reference = self.convert_expr(ctx.used(), reference, Some(reference_ty))?;
-        reference.and_then(|reference| {
+        reference.and_then_try(|reference| {
             if !uses_read && is_lvalue(&reference) {
                 Ok(WithStmts::new_val(NamedReference {
                     lvalue: reference,

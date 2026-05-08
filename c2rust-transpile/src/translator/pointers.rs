@@ -205,7 +205,7 @@ impl<'c> Translation<'c> {
         }
 
         self.convert_expr(ctx.used(), arg, None)?
-            .result_map(|val: Box<Expr>| {
+            .try_map(|val: Box<Expr>| {
                 if let CTypeKind::Function(..) =
                     self.ast_context.resolve_type(cqual_type.ctype).kind
                 {
@@ -259,7 +259,7 @@ impl<'c> Translation<'c> {
         }
 
         let rhs = self.convert_expr(ctx.used(), rhs, None)?;
-        rhs.and_then(|rhs| {
+        rhs.and_then_try(|rhs| {
             let simple_index_array = if ctx.needs_address() {
                 // We can't necessarily index into an array if we're using
                 // that element to compute an address.
@@ -308,23 +308,21 @@ impl<'c> Translation<'c> {
                 };
 
                 let lhs = self.convert_expr(ctx.used(), arr, None)?;
-                lhs.and_then(|lhs| {
+                Ok(lhs.and_then(|lhs| {
                     // stmts.extend(lhs.stmts_mut());
                     // is_unsafe = is_unsafe || lhs.is_unsafe();
 
                     // Don't dereference the offset if we're still within the variable portion
                     if let Some(elt_type_id) = var_elt_type_id {
-                        Ok(self.convert_pointer_offset(lhs, rhs, elt_type_id, false, deref))
+                        self.convert_pointer_offset(lhs, rhs, elt_type_id, false, deref)
                     } else {
-                        Ok(WithStmts::new_val(
-                            mk().index_expr(lhs, cast_int(rhs, "usize", false)),
-                        ))
+                        WithStmts::new_val(mk().index_expr(lhs, cast_int(rhs, "usize", false)))
                     }
-                })
+                }))
             } else {
                 // LHS must be ref decayed for the offset method call's self param
                 let lhs = self.convert_expr(ctx.used().decay_ref(), lhs, None)?;
-                lhs.and_then(|lhs| {
+                lhs.and_then_try(|lhs| {
                     // stmts.extend(lhs.stmts_mut());
                     // is_unsafe = is_unsafe || lhs.is_unsafe();
 
@@ -451,11 +449,9 @@ impl<'c> Translation<'c> {
             self.import_type(source_cty);
             self.import_type(target_cty);
 
-            val.and_then(|val| {
-                Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    source_ty, target_ty, val,
-                )))
-            })
+            Ok(val.and_then(|val| {
+                WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, val))
+            }))
         } else {
             // Normal case
             let target_ty = self.convert_type(target_cty)?;
@@ -482,15 +478,13 @@ impl<'c> Translation<'c> {
             }
 
             self.use_crate(ExternCrate::Libc);
-            val.and_then(|mut val| {
+            Ok(val.and_then(|mut val| {
                 // First cast the integer to pointer size
                 let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
                 val = mk().cast_expr(val, intptr_t.clone());
 
-                Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    intptr_t, target_ty, val,
-                )))
-            })
+                WithStmts::new_unsafe_val(transmute_expr(intptr_t, target_ty, val))
+            }))
         } else if source_ty_kind.is_bool() {
             self.use_crate(ExternCrate::Libc);
             Ok(val.map(|mut val| {
@@ -499,7 +493,7 @@ impl<'c> Translation<'c> {
                 mk().cast_expr(val, target_ty)
             }))
         } else if let &CTypeKind::Enum(..) = source_ty_kind {
-            val.result_map(|val| self.convert_cast_from_enum(target_cty, val))
+            val.try_map(|val| self.convert_cast_from_enum(target_cty, val))
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }
@@ -525,15 +519,11 @@ impl<'c> Translation<'c> {
         let target_ty_kind = &self.ast_context.resolve_type(target_cty).kind;
 
         if self.ast_context.is_function_pointer(source_cty) {
-            val.and_then(|val| {
-                Ok(WithStmts::new_unsafe_val(transmute_expr(
-                    source_ty, target_ty, val,
-                )))
-            })
+            Ok(val.and_then(|val| {
+                WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, val))
+            }))
         } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            val.result_map(|val| {
-                self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
-            })
+            val.try_map(|val| self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val))
         } else {
             Ok(val.map(|val| mk().cast_expr(val, target_ty)))
         }

@@ -163,14 +163,14 @@ impl<'c> Translation<'c> {
         }
 
         match name {
-            "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then(|ptr| {
+            "__atomic_load" | "__atomic_load_n" | "__c11_atomic_load" => ptr.and_then_try(|ptr| {
                 let order = static_order(order);
 
                 let atomic_load = self.atomic_intrinsic_expr("load", &[order]);
                 let call = mk().call_expr(atomic_load, vec![ptr]);
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
-                    ret.and_then(|ret| {
+                    ret.and_then_try(|ret| {
                         let assignment = mk().assign_expr(
                             mk().unary_expr(UnOp::Deref(Default::default()), ret),
                             call,
@@ -193,79 +193,71 @@ impl<'c> Translation<'c> {
             "__atomic_store" | "__atomic_store_n" | "__c11_atomic_store" => {
                 let order = static_order(order);
                 let val = val1.expect("__atomic_store must have a val argument");
-                ptr.and_then(|ptr| {
-                    val.and_then(|val| {
-                        let atomic_store = self.atomic_intrinsic_expr("store", &[order]);
-                        let val = if name == "__atomic_store" {
-                            mk().unary_expr(UnOp::Deref(Default::default()), val)
-                        } else {
-                            val
-                        };
-                        let call = mk().call_expr(atomic_store, vec![ptr, val]);
-                        self.convert_side_effects_expr(
-                            ctx,
-                            WithStmts::new_val(call),
-                            "Builtin is not supposed to be used",
-                        )
-                    })
+                ptr.zip(val).and_then_try(|(ptr, val)| {
+                    let atomic_store = self.atomic_intrinsic_expr("store", &[order]);
+                    let val = if name == "__atomic_store" {
+                        mk().unary_expr(UnOp::Deref(Default::default()), val)
+                    } else {
+                        val
+                    };
+                    let call = mk().call_expr(atomic_store, vec![ptr, val]);
+                    self.convert_side_effects_expr(
+                        ctx,
+                        WithStmts::new_val(call),
+                        "Builtin is not supposed to be used",
+                    )
                 })
             }
 
             // NOTE: there is no corresponding __atomic_init builtin in clang
             "__c11_atomic_init" => {
                 let val = val1.expect("__atomic_init must have a val argument");
-                ptr.and_then(|ptr| {
-                    val.and_then(|val| {
-                        let assignment = mk().assign_expr(
-                            mk().unary_expr(UnOp::Deref(Default::default()), ptr),
-                            val,
-                        );
-                        self.convert_side_effects_expr(
-                            ctx,
-                            WithStmts::new_val(assignment),
-                            "Builtin is not supposed to be used",
-                        )
-                    })
+                ptr.zip(val).and_then_try(|(ptr, val)| {
+                    let assignment = mk()
+                        .assign_expr(mk().unary_expr(UnOp::Deref(Default::default()), ptr), val);
+                    self.convert_side_effects_expr(
+                        ctx,
+                        WithStmts::new_val(assignment),
+                        "Builtin is not supposed to be used",
+                    )
                 })
             }
 
             "__atomic_exchange" | "__atomic_exchange_n" | "__c11_atomic_exchange" => {
                 let order = static_order(order);
                 let val = val1.expect("__atomic_store must have a val argument");
-                ptr.and_then(|ptr| {
-                    val.and_then(|val| {
-                        let fn_path = self.atomic_intrinsic_expr("xchg", &[order]);
-                        let val = if name == "__atomic_exchange" {
-                            mk().unary_expr(UnOp::Deref(Default::default()), val)
-                        } else {
-                            val
-                        };
-                        let call = mk().call_expr(fn_path, vec![ptr, val]);
-                        if name == "__atomic_exchange" {
-                            // LLVM stores the ret pointer in the order_fail slot
-                            order_fail_id
-                                .map(|x| self.convert_expr(ctx.used(), x, None))
-                                .transpose()?
-                                .expect("__atomic_exchange must have a ret pointer argument")
-                                .and_then(|ret| {
-                                    let assignment = mk().assign_expr(
-                                        mk().unary_expr(UnOp::Deref(Default::default()), ret),
-                                        call,
-                                    );
-                                    self.convert_side_effects_expr(
-                                        ctx,
-                                        WithStmts::new_val(assignment),
-                                        "Builtin is not supposed to be used",
-                                    )
-                                })
-                        } else {
-                            self.convert_side_effects_expr(
-                                ctx,
-                                WithStmts::new_val(call),
-                                "Builtin is not supposed to be used",
-                            )
-                        }
-                    })
+                ptr.zip(val).and_then_try(|(ptr, val)| {
+                    let fn_path = self.atomic_intrinsic_expr("xchg", &[order]);
+                    let val = if name == "__atomic_exchange" {
+                        mk().unary_expr(UnOp::Deref(Default::default()), val)
+                    } else {
+                        val
+                    };
+                    let call = mk().call_expr(fn_path, vec![ptr, val]);
+                    if name == "__atomic_exchange" {
+                        // LLVM stores the ret pointer in the order_fail slot
+                        order_fail_id
+                            .map(|x| self.convert_expr(ctx.used(), x, None))
+                            .transpose()?
+                            .expect("__atomic_exchange must have a ret pointer argument")
+                            .and_then_try(|ret| {
+                                let assignment = mk().assign_expr(
+                                    mk().unary_expr(UnOp::Deref(Default::default()), ret),
+                                    call,
+                                );
+                                self.convert_side_effects_expr(
+                                    ctx,
+                                    WithStmts::new_val(assignment),
+                                    "Builtin is not supposed to be used",
+                                )
+                            })
+                    } else {
+                        self.convert_side_effects_expr(
+                            ctx,
+                            WithStmts::new_val(call),
+                            "Builtin is not supposed to be used",
+                        )
+                    }
                 })
             }
 
@@ -287,62 +279,57 @@ impl<'c> Translation<'c> {
                 let order_fail = static_order(order_fail);
                 let weak = static_order(weak);
 
-                ptr.and_then(|ptr| {
-                    expected.and_then(|expected| {
-                        desired.and_then(|desired| {
-                            use Ordering::*;
-                            let (order, order_fail) = match (order, order_fail) {
-                                (_, Release | AcqRel) => None,
-                                (SeqCst, SeqCst | Acquire | Relaxed)
-                                | (AcqRel, Acquire | Relaxed)
-                                | (Release, Relaxed)
-                                | (Acquire | Relaxed, Acquire | Relaxed) => {
-                                    Some((order, order_fail))
-                                }
-                                (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => None,
+                ptr.zip(expected)
+                    .zip(desired)
+                    .and_then_try(|((ptr, expected), desired)| {
+                        use Ordering::*;
+                        let (order, order_fail) = match (order, order_fail) {
+                            (_, Release | AcqRel) => None,
+                            (SeqCst, SeqCst | Acquire | Relaxed)
+                            | (AcqRel, Acquire | Relaxed)
+                            | (Release, Relaxed)
+                            | (Acquire | Relaxed, Acquire | Relaxed) => Some((order, order_fail)),
+                            (SeqCst | AcqRel | Release | Acquire | Relaxed, _) => None,
 
-                                (_, _) => unreachable!("Did we not handle a case above??"),
-                            }
-                            .ok_or_else(|| {
-                                format_translation_err!(
-                                    self.ast_context
-                                        .display_loc(&self.ast_context[order_fail_id.unwrap()].loc),
-                                    "Invalid failure memory ordering",
-                                )
-                            })?;
-
-                            let expected =
-                                mk().unary_expr(UnOp::Deref(Default::default()), expected);
-                            let desired = match name {
-                                "__atomic_compare_exchange_n"
-                                | "__c11_atomic_compare_exchange_strong"
-                                | "__c11_atomic_compare_exchange_weak" => desired,
-                                _ => mk().unary_expr(UnOp::Deref(Default::default()), desired),
-                            };
-
-                            let atomic_cxchg =
-                                self.atomic_intrinsic_cxchg_expr(weak, order, order_fail);
-                            let call =
-                                mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
-                            let res_name = self.renamer.borrow_mut().fresh();
-                            let res_let = mk().local_stmt(Box::new(mk().local(
-                                mk().ident_pat(&res_name),
-                                None,
-                                Some(call),
-                            )));
-                            let assignment = mk().semi_stmt(mk().assign_expr(
-                                expected,
-                                mk().anon_field_expr(mk().ident_expr(&res_name), 0),
-                            ));
-                            let return_value = mk().anon_field_expr(mk().ident_expr(&res_name), 1);
-                            self.convert_side_effects_expr(
-                                ctx,
-                                WithStmts::new(vec![res_let, assignment], return_value),
-                                "Builtin is not supposed to be used",
+                            (_, _) => unreachable!("Did we not handle a case above??"),
+                        }
+                        .ok_or_else(|| {
+                            format_translation_err!(
+                                self.ast_context
+                                    .display_loc(&self.ast_context[order_fail_id.unwrap()].loc),
+                                "Invalid failure memory ordering",
                             )
-                        })
+                        })?;
+
+                        let expected = mk().unary_expr(UnOp::Deref(Default::default()), expected);
+                        let desired = match name {
+                            "__atomic_compare_exchange_n"
+                            | "__c11_atomic_compare_exchange_strong"
+                            | "__c11_atomic_compare_exchange_weak" => desired,
+                            _ => mk().unary_expr(UnOp::Deref(Default::default()), desired),
+                        };
+
+                        let atomic_cxchg =
+                            self.atomic_intrinsic_cxchg_expr(weak, order, order_fail);
+                        let call =
+                            mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
+                        let res_name = self.renamer.borrow_mut().fresh();
+                        let res_let = mk().local_stmt(Box::new(mk().local(
+                            mk().ident_pat(&res_name),
+                            None,
+                            Some(call),
+                        )));
+                        let assignment = mk().semi_stmt(mk().assign_expr(
+                            expected,
+                            mk().anon_field_expr(mk().ident_expr(&res_name), 0),
+                        ));
+                        let return_value = mk().anon_field_expr(mk().ident_expr(&res_name), 1);
+                        self.convert_side_effects_expr(
+                            ctx,
+                            WithStmts::new(vec![res_let, assignment], return_value),
+                            "Builtin is not supposed to be used",
+                        )
                     })
-                })
             }
 
             _ => {
@@ -354,10 +341,8 @@ impl<'c> Translation<'c> {
                         .kind
                         .get_qual_type()
                         .ok_or_else(|| format_err!("bad val1 type"))?;
-                    ptr.and_then(|ptr| {
-                        val.and_then(|val| {
-                            self.convert_atomic_op(ctx, atomic_op, order, ptr, val, val_type_id)
-                        })
+                    ptr.zip(val).and_then_try(|(ptr, val)| {
+                        self.convert_atomic_op(ctx, atomic_op, order, ptr, val, val_type_id)
                     })
                 } else {
                     unimplemented!("atomic not implemented: {}", name)

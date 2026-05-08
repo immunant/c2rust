@@ -26,23 +26,24 @@ impl<'c> Translation<'c> {
             Comma => {
                 // The value of the LHS of a comma expression is always discarded
                 self.convert_expr(ctx.unused(), lhs, None)?
-                    .and_then(|_| self.convert_expr(ctx, rhs, Some(expr_type_id)))
+                    .and_then_try(|_| self.convert_expr(ctx, rhs, Some(expr_type_id)))
             }
 
             And | Or => {
                 let lhs = self.convert_condition(ctx, true, lhs)?;
                 let rhs = self.convert_condition(ctx, true, rhs)?;
-                lhs.map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
+                Ok(lhs
+                    .map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
                     .and_then(|out| {
                         if ctx.is_unused() {
-                            Ok(WithStmts::new(
+                            WithStmts::new(
                                 vec![mk().semi_stmt(out)],
                                 self.panic_or_err("Binary expression is not supposed to be used"),
-                            ))
+                            )
                         } else {
-                            Ok(WithStmts::new_val(out))
+                            WithStmts::new_val(out)
                         }
-                    })
+                    }))
             }
 
             // No sequence-point cases
@@ -124,7 +125,7 @@ impl<'c> Translation<'c> {
                 if ctx.is_unused() {
                     Ok(self
                         .convert_expr(ctx, lhs, Some(lhs_type_id))?
-                        .and_then(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
+                        .and_then_try(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
                         .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
                 } else {
                     let rhs_ctx = ctx;
@@ -147,7 +148,7 @@ impl<'c> Translation<'c> {
 
                         if self.ast_context.is_null_expr(lhs) {
                             let val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
-                            let val = val.result_map(|rhs_rs| {
+                            let val = val.try_map(|rhs_rs| {
                                 self.convert_pointer_is_null(
                                     ctx,
                                     rhs_type_id.ctype,
@@ -158,7 +159,7 @@ impl<'c> Translation<'c> {
                             return Ok(val.map(bool_to_int));
                         } else if self.ast_context.is_null_expr(rhs) {
                             let val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                            let val = val.result_map(|lhs_rs| {
+                            let val = val.try_map(|lhs_rs| {
                                 self.convert_pointer_is_null(
                                     ctx,
                                     lhs_type_id.ctype,
@@ -170,21 +171,20 @@ impl<'c> Translation<'c> {
                         }
                     }
 
-                    self.convert_expr(ctx, lhs, Some(lhs_type_id))?
-                        .and_then(|lhs_val| {
-                            self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?
-                                .and_then(|rhs_val| {
-                                    self.convert_binary_operator(
-                                        op,
-                                        ty,
-                                        expr_type_id.ctype,
-                                        lhs_type_id,
-                                        rhs_type_id,
-                                        lhs_val,
-                                        rhs_val,
-                                    )
-                                })
-                        })
+                    let lhs_val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
+                    let rhs_val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
+
+                    lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
+                        self.convert_binary_operator(
+                            op,
+                            ty,
+                            expr_type_id.ctype,
+                            lhs_type_id,
+                            rhs_type_id,
+                            lhs_val,
+                            rhs_val,
+                        )
+                    })
                 }
             }
         }
@@ -224,7 +224,7 @@ impl<'c> Translation<'c> {
             )?;
 
             let ty = self.convert_type(compute_res_type_id.ctype)?;
-            let val = lhs.and_then(|lhs| {
+            let val = lhs.and_then_try(|lhs| {
                 self.convert_binary_operator(
                     bin_op,
                     ty,
@@ -411,117 +411,115 @@ impl<'c> Translation<'c> {
             })
         };
 
-        rhs_translation.and_then(|rhs| {
-            lhs_translation.and_then(
-                |NamedReference {
-                     lvalue: write,
-                     rvalue: read,
-                 }| {
-                    // Assignment expression itself
-                    use CBinOp::*;
-                    let assign_stmt = match op {
-                        // Regular (possibly volatile) assignment
-                        Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
-                        Assign => WithStmts::new_unsafe_val(self.volatile_write(
-                            write,
-                            initial_lhs_type_id,
+        rhs_translation.zip(lhs_translation).and_then_try(|(rhs, lhs)| {
+            let NamedReference {
+                lvalue: write,
+                rvalue: read,
+            } = lhs;
+
+            // Assignment expression itself
+            use CBinOp::*;
+            let assign_stmt = match op {
+                // Regular (possibly volatile) assignment
+                Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
+                Assign => WithStmts::new_unsafe_val(self.volatile_write(
+                    write,
+                    initial_lhs_type_id,
+                    rhs,
+                )?),
+
+                // Anything volatile needs to be desugared into explicit reads and writes
+                op if is_volatile || is_unsigned_arith => {
+                    // Cast the lhs to the compute lhs type, do the compute, and then
+                    // cast the compute result to the final lhs type.
+
+                    let op = op
+                        .underlying_assignment()
+                        .expect("Cannot convert non-assignment operator");
+
+                    let lhs = self.convert_cast(
+                        ctx,
+                        initial_lhs_type_id,
+                        expr_or_comp_type_id,
+                        WithStmts::new_val(read.clone()),
+                        None,
+                        None,
+                        None,
+                    )?;
+
+                    let ty = self.convert_type(result_type_id.ctype)?;
+                    let val = lhs.and_then_try(|lhs|
+                        self.convert_binary_operator(
+                            op,
+                            ty,
+                            result_type_id.ctype,
+                            expr_or_comp_type_id,
+                            rhs_type_id,
+                            lhs,
                             rhs,
-                        )?),
+                        )
+                    )?;
 
-                        // Anything volatile needs to be desugared into explicit reads and writes
-                        op if is_volatile || is_unsigned_arith => {
-                            // Cast the lhs to the compute lhs type, do the compute, and then
-                            // cast the compute result to the final lhs type.
+                    let val = self.convert_cast(
+                        ctx,
+                        result_type_id,
+                        expr_type_id,
+                        val,
+                        None,
+                        None,
+                        None,
+                    )?;
 
-                            let op = op
-                                .underlying_assignment()
-                                .expect("Cannot convert non-assignment operator");
-
-                            let lhs = self.convert_cast(
-                                ctx,
-                                initial_lhs_type_id,
-                                expr_or_comp_type_id,
-                                WithStmts::new_val(read.clone()),
-                                None,
-                                None,
-                                None,
-                            )?;
-
-                            let ty = self.convert_type(result_type_id.ctype)?;
-                            let val = lhs.and_then(|lhs|
-                                self.convert_binary_operator(
-                                    op,
-                                    ty,
-                                    result_type_id.ctype,
-                                    expr_or_comp_type_id,
-                                    rhs_type_id,
-                                    lhs,
-                                    rhs,
-                                )
-                            )?;
-
-                            let val = self.convert_cast(
-                                ctx,
-                                result_type_id,
-                                expr_type_id,
-                                val,
-                                None,
-                                None,
-                                None,
-                            )?;
-
-                            #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
-                            let write = if is_volatile {
-                                val.and_then(|val| {
-                                    TranslationResult::Ok(WithStmts::new_unsafe_val(
-                                        self.volatile_write(write, initial_lhs_type_id, val)?,
-                                    ))
-                                })?
-                            } else {
-                                val.map(|val| mk().assign_expr(write, val))
-                            };
-                            write
-                        }
-
-                        // Everything else
-                        AssignAdd | AssignSubtract if pointer_lhs.is_some() => {
-                            let ptr = self.convert_pointer_offset(
-                                write.clone(),
-                                rhs,
-                                pointer_lhs.unwrap().ctype,
-                                op == AssignSubtract,
-                                false,
-                            );
-                            ptr.map(|ptr| mk().assign_expr(write, ptr))
-                        }
-
-                        _ => {
-                            let bin_op = op
-                                .underlying_assignment()
-                                .expect("Cannot convert non-assignment operator");
-                            let bin_op_kind = BinOp::from(op);
-
-                            self.convert_assignment_operator_aux(
-                                ctx,
-                                bin_op_kind,
-                                bin_op,
-                                read.clone(),
-                                write,
-                                rhs,
-                                initial_lhs_type_id,
-                                compute_lhs_type_id.unwrap(),
-                                compute_res_type_id.unwrap(),
-                                expr_type_id,
-                                rhs_type_id,
-                            )?
-                        }
+                    #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
+                    let write = if is_volatile {
+                        val.and_then_try(|val| {
+                            TranslationResult::Ok(WithStmts::new_unsafe_val(
+                                self.volatile_write(write, initial_lhs_type_id, val)?,
+                            ))
+                        })?
+                    } else {
+                        val.map(|val| mk().assign_expr(write, val))
                     };
+                    write
+                }
 
-                    assign_stmt.and_then(|assign_stmt| {
-                        Ok(WithStmts::new(vec![mk().semi_stmt(assign_stmt)], read))
-                    })
-                },
-            )
+                // Everything else
+                AssignAdd | AssignSubtract if pointer_lhs.is_some() => {
+                    let ptr = self.convert_pointer_offset(
+                        write.clone(),
+                        rhs,
+                        pointer_lhs.unwrap().ctype,
+                        op == AssignSubtract,
+                        false,
+                    );
+                    ptr.map(|ptr| mk().assign_expr(write, ptr))
+                }
+
+                _ => {
+                    let bin_op = op
+                        .underlying_assignment()
+                        .expect("Cannot convert non-assignment operator");
+                    let bin_op_kind = BinOp::from(op);
+
+                    self.convert_assignment_operator_aux(
+                        ctx,
+                        bin_op_kind,
+                        bin_op,
+                        read.clone(),
+                        write,
+                        rhs,
+                        initial_lhs_type_id,
+                        compute_lhs_type_id.unwrap(),
+                        compute_res_type_id.unwrap(),
+                        expr_type_id,
+                        rhs_type_id,
+                    )?
+                }
+            };
+
+            Ok(assign_stmt.and_then(|assign_stmt| {
+                WithStmts::new(vec![mk().semi_stmt(assign_stmt)], read)
+            }))
         })
     }
 
@@ -709,7 +707,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad post inc type"))?;
 
-        self.name_reference_write_read(ctx, arg)?.and_then(
+        self.name_reference_write_read(ctx, arg)?.and_then_try(
             |NamedReference {
                  lvalue: write,
                  rvalue: read,
