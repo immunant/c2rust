@@ -21,17 +21,43 @@ mod conversion;
 pub mod iterators;
 mod print;
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
 pub struct CTypeId(pub u64);
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
 pub struct CExprId(pub u64);
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
 pub struct CDeclId(pub u64);
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
 pub struct CStmtId(pub u64);
+
+// Custom Debug implementations that don't add newlines even in pretty-printed format
+
+impl Debug for CTypeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CTypeId({})", self.0)
+    }
+}
+
+impl Debug for CExprId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CExprId({})", self.0)
+    }
+}
+
+impl Debug for CDeclId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CDeclId({})", self.0)
+    }
+}
+
+impl Debug for CStmtId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CStmtId({})", self.0)
+    }
+}
 
 // These are references into particular variants of AST nodes
 pub type CLabelId = CStmtId; // Labels point into the 'StmtKind::Label' that declared the label
