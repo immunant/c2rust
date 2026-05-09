@@ -772,13 +772,12 @@ impl<'c> Translation<'c> {
                     mk().assign_expr(write, val)
                 };
 
-                let mut val = WithStmts::new(
+                let val = WithStmts::new(
                     vec![save_old_val, mk().expr_stmt(assign_stmt)],
                     mk().ident_expr(val_name),
-                );
-                if is_unsafe {
-                    val.set_unsafe();
-                }
+                )
+                .merge_unsafe(is_unsafe);
+
                 Ok(val)
             },
         )

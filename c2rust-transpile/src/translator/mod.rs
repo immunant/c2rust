@@ -2364,9 +2364,7 @@ impl<'c> Translation<'c> {
                     .span(span)
                     .mutbl()
                     .static_item(&ident2, ty, default_init);
-                let mut init = init?;
-                init.set_unsafe();
-                let mut init = init.to_expr();
+                let mut init = init?.set_unsafe().to_expr();
 
                 self.add_static_initializer_to_section(ctx, &ident2, typ, &mut init)?;
                 self.items.borrow_mut()[&self.main_file].add_item(static_item);

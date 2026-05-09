@@ -95,8 +95,9 @@ impl<T> WithStmts<T> {
         }
     }
 
-    pub fn set_unsafe(&mut self) {
+    pub fn set_unsafe(mut self) -> Self {
         self.is_unsafe = true;
+        self
     }
 
     pub fn merge_unsafe(mut self, is_unsafe: bool) -> Self {
