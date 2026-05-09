@@ -1638,7 +1638,6 @@ impl<'c> Translation<'c> {
         expr_id: Option<CExprId>,
         qtype: CQualTypeId,
     ) -> bool {
-        use crate::c_ast::CBinOp::{Add, Divide, Modulus, Multiply, Subtract};
         use crate::c_ast::CUnOp::{AddressOf, Negate};
         use crate::c_ast::CastKind::{IntegralToPointer, PointerToIntegral};
 
@@ -1687,9 +1686,7 @@ impl<'c> Translation<'c> {
                 | ExplicitCast(_, _, PointerToIntegral, _, _) => return true,
 
                 Binary(typ, op, _, _, _, _) => {
-                    let problematic_op = matches!(op, Add | Subtract | Multiply | Divide | Modulus);
-
-                    if problematic_op {
+                    if op.is_arithmetic() {
                         let k = &self.ast_context.resolve_type(typ.ctype).kind;
                         if k.is_unsigned_integral_type() || k.is_pointer() {
                             return true;
