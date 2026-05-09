@@ -136,13 +136,15 @@ impl<T> WithStmts<T> {
         self.is_unsafe
     }
 
-    pub fn add_stmt(&mut self, stmt: Stmt) {
+    pub fn add_stmt(mut self, stmt: Stmt) -> Self {
         self.stmts.push(stmt);
+        self
     }
 
-    pub fn prepend_stmts(&mut self, mut stmts: Vec<Stmt>) {
+    pub fn prepend_stmts(mut self, mut stmts: Vec<Stmt>) -> Self {
         stmts.append(&mut self.stmts);
         self.stmts = stmts;
+        self
     }
 
     pub fn is_pure(&self) -> bool {

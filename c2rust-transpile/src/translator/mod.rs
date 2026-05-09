@@ -3254,7 +3254,7 @@ impl<'c> Translation<'c> {
 
                 if is_explicit {
                     let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
-                    val.prepend_stmts(stmts);
+                    val = val.prepend_stmts(stmts);
                 }
 
                 // Shuffle Vector "function" builtins will add a cast to the output of the
