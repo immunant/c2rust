@@ -334,7 +334,7 @@ impl<'c> Translation<'c> {
                 mk().call_expr(mk().ident_expr(fn_call_name), params)
             };
 
-            let mut val = if ctx.is_used() {
+            let val = if ctx.is_used() {
                 WithStmts::new_val(call)
             } else {
                 WithStmts::new(
@@ -342,9 +342,8 @@ impl<'c> Translation<'c> {
                     self.panic_or_err("No value for unused shuffle vector return"),
                 )
             };
-            val.merge_unsafe(is_unsafe);
 
-            Ok(val)
+            Ok(val.merge_unsafe(is_unsafe))
         })
     }
 

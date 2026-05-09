@@ -3134,9 +3134,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let mut res = WithStmts::new_val(val);
-                res.merge_unsafe(set_unsafe);
-                Ok(res)
+                Ok(WithStmts::new_val(val).merge_unsafe(set_unsafe))
             }
 
             OffsetOf(ty, ref kind) => match kind {
@@ -3325,14 +3323,17 @@ impl<'c> Translation<'c> {
                     let is_unsafe = lhs.is_unsafe() || rhs.is_unsafe();
                     let then = mk().block(lhs.into_stmts());
                     let else_ = mk().block_expr(mk().block(rhs.into_stmts()));
+                    let res = cond
+                        .and_then(|c| {
+                            WithStmts::new(
+                                vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(else_)))],
+                                self.panic_or_err(
+                                    "Conditional expression is not supposed to be used",
+                                ),
+                            )
+                        })
+                        .merge_unsafe(is_unsafe);
 
-                    let mut res = cond.and_then(|c| {
-                        WithStmts::new(
-                            vec![mk().semi_stmt(mk().ifte_expr(c, then, Some(else_)))],
-                            self.panic_or_err("Conditional expression is not supposed to be used"),
-                        )
-                    });
-                    res.merge_unsafe(is_unsafe);
                     Ok(res)
                 } else {
                     let then = lhs.to_block();
@@ -3354,7 +3355,7 @@ impl<'c> Translation<'c> {
                 if ctx.is_unused() {
                     let mut lhs = self.convert_condition(ctx, false, lhs)?;
                     let rhs = self.convert_expr(ctx, rhs, None)?;
-                    lhs.merge_unsafe(rhs.is_unsafe());
+                    lhs = lhs.merge_unsafe(rhs.is_unsafe());
 
                     Ok(lhs.and_then(|val| {
                         WithStmts::new(

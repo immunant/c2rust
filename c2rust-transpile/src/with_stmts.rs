@@ -99,8 +99,9 @@ impl<T> WithStmts<T> {
         self.is_unsafe = true;
     }
 
-    pub fn merge_unsafe(&mut self, is_unsafe: bool) {
+    pub fn merge_unsafe(mut self, is_unsafe: bool) -> Self {
         self.is_unsafe = self.is_unsafe || is_unsafe;
+        self
     }
 
     pub fn into_stmts(self) -> Vec<Stmt> {
@@ -211,8 +212,6 @@ impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
             stmts.append(val.stmts_mut());
             res.push(val.into_value());
         }
-        let mut translation = WithStmts::new(stmts, res);
-        translation.merge_unsafe(is_unsafe);
-        translation
+        WithStmts::new(stmts, res).merge_unsafe(is_unsafe)
     }
 }
