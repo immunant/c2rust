@@ -2001,6 +2001,19 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, e)
                 }
 
+                ASTEntryTag::TagGenericExpr if expected_ty & (EXPR | STMT) != 0 => {
+                    let wrapped = node.children[0].expect("Expected generic expression");
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    // Use the existing `Paren` kind instead of adding a new one
+                    // that would just be a no-op wrapper around the inner
+                    // expression
+                    let expr = CExprKind::Paren(ty, self.visit_expr(wrapped));
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, expr);
+                }
+
                 // Declarations
                 ASTEntryTag::TagFunctionDecl if expected_ty & OTHER_DECL != 0 => {
                     let name = from_value::<String>(node.extras[0].clone())
