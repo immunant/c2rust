@@ -270,11 +270,10 @@ impl<'c> Translation<'c> {
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
 
-            Ok(WithStmts::new_unsafe_val(transmute_expr(
-                mk().infer_ty(),
-                mk().infer_ty(),
-                expr,
-            )))
+            Ok(
+                WithStmts::new_val(transmute_expr(mk().infer_ty(), mk().infer_ty(), expr))
+                    .set_unsafe(),
+            )
         } else {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");

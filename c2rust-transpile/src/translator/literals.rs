@@ -140,7 +140,7 @@ impl<'c> Translation<'c> {
                         val = mk().const_block_expr(mk().const_block(stmts));
                     }
 
-                    Ok(WithStmts::new_unsafe_val(val))
+                    Ok(WithStmts::new_val(val).set_unsafe())
                 }
             }
         }

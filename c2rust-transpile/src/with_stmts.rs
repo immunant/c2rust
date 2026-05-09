@@ -27,14 +27,6 @@ impl<T> WithStmts<T> {
         }
     }
 
-    pub fn new_unsafe_val(val: T) -> Self {
-        WithStmts {
-            stmts: vec![],
-            val,
-            is_unsafe: true,
-        }
-    }
-
     pub fn and_then<U, F>(self, f: F) -> WithStmts<U>
     where
         F: FnOnce(T) -> WithStmts<U>,

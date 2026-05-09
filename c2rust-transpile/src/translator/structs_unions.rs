@@ -541,12 +541,7 @@ impl<'a> Translation<'a> {
                 stmts.push(mk().expr_stmt(mk().ident_expr("init")));
 
                 let val = mk().block_expr(mk().block(stmts));
-
-                if is_unsafe {
-                    WithStmts::new_unsafe_val(val)
-                } else {
-                    WithStmts::new_val(val)
-                }
+                WithStmts::new_val(val).merge_unsafe(is_unsafe)
             });
         }
 

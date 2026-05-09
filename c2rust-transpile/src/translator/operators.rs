@@ -422,11 +422,11 @@ impl<'c> Translation<'c> {
             let assign_stmt = match op {
                 // Regular (possibly volatile) assignment
                 Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
-                Assign => WithStmts::new_unsafe_val(self.volatile_write(
+                Assign => WithStmts::new_val(self.volatile_write(
                     write,
                     initial_lhs_type_id,
                     rhs,
-                )?),
+                )?).set_unsafe(),
 
                 // Anything volatile needs to be desugared into explicit reads and writes
                 op if is_volatile || is_unsigned_arith => {
@@ -473,9 +473,9 @@ impl<'c> Translation<'c> {
                     #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
                     let write = if is_volatile {
                         val.and_then_try(|val| {
-                            TranslationResult::Ok(WithStmts::new_unsafe_val(
+                            TranslationResult::Ok(WithStmts::new_val(
                                 self.volatile_write(write, initial_lhs_type_id, val)?,
-                            ))
+                            ).set_unsafe())
                         })?
                     } else {
                         val.map(|val| mk().assign_expr(write, val))
@@ -617,7 +617,7 @@ impl<'c> Translation<'c> {
                 offset = mk().binary_expr(BinOp::Div(Default::default()), offset, div);
             }
 
-            Ok(WithStmts::new_unsafe_val(mk().cast_expr(offset, ty)))
+            Ok(WithStmts::new_val(mk().cast_expr(offset, ty)).set_unsafe())
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
         } else if lhs_type.is_unsigned_integral_type() {
