@@ -1014,9 +1014,18 @@ class TranslateASTVisitor final
             // Extend the range to include the entire final token.
             expandSpanToFinalChar(range, Context);
             encode_entry_raw(Mac, tag, range, QualType(), false,
-                             false, false, childIds, [Name](CborEncoder *local) {
-                                 cbor_encode_string(local, Name.str());
-                             });
+                             false, false, childIds, [Name, Mac](CborEncoder *local) {
+                cbor_encode_string(local, Name.str());
+
+                CborEncoder array;
+                cbor_encoder_create_array(local, &array, Mac->getNumParams());
+
+                for (auto IdentifierInfo : Mac->params()) {
+                    cbor_encode_string(&array, IdentifierInfo->getName().str());
+                }
+
+                cbor_encoder_close_container(local, &array);
+            });
 
         }
     }

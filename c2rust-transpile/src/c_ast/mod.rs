@@ -1620,6 +1620,7 @@ pub enum CDeclKind {
 
     MacroFunction {
         name: String,
+        params: Vec<String>,
         // replacements: Vec<CExprId>,
     },
 
