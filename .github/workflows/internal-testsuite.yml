@@ -114,11 +114,17 @@ jobs:
         export LLVM_CONFIG_PATH=/usr/bin/llvm-config-${{ matrix.clang-version }}
         cargo build --release
 
+    - name: Build tools
+      run: |
+        # `cd tools` to pick up `tools/rust-toolchain.toml` (stable, for `edition = "2024"`)
+        (cd tools && cargo build --release --manifest-path split_rust/Cargo.toml)
+        (cd tools && cargo build --release --manifest-path merge_rust/Cargo.toml)
+
     # TODO(pl): figure out why compile_commands.json may cause json-c to fail
     - name: Run c2rust testsuite
       run: |
         find tests/integration -type f -name compile_commands.json -delete
-        export PATH=$PWD/target/release:$HOME/.local/bin:$PATH
+        export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
         # Needs to be run from `tests/integration/` (or further inside)
