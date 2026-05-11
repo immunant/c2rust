@@ -1,0 +1,42 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/types_compatible.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#[unsafe(no_mangle)]
+pub static mut fixed_array: [::core::ffi::c_int; 5] = [0; 5];
+#[unsafe(no_mangle)]
+pub static mut same_unqualified_int: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+#[unsafe(no_mangle)]
+pub static mut same_typedef: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+#[unsafe(no_mangle)]
+pub static mut same_typeof_int: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+#[unsafe(no_mangle)]
+pub static mut same_array_type: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+#[unsafe(no_mangle)]
+pub static mut different_pointer_type: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+#[unsafe(no_mangle)]
+pub static mut different_enum_type: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn choose_same(
+    mut x: ::core::ffi::c_int,
+    mut y: ::core::ffi::c_long,
+) -> ::core::ffi::c_int {
+    return x;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn choose_different(
+    mut x: ::core::ffi::c_int,
+    mut y: ::core::ffi::c_long,
+) -> ::core::ffi::c_int {
+    return 7 as ::core::ffi::c_int;
+}

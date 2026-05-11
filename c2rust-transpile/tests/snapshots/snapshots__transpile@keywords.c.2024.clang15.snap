@@ -1,0 +1,90 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/keywords.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#[unsafe(export_name = "as")]
+pub unsafe extern "C" fn as_0() {}
+#[unsafe(export_name = "async")]
+pub unsafe extern "C" fn async_0() {}
+#[unsafe(export_name = "await")]
+pub unsafe extern "C" fn await_0() {}
+#[unsafe(export_name = "crate")]
+pub unsafe extern "C" fn crate_0() {}
+#[unsafe(export_name = "dyn")]
+pub unsafe extern "C" fn dyn_0() {}
+#[unsafe(export_name = "false")]
+pub unsafe extern "C" fn false_0() {}
+#[unsafe(export_name = "fn")]
+pub unsafe extern "C" fn fn_0() {}
+#[unsafe(export_name = "impl")]
+pub unsafe extern "C" fn impl_0() {}
+#[unsafe(export_name = "in")]
+pub unsafe extern "C" fn in_0() {}
+#[unsafe(export_name = "let")]
+pub unsafe extern "C" fn let_0() {}
+#[unsafe(export_name = "loop")]
+pub unsafe extern "C" fn loop_0() {}
+#[unsafe(export_name = "match")]
+pub unsafe extern "C" fn match_0() {}
+#[unsafe(export_name = "mod")]
+pub unsafe extern "C" fn mod_0() {}
+#[unsafe(export_name = "move")]
+pub unsafe extern "C" fn move_0() {}
+#[unsafe(export_name = "mut")]
+pub unsafe extern "C" fn mut_0() {}
+#[unsafe(export_name = "pub")]
+pub unsafe extern "C" fn pub_0() {}
+#[unsafe(export_name = "ref")]
+pub unsafe extern "C" fn ref_0() {}
+#[unsafe(export_name = "self")]
+pub unsafe extern "C" fn self_0() {}
+#[unsafe(export_name = "Self")]
+pub unsafe extern "C" fn Self_0() {}
+#[unsafe(export_name = "super")]
+pub unsafe extern "C" fn super_0() {}
+#[unsafe(export_name = "trait")]
+pub unsafe extern "C" fn trait_0() {}
+#[unsafe(export_name = "true")]
+pub unsafe extern "C" fn true_0() {}
+#[unsafe(export_name = "type")]
+pub unsafe extern "C" fn type_0() {}
+#[unsafe(export_name = "unsafe")]
+pub unsafe extern "C" fn unsafe_0() {}
+#[unsafe(export_name = "use")]
+pub unsafe extern "C" fn use_0() {}
+#[unsafe(export_name = "where")]
+pub unsafe extern "C" fn where_0() {}
+#[unsafe(export_name = "abstract")]
+pub unsafe extern "C" fn abstract_0() {}
+#[unsafe(export_name = "become")]
+pub unsafe extern "C" fn become_0() {}
+#[unsafe(export_name = "box")]
+pub unsafe extern "C" fn box_0() {}
+#[unsafe(export_name = "final")]
+pub unsafe extern "C" fn final_0() {}
+#[unsafe(export_name = "gen")]
+pub unsafe extern "C" fn gen_0() {}
+#[unsafe(export_name = "macro")]
+pub unsafe extern "C" fn macro_0() {}
+#[unsafe(export_name = "override")]
+pub unsafe extern "C" fn override_0() {}
+#[unsafe(export_name = "priv")]
+pub unsafe extern "C" fn priv_0() {}
+#[unsafe(export_name = "try")]
+pub unsafe extern "C" fn try_0() {}
+#[unsafe(export_name = "unsized")]
+pub unsafe extern "C" fn unsized_0() {}
+#[unsafe(export_name = "virtual")]
+pub unsafe extern "C" fn virtual_0() {}
+#[unsafe(export_name = "yield")]
+pub unsafe extern "C" fn yield_0() {}

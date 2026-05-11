@@ -118,7 +118,7 @@ LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm/bin/llvm-config" cargo install --loc
 or for a specific LLVM version,
 
 ```sh
-LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm@21/bin/llvm-config" cargo install --locked c2rust
+LLVM_CONFIG_PATH="$(brew --prefix)/opt/llvm@22/bin/llvm-config" cargo install --locked c2rust
 ```
 
 On Gentoo, you need to point the build system to

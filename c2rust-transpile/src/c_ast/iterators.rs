@@ -377,6 +377,7 @@ impl<'context> Iterator for DFExpr<'context> {
 pub struct DFNodes<'context> {
     context: &'context TypedAstContext,
     stack: Vec<SomeId>,
+    visited: HashSet<SomeId>,
 }
 
 impl<'context> DFNodes<'context> {
@@ -384,6 +385,7 @@ impl<'context> DFNodes<'context> {
         DFNodes {
             context,
             stack: vec![start],
+            visited: <_>::from([start]),
         }
     }
     pub fn prune(&mut self, n: usize) {
@@ -401,7 +403,12 @@ impl<'context> Iterator for DFNodes<'context> {
             // Compute list of immediate children
             let children = immediate_children_all_types(self.context, i);
             // Add children in reverse order since we visit the end of the stack first
-            self.stack.extend(children.into_iter().rev())
+            self.stack.extend(
+                children
+                    .into_iter()
+                    .rev()
+                    .filter(|child| self.visited.insert(*child)),
+            )
         }
 
         result
@@ -437,8 +444,9 @@ pub trait NodeVisitor {
     /// method afterward.
     fn visit_tree(&mut self, root: SomeId) {
         let mut stack = vec![VisitNode::new(root)];
+        let mut visited = HashSet::new();
         while let Some(mut node) = stack.pop() {
-            if !node.seen {
+            if !node.seen && visited.insert(node.id) {
                 let id = node.id;
                 node.seen = true;
                 stack.push(node);

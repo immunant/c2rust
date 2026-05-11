@@ -217,6 +217,20 @@ fn build_native(llvm_info: &LLVMInfo) {
                 .unwrap();
             clang_libs.insert(sema_pos + 1, "clangAPINotes");
         }
+        if llvm_info.llvm_major_version >= 22 {
+            // clang 22+ moved option parsing helpers into a separate library.
+            // Keep this after users like clangFrontend/clangDriver.
+            let driver_pos = clang_libs.iter().position(|&r| r == "clangDriver").unwrap();
+            clang_libs.insert(driver_pos + 1, "clangOptions");
+
+            // clang 22+ split lifetime safety analysis from clangAnalysis.
+            // Keep this after users like clangSema.
+            let analysis_pos = clang_libs
+                .iter()
+                .position(|&r| r == "clangAnalysis")
+                .unwrap();
+            clang_libs.insert(analysis_pos + 1, "clangAnalysisLifetimeSafety");
+        }
 
         for lib in &clang_libs {
             println!("cargo:rustc-link-lib={}", lib);
