@@ -1413,49 +1413,37 @@ class TranslateASTVisitor final
 
         // Check that we are only expanding a single macro call.
         if (!Begin.isMacroID() || !End.isMacroID() ||
-            Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End))
+            Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End)) {
             return true;
-
-        if (Begin.isMacroID()) {
-#if CLANG_VERSION_MAJOR < 7
-            // getImmediateExpansionRange in LLVM<7 returns a
-            // std::pair<SourceLocation, SourceLocation>, which we need to
-            // translate to a CharSourceRange for Lexer::getSourceText
-            auto LocPair = Mgr.getImmediateExpansionRange(Begin);
-            auto ExpansionRange = CharSourceRange::getCharRange(LocPair.first, LocPair.second);
-#else // CLANG_VERSION_MAJOR >= 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
-#endif
-            curMacroExpansionSource =
-                Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
         }
+
+        auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
+        curMacroExpansionSource =
+            Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
 
         // The macro stack unwound by getImmediateMacroCallerLoc and friends
         // starts with literal replacement and works it's way to the macro call
         // that was replaced.
         while (Begin.isMacroID()) {
-#if CLANG_VERSION_MAJOR < 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
-            auto ExpansionBegin = ExpansionRange.first;
-            auto ExpansionEnd = ExpansionRange.second;
-#else // CLANG_VERSION_MAJOR >= 7
             auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin).getAsRange();
             auto ExpansionBegin = ExpansionRange.getBegin();
             auto ExpansionEnd = ExpansionRange.getEnd();
-#endif
             StringRef name;
             MacroInfo *mac = getMacroInfo(ExpansionBegin, name);
 
-            if (!mac || mac->getNumTokens() == 0)
+            if (!mac || mac->getNumTokens() == 0) {
                 return true;
+            }
+
             auto ReplacementBegin = mac->getReplacementToken(0).getLocation();
             auto ReplacementEnd = mac->getDefinitionEndLoc();
             // Verify that this expansion covers the entire macro replacement
             // definition, i.e. E is not a subexpression of the macro
             // replacement.
             if (Mgr.getSpellingLoc(Begin) != ReplacementBegin ||
-                Mgr.getSpellingLoc(End) != ReplacementEnd)
+                Mgr.getSpellingLoc(End) != ReplacementEnd) {
                 return true;
+            }
 
             Begin = ExpansionBegin;
             End = ExpansionEnd;
@@ -1464,9 +1452,9 @@ class TranslateASTVisitor final
                 curMacroExpansionStack.push_back(mac);
             }
         }
+
         return true;
     }
-
 
     bool VisitVAArgExpr(VAArgExpr *E) {
         std::vector<void *> childIds{E->getSubExpr()};
