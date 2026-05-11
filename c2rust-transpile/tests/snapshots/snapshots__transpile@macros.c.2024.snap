@@ -373,13 +373,15 @@ pub static mut fns: fn_ptrs = fn_ptrs {
 pub static mut p: *const fn_ptrs = &raw const fns;
 pub const ZSTD_WINDOWLOG_MAX_32: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const ZSTD_WINDOWLOG_MAX_64: ::core::ffi::c_int = 31 as ::core::ffi::c_int;
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn test_zstd() -> U64 {
-    return (if ::core::mem::size_of::<zstd_platform_dependent_type>() as usize == 4 as usize {
+pub const ZSTD_WINDOWLOG_MAX: ::core::ffi::c_int =
+    if ::core::mem::size_of::<zstd_platform_dependent_type>() as usize == 4 as usize {
         ZSTD_WINDOWLOG_MAX_32
     } else {
         ZSTD_WINDOWLOG_MAX_64
-    }) as U64;
+    };
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_zstd() -> U64 {
+    return ZSTD_WINDOWLOG_MAX as U64;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn stmt_expr_inc() -> ::core::ffi::c_int {

@@ -3310,12 +3310,6 @@ impl<'c> Translation<'c> {
             }
 
             Conditional(ty, cond, lhs, rhs) => {
-                if ctx.is_const {
-                    return Err(format_translation_err!(
-                        self.ast_context.display_loc(src_loc),
-                        "Constants cannot contain ternary expressions in Rust",
-                    ));
-                }
                 let cond = self.convert_condition(ctx, true, cond)?;
 
                 let lhs = self.convert_expr(ctx, lhs, Some(override_ty.unwrap_or(ty)))?;
