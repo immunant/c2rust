@@ -1,0 +1,72 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/fn_attrs.2021.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(linkage)]
+#[inline(always)]
+unsafe extern "C" fn always_inline_static() {}
+#[inline(never)]
+unsafe extern "C" fn noinline_static() {}
+#[inline]
+unsafe extern "C" fn inline_static() {}
+#[inline]
+unsafe extern "C" fn alt_kw_inline_static() {}
+#[inline]
+unsafe extern "C" fn gnu_inline_static() {}
+#[cold]
+unsafe extern "C" fn cold_used_attrs() {}
+#[inline(always)]
+unsafe extern "C" fn always_inline_nonstatic() {}
+#[inline]
+unsafe extern "C" fn gnu_inline_nonstatic() {}
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn noinline_nonstatic() {}
+#[inline]
+unsafe extern "C" fn inline_nonstatic() {}
+#[inline]
+unsafe extern "C" fn alt_kw_inline_nonstatic() {}
+#[no_mangle]
+#[inline]
+#[linkage = "external"]
+pub unsafe extern "C" fn inline_extern() {}
+#[no_mangle]
+#[inline]
+#[linkage = "external"]
+pub unsafe extern "C" fn alt_kw_inline_extern() {}
+#[no_mangle]
+#[inline(always)]
+pub unsafe extern "C" fn always_inline_extern() {}
+#[inline]
+unsafe extern "C" fn gnu_inline_extern() {}
+#[inline(always)]
+unsafe extern "C" fn always_inline_gnu_inline_extern() {}
+#[inline]
+unsafe extern "C" fn gnu_inline_non_canonical_definition_extern() {}
+#[no_mangle]
+pub unsafe extern "C" fn ensure_use() {
+    always_inline_static();
+    always_inline_nonstatic();
+    gnu_inline_nonstatic();
+    inline_static();
+    alt_kw_inline_static();
+    noinline_static();
+    inline_nonstatic();
+    alt_kw_inline_nonstatic();
+    gnu_inline_static();
+    inline_extern();
+    alt_kw_inline_extern();
+    always_inline_extern();
+    gnu_inline_extern();
+    always_inline_gnu_inline_extern();
+    gnu_inline_non_canonical_definition_extern();
+}

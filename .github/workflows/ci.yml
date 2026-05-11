@@ -21,6 +21,10 @@ jobs:
           - runner: macos-15
             os: macOS
             arch: aarch64
+            clang-version: 22
+          - runner: macos-15
+            os: macOS
+            arch: aarch64
             clang-version: 17
       fail-fast: false
     

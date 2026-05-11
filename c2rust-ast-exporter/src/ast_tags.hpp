@@ -154,6 +154,7 @@ enum TypeTag {
     TagAtomicType,
 
     TagAutoType,
+    TagPredefinedSugarType,
 };
 
 enum StringTypeTag {
