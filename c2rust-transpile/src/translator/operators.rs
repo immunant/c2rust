@@ -29,7 +29,7 @@ impl<'c> Translation<'c> {
                     .and_then_try(|_| self.convert_expr(ctx, rhs, Some(expr_type_id)))
             }
 
-            And | Or => {
+            op if op.is_logical() => {
                 let lhs = self.convert_condition(ctx, true, lhs)?;
                 let rhs = self.convert_condition(ctx, true, rhs)?;
                 Ok(lhs
@@ -47,9 +47,7 @@ impl<'c> Translation<'c> {
             }
 
             // No sequence-point cases
-            AssignAdd | AssignSubtract | AssignMultiply | AssignDivide | AssignModulus
-            | AssignBitXor | AssignShiftLeft | AssignShiftRight | AssignBitOr | AssignBitAnd
-            | Assign => self.convert_assignment_operator(
+            op if op.is_assignment() => self.convert_assignment_operator(
                 ctx,
                 op,
                 expr_type_id,
@@ -133,7 +131,7 @@ impl<'c> Translation<'c> {
                     // When we use methods on pointers (ie wrapping_offset_from or offset)
                     // we must ensure we have an explicit raw ptr for the self param, as
                     // self references do not decay
-                    if op == CBinOp::Subtract || op == CBinOp::Add {
+                    if op.is_pointer_arithmetic() {
                         let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
 
                         if let CTypeKind::Pointer(_) = ty_kind {
@@ -287,21 +285,13 @@ impl<'c> Translation<'c> {
             let neither_ptr =
                 !lhs_resolved_ty.kind.is_pointer() && !rhs_resolved_ty.kind.is_pointer();
 
-            use CBinOp::*;
-            match op.underlying_assignment() {
-                Some(Add) => neither_ptr,
-                Some(Subtract) => neither_ptr,
-                Some(Multiply) => true,
-                Some(Divide) => true,
-                Some(Modulus) => true,
-                Some(BitXor) => true,
-                Some(ShiftLeft) => false,
-                Some(ShiftRight) => false,
-                Some(BitOr) => true,
-                Some(BitAnd) => true,
-                None => true,
-                _ => unreachable!(),
-            }
+            op.underlying_assignment().map_or(true, |op| {
+                if op.is_pointer_arithmetic() {
+                    neither_ptr
+                } else {
+                    op.is_arithmetic() || op.is_bitwise()
+                }
+            })
         };
         if lhs_rhs_types_must_match {
             // For compound assignment, use the compute type; for regular assignment, use lhs type
@@ -388,14 +378,10 @@ impl<'c> Translation<'c> {
             _ => None,
         };
 
-        let is_unsigned_arith = match op {
-            CBinOp::AssignAdd
-            | CBinOp::AssignSubtract
-            | CBinOp::AssignMultiply
-            | CBinOp::AssignDivide
-            | CBinOp::AssignModulus => compute_resolved_ty.kind.is_unsigned_integral_type(),
-            _ => false,
-        };
+        let is_unsigned_arith = op
+            .underlying_assignment()
+            .map_or(false, |op| op.is_arithmetic())
+            && compute_resolved_ty.kind.is_unsigned_integral_type();
 
         let lhs_translation = if initial_lhs_type_id.ctype != expr_or_comp_type_id.ctype
             || ctx.is_used()
@@ -545,25 +531,15 @@ impl<'c> Translation<'c> {
             CBinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
             CBinOp::Subtract => return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
 
-            CBinOp::Multiply | CBinOp::Divide | CBinOp::Modulus if is_unsigned_integral_type => {
+            op if op.is_arithmetic() && is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs])
             }
 
-            CBinOp::Multiply
-            | CBinOp::Divide
-            | CBinOp::Modulus
-            | CBinOp::BitAnd
-            | CBinOp::BitOr
-            | CBinOp::BitXor
-            | CBinOp::ShiftRight
-            | CBinOp::ShiftLeft => mk().binary_expr(BinOp::from(op), lhs, rhs),
+            op if op.is_arithmetic() || op.is_bitwise() || op.is_bitshift() => {
+                mk().binary_expr(BinOp::from(op), lhs, rhs)
+            }
 
-            CBinOp::EqualEqual
-            | CBinOp::NotEqual
-            | CBinOp::Less
-            | CBinOp::Greater
-            | CBinOp::GreaterEqual
-            | CBinOp::LessEqual => bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs)),
+            op if op.is_comparison() => bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs)),
 
             op => unimplemented!("Translation of binary operator {:?}", op),
         }))

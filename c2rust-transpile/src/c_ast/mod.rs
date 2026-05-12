@@ -1279,7 +1279,7 @@ impl TypedAstContext {
                             } else {
                                 Some(rhs_type_id)
                             }
-                        } else if op == CBinOp::ShiftLeft || op == CBinOp::ShiftRight {
+                        } else if op.is_bitshift() {
                             Some(lhs_type_id)
                         } else {
                             return;
@@ -2164,27 +2164,80 @@ impl CBinOp {
         }
     }
 
-    /// Does the rust equivalent of this operator have type (T, T) -> U?
-    #[rustfmt::skip]
-    pub fn input_types_same(&self) -> bool {
+    /// Is this a (non-assignment) arithmetic operator?
+    pub fn is_arithmetic(&self) -> bool {
         use CBinOp::*;
-        self.all_types_same() || matches!(self,
-            Less | Greater | LessEqual | GreaterEqual | EqualEqual | NotEqual
-            | And | Or
-            | AssignAdd | AssignSubtract | AssignMultiply | AssignDivide | AssignModulus
-            | AssignBitXor | AssignShiftLeft | AssignShiftRight | AssignBitOr | AssignBitAnd
-            | Assign
+        matches!(self, Add | Subtract | Multiply | Divide | Modulus)
+    }
+
+    /// Is this a (non-assignment) arithmetic operator that can be used with pointers?
+    pub fn is_pointer_arithmetic(&self) -> bool {
+        use CBinOp::*;
+        matches!(self, Add | Subtract)
+    }
+
+    /// Is this a (non-assignment, non-shift) bitwise operator?
+    pub fn is_bitwise(&self) -> bool {
+        use CBinOp::*;
+        matches!(self, BitAnd | BitOr | BitXor)
+    }
+
+    /// Is this a (non-assignment) bitshift operator?
+    pub fn is_bitshift(&self) -> bool {
+        use CBinOp::*;
+        matches!(self, ShiftLeft | ShiftRight)
+    }
+
+    /// Is this a logical operator?
+    pub fn is_logical(&self) -> bool {
+        use CBinOp::*;
+        matches!(self, And | Or)
+    }
+
+    /// Is this a comparison operator?
+    pub fn is_comparison(&self) -> bool {
+        use CBinOp::*;
+        matches!(
+            self,
+            EqualEqual | NotEqual | Less | Greater | LessEqual | GreaterEqual
         )
+    }
+
+    /// Is this a (simple or compound) assignment operator?
+    pub fn is_assignment(&self) -> bool {
+        matches!(self, Self::Assign) || self.underlying_assignment().is_some()
+    }
+
+    /// Maps compound assignment operators to operator underlying them, and returns `None` for all
+    /// other operators.
+    ///
+    /// For example, `AssignAdd` maps to `Some(Add)` but `Add` maps to `None`.
+    pub fn underlying_assignment(&self) -> Option<CBinOp> {
+        use CBinOp::*;
+        Some(match *self {
+            AssignAdd => Add,
+            AssignSubtract => Subtract,
+            AssignMultiply => Multiply,
+            AssignDivide => Divide,
+            AssignModulus => Modulus,
+            AssignBitXor => BitXor,
+            AssignShiftLeft => ShiftLeft,
+            AssignShiftRight => ShiftRight,
+            AssignBitOr => BitOr,
+            AssignBitAnd => BitAnd,
+            _ => return None,
+        })
+    }
+
+    /// Does the rust equivalent of this operator have type (T, T) -> U?
+    pub fn input_types_same(&self) -> bool {
+        self.all_types_same() || self.is_logical() || self.is_comparison() || self.is_assignment()
     }
 
     /// Does the rust equivalent of this operator have type (T, T) -> T?
     /// This ignores cases where one argument is a pointer and we translate to `.offset()`.
     pub fn all_types_same(&self) -> bool {
-        use CBinOp::*;
-        matches!(
-            self,
-            Multiply | Divide | Modulus | Add | Subtract | BitAnd | BitXor | BitOr
-        )
+        self.is_arithmetic() || self.is_bitwise()
     }
 }
 
@@ -2229,34 +2282,6 @@ impl From<CBinOp> for BinOp {
 impl Display for CBinOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_str())
-    }
-}
-
-impl CBinOp {
-    /// Maps compound assignment operators to operator underlying them, and returns `None` for all
-    /// other operators.
-    ///
-    /// For example, `AssignAdd` maps to `Some(Add)` but `Add` maps to `None`.
-    pub fn underlying_assignment(&self) -> Option<CBinOp> {
-        use CBinOp::*;
-        Some(match *self {
-            AssignAdd => Add,
-            AssignSubtract => Subtract,
-            AssignMultiply => Multiply,
-            AssignDivide => Divide,
-            AssignModulus => Modulus,
-            AssignBitXor => BitXor,
-            AssignShiftLeft => ShiftLeft,
-            AssignShiftRight => ShiftRight,
-            AssignBitOr => BitOr,
-            AssignBitAnd => BitAnd,
-            _ => return None,
-        })
-    }
-
-    /// Determines whether or not this is an assignment op
-    pub fn is_assignment(&self) -> bool {
-        matches!(self, Self::Assign) || self.underlying_assignment().is_some()
     }
 }
 
