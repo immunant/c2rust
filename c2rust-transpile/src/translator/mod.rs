@@ -3053,7 +3053,13 @@ impl<'c> Translation<'c> {
                     CDeclKind::EnumConstant { .. } => {
                         // If the variable is actually an `EnumConstant`, we need to add a cast to
                         // the expected integral type.
-                        val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
+                        let target_type_id = override_ty.unwrap_or(qual_ty);
+
+                        if !self.enum_constant_matches_type(target_type_id.ctype, decl_id) {
+                            val = self.convert_cast_from_enum(target_type_id.ctype, val)?;
+                        }
+
+                        return Ok(WithStmts::new_val(val));
                     }
 
                     CDeclKind::Function { parameters, .. } => {
@@ -3204,14 +3210,26 @@ impl<'c> Translation<'c> {
             ImplicitCast(ty, expr, kind, opt_field_id, _)
             | ExplicitCast(ty, expr, kind, opt_field_id, _) => {
                 let is_explicit = matches!(expr_kind, CExprKind::ExplicitCast(..));
-                // A reference must be decayed if a bitcast is required. Const casts in
-                // LLVM 8 are now NoOp casts, so we need to include it as well.
+                let target_ty = override_ty.unwrap_or(ty);
+
+                // In general, if we are casting the result of an expression, then the inner
+                // expression should be translated to whatever type it normally would.
+                // But for some expression types, if we don't absolutely have to cast,
+                // we would rather the expression is translated according to the type we're
+                // expecting, and then we can skip the cast entirely.
+                if self.can_propagate_cast(expr, target_ty, is_explicit) {
+                    return self.convert_expr(ctx, expr, Some(target_ty));
+                }
+
                 match kind {
                     CastKind::IntegralToBoolean
                     | CastKind::FloatingToBoolean
                     | CastKind::PointerToBoolean => {
                         return self.convert_condition(ctx, true, expr);
                     }
+
+                    // A reference must be decayed if a bitcast is required. Const casts in
+                    // LLVM 8 are now NoOp casts, so we need to include it as well.
                     CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
                         ctx.decay_ref = DecayRef::Yes
                     }
@@ -3221,30 +3239,6 @@ impl<'c> Translation<'c> {
                         ctx.needs_address = true;
                     }
                     _ => {}
-                }
-
-                let expr_kind = &self.ast_context[expr].kind;
-                let target_ty = override_ty.unwrap_or(ty);
-
-                // In general, if we are casting the result of an expression, then the inner
-                // expression should be translated to whatever type it normally would.
-                // But for literals, if we don't absolutely have to cast, we would rather the
-                // literal is translated according to the type we're expecting, and then we can
-                // skip the cast entirely.
-                if !is_explicit {
-                    let mut literal_expr_kind = expr_kind;
-                    let mut is_negated = false;
-
-                    if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
-                        literal_expr_kind = &self.ast_context[subexpr_id].kind;
-                        is_negated = true;
-                    }
-
-                    if let CExprKind::Literal(_, lit) = literal_expr_kind {
-                        if self.literal_matches_ty(lit, target_ty, is_negated) {
-                            return self.convert_expr(ctx, expr, Some(target_ty));
-                        }
-                    }
                 }
 
                 let mut val = self.convert_expr(ctx, expr, None)?;
@@ -3453,6 +3447,60 @@ impl<'c> Translation<'c> {
         }
     }
 
+    fn can_propagate_cast(
+        &self,
+        expr_id: CExprId,
+        target_type_id: CQualTypeId,
+        is_explicit: bool,
+    ) -> bool {
+        // Always preserve explicit casts.
+        if is_explicit {
+            return false;
+        }
+
+        let expr_kind = &self.ast_context[expr_id].kind;
+
+        if let &CExprKind::DeclRef(_, decl_id, _) = expr_kind {
+            if let CDeclKind::EnumConstant { .. } = self.ast_context[decl_id].kind {
+                // In C, `EnumConstant`s have some integral type, _not_ the enum type.
+                // However, if we then immediately have a cast to convert this variable back into
+                // the enum type, we would like to produce Rust with _no_ casts.
+                if self.enum_constant_matches_type(target_type_id.ctype, decl_id) {
+                    return true;
+                }
+
+                let source_enum_id = self.ast_context.parents[&decl_id];
+                let source_integral_type_id = self.enum_integral_type(source_enum_id);
+                let target_type_resolved_id = self
+                    .ast_context
+                    .resolve_type_id_no_typedef(target_type_id.ctype);
+
+                // Likewise, if we are casting to the inner integral type of the enum, then
+                // translate the enum constant directly as that.
+                if target_type_resolved_id == source_integral_type_id.ctype {
+                    return true;
+                }
+            }
+        }
+
+        let mut literal_expr_kind = expr_kind;
+        let mut is_negated = false;
+
+        if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
+            literal_expr_kind = &self.ast_context[subexpr_id].kind;
+            is_negated = true;
+        }
+
+        if let CExprKind::Literal(_, lit) = literal_expr_kind {
+            // Does the inner literal fit in the type we're casting to?
+            if self.literal_matches_ty(lit, target_type_id, is_negated) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn convert_constant(&self, constant: ConstIntExpr) -> TranslationResult<Box<Expr>> {
         let expr = match constant {
             ConstIntExpr::U(n) => mk().lit_expr(mk().int_unsuffixed_lit(n as u128)),
@@ -3618,13 +3666,9 @@ impl<'c> Translation<'c> {
                 self.convert_integral_to_pointer_cast(ctx, source_cty.ctype, target_cty.ctype, val)
             }
 
-            CastKind::PointerToIntegral => self.convert_pointer_to_integral_cast(
-                ctx,
-                source_cty.ctype,
-                target_cty.ctype,
-                val,
-                expr,
-            ),
+            CastKind::PointerToIntegral => {
+                self.convert_pointer_to_integral_cast(ctx, source_cty.ctype, target_cty.ctype, val)
+            }
 
             CastKind::IntegralCast
             | CastKind::FloatingCast
@@ -3658,11 +3702,9 @@ impl<'c> Translation<'c> {
                     self.ast_context[source_cty.ctype].kind
                 {
                     self.f128_cast_to(val, target_ty_kind)
-                } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
+                } else if let &CTypeKind::Enum(_) = target_ty_kind {
                     // Casts targeting `enum` types...
-                    val.try_map(|val| {
-                        self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, expr, val)
-                    })
+                    val.try_map(|val| self.convert_cast_to_enum(target_cty.ctype, val))
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     Ok(val.map(|val| {
                         mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)

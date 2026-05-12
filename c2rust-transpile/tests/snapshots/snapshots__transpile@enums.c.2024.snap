@@ -1,0 +1,58 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/enums.2024.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+pub type Foo = ::core::ffi::c_uint;
+pub const Foo3: Foo = 3;
+pub const Foo2: Foo = 2;
+pub const Foo1: Foo = 1;
+pub const Foo0: Foo = 0;
+pub type Bar = ::core::ffi::c_int;
+pub const Bar3: Bar = 3;
+pub const Bar2: Bar = 2;
+pub const Bar1: Bar = 1;
+pub const Bar0: Bar = 0;
+pub const BarN1: Bar = -1;
+pub const FOO1_MACRO: ::core::ffi::c_uint = 1 as ::core::ffi::c_uint;
+pub const BAR1_MACRO: ::core::ffi::c_int = 1;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn test_enums() {
+    let mut foo: Foo = Foo0;
+    let mut bar: Bar = Bar0;
+    foo = Foo1;
+    bar = BarN1;
+    foo = Bar0 as ::core::ffi::c_int as Foo;
+    bar = Foo0 as ::core::ffi::c_int as Bar;
+    foo = Foo1;
+    bar = Bar1;
+    foo = Foo3;
+    bar = Bar3;
+    foo = (foo as ::core::ffi::c_uint).wrapping_sub(2 as ::core::ffi::c_uint) as Foo;
+    bar = (bar as ::core::ffi::c_int - 2 as ::core::ffi::c_int) as Bar;
+    let mut e: Foo = Foo1;
+    let mut enum_enum: ::core::ffi::c_int =
+        (e as ::core::ffi::c_uint == foo as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    let mut enum_constant: ::core::ffi::c_int =
+        (e as ::core::ffi::c_uint == Foo0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    let mut wrong_enum_enum: ::core::ffi::c_int =
+        (e as ::core::ffi::c_uint == bar as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    let mut wrong_enum_constant: ::core::ffi::c_int = (e as ::core::ffi::c_uint
+        == Bar0 as ::core::ffi::c_int as ::core::ffi::c_uint)
+        as ::core::ffi::c_int;
+    match foo as ::core::ffi::c_uint {
+        0 | 1 | 2 | 3 | 42 | 4294967254 | _ => {}
+    }
+    match bar as ::core::ffi::c_int {
+        0 | BAR1_MACRO | 2 | 3 | -1 | 42 | -42 | _ => {}
+    };
+}
