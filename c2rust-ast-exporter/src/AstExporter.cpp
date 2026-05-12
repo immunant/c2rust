@@ -1408,10 +1408,7 @@ class TranslateASTVisitor final
         LLVM_DEBUG(Range.getBegin().dump(Mgr));
         LLVM_DEBUG(Range.getEnd().dump(Mgr));
 
-        // Check that we are only expanding a single macro call.
-        if (!Range.getBegin().isMacroID() || !Range.getEnd().isMacroID()
-            || Mgr.getImmediateMacroCallerLoc(Range.getBegin())
-                != Mgr.getImmediateMacroCallerLoc(Range.getEnd())) {
+        if (!Range.getBegin().isMacroID() || !Range.getEnd().isMacroID()) {
             return true;
         }
 
@@ -1434,21 +1431,9 @@ class TranslateASTVisitor final
                 return true;
             }
 
-            auto ReplacementBegin = mac->getReplacementToken(0).getLocation();
-            auto ReplacementEnd = mac->getDefinitionEndLoc();
-            // Verify that this expansion covers the entire macro replacement
-            // definition, i.e. E is not a subexpression of the macro
-            // replacement.
-            if (Mgr.getSpellingLoc(Range.getBegin()) != ReplacementBegin ||
-                Mgr.getSpellingLoc(Range.getEnd()) != ReplacementEnd) {
-                return true;
-            }
-
             if (VisitMacro(name, ExpansionRange.getBegin(), mac, E)) {
                 curMacroExpansionStack.push_back(mac);
             }
-
-            Range = ExpansionRange.getAsRange();
         }
 
         return true;
@@ -1458,16 +1443,70 @@ class TranslateASTVisitor final
         auto &Mgr = Context->getSourceManager();
         auto Begin = Range.getBegin();
         auto End = Range.getEnd();
-
         std::vector<CharSourceRange> ExpansionStack;
 
         do {
+            if (!isAtStartOfImmediateMacroExpansion(Begin)) {
+                break;
+            }
+
             auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
             ExpansionStack.push_back(ExpansionRange);
             Begin = ExpansionRange.getBegin();
         } while (Begin.isMacroID());
 
+        // Find the point at which `Begin` and `End` converge on the same expansion range.
+        // This is where the expression in `Range` first corresponds to a single macro call.
+        auto ConvergencePoint = ExpansionStack.end();
+
+        do {
+            if (!isAtEndOfImmediateMacroExpansion(End)) {
+                break;
+            }
+
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(End);
+            ConvergencePoint = std::find_if(
+                ExpansionStack.begin(),
+                ExpansionStack.end(),
+                [ExpansionRange](auto &R) {
+                    return R.getAsRange() == ExpansionRange.getAsRange() &&
+                        R.isTokenRange() == ExpansionRange.isTokenRange();
+                }
+            );
+            End = ExpansionRange.getEnd();
+        } while (End.isMacroID() && ConvergencePoint == ExpansionStack.end());
+
+        // Remove all elements before the convergence point.
+        ExpansionStack.erase(ExpansionStack.begin(), ConvergencePoint);
+
+        // Ensure the remaining ranges still correspond to the input `Range`.
+        auto EraseAfter = std::find_if(
+            ExpansionStack.begin(),
+            ExpansionStack.end(),
+            [this](auto &R) {
+                auto End = R.getEnd();
+                return End.isMacroID() && !isAtEndOfImmediateMacroExpansion(End);
+            }
+        );
+        auto EraseFrom = EraseAfter + 1;
+
+        if (EraseFrom < ExpansionStack.end()) {
+            ExpansionStack.erase(EraseFrom, ExpansionStack.end());
+        }
+
         return ExpansionStack;
+    }
+
+    bool isAtStartOfImmediateMacroExpansion(SourceLocation loc) const {
+        auto &Mgr = Context->getSourceManager();
+        return Mgr.isAtStartOfImmediateMacroExpansion(loc);
+    }
+
+    bool isAtEndOfImmediateMacroExpansion(SourceLocation loc) const {
+        auto &Mgr = Context->getSourceManager();
+        auto spellingLoc = Mgr.getSpellingLoc(loc);
+        auto len = Lexer::MeasureTokenLength(spellingLoc, Mgr, Context->getLangOpts());
+        return Mgr.isAtEndOfImmediateMacroExpansion(loc.getLocWithOffset(len));
     }
 
     bool VisitVAArgExpr(VAArgExpr *E) {
