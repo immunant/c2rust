@@ -313,6 +313,20 @@ private:
         VisitQualType(t);
     }
 
+#if CLANG_VERSION_MAJOR >= 19
+    void VisitCountAttributedType(const CountAttributedType *T) {
+        auto t = T->desugar();
+        auto qt = encodeQualType(t);
+
+        encodeType(T, TagAttributedType, [qt](CborEncoder *local) {
+            cbor_encode_uint(local, qt);
+            cbor_encode_null(local);
+        });
+
+        VisitQualType(t);
+    }
+#endif
+
     void VisitParenType(const ParenType *T) {
         auto t = T->getInnerType();
         auto qt = encodeQualType(t);
