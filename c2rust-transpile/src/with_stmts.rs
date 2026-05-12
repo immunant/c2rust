@@ -27,14 +27,6 @@ impl<T> WithStmts<T> {
         }
     }
 
-    pub fn new_unsafe_val(val: T) -> Self {
-        WithStmts {
-            stmts: vec![],
-            val,
-            is_unsafe: true,
-        }
-    }
-
     pub fn and_then<U, F>(self, f: F) -> WithStmts<U>
     where
         F: FnOnce(T) -> WithStmts<U>,
@@ -95,12 +87,14 @@ impl<T> WithStmts<T> {
         }
     }
 
-    pub fn set_unsafe(&mut self) {
+    pub fn set_unsafe(mut self) -> Self {
         self.is_unsafe = true;
+        self
     }
 
-    pub fn merge_unsafe(&mut self, is_unsafe: bool) {
+    pub fn merge_unsafe(mut self, is_unsafe: bool) -> Self {
         self.is_unsafe = self.is_unsafe || is_unsafe;
+        self
     }
 
     pub fn into_stmts(self) -> Vec<Stmt> {
@@ -142,13 +136,15 @@ impl<T> WithStmts<T> {
         self.is_unsafe
     }
 
-    pub fn add_stmt(&mut self, stmt: Stmt) {
+    pub fn add_stmt(mut self, stmt: Stmt) -> Self {
         self.stmts.push(stmt);
+        self
     }
 
-    pub fn prepend_stmts(&mut self, mut stmts: Vec<Stmt>) {
+    pub fn prepend_stmts(mut self, mut stmts: Vec<Stmt>) -> Self {
         stmts.append(&mut self.stmts);
         self.stmts = stmts;
+        self
     }
 
     pub fn is_pure(&self) -> bool {
@@ -211,8 +207,6 @@ impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
             stmts.append(val.stmts_mut());
             res.push(val.into_value());
         }
-        let mut translation = WithStmts::new(stmts, res);
-        translation.merge_unsafe(is_unsafe);
-        translation
+        WithStmts::new(stmts, res).merge_unsafe(is_unsafe)
     }
 }

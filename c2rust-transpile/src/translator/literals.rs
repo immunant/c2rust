@@ -140,7 +140,7 @@ impl<'c> Translation<'c> {
                         val = mk().const_block_expr(mk().const_block(stmts));
                     }
 
-                    Ok(WithStmts::new_unsafe_val(val))
+                    Ok(WithStmts::new_val(val).set_unsafe())
                 }
             }
         }
@@ -183,17 +183,13 @@ impl<'c> Translation<'c> {
             Ok(val.wrap_unsafe().and_then(|val| {
                 let item = mk().mutbl().static_item(&fresh_name, fresh_ty, val);
                 let fresh_stmt = mk().item_stmt(item);
-                let mut val = WithStmts::new(vec![fresh_stmt], mk().ident_expr(fresh_name));
 
-                // Accessing a static variable is unsafe.
-                // In the current nightly, this applies also to taking a raw pointer,
-                // but this requirement was removed in later versions of the
-                // `raw_ref_op` feature.
-                if self.tcfg.edition < Edition2024 {
-                    val.set_unsafe();
-                }
-
-                val
+                WithStmts::new(vec![fresh_stmt], mk().ident_expr(fresh_name))
+                    // Accessing a static variable is unsafe.
+                    // In the current nightly, this applies also to taking a raw pointer,
+                    // but this requirement was removed in later versions of the
+                    // `raw_ref_op` feature.
+                    .merge_unsafe(self.tcfg.edition < Edition2024)
             }))
         } else {
             Ok(val.and_then(|val| {

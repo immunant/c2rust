@@ -270,11 +270,10 @@ impl<'c> Translation<'c> {
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
 
-            Ok(WithStmts::new_unsafe_val(transmute_expr(
-                mk().infer_ty(),
-                mk().infer_ty(),
-                expr,
-            )))
+            Ok(
+                WithStmts::new_val(transmute_expr(mk().infer_ty(), mk().infer_ty(), expr))
+                    .set_unsafe(),
+            )
         } else {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
@@ -334,7 +333,7 @@ impl<'c> Translation<'c> {
                 mk().call_expr(mk().ident_expr(fn_call_name), params)
             };
 
-            let mut val = if ctx.is_used() {
+            let val = if ctx.is_used() {
                 WithStmts::new_val(call)
             } else {
                 WithStmts::new(
@@ -342,9 +341,8 @@ impl<'c> Translation<'c> {
                     self.panic_or_err("No value for unused shuffle vector return"),
                 )
             };
-            val.merge_unsafe(is_unsafe);
 
-            Ok(val)
+            Ok(val.merge_unsafe(is_unsafe))
         })
     }
 

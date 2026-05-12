@@ -382,7 +382,7 @@ impl<'c> Translation<'c> {
             res = mk().unary_expr(UnOp::Deref(Default::default()), res);
         }
 
-        WithStmts::new_unsafe_val(res)
+        WithStmts::new_val(res).set_unsafe()
     }
 
     /// Construct an expression for a NULL at any type, including forward declarations,
@@ -450,7 +450,7 @@ impl<'c> Translation<'c> {
             self.import_type(target_cty);
 
             Ok(val.and_then(|val| {
-                WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, val))
+                WithStmts::new_val(transmute_expr(source_ty, target_ty, val)).set_unsafe()
             }))
         } else {
             // Normal case
@@ -483,7 +483,7 @@ impl<'c> Translation<'c> {
                 let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
                 val = mk().cast_expr(val, intptr_t.clone());
 
-                WithStmts::new_unsafe_val(transmute_expr(intptr_t, target_ty, val))
+                WithStmts::new_val(transmute_expr(intptr_t, target_ty, val)).set_unsafe()
             }))
         } else if source_ty_kind.is_bool() {
             self.use_crate(ExternCrate::Libc);
@@ -520,7 +520,7 @@ impl<'c> Translation<'c> {
 
         if self.ast_context.is_function_pointer(source_cty) {
             Ok(val.and_then(|val| {
-                WithStmts::new_unsafe_val(transmute_expr(source_ty, target_ty, val))
+                WithStmts::new_val(transmute_expr(source_ty, target_ty, val)).set_unsafe()
             }))
         } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
             val.try_map(|val| self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val))
