@@ -1501,7 +1501,13 @@ class TranslateASTVisitor final
     }
 
     bool VisitGenericSelectionExpr(GenericSelectionExpr *E) {
-        printDiag(Context, DiagnosticsEngine::Warning, "Encountered unsupported generic selection expression", E);
+        if (E->isResultDependent()) {
+            printDiag(Context, DiagnosticsEngine::Warning, "Encountered unsupported generic selection expression", E);
+            return true;
+        }
+
+        std::vector<void *> childIds{E->getResultExpr()};
+        encode_entry(E, TagGenericExpr, childIds);
         return true;
     }
 

@@ -375,6 +375,11 @@ fn test_fn_attrs() {
 }
 
 #[test]
+fn test_generics() {
+    transpile("generics.c").run();
+}
+
+#[test]
 fn test_gotos() {
     transpile("gotos.c").run();
 }
