@@ -887,6 +887,31 @@ impl ConversionContext {
                     self.processed_nodes.insert(new_id, TYPE);
                 }
 
+                TypeTag::TagCountAttributedType => {
+                    let ty_id = from_value(ty_node.extras[0].clone())
+                        .expect("Count attributed type child not found");
+                    let ty = self.visit_qualified_type(ty_id);
+
+                    let kind = match expect_opt_str(&ty_node.extras[1])
+                        .expect("Count attributed type kind not found")
+                        .expect("Count attributed type kind missing")
+                    {
+                        "counted_by" => CountAttributedKind::CountedBy,
+                        "sized_by" => CountAttributedKind::SizedBy,
+                        "counted_by_or_null" => CountAttributedKind::CountedByOrNull,
+                        "sized_by_or_null" => CountAttributedKind::SizedByOrNull,
+                        other => panic!("Unknown CountAttributedType kind: {}", other),
+                    };
+
+                    let count_expr = expect_opt_u64(&ty_node.extras[2])
+                        .expect("Count attributed type count expr field missing")
+                        .map(|id| self.visit_expr(id as ClangId));
+
+                    let ty = CTypeKind::CountAttributed(ty, kind, count_expr);
+                    self.add_type(new_id, not_located(ty));
+                    self.processed_nodes.insert(new_id, TYPE);
+                }
+
                 TypeTag::TagConstantArrayType => {
                     let element_id = from_value(ty_node.extras[0].clone()).expect("element id");
                     let element = self.visit_type(element_id);
