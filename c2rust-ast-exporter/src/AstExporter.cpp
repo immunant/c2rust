@@ -1216,6 +1216,12 @@ class TranslateASTVisitor final
         std::vector<void *> childIds;
         std::copy_if(DS->decl_begin(), DS->decl_end(),
                      std::back_inserter(childIds), [](Decl *decl) {
+                         // GNU local labels are used by labels-as-values, which
+                         // C2Rust does not translate; exporting them leaves
+                         // dangling decl ids.
+                         if (isa<LabelDecl>(decl))
+                             return false;
+
                          if (decl->isCanonicalDecl())
                              return true;
 
