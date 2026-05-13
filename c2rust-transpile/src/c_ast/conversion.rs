@@ -981,7 +981,20 @@ impl ConversionContext {
             // Convert the node
             let node: &AstNode = match untyped_context.ast_nodes.get(&node_id) {
                 Some(x) => x,
-                None => return,
+                None => {
+                    // Unsupported exporter visitors can omit child nodes. The
+                    // placeholder is intentionally untyped/unlocated; if it is
+                    // translated, it reports an unsupported expression instead
+                    // of hiding the invalid AST behind a later missing-id panic.
+                    if expected_ty & EXPR != 0 {
+                        self.add_expr(new_id, not_located(CExprKind::BadExpr));
+                        self.processed_nodes.insert(new_id, EXPR);
+                    } else if expected_ty & OTHER_STMT != 0 {
+                        self.add_stmt(new_id, not_located(CStmtKind::BadStmt));
+                        self.processed_nodes.insert(new_id, OTHER_STMT);
+                    }
+                    return;
+                }
             };
 
             if expected_ty & EXPR != 0 {
@@ -1033,9 +1046,14 @@ impl ConversionContext {
                     let decls = node
                         .children
                         .iter()
-                        .map(|decl| {
+                        .filter_map(|decl| {
                             let decl_id = decl.expect("Decl not found in decl-statement");
-                            self.visit_decl(decl_id)
+                            // See the missing-node placeholder above; this also
+                            // handles old AST dumps with omitted LabelDecl nodes.
+                            untyped_context
+                                .ast_nodes
+                                .contains_key(&decl_id)
+                                .then(|| self.visit_decl(decl_id))
                         })
                         .collect();
 
