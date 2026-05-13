@@ -12,6 +12,7 @@ expression: cat tests/snapshots/arrays.2021.clang15.rs
     unused_mut
 )]
 #![feature(raw_ref_op)]
+pub type int_t = ::core::ffi::c_int;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct C2Rust_Unnamed {
@@ -56,6 +57,8 @@ pub unsafe extern "C" fn entry() {
     let mut int_zero: [::core::ffi::c_int; 0] = [0; 0];
     let mut int_too_short: [::core::ffi::c_int; 16] = [0 as ::core::ffi::c_int; 16];
     int_too_short[15 as ::core::ffi::c_int as usize] += 9 as ::core::ffi::c_int;
+    let mut override_ty: [int_t; 1] = [1 as int_t];
+    let mut override_ty_neg: [int_t; 1] = [-1 as int_t];
     let mut struct_init_too_short: [C2Rust_Unnamed_0; 1] = [C2Rust_Unnamed_0 {
         x: ::core::ptr::null_mut::<::core::ffi::c_char>(),
         y: 0,

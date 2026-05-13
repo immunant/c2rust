@@ -219,11 +219,13 @@ impl<'c> Translation<'c> {
         opt_union_field_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         match self.ast_context.resolve_type(ty.ctype).kind {
-            CTypeKind::ConstantArray(ty, n) => {
+            CTypeKind::ConstantArray(element_ty, n) => {
                 // Convert all of the provided initializer values
 
                 let to_array_element = |id: CExprId| -> TranslationResult<_> {
-                    self.convert_expr(ctx.used(), id, None)?.try_map(|x| {
+                    let val =
+                        self.convert_expr(ctx.used(), id, Some(CQualTypeId::new(element_ty)))?;
+                    val.try_map(|x| {
                         // Array literals require all of their elements to be
                         // the correct type; they will not use implicit casts to
                         // change mut to const. This becomes a problem when an
@@ -258,7 +260,7 @@ impl<'c> Translation<'c> {
                 // * the element type of the array being `CTypeKind::Char` (w/o this, `array_of_arrays` is included)
                 // * the expr kind being a string literal (`CExprKind::Literal` of a `CLiteral::String`).
                 let is_string_literal = |id: CExprId| {
-                    let ty_kind = &self.ast_context.resolve_type(ty).kind;
+                    let ty_kind = &self.ast_context.resolve_type(element_ty).kind;
                     let expr_kind = &self.ast_context.index(id).kind;
                     let is_char_array = matches!(*ty_kind, CTypeKind::Char);
                     let is_str_literal =
@@ -278,7 +280,7 @@ impl<'c> Translation<'c> {
                         // This was likely a C array of the form `int x[16] = {}`.
                         // We'll emit that as [0; 16].
                         let len = mk().lit_expr(mk().int_unsuffixed_lit(n as u128));
-                        let zeroed = self.implicit_default_expr(ctx, ty)?;
+                        let zeroed = self.implicit_default_expr(ctx, element_ty)?;
                         Ok(zeroed.map(|default_value| mk().repeat_expr(default_value, len)))
                     }
                     &[single] if is_string_literal(single) => {
@@ -287,7 +289,7 @@ impl<'c> Translation<'c> {
                         // * `ptr_extra_braces`
                         // * `array_of_ptrs`
                         // * `array_of_arrays`
-                        self.convert_expr(ctx.used(), single, None)
+                        self.convert_expr(ctx.used(), single, Some(ty))
                     }
                     &[single] if is_zero_literal(single) && n > 1 => {
                         // This was likely a C array of the form `int x[16] = { 0 }`.
@@ -303,7 +305,7 @@ impl<'c> Translation<'c> {
                             .map(to_array_element)
                             .chain(
                                 // Pad out the array literal with default values to the desired size
-                                iter::repeat(self.implicit_default_expr(ctx, ty))
+                                iter::repeat(self.implicit_default_expr(ctx, element_ty))
                                     .take(n - ids.len()),
                             )
                             .collect::<TranslationResult<WithStmts<_>>>()?
@@ -322,7 +324,7 @@ impl<'c> Translation<'c> {
             }
             ref kind if kind.is_scalar() => {
                 if let Some(&first) = ids.first() {
-                    self.convert_expr(ctx.used(), first, None)
+                    self.convert_expr(ctx.used(), first, Some(ty))
                 } else {
                     self.implicit_default_expr(ctx.used(), ty.ctype)
                 }
