@@ -11,13 +11,15 @@ expression: cat tests/snapshots/macro_fns.2021.clang15.rs
     unused_assignments,
     unused_mut
 )]
+pub const LIT_ID: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
 pub const LIT_PAREN: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+pub const CONST_ID: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
 pub const CONST_PAREN: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn basic() {
-    let mut lit_id: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut lit_id: ::core::ffi::c_int = LIT_ID;
     let mut lit_paren: ::core::ffi::c_int = LIT_PAREN;
-    let mut const_id: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut const_id: ::core::ffi::c_int = CONST_ID;
     let mut const_paren: ::core::ffi::c_int = CONST_PAREN;
     let mut id_with_lit: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
     let mut paren_with_lit: ::core::ffi::c_int = 42 as ::core::ffi::c_int;

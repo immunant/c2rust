@@ -1421,17 +1421,21 @@ class TranslateASTVisitor final
         }
 
         curMacroExpansionSource =
-            Lexer::getSourceText(ExpansionStack[0], Mgr, Context->getLangOpts());
+            Lexer::getSourceText(ExpansionStack[0].range, Mgr, Context->getLangOpts());
 
-        for (auto &ExpansionRange : ExpansionStack) {
+        for (auto &elem : ExpansionStack) {
+            if (elem.isParameter) {
+                continue;
+            }
+
             StringRef name;
-            MacroInfo *mac = getMacroInfo(ExpansionRange.getBegin(), name);
+            MacroInfo *mac = getMacroInfo(elem.range.getBegin(), name);
 
             if (!mac || mac->getNumTokens() == 0) {
                 return true;
             }
 
-            if (VisitMacro(name, ExpansionRange.getBegin(), mac, E)) {
+            if (VisitMacro(name, elem.range.getBegin(), mac, E)) {
                 curMacroExpansionStack.push_back(mac);
             }
         }
@@ -1439,20 +1443,34 @@ class TranslateASTVisitor final
         return true;
     }
 
-    std::vector<CharSourceRange> getMacroExpansionStack(SourceRange Range) const {
+    struct ExpansionRange {
+        CharSourceRange range;
+        bool isParameter;
+
+        bool operator== (const ExpansionRange &rhs) const {
+            return this->range.getAsRange() == rhs.range.getAsRange()
+                && this->range.isTokenRange() == rhs.range.isTokenRange()
+                && this->isParameter == rhs.isParameter;
+        }
+    };
+
+    std::vector<ExpansionRange> getMacroExpansionStack(SourceRange Range) const {
         auto &Mgr = Context->getSourceManager();
         auto Begin = Range.getBegin();
         auto End = Range.getEnd();
-        std::vector<CharSourceRange> ExpansionStack;
+        std::vector<ExpansionRange> ExpansionStack;
 
         do {
             if (!isAtStartOfImmediateMacroExpansion(Begin)) {
                 break;
             }
 
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
-            ExpansionStack.push_back(ExpansionRange);
-            Begin = ExpansionRange.getBegin();
+            ExpansionRange elem = {
+                Mgr.getImmediateExpansionRange(Begin),
+                Mgr.isMacroArgExpansion(Begin)
+            };
+            Begin = elem.range.getBegin();
+            ExpansionStack.push_back(elem);
         } while (Begin.isMacroID());
 
         // Find the point at which `Begin` and `End` converge on the same expansion range.
@@ -1464,16 +1482,12 @@ class TranslateASTVisitor final
                 break;
             }
 
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(End);
-            ConvergencePoint = std::find_if(
-                ExpansionStack.begin(),
-                ExpansionStack.end(),
-                [ExpansionRange](auto &R) {
-                    return R.getAsRange() == ExpansionRange.getAsRange() &&
-                        R.isTokenRange() == ExpansionRange.isTokenRange();
-                }
-            );
-            End = ExpansionRange.getEnd();
+            ExpansionRange elem = {
+                Mgr.getImmediateExpansionRange(End),
+                Mgr.isMacroArgExpansion(End)
+            };
+            End = elem.range.getEnd();
+            ConvergencePoint = std::find(ExpansionStack.begin(), ExpansionStack.end(), elem);
         } while (End.isMacroID() && ConvergencePoint == ExpansionStack.end());
 
         // Remove all elements before the convergence point.
@@ -1483,8 +1497,8 @@ class TranslateASTVisitor final
         auto EraseAfter = std::find_if(
             ExpansionStack.begin(),
             ExpansionStack.end(),
-            [this](auto &R) {
-                auto End = R.getEnd();
+            [this](auto &elem) {
+                auto End = elem.range.getEnd();
                 return End.isMacroID() && !isAtEndOfImmediateMacroExpansion(End);
             }
         );
