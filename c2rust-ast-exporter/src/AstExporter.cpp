@@ -313,6 +313,10 @@ private:
         VisitQualType(t);
     }
 
+#if CLANG_VERSION_MAJOR >= 19
+    void VisitCountAttributedType(const CountAttributedType *T);
+#endif
+
     void VisitParenType(const ParenType *T) {
         auto t = T->getInnerType();
         auto qt = encodeQualType(t);
@@ -2742,6 +2746,61 @@ void TypeEncoder::VisitTypedefType(const TypedefType *T) {
     });
     astEncoder->TraverseDecl(D);
 }
+
+#if CLANG_VERSION_MAJOR >= 19
+void TypeEncoder::VisitCountAttributedType(const CountAttributedType *T) {
+    auto t = T->desugar();
+    auto qt = encodeQualType(t);
+
+    // TODO: `__counted_by_ptr` (Clang 22+), which applies bounds info to
+    // pointers to whole struct types, is not yet supported. If Clang
+    // surfaces a new `DynamicCountPointerKind` for it we will hit the
+    // `default` arm below and warn; otherwise it currently aliases the
+    // `CountedBy`/`CountedByOrNull` kinds and is indistinguishable here.
+    const char *kind;
+    switch (T->getKind()) {
+    case CountAttributedType::CountedBy:
+        kind = "counted_by";
+        break;
+    case CountAttributedType::SizedBy:
+        kind = "sized_by";
+        break;
+    case CountAttributedType::CountedByOrNull:
+        kind = "counted_by_or_null";
+        break;
+    case CountAttributedType::SizedByOrNull:
+        kind = "sized_by_or_null";
+        break;
+    default:
+        printDiag(Context, DiagnosticsEngine::Warning,
+                  "Encountered unexpected CountAttributedType kind",
+                  src_loc, src_range);
+        kind = nullptr;
+        break;
+    }
+
+    auto c = T->getCountExpr();
+    if (c) {
+        astEncoder->TraverseStmt(c);
+    }
+
+    encodeType(T, TagCountAttributedType, [qt, kind, c](CborEncoder *local) {
+        cbor_encode_uint(local, qt);
+        if (kind) {
+            cbor_encode_text_stringz(local, kind);
+        } else {
+            cbor_encode_null(local);
+        }
+        if (c) {
+            cbor_encode_uint(local, uintptr_t(c));
+        } else {
+            cbor_encode_null(local);
+        }
+    });
+
+    VisitQualType(t);
+}
+#endif
 
 void TypeEncoder::VisitVariableArrayType(const VariableArrayType *T) {
     auto t = T->getElementType();
