@@ -27,9 +27,7 @@ impl<'c> Translation<'c> {
 
         match arg_kind {
             // C99 6.5.3.2 para 4
-            CExprKind::Unary(_, CUnOp::Deref, target, _) => {
-                return self.convert_expr(ctx, *target, None)
-            }
+            CExprKind::Unary(_, CUnOp::Deref, target, _) => return self.convert_expr(ctx, *target),
             // Array subscript functions as a deref too.
             &CExprKind::ArraySubscript(_, lhs, rhs, _) => {
                 return self.convert_array_subscript(
@@ -48,7 +46,7 @@ impl<'c> Translation<'c> {
             _ => (),
         }
 
-        let val = self.convert_expr(ctx.used().set_needs_address(true), arg, None)?;
+        let val = self.convert_expr(ctx.used().set_needs_address(true), arg)?;
 
         // & becomes a no-op when applied to a function.
         if self.ast_context.is_function_pointer(cqual_type.ctype) {
@@ -106,7 +104,7 @@ impl<'c> Translation<'c> {
             .ast_context
             .get_pointee_qual_type(pointer_cty.ctype)
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
-        let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
+        let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg));
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
@@ -201,10 +199,10 @@ impl<'c> Translation<'c> {
         let arg_expr_kind = &self.ast_context.index(arg).kind;
 
         if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
-            return self.convert_expr(ctx.used(), arg, None);
+            return self.convert_expr(ctx.used(), arg);
         }
 
-        self.convert_expr(ctx.used(), arg, None)?
+        self.convert_expr(ctx.used(), arg)?
             .try_map(|val: Box<Expr>| {
                 if let CTypeKind::Function(..) =
                     self.ast_context.resolve_type(cqual_type.ctype).kind
@@ -258,7 +256,7 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        let rhs = self.convert_expr(ctx.used(), rhs, None)?;
+        let rhs = self.convert_expr(ctx.used(), rhs)?;
         rhs.and_then_try(|rhs| {
             let simple_index_array = if ctx.needs_address() {
                 // We can't necessarily index into an array if we're using
@@ -307,7 +305,7 @@ impl<'c> Translation<'c> {
                     ref other => panic!("Unexpected array type {:?}", other),
                 };
 
-                let lhs = self.convert_expr(ctx.used(), arr, None)?;
+                let lhs = self.convert_expr(ctx.used(), arr)?;
                 Ok(lhs.and_then(|lhs| {
                     // stmts.extend(lhs.stmts_mut());
                     // is_unsafe = is_unsafe || lhs.is_unsafe();
@@ -321,7 +319,7 @@ impl<'c> Translation<'c> {
                 }))
             } else {
                 // LHS must be ref decayed for the offset method call's self param
-                let lhs = self.convert_expr(ctx.used().decay_ref(), lhs, None)?;
+                let lhs = self.convert_expr(ctx.used().decay_ref(), lhs)?;
                 lhs.and_then_try(|lhs| {
                     // stmts.extend(lhs.stmts_mut());
                     // is_unsafe = is_unsafe || lhs.is_unsafe();
