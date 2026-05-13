@@ -73,6 +73,10 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
         immediate_children_all_types(self.ast_context, id)
     }
     fn pre(&mut self, mut id: SomeId) -> bool {
+        if !self.ast_context.contains_node(id) {
+            return false;
+        }
+
         // Don't traverse into unvisited top-level decls, we should visit those
         // in sorted order.
         if let SomeId::Decl(id) = id {
@@ -129,6 +133,10 @@ impl<'c> NodeVisitor for CommentLocator<'c> {
     }
 
     fn post(&mut self, id: SomeId) {
+        if !self.ast_context.contains_node(id) {
+            return;
+        }
+
         // Don't attach comments to the end of unvisited top-level decls, we'll
         // visit them later.
         if let SomeId::Decl(id) = id {

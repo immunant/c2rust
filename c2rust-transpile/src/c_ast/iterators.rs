@@ -1,4 +1,5 @@
 use crate::c_ast::*;
+use log::debug;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SomeId {
@@ -266,6 +267,8 @@ fn immediate_stmt_children(kind: &CStmtKind) -> Vec<SomeId> {
         Attributed {
             substatement: s, ..
         } => intos![s],
+
+        BadStmt => vec![],
     }
 }
 
@@ -319,21 +322,75 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
 }
 
 fn immediate_children(context: &TypedAstContext, s_or_e: SomeId) -> Vec<SomeId> {
-    match s_or_e {
-        SomeId::Stmt(stmt_id) => immediate_stmt_children(&context[stmt_id].kind),
-        SomeId::Expr(expr_id) => immediate_expr_children(&context.c_exprs[&expr_id].kind),
-        SomeId::Decl(decl_id) => immediate_decl_children(&context[decl_id].kind),
-        SomeId::Type(type_id) => immediate_type_children(&context[type_id].kind),
-    }
+    let children = match s_or_e {
+        SomeId::Stmt(stmt_id) => context
+            .c_stmts
+            .get(&stmt_id)
+            .map(|stmt| immediate_stmt_children(&stmt.kind)),
+        SomeId::Expr(expr_id) => context
+            .c_exprs
+            .get(&expr_id)
+            .map(|expr| immediate_expr_children(&expr.kind)),
+        SomeId::Decl(decl_id) => context
+            .c_decls
+            .get(&decl_id)
+            .map(|decl| immediate_decl_children(&decl.kind)),
+        SomeId::Type(type_id) => context
+            .c_types
+            .get(&type_id)
+            .map(|typ| immediate_type_children(&typ.kind)),
+    };
+
+    children
+        .unwrap_or_else(|| {
+            debug!("skipping missing AST node during traversal: {:?}", s_or_e);
+            Vec::new()
+        })
+        .into_iter()
+        .filter(|&id| {
+            let present = context.contains_node(id);
+            if !present {
+                debug!("skipping missing AST child during traversal: {:?}", id);
+            }
+            present
+        })
+        .collect()
 }
 
 pub fn immediate_children_all_types(context: &TypedAstContext, s_or_e: SomeId) -> Vec<SomeId> {
-    match s_or_e {
-        SomeId::Stmt(stmt_id) => immediate_stmt_children(&context[stmt_id].kind),
-        SomeId::Expr(expr_id) => immediate_expr_children_all_types(&context.c_exprs[&expr_id].kind),
-        SomeId::Decl(decl_id) => immediate_decl_children(&context[decl_id].kind),
-        SomeId::Type(type_id) => immediate_type_children(&context[type_id].kind),
-    }
+    let children = match s_or_e {
+        SomeId::Stmt(stmt_id) => context
+            .c_stmts
+            .get(&stmt_id)
+            .map(|stmt| immediate_stmt_children(&stmt.kind)),
+        SomeId::Expr(expr_id) => context
+            .c_exprs
+            .get(&expr_id)
+            .map(|expr| immediate_expr_children_all_types(&expr.kind)),
+        SomeId::Decl(decl_id) => context
+            .c_decls
+            .get(&decl_id)
+            .map(|decl| immediate_decl_children(&decl.kind)),
+        SomeId::Type(type_id) => context
+            .c_types
+            .get(&type_id)
+            .map(|typ| immediate_type_children(&typ.kind)),
+    };
+
+    children
+        .unwrap_or_else(|| {
+            debug!("skipping missing AST node during traversal: {:?}", s_or_e);
+            Vec::new()
+        })
+        .into_iter()
+        .filter(|&id| {
+            let present = context.contains_node(id);
+            if !present {
+                debug!("skipping missing AST child during traversal: {:?}", id);
+            }
+            present
+        })
+        .collect()
 }
 
 pub struct DFExpr<'context> {
