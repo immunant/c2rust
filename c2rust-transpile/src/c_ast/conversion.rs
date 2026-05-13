@@ -993,12 +993,12 @@ impl ConversionContext {
                         .or_default()
                         .push(mac);
                 }
-            }
 
-            if let Some(text) = &node.macro_expansion_text {
-                self.typed_context
-                    .macro_expansion_text
-                    .insert(CExprId(new_id), text.clone());
+                if let Some(text) = &node.macro_expansion_text {
+                    self.typed_context
+                        .macro_expansion_text
+                        .insert(CExprId(new_id), text.clone());
+                }
             }
 
             match node.tag {
