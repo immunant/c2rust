@@ -308,6 +308,13 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
             }
             res
         }
+        CountAttributed(qtype, _, count_expr) => {
+            let mut res = intos![qtype.ctype];
+            if let Some(e) = count_expr {
+                res.push(e.into())
+            }
+            res
+        }
         Function(ret, ref params, _, _, _) => {
             let mut res = intos![ret.ctype];
             for p in params {

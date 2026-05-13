@@ -752,6 +752,7 @@ impl TypedAstContext {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
             Attributed(ty, _) => ty.ctype,
+            CountAttributed(ty, _, _) => ty.ctype,
             Elaborated(ty) => ty,
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
@@ -775,6 +776,7 @@ impl TypedAstContext {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
             Attributed(ty, _) => ty.ctype,
+            CountAttributed(ty, _, _) => ty.ctype,
             Elaborated(ty) => ty,
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
@@ -2545,6 +2547,12 @@ pub enum CTypeKind {
 
     Attributed(CQualTypeId, Option<Attribute>),
 
+    /// A type carrying a Clang `__counted_by` / `__sized_by` (`_or_null`)
+    /// bounds attribute. The wrapped pointer type is the desugared form;
+    /// the `CExprId` is the count expression (typically a `DeclRefExpr` to
+    /// a sibling field). May be absent if Clang did not provide one.
+    CountAttributed(CQualTypeId, CountAttributedKind, Option<CExprId>),
+
     BlockPointer(CQualTypeId),
 
     Vector(CQualTypeId, usize),
@@ -2729,6 +2737,7 @@ impl CTypeKind {
             Enum(_) => false,
             BuiltinFn => false,
             Attributed(_, _) => false,
+            CountAttributed(_, _, _) => false,
             BlockPointer(_) => false,
             Vector(_, _) => false,
             UnhandledSveType => false,
@@ -2801,6 +2810,7 @@ impl CTypeKind {
             Enum(_) => false,
             BuiltinFn => false,
             Attributed(_, _) => false,
+            CountAttributed(_, _, _) => false,
             BlockPointer(_) => false,
             Vector(_, _) => false,
             UnhandledSveType => false,
@@ -2863,6 +2873,14 @@ pub enum Attribute {
     Visibility(String),
     /// __attribute__((fallthrough, __fallthrough__))
     Fallthrough,
+}
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum CountAttributedKind {
+    CountedBy,
+    SizedBy,
+    CountedByOrNull,
+    SizedByOrNull,
 }
 
 impl CTypeKind {
