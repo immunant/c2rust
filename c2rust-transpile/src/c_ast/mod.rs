@@ -365,6 +365,16 @@ impl TypedAstContext {
         }
     }
 
+    pub fn contains_node(&self, id: SomeId) -> bool {
+        use SomeId::*;
+        match id {
+            Stmt(id) => self.c_stmts.contains_key(&id),
+            Expr(id) => self.c_exprs.contains_key(&id),
+            Decl(id) => self.c_decls.contains_key(&id),
+            Type(id) => self.c_types.contains_key(&id),
+        }
+    }
+
     /// Construct a map from top-level decls in the main file to their source ranges.
     pub fn top_decl_locs(&self) -> IndexMap<CDeclId, CDeclSrcRange> {
         let mut name_loc_map = IndexMap::new();
@@ -1040,6 +1050,7 @@ impl TypedAstContext {
             // There are no labeled `break`s and `continue`s.
             Label(_stmt) => false,
             Goto(_label) => false,
+            BadStmt => false,
         }
     }
 
@@ -2391,6 +2402,8 @@ pub enum CStmtKind {
         attributes: Vec<Attribute>,
         substatement: CStmtId,
     },
+
+    BadStmt,
 }
 
 #[derive(Clone, Debug)]

@@ -2953,7 +2953,7 @@ impl<'c> Translation<'c> {
                 Err(TranslationError::generic("Unexpected designated init expr"))
             }
             BadExpr => Err(TranslationError::generic(
-                "convert_expr: expression kind not supported",
+                "missing or unsupported expression in exported Clang AST",
             )),
             ShuffleVector(_, ref child_expr_ids) => self
                 .convert_shuffle_vector(ctx, child_expr_ids)
