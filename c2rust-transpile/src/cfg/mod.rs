@@ -2007,6 +2007,10 @@ impl CfgBuilder {
                 )?);
                 Ok(Some(wip))
             }
+
+            CStmtKind::BadStmt => Err(TranslationError::generic(
+                "missing or unsupported statement in exported Clang AST",
+            )),
         };
         let out_wip: Option<WipBlock> = out_wip?; // This statement exists to help type inference...
 
