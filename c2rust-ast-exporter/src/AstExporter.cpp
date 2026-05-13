@@ -1408,65 +1408,106 @@ class TranslateASTVisitor final
         LLVM_DEBUG(Range.getBegin().dump(Mgr));
         LLVM_DEBUG(Range.getEnd().dump(Mgr));
 
-        auto Begin = Range.getBegin();
-        auto End = Range.getEnd();
-
-        // Check that we are only expanding a single macro call.
-        if (!Begin.isMacroID() || !End.isMacroID() ||
-            Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End))
+        if (!Range.getBegin().isMacroID() || !Range.getEnd().isMacroID()) {
             return true;
-
-        if (Begin.isMacroID()) {
-#if CLANG_VERSION_MAJOR < 7
-            // getImmediateExpansionRange in LLVM<7 returns a
-            // std::pair<SourceLocation, SourceLocation>, which we need to
-            // translate to a CharSourceRange for Lexer::getSourceText
-            auto LocPair = Mgr.getImmediateExpansionRange(Begin);
-            auto ExpansionRange = CharSourceRange::getCharRange(LocPair.first, LocPair.second);
-#else // CLANG_VERSION_MAJOR >= 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
-#endif
-            curMacroExpansionSource =
-                Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
         }
 
-        // The macro stack unwound by getImmediateMacroCallerLoc and friends
-        // starts with literal replacement and works it's way to the macro call
-        // that was replaced.
-        while (Begin.isMacroID()) {
-#if CLANG_VERSION_MAJOR < 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
-            auto ExpansionBegin = ExpansionRange.first;
-            auto ExpansionEnd = ExpansionRange.second;
-#else // CLANG_VERSION_MAJOR >= 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin).getAsRange();
-            auto ExpansionBegin = ExpansionRange.getBegin();
-            auto ExpansionEnd = ExpansionRange.getEnd();
-#endif
+        // Holds the stack of ranges of macro expansions that expand to this expression.
+        // The last element is the top-level macro call.
+        auto ExpansionStack = getMacroExpansionStack(Range);
+
+        if (ExpansionStack.empty()) {
+            return true;
+        }
+
+        curMacroExpansionSource =
+            Lexer::getSourceText(ExpansionStack[0], Mgr, Context->getLangOpts());
+
+        for (auto &ExpansionRange : ExpansionStack) {
             StringRef name;
-            MacroInfo *mac = getMacroInfo(ExpansionBegin, name);
+            MacroInfo *mac = getMacroInfo(ExpansionRange.getBegin(), name);
 
-            if (!mac || mac->getNumTokens() == 0)
+            if (!mac || mac->getNumTokens() == 0) {
                 return true;
-            auto ReplacementBegin = mac->getReplacementToken(0).getLocation();
-            auto ReplacementEnd = mac->getDefinitionEndLoc();
-            // Verify that this expansion covers the entire macro replacement
-            // definition, i.e. E is not a subexpression of the macro
-            // replacement.
-            if (Mgr.getSpellingLoc(Begin) != ReplacementBegin ||
-                Mgr.getSpellingLoc(End) != ReplacementEnd)
-                return true;
+            }
 
-            Begin = ExpansionBegin;
-            End = ExpansionEnd;
-
-            if (VisitMacro(name, Begin, mac, E)) {
+            if (VisitMacro(name, ExpansionRange.getBegin(), mac, E)) {
                 curMacroExpansionStack.push_back(mac);
             }
         }
+
         return true;
     }
 
+    std::vector<CharSourceRange> getMacroExpansionStack(SourceRange Range) const {
+        auto &Mgr = Context->getSourceManager();
+        auto Begin = Range.getBegin();
+        auto End = Range.getEnd();
+        std::vector<CharSourceRange> ExpansionStack;
+
+        do {
+            if (!isAtStartOfImmediateMacroExpansion(Begin)) {
+                break;
+            }
+
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
+            ExpansionStack.push_back(ExpansionRange);
+            Begin = ExpansionRange.getBegin();
+        } while (Begin.isMacroID());
+
+        // Find the point at which `Begin` and `End` converge on the same expansion range.
+        // This is where the expression in `Range` first corresponds to a single macro call.
+        auto ConvergencePoint = ExpansionStack.end();
+
+        do {
+            if (!isAtEndOfImmediateMacroExpansion(End)) {
+                break;
+            }
+
+            auto ExpansionRange = Mgr.getImmediateExpansionRange(End);
+            ConvergencePoint = std::find_if(
+                ExpansionStack.begin(),
+                ExpansionStack.end(),
+                [ExpansionRange](auto &R) {
+                    return R.getAsRange() == ExpansionRange.getAsRange() &&
+                        R.isTokenRange() == ExpansionRange.isTokenRange();
+                }
+            );
+            End = ExpansionRange.getEnd();
+        } while (End.isMacroID() && ConvergencePoint == ExpansionStack.end());
+
+        // Remove all elements before the convergence point.
+        ExpansionStack.erase(ExpansionStack.begin(), ConvergencePoint);
+
+        // Ensure the remaining ranges still correspond to the input `Range`.
+        auto EraseAfter = std::find_if(
+            ExpansionStack.begin(),
+            ExpansionStack.end(),
+            [this](auto &R) {
+                auto End = R.getEnd();
+                return End.isMacroID() && !isAtEndOfImmediateMacroExpansion(End);
+            }
+        );
+        auto EraseFrom = EraseAfter + 1;
+
+        if (EraseFrom < ExpansionStack.end()) {
+            ExpansionStack.erase(EraseFrom, ExpansionStack.end());
+        }
+
+        return ExpansionStack;
+    }
+
+    bool isAtStartOfImmediateMacroExpansion(SourceLocation loc) const {
+        auto &Mgr = Context->getSourceManager();
+        return Mgr.isAtStartOfImmediateMacroExpansion(loc);
+    }
+
+    bool isAtEndOfImmediateMacroExpansion(SourceLocation loc) const {
+        auto &Mgr = Context->getSourceManager();
+        auto spellingLoc = Mgr.getSpellingLoc(loc);
+        auto len = Lexer::MeasureTokenLength(spellingLoc, Mgr, Context->getLangOpts());
+        return Mgr.isAtEndOfImmediateMacroExpansion(loc.getLocWithOffset(len));
+    }
 
     bool VisitVAArgExpr(VAArgExpr *E) {
         std::vector<void *> childIds{E->getSubExpr()};
