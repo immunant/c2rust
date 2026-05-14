@@ -985,8 +985,8 @@ impl ConversionContext {
             };
 
             if expected_ty & EXPR != 0 {
-                for mac_id in &node.macro_invocations {
-                    let mac = CDeclId(self.visit_node_type(*mac_id, MACRO_DECL));
+                for info in &node.macro_invocations {
+                    let mac = CDeclId(self.visit_node_type(info.macro_id, MACRO_DECL));
                     self.typed_context
                         .macro_invocations
                         .entry(CExprId(new_id))

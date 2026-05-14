@@ -816,7 +816,18 @@ class TranslateASTVisitor final
         if (encodeMacroInvocations) {
             for (auto I = curMacroInvocationStack.rbegin(), E = curMacroInvocationStack.rend();
                  I != E; ++I) {
-                cbor_encode_uint(&childEnc, uintptr_t(I->macro));
+                CborEncoder expansionEnc;
+                cbor_encoder_create_array(&childEnc, &expansionEnc, 2);
+
+                cbor_encode_uint(&expansionEnc, uintptr_t(I->macro));
+
+                if (!I->parameter.empty()) {
+                    cbor_encode_string(&expansionEnc, I->parameter.str());
+                } else {
+                    cbor_encode_null(&expansionEnc);
+                }
+
+                cbor_encoder_close_container(&childEnc, &expansionEnc);
             }
         }
         cbor_encoder_close_container(&local, &childEnc);

@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use serde_bytes::ByteBuf;
 use serde_cbor::error;
 use std::collections::{HashMap, VecDeque};
@@ -108,9 +109,15 @@ pub struct AstNode {
     // Stack of macros this node was expanded from, beginning with the initial
     // macro call and ending with the leaf. This needs to be a stack for nested
     // macro definitions.
-    pub macro_invocations: Vec<u64>,
+    pub macro_invocations: Vec<MacroInvocationInfoRaw>,
     pub macro_invocation_text: Option<String>,
     pub extras: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MacroInvocationInfoRaw {
+    pub macro_id: u64,
+    pub parameter: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -260,7 +267,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             };
 
             // entry[10]
-            let macro_invocations = from_value::<Vec<u64>>(entry.pop_front().unwrap()).unwrap();
+            let macro_invocations =
+                from_value::<Vec<MacroInvocationInfoRaw>>(entry.pop_front().unwrap()).unwrap();
 
             let macro_invocation_text = expect_opt_str(&entry.pop_front().unwrap())
                 .unwrap()
