@@ -103,7 +103,7 @@ pub struct TypedAstContext {
     pub label_names: IndexMap<CLabelId, Rc<str>>,
 
     /// map expressions to the stack of macros they were expanded from
-    pub macro_invocations: IndexMap<CExprId, Vec<CDeclId>>,
+    pub macro_invocations: IndexMap<CExprId, Vec<MacroInvocationInfo>>,
 
     /// map macro decls to the expressions they expand to
     pub macro_expansions: IndexMap<CDeclId, Vec<CExprId>>,
@@ -120,6 +120,12 @@ pub struct TypedAstContext {
 
     pub va_list_kind: BuiltinVaListKind,
     pub target: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MacroInvocationInfo {
+    pub macro_id: CDeclId,
+    pub parameter: Option<String>,
 }
 
 /// Comments associated with a typed AST context
@@ -1165,9 +1171,9 @@ impl TypedAstContext {
                     Expr(expr_id) => {
                         let expr = self.index(expr_id);
                         if let Some(macs) = self.macro_invocations.get(&expr_id) {
-                            for mac_id in macs {
-                                if wanted.insert(*mac_id) {
-                                    to_walk.push(*mac_id);
+                            for info in macs {
+                                if wanted.insert(info.macro_id) {
+                                    to_walk.push(info.macro_id);
                                 }
                             }
                         }
