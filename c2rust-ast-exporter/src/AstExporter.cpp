@@ -721,10 +721,15 @@ class TranslateASTVisitor final
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
     std::unordered_map<MacroInfo*, MacroDeclInfo> macros;
 
+    struct MacroInvocationInfo {
+        MacroInfo* macro;
+        StringRef parameter;
+    };
+
     // This stores a raw encoding of the macro call site SourceLocation, since
     // SourceLocation isn't hashable.
     std::unordered_set<unsigned> macroCallSites;
-    SmallVector<MacroInfo*, 1> curMacroInvocationStack;
+    SmallVector<MacroInvocationInfo, 1> curMacroInvocationStack;
     StringRef curMacroInvocationSource;
 
     // Returns true when a new entry is added to exportedTags
@@ -811,7 +816,7 @@ class TranslateASTVisitor final
         if (encodeMacroInvocations) {
             for (auto I = curMacroInvocationStack.rbegin(), E = curMacroInvocationStack.rend();
                  I != E; ++I) {
-                cbor_encode_uint(&childEnc, uintptr_t(*I));
+                cbor_encode_uint(&childEnc, uintptr_t(I->macro));
             }
         }
         cbor_encoder_close_container(&local, &childEnc);
@@ -899,14 +904,14 @@ class TranslateASTVisitor final
                          isVaList(ast, T), encodeMacroInvocations, childIds, extra);
     }
 
-    bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E) {
+    bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E, bool isParameter) {
         // TODO: handle builtin macros
         if (mac->isBuiltinMacro())
             return false;
         // If this isn't the first time we've seen this macro call site, we
         // shouldn't associate this expression with the macro as it is a subexpr
         // of a previously seen expression.
-        if (!macroCallSites.insert(loc.getRawEncoding()).second)
+        if (!isParameter && !macroCallSites.insert(loc.getRawEncoding()).second)
             return false;
         auto &info = macros[mac];
         if (info.Name.empty())
@@ -1390,11 +1395,20 @@ class TranslateASTVisitor final
             Lexer::getSourceText(ExpansionStack[0].range, Mgr, Context->getLangOpts());
 
         for (auto &elem : ExpansionStack) {
+            auto loc = elem.range.getBegin();
+            StringRef parameter;
+
             if (elem.isParameter) {
-                continue;
+                auto IdentifierInfo = getIdentifierInfo(loc);
+
+                if (!IdentifierInfo) {
+                    return true;
+                }
+
+                parameter = IdentifierInfo->getName();
+                loc = Mgr.getImmediateExpansionRange(loc).getBegin();
             }
 
-            auto loc = elem.range.getBegin();
             auto IdentifierInfo = getIdentifierInfo(loc);
 
             if (!IdentifierInfo) {
@@ -1407,8 +1421,9 @@ class TranslateASTVisitor final
                 return true;
             }
 
-            if (VisitMacro(IdentifierInfo->getName(), loc, MacroInfo, E)) {
-                curMacroInvocationStack.push_back(MacroInfo);
+            if (VisitMacro(IdentifierInfo->getName(), loc, MacroInfo, E, elem.isParameter)) {
+                MacroInvocationInfo info = { MacroInfo, parameter };
+                curMacroInvocationStack.push_back(info);
             }
         }
 
