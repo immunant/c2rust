@@ -1394,15 +1394,21 @@ class TranslateASTVisitor final
                 continue;
             }
 
-            StringRef name;
-            MacroInfo *mac = getMacroInfo(elem.range.getBegin(), name);
+            auto loc = elem.range.getBegin();
+            auto IdentifierInfo = getIdentifierInfo(loc);
 
-            if (!mac || mac->getNumTokens() == 0) {
+            if (!IdentifierInfo) {
                 return true;
             }
 
-            if (VisitMacro(name, elem.range.getBegin(), mac, E)) {
-                curMacroExpansionStack.push_back(mac);
+            auto MacroInfo = getMacroInfo(loc, IdentifierInfo);
+
+            if (!MacroInfo || MacroInfo->getNumTokens() == 0) {
+                return true;
+            }
+
+            if (VisitMacro(IdentifierInfo->getName(), loc, MacroInfo, E)) {
+                curMacroExpansionStack.push_back(MacroInfo);
             }
         }
 
@@ -1489,38 +1495,52 @@ class TranslateASTVisitor final
         return Mgr.isAtEndOfImmediateMacroExpansion(loc.getLocWithOffset(len));
     }
 
-    MacroInfo* getMacroInfo(SourceLocation loc, StringRef &name) const {
+    IdentifierInfo *getIdentifierInfo(SourceLocation loc) const {
         auto &Mgr = Context->getSourceManager();
         Token Result;
-        if (!Lexer::getRawToken(Mgr.getSpellingLoc(loc), Result,
-                                Mgr, Context->getLangOpts(), false)) {
+
+        if (!Lexer::getRawToken(
+            Mgr.getSpellingLoc(loc),
+            Result,
+            Mgr,
+            Context->getLangOpts(),
+            false
+        )) {
             if (Result.is(tok::raw_identifier)) {
                 PP.LookUpIdentifierInfo(Result);
             }
-            IdentifierInfo *IdentifierInfo = Result.getIdentifierInfo();
-            if (IdentifierInfo && IdentifierInfo->hadMacroDefinition()) {
-                std::pair<FileID, unsigned int> DecLoc =
-                    Mgr.getDecomposedExpansionLoc(loc);
-                // Get the definition just before the searched location
-                // so that a macro referenced in a '#undef MACRO' can
-                // still be found.
-                SourceLocation BeforeSearchedLocation =
-                    Mgr.getMacroArgExpandedLocation(
-                        Mgr.getLocForStartOfFile(DecLoc.first)
-                            .getLocWithOffset(DecLoc.second - 1));
-                MacroDefinition MacroDef = PP.getMacroDefinitionAtLoc(
-                    IdentifierInfo, BeforeSearchedLocation);
-                MacroInfo *MacroInf = MacroDef.getMacroInfo();
-                if (MacroInf) {
-                    LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
-                    LLVM_DEBUG(MacroInf->dump());
-                    LLVM_DEBUG(dbgs() << "\n");
-                    name = IdentifierInfo->getName();
-                    return MacroInf;
-                }
-            }
+
+            return Result.getIdentifierInfo();
         }
+
         return nullptr;
+    }
+
+    MacroInfo* getMacroInfo(SourceLocation loc, IdentifierInfo *IdentifierInfo) const {
+        if (!IdentifierInfo->hadMacroDefinition()) {
+            return nullptr;
+        }
+
+        auto &Mgr = Context->getSourceManager();
+        std::pair<FileID, unsigned int> DecLoc = Mgr.getDecomposedExpansionLoc(loc);
+        // Get the definition just before the searched location
+        // so that a macro referenced in a '#undef MACRO' can
+        // still be found.
+        SourceLocation BeforeSearchedLocation = Mgr.getMacroArgExpandedLocation(
+            Mgr.getLocForStartOfFile(DecLoc.first).getLocWithOffset(DecLoc.second - 1));
+        MacroDefinition MacroDef = PP.getMacroDefinitionAtLoc(
+            IdentifierInfo, BeforeSearchedLocation);
+        MacroInfo *MacroInf = MacroDef.getMacroInfo();
+
+        if (!MacroInf) {
+            return nullptr;
+        }
+
+        LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
+        LLVM_DEBUG(MacroInf->dump());
+        LLVM_DEBUG(dbgs() << "\n");
+
+        return MacroInf;
     }
 
     bool VisitVAArgExpr(VAArgExpr *E) {
