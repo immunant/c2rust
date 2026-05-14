@@ -985,7 +985,7 @@ impl ConversionContext {
             };
 
             if expected_ty & EXPR != 0 {
-                for mac_id in &node.macro_expansions {
+                for mac_id in &node.macro_invocations {
                     let mac = CDeclId(self.visit_node_type(*mac_id, MACRO_DECL));
                     self.typed_context
                         .macro_invocations
@@ -995,9 +995,9 @@ impl ConversionContext {
                 }
             }
 
-            if let Some(text) = &node.macro_expansion_text {
+            if let Some(text) = &node.macro_invocation_text {
                 self.typed_context
-                    .macro_expansion_text
+                    .macro_invocation_text
                     .insert(CExprId(new_id), text.clone());
             }
 

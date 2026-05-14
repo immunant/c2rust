@@ -707,7 +707,7 @@ private:
 class TranslateASTVisitor final
     : public RecursiveASTVisitor<TranslateASTVisitor> {
 
-    struct MacroExpansionInfo {
+    struct MacroDeclInfo {
         StringRef Name;
     };
 
@@ -719,13 +719,13 @@ class TranslateASTVisitor final
     // Mapping from SourceManager FileID to index in files
     DenseMap<FileID, size_t> file_id_mapping;
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
-    std::unordered_map<MacroInfo*, MacroExpansionInfo> macros;
+    std::unordered_map<MacroInfo*, MacroDeclInfo> macros;
 
     // This stores a raw encoding of the macro call site SourceLocation, since
     // SourceLocation isn't hashable.
     std::unordered_set<unsigned> macroCallSites;
-    SmallVector<MacroInfo*, 1> curMacroExpansionStack;
-    StringRef curMacroExpansionSource;
+    SmallVector<MacroInfo*, 1> curMacroInvocationStack;
+    StringRef curMacroInvocationSource;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -765,7 +765,7 @@ class TranslateASTVisitor final
     // Template required because Decl and Stmt don't share a common base class
     void encode_entry_raw(void *ast, ASTEntryTag tag, SourceRange loc,
                           const QualType ty, bool rvalue,
-                          bool isVaList, bool encodeMacroExpansions,
+                          bool isVaList, bool encodeMacroInvocations,
                           const std::vector<void *> &childIds,
                           std::function<void(CborEncoder *)> extra) {
         if (!markForExport(ast, tag))
@@ -804,21 +804,21 @@ class TranslateASTVisitor final
         // 9 - Is Rvalue (only for expressions)
         cbor_encode_boolean(&local, rvalue);
 
-        // 10 - Macro expansion stack, starting with initial macro call and ending
+        // 10 - Macro invocation stack, starting with initial macro call and ending
         // with the innermost replacement.
         cbor_encoder_create_array(&local, &childEnc,
-                                  encodeMacroExpansions ? curMacroExpansionStack.size() : 0);
-        if (encodeMacroExpansions) {
-            for (auto I = curMacroExpansionStack.rbegin(), E = curMacroExpansionStack.rend();
+                                  encodeMacroInvocations ? curMacroInvocationStack.size() : 0);
+        if (encodeMacroInvocations) {
+            for (auto I = curMacroInvocationStack.rbegin(), E = curMacroInvocationStack.rend();
                  I != E; ++I) {
                 cbor_encode_uint(&childEnc, uintptr_t(*I));
             }
         }
         cbor_encoder_close_container(&local, &childEnc);
 
-        // 11 - Macro expansion source string, if applicable.
-        if (!curMacroExpansionSource.empty()) {
-            cbor_encode_string(&local, curMacroExpansionSource.str());
+        // 11 - Macro invocation source string, if applicable.
+        if (!curMacroInvocationSource.empty()) {
+            cbor_encode_string(&local, curMacroInvocationSource.str());
         } else {
             cbor_encode_null(&local);
         }
@@ -842,7 +842,7 @@ class TranslateASTVisitor final
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto ty = ast->getType();
         auto isVaList = false;
-        auto encodeMacroExpansions = true;
+        auto encodeMacroInvocations = true;
 #if CLANG_VERSION_MAJOR < 13
         bool isRValue = ast->isRValue();
 #else
@@ -856,7 +856,7 @@ class TranslateASTVisitor final
         auto span = ast->getSourceRange();
         expandSpanToFinalChar(span, Context);
         encode_entry_raw(ast, tag, span, ty, isRValue, isVaList,
-                         encodeMacroExpansions, childIds, extra);
+                         encodeMacroInvocations, childIds, extra);
         typeEncoder.VisitQualTypeOf(ty, ast);
     }
 
@@ -866,11 +866,11 @@ class TranslateASTVisitor final
         QualType s = QualType(static_cast<clang::Type *>(nullptr), 0);
         auto rvalue = false;
         auto isVaList = false;
-        auto encodeMacroExpansions = false;
+        auto encodeMacroInvocations = false;
         auto span = ast->getSourceRange();
         expandSpanToFinalChar(span, Context);
         encode_entry_raw(ast, tag, span, s, rvalue, isVaList,
-                         encodeMacroExpansions, childIds, extra);
+                         encodeMacroInvocations, childIds, extra);
     }
 
     void encode_entry(
@@ -878,11 +878,11 @@ class TranslateASTVisitor final
         const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
-        auto encodeMacroExpansions = false;
+        auto encodeMacroInvocations = false;
         auto span = ast->getSourceRange();
         expandSpanToFinalChar(span, Context);
         encode_entry_raw(ast, tag, span, T, rvalue,
-                         isVaList(ast, T), encodeMacroExpansions, childIds, extra);
+                         isVaList(ast, T), encodeMacroInvocations, childIds, extra);
     }
 
     /// Explicitly override the source location of this decl for cases where the
@@ -893,10 +893,10 @@ class TranslateASTVisitor final
         const std::vector<void *> &childIds, const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
-        auto encodeMacroExpansions = false;
+        auto encodeMacroInvocations = false;
         expandSpanToFinalChar(loc, Context);
         encode_entry_raw(ast, tag, loc, T, rvalue,
-                         isVaList(ast, T), encodeMacroExpansions, childIds, extra);
+                         isVaList(ast, T), encodeMacroInvocations, childIds, extra);
     }
 
     bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E) {
@@ -969,11 +969,11 @@ class TranslateASTVisitor final
 
     void encodeMacros() {
         // Sort macros by source location
-        std::vector<std::pair<MacroInfo *, MacroExpansionInfo>> macro_vec(
+        std::vector<std::pair<MacroInfo *, MacroDeclInfo>> macro_vec(
             macros.begin(), macros.end());
         std::sort(macro_vec.begin(), macro_vec.end(),
-                  [](const std::pair<MacroInfo *, MacroExpansionInfo> &a,
-                     const std::pair<MacroInfo *, MacroExpansionInfo> &b) {
+                  [](const std::pair<MacroInfo *, MacroDeclInfo> &a,
+                     const std::pair<MacroInfo *, MacroDeclInfo> &b) {
                       return a.first->getDefinitionLoc() <
                              b.first->getDefinitionLoc();
                   });
@@ -1359,8 +1359,8 @@ class TranslateASTVisitor final
     //
 
     bool VisitExpr(Expr *E) {
-        curMacroExpansionStack.clear();
-        curMacroExpansionSource = StringRef();
+        curMacroInvocationStack.clear();
+        curMacroInvocationSource = StringRef();
 
         // We only translate constant macro objects to Rust consts, so this
         // expression must be constant.
@@ -1386,7 +1386,7 @@ class TranslateASTVisitor final
             return true;
         }
 
-        curMacroExpansionSource =
+        curMacroInvocationSource =
             Lexer::getSourceText(ExpansionStack[0].range, Mgr, Context->getLangOpts());
 
         for (auto &elem : ExpansionStack) {
@@ -1408,7 +1408,7 @@ class TranslateASTVisitor final
             }
 
             if (VisitMacro(IdentifierInfo->getName(), loc, MacroInfo, E)) {
-                curMacroExpansionStack.push_back(MacroInfo);
+                curMacroInvocationStack.push_back(MacroInfo);
             }
         }
 

@@ -110,7 +110,7 @@ pub struct TypedAstContext {
 
     /// map expressions to the text of the macro invocation they expanded from,
     /// if any
-    pub macro_expansion_text: IndexMap<CExprId, String>,
+    pub macro_invocation_text: IndexMap<CExprId, String>,
 
     pub comments: Vec<Located<String>>,
 
