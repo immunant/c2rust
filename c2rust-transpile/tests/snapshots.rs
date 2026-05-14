@@ -406,6 +406,11 @@ fn test_lift_const() {
 }
 
 #[test]
+fn test_macro_fns() {
+    transpile("macro_fns.c").run();
+}
+
+#[test]
 fn test_macrocase() {
     transpile("macrocase.c").run();
 }
