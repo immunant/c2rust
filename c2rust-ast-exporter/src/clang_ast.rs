@@ -108,8 +108,8 @@ pub struct AstNode {
     // Stack of macros this node was expanded from, beginning with the initial
     // macro call and ending with the leaf. This needs to be a stack for nested
     // macro definitions.
-    pub macro_expansions: Vec<u64>,
-    pub macro_expansion_text: Option<String>,
+    pub macro_invocations: Vec<u64>,
+    pub macro_invocation_text: Option<String>,
     pub extras: Vec<Value>,
 }
 
@@ -260,9 +260,9 @@ pub fn process(items: Value) -> error::Result<AstContext> {
             };
 
             // entry[10]
-            let macro_expansions = from_value::<Vec<u64>>(entry.pop_front().unwrap()).unwrap();
+            let macro_invocations = from_value::<Vec<u64>>(entry.pop_front().unwrap()).unwrap();
 
-            let macro_expansion_text = expect_opt_str(&entry.pop_front().unwrap())
+            let macro_invocation_text = expect_opt_str(&entry.pop_front().unwrap())
                 .unwrap()
                 .map(|s| s.to_string());
 
@@ -278,8 +278,8 @@ pub fn process(items: Value) -> error::Result<AstContext> {
                 },
                 type_id,
                 rvalue,
-                macro_expansions,
-                macro_expansion_text,
+                macro_invocations,
+                macro_invocation_text,
                 extras: entry.into_iter().collect(),
             };
 
