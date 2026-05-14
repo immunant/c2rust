@@ -899,40 +899,6 @@ class TranslateASTVisitor final
                          isVaList(ast, T), encodeMacroExpansions, childIds, extra);
     }
 
-    MacroInfo* getMacroInfo(SourceLocation loc, StringRef &name) const {
-        auto &Mgr = Context->getSourceManager();
-        Token Result;
-        if (!Lexer::getRawToken(Mgr.getSpellingLoc(loc), Result,
-                                Mgr, Context->getLangOpts(), false)) {
-            if (Result.is(tok::raw_identifier)) {
-                PP.LookUpIdentifierInfo(Result);
-            }
-            IdentifierInfo *IdentifierInfo = Result.getIdentifierInfo();
-            if (IdentifierInfo && IdentifierInfo->hadMacroDefinition()) {
-                std::pair<FileID, unsigned int> DecLoc =
-                    Mgr.getDecomposedExpansionLoc(loc);
-                // Get the definition just before the searched location
-                // so that a macro referenced in a '#undef MACRO' can
-                // still be found.
-                SourceLocation BeforeSearchedLocation =
-                    Mgr.getMacroArgExpandedLocation(
-                        Mgr.getLocForStartOfFile(DecLoc.first)
-                            .getLocWithOffset(DecLoc.second - 1));
-                MacroDefinition MacroDef = PP.getMacroDefinitionAtLoc(
-                    IdentifierInfo, BeforeSearchedLocation);
-                MacroInfo *MacroInf = MacroDef.getMacroInfo();
-                if (MacroInf) {
-                    LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
-                    LLVM_DEBUG(MacroInf->dump());
-                    LLVM_DEBUG(dbgs() << "\n");
-                    name = IdentifierInfo->getName();
-                    return MacroInf;
-                }
-            }
-        }
-        return nullptr;
-    }
-
     bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E) {
         // TODO: handle builtin macros
         if (mac->isBuiltinMacro())
@@ -1521,6 +1487,40 @@ class TranslateASTVisitor final
         auto spellingLoc = Mgr.getSpellingLoc(loc);
         auto len = Lexer::MeasureTokenLength(spellingLoc, Mgr, Context->getLangOpts());
         return Mgr.isAtEndOfImmediateMacroExpansion(loc.getLocWithOffset(len));
+    }
+
+    MacroInfo* getMacroInfo(SourceLocation loc, StringRef &name) const {
+        auto &Mgr = Context->getSourceManager();
+        Token Result;
+        if (!Lexer::getRawToken(Mgr.getSpellingLoc(loc), Result,
+                                Mgr, Context->getLangOpts(), false)) {
+            if (Result.is(tok::raw_identifier)) {
+                PP.LookUpIdentifierInfo(Result);
+            }
+            IdentifierInfo *IdentifierInfo = Result.getIdentifierInfo();
+            if (IdentifierInfo && IdentifierInfo->hadMacroDefinition()) {
+                std::pair<FileID, unsigned int> DecLoc =
+                    Mgr.getDecomposedExpansionLoc(loc);
+                // Get the definition just before the searched location
+                // so that a macro referenced in a '#undef MACRO' can
+                // still be found.
+                SourceLocation BeforeSearchedLocation =
+                    Mgr.getMacroArgExpandedLocation(
+                        Mgr.getLocForStartOfFile(DecLoc.first)
+                            .getLocWithOffset(DecLoc.second - 1));
+                MacroDefinition MacroDef = PP.getMacroDefinitionAtLoc(
+                    IdentifierInfo, BeforeSearchedLocation);
+                MacroInfo *MacroInf = MacroDef.getMacroInfo();
+                if (MacroInf) {
+                    LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
+                    LLVM_DEBUG(MacroInf->dump());
+                    LLVM_DEBUG(dbgs() << "\n");
+                    name = IdentifierInfo->getName();
+                    return MacroInf;
+                }
+            }
+        }
+        return nullptr;
     }
 
     bool VisitVAArgExpr(VAArgExpr *E) {
