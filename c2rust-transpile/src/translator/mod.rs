@@ -143,7 +143,7 @@ pub struct ExprContext {
     needs_address: bool,
 
     ternary_needs_parens: bool,
-    expanding_macro: Option<CDeclId>,
+    converting_macro: Option<CDeclId>,
 }
 
 impl ExprContext {
@@ -212,15 +212,15 @@ impl ExprContext {
     }
 
     /// Are we expanding the given macro in the current context?
-    pub fn expanding_macro(&self, mac: &CDeclId) -> bool {
-        match self.expanding_macro {
+    pub fn is_converting_macro(&self, mac: &CDeclId) -> bool {
+        match self.converting_macro {
             Some(expanding) => expanding == *mac,
             None => false,
         }
     }
-    pub fn set_expanding_macro(self, mac: CDeclId) -> Self {
+    pub fn set_converting_macro(self, mac: CDeclId) -> Self {
         ExprContext {
-            expanding_macro: Some(mac),
+            converting_macro: Some(mac),
             ..self
         }
     }
@@ -694,7 +694,7 @@ pub fn translate(
         is_bitfield_write: false,
         needs_address: false,
         ternary_needs_parens: false,
-        expanding_macro: None,
+        converting_macro: None,
     };
 
     {
@@ -3008,7 +3008,7 @@ impl<'c> Translation<'c> {
                     .get_decl(&decl_id)
                     .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
                     .kind;
-                if ctx.expanding_macro.is_some() {
+                if ctx.converting_macro.is_some() {
                     // TODO Determining which declarations have been declared within the scope of the const macro expr
                     // vs. which are out-of-scope of the const macro is non-trivial,
                     // so for now, we don't allow const macros referencing any declarations.

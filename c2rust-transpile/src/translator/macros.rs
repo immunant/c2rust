@@ -25,7 +25,7 @@ impl<'c> Translation<'c> {
         );
 
         let maybe_replacement = self.recreate_const_macro_from_expansions(
-            ctx.const_().set_expanding_macro(decl_id),
+            ctx.const_().set_converting_macro(decl_id),
             &self.ast_context.macro_expansions[&decl_id],
         );
 
@@ -157,7 +157,7 @@ impl<'c> Translation<'c> {
 
         // Find the first macro after the macro we're currently expanding, if any.
         let first_macro = macros
-            .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
+            .splitn(2, |macro_id| ctx.is_converting_macro(macro_id))
             .last()
             .unwrap()
             .first();
