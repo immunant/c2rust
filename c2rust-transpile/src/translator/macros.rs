@@ -71,35 +71,51 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
         let (val, ty) = expansions
             .iter()
-            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
-                self.can_convert_const_macro_expansion(id)?;
+            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(
+                None,
+                |mut canonical, &expr_id| -> TranslationResult<_> {
+                    self.can_convert_const_macro_expansion(expr_id)?;
 
-                let ty = self.ast_context[id]
-                    .kind
-                    .get_type()
-                    .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let expr = self.convert_expr(ctx, id, None)?;
+                    let type_id = self.ast_context[expr_id]
+                        .kind
+                        .get_type()
+                        .ok_or_else(|| format_err!("Invalid expression type"))?;
+                    let val = self.convert_expr(ctx, expr_id, None)?;
+                    let new = (val, type_id);
 
-                // Join ty and cur_ty to the smaller of the two types. If the
-                // types are not cast-compatible, abort the fold.
-                let ty_kind = self.ast_context.resolve_type(ty).kind.clone();
-                if let Some((canon_val, canon_ty)) = canonical {
-                    let canon_ty_kind = self.ast_context.resolve_type(canon_ty).kind.clone();
-                    if let Some(smaller_ty) =
-                        CTypeKind::smaller_compatible_type(canon_ty_kind.clone(), ty_kind)
-                    {
-                        if smaller_ty == canon_ty_kind {
-                            Ok(Some((canon_val, canon_ty)))
-                        } else {
-                            Ok(Some((expr, ty)))
+                    // Join ty and cur_ty to the smaller of the two types. If the
+                    // types are not cast-compatible, abort the fold.
+                    match &mut canonical {
+                        Some(canonical) => {
+                            let &mut (_, canon_type_id) = canonical;
+                            let (_, new_type_id) = new;
+
+                            let canon_type_kind =
+                                self.ast_context.resolve_type(canon_type_id).kind.clone();
+                            let new_type_kind =
+                                self.ast_context.resolve_type(new_type_id).kind.clone();
+                            let smaller_type_kind = CTypeKind::smaller_compatible_type(
+                                canon_type_kind.clone(),
+                                new_type_kind,
+                            );
+                            let Some(smaller_type_kind) = smaller_type_kind else {
+                                return Err(
+                                    format_err!("Not all macro expansions are compatible types")
+                                    .into()
+                                )
+                            };
+
+                            if smaller_type_kind != canon_type_kind {
+                                *canonical = new;
+                            }
                         }
-                    } else {
-                        Err(format_err!("Not all macro expansions are compatible types"))
+
+                        None => canonical = Some(new),
                     }
-                } else {
-                    Ok(Some((expr, ty)))
-                }
-            })?
+
+                    Ok(canonical)
+                },
+            )?
             .ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
 
         val.wrap_unsafe()
