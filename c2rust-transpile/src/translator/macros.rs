@@ -6,7 +6,7 @@ use syn::{Expr, MacroDelimiter};
 
 use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
 use crate::diagnostics::{TranslationError, TranslationResult};
-use crate::translator::{ConvertedDecl, ExprContext, MacroExpansion, Translation};
+use crate::translator::{ConvertedDecl, ConvertedMacro, ExprContext, Translation};
 use crate::with_stmts::WithStmts;
 use crate::TranslateMacros;
 
@@ -33,10 +33,10 @@ impl<'c> Translation<'c> {
             Ok((replacement, ty)) => {
                 trace!("  to {:?}", replacement);
 
-                let expansion = MacroExpansion { ty };
-                self.macro_expansions
+                let converted = ConvertedMacro { ty };
+                self.converted_macros
                     .borrow_mut()
-                    .insert(decl_id, Some(expansion));
+                    .insert(decl_id, Some(converted));
                 let ty = self.convert_type(ty)?;
 
                 Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
@@ -46,7 +46,7 @@ impl<'c> Translation<'c> {
                 )))
             }
             Err(e) => {
-                self.macro_expansions.borrow_mut().insert(decl_id, None);
+                self.converted_macros.borrow_mut().insert(decl_id, None);
                 info!("Could not expand macro {}: {}", name, e);
                 Ok(ConvertedDecl::NoItem)
             }
@@ -168,10 +168,10 @@ impl<'c> Translation<'c> {
 
         trace!("  found macro expansion: {macro_id:?}");
         // Ensure that we've converted this macro and that it has a valid definition.
-        let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
-        let macro_ty = match expansion {
+        let converted = self.converted_macros.borrow().get(macro_id).cloned();
+        let macro_ty = match converted {
             // Expansion exists.
-            Some(Some(expansion)) => expansion.ty,
+            Some(Some(converted)) => converted.ty,
 
             // Expansion wasn't possible.
             Some(None) => return Ok(None),
@@ -179,8 +179,8 @@ impl<'c> Translation<'c> {
             // We haven't tried to expand it yet.
             None => {
                 self.convert_decl(ctx, *macro_id)?;
-                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
-                    expansion.ty
+                if let Some(Some(converted)) = self.converted_macros.borrow().get(macro_id) {
+                    converted.ty
                 } else {
                     return Ok(None);
                 }
