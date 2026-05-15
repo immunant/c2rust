@@ -2,6 +2,7 @@ use c2rust_ast_builder::mk;
 use failure::format_err;
 use log::{info, trace};
 use proc_macro2::{Span, TokenStream};
+use std::rc::Rc;
 use syn::{Expr, MacroDelimiter};
 
 use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
@@ -36,7 +37,7 @@ impl<'c> Translation<'c> {
                 let ty = self.convert_type(expansion.ty)?;
                 self.macro_expansions
                     .borrow_mut()
-                    .insert(decl_id, Some(expansion));
+                    .insert(decl_id, Some(Rc::new(expansion)));
 
                 Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
                     name,
@@ -191,9 +192,9 @@ impl<'c> Translation<'c> {
         trace!("  found macro expansion: {macro_id:?}");
         // Ensure that we've converted this macro and that it has a valid definition.
         let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
-        let macro_ty = match expansion {
+        let expansion = match expansion {
             // Expansion exists.
-            Some(Some(expansion)) => expansion.ty,
+            Some(Some(expansion)) => expansion,
 
             // Expansion wasn't possible.
             Some(None) => return Ok(None),
@@ -201,13 +202,17 @@ impl<'c> Translation<'c> {
             // We haven't tried to expand it yet.
             None => {
                 self.convert_decl(ctx, *macro_id)?;
-                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
-                    expansion.ty
+                let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
+
+                if let Some(Some(expansion)) = expansion {
+                    expansion
                 } else {
                     return Ok(None);
                 }
             }
         };
+
+        let macro_ty = expansion.ty;
         let rust_name = self
             .renamer
             .borrow_mut()
