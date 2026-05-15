@@ -30,18 +30,18 @@ impl<'c> Translation<'c> {
         );
 
         match maybe_replacement {
-            Ok((replacement, ty)) => {
+            Ok((replacement, result_type_id)) => {
                 trace!("  to {:?}", replacement);
 
-                let converted = ConvertedMacro { ty };
+                let converted = ConvertedMacro { result_type_id };
                 self.converted_macros
                     .borrow_mut()
                     .insert(decl_id, Some(converted));
-                let ty = self.convert_type(ty)?;
+                let result_type_rs = self.convert_type(result_type_id)?;
 
                 Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
                     name,
-                    ty,
+                    result_type_rs,
                     replacement,
                 )))
             }
@@ -169,9 +169,9 @@ impl<'c> Translation<'c> {
         trace!("  found macro expansion: {macro_id:?}");
         // Ensure that we've converted this macro and that it has a valid definition.
         let converted = self.converted_macros.borrow().get(macro_id).cloned();
-        let macro_ty = match converted {
+        let result_type_id = match converted {
             // Expansion exists.
-            Some(Some(converted)) => converted.ty,
+            Some(Some(converted)) => converted.result_type_id,
 
             // Expansion wasn't possible.
             Some(None) => return Ok(None),
@@ -180,7 +180,7 @@ impl<'c> Translation<'c> {
             None => {
                 self.convert_decl(ctx, *macro_id)?;
                 if let Some(Some(converted)) = self.converted_macros.borrow().get(macro_id) {
-                    converted.ty
+                    converted.result_type_id
                 } else {
                     return Ok(None);
                 }
@@ -206,7 +206,7 @@ impl<'c> Translation<'c> {
         if let Some(expr_ty) = expr_ty {
             self.convert_cast(
                 ctx,
-                CQualTypeId::new(macro_ty),
+                CQualTypeId::new(result_type_id),
                 expr_ty,
                 val,
                 None,

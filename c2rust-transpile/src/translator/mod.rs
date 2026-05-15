@@ -262,7 +262,7 @@ impl FuncContext {
 
 #[derive(Clone)]
 struct ConvertedMacro {
-    ty: CTypeId,
+    result_type_id: CTypeId,
 }
 
 type ZeroInits = IndexMap<CDeclId, (WithStmts<Box<Expr>>, IndexSet<Import>)>;
@@ -4325,7 +4325,7 @@ impl<'c> Translation<'c> {
 
             CDeclKind::MacroObject { .. } => {
                 if let Some(Some(converted)) = self.converted_macros.borrow().get(&decl_id) {
-                    add_use_items_for_type(converted.ty)
+                    add_use_items_for_type(converted.result_type_id)
                 }
             }
 
