@@ -1,10 +1,11 @@
 use c2rust_ast_builder::mk;
 use failure::format_err;
+use indexmap::IndexMap;
 use log::{info, trace};
 use proc_macro2::{Span, TokenStream};
 use syn::{Expr, MacroDelimiter};
 
-use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeKind};
 use crate::diagnostics::{TranslationError, TranslationResult};
 use crate::translator::{ConvertedDecl, ConvertedMacro, ExprContext, Translation};
 use crate::with_stmts::WithStmts;
@@ -33,6 +34,15 @@ impl<'c> Translation<'c> {
             Ok((replacement, converted)) => {
                 trace!("  to {:?}", replacement);
 
+                for (expr_id, result) in &converted.expr_results {
+                    if let Err(err) = result {
+                        info!(
+                            "Could not convert macro {} for {:?}: {}",
+                            name, expr_id, err
+                        );
+                    }
+                }
+
                 let result_type_rs = self.convert_type(converted.result_type_id)?;
                 self.converted_macros
                     .borrow_mut()
@@ -46,7 +56,7 @@ impl<'c> Translation<'c> {
             }
             Err(e) => {
                 self.converted_macros.borrow_mut().insert(decl_id, None);
-                info!("Could not expand macro {}: {}", name, e);
+                info!("Could not convert macro {}: {}", name, e);
                 Ok(ConvertedDecl::NoItem)
             }
         }
@@ -68,56 +78,73 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         expansions: &[CExprId],
     ) -> TranslationResult<(Box<Expr>, ConvertedMacro)> {
-        let (val, result_type_id) = expansions
+        let mut canonical = None;
+        let mut expr_results: IndexMap<_, _> = expansions
             .iter()
-            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(
-                None,
-                |mut canonical, &expr_id| -> TranslationResult<_> {
-                    self.can_convert_const_macro_expansion(expr_id)?;
+            .map(|&expr_id| {
+                let result = self
+                    .can_convert_const_macro_expansion(expr_id)
+                    .and_then(|_| {
+                        let type_id = self.ast_context[expr_id]
+                            .kind
+                            .get_type()
+                            .ok_or_else(|| format_err!("Invalid expression type"))?;
+                        let val = self.convert_expr(ctx, expr_id, None)?;
+                        Ok((val, type_id))
+                    })
+                    .and_then(|new| {
+                        // Join ty and cur_ty to the smaller of the two types. If the
+                        // types are not cast-compatible, skip this expansion.
+                        match &mut canonical {
+                            Some(canonical) => {
+                                let &mut (_, canon_type_id) = canonical;
+                                let (_, new_type_id) = new;
 
-                    let type_id = self.ast_context[expr_id]
-                        .kind
-                        .get_type()
-                        .ok_or_else(|| format_err!("Invalid expression type"))?;
-                    let val = self.convert_expr(ctx, expr_id, None)?;
-                    let new = (val, type_id);
+                                let canon_type_kind =
+                                    self.ast_context.resolve_type(canon_type_id).kind.clone();
+                                let new_type_kind =
+                                    self.ast_context.resolve_type(new_type_id).kind.clone();
+                                let smaller_type_kind = CTypeKind::smaller_compatible_type(
+                                    canon_type_kind.clone(),
+                                    new_type_kind,
+                                );
+                                let Some(smaller_type_kind) = smaller_type_kind else {
+                                    return Err(
+                                        format_err!(
+                                            "Not all macro expansions are compatible types"
+                                        )
+                                        .into()
+                                    )
+                                };
 
-                    // Join ty and cur_ty to the smaller of the two types. If the
-                    // types are not cast-compatible, abort the fold.
-                    match &mut canonical {
-                        Some(canonical) => {
-                            let &mut (_, canon_type_id) = canonical;
-                            let (_, new_type_id) = new;
-
-                            let canon_type_kind =
-                                self.ast_context.resolve_type(canon_type_id).kind.clone();
-                            let new_type_kind =
-                                self.ast_context.resolve_type(new_type_id).kind.clone();
-                            let smaller_type_kind = CTypeKind::smaller_compatible_type(
-                                canon_type_kind.clone(),
-                                new_type_kind,
-                            );
-                            let Some(smaller_type_kind) = smaller_type_kind else {
-                                return Err(
-                                    format_err!("Not all macro expansions are compatible types")
-                                    .into()
-                                )
-                            };
-
-                            if smaller_type_kind != canon_type_kind {
-                                *canonical = new;
+                                if smaller_type_kind != canon_type_kind {
+                                    *canonical = new;
+                                }
                             }
+
+                            None => canonical = Some(new),
                         }
 
-                        None => canonical = Some(new),
-                    }
+                        Ok(())
+                    });
 
-                    Ok(canonical)
-                },
-            )?
-            .ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
+                (expr_id, result)
+            })
+            .collect();
 
-        let converted = ConvertedMacro { result_type_id };
+        let Some((val, result_type_id)) = canonical else {
+            // If none of the expansions could be converted, try returning the first error we got.
+            let err = match expr_results.swap_remove_index(0) {
+                Some((_, Err(err))) => err,
+                _ => format_err!("Could not find a valid type for macro").into(),
+            };
+            return Err(err);
+        };
+
+        let converted = ConvertedMacro {
+            result_type_id,
+            expr_results,
+        };
         val.wrap_unsafe()
             .to_pure_expr()
             .map(|val| (val, converted))
@@ -204,6 +231,11 @@ impl<'c> Translation<'c> {
             // Expansion wasn't possible.
             return Ok(None);
         };
+
+        if !matches!(converted.expr_results.get(&expr_id), Some(Ok(_))) {
+            // Expansion succeeded in general, but not for this particular expression.
+            return Ok(None);
+        }
 
         let result_type_id = converted.result_type_id;
         let rust_name = self
