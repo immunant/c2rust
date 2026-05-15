@@ -644,8 +644,8 @@ impl<'c> Translation<'c> {
                 .try_into()
                 .map_err(|_| "`convert_overflow_arith` must have exactly 3 arguments")?;
             let overflowing = mk().method_call_expr(a, method_name, vec![b]);
-            let sum_name = self.renamer.borrow_mut().fresh();
-            let over_name = self.renamer.borrow_mut().fresh();
+            let sum_name = self.renamer.borrow_mut().pick_name("c2rust_sum");
+            let over_name = self.renamer.borrow_mut().pick_name("c2rust_overflowed");
             let overflow_let = mk().local_stmt(Box::new(mk().local(
                 mk().tuple_pat(vec![
                     mk().ident_pat(&sum_name),
