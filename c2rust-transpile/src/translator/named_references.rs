@@ -122,7 +122,7 @@ impl<'c> Translation<'c> {
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
-                let ptr_name = self.renamer.borrow_mut().fresh();
+                let ptr_name = self.renamer.borrow_mut().pick_name("c2rust_lvalue");
 
                 // let ref mut p = lhs;
                 let compute_ref = mk().local_stmt(Box::new(mk().local(
