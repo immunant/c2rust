@@ -262,6 +262,7 @@ impl FuncContext {
 
 struct MacroExpansion {
     ty: CTypeId,
+    expr_results: IndexMap<CExprId, TranslationResult<()>>,
 }
 
 type ZeroInits = IndexMap<CDeclId, (WithStmts<Box<Expr>>, IndexSet<Import>)>;
