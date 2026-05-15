@@ -30,14 +30,13 @@ impl<'c> Translation<'c> {
         );
 
         match maybe_replacement {
-            Ok((replacement, result_type_id)) => {
+            Ok((replacement, converted)) => {
                 trace!("  to {:?}", replacement);
 
-                let converted = ConvertedMacro { result_type_id };
+                let result_type_rs = self.convert_type(converted.result_type_id)?;
                 self.converted_macros
                     .borrow_mut()
                     .insert(decl_id, Some(converted));
-                let result_type_rs = self.convert_type(result_type_id)?;
 
                 Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
                     name,
@@ -68,8 +67,8 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expansions: &[CExprId],
-    ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        let (val, ty) = expansions
+    ) -> TranslationResult<(Box<Expr>, ConvertedMacro)> {
+        let (val, result_type_id) = expansions
             .iter()
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(
                 None,
@@ -118,9 +117,10 @@ impl<'c> Translation<'c> {
             )?
             .ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
 
+        let converted = ConvertedMacro { result_type_id };
         val.wrap_unsafe()
             .to_pure_expr()
-            .map(|val| (val, ty))
+            .map(|val| (val, converted))
             .ok_or_else(|| TranslationError::generic("Macro expansion is not a pure expression"))
 
         // TODO: Validate that all replacements are equivalent and pick the most
