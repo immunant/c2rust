@@ -543,10 +543,10 @@ impl ConversionContext {
 
         // Invert the macro invocations to get a list of macro expansion expressions
         for (expr_id, macro_ids) in &self.typed_context.macro_invocations {
-            for mac_id in macro_ids {
+            for info in macro_ids {
                 self.typed_context
                     .macro_expansions
-                    .entry(*mac_id)
+                    .entry(info.macro_id)
                     .or_default()
                     .push(*expr_id);
             }
@@ -985,19 +985,22 @@ impl ConversionContext {
             };
 
             if expected_ty & EXPR != 0 {
-                for mac_id in &node.macro_expansions {
-                    let mac = CDeclId(self.visit_node_type(*mac_id, MACRO_DECL));
+                for info in &node.macro_invocations {
+                    let info = MacroInvocationInfo {
+                        macro_id: CDeclId(self.visit_node_type(info.macro_id, MACRO_DECL)),
+                        parameter: info.parameter.clone(),
+                    };
                     self.typed_context
                         .macro_invocations
                         .entry(CExprId(new_id))
                         .or_default()
-                        .push(mac);
+                        .push(info);
                 }
             }
 
-            if let Some(text) = &node.macro_expansion_text {
+            if let Some(text) = &node.macro_invocation_text {
                 self.typed_context
-                    .macro_expansion_text
+                    .macro_invocation_text
                     .insert(CExprId(new_id), text.clone());
             }
 

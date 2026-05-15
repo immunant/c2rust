@@ -157,18 +157,22 @@ impl<'c> Translation<'c> {
 
         // Find the first macro after the macro we're currently expanding, if any.
         let first_macro = macros
-            .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
+            .splitn(2, |info| {
+                info.parameter.is_none() && ctx.expanding_macro(&info.macro_id)
+            })
             .last()
             .unwrap()
-            .first();
+            .iter()
+            .filter(|info| info.parameter.is_none())
+            .next();
         let macro_id = match first_macro {
-            Some(macro_id) => macro_id,
+            Some(info) => info.macro_id,
             None => return Ok(None),
         };
 
         trace!("  found macro expansion: {macro_id:?}");
         // Ensure that we've converted this macro and that it has a valid definition.
-        let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
+        let expansion = self.macro_expansions.borrow().get(&macro_id).cloned();
         let macro_ty = match expansion {
             // Expansion exists.
             Some(Some(expansion)) => expansion.ty,
@@ -178,8 +182,8 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to expand it yet.
             None => {
-                self.convert_decl(ctx, *macro_id)?;
-                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
+                self.convert_decl(ctx, macro_id)?;
+                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(&macro_id) {
                     expansion.ty
                 } else {
                     return Ok(None);
@@ -189,10 +193,10 @@ impl<'c> Translation<'c> {
         let rust_name = self
             .renamer
             .borrow_mut()
-            .get(macro_id)
+            .get(&macro_id)
             .ok_or_else(|| format_err!("Macro name not declared"))?;
 
-        self.add_import(*macro_id, &rust_name);
+        self.add_import(macro_id, &rust_name);
 
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 

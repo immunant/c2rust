@@ -707,7 +707,7 @@ private:
 class TranslateASTVisitor final
     : public RecursiveASTVisitor<TranslateASTVisitor> {
 
-    struct MacroExpansionInfo {
+    struct MacroDeclInfo {
         StringRef Name;
     };
 
@@ -719,13 +719,18 @@ class TranslateASTVisitor final
     // Mapping from SourceManager FileID to index in files
     DenseMap<FileID, size_t> file_id_mapping;
     std::set<std::pair<void *, ASTEntryTag>> exportedTags;
-    std::unordered_map<MacroInfo*, MacroExpansionInfo> macros;
+    std::unordered_map<MacroInfo*, MacroDeclInfo> macros;
+
+    struct MacroInvocationInfo {
+        MacroInfo* macro;
+        StringRef parameter;
+    };
 
     // This stores a raw encoding of the macro call site SourceLocation, since
     // SourceLocation isn't hashable.
     std::unordered_set<unsigned> macroCallSites;
-    SmallVector<MacroInfo*, 1> curMacroExpansionStack;
-    StringRef curMacroExpansionSource;
+    SmallVector<MacroInvocationInfo, 1> curMacroInvocationStack;
+    StringRef curMacroInvocationSource;
 
     // Returns true when a new entry is added to exportedTags
     bool markForExport(void *ptr, ASTEntryTag tag) {
@@ -765,7 +770,7 @@ class TranslateASTVisitor final
     // Template required because Decl and Stmt don't share a common base class
     void encode_entry_raw(void *ast, ASTEntryTag tag, SourceRange loc,
                           const QualType ty, bool rvalue,
-                          bool isVaList, bool encodeMacroExpansions,
+                          bool isVaList, bool encodeMacroInvocations,
                           const std::vector<void *> &childIds,
                           std::function<void(CborEncoder *)> extra) {
         if (!markForExport(ast, tag))
@@ -804,21 +809,32 @@ class TranslateASTVisitor final
         // 9 - Is Rvalue (only for expressions)
         cbor_encode_boolean(&local, rvalue);
 
-        // 10 - Macro expansion stack, starting with initial macro call and ending
+        // 10 - Macro invocation stack, starting with initial macro call and ending
         // with the innermost replacement.
         cbor_encoder_create_array(&local, &childEnc,
-                                  encodeMacroExpansions ? curMacroExpansionStack.size() : 0);
-        if (encodeMacroExpansions) {
-            for (auto I = curMacroExpansionStack.rbegin(), E = curMacroExpansionStack.rend();
+                                  encodeMacroInvocations ? curMacroInvocationStack.size() : 0);
+        if (encodeMacroInvocations) {
+            for (auto I = curMacroInvocationStack.rbegin(), E = curMacroInvocationStack.rend();
                  I != E; ++I) {
-                cbor_encode_uint(&childEnc, uintptr_t(*I));
+                CborEncoder expansionEnc;
+                cbor_encoder_create_array(&childEnc, &expansionEnc, 2);
+
+                cbor_encode_uint(&expansionEnc, uintptr_t(I->macro));
+
+                if (!I->parameter.empty()) {
+                    cbor_encode_string(&expansionEnc, I->parameter.str());
+                } else {
+                    cbor_encode_null(&expansionEnc);
+                }
+
+                cbor_encoder_close_container(&childEnc, &expansionEnc);
             }
         }
         cbor_encoder_close_container(&local, &childEnc);
 
-        // 11 - Macro expansion source string, if applicable.
-        if (!curMacroExpansionSource.empty()) {
-            cbor_encode_string(&local, curMacroExpansionSource.str());
+        // 11 - Macro invocation source string, if applicable.
+        if (!curMacroInvocationSource.empty()) {
+            cbor_encode_string(&local, curMacroInvocationSource.str());
         } else {
             cbor_encode_null(&local);
         }
@@ -842,7 +858,7 @@ class TranslateASTVisitor final
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto ty = ast->getType();
         auto isVaList = false;
-        auto encodeMacroExpansions = true;
+        auto encodeMacroInvocations = true;
 #if CLANG_VERSION_MAJOR < 13
         bool isRValue = ast->isRValue();
 #else
@@ -856,7 +872,7 @@ class TranslateASTVisitor final
         auto span = ast->getSourceRange();
         expandSpanToFinalChar(span, Context);
         encode_entry_raw(ast, tag, span, ty, isRValue, isVaList,
-                         encodeMacroExpansions, childIds, extra);
+                         encodeMacroInvocations, childIds, extra);
         typeEncoder.VisitQualTypeOf(ty, ast);
     }
 
@@ -866,11 +882,11 @@ class TranslateASTVisitor final
         QualType s = QualType(static_cast<clang::Type *>(nullptr), 0);
         auto rvalue = false;
         auto isVaList = false;
-        auto encodeMacroExpansions = false;
+        auto encodeMacroInvocations = false;
         auto span = ast->getSourceRange();
         expandSpanToFinalChar(span, Context);
         encode_entry_raw(ast, tag, span, s, rvalue, isVaList,
-                         encodeMacroExpansions, childIds, extra);
+                         encodeMacroInvocations, childIds, extra);
     }
 
     void encode_entry(
@@ -878,11 +894,11 @@ class TranslateASTVisitor final
         const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
-        auto encodeMacroExpansions = false;
+        auto encodeMacroInvocations = false;
         auto span = ast->getSourceRange();
         expandSpanToFinalChar(span, Context);
         encode_entry_raw(ast, tag, span, T, rvalue,
-                         isVaList(ast, T), encodeMacroExpansions, childIds, extra);
+                         isVaList(ast, T), encodeMacroInvocations, childIds, extra);
     }
 
     /// Explicitly override the source location of this decl for cases where the
@@ -893,54 +909,20 @@ class TranslateASTVisitor final
         const std::vector<void *> &childIds, const QualType T,
         std::function<void(CborEncoder *)> extra = [](CborEncoder *) {}) {
         auto rvalue = false;
-        auto encodeMacroExpansions = false;
+        auto encodeMacroInvocations = false;
         expandSpanToFinalChar(loc, Context);
         encode_entry_raw(ast, tag, loc, T, rvalue,
-                         isVaList(ast, T), encodeMacroExpansions, childIds, extra);
+                         isVaList(ast, T), encodeMacroInvocations, childIds, extra);
     }
 
-    MacroInfo* getMacroInfo(SourceLocation loc, StringRef &name) const {
-        auto &Mgr = Context->getSourceManager();
-        Token Result;
-        if (!Lexer::getRawToken(Mgr.getSpellingLoc(loc), Result,
-                                Mgr, Context->getLangOpts(), false)) {
-            if (Result.is(tok::raw_identifier)) {
-                PP.LookUpIdentifierInfo(Result);
-            }
-            IdentifierInfo *IdentifierInfo = Result.getIdentifierInfo();
-            if (IdentifierInfo && IdentifierInfo->hadMacroDefinition()) {
-                std::pair<FileID, unsigned int> DecLoc =
-                    Mgr.getDecomposedExpansionLoc(loc);
-                // Get the definition just before the searched location
-                // so that a macro referenced in a '#undef MACRO' can
-                // still be found.
-                SourceLocation BeforeSearchedLocation =
-                    Mgr.getMacroArgExpandedLocation(
-                        Mgr.getLocForStartOfFile(DecLoc.first)
-                            .getLocWithOffset(DecLoc.second - 1));
-                MacroDefinition MacroDef = PP.getMacroDefinitionAtLoc(
-                    IdentifierInfo, BeforeSearchedLocation);
-                MacroInfo *MacroInf = MacroDef.getMacroInfo();
-                if (MacroInf) {
-                    LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
-                    LLVM_DEBUG(MacroInf->dump());
-                    LLVM_DEBUG(dbgs() << "\n");
-                    name = IdentifierInfo->getName();
-                    return MacroInf;
-                }
-            }
-        }
-        return nullptr;
-    }
-
-    bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E) {
+    bool VisitMacro(StringRef name, SourceLocation loc, MacroInfo *mac, Expr *E, bool isParameter) {
         // TODO: handle builtin macros
         if (mac->isBuiltinMacro())
             return false;
         // If this isn't the first time we've seen this macro call site, we
         // shouldn't associate this expression with the macro as it is a subexpr
         // of a previously seen expression.
-        if (!macroCallSites.insert(loc.getRawEncoding()).second)
+        if (!isParameter && !macroCallSites.insert(loc.getRawEncoding()).second)
             return false;
         auto &info = macros[mac];
         if (info.Name.empty())
@@ -1003,11 +985,11 @@ class TranslateASTVisitor final
 
     void encodeMacros() {
         // Sort macros by source location
-        std::vector<std::pair<MacroInfo *, MacroExpansionInfo>> macro_vec(
+        std::vector<std::pair<MacroInfo *, MacroDeclInfo>> macro_vec(
             macros.begin(), macros.end());
         std::sort(macro_vec.begin(), macro_vec.end(),
-                  [](const std::pair<MacroInfo *, MacroExpansionInfo> &a,
-                     const std::pair<MacroInfo *, MacroExpansionInfo> &b) {
+                  [](const std::pair<MacroInfo *, MacroDeclInfo> &a,
+                     const std::pair<MacroInfo *, MacroDeclInfo> &b) {
                       return a.first->getDefinitionLoc() <
                              b.first->getDefinitionLoc();
                   });
@@ -1393,8 +1375,8 @@ class TranslateASTVisitor final
     //
 
     bool VisitExpr(Expr *E) {
-        curMacroExpansionStack.clear();
-        curMacroExpansionSource = StringRef();
+        curMacroInvocationStack.clear();
+        curMacroInvocationSource = StringRef();
 
         // We only translate constant macro objects to Rust consts, so this
         // expression must be constant.
@@ -1408,65 +1390,184 @@ class TranslateASTVisitor final
         LLVM_DEBUG(Range.getBegin().dump(Mgr));
         LLVM_DEBUG(Range.getEnd().dump(Mgr));
 
-        auto Begin = Range.getBegin();
-        auto End = Range.getEnd();
-
-        // Check that we are only expanding a single macro call.
-        if (!Begin.isMacroID() || !End.isMacroID() ||
-            Mgr.getImmediateMacroCallerLoc(Begin) != Mgr.getImmediateMacroCallerLoc(End))
+        if (!Range.getBegin().isMacroID() || !Range.getEnd().isMacroID()) {
             return true;
-
-        if (Begin.isMacroID()) {
-#if CLANG_VERSION_MAJOR < 7
-            // getImmediateExpansionRange in LLVM<7 returns a
-            // std::pair<SourceLocation, SourceLocation>, which we need to
-            // translate to a CharSourceRange for Lexer::getSourceText
-            auto LocPair = Mgr.getImmediateExpansionRange(Begin);
-            auto ExpansionRange = CharSourceRange::getCharRange(LocPair.first, LocPair.second);
-#else // CLANG_VERSION_MAJOR >= 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
-#endif
-            curMacroExpansionSource =
-                Lexer::getSourceText(ExpansionRange, Mgr, Context->getLangOpts());
         }
 
-        // The macro stack unwound by getImmediateMacroCallerLoc and friends
-        // starts with literal replacement and works it's way to the macro call
-        // that was replaced.
-        while (Begin.isMacroID()) {
-#if CLANG_VERSION_MAJOR < 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin);
-            auto ExpansionBegin = ExpansionRange.first;
-            auto ExpansionEnd = ExpansionRange.second;
-#else // CLANG_VERSION_MAJOR >= 7
-            auto ExpansionRange = Mgr.getImmediateExpansionRange(Begin).getAsRange();
-            auto ExpansionBegin = ExpansionRange.getBegin();
-            auto ExpansionEnd = ExpansionRange.getEnd();
-#endif
-            StringRef name;
-            MacroInfo *mac = getMacroInfo(ExpansionBegin, name);
+        // Holds the stack of ranges of macro expansions that expand to this expression.
+        // The last element is the top-level macro call.
+        auto ExpansionStack = getMacroExpansionStack(Range);
 
-            if (!mac || mac->getNumTokens() == 0)
+        if (ExpansionStack.empty()) {
+            return true;
+        }
+
+        curMacroInvocationSource =
+            Lexer::getSourceText(ExpansionStack[0].range, Mgr, Context->getLangOpts());
+
+        for (auto &elem : ExpansionStack) {
+            auto loc = elem.range.getBegin();
+            StringRef parameter;
+
+            if (elem.isParameter) {
+                auto IdentifierInfo = getIdentifierInfo(loc);
+
+                if (!IdentifierInfo) {
+                    return true;
+                }
+
+                parameter = IdentifierInfo->getName();
+                loc = Mgr.getImmediateExpansionRange(loc).getBegin();
+            }
+
+            auto IdentifierInfo = getIdentifierInfo(loc);
+
+            if (!IdentifierInfo) {
                 return true;
-            auto ReplacementBegin = mac->getReplacementToken(0).getLocation();
-            auto ReplacementEnd = mac->getDefinitionEndLoc();
-            // Verify that this expansion covers the entire macro replacement
-            // definition, i.e. E is not a subexpression of the macro
-            // replacement.
-            if (Mgr.getSpellingLoc(Begin) != ReplacementBegin ||
-                Mgr.getSpellingLoc(End) != ReplacementEnd)
+            }
+
+            auto MacroInfo = getMacroInfo(loc, IdentifierInfo);
+
+            if (!MacroInfo || MacroInfo->getNumTokens() == 0) {
                 return true;
+            }
 
-            Begin = ExpansionBegin;
-            End = ExpansionEnd;
-
-            if (VisitMacro(name, Begin, mac, E)) {
-                curMacroExpansionStack.push_back(mac);
+            if (VisitMacro(IdentifierInfo->getName(), loc, MacroInfo, E, elem.isParameter)) {
+                MacroInvocationInfo info = { MacroInfo, parameter };
+                curMacroInvocationStack.push_back(info);
             }
         }
+
         return true;
     }
 
+    struct ExpansionRange {
+        CharSourceRange range;
+        bool isParameter;
+
+        bool operator== (const ExpansionRange &rhs) const {
+            return this->range.getAsRange() == rhs.range.getAsRange()
+                && this->range.isTokenRange() == rhs.range.isTokenRange()
+                && this->isParameter == rhs.isParameter;
+        }
+    };
+
+    std::vector<ExpansionRange> getMacroExpansionStack(SourceRange Range) const {
+        auto &Mgr = Context->getSourceManager();
+        auto Begin = Range.getBegin();
+        auto End = Range.getEnd();
+        std::vector<ExpansionRange> ExpansionStack;
+
+        do {
+            if (!isAtStartOfImmediateMacroExpansion(Begin)) {
+                break;
+            }
+
+            ExpansionRange elem = {
+                Mgr.getImmediateExpansionRange(Begin),
+                Mgr.isMacroArgExpansion(Begin)
+            };
+            Begin = elem.range.getBegin();
+            ExpansionStack.push_back(elem);
+        } while (Begin.isMacroID());
+
+        // Find the point at which `Begin` and `End` converge on the same expansion range.
+        // This is where the expression in `Range` first corresponds to a single macro call.
+        auto ConvergencePoint = ExpansionStack.end();
+
+        do {
+            if (!isAtEndOfImmediateMacroExpansion(End)) {
+                break;
+            }
+
+            ExpansionRange elem = {
+                Mgr.getImmediateExpansionRange(End),
+                Mgr.isMacroArgExpansion(End)
+            };
+            End = elem.range.getEnd();
+            ConvergencePoint = std::find(ExpansionStack.begin(), ExpansionStack.end(), elem);
+        } while (End.isMacroID() && ConvergencePoint == ExpansionStack.end());
+
+        // Remove all elements before the convergence point.
+        ExpansionStack.erase(ExpansionStack.begin(), ConvergencePoint);
+
+        // Ensure the remaining ranges still correspond to the input `Range`.
+        auto EraseAfter = std::find_if(
+            ExpansionStack.begin(),
+            ExpansionStack.end(),
+            [this](auto &elem) {
+                auto End = elem.range.getEnd();
+                return End.isMacroID() && !isAtEndOfImmediateMacroExpansion(End);
+            }
+        );
+        auto EraseFrom = EraseAfter + 1;
+
+        if (EraseFrom < ExpansionStack.end()) {
+            ExpansionStack.erase(EraseFrom, ExpansionStack.end());
+        }
+
+        return ExpansionStack;
+    }
+
+    bool isAtStartOfImmediateMacroExpansion(SourceLocation loc) const {
+        auto &Mgr = Context->getSourceManager();
+        return Mgr.isAtStartOfImmediateMacroExpansion(loc);
+    }
+
+    bool isAtEndOfImmediateMacroExpansion(SourceLocation loc) const {
+        auto &Mgr = Context->getSourceManager();
+        auto spellingLoc = Mgr.getSpellingLoc(loc);
+        auto len = Lexer::MeasureTokenLength(spellingLoc, Mgr, Context->getLangOpts());
+        return Mgr.isAtEndOfImmediateMacroExpansion(loc.getLocWithOffset(len));
+    }
+
+    IdentifierInfo *getIdentifierInfo(SourceLocation loc) const {
+        auto &Mgr = Context->getSourceManager();
+        Token Result;
+
+        if (!Lexer::getRawToken(
+            Mgr.getSpellingLoc(loc),
+            Result,
+            Mgr,
+            Context->getLangOpts(),
+            false
+        )) {
+            if (Result.is(tok::raw_identifier)) {
+                PP.LookUpIdentifierInfo(Result);
+            }
+
+            return Result.getIdentifierInfo();
+        }
+
+        return nullptr;
+    }
+
+    MacroInfo* getMacroInfo(SourceLocation loc, IdentifierInfo *IdentifierInfo) const {
+        if (!IdentifierInfo->hadMacroDefinition()) {
+            return nullptr;
+        }
+
+        auto &Mgr = Context->getSourceManager();
+        std::pair<FileID, unsigned int> DecLoc = Mgr.getDecomposedExpansionLoc(loc);
+        // Get the definition just before the searched location
+        // so that a macro referenced in a '#undef MACRO' can
+        // still be found.
+        SourceLocation BeforeSearchedLocation = Mgr.getMacroArgExpandedLocation(
+            Mgr.getLocForStartOfFile(DecLoc.first).getLocWithOffset(DecLoc.second - 1));
+        MacroDefinition MacroDef = PP.getMacroDefinitionAtLoc(
+            IdentifierInfo, BeforeSearchedLocation);
+        MacroInfo *MacroInf = MacroDef.getMacroInfo();
+
+        if (!MacroInf) {
+            return nullptr;
+        }
+
+        LLVM_DEBUG(dbgs() << IdentifierInfo->getName() << "\n");
+        LLVM_DEBUG(MacroInf->dump());
+        LLVM_DEBUG(dbgs() << "\n");
+
+        return MacroInf;
+    }
 
     bool VisitVAArgExpr(VAArgExpr *E) {
         std::vector<void *> childIds{E->getSubExpr()};
