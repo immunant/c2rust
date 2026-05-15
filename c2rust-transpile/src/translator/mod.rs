@@ -260,7 +260,6 @@ impl FuncContext {
     }
 }
 
-#[derive(Clone)]
 struct ConvertedMacro {
     result_type_id: CTypeId,
 }

@@ -183,25 +183,29 @@ impl<'c> Translation<'c> {
         };
 
         trace!("  found macro expansion: {macro_id:?}");
-        // Ensure that we've converted this macro and that it has a valid definition.
-        let converted = self.converted_macros.borrow().get(macro_id).cloned();
-        let result_type_id = match converted {
-            // Expansion exists.
-            Some(Some(converted)) => converted.result_type_id,
 
-            // Expansion wasn't possible.
-            Some(None) => return Ok(None),
-
-            // We haven't tried to expand it yet.
-            None => {
-                self.convert_decl(ctx, *macro_id)?;
-                if let Some(Some(converted)) = self.converted_macros.borrow().get(macro_id) {
-                    converted.result_type_id
-                } else {
-                    return Ok(None);
-                }
-            }
+        use std::cell::Ref;
+        let get_converted = || -> Option<Option<Ref<'_, ConvertedMacro>>> {
+            Ref::filter_map(self.converted_macros.borrow(), |converted_macros| {
+                converted_macros.get(macro_id)
+            })
+            .ok()
+            .map(|val| Ref::filter_map(val, Option::as_ref).ok())
         };
+
+        // Ensure that we've converted this macro and that it has a valid definition.
+        let mut converted = get_converted();
+        if converted.is_none() {
+            // We haven't tried to expand it yet.
+            self.convert_decl(ctx, *macro_id)?;
+            converted = get_converted();
+        }
+        let Some(Some(converted)) = converted else {
+            // Expansion wasn't possible.
+            return Ok(None);
+        };
+
+        let result_type_id = converted.result_type_id;
         let rust_name = self
             .renamer
             .borrow_mut()
