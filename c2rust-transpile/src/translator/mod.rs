@@ -143,7 +143,7 @@ pub struct ExprContext {
     needs_address: bool,
 
     ternary_needs_parens: bool,
-    expanding_macro: Option<CDeclId>,
+    converting_macro: Option<CDeclId>,
 }
 
 impl ExprContext {
@@ -212,15 +212,15 @@ impl ExprContext {
     }
 
     /// Are we expanding the given macro in the current context?
-    pub fn expanding_macro(&self, mac: &CDeclId) -> bool {
-        match self.expanding_macro {
+    pub fn is_converting_macro(&self, mac: &CDeclId) -> bool {
+        match self.converting_macro {
             Some(expanding) => expanding == *mac,
             None => false,
         }
     }
-    pub fn set_expanding_macro(self, mac: CDeclId) -> Self {
+    pub fn set_converting_macro(self, mac: CDeclId) -> Self {
         ExprContext {
-            expanding_macro: Some(mac),
+            converting_macro: Some(mac),
             ..self
         }
     }
@@ -260,9 +260,9 @@ impl FuncContext {
     }
 }
 
-#[derive(Clone)]
-struct MacroExpansion {
-    ty: CTypeId,
+struct ConvertedMacro {
+    result_type_id: CTypeId,
+    expr_results: IndexMap<CExprId, TranslationResult<()>>,
 }
 
 type ZeroInits = IndexMap<CDeclId, (WithStmts<Box<Expr>>, IndexSet<Import>)>;
@@ -283,7 +283,7 @@ pub struct Translation<'c> {
     zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
-    macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
+    converted_macros: RefCell<IndexMap<CDeclId, Option<ConvertedMacro>>>,
     /// Sets of imports deferred while translating nested expressions for caching. Imports are
     /// deferred when caching translations to make them pure and thus cache the translation
     /// alongside its required imports. Each additional nested level of caching translation
@@ -694,7 +694,7 @@ pub fn translate(
         is_bitfield_write: false,
         needs_address: false,
         ternary_needs_parens: false,
-        expanding_macro: None,
+        converting_macro: None,
     };
 
     {
@@ -1508,7 +1508,7 @@ impl<'c> Translation<'c> {
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
-            macro_expansions: RefCell::new(IndexMap::new()),
+            converted_macros: RefCell::new(IndexMap::new()),
             deferred_imports: RefCell::new(Vec::new()),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
@@ -3008,7 +3008,7 @@ impl<'c> Translation<'c> {
                     .get_decl(&decl_id)
                     .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
                     .kind;
-                if ctx.expanding_macro.is_some() {
+                if ctx.converting_macro.is_some() {
                     // TODO Determining which declarations have been declared within the scope of the const macro expr
                     // vs. which are out-of-scope of the const macro is non-trivial,
                     // so for now, we don't allow const macros referencing any declarations.
@@ -4324,8 +4324,8 @@ impl<'c> Translation<'c> {
             } => add_use_items_for_type(typ),
 
             CDeclKind::MacroObject { .. } => {
-                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(&decl_id) {
-                    add_use_items_for_type(expansion.ty)
+                if let Some(Some(converted)) = self.converted_macros.borrow().get(&decl_id) {
+                    add_use_items_for_type(converted.result_type_id)
                 }
             }
 
