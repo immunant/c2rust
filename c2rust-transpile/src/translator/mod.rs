@@ -3147,7 +3147,7 @@ impl<'c> Translation<'c> {
 
                                 if let Some(ty) = self
                                     .ast_context
-                                    .type_for_kind(&kind_with_declared_args)
+                                    .try_type_for_kind(&kind_with_declared_args)
                                     .map(CQualTypeId::new)
                                 {
                                     let ty = self.convert_type(ty.ctype)?;
@@ -3636,14 +3636,10 @@ impl<'c> Translation<'c> {
             // precise source type. The AST node's type will not preserve typedef arg types
             // but the function's declaration will.
             let kind_with_declared_args = self.ast_context.fn_decl_ty_with_declared_args(func_decl);
-            let func_ty = self
-                .ast_context
-                .type_for_kind(&kind_with_declared_args)
-                .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
+            let func_ty = self.ast_context.type_for_kind(&kind_with_declared_args);
             let func_ptr_ty = self
                 .ast_context
-                .type_for_kind(&CTypeKind::Pointer(CQualTypeId::new(func_ty)))
-                .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
+                .type_for_kind(&CTypeKind::Pointer(CQualTypeId::new(func_ty)));
 
             CQualTypeId::new(func_ptr_ty)
         } else {
