@@ -355,6 +355,11 @@ fn test_compound_literals() {
 }
 
 #[test]
+fn test_conditions() {
+    transpile("conditions.c").run();
+}
+
+#[test]
 fn test_empty_init() {
     transpile("empty_init.c").run();
 }

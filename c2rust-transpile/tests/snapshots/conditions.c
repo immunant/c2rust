@@ -83,3 +83,22 @@ int nested_early_returns(int x) {
     }
     return x;
 }
+
+void conditional_operator(const unsigned sz, int buf[const]) {
+    int x = 0, y = 1;
+    *(0 ? &y : &x) = 10;
+
+    buf[2] = 1 ? 2 : 3;
+    buf[3] = 0 ? 2 : 3;
+}
+
+static int id(int i) { return i;}
+static int add(int *p, int i, int r) { *p += i; return r;}
+
+void binary_conditional_operator(const unsigned sz, int buf[const]) {
+    buf[0] = id(0) ?: id(1);
+    buf[1] = id(2) ?: id(3);
+
+    (void) (add(buf+2, 2, 0) ?: add(buf+3, 3, 0));
+    (void) (add(buf+4, 4, 1) ?: add(buf+5, 5, 0));
+}
