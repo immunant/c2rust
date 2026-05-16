@@ -691,6 +691,15 @@ impl TypedAstContext {
         }
     }
 
+    /// Unwraps a constant expression, if there is one.
+    pub fn unwrap_constant_expr(&self, expr_id: CExprId) -> CExprId {
+        if let CExprKind::ConstantExpr(_, subexpr, _) = self[expr_id].kind {
+            subexpr
+        } else {
+            expr_id
+        }
+    }
+
     /// Unwraps the underlying expression beneath any casts.
     pub fn unwrap_cast_expr(&self, mut expr_id: CExprId) -> CExprId {
         while let CExprKind::Paren(_, subexpr)
