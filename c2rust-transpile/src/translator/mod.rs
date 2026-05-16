@@ -18,11 +18,11 @@ use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::{
     AttrStyle, BareVariadic, BinOp, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast,
-    ExprField, ExprIndex, ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn,
-    ForeignItemMacro, ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum,
-    ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct,
-    ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment,
-    ReturnType, Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
+    ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
+    ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
+    ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
+    ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
+    Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
 };
 
 use crate::diagnostics::TranslationResult;
@@ -3341,10 +3341,12 @@ impl<'c> Translation<'c> {
             }
 
             BinaryConditional(ty, lhs, rhs) => {
+                let rhs = self.convert_expr(ctx, rhs, None)?;
+
                 if ctx.is_unused() {
-                    let mut lhs = self.convert_condition(ctx, false, lhs)?;
-                    let rhs = self.convert_expr(ctx, rhs, None)?;
-                    lhs = lhs.merge_unsafe(rhs.is_unsafe());
+                    let lhs = self
+                        .convert_condition(ctx, false, lhs)?
+                        .merge_unsafe(rhs.is_unsafe());
 
                     Ok(lhs.and_then(|val| {
                         WithStmts::new(
@@ -3359,19 +3361,28 @@ impl<'c> Translation<'c> {
                         )
                     }))
                 } else {
-                    self.name_reference_write_read(ctx, lhs)?.try_map(
-                        |NamedReference {
-                             rvalue: lhs_val, ..
-                         }| {
-                            let cond = self.match_bool(ctx, true, ty.ctype, lhs_val.clone())?;
-                            let ite = mk().ifte_expr(
-                                cond,
-                                mk().block(vec![mk().expr_stmt(lhs_val)]),
-                                Some(self.convert_expr(ctx, rhs, None)?.to_expr()),
-                            );
-                            Ok(ite)
-                        },
-                    )
+                    let lhs = self
+                        .convert_expr(ctx.used(), lhs, None)?
+                        .merge_unsafe(rhs.is_unsafe());
+                    let fresh_name = self.renamer.borrow_mut().fresh();
+
+                    lhs.and_then_try(|lhs| {
+                        let fresh_stmt = mk().local_stmt(Box::new(mk().local(
+                            mk().ident_pat(&fresh_name),
+                            None,
+                            Some(lhs),
+                        )));
+
+                        let cond =
+                            self.match_bool(ctx, true, ty.ctype, mk().ident_expr(&fresh_name))?;
+                        let ite = mk().ifte_expr(
+                            cond,
+                            mk().block(vec![mk().expr_stmt(mk().ident_expr(&fresh_name))]),
+                            Some(rhs.to_expr()),
+                        );
+
+                        Ok(WithStmts::new(vec![fresh_stmt], ite))
+                    })
                 }
             }
 
