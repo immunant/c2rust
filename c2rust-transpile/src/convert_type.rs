@@ -5,7 +5,7 @@ use crate::renamer::*;
 use crate::translator::variadic::mk_va_list_ty;
 use crate::TranspilerConfig;
 use crate::{CrateSet, ExternCrate};
-use c2rust_ast_builder::{mk, properties::*};
+use c2rust_ast_builder::mk;
 use c2rust_rust_tools::RustEdition;
 use failure::format_err;
 use indexmap::IndexSet;
@@ -170,13 +170,7 @@ impl TypeConverter {
             let param = mk().angle_bracketed_args(vec![pointee_ty]);
             Ok(mk().path_ty(vec![mk().path_segment_with_args("Option", param)]))
         } else {
-            let mutbl = if qtype.qualifiers.is_const {
-                Mutability::Immutable
-            } else {
-                Mutability::Mutable
-            };
-
-            Ok(mk().set_mutbl(mutbl).ptr_ty(pointee_ty))
+            Ok(mk().set_mutbl(qtype.mutability()).ptr_ty(pointee_ty))
         }
     }
 

@@ -110,16 +110,14 @@ impl<'c> Translation<'c> {
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
-        let mutbl = if pointee_cty.qualifiers.is_const {
-            Mutability::Immutable
-        } else if ctx.is_const {
+        let mutbl = if ctx.is_const && !pointee_cty.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
             needs_cast = true;
             Mutability::Immutable
         } else {
-            Mutability::Mutable
+            pointee_cty.mutability()
         };
 
         // Narrow string literals are translated directly as `[u8; N]` literals when their address

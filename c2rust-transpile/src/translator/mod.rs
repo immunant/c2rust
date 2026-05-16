@@ -2630,11 +2630,7 @@ impl<'c> Translation<'c> {
             self.convert_type(typ.ctype)?
         };
 
-        let mutbl = if typ.qualifiers.is_const {
-            Mutability::Immutable
-        } else {
-            Mutability::Mutable
-        };
+        let mutbl = typ.mutability();
 
         Ok(ConvertedVariable { ty, mutbl, init })
     }

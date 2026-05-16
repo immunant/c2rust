@@ -341,11 +341,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
     ) -> TranslationResult<ConvertedFunctionParam> {
         if self.ast_context.is_va_list(typ.ctype) {
-            let mutbl = if typ.qualifiers.is_const {
-                Mutability::Immutable
-            } else {
-                Mutability::Mutable
-            };
+            let mutbl = typ.mutability();
             let ty = mk().abs_path_ty(vec!["core", "ffi", "VaList"]);
             return Ok(ConvertedFunctionParam { mutbl, ty });
         }

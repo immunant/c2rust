@@ -193,13 +193,8 @@ impl<'c> Translation<'c> {
             }))
         } else {
             Ok(val.and_then(|val| {
-                let mutbl = if qty.qualifiers.is_const {
-                    Mutability::Immutable
-                } else {
-                    Mutability::Mutable
-                };
                 let local = mk().local(
-                    mk().set_mutbl(mutbl).ident_pat(&fresh_name),
+                    mk().set_mutbl(qty.mutability()).ident_pat(&fresh_name),
                     Some(fresh_ty),
                     Some(val),
                 );
