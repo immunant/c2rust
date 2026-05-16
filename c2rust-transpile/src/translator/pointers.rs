@@ -1,8 +1,8 @@
-use std::ops::Index;
-
 use c2rust_ast_builder::{mk, properties::Mutability};
 use c2rust_ast_exporter::clang_ast::LRValue;
+use c2rust_rust_tools::RustEdition;
 use failure::{err_msg, format_err};
+use std::ops::Index;
 use syn::{BinOp, Expr, Type, UnOp};
 
 use crate::c_ast::CUnOp;
@@ -110,16 +110,14 @@ impl<'c> Translation<'c> {
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
-        let mutbl = if pointee_cty.qualifiers.is_const {
-            Mutability::Immutable
-        } else if ctx.is_const {
+        let mutbl = if ctx.is_const && !pointee_cty.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
             needs_cast = true;
             Mutability::Immutable
         } else {
-            Mutability::Mutable
+            pointee_cty.mutability()
         };
 
         // Narrow string literals are translated directly as `[u8; N]` literals when their address
@@ -485,17 +483,68 @@ impl<'c> Translation<'c> {
 
                 WithStmts::new_val(transmute_expr(intptr_t, target_ty, val)).set_unsafe()
             }))
-        } else if source_ty_kind.is_bool() {
-            self.use_crate(ExternCrate::Libc);
-            Ok(val.map(|mut val| {
-                // First cast the boolean to pointer size
-                val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
-                mk().cast_expr(val, target_ty)
-            }))
-        } else if let &CTypeKind::Enum(..) = source_ty_kind {
-            val.try_map(|val| self.convert_cast_from_enum(target_cty, val))
+        } else
+        // Rust 1.90: `const_strict_provenance` feature added
+        // Rust 1.91: stabilized
+        if ctx.is_const && self.tcfg.edition < RustEdition::Edition2024 {
+            if source_ty_kind.is_bool() {
+                self.use_crate(ExternCrate::Libc);
+                Ok(val.map(|mut val| {
+                    // First cast the boolean to pointer size
+                    val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
+                    mk().cast_expr(val, target_ty)
+                }))
+            } else if let &CTypeKind::Enum(..) = source_ty_kind {
+                val.try_map(|val| self.convert_cast_from_enum(target_cty, val))
+            } else {
+                Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+            }
         } else {
-            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+            // First cast the value to `usize`.
+            let source_type_kind = &self.ast_context.resolve_type(source_cty).kind;
+            let size_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
+
+            let val = if let &CTypeKind::Enum(..) = source_type_kind {
+                val.try_map(|val| self.convert_cast_from_enum(size_type_id, val))?
+            } else {
+                let size_type_rs = self.convert_type(size_type_id)?;
+                val.map(|val| mk().cast_expr(val, size_type_rs))
+            };
+
+            // Then convert the `usize` into a pointer.
+            let pointee_type_id = self
+                .ast_context
+                .get_pointee_qual_type(target_cty)
+                .expect("target type must be a pointer");
+            let mutability = pointee_type_id.mutability();
+
+            let fn_name = match self.tcfg.edition {
+                RustEdition::Edition2021 => {
+                    // Rust 1.76: feature name changed to `exposed_provenance[_mut]`
+                    // Rust 1.84: stabilized
+                    self.use_feature("strict_provenance");
+
+                    // Rust 1.79: method name changed to `with_exposed_provenance[_mut]`
+                    match mutability {
+                        Mutability::Immutable => "from_exposed_addr",
+                        Mutability::Mutable => "from_exposed_addr_mut",
+                    }
+                }
+                RustEdition::Edition2024 => match mutability {
+                    Mutability::Immutable => "with_exposed_provenance",
+                    Mutability::Mutable => "with_exposed_provenance_mut",
+                },
+            };
+            let pointee_type_rs = self.convert_pointee_type(pointee_type_id.ctype)?;
+            let type_args = mk().angle_bracketed_args(vec![pointee_type_rs]);
+            let fn_expr = mk().abs_path_expr(vec![
+                mk().path_segment("core"),
+                mk().path_segment("ptr"),
+                mk().path_segment_with_args(fn_name, type_args),
+            ]);
+            let val = val.map(|val| mk().call_expr(fn_expr, vec![val]));
+
+            Ok(val)
         }
     }
 
@@ -514,18 +563,40 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        let target_ty = self.convert_type(target_cty)?;
-        let source_ty = self.convert_type(source_cty)?;
-        let target_ty_kind = &self.ast_context.resolve_type(target_cty).kind;
+        let target_type_rs = self.convert_type(target_cty)?;
 
         if self.ast_context.is_function_pointer(source_cty) {
+            let source_ty = self.convert_type(source_cty)?;
+
             Ok(val.and_then(|val| {
-                WithStmts::new_val(transmute_expr(source_ty, target_ty, val)).set_unsafe()
+                WithStmts::new_val(transmute_expr(source_ty, target_type_rs, val)).set_unsafe()
             }))
-        } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-            val.try_map(|val| self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val))
         } else {
-            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+            // First convert the pointer to `usize`.
+            let method_name = match self.tcfg.edition {
+                RustEdition::Edition2021 => {
+                    // Rust 1.76: feature name changed to `exposed_provenance`
+                    // Rust 1.84: stabilized
+                    self.use_feature("strict_provenance");
+
+                    // Rust 1.79: method name changed to `expose_provenance`
+                    "expose_addr"
+                }
+                RustEdition::Edition2024 => "expose_provenance",
+            };
+
+            let val = val.map(|val| mk().method_call_expr(val, method_name, vec![]));
+
+            // Then cast the `usize` to the target type.
+            let target_ty_kind = &self.ast_context.resolve_type(target_cty).kind;
+
+            if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
+                val.try_map(|val| {
+                    self.convert_cast_to_enum(ctx, target_cty, enum_decl_id, expr, val)
+                })
+            } else {
+                Ok(val.map(|val| mk().cast_expr(val, target_type_rs)))
+            }
         }
     }
 

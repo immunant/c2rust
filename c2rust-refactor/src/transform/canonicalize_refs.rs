@@ -1,5 +1,5 @@
 use rustc_ast::ptr::P;
-use rustc_ast::{Crate, Expr, ExprKind, Mutability, UnOp};
+use rustc_ast::{BorrowKind, Crate, Expr, ExprKind, Mutability, UnOp};
 use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
 use rustc_type_ir::sty;
 
@@ -85,7 +85,7 @@ impl Transform for RemoveUnnecessaryRefs {
 
 fn remove_ref(expr: &mut P<Expr>) {
     match &expr.kind {
-        ExprKind::AddrOf(_, _, inner) => *expr = inner.clone(),
+        ExprKind::AddrOf(BorrowKind::Ref, _, inner) => *expr = inner.clone(),
         _ => {}
     }
 }
@@ -106,7 +106,7 @@ fn remove_all_derefs(expr: &mut P<Expr>, cx: &RefactorCtxt) {
 }
 
 fn remove_reborrow(expr: &mut P<Expr>, cx: &RefactorCtxt) {
-    if let ExprKind::AddrOf(_, _, ref subexpr) = expr.kind {
+    if let ExprKind::AddrOf(BorrowKind::Ref, _, ref subexpr) = expr.kind {
         if let ExprKind::Unary(UnOp::Deref, ref subexpr) = subexpr.kind {
             if is_pointer(subexpr, cx) {
                 // &* on a pointer produces a reference, so it's not a no-op

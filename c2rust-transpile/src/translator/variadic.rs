@@ -199,12 +199,7 @@ impl<'c> Translation<'c> {
                             is_variadic,
                         )?;
 
-                        let m = if p.qualifiers.is_const {
-                            Mutability::Immutable
-                        } else {
-                            Mutability::Mutable
-                        };
-                        Some(mk().set_mutbl(m).ptr_ty(fn_ty))
+                        Some(mk().set_mutbl(p.mutability()).ptr_ty(fn_ty))
                     } else {
                         None
                     }

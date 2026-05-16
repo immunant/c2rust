@@ -1,5 +1,6 @@
 use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
 use crate::iterators::{DFNodes, SomeId};
+use c2rust_ast_builder::properties::Mutability;
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
@@ -742,10 +743,15 @@ impl TypedAstContext {
         ty.map(|ty| (expr_id, ty))
     }
 
-    pub fn type_for_kind(&self, kind: &CTypeKind) -> Option<CTypeId> {
+    pub fn try_type_for_kind(&self, kind: &CTypeKind) -> Option<CTypeId> {
         self.c_types
             .iter()
             .find_map(|(id, k)| if kind == &k.kind { Some(*id) } else { None })
+    }
+
+    pub fn type_for_kind(&self, kind: &CTypeKind) -> CTypeId {
+        self.try_type_for_kind(kind)
+            .expect("could not find type for CTypeKind::{kind:?}")
     }
 
     pub fn resolve_type_id(&self, typ: CTypeId) -> CTypeId {
@@ -845,9 +851,7 @@ impl TypedAstContext {
     pub fn fn_declref_ty_with_declared_args(&self, func_expr: CExprId) -> Option<CQualTypeId> {
         if let Some(func_decl @ CDeclKind::Function { .. }) = self.fn_declref_decl(func_expr) {
             let kind_with_declared_args = self.fn_decl_ty_with_declared_args(func_decl);
-            let specific_typ = self
-                .type_for_kind(&kind_with_declared_args)
-                .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
+            let specific_typ = self.type_for_kind(&kind_with_declared_args);
             return Some(CQualTypeId::new(specific_typ));
         }
         None
@@ -1297,10 +1301,7 @@ impl TypedAstContext {
                             CUnTypeOp::AlignOf => CTypeKind::Size,
                             CUnTypeOp::PreferredAlignOf => CTypeKind::Size,
                         };
-                        let ty = self
-                            .ast_context
-                            .type_for_kind(&kind)
-                            .expect("CTypeKind::Size should be size_t");
+                        let ty = self.ast_context.type_for_kind(&kind);
                         Some(CQualTypeId::new(ty))
                     }
                     _ => return,
@@ -2020,7 +2021,7 @@ impl CUnOp {
             }
             Not => {
                 return ast_context
-                    .type_for_kind(&CTypeKind::Int)
+                    .try_type_for_kind(&CTypeKind::Int)
                     .map(CQualTypeId::new)
             }
             Real | Imag => {
@@ -2433,6 +2434,13 @@ impl Qualifiers {
             is_volatile: self.is_volatile || other.is_volatile,
         }
     }
+
+    pub fn mutability(self) -> Mutability {
+        match self.is_const {
+            true => Mutability::Immutable,
+            false => Mutability::Mutable,
+        }
+    }
 }
 
 /// Qualified type
@@ -2448,6 +2456,10 @@ impl CQualTypeId {
             qualifiers: Qualifiers::default(),
             ctype,
         }
+    }
+
+    pub fn mutability(self) -> Mutability {
+        self.qualifiers.mutability()
     }
 }
 

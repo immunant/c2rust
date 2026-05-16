@@ -488,7 +488,7 @@ impl ConversionContext {
         for (_decl_id, located_kind) in self.typed_context.c_decls.iter() {
             if let kind @ CDeclKind::Function { .. } = &located_kind.kind {
                 let new_kind = self.typed_context.fn_decl_ty_with_declared_args(kind);
-                if self.typed_context.type_for_kind(&new_kind).is_none() {
+                if self.typed_context.try_type_for_kind(&new_kind).is_none() {
                     // Create and insert fn type
                     let new_id = CTypeId(self.id_mapper.fresh_id());
                     self.typed_context
@@ -2126,9 +2126,7 @@ impl ConversionContext {
                                 }
                             };
                             log::trace!("Selected kind {kind} for typedef {name}");
-                            Some(CQualTypeId::new(
-                                self.typed_context.type_for_kind(&kind).unwrap(),
-                            ))
+                            Some(CQualTypeId::new(self.typed_context.type_for_kind(&kind)))
                         })
                         .unwrap_or(typ);
 
@@ -2171,9 +2169,7 @@ impl ConversionContext {
                             }
                         };
                         log::trace!("Selected kind {kind} for typedef {name}");
-                        Some(CQualTypeId::new(
-                            self.typed_context.type_for_kind(&kind).unwrap(),
-                        ))
+                        Some(CQualTypeId::new(self.typed_context.type_for_kind(&kind)))
                     };
                     let file = self
                         .typed_context
