@@ -1,5 +1,6 @@
 use crate::c_ast::iterators::{immediate_children_all_types, NodeVisitor};
 use crate::iterators::{DFNodes, SomeId};
+use c2rust_ast_builder::properties::Mutability;
 use c2rust_ast_exporter::clang_ast::LRValue;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
@@ -2516,6 +2517,13 @@ impl Qualifiers {
             is_volatile: self.is_volatile || other.is_volatile,
         }
     }
+
+    pub fn mutability(self) -> Mutability {
+        match self.is_const {
+            true => Mutability::Immutable,
+            false => Mutability::Mutable,
+        }
+    }
 }
 
 /// Qualified type
@@ -2535,6 +2543,10 @@ impl CQualTypeId {
 
     pub fn with_ctype(self, ctype: CTypeId) -> Self {
         Self { ctype, ..self }
+    }
+
+    pub fn mutability(self) -> Mutability {
+        self.qualifiers.mutability()
     }
 }
 
