@@ -640,11 +640,7 @@ impl<'c> Translation<'c> {
 
         let one_type_id =
             if let CTypeKind::Pointer(..) = self.ast_context.resolve_type(arg_type.ctype).kind {
-                CQualTypeId::new(
-                    self.ast_context
-                        .type_for_kind(&CTypeKind::Int)
-                        .ok_or_else(|| format_err!("couldn't find type for CTypeKind::Int"))?,
-                )
+                CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int))
             } else {
                 arg_type
             };
