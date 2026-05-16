@@ -170,7 +170,10 @@ impl<'c> Translation<'c> {
             return self.convert_expr(ctx, val, override_ty);
         }
 
-        let fresh_name = self.renamer.borrow_mut().fresh();
+        let fresh_name = self
+            .renamer
+            .borrow_mut()
+            .pick_name("c2rust_compound_literal");
         let fresh_ty = self.convert_type(override_ty.unwrap_or(qty).ctype)?;
 
         // Translate the expression to be assigned to the fresh variable.
@@ -259,6 +262,7 @@ impl<'c> Translation<'c> {
                 // * the expr kind being a string literal (`CExprKind::Literal` of a `CLiteral::String`).
                 let is_string_literal = |id: CExprId| {
                     let ty_kind = &self.ast_context.resolve_type(ty).kind;
+                    let id = self.ast_context.unwrap_constant_expr(id);
                     let expr_kind = &self.ast_context.index(id).kind;
                     let is_char_array = matches!(*ty_kind, CTypeKind::Char);
                     let is_str_literal =
@@ -267,6 +271,7 @@ impl<'c> Translation<'c> {
                 };
 
                 let is_zero_literal = |id: CExprId| {
+                    let id = self.ast_context.unwrap_constant_expr(id);
                     matches!(
                         self.ast_context.index(id).kind,
                         CExprKind::Literal(_, CLiteral::Integer(0, _base))
