@@ -3354,7 +3354,7 @@ impl<'c> Translation<'c> {
                         .ok_or_else(|| format_err!("bad source type"))?
                 };
 
-                self.convert_cast(
+                self.make_cast_full(
                     ctx,
                     source_ty,
                     target_ty,
@@ -3659,10 +3659,10 @@ impl<'c> Translation<'c> {
         target_type_id: CQualTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.convert_cast(ctx, source_type_id, target_type_id, val, None, None, None)
+        self.make_cast_full(ctx, source_type_id, target_type_id, val, None, None, None)
     }
 
-    pub fn convert_cast(
+    pub fn make_cast_full(
         &self,
         ctx: ExprContext,
         source_cty: CQualTypeId,
