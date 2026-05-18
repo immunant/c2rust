@@ -3652,6 +3652,16 @@ impl<'c> Translation<'c> {
         }
     }
 
+    pub fn make_cast(
+        &self,
+        ctx: ExprContext,
+        source_type_id: CQualTypeId,
+        target_type_id: CQualTypeId,
+        val: WithStmts<Box<Expr>>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        self.convert_cast(ctx, source_type_id, target_type_id, val, None, None, None)
+    }
+
     pub fn convert_cast(
         &self,
         ctx: ExprContext,
