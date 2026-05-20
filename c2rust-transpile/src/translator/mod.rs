@@ -289,6 +289,7 @@ pub struct Translation<'c> {
     /// alongside its required imports. Each additional nested level of caching translation
     /// causes an additional set to be pushed onto the `deferred_imports` vector.
     deferred_imports: RefCell<Vec<IndexSet<Import>>>,
+    cleanup_guard_emitted: Cell<bool>,
 
     // Comment support
     pub comment_context: CommentContext,      // Incoming comments
@@ -1510,6 +1511,7 @@ impl<'c> Translation<'c> {
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
             macro_expansions: RefCell::new(IndexMap::new()),
             deferred_imports: RefCell::new(Vec::new()),
+            cleanup_guard_emitted: Cell::new(false),
             comment_context,
             comment_store: RefCell::new(CommentStore::new()),
             spans: HashMap::new(),
@@ -1537,6 +1539,28 @@ impl<'c> Translation<'c> {
         let mut item_stores = self.items.borrow_mut();
         let item_store = item_stores.entry(Self::cur_file(self)).or_default();
         f(item_store)
+    }
+
+    /// Emit the runtime helper used to translate `__attribute__((cleanup(func)))`.
+    /// Idempotent: only the first call adds the struct + Drop impl to the main file.
+    pub fn use_cleanup_guard(&self) {
+        if self.cleanup_guard_emitted.replace(true) {
+            return;
+        }
+        let struct_item: Item = syn::parse_quote! {
+            struct CleanupGuard<T>(*mut T, unsafe extern "C" fn(*mut T));
+        };
+        let impl_item: Item = syn::parse_quote! {
+            impl<T> Drop for CleanupGuard<T> {
+                fn drop(&mut self) {
+                    unsafe { (self.1)(self.0) }
+                }
+            }
+        };
+        let mut items = self.items.borrow_mut();
+        let store = items.entry(self.main_file).or_default();
+        store.add_item(Box::new(struct_item));
+        store.add_item(Box::new(impl_item));
     }
 
     /// Called when translation makes use of a language feature that will require a feature-gate.
