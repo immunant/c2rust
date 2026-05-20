@@ -2259,6 +2259,10 @@ class TranslateASTVisitor final
                         } else if (auto *aa = dyn_cast<AliasAttr>(attr)) {
                             cbor_encode_text_stringz(
                                 &attr_info, aa->getAliasee().str().c_str());
+                        } else if (auto *ca = dyn_cast<CleanupAttr>(attr)) {
+                            cbor_encode_uint(
+                                &attr_info,
+                                uintptr_t(ca->getFunctionDecl()->getCanonicalDecl()));
                         } else {
                             printDiag(Context, DiagnosticsEngine::Warning,
                                       std::string("ignoring unsupported variable attribute: ") +

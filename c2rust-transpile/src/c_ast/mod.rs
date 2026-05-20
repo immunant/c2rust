@@ -2859,6 +2859,8 @@ pub enum Attribute {
     Alias(String),
     /// __attribute__((always_inline, __always_inline__))
     AlwaysInline,
+    /// __attribute__((cleanup(func), __cleanup__(func)))
+    Cleanup(CDeclId),
     /// __attribute__((cold, __cold__))
     Cold,
     /// Clang `__counted_by` / `__sized_by` (`_or_null`) bounds attribute on a
