@@ -752,7 +752,6 @@ impl TypedAstContext {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
             Attributed(ty, _) => ty.ctype,
-            CountAttributed(ty, _, _) => ty.ctype,
             Elaborated(ty) => ty,
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
@@ -776,7 +775,6 @@ impl TypedAstContext {
         use CTypeKind::*;
         let ty = match self.index(typ).kind {
             Attributed(ty, _) => ty.ctype,
-            CountAttributed(ty, _, _) => ty.ctype,
             Elaborated(ty) => ty,
             Decayed(ty) => ty,
             TypeOf(ty) => ty,
@@ -2547,12 +2545,6 @@ pub enum CTypeKind {
 
     Attributed(CQualTypeId, Option<Attribute>),
 
-    /// A type carrying a Clang `__counted_by` / `__sized_by` (`_or_null`)
-    /// bounds attribute. The wrapped pointer type is the desugared form;
-    /// the `CExprId` is the count expression (typically a `DeclRefExpr` to
-    /// a sibling field). May be absent if Clang did not provide one.
-    CountAttributed(CQualTypeId, CountAttributedKind, Option<CExprId>),
-
     BlockPointer(CQualTypeId),
 
     Vector(CQualTypeId, usize),
@@ -2737,7 +2729,6 @@ impl CTypeKind {
             Enum(_) => false,
             BuiltinFn => false,
             Attributed(_, _) => false,
-            CountAttributed(_, _, _) => false,
             BlockPointer(_) => false,
             Vector(_, _) => false,
             UnhandledSveType => false,
@@ -2810,7 +2801,6 @@ impl CTypeKind {
             Enum(_) => false,
             BuiltinFn => false,
             Attributed(_, _) => false,
-            CountAttributed(_, _, _) => false,
             BlockPointer(_) => false,
             Vector(_, _) => false,
             UnhandledSveType => false,
@@ -2858,6 +2848,10 @@ pub enum Attribute {
     AlwaysInline,
     /// __attribute__((cold, __cold__))
     Cold,
+    /// Clang `__counted_by` / `__sized_by` (`_or_null`) bounds attribute on a
+    /// pointer type. The `CExprId` is the count expression (typically a
+    /// `DeclRefExpr` to a sibling field); absent if Clang did not provide one.
+    CountedBy(CountAttributedKind, Option<CExprId>),
     /// __attribute__((gnu_inline, __gnu_inline__))
     GnuInline,
     /// __attribute__((no_inline, __no_inline__))

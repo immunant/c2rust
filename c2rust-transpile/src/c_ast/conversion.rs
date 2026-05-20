@@ -893,7 +893,7 @@ impl ConversionContext {
                     let ty = self.visit_qualified_type(ty_id);
 
                     let kind = match expect_opt_str(&ty_node.extras[1])
-                        .expect("Count attributed type kind not found")
+                        .flatten()
                         .expect("Count attributed type kind missing")
                     {
                         "counted_by" => CountAttributedKind::CountedBy,
@@ -907,7 +907,8 @@ impl ConversionContext {
                         .expect("Count attributed type count expr field missing")
                         .map(|id| self.visit_expr(id as ClangId));
 
-                    let ty = CTypeKind::CountAttributed(ty, kind, count_expr);
+                    let ty =
+                        CTypeKind::Attributed(ty, Some(Attribute::CountedBy(kind, count_expr)));
                     self.add_type(new_id, not_located(ty));
                     self.processed_nodes.insert(new_id, TYPE);
                 }
