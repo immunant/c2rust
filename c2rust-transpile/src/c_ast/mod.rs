@@ -1202,6 +1202,20 @@ impl TypedAstContext {
                                 to_walk.push(parent_id);
                             }
                         }
+
+                        // `__attribute__((cleanup(func)))` references its cleanup
+                        // function through the attribute payload, not via a
+                        // DeclRef the traversal would otherwise see, so mark it
+                        // here.
+                        if let CDeclKind::Variable { ref attrs, .. } = self.c_decls[&decl_id].kind {
+                            for attr in attrs {
+                                if let Attribute::Cleanup(fn_id) = attr {
+                                    if wanted.insert(*fn_id) {
+                                        to_walk.push(*fn_id);
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Stmts can include decls, but we'll see the DeclId itself in a later
