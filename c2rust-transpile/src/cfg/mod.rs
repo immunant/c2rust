@@ -1152,6 +1152,42 @@ impl WipBlock {
 
 /// This impl block deals with creating control flow graphs
 impl CfgBuilder {
+    fn decl_has_cleanup_attr(translator: &Translation, decl_id: CDeclId) -> bool {
+        matches!(
+            translator.ast_context[decl_id].kind,
+            CDeclKind::Variable { ref attrs, .. }
+                if attrs.iter().any(|attr| matches!(attr, Attribute::Cleanup(_)))
+        )
+    }
+
+    fn stmt_declares_cleanup(translator: &Translation, stmt_id: CStmtId) -> bool {
+        match translator.ast_context[stmt_id].kind {
+            CStmtKind::Decls(ref decls) => decls
+                .iter()
+                .any(|&decl_id| Self::decl_has_cleanup_attr(translator, decl_id)),
+            CStmtKind::Label(sub_stmt)
+            | CStmtKind::Case(_, sub_stmt, _)
+            | CStmtKind::Default(sub_stmt)
+            | CStmtKind::Attributed {
+                substatement: sub_stmt,
+                ..
+            } => Self::stmt_declares_cleanup(translator, sub_stmt),
+            _ => false,
+        }
+    }
+
+    fn compound_declares_cleanup(translator: &Translation, stmt_ids: &[CStmtId]) -> bool {
+        stmt_ids
+            .iter()
+            .any(|&stmt_id| Self::stmt_declares_cleanup(translator, stmt_id))
+    }
+
+    fn for_init_declares_cleanup(translator: &Translation, init: Option<CStmtId>) -> bool {
+        init.map_or(false, |stmt_id| {
+            Self::stmt_declares_cleanup(translator, stmt_id)
+        })
+    }
+
     fn last_per_stmt_mut(&mut self) -> &mut PerStmt {
         self.per_stmt_stack
             .last_mut()
@@ -1397,6 +1433,14 @@ impl CfgBuilder {
         wip.span = translator
             .get_span(SomeId::Stmt(stmt_id))
             .unwrap_or_else(Span::call_site);
+
+        let wrap_in_cleanup_scope = match translator.ast_context.index(stmt_id).kind {
+            CStmtKind::Compound(ref comp_stmts) => {
+                Self::compound_declares_cleanup(translator, comp_stmts)
+            }
+            CStmtKind::ForLoop { init, .. } => Self::for_init_declares_cleanup(translator, init),
+            _ => false,
+        };
 
         let out_wip: TranslationResult<Option<WipBlock>> = match translator
             .ast_context
@@ -2028,7 +2072,13 @@ impl CfgBuilder {
                 .unwrap()
                 .is_contained(&self.c_label_to_goto, self.currently_live.last().unwrap())
         {
-            self.incrementally_reloop_subgraph(translator, in_tail, entry, out_wip)
+            self.incrementally_reloop_subgraph(
+                translator,
+                in_tail,
+                entry,
+                out_wip,
+                wrap_in_cleanup_scope,
+            )
         } else {
             let last_per_stmt = self.per_stmt_stack.pop().unwrap();
             self.per_stmt_stack
@@ -2067,6 +2117,10 @@ impl CfgBuilder {
 
         // Exit WIP
         out_wip: Option<WipBlock>,
+
+        // Whether this C statement owns a cleanup variable whose lifetime ends
+        // at the statement boundary.
+        wrap_in_cleanup_scope: bool,
     ) -> TranslationResult<Option<Label>> {
         // Close off the `wip` using a `break` terminator
         let brk_lbl: Label = self.fresh_label();
@@ -2124,6 +2178,13 @@ impl CfgBuilder {
             let block_body = mk().block(stmts);
             let block: Box<Expr> = mk().labelled_block_expr(block_body, brk_lbl.pretty_print());
             stmts = vec![mk().expr_stmt(block)]
+        }
+
+        if wrap_in_cleanup_scope {
+            let block_span = inner_span.unwrap_or_else(Span::call_site);
+            let block = mk().span(block_span).block(stmts);
+            let block_expr = mk().span(block_span).block_expr(block);
+            stmts = vec![mk().span(block_span).expr_stmt(block_expr)];
         }
 
         let mut flattened_wip = self.new_wip_block(entry);
