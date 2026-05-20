@@ -284,11 +284,18 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
 
         Pointer(qtype)
         | Reference(qtype)
-        | Attributed(qtype, _)
         | BlockPointer(qtype)
         | Vector(qtype, _)
         | Atomic(qtype) => {
             intos![qtype.ctype]
+        }
+
+        Attributed(qtype, ref attr) => {
+            let mut res = intos![qtype.ctype];
+            if let Some(Attribute::CountedBy(_, Some(e))) = attr {
+                res.push((*e).into())
+            }
+            res
         }
 
         Decayed(ctype)
@@ -305,13 +312,6 @@ fn immediate_type_children(kind: &CTypeKind) -> Vec<SomeId> {
             let mut res = intos![elt];
             if let Some(x) = cnt {
                 res.push(x.into())
-            }
-            res
-        }
-        CountAttributed(qtype, _, count_expr) => {
-            let mut res = intos![qtype.ctype];
-            if let Some(e) = count_expr {
-                res.push(e.into())
             }
             res
         }
