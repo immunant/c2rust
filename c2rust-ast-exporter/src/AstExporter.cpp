@@ -2246,11 +2246,9 @@ class TranslateASTVisitor final
                 cbor_encoder_create_array(array, &attr_info,
                                           CborIndefiniteLength);
 
-                bool has_attrs = def ? def->hasAttrs() : VD->hasAttrs();
+                bool has_attrs = def->hasAttrs();
 
                 if (has_attrs) {
-                    auto attrs = def ? def->getAttrs() : VD->getAttrs();
-
                     for (auto attr : def->attrs()) {
                         cbor_encode_text_stringz(&attr_info,
                                                  attr->getSpelling());
