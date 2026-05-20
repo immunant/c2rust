@@ -2226,7 +2226,7 @@ class TranslateASTVisitor final
 
         encode_entry(
             VD, TagVarDecl, loc, childIds, T,
-            [VD, is_defn, def, is_externally_visible](CborEncoder *array) {
+            [this, VD, is_defn, def, is_externally_visible](CborEncoder *array) {
                 auto name = VD->getNameAsString();
                 cbor_encode_string(array, name);
 
@@ -2259,6 +2259,11 @@ class TranslateASTVisitor final
                         } else if (auto *aa = dyn_cast<AliasAttr>(attr)) {
                             cbor_encode_text_stringz(
                                 &attr_info, aa->getAliasee().str().c_str());
+                        } else {
+                            printDiag(Context, DiagnosticsEngine::Warning,
+                                      std::string("ignoring unsupported variable attribute: ") +
+                                          attr->getSpelling(),
+                                      def);
                         }
                     }
                 }
