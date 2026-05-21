@@ -4,7 +4,9 @@ use syn::Expr;
 
 use crate::{
     diagnostics::TranslationResult,
-    translator::{signed_int_expr, ConvertedDecl, EnumMode, ExprContext, Translation},
+    translator::{
+        signed_int_expr, ConvertedDecl, EnumMode, ExprContext, Translation, TranslationError,
+    },
     with_stmts::WithStmts,
     CDeclKind, CEnumConstantId, CEnumId, CQualTypeId, CTypeId, CTypeKind, ConstIntExpr,
 };
@@ -105,7 +107,15 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         match self.tcfg.enum_mode {
             // First extract the enum's inner type...
-            EnumMode::NewType => val = self.integer_from_enum(val),
+            EnumMode::NewType => {
+                if ctx.is_pattern {
+                    return Err(TranslationError::generic(
+                        "cast from enum is not supported in patterns",
+                    ));
+                }
+
+                val = self.integer_from_enum(val);
+            }
             EnumMode::Consts => {}
         }
 
@@ -149,7 +159,15 @@ impl<'c> Translation<'c> {
 
             match self.tcfg.enum_mode {
                 // Enum-to-enum casts need to be translated via the inner value as an intermediate.
-                EnumMode::NewType => val = self.integer_from_enum(val),
+                EnumMode::NewType => {
+                    if ctx.is_pattern {
+                        return Err(TranslationError::generic(
+                            "cast from enum is not supported in patterns",
+                        ));
+                    }
+
+                    val = self.integer_from_enum(val);
+                }
                 EnumMode::Consts => {}
             }
 
@@ -167,6 +185,12 @@ impl<'c> Translation<'c> {
             }
 
             EnumMode::Consts => {
+                if ctx.is_pattern {
+                    return Err(TranslationError::generic(
+                        "cast to enum is not supported in patterns",
+                    ));
+                }
+
                 let source_type_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
                 let enum_integral_type_kind =
                     &self.ast_context.resolve_type(enum_integral_type.ctype).kind;
