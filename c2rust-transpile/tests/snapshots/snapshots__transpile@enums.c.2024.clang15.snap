@@ -12,7 +12,7 @@ expression: cat tests/snapshots/enums.2024.clang15.rs
     unused_assignments,
     unused_mut
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Foo(pub ::core::ffi::c_uint);
 impl Foo {
@@ -21,7 +21,7 @@ impl Foo {
     pub const Foo2: Self = Self(2);
     pub const Foo3: Self = Self(3);
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Bar(pub ::core::ffi::c_int);
 impl Bar {

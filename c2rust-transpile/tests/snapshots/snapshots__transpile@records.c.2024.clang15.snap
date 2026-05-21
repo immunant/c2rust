@@ -15,7 +15,7 @@ expression: cat tests/snapshots/records.2024.clang15.rs
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct AnonEnumInStruct {}
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
 impl C2Rust_Unnamed {
@@ -45,7 +45,7 @@ pub struct InsideStruct {
 pub union AnonEnumInUnion {
     pub a: ::core::ffi::c_int,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed_1(pub ::core::ffi::c_uint);
 impl C2Rust_Unnamed_1 {

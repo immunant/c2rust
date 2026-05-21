@@ -17,14 +17,14 @@ unsafe extern "C" {
 }
 pub type ptrdiff_t = isize;
 pub type size_t = usize;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct E(pub ::core::ffi::c_uint);
 impl E {
     pub const EA: Self = Self(0);
 }
 pub type int_t = ::core::ffi::c_int;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
 impl C2Rust_Unnamed {
