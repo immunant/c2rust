@@ -5,7 +5,7 @@ use syn::Expr;
 use crate::c_ast::iterators::SomeId;
 use crate::{
     diagnostics::TranslationResult,
-    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
+    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation, TranslationError},
     with_stmts::WithStmts,
     CDeclKind, CEnumConstantId, CEnumId, CQualTypeId, CTypeId, CTypeKind, ConstIntExpr,
 };
@@ -110,6 +110,12 @@ impl<'c> Translation<'c> {
         target_cty: CQualTypeId,
         mut val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if ctx.is_pattern {
+            return Err(TranslationError::generic(
+                "cast from enum is not supported in patterns",
+            ));
+        }
+
         // First extract the enum's inner type...
         val = self.integer_from_enum(val);
 
@@ -138,6 +144,12 @@ impl<'c> Translation<'c> {
             // Casting to ourselves, the audacity!
             if source_enum_id == enum_id {
                 return Ok(WithStmts::new_val(val));
+            }
+
+            if ctx.is_pattern {
+                return Err(TranslationError::generic(
+                    "cast from enum is not supported in patterns",
+                ));
             }
 
             // Enum-to-enum casts need to be translated via the inner value as an intermediate.

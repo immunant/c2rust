@@ -3228,6 +3228,7 @@ impl<'c> Translation<'c> {
                 expr_kind,
                 CExprKind::Paren(..)
                     | CExprKind::ConstantExpr(..)
+                    | CExprKind::DeclRef(..)
                     | CExprKind::Literal(..)
                     | CExprKind::ImplicitCast(..)
                     | CExprKind::ExplicitCast(..)
@@ -3663,6 +3664,12 @@ impl<'c> Translation<'c> {
             );
         }
 
+        if ctx.is_pattern {
+            return Err(TranslationError::generic(
+                "non-EnumConstant DeclRefs are not supported in patterns",
+            ));
+        }
+
         let varname = decl.get_name().expect("expected variable name").to_owned();
 
         let rustname = self
@@ -4082,7 +4089,12 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        if ctx.is_pattern && !matches!(kind, CastKind::ToVoid | CastKind::ConstCast) {
+        if ctx.is_pattern
+            && !matches!(
+                kind,
+                CastKind::ToVoid | CastKind::ConstCast | CastKind::IntegralCast
+            )
+        {
             return Err(TranslationError::generic(
                 "cast kind is not supported in patterns",
             ));
@@ -4107,6 +4119,12 @@ impl<'c> Translation<'c> {
             | CastKind::IntegralToFloating
             | CastKind::BooleanToSignedIntegral => {
                 let target_ty = self.convert_type(target_cty.ctype)?;
+
+                if ctx.is_pattern && !target_ty_kind.is_enum() {
+                    return Err(TranslationError::generic(
+                        "integral casts to non-enums are not supported in patterns",
+                    ));
+                }
 
                 if let CTypeKind::LongDouble | CTypeKind::Float128 = target_ty_kind {
                     if let CTypeKind::LongDouble | CTypeKind::Float128 =
