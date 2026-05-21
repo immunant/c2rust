@@ -15,12 +15,12 @@ expression: cat tests/snapshots/exprs.2021.clang15.rs
 extern "C" {
     fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct E(pub ::core::ffi::c_uint);
 pub const EA: E = E(0);
 pub type int_t = ::core::ffi::c_int;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
 pub const C: C2Rust_Unnamed = C2Rust_Unnamed(2);

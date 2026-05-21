@@ -28,7 +28,7 @@ impl<'c> Translation<'c> {
             EnumMode::NewType => {
                 let field = mk().pub_().enum_field(integral_type_rs);
                 mk().span(span)
-                    .call_attr("derive", vec!["Clone", "Copy"])
+                    .call_attr("derive", vec!["Clone", "Copy", "PartialEq", "Eq"])
                     .call_attr("repr", vec!["transparent"])
                     .pub_()
                     .struct_item(enum_name, vec![field], true)
