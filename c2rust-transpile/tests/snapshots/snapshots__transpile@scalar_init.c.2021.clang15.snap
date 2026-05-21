@@ -12,7 +12,7 @@ expression: cat tests/snapshots/scalar_init.2021.clang15.rs
     unused_mut
 )]
 #![feature(raw_ref_op)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct E(pub ::core::ffi::c_uint);
 pub const A: E = E(0);

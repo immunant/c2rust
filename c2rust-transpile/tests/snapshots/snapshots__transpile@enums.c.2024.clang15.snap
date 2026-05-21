@@ -12,14 +12,14 @@ expression: cat tests/snapshots/enums.2024.clang15.rs
     unused_assignments,
     unused_mut
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Foo(pub ::core::ffi::c_uint);
 pub const Foo3: Foo = Foo(3);
 pub const Foo2: Foo = Foo(2);
 pub const Foo1: Foo = Foo(1);
 pub const Foo0: Foo = Foo(0);
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Bar(pub ::core::ffi::c_int);
 pub const Bar3: Bar = Bar(3);

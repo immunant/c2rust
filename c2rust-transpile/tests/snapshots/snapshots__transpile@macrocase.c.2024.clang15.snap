@@ -12,7 +12,7 @@ expression: cat tests/snapshots/macrocase.2024.clang15.rs
     unused_assignments,
     unused_mut
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ZSTD_dParameter(pub ::core::ffi::c_uint);
 pub const ZSTD_d_experimentalParam1: ZSTD_dParameter = ZSTD_dParameter(1000);
