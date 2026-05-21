@@ -448,6 +448,8 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
 pub struct SwitchCases {
     cases: Vec<(Pat, Label)>,
     default: Option<Label>,
+    #[allow(unused)]
+    expected_type_id: Option<CQualTypeId>,
 }
 
 /// A Rust statement, or a C declaration, or a comment
@@ -1934,6 +1936,13 @@ impl CfgBuilder {
                 self.add_wip_block(wip, Jump(this_label.clone()));
 
                 // Case
+                let switch_case = self.switch_expr_cases.last_mut().ok_or_else(|| {
+                    format_err!(
+                        "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
+                        stmt_id,
+                    )
+                })?;
+
                 let pat = translator
                     .convert_expr(ctx.const_().pattern().used(), case_expr, None)
                     .map_err(|err| ("convert_expr", err.to_string()))
@@ -1956,16 +1965,7 @@ impl CfgBuilder {
                         }
                     });
 
-                self.switch_expr_cases
-                    .last_mut()
-                    .ok_or_else(|| {
-                        format_err!(
-                            "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
-                            stmt_id,
-                        )
-                    })?
-                    .cases
-                    .push((pat, this_label.clone()));
+                switch_case.cases.push((pat, this_label.clone()));
 
                 // Sub stmt
                 let sub_stmt_next = self.convert_stmt_help(
@@ -2011,6 +2011,28 @@ impl CfgBuilder {
                 let body_label = self.fresh_label();
 
                 // Convert the condition
+
+                let mut expected_type_id = None;
+
+                // If the condition is an implicit cast from an enum to its integral type,
+                // override the type to that of the enum.
+                if let CExprKind::ImplicitCast(target_type_id, castee_id, ..) =
+                    translator.ast_context.index_unwrap_parens(scrutinee).kind
+                {
+                    let castee_kind = &translator.ast_context.index_unwrap_parens(castee_id).kind;
+                    let castee_type_id = castee_kind.get_qual_type().unwrap();
+                    let castee_type_kind = &translator
+                        .ast_context
+                        .resolve_type(castee_type_id.ctype)
+                        .kind;
+
+                    if let CTypeKind::Enum(enum_id) = *castee_type_kind {
+                        if target_type_id == translator.enum_integral_type(enum_id) {
+                            expected_type_id = Some(castee_type_id);
+                        }
+                    }
+                }
+
                 let (stmts, val) = translator
                     .convert_expr(ctx.used(), scrutinee, None)?
                     .discard_unsafe();
@@ -2024,7 +2046,10 @@ impl CfgBuilder {
                 let saw_unmatched_case = self.last_per_stmt_mut().saw_unmatched_case;
                 let saw_unmatched_default = self.last_per_stmt_mut().saw_unmatched_default;
                 self.break_labels.push(next_label.clone());
-                self.switch_expr_cases.push(SwitchCases::default());
+                self.switch_expr_cases.push(SwitchCases {
+                    expected_type_id,
+                    ..Default::default()
+                });
 
                 let body_stuff = self.convert_stmt_help(
                     translator,
