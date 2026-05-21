@@ -49,10 +49,10 @@ pub unsafe extern "C" fn test_enums() {
         (e.0 == bar.0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
     let mut wrong_enum_constant: ::core::ffi::c_int =
         (e.0 == Bar0.0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
-    match foo.0 {
-        0 | FOO1_MACRO | 2 | 3 | 42 | 4294967254 | _ => {}
+    match foo {
+        Foo0 | Foo(FOO1_MACRO) | Foo2 | Foo(3) | Foo(42) | Foo(4294967254) | _ => {}
     }
-    match bar.0 {
-        0 | BAR1_MACRO | 2 | 3 | -1 | 42 | -42 | _ => {}
+    match bar {
+        Bar0 | Bar(BAR1_MACRO) | Bar2 | Bar(3) | BarN1 | Bar(42) | Bar(-42) | _ => {}
     };
 }

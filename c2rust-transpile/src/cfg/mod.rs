@@ -433,7 +433,6 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
 pub struct SwitchCases {
     cases: Vec<(Pat, Label)>,
     default: Option<Label>,
-    #[allow(unused)]
     override_type_id: Option<CQualTypeId>,
 }
 
@@ -1868,15 +1867,34 @@ impl CfgBuilder {
                 })?;
 
                 let expr = translator
-                    .convert_expr(ctx.const_().pattern().used(), case_expr, None)
+                    .convert_expr(
+                        ctx.const_().pattern().used(),
+                        case_expr,
+                        switch_case.override_type_id,
+                    )
                     .ok()
                     .and_then(WithStmts::to_pure_expr);
-                let pat = expr
-                    .and_then(|expr| expr_to_pat(*expr))
-                    .unwrap_or_else(|| match cie {
+                let pat = expr.and_then(|expr| expr_to_pat(*expr)).unwrap_or_else(|| {
+                    let mut pat = match cie {
                         ConstIntExpr::U(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
                         ConstIntExpr::I(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
-                    });
+                    };
+
+                    if let Some(override_ty) = switch_case.override_type_id {
+                        if let CTypeKind::Enum(enum_id) =
+                            translator.ast_context.resolve_type(override_ty.ctype).kind
+                        {
+                            let enum_name = translator
+                                .type_converter
+                                .borrow()
+                                .resolve_decl_name(enum_id)
+                                .unwrap();
+                            pat = mk().tuple_struct_pat(enum_name.as_str(), None, vec![pat]);
+                        }
+                    }
+
+                    pat
+                });
 
                 switch_case.cases.push((pat, this_label.clone()));
 
@@ -1947,7 +1965,7 @@ impl CfgBuilder {
                 }
 
                 let (stmts, val) = translator
-                    .convert_expr(ctx.used(), scrutinee, None)?
+                    .convert_expr(ctx.used(), scrutinee, override_type_id)?
                     .discard_unsafe();
                 wip.extend(stmts);
 
