@@ -896,9 +896,9 @@ impl<'c> Translation<'c> {
                     // type conversions into the `c2rust-asm-casts` crate,
                     // so we call into that one from here.
 
-                    // Convert `x` into `let freshN = &raw mut x; *x`
+                    // Convert `x` into `let c2rust_output = &raw mut x; *x`
                     self.use_feature("raw_ref_op");
-                    let output_name = self.renamer.borrow_mut().fresh();
+                    let output_name = self.renamer.borrow_mut().pick_name("c2rust_output");
                     let output_local = mk().local(
                         mk().ident_pat(&output_name),
                         None,
@@ -906,8 +906,8 @@ impl<'c> Translation<'c> {
                     );
                     stmts.push(mk().local_stmt(Box::new(output_local)));
 
-                    // `let mut freshN;`
-                    let inner_name = self.renamer.borrow_mut().fresh();
+                    // `let mut c2rust_inner;`
+                    let inner_name = self.renamer.borrow_mut().pick_name("c2rust_inner");
                     let inner_local = mk().local(mk().ident_pat(&inner_name), None, None);
                     stmts.push(mk().local_stmt(Box::new(inner_local)));
 
@@ -939,7 +939,7 @@ impl<'c> Translation<'c> {
 
                     let (output_name, inner_name) = operand_renames.get(tied_operand).unwrap();
 
-                    let input_name = self.renamer.borrow_mut().fresh();
+                    let input_name = self.renamer.borrow_mut().pick_name("c2rust_input");
                     let input_local = mk().local(mk().ident_pat(&input_name), None, Some(in_expr));
                     stmts.push(mk().local_stmt(Box::new(input_local)));
 

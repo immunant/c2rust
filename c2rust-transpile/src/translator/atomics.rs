@@ -313,7 +313,7 @@ impl<'c> Translation<'c> {
                             self.atomic_intrinsic_cxchg_expr(weak, order, order_fail);
                         let call =
                             mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
-                        let res_name = self.renamer.borrow_mut().fresh();
+                        let res_name = self.renamer.borrow_mut().pick_name("c2rust_result");
                         let res_let = mk().local_stmt(Box::new(mk().local(
                             mk().ident_pat(&res_name),
                             None,
@@ -398,14 +398,14 @@ impl<'c> Translation<'c> {
             // Since the value of `arg1` is used twice, we need to copy
             // it into a local temporary so we don't duplicate any side-effects
             // To preserve ordering of side-effects, we also do this for arg0
-            let arg0_name = self.renamer.borrow_mut().fresh();
+            let arg0_name = self.renamer.borrow_mut().pick_name("c2rust_lhs");
             let arg0_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg0_name),
                 None,
                 Some(dst),
             )));
 
-            let arg1_name = self.renamer.borrow_mut().fresh();
+            let arg1_name = self.renamer.borrow_mut().pick_name("c2rust_rhs");
             let arg1_let = mk().local_stmt(Box::new(mk().local(
                 mk().ident_pat(&arg1_name),
                 None,
