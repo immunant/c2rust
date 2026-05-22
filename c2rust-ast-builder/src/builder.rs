@@ -2213,7 +2213,7 @@ fn expr_precedence(e: &Expr) -> u8 {
         Expr::Field(_ef) => 16,
         Expr::Call(_) | Expr::Index(_) => 15,
         Expr::Try(_et) => 14,
-        Expr::Unary(_) | Expr::Reference(_) => 13,
+        Expr::Unary(_) | Expr::Reference(_) | Expr::RawAddr(_) => 13,
         Expr::Cast(_ec) => 12,
         Expr::Binary(eb) => 2 + binop_precedence(&eb.op),
         Expr::Assign(_) => 1,
@@ -2313,6 +2313,9 @@ fn parenthesize_if_necessary(mut outer: Expr) -> Expr {
             parenthesize_if_gt(&mut eu.expr);
         }
         Expr::Reference(ref mut er) => {
+            parenthesize_if_gt(&mut er.expr);
+        }
+        Expr::RawAddr(ref mut er) => {
             parenthesize_if_gt(&mut er.expr);
         }
         Expr::Binary(ref mut eb) => {

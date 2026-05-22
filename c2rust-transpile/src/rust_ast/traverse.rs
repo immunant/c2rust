@@ -214,6 +214,10 @@ pub fn traverse_expr_def<W: Traversal>(walk: &mut W, e: Expr) -> Expr {
             expr: e.expr.traverse(walk),
             ..e
         }),
+        Expr::RawAddr(e) => Expr::RawAddr(ExprRawAddr {
+            expr: e.expr.traverse(walk),
+            ..e
+        }),
         Expr::Break(e) => Expr::Break(ExprBreak {
             expr: e.expr.traverse(walk),
             ..e
