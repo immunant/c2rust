@@ -68,7 +68,7 @@ pub unsafe extern "C" fn my_printf(mut fmt: *const ::core::ffi::c_char, mut c2ru
         match *fmt as ::core::ffi::c_int {
             37 => {
                 fmt = fmt.offset(1);
-                if !(*fmt == 0) {
+                if *fmt != 0 {
                     match *fmt as ::core::ffi::c_int {
                         105 | 100 => {
                             printf(

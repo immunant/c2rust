@@ -38,7 +38,7 @@ pub unsafe extern "C" fn infinite_loop(mut x: ::core::ffi::c_int) {
 pub unsafe extern "C" fn goto_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     loop {
         x += 1 as ::core::ffi::c_int;
-        if !(x != 0) {
+        if x == 0 {
             break;
         }
     }
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn goto_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_
 pub unsafe extern "C" fn do_while_loop(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     loop {
         x += 1 as ::core::ffi::c_int;
-        if !(x != 0) {
+        if x == 0 {
             break;
         }
     }
@@ -206,7 +206,7 @@ pub unsafe extern "C" fn do_loop_single_continue(mut x: ::core::ffi::c_int) -> :
             }
             x += 1 as ::core::ffi::c_int;
         }
-        if !(x != 0) {
+        if x == 0 {
             break;
         }
     }
@@ -229,7 +229,7 @@ pub unsafe extern "C" fn do_loop_multi_continue(mut x: ::core::ffi::c_int) -> ::
             }
             x += 2 as ::core::ffi::c_int;
         }
-        if !(x != 0) {
+        if x == 0 {
             break;
         }
     }
@@ -354,14 +354,14 @@ pub unsafe extern "C" fn goto_loops(mut x: ::core::ffi::c_int) -> ::core::ffi::c
         if x != 0 {
             loop {
                 x += 1 as ::core::ffi::c_int;
-                if !(x != 0) {
+                if x == 0 {
                     break '_D;
                 }
             }
         } else {
             loop {
                 x += 2 as ::core::ffi::c_int;
-                if !(x != 0) {
+                if x == 0 {
                     break '_D;
                 }
             }
@@ -375,14 +375,14 @@ pub unsafe extern "C" fn goto_into_loops(mut x: ::core::ffi::c_int) {
         if x != 0 {
             loop {
                 x += 1 as ::core::ffi::c_int;
-                if !(x != 0) {
+                if x == 0 {
                     break '_D;
                 }
             }
         } else {
             loop {
                 x += 2 as ::core::ffi::c_int;
-                if !(x != 0) {
+                if x == 0 {
                     break '_D;
                 }
             }
@@ -394,14 +394,14 @@ pub unsafe extern "C" fn goto_separate_loops(mut x: ::core::ffi::c_int) {
     if x != 0 {
         loop {
             x += 1 as ::core::ffi::c_int;
-            if !(x != 0) {
+            if x == 0 {
                 break;
             }
         }
     } else {
         loop {
             x += 2 as ::core::ffi::c_int;
-            if !(x != 0) {
+            if x == 0 {
                 break;
             }
         }

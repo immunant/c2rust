@@ -2,7 +2,7 @@
 
 use super::*;
 use log::warn;
-use syn::{spanned::Spanned as _, ExprBreak, ExprIf, ExprUnary, Stmt};
+use syn::{spanned::Spanned as _, ExprBinary, ExprBreak, ExprIf, ExprUnary, Stmt};
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
@@ -1048,15 +1048,33 @@ impl StructureState {
 /// Take the logical negation of an expression.
 ///
 ///   * Negating something of the form `!<expr>` produces `<expr>`
+///   * Negating a comparison operator produces the opposite operator.
 ///
 fn not(bool_expr: &Expr) -> Box<Expr> {
-    use syn::UnOp;
+    use syn::{BinOp::*, UnOp};
     match *bool_expr {
         Expr::Unary(ExprUnary {
             op: UnOp::Not(_),
             ref expr,
             ..
         }) => Box::new(unparen(expr).clone()),
+        Expr::Binary(ExprBinary {
+            ref left,
+            op: op @ (Eq(_) | Ne(_) | Gt(_) | Lt(_) | Ge(_) | Le(_)),
+            ref right,
+            ..
+        }) => {
+            let op = match op {
+                Eq(_) => Ne(Default::default()),
+                Ne(_) => Eq(Default::default()),
+                Gt(_) => Le(Default::default()),
+                Lt(_) => Ge(Default::default()),
+                Ge(_) => Lt(Default::default()),
+                Le(_) => Gt(Default::default()),
+                _ => unreachable!(),
+            };
+            mk().binary_expr(op, left.clone(), right.clone())
+        }
         _ => mk().unary_expr(UnOp::Not(Default::default()), Box::new(bool_expr.clone())),
     }
 }

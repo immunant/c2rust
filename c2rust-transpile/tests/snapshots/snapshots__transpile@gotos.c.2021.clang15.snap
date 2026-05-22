@@ -14,7 +14,7 @@ expression: cat tests/snapshots/gotos.2021.clang15.rs
 #[no_mangle]
 pub unsafe extern "C" fn sum(mut count: ::core::ffi::c_int) -> ::core::ffi::c_int {
     let mut x: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    while !(count <= 0 as ::core::ffi::c_int) {
+    while count > 0 as ::core::ffi::c_int {
         x += count;
         count -= 1;
     }

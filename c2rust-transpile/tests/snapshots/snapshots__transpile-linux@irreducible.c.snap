@@ -32,7 +32,7 @@ pub unsafe extern "C" fn irreducible(mut x: ::core::ffi::c_int) -> ::core::ffi::
                     }
                 }
                 _ => {
-                    if !(x < 20 as ::core::ffi::c_int) {
+                    if x >= 20 as ::core::ffi::c_int {
                         break 's_36;
                     }
                     x += 90 as ::core::ffi::c_int;
