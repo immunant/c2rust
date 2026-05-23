@@ -8,9 +8,14 @@ struct PacketHeader {
     unsigned short length : 6;
 };
 
+struct SingleRawIdent {
+    unsigned char as : 3;
+};
+
 void test_bitfields(void) {
     struct PacketHeader h = {0};
     h.version = 5;
     h.sequence = 513;
     printf("version=%u sequence=%u\n", h.version, h.sequence);
+    struct SingleRawIdent s = {0};
 }
