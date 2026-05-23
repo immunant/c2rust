@@ -673,7 +673,7 @@ impl TypedAstContext {
     }
 
     /// Returns the expression inside any number of nested parentheses.
-    pub fn resolve_parens(&self, mut expr_id: CExprId) -> CExprId {
+    pub fn unwrap_parens(&self, mut expr_id: CExprId) -> CExprId {
         while let CExprKind::Paren(_, subexpr) = self.index(expr_id).kind {
             expr_id = subexpr;
         }
@@ -692,7 +692,7 @@ impl TypedAstContext {
 
     /// Unwraps a predefined expression, if there is one.
     pub fn unwrap_predefined_ident(&self, mut expr_id: CExprId) -> CExprId {
-        expr_id = self.resolve_extension(self.resolve_parens(expr_id));
+        expr_id = self.resolve_extension(self.unwrap_parens(expr_id));
 
         if let CExprKind::Predefined(_, subexpr) = self.index(expr_id).kind {
             subexpr

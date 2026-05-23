@@ -23,7 +23,7 @@ impl<'c> Translation<'c> {
         cqual_type: CQualTypeId,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let arg_kind = &self.ast_context[self.ast_context.resolve_parens(arg)].kind;
+        let arg_kind = &self.ast_context[self.ast_context.unwrap_parens(arg)].kind;
 
         match arg_kind {
             // C99 6.5.3.2 para 4
