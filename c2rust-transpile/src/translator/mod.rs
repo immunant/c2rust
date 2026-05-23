@@ -2994,12 +2994,12 @@ impl<'c> Translation<'c> {
         let Located {
             loc: src_loc,
             kind: expr_kind,
-        } = &self.ast_context.index_unwrap_parens(expr_id);
+        } = &self.ast_context[expr_id];
 
         trace!(
             "Converting expr {:?}: {:?}",
             expr_id,
-            self.ast_context.index_unwrap_parens(expr_id)
+            self.ast_context[expr_id]
         );
 
         if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id, override_ty)? {

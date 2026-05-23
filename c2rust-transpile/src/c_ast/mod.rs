@@ -721,8 +721,7 @@ impl TypedAstContext {
     pub fn unwrap_cast_expr(&self, mut expr_id: CExprId) -> CExprId {
         while let CExprKind::Paren(_, subexpr)
         | CExprKind::ImplicitCast(_, subexpr, _, _, _)
-        | CExprKind::ExplicitCast(_, subexpr, _, _, _) =
-            self.index_unwrap_parens(expr_id).kind
+        | CExprKind::ExplicitCast(_, subexpr, _, _, _) = self[expr_id].kind
         {
             expr_id = subexpr;
         }
@@ -744,7 +743,7 @@ impl TypedAstContext {
     /// Resolve true expression type, iterating through any casts and variable
     /// references.
     pub fn resolve_expr_type_id(&self, expr_id: CExprId) -> Option<(CExprId, CTypeId)> {
-        let expr = &self.index_unwrap_parens(expr_id).kind;
+        let expr = &self[expr_id].kind;
         let mut ty = expr.get_type();
         use CExprKind::*;
         match expr {
@@ -888,7 +887,7 @@ impl TypedAstContext {
     pub fn is_expr_pure(&self, expr: CExprId) -> bool {
         use CExprKind::*;
         let pure = |expr| self.is_expr_pure(expr);
-        match self.index_unwrap_parens(expr).kind {
+        match self[expr].kind {
             BadExpr |
             ShuffleVector(..) |
             ConvertVector(..) |
@@ -960,7 +959,7 @@ impl TypedAstContext {
         let is_const = |expr| self.is_const_expr(expr);
 
         use CExprKind::*;
-        match self.index_unwrap_parens(expr).kind {
+        match self[expr].kind {
             // A literal is always `const`.
             Literal(_, _) => true,
             // Unary ops should be `const`.
@@ -1288,7 +1287,7 @@ impl TypedAstContext {
                     _ => return,
                 };
 
-                let new_ty = match self.ast_context.c_exprs[&e].kind {
+                let new_ty = match self.ast_context[e].kind {
                     CExprKind::Conditional(_ty, _cond, lhs, rhs) => {
                         let lhs_type_id =
                             self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
