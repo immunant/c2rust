@@ -107,7 +107,9 @@ class CFile:
         if self.emit_build_files:
             args.append("--emit-build-files")
 
-        if self.log_level == 'DEBUG':
+        if self.log_level == 'TRACE':
+            args.append("--log-level=trace")
+        elif self.log_level == 'DEBUG':
             args.append("--log-level=debug")
 
         args.append("--")
@@ -667,7 +669,7 @@ def main() -> None:
     )
     parser.add_argument(
         '--log', dest='log_level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        choices=['TRACE', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
         default='CRITICAL', help="Set the logging level"
     )
     parser.add_argument(
@@ -688,7 +690,12 @@ def main() -> None:
                                            args.regex_files,
                                            args.keep,
                                            args.log_level)
-    setup_logging(args.log_level)
+    logging_log_level = args.log_level
+
+    if logging_log_level == "TRACE":
+        logging_log_level = "DEBUG"
+
+    setup_logging(logging_log_level)
 
     logging.debug("args: %s", " ".join(sys.argv))
 
