@@ -99,9 +99,15 @@ pub const RUST_KEYWORDS: &[&str] = &[
 /// segments. The list of path segment keywords can be found here [1]. For discussion of this
 /// topic see [2].
 /// [0] https://doc.rust-lang.org/edition-guide/rust-2018/module-system/raw-identifiers.html
-/// [1] https://github.com/rust-lang/rust/blob/04488afe34512aa4c33566eb16d8c912a3ae04f9/src/librustc_span/symbol.rs#L1331
+/// [1] https://github.com/rust-lang/rust/blob/e96c36b6f76833388c519561d145492d2c08db4e/compiler/rustc_span/src/symbol.rs#L2892
 /// [2] https://internals.rust-lang.org/t/raw-identifiers-dont-work-for-all-identifiers/9094
-const RESERVED_PATH_SEGMENT_NAMES: [&str; 4] = ["super", "self", "Self", "crate"];
+#[rustfmt::skip]
+const PATH_SEGMENT_KEYWORDS: [&str; 4] = [
+    "super",
+    "self",
+    "Self",
+    "crate",
+];
 
 const PRELUDE_TYPE_NAMESPACE: &[&str] = &[
     "Copy",
@@ -327,7 +333,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     }
 
     fn raw_identifier_if_reserved_name(basename: &str) -> Option<String> {
-        if RUST_KEYWORDS.contains(&basename) && !RESERVED_PATH_SEGMENT_NAMES.contains(&basename) {
+        if RUST_KEYWORDS.contains(&basename) && !PATH_SEGMENT_KEYWORDS.contains(&basename) {
             Some(format!("r#{}", basename))
         } else {
             None

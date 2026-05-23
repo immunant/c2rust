@@ -12,39 +12,39 @@ expression: cat tests/snapshots/keywords.2021.clang15.rs
     unused_mut
 )]
 #[export_name = "as"]
-pub unsafe extern "C" fn as_0() {}
+pub unsafe extern "C" fn r#as() {}
 #[export_name = "async"]
-pub unsafe extern "C" fn async_0() {}
+pub unsafe extern "C" fn r#async() {}
 #[export_name = "await"]
-pub unsafe extern "C" fn await_0() {}
+pub unsafe extern "C" fn r#await() {}
 #[export_name = "crate"]
 pub unsafe extern "C" fn crate_0() {}
 #[export_name = "dyn"]
-pub unsafe extern "C" fn dyn_0() {}
+pub unsafe extern "C" fn r#dyn() {}
 #[export_name = "false"]
-pub unsafe extern "C" fn false_0() {}
+pub unsafe extern "C" fn r#false() {}
 #[export_name = "fn"]
-pub unsafe extern "C" fn fn_0() {}
+pub unsafe extern "C" fn r#fn() {}
 #[export_name = "impl"]
-pub unsafe extern "C" fn impl_0() {}
+pub unsafe extern "C" fn r#impl() {}
 #[export_name = "in"]
-pub unsafe extern "C" fn in_0() {}
+pub unsafe extern "C" fn r#in() {}
 #[export_name = "let"]
-pub unsafe extern "C" fn let_0() {}
+pub unsafe extern "C" fn r#let() {}
 #[export_name = "loop"]
-pub unsafe extern "C" fn loop_0() {}
+pub unsafe extern "C" fn r#loop() {}
 #[export_name = "match"]
-pub unsafe extern "C" fn match_0() {}
+pub unsafe extern "C" fn r#match() {}
 #[export_name = "mod"]
-pub unsafe extern "C" fn mod_0() {}
+pub unsafe extern "C" fn r#mod() {}
 #[export_name = "move"]
-pub unsafe extern "C" fn move_0() {}
+pub unsafe extern "C" fn r#move() {}
 #[export_name = "mut"]
-pub unsafe extern "C" fn mut_0() {}
+pub unsafe extern "C" fn r#mut() {}
 #[export_name = "pub"]
-pub unsafe extern "C" fn pub_0() {}
+pub unsafe extern "C" fn r#pub() {}
 #[export_name = "ref"]
-pub unsafe extern "C" fn ref_0() {}
+pub unsafe extern "C" fn r#ref() {}
 #[export_name = "self"]
 pub unsafe extern "C" fn self_0() {}
 #[export_name = "Self"]
@@ -52,38 +52,38 @@ pub unsafe extern "C" fn Self_0() {}
 #[export_name = "super"]
 pub unsafe extern "C" fn super_0() {}
 #[export_name = "trait"]
-pub unsafe extern "C" fn trait_0() {}
+pub unsafe extern "C" fn r#trait() {}
 #[export_name = "true"]
-pub unsafe extern "C" fn true_0() {}
+pub unsafe extern "C" fn r#true() {}
 #[export_name = "type"]
-pub unsafe extern "C" fn type_0() {}
+pub unsafe extern "C" fn r#type() {}
 #[export_name = "unsafe"]
-pub unsafe extern "C" fn unsafe_0() {}
+pub unsafe extern "C" fn r#unsafe() {}
 #[export_name = "use"]
-pub unsafe extern "C" fn use_0() {}
+pub unsafe extern "C" fn r#use() {}
 #[export_name = "where"]
-pub unsafe extern "C" fn where_0() {}
+pub unsafe extern "C" fn r#where() {}
 #[export_name = "abstract"]
-pub unsafe extern "C" fn abstract_0() {}
+pub unsafe extern "C" fn r#abstract() {}
 #[export_name = "become"]
-pub unsafe extern "C" fn become_0() {}
+pub unsafe extern "C" fn r#become() {}
 #[export_name = "box"]
-pub unsafe extern "C" fn box_0() {}
+pub unsafe extern "C" fn r#box() {}
 #[export_name = "final"]
-pub unsafe extern "C" fn final_0() {}
+pub unsafe extern "C" fn r#final() {}
 #[export_name = "gen"]
-pub unsafe extern "C" fn gen_0() {}
+pub unsafe extern "C" fn r#gen() {}
 #[export_name = "macro"]
-pub unsafe extern "C" fn macro_0() {}
+pub unsafe extern "C" fn r#macro() {}
 #[export_name = "override"]
-pub unsafe extern "C" fn override_0() {}
+pub unsafe extern "C" fn r#override() {}
 #[export_name = "priv"]
-pub unsafe extern "C" fn priv_0() {}
+pub unsafe extern "C" fn r#priv() {}
 #[export_name = "try"]
-pub unsafe extern "C" fn try_0() {}
+pub unsafe extern "C" fn r#try() {}
 #[export_name = "unsized"]
-pub unsafe extern "C" fn unsized_0() {}
+pub unsafe extern "C" fn r#unsized() {}
 #[export_name = "virtual"]
-pub unsafe extern "C" fn virtual_0() {}
+pub unsafe extern "C" fn r#virtual() {}
 #[export_name = "yield"]
-pub unsafe extern "C" fn yield_0() {}
+pub unsafe extern "C" fn r#yield() {}

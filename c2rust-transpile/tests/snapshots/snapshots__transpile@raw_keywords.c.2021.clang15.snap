@@ -1,0 +1,42 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/raw_keywords.2021.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+pub type r#type = ::core::ffi::c_int;
+pub type r#as = ::core::ffi::c_uint;
+pub const r#await: r#as = 1;
+pub const r#async: r#as = 0;
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct r#dyn {
+    pub r#false: r#type,
+}
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub union r#fn {
+    pub r#where: r#type,
+    pub r#final: r#type,
+}
+#[export_name = "super"]
+pub static mut super_0: r#type = 0 as r#type;
+#[export_name = "pub"]
+pub unsafe extern "C" fn r#pub(mut r#ref: r#type) {}
+#[export_name = "impl"]
+pub unsafe extern "C" fn r#impl(mut r#in: r#type) {
+    let mut r#trait: r#type = super_0;
+    let mut r#let: r#as = r#async;
+    let mut r#mod: r#dyn = r#dyn { r#false: 0 };
+    r#mod.r#false = 0 as ::core::ffi::c_int as r#type;
+    let mut r#mut: r#fn = r#fn { r#where: 0 };
+    r#mut.r#where = 0 as ::core::ffi::c_int as r#type;
+    r#pub(r#mut.r#where);
+}

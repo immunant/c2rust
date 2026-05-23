@@ -12,26 +12,26 @@ expression: cat tests/snapshots/bool.2024.clang15.rs
     unused_assignments,
     unused_mut
 )]
-pub const true_0: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const false_0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const r#false: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const MACRO_INT0: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-pub const MACRO_IDENT0: ::core::ffi::c_int = false_0;
+pub const MACRO_IDENT0: ::core::ffi::c_int = r#false;
 pub const MACRO_INT1: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
-pub const MACRO_IDENT1: ::core::ffi::c_int = true_0;
+pub const MACRO_IDENT1: ::core::ffi::c_int = r#true;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_bool() {
     let mut int0: bool = false;
-    let mut ident0: bool = false_0 != 0;
+    let mut ident0: bool = r#false != 0;
     let mut macro_int0: bool = MACRO_INT0 != 0;
     let mut macro_ident0: bool = MACRO_IDENT0 != 0;
     let mut int1: bool = true;
-    let mut ident1: bool = true_0 != 0;
+    let mut ident1: bool = r#true != 0;
     let mut macro_int1: bool = MACRO_INT1 != 0;
     let mut macro_ident1: bool = MACRO_IDENT1 != 0;
     if false {
     } else {
     };
-    if false_0 != 0 {
+    if r#false != 0 {
     } else {
     };
     if MACRO_INT0 != 0 {
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn test_bool() {
     if true {
     } else {
     };
-    if true_0 != 0 {
+    if r#true != 0 {
     } else {
     };
     if MACRO_INT1 != 0 {

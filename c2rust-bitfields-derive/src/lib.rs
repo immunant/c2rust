@@ -200,7 +200,7 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
         .map(|field_ident| {
             let span = Span::call_site();
             let raw_ident = &field_ident.to_string();
-            let ident = strip_raw_ident(&raw_ident);
+            let ident = raw_ident.strip_prefix("r#").unwrap_or(raw_ident);
             let setter_name = &format!("set_{}", ident);
 
             Ident::new(setter_name, span)
@@ -261,14 +261,4 @@ fn bitfield_struct_impl(struct_item: ItemStruct) -> Result<TokenStream, Error> {
     };
 
     Ok(q.into())
-}
-
-fn strip_raw_ident(ident: &str) -> &str {
-    const RAW_IDENT_PREFIX: &str = "r#";
-
-    if ident.starts_with(RAW_IDENT_PREFIX) {
-        &ident[RAW_IDENT_PREFIX.len()..]
-    } else {
-        ident
-    }
 }

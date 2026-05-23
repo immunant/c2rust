@@ -335,6 +335,7 @@ version = "0.22.1"
 dependencies = [
  "itertools 0.10.5",
  "proc-macro2",
+ "quote",
  "syn 2.0.106",
 ]
 

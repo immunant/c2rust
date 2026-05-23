@@ -14,4 +14,5 @@ categories.workspace = true
 [dependencies]
 itertools = "0.10.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"]}
+quote = "1"
 syn = { version = "2.0", features = ["full", "extra-traits", "printing", "clone-impls"]}
