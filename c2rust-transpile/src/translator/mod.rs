@@ -1685,7 +1685,7 @@ impl<'c> Translation<'c> {
             };
 
             use CExprKind::*;
-            match self.ast_context[expr_id].kind {
+            match self.ast_context.index_unwrap_parens(expr_id).kind {
                 // Technically we're being conservative here, but it's only the most
                 // contrived array indexing initializers that would be accepted
                 ArraySubscript(..) => return true,
@@ -1718,8 +1718,10 @@ impl<'c> Translation<'c> {
                     }
                 }
                 Unary(_, AddressOf, expr_id, _) => {
-                    if let Member(_, expr_id, _, _, _) = self.ast_context[expr_id].kind {
-                        if let DeclRef(..) = self.ast_context[expr_id].kind {
+                    if let Member(_, expr_id, _, _, _) =
+                        self.ast_context.index_unwrap_parens(expr_id).kind
+                    {
+                        if let DeclRef(..) = self.ast_context.index_unwrap_parens(expr_id).kind {
                             return true;
                         }
                     }
@@ -2254,7 +2256,9 @@ impl<'c> Translation<'c> {
         target: bool,
         cond_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let ty_id = self.ast_context[cond_id]
+        let ty_id = self
+            .ast_context
+            .index_unwrap_parens(cond_id)
             .kind
             .get_type()
             .ok_or_else(|| format_err!("bad condition type"))?;
@@ -2262,7 +2266,9 @@ impl<'c> Translation<'c> {
         let null_pointer_case =
             |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
                 let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
-                let ptr_type = self.ast_context[ptr]
+                let ptr_type = self
+                    .ast_context
+                    .index_unwrap_parens(ptr)
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
@@ -2270,7 +2276,7 @@ impl<'c> Translation<'c> {
                 val.try_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_null))
             };
 
-        match self.ast_context[cond_id].kind {
+        match self.ast_context.index_unwrap_parens(cond_id).kind {
             CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
@@ -2328,7 +2334,7 @@ impl<'c> Translation<'c> {
         let mut iter = DFExpr::new(&self.ast_context, expr_id.into());
         while let Some(x) = iter.next() {
             match x {
-                SomeId::Expr(e) => match self.ast_context[e].kind {
+                SomeId::Expr(e) => match self.ast_context.index_unwrap_parens(e).kind {
                     CExprKind::DeclRef(_, d, _) if d == decl_id => return true,
                     CExprKind::UnaryType(_, _, Some(_), _) => iter.prune(1),
                     _ => {}
@@ -2594,7 +2600,8 @@ impl<'c> Translation<'c> {
         ctypeid: CTypeId,
         initializer: Option<CExprId>,
     ) -> bool {
-        let initializer_kind = initializer.map(|expr_id| &self.ast_context[expr_id].kind);
+        let initializer_kind =
+            initializer.map(|expr_id| &self.ast_context.index_unwrap_parens(expr_id).kind);
 
         // If the RHS is a func call, we should be able to skip type annotation
         // because we get a type from the function return type
@@ -2987,12 +2994,12 @@ impl<'c> Translation<'c> {
         let Located {
             loc: src_loc,
             kind: expr_kind,
-        } = &self.ast_context[expr_id];
+        } = &self.ast_context.index_unwrap_parens(expr_id);
 
         trace!(
             "Converting expr {:?}: {:?}",
             expr_id,
-            self.ast_context[expr_id]
+            self.ast_context.index_unwrap_parens(expr_id)
         );
 
         if let Some(converted) = self.convert_const_macro_expansion(ctx, expr_id, override_ty)? {
@@ -3284,7 +3291,7 @@ impl<'c> Translation<'c> {
                     _ => {}
                 }
 
-                let expr_kind = &self.ast_context[expr].kind;
+                let expr_kind = &self.ast_context.index_unwrap_parens(expr).kind;
                 let target_ty = override_ty.unwrap_or(ty);
 
                 // In general, if we are casting the result of an expression, then the inner
@@ -3297,7 +3304,7 @@ impl<'c> Translation<'c> {
                     let mut is_negated = false;
 
                     if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
-                        literal_expr_kind = &self.ast_context[subexpr_id].kind;
+                        literal_expr_kind = &self.ast_context.index_unwrap_parens(subexpr_id).kind;
                         is_negated = true;
                     }
 
@@ -3342,7 +3349,8 @@ impl<'c> Translation<'c> {
 
                     CQualTypeId::new(func_ptr_ty)
                 } else {
-                    self.ast_context[expr]
+                    self.ast_context
+                        .index_unwrap_parens(expr)
                         .kind
                         .get_qual_type()
                         .ok_or_else(|| format_err!("bad source type"))?

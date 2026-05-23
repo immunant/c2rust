@@ -1497,7 +1497,11 @@ impl CfgBuilder {
                     .discard_unsafe();
                 wip.extend(stmts);
 
-                let cond_val = translator.ast_context[scrutinee].kind.get_bool();
+                let cond_val = translator
+                    .ast_context
+                    .index_unwrap_parens(scrutinee)
+                    .kind
+                    .get_bool();
                 self.add_wip_block(
                     wip,
                     match cond_val {
@@ -1564,7 +1568,11 @@ impl CfgBuilder {
                 let (stmts, val) = translator
                     .convert_condition(ctx, true, condition)?
                     .discard_unsafe();
-                let cond_val = translator.ast_context[condition].kind.get_bool();
+                let cond_val = translator
+                    .ast_context
+                    .index_unwrap_parens(condition)
+                    .kind
+                    .get_bool();
                 let mut cond_wip = self.new_wip_block(cond_entry.clone());
                 cond_wip.extend(stmts);
 
@@ -1639,7 +1647,11 @@ impl CfgBuilder {
                 let (stmts, val) = translator
                     .convert_condition(ctx, true, condition)?
                     .discard_unsafe();
-                let cond_val = translator.ast_context[condition].kind.get_bool();
+                let cond_val = translator
+                    .ast_context
+                    .index_unwrap_parens(condition)
+                    .kind
+                    .get_bool();
                 let mut cond_wip = self.new_wip_block(cond_entry);
                 cond_wip.extend(stmts);
                 self.add_wip_block(
@@ -1690,7 +1702,11 @@ impl CfgBuilder {
                         let (stmts, val) = translator
                             .convert_condition(ctx, true, cond)?
                             .discard_unsafe();
-                        let cond_val = translator.ast_context[cond].kind.get_bool();
+                        let cond_val = translator
+                            .ast_context
+                            .index_unwrap_parens(cond)
+                            .kind
+                            .get_bool();
                         let mut cond_wip = slf.new_wip_block(cond_entry.clone());
                         cond_wip.extend(stmts);
                         slf.add_wip_block(
@@ -1816,9 +1832,11 @@ impl CfgBuilder {
                 // We simply inline the common statement at this point rather
                 // than to try and create new control-flow blocks.
                 let blk_or_wip = if let CExprKind::Unary(_, CUnOp::Extension, sube, _) =
-                    translator.ast_context[expr].kind
+                    translator.ast_context.index_unwrap_parens(expr).kind
                 {
-                    if let CExprKind::Statements(_, stmtid) = translator.ast_context[sube].kind {
+                    if let CExprKind::Statements(_, stmtid) =
+                        translator.ast_context.index_unwrap_parens(sube).kind
+                    {
                         let comp_entry = self.fresh_label();
                         self.add_wip_block(wip, Jump(comp_entry.clone()));
                         let next_lbl = self.convert_stmt_help(
@@ -1902,7 +1920,7 @@ impl CfgBuilder {
 
                 // Case
                 let resolved = translator.ast_context.unwrap_cast_expr(case_expr);
-                let branch = match translator.ast_context.index(resolved).kind {
+                let branch = match translator.ast_context.index_unwrap_parens(resolved).kind {
                     CExprKind::Literal(..) | CExprKind::ConstantExpr(_, _, Some(_)) => {
                         match translator
                             .convert_expr(ctx.used(), resolved, None)?

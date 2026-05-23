@@ -102,7 +102,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<NamedReference<Option<Box<Expr>>>>> {
         let reference_ty = self
             .ast_context
-            .index(reference)
+            .index_unwrap_parens(reference)
             .kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad reference type"))?;

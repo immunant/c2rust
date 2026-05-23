@@ -74,7 +74,9 @@ impl<'c> Translation<'c> {
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
 
-                let ty = self.ast_context[id]
+                let ty = self
+                    .ast_context
+                    .index_unwrap_parens(id)
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
@@ -196,7 +198,7 @@ impl<'c> Translation<'c> {
 
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
-        let expr_kind = &self.ast_context[expr_id].kind;
+        let expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
         // TODO We'd like to get rid of this cast eventually (see #1321).
         // Currently, const macros do not get the correct `override_ty` themselves,
         // so they aren't declared with the correct portable type,
