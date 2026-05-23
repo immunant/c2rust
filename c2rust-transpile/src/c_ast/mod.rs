@@ -683,13 +683,7 @@ impl TypedAstContext {
 
     /// Same as the index operator, but unwraps `Paren` expressions.
     pub fn index_unwrap_parens(&self, expr_id: CExprId) -> &CExpr {
-        static BADEXPR: CExpr = Located {
-            loc: None,
-            kind: CExprKind::BadExpr,
-        };
-        self.c_exprs
-            .get(&self.unwrap_parens(expr_id))
-            .unwrap_or(&BADEXPR)
+        &self[self.unwrap_parens(expr_id)]
     }
 
     /// Returns the expression inside an `__extension__` operator.
@@ -1542,22 +1536,13 @@ impl Index<CTypeId> for TypedAstContext {
 
 impl Index<CExprId> for TypedAstContext {
     type Output = CExpr;
+
     fn index(&self, index: CExprId) -> &CExpr {
         static BADEXPR: CExpr = Located {
             loc: None,
             kind: CExprKind::BadExpr,
         };
-        match self.c_exprs.get(&index) {
-            None => &BADEXPR, // panic!("Could not find {:?} in TypedAstContext", index),
-            Some(e) => {
-                // Transparently index through Paren expressions
-                if let CExprKind::Paren(_, subexpr) = e.kind {
-                    self.index(subexpr)
-                } else {
-                    e
-                }
-            }
-        }
+        self.c_exprs.get(&index).unwrap_or(&BADEXPR)
     }
 }
 
