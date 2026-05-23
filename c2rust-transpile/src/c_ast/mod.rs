@@ -681,6 +681,17 @@ impl TypedAstContext {
         expr_id
     }
 
+    /// Same as the index operator, but unwraps `Paren` expressions.
+    pub fn index_unwrap_parens(&self, expr_id: CExprId) -> &CExpr {
+        static BADEXPR: CExpr = Located {
+            loc: None,
+            kind: CExprKind::BadExpr,
+        };
+        self.c_exprs
+            .get(&self.unwrap_parens(expr_id))
+            .unwrap_or(&BADEXPR)
+    }
+
     /// Returns the expression inside an `__extension__` operator.
     pub fn resolve_extension(&self, expr_id: CExprId) -> CExprId {
         if let CExprKind::Unary(_, CUnOp::Extension, subexpr, _) = self.index(expr_id).kind {
