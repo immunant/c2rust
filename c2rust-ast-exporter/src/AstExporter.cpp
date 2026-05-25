@@ -1411,6 +1411,14 @@ class TranslateASTVisitor final
         // if (!E->isConstantInitializer(*Context, false))
         //     return true;
 
+        if (const InitListExpr* ILE = dyn_cast<InitListExpr>(E)) {
+            // Do not process macros for the syntactic form,
+            // so that they can be processed for the semantic form.
+            if (ILE->isSyntacticForm()) {
+                return true;
+            }
+        }
+
         auto &Mgr = Context->getSourceManager();
         auto Range = E->getSourceRange();
         LLVM_DEBUG(dbgs() << "Checking expr for macro expansion: ");
