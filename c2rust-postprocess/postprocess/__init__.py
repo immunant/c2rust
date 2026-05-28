@@ -21,6 +21,8 @@ from postprocess.transforms import (
 )
 from postprocess.utils import existing_file
 
+DEFAULT_LLM_MODEL = "gemini-3.5-flash"
+
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -64,8 +66,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--llm-model",
         type=str,
         required=False,
-        default="gemini-3-flash-preview",
-        help="ID of the LLM model to use (default: gemini-3-flash-preview)",
+        default=DEFAULT_LLM_MODEL,
+        help=f"ID of the LLM model to use (default: {DEFAULT_LLM_MODEL})",
     )
 
     parser.add_argument(
