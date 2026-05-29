@@ -121,9 +121,7 @@ jobs:
           export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
           echo "PATH=$PATH"
           export C2RUST_DIR=$PWD
-          # Needs to be run from `tests/integration/` (or further inside)
-          # to correctly load the `pyproject.toml`.
-          (cd tests/integration && ./test.py json-c)
+          ./tests/integration/test.py json-c
 
       # Stale entries are pruned by postprocess itself (--prune-cache-days).
       - name: Save postprocess cache
