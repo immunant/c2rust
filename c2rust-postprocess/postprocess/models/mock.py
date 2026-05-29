@@ -1,13 +1,13 @@
 from collections.abc import Callable, Iterable
-from typing import Any, Never
+from typing import Any
 
 from postprocess.models import AbstractGenerativeModel
 
 
 class MockGenerativeModel(AbstractGenerativeModel):
     """
-    Mock generative model for testing without an actual LLM backend.
-    Raises NotImplementedError on generation attempts.
+    Mock generative model used when no API key is available.
+    Generates no responses, so callers fall back to cached responses only.
     """
 
     def __init__(self):
@@ -18,9 +18,5 @@ class MockGenerativeModel(AbstractGenerativeModel):
         messages: list[dict[str, Any]],
         tools: Iterable[Callable[..., Any]] = (),
         max_tool_loops: int = 5,
-    ) -> Never:
-        raise NotImplementedError(
-            "MockGenerativeModel, by design, does not generate responses.\n"
-            "If this is unexpected, check if you forgot to add an API key "
-            "to your environment (e.g. `export GEMINI_API_KEY=...`)."
-        )
+    ) -> None:
+        return None
