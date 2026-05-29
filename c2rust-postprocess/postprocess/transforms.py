@@ -12,7 +12,7 @@ from postprocess.definitions import (
     update_rust_definition,
 )
 from postprocess.exclude_list import IdentifierExcludeList
-from postprocess.models import AbstractGenerativeModel
+from postprocess.models import AbstractGenerativeModel, api_key_from_env
 from postprocess.utils import get_highlighted_c, get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -150,7 +150,14 @@ class CommentTransfer:
             ):
                 response = self.model.generate_with_tools(messages)
                 if response is None:
-                    logging.error("Model returned no response")
+                    if api_key_from_env(model) is None:
+                        # No API key set: skip uncached entries instead of failing.
+                        logging.warning(
+                            f"Cache miss for {identifier}; "
+                            "skipping since no API key was set..."
+                        )
+                    else:
+                        logging.error(f"Model returned no response for {identifier}")
                     continue
                 self.cache.update(
                     transform=transform,
