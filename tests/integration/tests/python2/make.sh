@@ -9,7 +9,7 @@ export EXTRA_CFLAGS="-std=c99"
 
 (cd "$SCRIPT_DIR"
 make -C repo clean && rm -f compile_commands.json 
-intercept-build make -C repo -j`nproc` python) 2>&1 | tee `basename "$0"`.log
+bear -- make -C repo -j`nproc` python) 2>&1 | tee `basename "$0"`.log
 # make rest to properly run python
 (cd "$SCRIPT_DIR"
 make -C repo -j`nproc`) 2>&1 | tee -a `basename "$0"`.log

@@ -6,10 +6,6 @@
 #     "distro>=1.9.0",
 #     "jinja2>=3.1.6",
 #     "pyyaml>=6.0.3",
-#     # scan-build 3.0.0 dropped the `intercept-build` entry point (the
-#     # interception feature was removed; upstream now points to Bear), so
-#     # stay on 2.x, which still ships `intercept-build`.
-#     "scan-build>=2.0.20,<3",
 # ]
 # ///
 
