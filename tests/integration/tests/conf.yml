@@ -16,4 +16,4 @@ requirements:
         - make
         - cmake
         - cargo
-        - intercept-build
+        - bear
