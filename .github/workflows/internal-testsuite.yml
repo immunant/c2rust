@@ -73,6 +73,7 @@ jobs:
       run: |
         sudo apt-get -qq update
         sudo apt-get -qq install    \
+            bear                    \
             build-essential         \
             libbrotli-dev           \
             libbz2-dev              \
