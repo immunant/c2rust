@@ -124,7 +124,11 @@ where
                     _ => {}
                 }
 
-                unpack!([&mut t.kind] TyKind::Path(qself, path));
+                if !matches!(t.kind, TyKind::Path(..)) {
+                    panic!("{qpath:?}");
+                }
+
+                unpack!([&mut t.kind] TyKind::Path(qself, path); return);
                 let (new_qself, new_path) =
                     self.handle_qpath(id, qself.clone(), path.clone(), qpath);
                 *qself = new_qself;

@@ -11,11 +11,24 @@ impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
     pub fn mk_int_lit(
         &self,
+        ctx: ExprContext,
         ty: CQualTypeId,
         val: u64,
         base: IntBase,
         negative: bool,
     ) -> TranslationResult<Box<Expr>> {
+        let type_resolved_id = self.ast_context.resolve_type_id(ty.ctype);
+
+        if let CTypeKind::Enum(enum_id) = self.ast_context[type_resolved_id].kind {
+            let mut val = val as i64;
+
+            if negative {
+                val = -val;
+            }
+
+            return Ok(self.enum_for_i64(enum_id, val));
+        }
+
         let lit = match base {
             IntBase::Dec => mk().int_unsuffixed_lit(val),
             IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
@@ -27,14 +40,19 @@ impl<'c> Translation<'c> {
             expr = neg_expr(expr);
         }
 
-        let target_ty = self.convert_type(ty.ctype)?;
-        Ok(mk().cast_expr(expr, target_ty))
+        if !ctx.is_pattern {
+            let target_ty = self.convert_type(ty.ctype)?;
+            expr = mk().cast_expr(expr, target_ty);
+        }
+
+        Ok(expr)
     }
 
     /// Return whether the literal can be directly translated as this type.
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId, is_negated: bool) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
+            CLiteral::Integer(_, _) if ty_kind.is_enum() => true,
             CLiteral::Integer(value, _) | CLiteral::Character(value)
                 if ty_kind.is_integral_type() && !ty_kind.is_bool() =>
             {
@@ -56,13 +74,18 @@ impl<'c> Translation<'c> {
         lit: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         match *lit {
-            CLiteral::Integer(val, base) => {
-                Ok(WithStmts::new_val(self.mk_int_lit(ty, val, base, false)?))
-            }
+            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(
+                self.mk_int_lit(ctx, ty, val, base, false)?,
+            )),
 
             CLiteral::Character(val) => {
                 let val = val as u32;
-                let expr = match char::from_u32(val) {
+                let mut expr = match char::from_u32(val).filter(|_| {
+                    // Always convert character literals as integers in patterns.
+                    // Character literals have problems with typing that need to be resolved. See
+                    // https://github.com/immunant/c2rust/issues/648
+                    !ctx.is_pattern
+                }) {
                     Some(c) => mk().lit_expr(c),
                     None => {
                         // Fallback for characters outside of the valid Unicode range
@@ -76,8 +99,12 @@ impl<'c> Translation<'c> {
                     }
                 };
 
-                let type_rs = self.convert_type(ty.ctype)?;
-                Ok(WithStmts::new_val(mk().cast_expr(expr, type_rs)))
+                if !ctx.is_pattern {
+                    let type_rs = self.convert_type(ty.ctype)?;
+                    expr = mk().cast_expr(expr, type_rs);
+                }
+
+                Ok(WithStmts::new_val(expr))
             }
 
             CLiteral::Floating(val, ref c_str) => {
@@ -111,6 +138,12 @@ impl<'c> Translation<'c> {
             }
 
             CLiteral::String(ref bytes, element_size) => {
+                if ctx.is_pattern {
+                    return Err(TranslationError::generic(
+                        "CLiteral::String is not supported in patterns",
+                    ));
+                }
+
                 let bytes_padded = self.string_literal_bytes(ty.ctype, bytes, element_size);
                 let len = bytes_padded.len();
                 let val = mk().lit_expr(bytes_padded);

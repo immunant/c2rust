@@ -1228,6 +1228,20 @@ impl Builder {
         })
     }
 
+    pub fn tuple_struct_pat<Pa>(self, path: Pa, qself: Option<QSelf>, elems: Vec<Pat>) -> Pat
+    where
+        Pa: Make<Path>,
+    {
+        let path = path.make(&self);
+        Pat::TupleStruct(PatTupleStruct {
+            attrs: self.attrs,
+            qself,
+            path,
+            paren_token: token::Paren(self.span),
+            elems: punct(elems),
+        })
+    }
+
     // Types
 
     pub fn barefn_ty(self, decl: BareFnTyParts) -> Box<Type> {

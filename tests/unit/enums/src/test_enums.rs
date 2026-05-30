@@ -35,8 +35,8 @@ const BUFFER_SIZE6: usize = 1;
 
 #[test]
 pub fn test_variants() {
-    assert_eq!(A as u32, 0);
-    assert_eq!(B as u32, 1);
+    assert_eq!(A.0 as u32, 0);
+    assert_eq!(B.0 as u32, 1);
 }
 
 #[test]
