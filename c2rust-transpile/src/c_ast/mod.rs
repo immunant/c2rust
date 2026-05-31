@@ -906,6 +906,7 @@ impl TypedAstContext {
             Member(_, e, _, _, _) |
             Paren(_, e) |
             CompoundLiteral(_, e) |
+            ImaginaryLiteral(_, e) |
             Unary(_, _, e, _) => pure(e),
 
             Binary(_, op, _, _, _, _) if op.underlying_assignment().is_some() => false,
@@ -990,6 +991,7 @@ impl TypedAstContext {
             ImplicitValueInit(_) => true,
             Paren(_, expr) => is_const(expr),
             CompoundLiteral(_, expr) => is_const(expr),
+            ImaginaryLiteral(_, expr) => is_const(expr),
             Predefined(_, expr) => is_const(expr),
             Statements(_, stmt) => self.is_const_stmt(stmt),
             VAArg(_, expr) => is_const(expr),
@@ -1778,6 +1780,9 @@ pub enum CExprKind {
     /// Compound literal.
     CompoundLiteral(CQualTypeId, CExprId),
 
+    /// Imaginary literal.
+    ImaginaryLiteral(CQualTypeId, CExprId),
+
     /// Predefined expression.
     Predefined(CQualTypeId, CExprId),
 
@@ -1862,6 +1867,7 @@ impl CExprKind {
             | CExprKind::ImplicitValueInit(ty)
             | CExprKind::Paren(ty, _)
             | CExprKind::CompoundLiteral(ty, _)
+            | CExprKind::ImaginaryLiteral(ty, _)
             | CExprKind::Predefined(ty, _)
             | CExprKind::Statements(ty, _)
             | CExprKind::VAArg(ty, _)

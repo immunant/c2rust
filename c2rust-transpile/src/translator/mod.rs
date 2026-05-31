@@ -3464,6 +3464,10 @@ impl<'c> Translation<'c> {
 
             CompoundLiteral(qty, val) => self.convert_compound_literal(ctx, qty, val, override_ty),
 
+            ImaginaryLiteral(_qty, _subexpr) => {
+                Err(TranslationError::generic("imaginary literal not supported"))
+            }
+
             InitList(ty, ref ids, opt_union_field_id, _) => {
                 self.convert_init_list(ctx, ty, ids, opt_union_field_id)
             }
