@@ -87,6 +87,7 @@ TAGS = {
     301: "TagStringLiteral",
     302: "TagCharacterLiteral",
     303: "TagFloatingLiteral",
+    304: "TagImaginaryLiteral",
 
     400: "TagTypeUnknown",
 

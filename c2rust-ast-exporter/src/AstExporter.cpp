@@ -2588,7 +2588,8 @@ class TranslateASTVisitor final
 #endif // CLANG_VERSION_MAJOR
 
     bool VisitImaginaryLiteral(ImaginaryLiteral *L) {
-        printDiag(Context, DiagnosticsEngine::Warning, "Encountered unsupported imaginary literal", L);
+        std::vector<void *> childIds{L->getSubExpr()};
+        encode_entry(L, TagImaginaryLiteral, childIds);
         return true;
     }
 
