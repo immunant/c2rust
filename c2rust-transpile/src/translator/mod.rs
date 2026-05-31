@@ -127,6 +127,10 @@ pub struct ExprContext {
     /// translation.
     is_const: bool,
 
+    /// In a context where a pattern is expected, such as for `match` arms.
+    /// This restricts what kinds of expressions can be emitted.
+    is_pattern: bool,
+
     /// Evaluating a C global/static variable.
     /// This is usually in a const context, but doesn't have to be, for example with initializers
     /// that are executed by the `c2rust_run_static_initializers` function.
@@ -177,6 +181,18 @@ impl ExprContext {
     pub fn not_const(self) -> Self {
         ExprContext {
             is_const: false,
+            ..self
+        }
+    }
+    pub fn pattern(self) -> Self {
+        ExprContext {
+            is_pattern: true,
+            ..self
+        }
+    }
+    pub fn not_pattern(self) -> Self {
+        ExprContext {
+            is_pattern: false,
             ..self
         }
     }
@@ -689,8 +705,9 @@ pub fn translate(
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
-        is_static: false,
         is_const: false,
+        is_pattern: false,
+        is_static: false,
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
@@ -3008,6 +3025,21 @@ impl<'c> Translation<'c> {
             }
         }
 
+        if ctx.is_pattern
+            && !matches!(
+                expr_kind,
+                CExprKind::Paren(..)
+                    | CExprKind::ConstantExpr(..)
+                    | CExprKind::Literal(..)
+                    | CExprKind::ImplicitCast(..)
+                    | CExprKind::ExplicitCast(..)
+            )
+        {
+            return Err(TranslationError::generic(
+                "expr kind is not supported in patterns",
+            ));
+        }
+
         use CExprKind::*;
         match *expr_kind {
             DesignatedInitExpr(..) => {
@@ -3057,144 +3089,23 @@ impl<'c> Translation<'c> {
 
             ConstantExpr(ty, child, value) => {
                 if let Some(constant) = value {
-                    self.convert_constant(constant).map(WithStmts::new_val)
+                    if ctx.is_pattern {
+                        self.convert_expr(ctx, child, override_ty)
+                    } else {
+                        self.convert_constant(constant).map(WithStmts::new_val)
+                    }
                 } else {
                     self.convert_expr(ctx, child, Some(ty))
                 }
             }
 
-            DeclRef(qual_ty, decl_id, lrvalue) => {
-                let decl = &self
-                    .ast_context
-                    .get_decl(&decl_id)
-                    .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
-                    .kind;
-                if ctx.expanding_macro.is_some() {
-                    // TODO Determining which declarations have been declared within the scope of the const macro expr
-                    // vs. which are out-of-scope of the const macro is non-trivial,
-                    // so for now, we don't allow const macros referencing any declarations.
-                    return Err(format_translation_err!(
-                        self.ast_context.display_loc(src_loc),
-                        "Cannot yet refer to declarations in a const expr",
-                    ));
-
-                    #[allow(unreachable_code)] // TODO temporary (see above).
-                    if let CDeclKind::Variable {
-                        has_static_duration: true,
-                        ..
-                    } = decl
-                    {
-                        return Err(format_translation_err!(
-                            self.ast_context.display_loc(src_loc),
-                            "Cannot refer to static duration variable in a const expression",
-                        ));
-                    }
-                }
-
-                let varname = decl.get_name().expect("expected variable name").to_owned();
-                let rustname = self
-                    .renamer
-                    .borrow_mut()
-                    .get(&decl_id)
-                    .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
-
-                // Import the referenced global decl into our submodule
-                if self.tcfg.reorganize_definitions {
-                    self.add_import(decl_id, &rustname);
-                    // match decl {
-                    //     CDeclKind::Variable { is_defn: false, .. } => {}
-                    //     _ => self.add_import(decl_id, &rustname),
-                    // }
-                }
-
-                let mut val = mk().path_expr(vec![rustname]);
-                let mut set_unsafe = false;
-
-                match decl {
-                    CDeclKind::EnumConstant { .. } => {
-                        // If the variable is actually an `EnumConstant`, we need to add a cast to
-                        // the expected integral type.
-                        val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
-                    }
-
-                    CDeclKind::Function { parameters, .. } => {
-                        // If we are referring to a function and need its address, we
-                        // need to cast it to fn() to ensure that it has a real address.
-                        if ctx.needs_address() {
-                            let ty = self.convert_type(qual_ty.ctype)?;
-                            let actual_ty = self
-                                .type_converter
-                                .borrow_mut()
-                                .knr_function_type_with_parameters(
-                                    &self.ast_context,
-                                    qual_ty.ctype,
-                                    parameters,
-                                )?;
-                            if let Some(actual_ty) = actual_ty {
-                                if actual_ty != ty {
-                                    // If we're casting a concrete function to
-                                    // a K&R function pointer type, use transmute
-                                    self.import_type(qual_ty.ctype);
-
-                                    val = transmute_expr(actual_ty, ty, val);
-                                    set_unsafe = true;
-                                }
-                            } else {
-                                let decl_kind = &self.ast_context[decl_id].kind;
-                                let kind_with_declared_args =
-                                    self.ast_context.fn_decl_ty_with_declared_args(decl_kind);
-
-                                if let Some(ty) = self
-                                    .ast_context
-                                    .type_for_kind(&kind_with_declared_args)
-                                    .map(CQualTypeId::new)
-                                {
-                                    let ty = self.convert_type(ty.ctype)?;
-                                    val = mk().cast_expr(val, ty);
-                                } else {
-                                    val = mk().cast_expr(val, ty);
-                                }
-                            }
-                        }
-                    }
-
-                    CDeclKind::Variable {
-                        has_static_duration,
-                        has_thread_duration,
-                        ..
-                    } => {
-                        // Accessing a static variable is unsafe.
-                        // In the current nightly, this applies also to taking a raw pointer,
-                        // but this requirement was removed in later versions of the
-                        // `raw_ref_op` feature.
-                        if (*has_static_duration || *has_thread_duration)
-                            && (self.tcfg.edition < Edition2024 || !ctx.needs_address())
-                        {
-                            set_unsafe = true;
-                        }
-                    }
-
-                    _ => {}
-                }
-
-                if let CTypeKind::VariableArray(..) =
-                    self.ast_context.resolve_type(qual_ty.ctype).kind
-                {
-                    val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
-                }
-
-                // if the context wants a different type, add a cast
-                if let Some(expected_ty) = override_ty {
-                    if lrvalue.is_rvalue() && expected_ty != qual_ty {
-                        val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
-                    }
-                }
-
-                Ok(WithStmts::new_val(val).merge_unsafe(set_unsafe))
-            }
+            DeclRef(qual_ty, decl_id, lrvalue) => self
+                .convert_decl_ref(ctx, qual_ty, decl_id, lrvalue, override_ty)
+                .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => Ok(WithStmts::new_val(self.mk_int_lit(
+                    ctx,
                     override_ty.unwrap_or(ty),
                     *val,
                     IntBase::Dec,
@@ -3265,14 +3176,26 @@ impl<'c> Translation<'c> {
             ImplicitCast(ty, expr, kind, opt_field_id, _)
             | ExplicitCast(ty, expr, kind, opt_field_id, _) => {
                 let is_explicit = matches!(expr_kind, CExprKind::ExplicitCast(..));
-                // A reference must be decayed if a bitcast is required. Const casts in
-                // LLVM 8 are now NoOp casts, so we need to include it as well.
+                let target_ty = override_ty.unwrap_or(ty);
+
+                // In general, if we are casting the result of an expression, then the inner
+                // expression should be translated to whatever type it normally would.
+                // But for some expression types, if we don't absolutely have to cast,
+                // we would rather the expression is translated according to the type we're
+                // expecting, and then we can skip the cast entirely.
+                if self.can_propagate_cast(ctx, expr, target_ty, is_explicit) {
+                    return self.convert_expr(ctx, expr, Some(target_ty));
+                }
+
                 match kind {
                     CastKind::IntegralToBoolean
                     | CastKind::FloatingToBoolean
                     | CastKind::PointerToBoolean => {
                         return self.convert_condition(ctx, true, expr);
                     }
+
+                    // A reference must be decayed if a bitcast is required. Const casts in
+                    // LLVM 8 are now NoOp casts, so we need to include it as well.
                     CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
                         ctx.decay_ref = DecayRef::Yes
                     }
@@ -3282,30 +3205,6 @@ impl<'c> Translation<'c> {
                         ctx.needs_address = true;
                     }
                     _ => {}
-                }
-
-                let expr_kind = &self.ast_context[expr].kind;
-                let target_ty = override_ty.unwrap_or(ty);
-
-                // In general, if we are casting the result of an expression, then the inner
-                // expression should be translated to whatever type it normally would.
-                // But for literals, if we don't absolutely have to cast, we would rather the
-                // literal is translated according to the type we're expecting, and then we can
-                // skip the cast entirely.
-                if !is_explicit {
-                    let mut literal_expr_kind = expr_kind;
-                    let mut is_negated = false;
-
-                    if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
-                        literal_expr_kind = &self.ast_context[subexpr_id].kind;
-                        is_negated = true;
-                    }
-
-                    if let CExprKind::Literal(_, lit) = literal_expr_kind {
-                        if self.literal_matches_ty(lit, target_ty, is_negated) {
-                            return self.convert_expr(ctx, expr, Some(target_ty));
-                        }
-                    }
                 }
 
                 let mut val = self.convert_expr(ctx, expr, None)?;
@@ -3514,6 +3413,143 @@ impl<'c> Translation<'c> {
         }
     }
 
+    fn convert_decl_ref(
+        &self,
+        ctx: ExprContext,
+        qual_ty: CQualTypeId,
+        decl_id: CDeclId,
+        lrvalue: LRValue,
+        override_ty: Option<CQualTypeId>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let decl = &self
+            .ast_context
+            .get_decl(&decl_id)
+            .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
+            .kind;
+        if ctx.expanding_macro.is_some() {
+            // TODO Determining which declarations have been declared within the scope of the const macro expr
+            // vs. which are out-of-scope of the const macro is non-trivial,
+            // so for now, we don't allow const macros referencing any declarations.
+            return Err(format_translation_err!(
+                None,
+                "Cannot yet refer to declarations in a const expr",
+            ));
+
+            #[allow(unreachable_code)] // TODO temporary (see above).
+            if let CDeclKind::Variable {
+                has_static_duration: true,
+                ..
+            } = decl
+            {
+                return Err(format_translation_err!(
+                    None,
+                    "Cannot refer to static duration variable in a const expression",
+                ));
+            }
+        }
+
+        if let CDeclKind::EnumConstant { .. } = decl {
+            return self.convert_enum_constant_decl_ref(
+                ctx,
+                decl_id,
+                override_ty.unwrap_or(qual_ty),
+            );
+        }
+
+        let varname = decl.get_name().expect("expected variable name").to_owned();
+        let rustname = self
+            .renamer
+            .borrow_mut()
+            .get(&decl_id)
+            .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
+
+        // Import the referenced global decl into our submodule
+        if self.tcfg.reorganize_definitions {
+            self.add_import(decl_id, &rustname);
+            // match decl {
+            //     CDeclKind::Variable { is_defn: false, .. } => {}
+            //     _ => self.add_import(decl_id, &rustname),
+            // }
+        }
+
+        let mut val = mk().path_expr(vec![rustname]);
+        let mut set_unsafe = false;
+
+        match decl {
+            CDeclKind::Function { parameters, .. } => {
+                // If we are referring to a function and need its address, we
+                // need to cast it to fn() to ensure that it has a real address.
+                if ctx.needs_address() {
+                    let ty = self.convert_type(qual_ty.ctype)?;
+                    let actual_ty = self
+                        .type_converter
+                        .borrow_mut()
+                        .knr_function_type_with_parameters(
+                            &self.ast_context,
+                            qual_ty.ctype,
+                            parameters,
+                        )?;
+                    if let Some(actual_ty) = actual_ty {
+                        if actual_ty != ty {
+                            // If we're casting a concrete function to
+                            // a K&R function pointer type, use transmute
+                            self.import_type(qual_ty.ctype);
+
+                            val = transmute_expr(actual_ty, ty, val);
+                            set_unsafe = true;
+                        }
+                    } else {
+                        let decl_kind = &self.ast_context[decl_id].kind;
+                        let kind_with_declared_args =
+                            self.ast_context.fn_decl_ty_with_declared_args(decl_kind);
+
+                        if let Some(ty) = self
+                            .ast_context
+                            .type_for_kind(&kind_with_declared_args)
+                            .map(CQualTypeId::new)
+                        {
+                            let ty = self.convert_type(ty.ctype)?;
+                            val = mk().cast_expr(val, ty);
+                        } else {
+                            val = mk().cast_expr(val, ty);
+                        }
+                    }
+                }
+            }
+
+            CDeclKind::Variable {
+                has_static_duration,
+                has_thread_duration,
+                ..
+            } => {
+                // Accessing a static variable is unsafe.
+                // In the current nightly, this applies also to taking a raw pointer,
+                // but this requirement was removed in later versions of the
+                // `raw_ref_op` feature.
+                if (*has_static_duration || *has_thread_duration)
+                    && (self.tcfg.edition < Edition2024 || !ctx.needs_address())
+                {
+                    set_unsafe = true;
+                }
+            }
+
+            _ => {}
+        }
+
+        if let CTypeKind::VariableArray(..) = self.ast_context.resolve_type(qual_ty.ctype).kind {
+            val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
+        }
+
+        // if the context wants a different type, add a cast
+        if let Some(expected_ty) = override_ty {
+            if lrvalue.is_rvalue() && expected_ty != qual_ty {
+                val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
+            }
+        }
+
+        Ok(WithStmts::new_val(val).merge_unsafe(set_unsafe))
+    }
+
     pub fn convert_constant(&self, constant: ConstIntExpr) -> TranslationResult<Box<Expr>> {
         let expr = match constant {
             ConstIntExpr::U(n) => mk().lit_expr(mk().int_unsuffixed_lit(n as u128)),
@@ -3642,6 +3678,68 @@ impl<'c> Translation<'c> {
         }
     }
 
+    fn can_propagate_cast(
+        &self,
+        ctx: ExprContext,
+        expr_id: CExprId,
+        target_type_id: CQualTypeId,
+        is_explicit: bool,
+    ) -> bool {
+        // Always preserve explicit casts.
+        if is_explicit {
+            return false;
+        }
+
+        let mut expr_kind = &self.ast_context[expr_id].kind;
+
+        // In patterns, skip over `ConstantExpr`s.
+        if ctx.is_pattern {
+            if let &CExprKind::ConstantExpr(_, expr_id, _) = expr_kind {
+                expr_kind = &self.ast_context[expr_id].kind;
+            }
+        }
+
+        if let &CExprKind::DeclRef(_, decl_id, _) = expr_kind {
+            if let CDeclKind::EnumConstant { .. } = self.ast_context[decl_id].kind {
+                // In C, `EnumConstant`s have some integral type, _not_ the enum type.
+                // However, if we then immediately have a cast to convert this variable back into
+                // the enum type, we would like to produce Rust with _no_ casts.
+                if self.enum_constant_matches_type(target_type_id.ctype, decl_id) {
+                    return true;
+                }
+
+                let source_enum_id = self.ast_context.parents[&decl_id];
+                let source_integral_type_id = self.enum_integral_type(source_enum_id);
+                let target_type_resolved_id = self
+                    .ast_context
+                    .resolve_type_id_no_typedef(target_type_id.ctype);
+
+                // Likewise, if we are casting to the inner integral type of the enum, then
+                // translate the enum constant directly as that.
+                if target_type_resolved_id == source_integral_type_id.ctype {
+                    return true;
+                }
+            }
+        }
+
+        let mut literal_expr_kind = expr_kind;
+        let mut is_negated = false;
+
+        if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
+            literal_expr_kind = &self.ast_context[subexpr_id].kind;
+            is_negated = true;
+        }
+
+        if let CExprKind::Literal(_, lit) = literal_expr_kind {
+            // Does the inner literal fit in the type we're casting to?
+            if self.literal_matches_ty(lit, target_type_id, is_negated) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn convert_cast(
         &self,
         ctx: ExprContext,
@@ -3670,22 +3768,24 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
+        if ctx.is_pattern && !matches!(kind, CastKind::ToVoid | CastKind::ConstCast) {
+            return Err(TranslationError::generic(
+                "cast kind is not supported in patterns",
+            ));
+        }
+
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
-                self.convert_pointer_to_pointer_cast(source_cty.ctype, target_cty.ctype, val)
+                self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
             }
 
             CastKind::IntegralToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty.ctype, target_cty.ctype, val)
+                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
             }
 
-            CastKind::PointerToIntegral => self.convert_pointer_to_integral_cast(
-                ctx,
-                source_cty.ctype,
-                target_cty.ctype,
-                val,
-                expr,
-            ),
+            CastKind::PointerToIntegral => {
+                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
+            }
 
             CastKind::IntegralCast
             | CastKind::FloatingCast
@@ -3719,17 +3819,16 @@ impl<'c> Translation<'c> {
                     self.ast_context[source_cty.ctype].kind
                 {
                     self.f128_cast_to(val, target_ty_kind)
-                } else if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-                    // Casts targeting `enum` types...
-                    val.try_map(|val| {
-                        self.convert_cast_to_enum(ctx, target_cty.ctype, enum_decl_id, expr, val)
-                    })
+                } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
+                    val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     Ok(val.map(|val| {
                         mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
                     }))
-                } else if let &CTypeKind::Enum(..) = source_ty_kind {
-                    val.try_map(|val| self.convert_cast_from_enum(target_cty.ctype, val))
+                } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
+                    val.and_then_try(|val| {
+                        self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
+                    })
                 } else {
                     Ok(val.map(|val| mk().cast_expr(val, target_ty)))
                 }
@@ -3994,8 +4093,7 @@ impl<'c> Translation<'c> {
                 field.map(|field| mk().struct_expr(vec![name], vec![field]))
             }
 
-            // Transmute the number `0` into the enum type
-            CDeclKind::Enum { .. } => self.convert_enum_zero_initializer(type_id),
+            CDeclKind::Enum { .. } => self.convert_enum_zero_initializer(decl_id),
 
             _ => {
                 return Err(TranslationError::generic(
@@ -4099,7 +4197,7 @@ impl<'c> Translation<'c> {
             }
 
             let val = if ty.is_enum() {
-                mk().cast_expr(val, mk().path_ty(vec!["u64"]))
+                self.integer_from_enum(val)
             } else {
                 val
             };
@@ -4420,4 +4518,10 @@ fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
 
 fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![])
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnumMode {
+    NewType,
+    Consts,
 }
