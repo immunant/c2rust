@@ -874,7 +874,7 @@ impl<'c> Translation<'c> {
 
             // First, convert output expr if present
             let out_expr = if let Some((output_idx, out_expr)) = operand.out_expr {
-                let mut out_expr = self.convert_expr(ctx.used(), out_expr, None)?;
+                let mut out_expr = self.convert_expr(ctx.used(), out_expr)?;
                 stmts.append(out_expr.stmts_mut());
                 let mut out_expr = out_expr.into_value();
 
@@ -921,7 +921,7 @@ impl<'c> Translation<'c> {
 
             // Then, handle input expr if present
             let in_expr = if let Some((input_idx, in_expr)) = operand.in_expr {
-                let mut in_expr = self.convert_expr(ctx.used(), in_expr, None)?;
+                let mut in_expr = self.convert_expr(ctx.used(), in_expr)?;
                 stmts.append(in_expr.stmts_mut());
                 let mut in_expr = in_expr.into_value();
 

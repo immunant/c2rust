@@ -376,14 +376,6 @@ impl<'c> Translation<'c> {
             _ => false,
         };
 
-        let mut arg_tys = if let Some(CDeclKind::Function { parameters, .. }) =
-            self.ast_context.fn_declref_decl(func)
-        {
-            self.ast_context.tys_of_params(parameters)
-        } else {
-            None
-        };
-
         let func = match self.ast_context[func].kind {
             // Direct function call
             CExprKind::ImplicitCast(_, fexp, CastKind::FunctionToPointerDecay, _, _)
@@ -391,7 +383,7 @@ impl<'c> Translation<'c> {
             // callee is a declref
             if matches!(self.ast_context[fexp].kind, CExprKind::DeclRef(..)) =>
                 {
-                    self.convert_expr(ctx.used(), fexp, None)?
+                    self.convert_expr(ctx.used(), fexp)?
                 }
 
             // Builtin function call
@@ -401,7 +393,7 @@ impl<'c> Translation<'c> {
 
             // Function pointer call
             _ => {
-                let callee = self.convert_expr(ctx.used(), func, None)?;
+                let callee = self.convert_expr(ctx.used(), func)?;
                 let make_fn_ty = |ret_ty: Box<Type>| {
                     let ret_ty = match *ret_ty {
                         Type::Tuple(TypeTuple { elems: ref v, .. }) if v.is_empty() => ReturnType::Default,
@@ -432,8 +424,7 @@ impl<'c> Translation<'c> {
                             transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
                         }).set_unsafe()
                     }
-                    Some(CTypeKind::Function(_, ty_arg_tys, ..)) => {
-                        arg_tys = Some(ty_arg_tys.clone());
+                    Some(CTypeKind::Function(..)) => {
                         // Normal function pointer
                         callee.map(unwrap_function_pointer)
                     }
@@ -449,7 +440,7 @@ impl<'c> Translation<'c> {
             // We want to decay refs only when function is variadic
             ctx.decay_ref = DecayRef::from(is_variadic);
 
-            let args = self.convert_call_args(ctx.used(), args, arg_tys.as_deref(), is_variadic)?;
+            let args = self.convert_call_args(ctx.used(), args)?;
 
             let mut call_expr = args.map(|args| mk().call_expr(func, args));
             if let Some(expected_ty) = override_ty {
@@ -478,23 +469,10 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         exprs: &[CExprId],
-        arg_tys: Option<&[CQualTypeId]>,
-        is_variadic: bool,
     ) -> TranslationResult<WithStmts<Vec<Box<Expr>>>> {
-        let arg_tys = if let Some(arg_tys) = arg_tys {
-            if !is_variadic {
-                assert!(arg_tys.len() == exprs.len());
-            }
-
-            arg_tys
-        } else {
-            &[]
-        };
-
         exprs
             .iter()
-            .enumerate()
-            .map(|(n, arg)| self.convert_call_arg(ctx, *arg, arg_tys.get(n).copied()))
+            .map(|arg| self.convert_call_arg(ctx, *arg))
             .collect()
     }
 
@@ -503,18 +481,16 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expr_id: CExprId,
-        override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let mut val;
 
         if (self.ast_context.index(expr_id).kind.get_qual_type())
             .map_or(false, |qtype| self.ast_context.is_va_list(qtype.ctype))
         {
-            // No `override_ty` to avoid unwanted casting.
-            val = self.convert_expr(ctx, expr_id, None)?;
+            val = self.convert_expr(ctx, expr_id)?;
             val = val.map(|val| mk_va_list_copy(self.tcfg.edition, val));
         } else {
-            val = self.convert_expr(ctx, expr_id, override_ty)?;
+            val = self.convert_expr(ctx, expr_id)?;
         }
 
         Ok(val)
