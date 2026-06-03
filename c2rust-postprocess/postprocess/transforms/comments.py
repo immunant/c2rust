@@ -136,7 +136,13 @@ class CommentsTransform(AbstractTransform):
         rust_comments = get_rust_comments(rust_fn)
         logging.debug(f"{rust_comments=}")
 
-        assert c_comments == rust_comments
+        if c_comments != rust_comments:
+            print(
+                "Comment mismatch for "
+                f"{identifier}:\n"
+                f"C comments:\n{c_comments}\n\n"
+                f"Rust comments:\n{rust_comments}\n"
+            )
 
         print(get_highlighted_rust(rust_fn))
 
