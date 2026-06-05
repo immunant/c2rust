@@ -77,6 +77,7 @@ fn immediate_expr_children(kind: &CExprKind) -> Vec<SomeId> {
         | Member(_, e, _, _, _)
         | Paren(_, e)
         | CompoundLiteral(_, e)
+        | ImaginaryLiteral(_, e)
         | Predefined(_, e)
         | VAArg(_, e) => intos![e],
         Statements(_, s) => vec![s.into()],
@@ -137,6 +138,7 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         | ImplicitCast(qty, e, _, _, _)
         | Paren(qty, e)
         | CompoundLiteral(qty, e)
+        | ImaginaryLiteral(qty, e)
         | VAArg(qty, e) => {
             intos![qty.ctype, e]
         }

@@ -1450,6 +1450,16 @@ impl ConversionContext {
                     self.expr_possibly_as_stmt(expected_ty, new_id, node, floating_literal);
                 }
 
+                ASTEntryTag::TagImaginaryLiteral if expected_ty & (EXPR | STMT) != 0 => {
+                    let wrapped = node.children[0].expect("Expected inner literal expression");
+                    let ty_old = node.type_id.expect("Expected expression to have type");
+                    let ty = self.visit_qualified_type(ty_old);
+
+                    let expr = CExprKind::ImaginaryLiteral(ty, self.visit_expr(wrapped));
+
+                    self.expr_possibly_as_stmt(expected_ty, new_id, node, expr);
+                }
+
                 ASTEntryTag::TagUnaryOperator if expected_ty & (EXPR | STMT) != 0 => {
                     let prefix =
                         from_value(node.extras[1].clone()).expect("Expected prefix information");

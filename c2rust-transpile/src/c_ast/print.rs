@@ -231,6 +231,10 @@ impl<W: Write> Printer<W> {
                 self.writer.write_all(b")")?;
                 self.print_expr(val, context)?;
             }
+            &ImaginaryLiteral(_, val) => {
+                self.print_expr(val, context)?;
+                self.writer.write_all(b"i")?;
+            }
             &Predefined(_, val) => {
                 self.print_expr(val, context)?;
             }

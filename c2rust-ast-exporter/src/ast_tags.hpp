@@ -95,6 +95,7 @@ enum ASTEntryTag {
     TagStringLiteral,
     TagCharacterLiteral,
     TagFloatingLiteral,
+    TagImaginaryLiteral,
 };
 
 enum TypeTag {
