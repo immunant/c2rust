@@ -1,14 +1,15 @@
 [package]
 name = "merge_rust"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-rust_util = { path = "../rust_util" }
+rust_util.workspace = true
 
-syn = { version = "2.0.108", features = ["full", "visit"] }
-proc-macro2 = { version = "1", features = ["span-locations"] }
-clap = { version = "4.5", features = ["derive"] }
-quote = "1"
+syn.workspace = true
+proc-macro2.workspace = true
+clap.workspace = true
+quote.workspace = true
 
-serde_json = "1"
+serde_json.workspace = true
+indexmap.workspace = true
