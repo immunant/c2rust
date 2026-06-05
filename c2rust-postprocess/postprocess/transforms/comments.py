@@ -78,10 +78,12 @@ class CommentsTransform(AbstractTransform):
 
         # TODO: make this function take a model and get prompt from model
         prompt_text = """
-        Transfer the comments from the following C function to the corresponding Rust function.
-        Do not add any comments that are not present in the C function.
-        Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
-        Respond with the Rust function definition with the transferred comments; say nothing else.
+        Copy C comments literally into the matching Rust function.
+
+        Only add comments; do not modify Rust code. Preserve comment text except for
+        indentation and delimiters. Use `///` only for comments that document the
+        function itself; use `//` or `/* */` for body comments. Do not infer doc
+        comments from C delimiter style alone. Return only the full Rust function.
         """  # noqa: E501
         prompt_text = dedent(prompt_text).strip()
 
