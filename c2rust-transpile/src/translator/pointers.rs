@@ -1,5 +1,3 @@
-use std::ops::Index;
-
 use c2rust_ast_builder::{mk, properties::Mutability};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use failure::{err_msg, format_err};
@@ -23,7 +21,7 @@ impl<'c> Translation<'c> {
         cqual_type: CQualTypeId,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let arg_kind = &self.ast_context[self.ast_context.resolve_parens(arg)].kind;
+        let arg_kind = &self.ast_context.index_unwrap_parens(arg).kind;
 
         match arg_kind {
             // C99 6.5.3.2 para 4
@@ -100,7 +98,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let arg_expr_kind = arg.map(|arg| {
             let arg = self.ast_context.unwrap_predefined_ident(arg);
-            &self.ast_context.index(arg).kind
+            &self.ast_context.index_unwrap_parens(arg).kind
         });
         let pointee_cty = self
             .ast_context
@@ -198,7 +196,7 @@ impl<'c> Translation<'c> {
         cqual_type: CQualTypeId,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let arg_expr_kind = &self.ast_context.index(arg).kind;
+        let arg_expr_kind = &self.ast_context.index_unwrap_parens(arg).kind;
 
         if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
             return self.convert_expr(ctx.used(), arg, None);
@@ -227,8 +225,8 @@ impl<'c> Translation<'c> {
         override_ty: Option<CQualTypeId>,
         deref: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let lhs_node = &self.ast_context.index(lhs).kind;
-        let rhs_node = &self.ast_context.index(rhs).kind;
+        let lhs_node = &self.ast_context.index_unwrap_parens(lhs).kind;
+        let rhs_node = &self.ast_context.index_unwrap_parens(rhs).kind;
 
         let lhs_node_type = lhs_node
             .get_type()
@@ -267,7 +265,7 @@ impl<'c> Translation<'c> {
             } else {
                 match lhs_node {
                     &CExprKind::ImplicitCast(_, arr, CastKind::ArrayToPointerDecay, _, _) => {
-                        match self.ast_context[arr].kind {
+                        match self.ast_context.index_unwrap_parens(arr).kind {
                             CExprKind::Member(_, _, field_decl, _, _)
                                 if self
                                     .potential_flexible_array_members
@@ -296,7 +294,9 @@ impl<'c> Translation<'c> {
                 // If the LHS just underwent an implicit cast from array to pointer, bypass that
                 // to make an actual Rust indexing operation
 
-                let t = self.ast_context[arr]
+                let t = self
+                    .ast_context
+                    .index_unwrap_parens(arr)
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("bad arr type"))?;
