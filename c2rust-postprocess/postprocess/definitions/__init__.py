@@ -258,7 +258,7 @@ def update_rust_definition(
         json.dump(new_definition_json, temp_file)
         temp_file.flush()
 
-        args = [merge_rust_path, root_rust_source_file, temp_file.name]
+        args = [merge_rust_path, "--update-only", root_rust_source_file, temp_file.name]
         logging.debug(f"Running merge_rust with args: {args}")
 
         result = subprocess.run(
