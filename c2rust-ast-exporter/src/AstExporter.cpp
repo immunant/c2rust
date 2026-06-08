@@ -1121,10 +1121,15 @@ class TranslateASTVisitor final
     bool VisitAttributedStmt(AttributedStmt *S) {
         std::vector<void*> childIds { S->getSubStmt() };
         encode_entry(S, TagAttributedStmt, childIds,
-                     [S](CborEncoder *array){
+                     [S](CborEncoder *local){
+                         CborEncoder array;
+                         cbor_encoder_create_array(local, &array, CborIndefiniteLength);
+
                          for (auto s: S->getAttrs()) {
-                             cbor_encode_text_stringz(array, s->getSpelling());
+                             cbor_encode_text_stringz(&array, s->getSpelling());
                          }
+
+                         cbor_encoder_close_container(local, &array);
         });
         return true;
     }
