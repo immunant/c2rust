@@ -2470,7 +2470,7 @@ pub enum CStmtKind {
     // statement in case of __attribute__((__fallthrough__)) at the end of a
     // case statement
     Attributed {
-        attributes: Vec<Attribute>,
+        attributes: IndexSet<Attribute>,
         substatement: CStmtId,
     },
 

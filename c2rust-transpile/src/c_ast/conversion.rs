@@ -208,6 +208,9 @@ impl ConversionContext {
                 "gnu_inline" => {
                     attrs.insert(Attribute::GnuInline);
                 }
+                "fallthrough" | "__fallthrough__" => {
+                    attrs.insert(Attribute::Fallthrough);
+                }
                 "noinline" => {
                     attrs.insert(Attribute::NoInline);
                 }
@@ -1183,13 +1186,13 @@ impl ConversionContext {
 
                 ASTEntryTag::TagAttributedStmt if expected_ty & OTHER_STMT != 0 => {
                     let substatement = node.children[0].map(|id| self.visit_stmt(id)).unwrap();
-                    let mut attributes = vec![];
+                    let mut attributes = IndexSet::new();
 
                     match expect_opt_str(&node.extras[0])
                         .expect("Attributed statement kind not found")
                     {
                         Some("fallthrough") | Some("__fallthrough__") => {
-                            attributes.push(Attribute::Fallthrough)
+                            attributes.insert(Attribute::Fallthrough)
                         }
                         Some(str) => panic!("Unknown statement attribute: {}", str),
                         None => panic!("Invalid statement attribute"),
