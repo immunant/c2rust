@@ -209,6 +209,9 @@ impl ConversionContext {
             "fallthrough" | "__fallthrough__" => Some(Attribute::Fallthrough),
             "gnu_inline" => Some(Attribute::GnuInline),
             "noinline" => Some(Attribute::NoInline),
+            "noreturn" => Some(Attribute::NoReturn),
+            "notnull" => Some(Attribute::NotNull),
+            "nullable" => Some(Attribute::Nullable),
             "packed" => Some(Attribute::Packed),
             "section" => {
                 let section = from_value(attr_info[1].clone()).expect("section name not found");
@@ -896,17 +899,13 @@ impl ConversionContext {
                         .expect("Attributed type child not found");
                     let ty = self.visit_qualified_type(ty_id);
 
-                    let kind = match expect_opt_str(&ty_node.extras[1])
-                        .expect("Attributed type kind not found")
-                    {
-                        None => None,
-                        Some("noreturn") => Some(Attribute::NoReturn),
-                        Some("nullable") => Some(Attribute::Nullable),
-                        Some("notnull") => Some(Attribute::NotNull),
-                        Some(other) => panic!("Unknown type attribute: {}", other),
+                    let attribute = match ty_node.extras[1] {
+                        Value::Null => None,
+                        Value::Array(ref value) => self.parse_attribute(value.clone()),
+                        _ => panic!("Expected to find attribute"),
                     };
 
-                    let ty = CTypeKind::Attributed(ty, kind);
+                    let ty = CTypeKind::Attributed(ty, attribute);
                     self.add_type(new_id, not_located(ty));
                     self.processed_nodes.insert(new_id, TYPE);
                 }

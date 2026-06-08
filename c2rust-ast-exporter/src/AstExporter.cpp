@@ -303,8 +303,12 @@ private:
                 tag = "nullable";
                 break;
             }
+
             if (tag) {
-                cbor_encode_text_stringz(local, tag);
+                CborEncoder attr_info;
+                cbor_encoder_create_array(local, &attr_info, 1);
+                cbor_encode_text_stringz(&attr_info, tag);
+                cbor_encoder_close_container(local, &attr_info);
             } else {
                 cbor_encode_null(local);
             }
