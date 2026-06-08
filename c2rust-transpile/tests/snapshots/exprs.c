@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 int puts(const char *str);
 
 static int side_effect(){
@@ -65,4 +67,13 @@ void statement_expr() {
     });
 
     puts("should be unreachable!");
+}
+
+void pointer_arithmetic(void) {
+    int i1[] = { 0, 1 };
+    int i2[] = { 10, 11 };
+    int *p1 = i1;
+    int *p2 = i2;
+    ptrdiff_t diff = p1 - p2;
+    int diff_int = p1 - p2;
 }
