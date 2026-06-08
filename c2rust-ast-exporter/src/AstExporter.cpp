@@ -2617,6 +2617,21 @@ class TranslateASTVisitor final
                     );
                 };
                 break;
+
+            case attr::AlwaysInline:
+            case attr::Cold:
+            case attr::FallThrough:
+            case attr::GNUInline:
+            case attr::NoInline:
+            case attr::NoReturn:
+            case attr::TypeNonNull:
+            case attr::TypeNullable:
+            case attr::Packed:
+            case attr::Used:
+                break;
+
+            default:
+                return;
         }
 
         encodeAttributeRaw(array, attr, extra);
