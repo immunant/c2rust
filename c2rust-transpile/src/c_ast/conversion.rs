@@ -205,14 +205,17 @@ impl ConversionContext {
                 "cold" => {
                     attrs.insert(Attribute::Cold);
                 }
-                "gnu_inline" => {
-                    attrs.insert(Attribute::GnuInline);
-                }
                 "fallthrough" | "__fallthrough__" => {
                     attrs.insert(Attribute::Fallthrough);
                 }
+                "gnu_inline" => {
+                    attrs.insert(Attribute::GnuInline);
+                }
                 "noinline" => {
                     attrs.insert(Attribute::NoInline);
+                }
+                "packed" => {
+                    attrs.insert(Attribute::Packed);
                 }
                 "used" => {
                     attrs.insert(Attribute::Used);
@@ -272,13 +275,6 @@ fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan
         file: ctx.files[loc.fileid as usize].path.clone(),
         loc: *loc,
     })
-}
-
-fn has_packed_attribute(attrs: Vec<Value>) -> bool {
-    attrs
-        .into_iter()
-        .map(|attr| from_value::<String>(attr).expect("Record attributes should be strings"))
-        .any(|attr_name| attr_name == "packed")
 }
 
 impl ConversionContext {
@@ -2361,6 +2357,7 @@ impl ConversionContext {
                         .expect("Expected to find whether decl is definition");
                     let attributes = from_value::<Vec<Value>>(node.extras[5].clone())
                         .expect("Expected attribute array on var decl");
+                    let attrs = self.parse_attributes(attributes);
 
                     assert!(
                         has_static_duration || has_thread_duration || !is_externally_visible,
@@ -2381,8 +2378,6 @@ impl ConversionContext {
                         .expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let attrs = self.parse_attributes(attributes);
-
                     let variable_decl = CDeclKind::Variable {
                         has_static_duration,
                         has_thread_duration,
@@ -2402,8 +2397,9 @@ impl ConversionContext {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let has_def = from_value(node.extras[1].clone())
                         .expect("Expected has_def flag on struct");
-                    let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
+                    let attributes = from_value::<Vec<Value>>(node.extras[2].clone())
                         .expect("Expected attribute array on record");
+                    let attrs = self.parse_attributes(attributes);
                     let manual_alignment =
                         expect_opt_u64(&node.extras[3]).expect("Expected struct alignment");
                     let max_field_alignment =
@@ -2422,7 +2418,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let is_packed = has_packed_attribute(attrs);
+                    let is_packed = attrs.contains(&Attribute::Packed);
 
                     let record = CDeclKind::Struct {
                         name,
@@ -2442,8 +2438,9 @@ impl ConversionContext {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let has_def = from_value(node.extras[1].clone())
                         .expect("Expected has_def flag on struct");
-                    let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
+                    let attributes = from_value::<Vec<Value>>(node.extras[2].clone())
                         .expect("Expected attribute array on record");
+                    let attrs = self.parse_attributes(attributes);
                     let fields: Option<Vec<CDeclId>> = if has_def {
                         Some(
                             self.visit_record_children(untyped_context, node, new_id)
@@ -2453,7 +2450,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let is_packed = has_packed_attribute(attrs);
+                    let is_packed = attrs.contains(&Attribute::Packed);
 
                     let record = CDeclKind::Union {
                         name,
@@ -2529,16 +2526,29 @@ impl ConversionContext {
                     // Look up the canonical declaration and see if it declares a
                     // struct. If so, check attributes of the non-canonical declaration
                     // and potentially update its `is_packed` property.
-                    if let Some(v) = self.typed_context.c_decls.get_mut(&canonical_decl) {
-                        match &mut v.kind {
+                    let is_record = self
+                        .typed_context
+                        .c_decls
+                        .get(&canonical_decl)
+                        .map_or(false, |v| {
+                            matches!(v.kind, CDeclKind::Struct { .. } | CDeclKind::Union { .. })
+                        });
+
+                    if is_record {
+                        let attributes = from_value::<Vec<Value>>(node.extras[0].clone())
+                            .expect("Expected attribute array on non-canonical record decl");
+                        let attrs = self.parse_attributes(attributes);
+
+                        match &mut self
+                            .typed_context
+                            .c_decls
+                            .get_mut(&canonical_decl)
+                            .unwrap()
+                            .kind
+                        {
                             CDeclKind::Struct { is_packed, .. }
                             | CDeclKind::Union { is_packed, .. } => {
-                                let attrs = from_value::<Vec<Value>>(node.extras[0].clone())
-                                    .expect(
-                                        "Expected attribute array on non-canonical record decl",
-                                    );
-
-                                *is_packed = has_packed_attribute(attrs);
+                                *is_packed = attrs.contains(&Attribute::Packed);
                             }
                             _ => {}
                         }

@@ -2971,6 +2971,7 @@ pub enum Attribute {
     NoReturn,
     NotNull,
     Nullable,
+    Packed,
     /// __attribute__((section("foo"), __section__("foo")))
     Section(String),
     /// __attribute__((used, __used__))
