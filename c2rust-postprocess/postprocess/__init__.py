@@ -140,12 +140,6 @@ def main(argv: Sequence[str] | None = None):
 
         logging.basicConfig(level=logging.getLevelName(args.log_level.upper()))
 
-        cache = getattr(DirectoryCache, args.cache_scope)()
-        if not args.update_cache:
-            cache = FrozenCache(cache)
-
-        model = get_model(args.llm_model)
-
         # sort transform IDs to transforms always run in the same order to
         # maximize cache hits even if the user passed them in a different order
         transform_ids = sorted(
@@ -153,6 +147,16 @@ def main(argv: Sequence[str] | None = None):
             for transform_id in set(args.transform)
             if transform_id.strip()
         )
+
+        needs_model = "comments" in {transform_id.lower() for transform_id in transform_ids}
+        cache = None
+        model = None
+        if needs_model:
+            cache = getattr(DirectoryCache, args.cache_scope)()
+            if not args.update_cache:
+                cache = FrozenCache(cache)
+            model = get_model(args.llm_model)
+
         transforms = [
             get_transform_by_id(transform_id, cache=cache, model=model)
             for transform_id in transform_ids
