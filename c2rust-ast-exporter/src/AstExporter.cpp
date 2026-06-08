@@ -2623,8 +2623,11 @@ class TranslateASTVisitor final
         const Attr *attr,
         std::function<void(CborEncoder *)> extra
     ) {
-        cbor_encode_text_stringz(array, attr->getSpelling());
-        extra(array);
+        CborEncoder attr_info;
+        cbor_encoder_create_array(array, &attr_info, CborIndefiniteLength);
+        cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+        extra(&attr_info);
+        cbor_encoder_close_container(array, &attr_info);
     }
 
     //

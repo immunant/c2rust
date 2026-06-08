@@ -171,79 +171,59 @@ fn parse_cast_kind(kind: &str) -> CastKind {
 impl ConversionContext {
     fn parse_attributes(&mut self, attributes: Vec<Value>) -> IndexSet<Attribute> {
         let mut attrs = IndexSet::new();
-        let mut expect_section_value = false;
-        let mut expect_alias_value = false;
-        let mut expect_visibility_value = false;
-        let mut expect_cleanup_id = false;
 
         for attr in attributes.into_iter() {
-            if expect_cleanup_id {
-                expect_cleanup_id = false;
-                match from_value::<ClangId>(attr) {
-                    Ok(func_id) => {
-                        attrs.insert(Attribute::Cleanup(self.visit_decl(func_id)));
-                    }
-                    Err(_) => {
-                        diag!(
-                            Diagnostic::ClangAst,
-                            "cleanup attribute is missing its function decl id",
-                        );
-                        self.invalid_clang_ast = true;
-                    }
-                }
-                continue;
-            }
+            let attr_info =
+                from_value::<Vec<Value>>(attr).expect("Expected to find attribute info array");
 
-            let attr_str = from_value::<String>(attr).expect("Decl attributes should be strings");
-
-            match attr_str.as_str() {
-                "alias" => expect_alias_value = true,
-                "always_inline" => {
-                    attrs.insert(Attribute::AlwaysInline);
-                }
-                "cleanup" => expect_cleanup_id = true,
-                "cold" => {
-                    attrs.insert(Attribute::Cold);
-                }
-                "fallthrough" | "__fallthrough__" => {
-                    attrs.insert(Attribute::Fallthrough);
-                }
-                "gnu_inline" => {
-                    attrs.insert(Attribute::GnuInline);
-                }
-                "noinline" => {
-                    attrs.insert(Attribute::NoInline);
-                }
-                "packed" => {
-                    attrs.insert(Attribute::Packed);
-                }
-                "used" => {
-                    attrs.insert(Attribute::Used);
-                }
-                "visibility" => expect_visibility_value = true,
-                "section" => expect_section_value = true,
-                s if expect_section_value => {
-                    attrs.insert(Attribute::Section(s.into()));
-
-                    expect_section_value = false;
-                }
-                s if expect_alias_value => {
-                    attrs.insert(Attribute::Alias(s.into()));
-
-                    expect_alias_value = false;
-                }
-                s if expect_visibility_value => {
-                    attrs.insert(Attribute::Visibility(s.into()));
-
-                    expect_visibility_value = false;
-                }
-                s => {
-                    diag!(Diagnostic::ClangAst, "unrecognized attribute: {}", s);
-                }
+            if let Some(attr) = self.parse_attribute(attr_info) {
+                attrs.insert(attr);
             }
         }
 
         attrs
+    }
+
+    fn parse_attribute(&mut self, attr_info: Vec<Value>) -> Option<Attribute> {
+        let attr_str =
+            from_value::<String>(attr_info[0].clone()).expect("Decl attributes should be strings");
+
+        match attr_str.as_str() {
+            "alias" => {
+                let alias = from_value(attr_info[1].clone()).expect("alias name not found");
+                Some(Attribute::Alias(alias))
+            }
+            "always_inline" => Some(Attribute::AlwaysInline),
+            "cleanup" => match from_value::<ClangId>(attr_info[1].clone()) {
+                Ok(func_id) => Some(Attribute::Cleanup(self.visit_decl(func_id))),
+                Err(_) => {
+                    diag!(
+                        Diagnostic::ClangAst,
+                        "cleanup attribute is missing its function decl id",
+                    );
+                    self.invalid_clang_ast = true;
+                    None
+                }
+            },
+            "cold" => Some(Attribute::Cold),
+            "fallthrough" | "__fallthrough__" => Some(Attribute::Fallthrough),
+            "gnu_inline" => Some(Attribute::GnuInline),
+            "noinline" => Some(Attribute::NoInline),
+            "packed" => Some(Attribute::Packed),
+            "section" => {
+                let section = from_value(attr_info[1].clone()).expect("section name not found");
+                Some(Attribute::Section(section))
+            }
+            "used" => Some(Attribute::Used),
+            "visibility" => {
+                let vis = from_value(attr_info[1].clone()).expect("visibility kind not found");
+                Some(Attribute::Visibility(vis))
+            }
+            s => {
+                diag!(Diagnostic::ClangAst, "unrecognized attribute: {}", s);
+                None
+            }
+        }
     }
 }
 
