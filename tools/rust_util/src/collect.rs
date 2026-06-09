@@ -1,15 +1,30 @@
 use crate::error::Error;
+use proc_macro2::Span;
 use std::collections::HashSet;
 use std::fs;
 use std::iter;
+use std::mem;
 use std::path::{Path, PathBuf};
 use syn;
 use syn::ext::IdentExt;
+use syn::spanned::Spanned;
+
+#[derive(Clone, Debug)]
+pub struct ModInfo {
+    pub mod_path: Vec<String>,
+    pub file_path: PathBuf,
+    pub inner_end_pos: usize,
+    pub is_inline: bool,
+}
 
 #[derive(Clone, Default)]
 pub struct FileCollector {
     /// File path, module path, and AST for each file visited so far.
     pub files: Vec<(PathBuf, Vec<String>, syn::File)>,
+    pub mods: Vec<ModInfo>,
+    /// Inline modules collected by `walk_items`.  These are converted into `ModInfo`s in the
+    /// enclosing call to `parse`.
+    inline_mods: Vec<(Vec<String>, Span)>,
     seen: HashSet<PathBuf>,
 }
 
@@ -41,8 +56,27 @@ impl FileCollector {
             base_path_storage = file_path.with_extension("");
             &base_path_storage
         };
+
+        let old_inline_mods = mem::take(&mut self.inline_mods);
         self.walk_items(&ast.items, base_path, mod_path.clone(), &[])?;
+        let new_inline_mods = mem::replace(&mut self.inline_mods, old_inline_mods);
+
+        self.mods.push(ModInfo {
+            mod_path: mod_path.clone(),
+            file_path: file_path.to_owned(),
+            inner_end_pos: ast.span().byte_range().end as usize,
+            is_inline: false,
+        });
+        for (mod_path, span) in new_inline_mods {
+            self.mods.push(ModInfo {
+                mod_path: mod_path,
+                file_path: file_path.to_owned(),
+                inner_end_pos: span.byte_range().end as usize - 1,
+                is_inline: true,
+            });
+        }
         self.files.push((file_path.to_owned(), mod_path, ast));
+
         Ok(())
     }
 
@@ -59,7 +93,7 @@ impl FileCollector {
                 _ => continue,
             };
             mod_path.push(im.ident.unraw().to_string());
-            if let Some((_, ref inline_items)) = im.content {
+            if let Some((brace, ref inline_items)) = im.content {
                 let name =
                     path_attr_value(&im.attrs)?.unwrap_or_else(|| im.ident.unraw().to_string());
                 let module = parent_module
@@ -68,6 +102,7 @@ impl FileCollector {
                     .chain(iter::once(&name as &_))
                     .collect::<Vec<_>>();
                 self.walk_items(inline_items, base_path, mod_path.clone(), &module)?;
+                self.inline_mods.push((mod_path.clone(), brace.span.join()));
             } else {
                 let mut path = base_path.to_owned();
                 for &m in parent_module {
@@ -87,6 +122,7 @@ impl FileCollector {
                     }
                     self.parse(path, mod_path.clone(), false)?;
                 }
+                // No need to update `self.mods` - that's handled by the recursive call to `parse`.
             }
             mod_path.pop();
         }
