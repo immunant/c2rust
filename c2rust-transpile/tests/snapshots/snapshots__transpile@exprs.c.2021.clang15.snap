@@ -131,7 +131,7 @@ pub unsafe extern "C" fn pointer_arithmetic() {
     let mut i2: [::core::ffi::c_int; 2] = [10 as ::core::ffi::c_int, 11 as ::core::ffi::c_int];
     let mut p1: *mut ::core::ffi::c_int = &raw mut i1 as *mut ::core::ffi::c_int;
     let mut p2: *mut ::core::ffi::c_int = &raw mut i2 as *mut ::core::ffi::c_int;
-    let mut diff: ptrdiff_t = p1.offset_from(p2) as ptrdiff_t;
+    let mut diff: ptrdiff_t = p1.offset_from(p2);
     let mut diff_int: ::core::ffi::c_int =
         p1.offset_from(p2) as ::core::ffi::c_long as ::core::ffi::c_int;
 }

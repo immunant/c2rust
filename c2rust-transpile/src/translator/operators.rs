@@ -66,8 +66,6 @@ impl<'c> Translation<'c> {
                     ctx = ctx.decay_ref();
                 }
 
-                let ty = self.convert_type(expr_type_id.ctype)?;
-
                 let lhs_kind = &self.ast_context.index_unwrap_parens(lhs).kind;
                 let mut lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
@@ -174,9 +172,9 @@ impl<'c> Translation<'c> {
 
                     lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
                         self.convert_binary_operator(
+                            ctx,
+                            expr_type_id,
                             op,
-                            ty,
-                            expr_type_id.ctype,
                             lhs_type_id,
                             rhs_type_id,
                             lhs_val,
@@ -218,12 +216,11 @@ impl<'c> Translation<'c> {
                 WithStmts::new_val(read.clone()),
             )?;
 
-            let ty = self.convert_type(compute_res_type_id.ctype)?;
             let val = lhs.and_then_try(|lhs| {
                 self.convert_binary_operator(
+                    ctx,
+                    compute_res_type_id,
                     bin_op,
-                    ty,
-                    compute_res_type_id.ctype,
                     compute_lhs_type_id,
                     rhs_type_id,
                     lhs,
@@ -426,12 +423,11 @@ impl<'c> Translation<'c> {
                         WithStmts::new_val(read.clone()),
                     )?;
 
-                    let ty = self.convert_type(result_type_id.ctype)?;
                     let val = lhs.and_then_try(|lhs|
                         self.convert_binary_operator(
+                            ctx,
+                            result_type_id,
                             op,
-                            ty,
-                            result_type_id.ctype,
                             expr_or_comp_type_id,
                             rhs_type_id,
                             lhs,
@@ -503,9 +499,9 @@ impl<'c> Translation<'c> {
     /// arguments be usable as rvalues.
     fn convert_binary_operator(
         &self,
+        ctx: ExprContext,
+        expr_type_id: CQualTypeId,
         op: CBinOp,
-        ty: Box<Type>,
-        ctype: CTypeId,
         lhs_type: CQualTypeId,
         rhs_type: CQualTypeId,
         lhs: Box<Expr>,
@@ -513,13 +509,15 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let is_unsigned_integral_type = self
             .ast_context
-            .resolve_type(ctype)
+            .resolve_type(expr_type_id.ctype)
             .kind
             .is_unsigned_integral_type();
 
         Ok(WithStmts::new_val(match op {
             CBinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
-            CBinOp::Subtract => return self.convert_subtraction(ty, lhs_type, rhs_type, lhs, rhs),
+            CBinOp::Subtract => {
+                return self.convert_subtraction(ctx, expr_type_id, lhs_type, rhs_type, lhs, rhs)
+            }
 
             op if op.is_arithmetic() && is_unsigned_integral_type => {
                 mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs])
@@ -566,7 +564,8 @@ impl<'c> Translation<'c> {
 
     fn convert_subtraction(
         &self,
-        ty: Box<Type>,
+        ctx: ExprContext,
+        expr_type_id: CQualTypeId,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
@@ -577,7 +576,8 @@ impl<'c> Translation<'c> {
 
         if let &CTypeKind::Pointer(pointee) = rhs_type {
             let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
-            Ok(val.map(|val| mk().cast_expr(val, ty)))
+            let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff).unwrap();
+            self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
         } else if lhs_type.is_unsigned_integral_type() {

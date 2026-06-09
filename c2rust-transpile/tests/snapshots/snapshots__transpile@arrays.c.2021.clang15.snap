@@ -162,5 +162,5 @@ pub unsafe extern "C" fn variable_length() {
     let vla_3 = length as usize;
     let mut second: *mut ::core::ffi::c_int =
         first.offset(1 as ::core::ffi::c_int as isize * vla_2 as isize) as *mut ::core::ffi::c_int;
-    let mut diff: ptrdiff_t = (second.offset_from(first) / vla_2 as isize) as ptrdiff_t;
+    let mut diff: ptrdiff_t = second.offset_from(first) / vla_2 as isize;
 }
