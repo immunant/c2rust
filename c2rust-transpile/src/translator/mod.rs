@@ -3412,7 +3412,9 @@ impl<'c> Translation<'c> {
                 self.convert_init_list(ctx, override_ty, ty, ids, opt_union_field_id)
             }
 
-            ImplicitValueInit(ty) => self.implicit_default_expr(ctx, ty.ctype),
+            ImplicitValueInit(ty) => {
+                self.implicit_default_expr(ctx, override_ty.unwrap_or(ty).ctype)
+            }
 
             Predefined(_, val_id) => self.convert_expr(ctx, val_id, override_ty),
 
