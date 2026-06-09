@@ -176,7 +176,7 @@ class DirectoryCache(AbstractCache):
         try:
             toml = cache_file.read_text()
         except FileNotFoundError:
-            data = {
+            data: TomlDict = {
                 "transform": transform,
                 "identifier": identifier,
                 "model": model,
@@ -199,7 +199,7 @@ class DirectoryCache(AbstractCache):
         messages: list[dict[str, Any]],
         response: str,
     ) -> None:
-        data = {
+        data: TomlDict = {
             "transform": transform,
             "identifier": identifier,
             "model": model,
