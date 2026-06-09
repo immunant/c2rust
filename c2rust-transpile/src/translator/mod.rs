@@ -2912,6 +2912,9 @@ impl<'c> Translation<'c> {
 
     pub fn compute_align_of_type(
         &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         mut type_id: CTypeId,
         preferred: bool,
         src_loc: &Option<SrcSpan>,
@@ -2948,7 +2951,12 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
         }
         let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
-        Ok(WithStmts::new_val(call))
+        self.make_cast(
+            ctx,
+            result_type_id,
+            expected_type_id.unwrap_or(result_type_id),
+            WithStmts::new_val(call),
+        )
     }
 
     /// Convert multiple expressions (while collecting a context of statements) given either all or
@@ -3053,12 +3061,22 @@ impl<'c> Translation<'c> {
                             }
                         }
                     },
-                    CUnTypeOp::AlignOf => {
-                        self.compute_align_of_type(arg_ty.ctype, false, src_loc)?
-                    }
-                    CUnTypeOp::PreferredAlignOf => {
-                        self.compute_align_of_type(arg_ty.ctype, true, src_loc)?
-                    }
+                    CUnTypeOp::AlignOf => self.compute_align_of_type(
+                        ctx,
+                        override_ty,
+                        result_type_id,
+                        arg_ty.ctype,
+                        false,
+                        src_loc,
+                    )?,
+                    CUnTypeOp::PreferredAlignOf => self.compute_align_of_type(
+                        ctx,
+                        override_ty,
+                        result_type_id,
+                        arg_ty.ctype,
+                        true,
+                        src_loc,
+                    )?,
                 };
 
                 Ok(result)
