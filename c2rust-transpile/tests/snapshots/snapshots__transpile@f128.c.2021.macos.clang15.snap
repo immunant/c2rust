@@ -34,12 +34,12 @@ pub unsafe extern "C" fn long_double_test() {
     let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
-    let mut is_inf: bool = if ::core::mem::size_of::<::f128::f128>() as usize
-        == ::core::mem::size_of::<::core::ffi::c_float>() as usize
+    let mut is_inf: bool = if ::core::mem::size_of::<::f128::f128>()
+        == ::core::mem::size_of::<::core::ffi::c_float>()
     {
         __inline_isinff(huge.to_f32().unwrap())
-    } else if ::core::mem::size_of::<::f128::f128>() as usize
-        == ::core::mem::size_of::<::core::ffi::c_double>() as usize
+    } else if ::core::mem::size_of::<::f128::f128>()
+        == ::core::mem::size_of::<::core::ffi::c_double>()
     {
         __inline_isinfd(huge.to_f64().unwrap())
     } else {

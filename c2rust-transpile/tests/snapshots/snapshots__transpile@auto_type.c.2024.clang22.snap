@@ -21,7 +21,7 @@ pub struct bar {
 pub unsafe extern "C" fn foo() -> ::core::ffi::c_int {
     let mut x: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
     let mut px: *mut ::core::ffi::c_int = &raw mut x;
-    let mut sx: usize = ::core::mem::size_of::<::core::ffi::c_int>() as usize;
+    let mut sx: usize = ::core::mem::size_of::<::core::ffi::c_int>();
     let mut y: bar = bar {
         x: x as ::core::ffi::c_int,
     } as bar;
