@@ -3086,7 +3086,7 @@ impl<'c> Translation<'c> {
                 if let Some(constant) = value {
                     self.convert_constant(constant).map(WithStmts::new_val)
                 } else {
-                    self.convert_expr(ctx, child, Some(ty))
+                    self.convert_expr(ctx, child, Some(override_ty.unwrap_or(ty)))
                 }
             }
 
