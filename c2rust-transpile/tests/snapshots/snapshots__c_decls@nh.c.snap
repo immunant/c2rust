@@ -3,22 +3,78 @@ source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/c_decls_snapshots/nh.c_decls.json
 ---
 {
-  "FOO": "FOO 4000+50",
-  "a": "#include <stddef.h>\n#include <stdint.h>\nint a;",
-  "a1": "// comment before multiple decl\nint a1,",
-  "a2": ", a2,",
-  "a3": ", a3;",
-  "another": "int another;",
-  "another_func": "int\nanother_func(void)\n{\n    int var = 0;\n    return 4 + var;\n}",
-  "bb": "int bb;",
-  "ccc": "/*comment for cc*/int ccc;",
-  "d": "int d;",
-  "e": "int e;",
-  "f": "void f(void){}",
-  "forward_decl_before_other_def": "/*real defn*/\nvoid forward_decl_before_other_def(int x) { }",
-  "func_after_decl": "void func_after_decl(int n) {}",
-  "func_holding_define": "int\nfunc_holding_define(void)\n{\n#define FOO 4000+50\n    return FOO;\n}",
-  "g": "void g(void){}",
-  "h": "/*comment for h*/void h(void){}",
-  "ngx_hash_init": "//comment for ngx_hash_init\nvoid\nngx_hash_init(void)\n{\n    size_t len;\n    ngx_uint_t align = len & ~sizeof(void *);\n}"
+  "definitions": {
+    "FOO": {
+      "definition": "FOO 4000+50",
+      "preprocessed_definition": null
+    },
+    "a": {
+      "definition": "#include <stddef.h>\n#include <stdint.h>\nint a;",
+      "preprocessed_definition": null
+    },
+    "a1": {
+      "definition": "// comment before multiple decl\nint a1,",
+      "preprocessed_definition": null
+    },
+    "a2": {
+      "definition": ", a2,",
+      "preprocessed_definition": null
+    },
+    "a3": {
+      "definition": ", a3;",
+      "preprocessed_definition": null
+    },
+    "another": {
+      "definition": "int another;",
+      "preprocessed_definition": null
+    },
+    "another_func": {
+      "definition": "int\nanother_func(void)\n{\n    int var = 0;\n    return 4 + var;\n}",
+      "preprocessed_definition": "int\nanother_func(void)\n{\n    int var = 0;\n    return 4 + var;\n}"
+    },
+    "bb": {
+      "definition": "int bb;",
+      "preprocessed_definition": null
+    },
+    "ccc": {
+      "definition": "/*comment for cc*/int ccc;",
+      "preprocessed_definition": null
+    },
+    "d": {
+      "definition": "int d;",
+      "preprocessed_definition": null
+    },
+    "e": {
+      "definition": "int e;",
+      "preprocessed_definition": null
+    },
+    "f": {
+      "definition": "void f(void){}",
+      "preprocessed_definition": "void f(void){}void g(void){}/*comment for h*/void h(void){}int d;int e;;;;;;;;int another;"
+    },
+    "forward_decl_before_other_def": {
+      "definition": "/*real defn*/\nvoid forward_decl_before_other_def(int x) { }",
+      "preprocessed_definition": "/*real defn*/\nvoid forward_decl_before_other_def(int x) { }"
+    },
+    "func_after_decl": {
+      "definition": "void func_after_decl(int n) {}",
+      "preprocessed_definition": "void func_after_decl(int n) {}"
+    },
+    "func_holding_define": {
+      "definition": "int\nfunc_holding_define(void)\n{\n#define FOO 4000+50\n    return FOO;\n}",
+      "preprocessed_definition": "int\nfunc_holding_define(void)\n{\n#define FOO 4000+50\n    return FOO;\n}"
+    },
+    "g": {
+      "definition": "void g(void){}",
+      "preprocessed_definition": "void f(void){}void g(void){}/*comment for h*/void h(void){}int d;int e;;;;;;;;int another;"
+    },
+    "h": {
+      "definition": "/*comment for h*/void h(void){}",
+      "preprocessed_definition": "void f(void){}void g(void){}/*comment for h*/void h(void){}int d;int e;;;;;;;;int another;"
+    },
+    "ngx_hash_init": {
+      "definition": "//comment for ngx_hash_init\nvoid\nngx_hash_init(void)\n{\n    size_t len;\n    ngx_uint_t align = len & ~sizeof(void *);\n}",
+      "preprocessed_definition": "//comment for ngx_hash_init\nvoid\nngx_hash_init(void)\n{\n    size_t len;\n    ngx_uint_t align = len & ~sizeof(void *);\n}"
+    }
+  }
 }

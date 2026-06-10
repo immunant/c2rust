@@ -15,6 +15,7 @@ use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use log::{error, trace, warn};
 use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
+use serde_derive::Serialize;
 use syn::spanned::Spanned as _;
 use syn::{
     AttrStyle, BareVariadic, BinOp, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast,
@@ -557,20 +558,38 @@ pub fn emit_c_decl_map(
     t: &Translation,
     converted_decls: &HashMap<CDeclId, ConvertedDecl>,
     decl_source_ranges: IndexMap<CDeclId, CDeclSrcRange>,
+    preprocessed_definitions: &IndexMap<String, String>,
 ) -> DeclMap {
     let mut path_to_c_source_range: IndexMap<&Ident, _> = Default::default();
+    let mut path_to_c_name: IndexMap<&Ident, String> = Default::default();
     for (decl, source_range) in decl_source_ranges {
+        let c_name = t
+            .ast_context
+            .get_decl(&decl)
+            .and_then(|decl| decl.kind.get_name())
+            .cloned();
         match converted_decls.get(&decl) {
             Some(ConvertedDecl::ForeignItem(item)) => {
-                path_to_c_source_range
-                    .insert(foreign_item_ident_vis(item).unwrap().0, source_range);
+                let ident = foreign_item_ident_vis(item).unwrap().0;
+                path_to_c_source_range.insert(ident, source_range);
+                if let Some(c_name) = c_name.clone() {
+                    path_to_c_name.insert(ident, c_name);
+                }
             }
             Some(ConvertedDecl::Item(item)) => {
-                path_to_c_source_range.insert(item_ident(item).unwrap(), source_range);
+                let ident = item_ident(item).unwrap();
+                path_to_c_source_range.insert(ident, source_range);
+                if let Some(c_name) = c_name.clone() {
+                    path_to_c_name.insert(ident, c_name);
+                }
             }
             Some(ConvertedDecl::Items(items)) => {
                 for item in items {
-                    path_to_c_source_range.insert(item_ident(item).unwrap(), source_range);
+                    let ident = item_ident(item).unwrap();
+                    path_to_c_source_range.insert(ident, source_range);
+                    if let Some(c_name) = c_name.clone() {
+                        path_to_c_name.insert(ident, c_name);
+                    }
                 }
             }
             Some(ConvertedDecl::NoItem) => {}
@@ -655,7 +674,7 @@ pub fn emit_c_decl_map(
         &file_content[begin_offset..end_offset]
     };
 
-    let item_path_to_c_source: IndexMap<_, _> = path_to_c_source_range
+    let definitions = path_to_c_source_range
         .into_iter()
         .map(|(ident, range)| {
             let path = ident.to_string();
@@ -665,10 +684,19 @@ pub fn emit_c_decl_map(
                 range.end,
             ))
             .unwrap();
-            (path, c_src.to_owned())
+            (
+                path,
+                CDeclMapDefinition {
+                    definition: c_src.to_owned(),
+                    preprocessed_definition: path_to_c_name
+                        .get(ident)
+                        .and_then(|c_name| preprocessed_definitions.get(c_name))
+                        .cloned(),
+                },
+            )
         })
         .collect();
-    item_path_to_c_source
+    DeclMap { definitions }
 }
 
 pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
@@ -679,12 +707,117 @@ pub fn translate_failure(tcfg: &TranspilerConfig, msg: &str) {
     }
 }
 
-type DeclMap = IndexMap<String, String>;
+/// Extract per-function preprocessed text from preprocessor output with line
+/// markers (`clang -E -fdirectives-only -C` equivalent), as produced by the
+/// AST exporter. Line markers map output lines back to source lines, which
+/// are then matched against the source ranges of top-level function
+/// definitions. Returns a map from C function name to preprocessed text.
+pub fn collect_preprocessed_definitions(
+    ast_context: &TypedAstContext,
+    main_file: &Path,
+    preprocessed: &str,
+) -> IndexMap<String, String> {
+    let main_file_canonical = main_file
+        .canonicalize()
+        .unwrap_or_else(|_| main_file.to_owned());
+
+    // Markers spell the file the way the compile command did, which may be
+    // relative to a compilation directory we don't know. The output reliably
+    // begins with a marker for the main file, so learn its spelling there.
+    let main_file_spelling = preprocessed.lines().next().and_then(parse_line_marker);
+
+    // Associate each non-marker output line with its original source line,
+    // keeping only lines that come from the main file.
+    let mut main_file_lines: Vec<(u64, &str)> = Vec::new();
+    let mut is_main_file_cache: HashMap<&str, bool> = HashMap::new();
+    let mut in_main_file = false;
+    let mut current_line: u64 = 0;
+    for line in preprocessed.lines() {
+        if let Some((line_no, file)) = parse_line_marker(line) {
+            in_main_file = *is_main_file_cache.entry(file).or_insert_with(|| {
+                Some(file) == main_file_spelling.map(|(_, file)| file)
+                    || Path::new(file)
+                        .canonicalize()
+                        .map(|path| path == main_file_canonical)
+                        .unwrap_or(false)
+            });
+            current_line = line_no;
+        } else {
+            if in_main_file {
+                main_file_lines.push((current_line, line));
+            }
+            current_line += 1;
+        }
+    }
+
+    ast_context
+        .top_decl_locs()
+        .into_iter()
+        .filter_map(|(decl_id, range)| {
+            let decl = ast_context.get_decl(&decl_id)?;
+            let CDeclKind::Function {
+                name,
+                body: Some(_),
+                ..
+            } = &decl.kind
+            else {
+                return None;
+            };
+
+            // `earliest_begin` includes the gap holding leading comments, but
+            // points into the line on which the previous decl ended; skip
+            // that partial line unless this decl also starts on it.
+            let mut begin_line = range.earliest_begin.line;
+            if range.earliest_begin.column > 1 && range.strict_begin.line > begin_line {
+                begin_line += 1;
+            }
+            let end_line = range.end.line;
+
+            let definition = main_file_lines
+                .iter()
+                .filter(|(line_no, _)| (begin_line..=end_line).contains(line_no))
+                .map(|(_, text)| *text)
+                .join("\n");
+            let definition = definition.trim_matches('\n');
+            if definition.trim().is_empty() {
+                return None;
+            }
+            Some((name.clone(), definition.to_owned()))
+        })
+        .collect()
+}
+
+/// Parse a GNU-style line marker (`# <line> "<file>" [flags...]`) emitted by
+/// the preprocessor. The returned line number and file apply to the next
+/// output line. Other `#` lines (e.g. `#define` passed through in
+/// directives-only mode) are not markers and yield `None`.
+fn parse_line_marker(line: &str) -> Option<(u64, &str)> {
+    let rest = line.strip_prefix('#')?;
+    let rest = rest.trim_start_matches([' ', '\t']);
+    let digits_len = rest.bytes().take_while(|b| b.is_ascii_digit()).count();
+    let line_no: u64 = rest.get(..digits_len)?.parse().ok()?;
+    let rest = rest[digits_len..].trim_start_matches([' ', '\t']);
+    let path = rest.strip_prefix('"')?;
+    let path = &path[..path.find('"')?];
+    Some((line_no, path))
+}
+
+#[derive(Serialize)]
+pub struct DeclMap {
+    definitions: IndexMap<String, CDeclMapDefinition>,
+}
+
+#[derive(Serialize)]
+struct CDeclMapDefinition {
+    definition: String,
+    preprocessed_definition: Option<String>,
+}
 
 pub fn translate(
     ast_context: TypedAstContext,
     tcfg: &TranspilerConfig,
     main_file: &Path,
+    preprocessed_definitions: &IndexMap<String, String>,
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
@@ -918,8 +1051,8 @@ pub fn translate(
             .collect::<HashMap<_, _>>();
 
         // Generate a map from Rust items to the source code of their C declarations.
-        let decl_map =
-            decl_source_ranges.map(|ranges| emit_c_decl_map(&t, &converted_decls, ranges));
+        let decl_map = decl_source_ranges
+            .map(|ranges| emit_c_decl_map(&t, &converted_decls, ranges, preprocessed_definitions));
 
         t.ast_context.sort_top_decls_for_emitting();
 
