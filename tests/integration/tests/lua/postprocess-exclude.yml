@@ -1,0 +1,14 @@
+repo/src/lobject.rs:
+  - luaO_pushvfstring # repeated comment-order failures
+
+repo/src/lua.rs:
+  - collectargs # repeated comment-order failures
+
+repo/src/lstrlib.rs:
+  - match_0 # repeated comment-order failures
+
+repo/src/ldo.rs:
+  - luaD_call # repeated comment-order failures
+
+repo/src/lvm.rs:
+  - luaV_execute # main interpreter loop; invalid Rust output
