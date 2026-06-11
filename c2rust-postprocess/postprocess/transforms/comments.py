@@ -92,8 +92,7 @@ class CommentsTransform(AbstractTransform):
         if rust_comments:
             logging.info(
                 f"Skipping Rust fn {identifier} with existing comments:\
-                \n{rust_comments} in\
-                \n{rust_definition}"
+                \n{get_highlighted_rust(rust_definition)}"
             )
             return
 
@@ -196,7 +195,10 @@ class CommentsTransform(AbstractTransform):
                 response=response,
             )
 
-        print(get_highlighted_rust(rust_fn))
+        logging.info(
+            f"Comments transferred to Rust fn {identifier}:\
+                \n{get_highlighted_rust(rust_fn)}"
+        )
 
         # TODO: move this to apply_file?
         # the challenge is that not all transforms will update Rust code
