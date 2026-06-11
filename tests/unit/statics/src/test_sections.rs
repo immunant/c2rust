@@ -1,4 +1,4 @@
-//! feature_raw_ref_op
+//! feature_raw_ref_op, feature_strict_provenance
 
 #[cfg(not(target_os = "macos"))]
 use crate::attributes::{rust_no_attrs, rust_used_static, rust_used_static2, rust_used_static3};
