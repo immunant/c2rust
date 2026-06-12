@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/os-specific/typedefidx.2021.macos.rs
+expression: cat tests/snapshots/typedefidx.2021.clang15.rs
 ---
 #![allow(
     clippy::missing_safety_doc,
