@@ -120,11 +120,12 @@ def get_model(model_id: str) -> AbstractGenerativeModel:
             f"API key for model {model_id} not found in env; "
             "using cached responses only."
         )
-        return MockGenerativeModel()
+        return MockGenerativeModel(id=model_id)
 
     # TODO: remove google specific API bits
     return get_model_by_id(
         model_id,
+        api_key=api_key,
         generation_config={
             "system_instruction": types.Content(
                 role="system", parts=[types.Part.from_text(text=SYSTEM_INSTRUCTION)]
@@ -170,3 +171,6 @@ def main(argv: Sequence[str] | None = None):
     except KeyboardInterrupt:
         logging.warning("Interrupted by user, terminating...")
         return 130  # 128 + SIGINT(2)
+    except ValueError as error:
+        logging.error(error)
+        return 1

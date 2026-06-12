@@ -8,7 +8,7 @@ from postprocess.definitions import (
     get_rust_comments,
     update_rust_definition,
 )
-from postprocess.models import AbstractGenerativeModel, api_key_from_env
+from postprocess.models import AbstractGenerativeModel
 from postprocess.transforms.base import AbstractTransform
 from postprocess.utils import get_highlighted_rust, remove_backticks
 
@@ -110,7 +110,7 @@ class CommentsTransform(AbstractTransform):
         response = self.model.generate_with_tools(messages)
 
         if response is None:
-            if api_key_from_env(model) is None:
+            if self.model.cache_only:
                 # No API key set: skip uncached entries instead of failing.
                 logging.warning(
                     f"Cache miss for {identifier}; skipping since no API key was set..."

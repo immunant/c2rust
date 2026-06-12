@@ -8,12 +8,17 @@ class AbstractGenerativeModel(ABC):
     Abstract base class for LLM clients using Native Function Calling.
     """
 
-    def __init__(self, id: str):
+    def __init__(self, id: str, cache_only: bool = False):
         self._id = id
+        self._cache_only = cache_only
 
     @property
     def id(self) -> str:
         return self._id
+
+    @property
+    def cache_only(self) -> bool:
+        return self._cache_only
 
     # @abstractmethod
     # async def agenerate_with_tools(

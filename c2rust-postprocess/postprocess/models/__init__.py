@@ -11,14 +11,19 @@ def api_key_from_env(model_id: str) -> str | None:
         return os.getenv("GEMINI_API_KEY")
     elif model_id.startswith("gpt"):
         return os.getenv("OPENAI_API_KEY")
-    return None
+
+    raise ValueError(f"Unsupported model identifier: {model_id}")
 
 
-def get_model_by_id(id: str, generation_config: dict | None) -> AbstractGenerativeModel:
+def get_model_by_id(
+    id: str, api_key: str, generation_config: dict | None
+) -> AbstractGenerativeModel:
     """Factory function to get model instance by ID."""
     if id.startswith("gemini"):
-        return GoogleGenerativeModel(id=id, generation_config=generation_config)
+        return GoogleGenerativeModel(
+            id=id, api_key=api_key, generation_config=generation_config
+        )
     elif id.startswith("gpt"):
-        return GPTModel(id=id)
+        return GPTModel(id=id, api_key=api_key)
 
     raise ValueError(f"Unsupported model identifier: {id}")

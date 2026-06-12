@@ -10,8 +10,8 @@ class MockGenerativeModel(AbstractGenerativeModel):
     Generates no responses, so callers fall back to cached responses only.
     """
 
-    def __init__(self):
-        super().__init__(id="mock-llm")
+    def __init__(self, id: str = "mock-llm"):
+        super().__init__(id=id, cache_only=True)
 
     def generate_with_tools(
         self,
