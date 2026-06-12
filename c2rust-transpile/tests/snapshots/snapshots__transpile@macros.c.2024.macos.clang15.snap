@@ -20,8 +20,7 @@ unsafe extern "C" {
         __n: size_t,
     ) -> *mut ::core::ffi::c_void;
 }
-pub type __darwin_size_t = usize;
-pub type size_t = __darwin_size_t;
+pub type size_t = usize;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn errno_is_error() -> bool {
     return *__error() != 0 as ::core::ffi::c_int;

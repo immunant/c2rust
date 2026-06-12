@@ -12,8 +12,7 @@ expression: cat tests/snapshots/os-specific/out_of_range_lit.2024.linux.clang15.
     unused_assignments,
     unused_mut
 )]
-pub type __int32_t = i32;
-pub type int32_t = __int32_t;
+pub type int32_t = i32;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn f() {
     let mut a: int32_t = 0x80000000 as ::core::ffi::c_uint as int32_t;

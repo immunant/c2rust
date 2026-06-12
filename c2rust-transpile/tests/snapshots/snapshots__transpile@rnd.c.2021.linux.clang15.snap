@@ -14,10 +14,8 @@ expression: cat tests/snapshots/os-specific/rnd.2021.linux.clang15.rs
 extern "C" {
     fn abs(__x: ::core::ffi::c_int) -> ::core::ffi::c_int;
 }
-pub type __int32_t = i32;
-pub type __uint32_t = u32;
-pub type int32_t = __int32_t;
-pub type uint32_t = __uint32_t;
+pub type int32_t = i32;
+pub type uint32_t = u32;
 #[no_mangle]
 pub static mut cur_rand_seed: uint32_t = 0 as uint32_t;
 #[no_mangle]

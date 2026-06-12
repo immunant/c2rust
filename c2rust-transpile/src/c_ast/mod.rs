@@ -166,6 +166,13 @@ impl<T> Located<T> {
     pub fn end_loc(&self) -> Option<SrcLoc> {
         self.loc.map(|loc| loc.end())
     }
+
+    pub fn with_kind<U>(&self, kind: U) -> Located<U> {
+        Located {
+            loc: self.loc,
+            kind,
+        }
+    }
 }
 
 /// This holds a [`SrcLoc`] and its [`include_path`](TypedAstContext::include_path)
@@ -1075,49 +1082,77 @@ impl TypedAstContext {
         }
     }
 
-    /// Identifies typedefs that name unnamed types.
-    /// Later, the two declarations can be collapsed into a single name and declaration,
-    /// eliminating the typedef altogether.
-    pub fn set_prenamed_decls(&mut self) {
+    pub fn bypass_typedefs(&mut self) {
+        let mut replacements: HashMap<CDeclId, CDecl> = HashMap::new();
         let mut prenamed_decls: IndexMap<CDeclId, CDeclId> = IndexMap::new();
 
         for (&decl_id, decl) in self.iter_decls() {
-            if let CDeclKind::Typedef { ref name, typ, .. } = decl.kind {
-                if let Some(subdecl_id) = self.resolve_type(typ.ctype).kind.as_underlying_decl() {
-                    use CDeclKind::*;
-                    let is_unnamed = match self[subdecl_id].kind {
-                        Struct { name: None, .. }
-                        | Union { name: None, .. }
-                        | Enum { name: None, .. } => true,
+            let CDeclKind::Typedef {
+                ref name,
+                typ,
+                is_implicit,
+                ref target_dependent_macro,
+            } = decl.kind else {
+                continue
+            };
+            let resolved_type_id = self.resolve_type_id(typ.ctype);
+            let resolved_type_kind = &self[resolved_type_id].kind;
 
-                        // Detect case where typedef and struct share the same name.
-                        // In this case the purpose of the typedef was simply to eliminate
-                        // the need for the 'struct' tag when referring to the type name.
-                        Struct {
-                            name: Some(ref target_name),
-                            ..
-                        }
-                        | Union {
-                            name: Some(ref target_name),
-                            ..
-                        }
-                        | Enum {
-                            name: Some(ref target_name),
-                            ..
-                        } => name == target_name,
+            if CTypeKind::PULLBACK_KINDS.contains(resolved_type_kind)
+                && name == resolved_type_kind.as_str()
+            {
+                // If the typedef resolves to a portable type, and its name matches the
+                // expected name, then replace its definition to directly target the type,
+                // bypassing any intermediate typedefs.
+                let kind = CDeclKind::Typedef {
+                    name: name.clone(),
+                    typ: typ.with_ctype(resolved_type_id),
+                    is_implicit,
+                    target_dependent_macro: target_dependent_macro.clone(),
+                };
+                replacements.insert(decl_id, decl.with_kind(kind));
+            } else if let Some(subdecl_id) = resolved_type_kind.as_underlying_decl() {
+                use CDeclKind::*;
 
-                        _ => false,
-                    };
+                // Identifies typedefs that name unnamed types.
+                // Later, the two declarations can be collapsed into a single name and declaration,
+                // eliminating the typedef altogether.
+                let is_unnamed = match self[subdecl_id].kind {
+                    Struct { name: None, .. }
+                    | Union { name: None, .. }
+                    | Enum { name: None, .. } => true,
 
-                    if is_unnamed
-                        && !prenamed_decls
-                            .values()
-                            .any(|decl_id| *decl_id == subdecl_id)
-                    {
-                        prenamed_decls.insert(decl_id, subdecl_id);
+                    // Detect case where typedef and struct share the same name.
+                    // In this case the purpose of the typedef was simply to eliminate
+                    // the need for the 'struct' tag when referring to the type name.
+                    Struct {
+                        name: Some(ref target_name),
+                        ..
                     }
+                    | Union {
+                        name: Some(ref target_name),
+                        ..
+                    }
+                    | Enum {
+                        name: Some(ref target_name),
+                        ..
+                    } => name == target_name,
+
+                    _ => false,
+                };
+
+                if is_unnamed
+                    && !prenamed_decls
+                        .values()
+                        .any(|decl_id| *decl_id == subdecl_id)
+                {
+                    prenamed_decls.insert(decl_id, subdecl_id);
                 }
             }
+        }
+
+        for (decl_id, decl) in replacements {
+            self.c_decls[&decl_id] = decl;
         }
 
         self.prenamed_decls = prenamed_decls;
@@ -2491,6 +2526,10 @@ impl CQualTypeId {
             qualifiers: Qualifiers::default(),
             ctype,
         }
+    }
+
+    pub fn with_ctype(self, ctype: CTypeId) -> Self {
+        Self { ctype, ..self }
     }
 }
 

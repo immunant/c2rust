@@ -15,10 +15,8 @@ expression: cat tests/snapshots/os-specific/wide_strings.2021.macos.rs
 extern "C" {
     fn wcslen(_: *const wchar_t) -> ::core::ffi::c_ulong;
 }
-pub type __darwin_size_t = usize;
-pub type __darwin_wchar_t = ::libc::wchar_t;
-pub type size_t = __darwin_size_t;
-pub type wchar_t = __darwin_wchar_t;
+pub type size_t = usize;
+pub type wchar_t = ::libc::wchar_t;
 #[no_mangle]
 pub static mut static_array: [wchar_t; 2] =
     unsafe { ::core::mem::transmute::<[u8; 8], [wchar_t; 2]>(*b"x\0\0\0\0\0\0\0") };
