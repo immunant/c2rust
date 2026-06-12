@@ -1,6 +1,6 @@
 ---
 source: c2rust-transpile/tests/snapshots.rs
-expression: cat tests/snapshots/os-specific/out_of_range_lit.2021.macos.rs
+expression: cat tests/snapshots/out_of_range_lit.2021.clang15.rs
 ---
 #![allow(
     clippy::missing_safety_doc,

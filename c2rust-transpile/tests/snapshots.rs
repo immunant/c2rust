@@ -421,6 +421,11 @@ fn test_main_fn() {
 }
 
 #[test]
+fn test_out_of_range_lit() {
+    transpile("out_of_range_lit.c").run();
+}
+
+#[test]
 fn test_predefined() {
     transpile("predefined.c").run();
 }
@@ -470,6 +475,11 @@ fn test_return_addr_helpers() {
 #[test]
 fn test_str_init() {
     transpile("str_init.c").run();
+}
+
+#[test]
+fn test_typedefidx() {
+    transpile("typedefidx.c").run();
 }
 
 #[test]
@@ -527,11 +537,6 @@ fn test_macros_os_specific() {
 }
 
 #[test]
-fn test_out_of_range_lit() {
-    transpile("out_of_range_lit.c").os_specific(true).run();
-}
-
-#[test]
 fn test_rnd() {
     transpile("rnd.c").os_specific(true).run();
 }
@@ -547,11 +552,6 @@ fn test_sigign() {
         .os_specific(true)
         .expect_unresolved_import("libc")
         .run();
-}
-
-#[test]
-fn test_typedefidx() {
-    transpile("typedefidx.c").os_specific(true).run();
 }
 
 #[test]
