@@ -3477,7 +3477,7 @@ impl<'c> Translation<'c> {
             }
 
             InitList(ty, ref ids, opt_union_field_id, _) => {
-                self.convert_init_list(ctx, ty, ids, opt_union_field_id)
+                self.convert_init_list(ctx, override_ty, ty, ids, opt_union_field_id)
             }
 
             ImplicitValueInit(ty) => self.implicit_default_expr(ctx, ty.ctype),
