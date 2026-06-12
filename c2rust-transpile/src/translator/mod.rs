@@ -709,9 +709,7 @@ pub fn translate(
             None
         };
 
-        // Identify typedefs that name unnamed types and collapse the two declarations
-        // into a single name and declaration, eliminating the typedef altogether.
-        t.ast_context.set_prenamed_decls();
+        t.ast_context.bypass_typedefs();
 
         // Headers often pull in declarations that are unused;
         // we simplify the translator output by omitting those.
