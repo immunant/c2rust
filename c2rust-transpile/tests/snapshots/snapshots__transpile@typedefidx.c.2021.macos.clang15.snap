@@ -11,8 +11,7 @@ expression: cat tests/snapshots/os-specific/typedefidx.2021.macos.rs
     unused_assignments,
     unused_mut
 )]
-pub type __darwin_size_t = usize;
-pub type size_t = __darwin_size_t;
+pub type size_t = usize;
 pub type uint64_t = u64;
 #[no_mangle]
 pub unsafe extern "C" fn index_typedef(mut arr: *mut uint64_t) {
