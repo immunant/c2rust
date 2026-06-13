@@ -99,6 +99,19 @@ impl<'c> Translation<'c> {
                         // Ops like division and bitxor accept inputs of their expected result type.
                         lhs_type_id.ctype = expr_type_id.ctype;
                         rhs_type_id.ctype = expr_type_id.ctype;
+
+                        // For complex arithmetic, complex and real values can be mixed.
+                        let expr_type_kind =
+                            &self.ast_context.resolve_type(expr_type_id.ctype).kind;
+                        if let &CTypeKind::Complex(result_scalar_type_id) = expr_type_kind {
+                            if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
+                                lhs_type_id.ctype = result_scalar_type_id;
+                            }
+
+                            if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                                rhs_type_id.ctype = result_scalar_type_id;
+                            }
+                        }
                     } else if op.input_types_same() && lhs_type_kind != rhs_type_kind {
                         // Ops like comparisons require argument types to match, but the result type
                         // doesn't inform us what type to choose. Select a synthetic definition of a
@@ -285,7 +298,15 @@ impl<'c> Translation<'c> {
             {
                 // If the rhs must match the lhs but doesn't, add a cast.
                 // For compound assignment, use the compute type; for regular assignment, use lhs type.
-                let target_type_id = compute_lhs_type_id.unwrap_or(lhs_type_id);
+                let mut target_type_id = compute_lhs_type_id.unwrap_or(lhs_type_id);
+
+                // For complex arithmetic, complex and real values can be mixed.
+                if let &CTypeKind::Complex(lhs_scalar_type_id) = lhs_type_kind {
+                    if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                        target_type_id.ctype = lhs_scalar_type_id;
+                    }
+                }
+
                 rhs_rs = self.make_cast(ctx.used(), rhs_type_id, target_type_id, rhs_rs)?;
             }
         }
