@@ -395,6 +395,26 @@ impl<'c> Translation<'c> {
         WithStmts::new_val(res).set_unsafe()
     }
 
+    /// Creates a pointer difference expression. Returns an expression of type `isize`.
+    pub(crate) fn make_pointer_difference(
+        &self,
+        lhs_rs: Box<Expr>,
+        rhs_rs: Box<Expr>,
+        pointee_type_id: CTypeId,
+    ) -> WithStmts<Box<Expr>> {
+        let mut expr_rs = mk().method_call_expr(lhs_rs, "offset_from", vec![rhs_rs]);
+
+        // If the pointee is a variable array type, the actual pointee type used by `offset_from`
+        // will be its element type rather than the whole array. So we need to divide by the
+        // variable holding the length of the array.
+        if let Some(sz) = self.compute_size_of_expr(pointee_type_id) {
+            let div_rs = cast_int(sz, "isize", false);
+            expr_rs = mk().binary_expr(BinOp::Div(Default::default()), expr_rs, div_rs);
+        }
+
+        WithStmts::new_val(expr_rs).set_unsafe()
+    }
+
     /// Construct an expression for a NULL at any type, including forward declarations,
     /// function pointers, and normal pointers.
     pub fn null_ptr(&self, type_id: CTypeId) -> TranslationResult<Box<Expr>> {

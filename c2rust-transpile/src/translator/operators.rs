@@ -576,14 +576,8 @@ impl<'c> Translation<'c> {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = rhs_type {
-            let mut offset = mk().method_call_expr(lhs, "offset_from", vec![rhs]);
-
-            if let Some(sz) = self.compute_size_of_expr(pointee.ctype) {
-                let div = cast_int(sz, "isize", false);
-                offset = mk().binary_expr(BinOp::Div(Default::default()), offset, div);
-            }
-
-            Ok(WithStmts::new_val(mk().cast_expr(offset, ty)).set_unsafe())
+            let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
+            Ok(val.map(|val| mk().cast_expr(val, ty)))
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
         } else if lhs_type.is_unsigned_integral_type() {
