@@ -1351,7 +1351,7 @@ impl TypedAstContext {
                             None
                         }
                     }
-                    CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
+                    CExprKind::Binary(result_type_id, op, lhs, rhs, _, _) => {
                         let lhs_type_id =
                             self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
                         let rhs_type_id =
@@ -1365,11 +1365,26 @@ impl TypedAstContext {
                         }
 
                         if op.all_types_same() {
-                            if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
-                                Some(lhs_type_id)
-                            } else {
-                                Some(rhs_type_id)
+                            let result_type_kind =
+                                &self.ast_context.resolve_type(result_type_id.ctype).kind;
+
+                            let mut result_type_id =
+                                if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
+                                    lhs_type_id
+                                } else {
+                                    rhs_type_id
+                                };
+
+                            // For complex arithmetic, complex and real values can be mixed.
+                            // See if a `Complex` version of the new result type exists.
+                            if matches!(result_type_kind, CTypeKind::Complex(..)) {
+                                let new_result_type_kind = CTypeKind::Complex(result_type_id.ctype);
+                                let new_type_id =
+                                    self.ast_context.type_for_kind(&new_result_type_kind);
+                                result_type_id.ctype = new_type_id;
                             }
+
+                            Some(result_type_id)
                         } else if op.is_bitshift() {
                             Some(lhs_type_id)
                         } else {
