@@ -9,7 +9,7 @@ from postprocess.definitions import (
     update_rust_definition,
 )
 from postprocess.models import AbstractGenerativeModel, api_key_from_env
-from postprocess.transforms.base import AbstractTransform
+from postprocess.transforms.base import AbstractTransform, TransformError
 from postprocess.utils import get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -115,18 +115,8 @@ class CommentsTransform(AbstractTransform):
                 logging.warning(
                     f"Cache miss for {identifier}; skipping since no API key was set..."
                 )
-            else:
-                logging.error(f"Model returned no response for {identifier}")
-            return
-
-        # TODO: move this to apply_file?
-        self.cache.update(
-            transform=transform,
-            identifier=identifier,
-            model=model,
-            messages=messages,
-            response=response,
-        )
+                return
+            raise TransformError(f"model returned no response for {identifier}")
 
         rust_fn = remove_backticks(response)
 
@@ -136,7 +126,19 @@ class CommentsTransform(AbstractTransform):
         rust_comments = get_rust_comments(rust_fn)
         logging.debug(f"{rust_comments=}")
 
-        assert c_comments == rust_comments
+        if c_comments != rust_comments:
+            raise TransformError(
+                f"comments were not transferred verbatim for {identifier}:"
+                f"\n{c_comments=}\n{rust_comments=}"
+            )
+
+        self.cache.update(
+            transform=transform,
+            identifier=identifier,
+            model=model,
+            messages=messages,
+            response=response,
+        )
 
         print(get_highlighted_rust(rust_fn))
 

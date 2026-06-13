@@ -11,6 +11,10 @@ from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.utils import get_highlighted_c
 
 
+class TransformError(Exception):
+    """A transform failed to process a single definition."""
+
+
 class AbstractTransform(ABC):
     """
     Abstract base class for LLM-driven transforms of c2rust transpiler output.
@@ -44,11 +48,16 @@ class AbstractTransform(ABC):
         exclude_list: IdentifierExcludeList,
         ident_filter: str | None = None,
         update_rust: bool = True,
-    ):
+        keep_going: bool = False,
+        failure_log_level: int = logging.ERROR,
+    ) -> int:
         """
         Run `self.apply_file` on each `*.rs` in `dir`
         with a corresponding `*.c_decls.json`.
+
+        Returns the number of definitions that failed to transform.
         """
+        failures = 0
         root_dir = root_rust_source_file.parent
         c_decls_json_suffix = ".c_decls.json"
         for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
@@ -56,12 +65,15 @@ class AbstractTransform(ABC):
                 c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
             )
             assert rs_path.exists()
-            self.apply_file(
+            failures += self.apply_file(
                 rust_source_file=rs_path,
                 exclude_list=exclude_list,
                 ident_filter=ident_filter,
                 update_rust=update_rust,
+                keep_going=keep_going,
+                failure_log_level=failure_log_level,
             )
+        return failures
 
     def apply_file(
         self,
@@ -69,8 +81,11 @@ class AbstractTransform(ABC):
         exclude_list: IdentifierExcludeList,
         ident_filter: str | None = None,
         update_rust: bool = True,
-    ) -> None:
+        keep_going: bool = False,
+        failure_log_level: int = logging.ERROR,
+    ) -> int:
         ident_regex = re.compile(ident_filter) if ident_filter else None
+        failures = 0
 
         rust_definitions = get_rust_definitions(rust_source_file)
         c_definitions = get_c_definitions(rust_source_file)
@@ -104,13 +119,24 @@ class AbstractTransform(ABC):
                 f"C function {identifier} definition:\n{highlighted_c_definition}\n"
             )
 
-            self.apply_ident(
-                rust_source_file=rust_source_file,
-                rust_definition=rust_definition,
-                c_definition=c_definition,
-                identifier=identifier,
-                update_rust=update_rust,
-            )
+            try:
+                self.apply_ident(
+                    rust_source_file=rust_source_file,
+                    rust_definition=rust_definition,
+                    c_definition=c_definition,
+                    identifier=identifier,
+                    update_rust=update_rust,
+                )
+            except TransformError as error:
+                if not keep_going:
+                    raise
+                logging.log(
+                    failure_log_level,
+                    f"Transform failed for {identifier} in {rust_source_file}: {error}",
+                )
+                failures += 1
+
+        return failures
 
 
 # TODO: We probably want a an interface that generates validators specialized to

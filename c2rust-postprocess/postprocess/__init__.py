@@ -17,6 +17,7 @@ from postprocess.models import api_key_from_env, get_model_by_id
 from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
+from postprocess.transforms.base import TransformError
 from postprocess.transforms.comments import (
     SYSTEM_INSTRUCTION,
     AbstractGenerativeModel,
@@ -98,6 +99,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--on-error",
+        type=str,
+        required=False,
+        default="keep-going",
+        choices=["abort", "keep-going", "warn"],
+        help="Handle per-function transform failures: abort at first failure,"
+        " keep going with exit 1, or warn and exit 0 (default: keep-going)",
+    )
+
+    parser.add_argument(
         "--transform",
         type=str,
         required=False,
@@ -174,19 +185,39 @@ def main(argv: Sequence[str] | None = None):
             if transform_id.strip()
         )
         transforms = [
-            get_transform_by_id(transform_id, cache=cache, model=model)
+            get_transform_by_id(
+                transform_id,
+                cache=cache,
+                model=model,
+            )
             for transform_id in transform_ids
         ]
 
+        failures = 0
+        failure_log_level = (
+            logging.WARNING if args.on_error == "warn" else logging.ERROR
+        )
         for transform in transforms:
-            transform.apply_dir(
+            failures += transform.apply_dir(
                 root_rust_source_file=args.root_rust_source_file,
                 exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
                 ident_filter=args.ident_filter,
                 update_rust=args.update_rust,
+                keep_going=args.on_error != "abort",
+                failure_log_level=failure_log_level,
             )
 
+        if failures:
+            logging.log(
+                failure_log_level, f"Failed to transform {failures} function(s)"
+            )
+            if args.on_error != "warn":
+                return 1
+
         return 0
+    except TransformError as error:
+        logging.exception(f"Aborting at first transform failure: {error}")
+        return 1
     except KeyboardInterrupt:
         logging.warning("Interrupted by user, terminating...")
         return 130  # 128 + SIGINT(2)
