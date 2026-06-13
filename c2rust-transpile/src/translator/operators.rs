@@ -225,7 +225,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
-        // First, translate the rhs. Then, if it must match the lhs but doesn't, add a cast.
+        // First, translate the rhs.
         let mut rhs_translation = self.convert_expr(ctx.used(), rhs, Some(rhs_type_id))?;
         let lhs_rhs_types_must_match = {
             let lhs_resolved_ty = &self.ast_context.resolve_type(lhs_type_id.ctype);
@@ -244,11 +244,11 @@ impl<'c> Translation<'c> {
             })
         };
         if lhs_rhs_types_must_match {
+            // If the rhs must match the lhs but doesn't, add a cast.
             // For compound assignment, use the compute type; for regular assignment, use lhs type
             let effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
             if effective_lhs_ty.ctype != rhs_type_id.ctype {
-                let new_rhs_ty =
-                    self.convert_type(compute_lhs_type_id.unwrap_or(lhs_type_id).ctype)?;
+                let new_rhs_ty = self.convert_type(effective_lhs_ty.ctype)?;
                 rhs_translation = rhs_translation.map(|val| mk().cast_expr(val, new_rhs_ty));
             }
         }
