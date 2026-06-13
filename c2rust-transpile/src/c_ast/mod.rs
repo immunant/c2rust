@@ -1350,39 +1350,40 @@ impl TypedAstContext {
                         let rhs_type_id =
                             self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
 
-                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+                        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+                        let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-                        if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                        if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
                             Some(lhs_type_id)
-                        } else if CTypeKind::PULLBACK_KINDS.contains(&rhs_resolved_ty.kind) {
+                        } else if CTypeKind::PULLBACK_KINDS.contains(rhs_type_kind) {
                             Some(rhs_type_id)
                         } else {
                             None
                         }
                     }
                     CExprKind::Binary(_ty, op, lhs, rhs, _, _) => {
+                        let lhs_type_id =
+                            self.ast_context.c_exprs[&lhs].kind.get_qual_type().unwrap();
                         let rhs_type_id =
                             self.ast_context.c_exprs[&rhs].kind.get_qual_type().unwrap();
-                        let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
-                        let lhs_type_id = lhs_kind.get_qual_type().unwrap();
 
-                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+                        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+                        let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
                         if op == CBinOp::Subtract
-                            && lhs_resolved_ty.kind.is_pointer()
-                            && rhs_resolved_ty.kind.is_pointer()
+                            && lhs_type_kind.is_pointer()
+                            && rhs_type_kind.is_pointer()
                         {
                             // Pointer difference operator should return `ptrdiff_t`.
                             let new_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
                             Some(CQualTypeId::new(new_type_id))
                         } else {
-                            let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
-                                && !rhs_resolved_ty.kind.is_pointer();
+                            if lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer() {
+                                return;
+                            }
 
-                            if op.all_types_same() && neither_ptr {
-                                if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                            if op.all_types_same() {
+                                if CTypeKind::PULLBACK_KINDS.contains(&lhs_type_kind) {
                                     Some(lhs_type_id)
                                 } else {
                                     Some(rhs_type_id)
