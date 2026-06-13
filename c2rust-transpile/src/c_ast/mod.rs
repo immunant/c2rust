@@ -493,6 +493,16 @@ impl TypedAstContext {
         self.c_decls.get(key)
     }
 
+    /// Returns whether the expression is indexable, meaning that it can have a subscript
+    /// applied to it.
+    pub(crate) fn expr_is_indexable(&self, expr_id: CExprId) -> bool {
+        let Some(type_id) = self[expr_id].kind.get_type() else {
+            return false
+        };
+        let type_kind = &self.resolve_type(type_id).kind;
+        type_kind.is_pointer() || type_kind.is_vector()
+    }
+
     pub fn is_null_expr(&self, expr_id: CExprId) -> bool {
         use CExprKind::*;
         match self.index_unwrap_parens(expr_id).kind {

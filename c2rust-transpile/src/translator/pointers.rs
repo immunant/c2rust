@@ -227,14 +227,8 @@ impl<'c> Translation<'c> {
         let lhs_node = &self.ast_context.index_unwrap_parens(lhs).kind;
         let rhs_node = &self.ast_context.index_unwrap_parens(rhs).kind;
 
-        let lhs_node_type = lhs_node
-            .get_type()
-            .ok_or_else(|| format_err!("lhs node bad type"))?;
-        let lhs_node_kind = &self.ast_context.resolve_type(lhs_node_type).kind;
-        let lhs_is_indexable = lhs_node_kind.is_pointer() || lhs_node_kind.is_vector();
-
         // From here on in, the LHS is the pointer/array and the RHS the index
-        let (lhs, rhs, lhs_node) = if lhs_is_indexable {
+        let (lhs, rhs, lhs_node) = if self.ast_context.expr_is_indexable(lhs) {
             (lhs, rhs, lhs_node)
         } else {
             (rhs, lhs, rhs_node)
