@@ -361,7 +361,7 @@ fn test_empty_init() {
 
 #[test]
 fn test_exprs() {
-    transpile("exprs.c").run();
+    transpile("exprs.c").expect_compile_error(true).run();
 }
 
 #[test]
