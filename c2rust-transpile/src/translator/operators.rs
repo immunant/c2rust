@@ -322,8 +322,8 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator_with_rhs(
         &self,
         ctx: ExprContext,
-        _expected_type_id: Option<CQualTypeId>,
-        _result_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         op: CBinOp,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
@@ -500,9 +500,21 @@ impl<'c> Translation<'c> {
                     }
                 };
 
-                Ok(assign_stmt.and_then(|assign_stmt| {
-                    WithStmts::new(vec![mk().semi_stmt(assign_stmt)], read)
-                }))
+                let assign_result = self.convert_cast(
+                    ctx,
+                    result_type_id,
+                    expected_type_id.unwrap_or(result_type_id),
+                    WithStmts::new_val(read),
+                    None,
+                    None,
+                    None,
+                )?;
+
+                Ok(assign_stmt
+                    .zip(assign_result)
+                    .and_then(|(assign_stmt, assign_result)| {
+                        WithStmts::new(vec![mk().semi_stmt(assign_stmt)], assign_result)
+                    }))
             })
     }
 
