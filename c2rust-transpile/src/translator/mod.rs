@@ -3499,7 +3499,7 @@ impl<'c> Translation<'c> {
             ),
 
             Unary(type_id, op, arg, _lrvalue) => {
-                self.convert_unary_operator(ctx, op, override_ty.unwrap_or(type_id), arg)
+                self.convert_unary_operator(ctx, override_ty.unwrap_or(type_id), op, arg)
             }
 
             Conditional(ty, cond, lhs, rhs) => {
