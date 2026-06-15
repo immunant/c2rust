@@ -1,12 +1,16 @@
 import logging
 import re
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 from postprocess.definitions import (
     CDefinition,
+    MergeRustError,
     get_c_definitions,
     get_rust_definitions,
+    update_rust_definition,
 )
 from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.utils import get_highlighted_c
@@ -16,10 +20,22 @@ class TransformError(Exception):
     """A transform failed to process a single definition."""
 
 
+@dataclass(frozen=True)
+class TransformCandidate:
+    identifier: str
+    messages: list[dict[str, Any]]
+    response: str
+    # Full replacement Rust definition for `identifier`, ready for merge_rust.
+    definition: str
+    cacheable: bool = True
+
+
 class AbstractTransform(ABC):
     """
     Abstract base class for LLM-driven transforms of c2rust transpiler output.
     """
+
+    max_merge_attempts = 3
 
     def __init__(self, system_instruction: str):
         self._system_instruction = system_instruction
@@ -28,7 +44,6 @@ class AbstractTransform(ABC):
     def system_instruction(self) -> str:
         return self._system_instruction
 
-    @abstractmethod
     def apply_ident(
         self,
         rust_source_file: Path,
@@ -38,10 +53,106 @@ class AbstractTransform(ABC):
         update_rust: bool = True,
     ) -> str | None:
         """
-        Implementations should apply transform to a single Rust definition
-        with the given identifier.
+        Apply transform to one Rust definition and commit it through merge_rust.
         """
-        pass
+        previous_error: MergeRustError | None = None
+
+        for attempt in range(self.max_merge_attempts):
+            candidate = self.try_apply_ident(
+                rust_source_file=rust_source_file,
+                rust_definition=rust_definition,
+                c_definition=c_definition,
+                identifier=identifier,
+                attempt=attempt,
+                previous_error=previous_error,
+            )
+            if candidate is None:
+                return None
+
+            if candidate.definition == rust_definition:
+                self.cache_candidate(candidate)
+                logging.info(
+                    f"{self.__class__.__name__}: "
+                    f"No changes for function: {identifier}"
+                )
+                return None
+
+            try:
+                if update_rust:
+                    update_rust_definition(
+                        root_rust_source_file=rust_source_file,
+                        identifier=candidate.identifier,
+                        new_definition=candidate.definition,
+                    )
+            except MergeRustError as error:
+                previous_error = error
+                logging.warning(
+                    f"merge_rust rejected transform candidate for {identifier} "
+                    f"in {rust_source_file} on attempt "
+                    f"{attempt + 1}/{self.max_merge_attempts}: {error}"
+                )
+                continue
+
+            self.cache_candidate(candidate)
+
+            logging.info(
+                f"{self.__class__.__name__}: "
+                f"Updated Rust fn {identifier}"
+            )
+            return candidate.definition
+
+        raise TransformError(
+            f"merge_rust failed after {self.max_merge_attempts} attempts "
+            f"for {identifier}"
+        ) from previous_error
+
+    @abstractmethod
+    def try_apply_ident(
+        self,
+        rust_source_file: Path,
+        rust_definition: str,
+        c_definition: CDefinition,
+        identifier: str,
+        attempt: int = 0,
+        previous_error: MergeRustError | None = None,
+    ) -> TransformCandidate | None:
+        """
+        Return a candidate Rust replacement, or None to skip this identifier.
+        """
+        raise NotImplementedError
+
+    def cache_candidate(self, candidate: TransformCandidate) -> None:
+        if not candidate.cacheable:
+            return
+
+        transform = cast(Any, self)
+        transform.cache.update(
+            transform=self.__class__.__name__,
+            identifier=candidate.identifier,
+            model=transform.model.id,
+            messages=candidate.messages,
+            response=candidate.response,
+        )
+
+    @staticmethod
+    def with_merge_retry_message(
+        messages: list[dict[str, Any]], previous_error: MergeRustError | None
+    ) -> list[dict[str, Any]]:
+        if previous_error is None:
+            return messages
+
+        return [
+            *messages,
+            {
+                "role": "user",
+                "content": (
+                    "The previous Rust function definition was rejected by "
+                    f"merge_rust:\n{previous_error}\n\n"
+                    "Return a syntactically valid full Rust function definition "
+                    "only; say nothing else."
+                ),
+            },
+        ]
 
     def apply_dir(
         self,

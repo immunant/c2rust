@@ -5,12 +5,16 @@ from textwrap import dedent
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
     CDefinition,
+    MergeRustError,
     get_c_comments,
     get_rust_comments,
-    update_rust_definition,
 )
 from postprocess.models import AbstractGenerativeModel, api_key_from_env
-from postprocess.transforms.base import AbstractTransform, TransformError
+from postprocess.transforms.base import (
+    AbstractTransform,
+    TransformCandidate,
+    TransformError,
+)
 from postprocess.transforms.trim import TrimTransform
 from postprocess.utils import get_highlighted_rust, remove_backticks
 
@@ -76,14 +80,16 @@ class CommentsTransform(AbstractTransform):
         self.model = model
         self.trim_transform = TrimTransform(cache, model)
 
-    def apply_ident(
+    def try_apply_ident(
         self,
         rust_source_file: Path,
         rust_definition: str,
         c_definition: CDefinition,
         identifier: str,
-        update_rust: bool = True,
-    ) -> None:
+        attempt: int = 0,
+        previous_error: MergeRustError | None = None,
+    ) -> TransformCandidate | None:
+        _ = attempt
         rust_comments = get_rust_comments(rust_definition)
         if rust_comments:
             logging.info(
@@ -150,6 +156,7 @@ class CommentsTransform(AbstractTransform):
         messages = [
             {"role": "user", "content": str(prompt)},
         ]
+        messages = self.with_merge_retry_message(messages, previous_error)
 
         transform = self.__class__.__name__
         identifier = prompt.identifier
@@ -160,7 +167,13 @@ class CommentsTransform(AbstractTransform):
             model=model,
             messages=messages,
         ):
-            return
+            rust_fn = remove_backticks(response)
+            return TransformCandidate(
+                identifier=identifier,
+                messages=messages,
+                response=response,
+                definition=rust_fn,
+            )
 
         response = self.model.generate_with_tools(messages)
 
@@ -187,24 +200,14 @@ class CommentsTransform(AbstractTransform):
                 f"\n{c_comments=}\n{rust_comments=}"
             )
 
-        self.cache.update(
-            transform=transform,
-            identifier=identifier,
-            model=model,
-            messages=messages,
-            response=response,
-        )
-
         logging.info(
             f"Comments transferred to Rust fn {identifier}:\
                 \n{get_highlighted_rust(rust_fn)}"
         )
 
-        # TODO: move this to apply_file?
-        # the challenge is that not all transforms will update Rust code
-        if update_rust:
-            update_rust_definition(
-                root_rust_source_file=rust_source_file,
-                identifier=prompt.identifier,
-                new_definition=rust_fn,
-            )
+        return TransformCandidate(
+            identifier=identifier,
+            messages=messages,
+            response=response,
+            definition=rust_fn,
+        )

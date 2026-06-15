@@ -3,9 +3,9 @@ from pathlib import Path
 from textwrap import dedent
 
 from postprocess.cache import AbstractCache
-from postprocess.definitions import CDefinition, get_c_comments
+from postprocess.definitions import CDefinition, MergeRustError, get_c_comments
 from postprocess.models import AbstractGenerativeModel
-from postprocess.transforms.base import AbstractTransform
+from postprocess.transforms.base import AbstractTransform, TransformCandidate
 from postprocess.utils import remove_backticks
 
 SYSTEM_INSTRUCTION = (
@@ -20,6 +20,25 @@ class TrimTransform(AbstractTransform):
         super().__init__(SYSTEM_INSTRUCTION)
         self.cache = cache
         self.model = model
+
+    def try_apply_ident(
+        self,
+        rust_source_file: Path,
+        rust_definition: str,
+        c_definition: CDefinition,
+        identifier: str,
+        attempt: int = 0,
+        previous_error: MergeRustError | None = None,
+    ) -> TransformCandidate | None:
+        _ = (
+            rust_source_file,
+            rust_definition,
+            c_definition,
+            identifier,
+            attempt,
+            previous_error,
+        )
+        raise NotImplementedError("TrimTransform overrides apply_ident directly")
 
     def apply_ident(
         self,
