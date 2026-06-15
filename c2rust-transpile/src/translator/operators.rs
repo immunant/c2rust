@@ -6,13 +6,16 @@ impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
         mut ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         op: CBinOp,
         lhs: CExprId,
         rhs: CExprId,
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let expr_type_id = expected_type_id.unwrap_or(result_type_id);
+
         // If we're not making an assignment, a binop will require parens
         // applied to ternary conditionals
         if !op.is_assignment() {
@@ -49,7 +52,8 @@ impl<'c> Translation<'c> {
             // No sequence-point cases
             op if op.is_assignment() => self.convert_assignment_operator(
                 ctx,
-                expr_type_id,
+                expected_type_id,
+                result_type_id,
                 op,
                 lhs,
                 rhs,
@@ -241,7 +245,8 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         op: CBinOp,
         lhs: CExprId,
         rhs: CExprId,
@@ -298,7 +303,8 @@ impl<'c> Translation<'c> {
         // Now that we've translated the rhs, finish translating the assignment operator.
         self.convert_assignment_operator_with_rhs(
             ctx,
-            expr_type_id,
+            expected_type_id,
+            result_type_id,
             op,
             lhs,
             rhs_type_id,
@@ -312,7 +318,8 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator_with_rhs(
         &self,
         ctx: ExprContext,
-        _expr_type_id: CQualTypeId,
+        _expected_type_id: Option<CQualTypeId>,
+        _result_type_id: CQualTypeId,
         op: CBinOp,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
@@ -587,7 +594,8 @@ impl<'c> Translation<'c> {
     fn convert_pre_increment(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         op: CBinOp,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -598,7 +606,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad arg type"))?;
 
-        let one = match self.ast_context.resolve_type(expr_type_id.ctype).kind {
+        let one = match self.ast_context.resolve_type(arg_type.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
             CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
@@ -615,7 +623,7 @@ impl<'c> Translation<'c> {
 
         let mut one_type_id = arg_type;
         let mut compute_lhs_type_id = arg_type;
-        let mut compute_res_type_id = expr_type_id;
+        let mut compute_res_type_id = result_type_id;
 
         match self.ast_context.resolve_type(arg_type.ctype).kind {
             CTypeKind::Pointer(..) => {
@@ -631,7 +639,8 @@ impl<'c> Translation<'c> {
 
         self.convert_assignment_operator_with_rhs(
             ctx,
-            expr_type_id,
+            expected_type_id,
+            result_type_id,
             op,
             arg,
             one_type_id,
@@ -644,13 +653,14 @@ impl<'c> Translation<'c> {
     fn convert_post_increment(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         op: CBinOp,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // If we aren't going to be using the result, may as well do a simple pre-increment
         if ctx.is_unused() {
-            return self.convert_pre_increment(ctx, expr_type_id, op, arg);
+            return self.convert_pre_increment(ctx, expected_type_id, result_type_id, op, arg);
         }
 
         let op = op
@@ -744,30 +754,48 @@ impl<'c> Translation<'c> {
     pub fn convert_unary_operator(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         op: CUnOp,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let expr_type_id = expected_type_id.unwrap_or(result_type_id);
         let mut unary = match op {
             CUnOp::AddressOf => self.convert_address_of(ctx, expr_type_id, arg),
-            CUnOp::PreIncrement => {
-                self.convert_pre_increment(ctx, expr_type_id, CBinOp::AssignAdd, arg)
-            }
-            CUnOp::PreDecrement => {
-                self.convert_pre_increment(ctx, expr_type_id, CBinOp::AssignSubtract, arg)
-            }
-            CUnOp::PostIncrement => {
-                self.convert_post_increment(ctx, expr_type_id, CBinOp::AssignAdd, arg)
-            }
-            CUnOp::PostDecrement => {
-                self.convert_post_increment(ctx, expr_type_id, CBinOp::AssignSubtract, arg)
-            }
+            CUnOp::PreIncrement => self.convert_pre_increment(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                CBinOp::AssignAdd,
+                arg,
+            ),
+            CUnOp::PreDecrement => self.convert_pre_increment(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                CBinOp::AssignSubtract,
+                arg,
+            ),
+            CUnOp::PostIncrement => self.convert_post_increment(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                CBinOp::AssignAdd,
+                arg,
+            ),
+            CUnOp::PostDecrement => self.convert_post_increment(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                CBinOp::AssignSubtract,
+                arg,
+            ),
             CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg),
-            CUnOp::Plus => self.convert_expr(ctx.used(), arg, Some(expr_type_id)), // promotion is explicit in the clang AST
+            CUnOp::Plus => self.convert_expr(ctx.used(), arg, expected_type_id), // promotion is explicit in the clang AST
 
             CUnOp::Negate => self.convert_negate_operator(ctx, expr_type_id, arg),
             CUnOp::Complement => Ok(self
-                .convert_expr(ctx.used(), arg, Some(expr_type_id))?
+                .convert_expr(ctx.used(), arg, expected_type_id)?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
             CUnOp::Not => {
@@ -775,7 +803,7 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
             }
             CUnOp::Extension => {
-                let arg = self.convert_expr(ctx, arg, Some(expr_type_id))?;
+                let arg = self.convert_expr(ctx, arg, expected_type_id)?;
                 Ok(arg)
             }
             CUnOp::Real | CUnOp::Imag | CUnOp::Coawait => {
