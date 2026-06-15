@@ -189,7 +189,6 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator_aux(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
         bin_op_kind: BinOp,
         bin_op: CBinOp,
         read: Box<Expr>,
@@ -201,7 +200,7 @@ impl<'c> Translation<'c> {
         rhs_type_id: CQualTypeId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
-            == self.ast_context.resolve_type_id(expr_type_id.ctype)
+            == self.ast_context.resolve_type_id(lhs_type_id.ctype)
         {
             Ok(WithStmts::new_val(mk().assign_op_expr(
                 bin_op_kind,
@@ -228,7 +227,7 @@ impl<'c> Translation<'c> {
                 )
             })?;
 
-            let val = self.make_cast(ctx.used(), compute_res_type_id, expr_type_id, val)?;
+            let val = self.make_cast(ctx.used(), compute_res_type_id, lhs_type_id, val)?;
 
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
@@ -313,7 +312,7 @@ impl<'c> Translation<'c> {
     fn convert_assignment_operator_with_rhs(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        _expr_type_id: CQualTypeId,
         op: CBinOp,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
@@ -329,10 +328,6 @@ impl<'c> Translation<'c> {
             assert!(compute_res_type_id.is_some());
         }
 
-        let ty = self.convert_type(expr_type_id.ctype)?;
-
-        let compute_res_type_id = compute_res_type_id.unwrap_or(expr_type_id);
-        let compute_lhs_type_id = compute_lhs_type_id.unwrap_or(expr_type_id);
         let lhs_kind = &self.ast_context.index_unwrap_parens(lhs).kind;
         let lhs_type_id = lhs_kind
             .get_qual_type()
@@ -356,6 +351,7 @@ impl<'c> Translation<'c> {
         };
 
         if let Some(field_id) = bitfield_id {
+            let ty = self.convert_type(lhs_type_id.ctype)?;
             let rhs_expr = mk().cast_expr(rhs_translation.to_expr(), ty);
             return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
         }
@@ -363,13 +359,15 @@ impl<'c> Translation<'c> {
         let is_volatile = lhs_type_id.qualifiers.is_volatile;
         let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;
 
-        let expr_type_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
+        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+        let compute_res_type_id = compute_res_type_id.unwrap_or(lhs_type_id);
+        let compute_lhs_type_id = compute_lhs_type_id.unwrap_or(lhs_type_id);
         let compute_lhs_type_kind = &self
             .ast_context
             .resolve_type(compute_lhs_type_id.ctype)
             .kind;
 
-        let pointer_lhs = match expr_type_kind {
+        let pointer_lhs = match lhs_type_kind {
             &CTypeKind::Pointer(pointee) => Some(pointee),
             _ => None,
         };
@@ -437,7 +435,7 @@ impl<'c> Translation<'c> {
                             )
                         })?;
 
-                        let val = self.make_cast(ctx, compute_res_type_id, expr_type_id, val)?;
+                        let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
 
                         if is_volatile {
                             val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
@@ -467,7 +465,6 @@ impl<'c> Translation<'c> {
 
                         self.convert_assignment_operator_aux(
                             ctx,
-                            expr_type_id,
                             bin_op_kind,
                             bin_op,
                             read.clone(),
