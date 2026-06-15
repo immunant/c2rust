@@ -195,7 +195,7 @@ impl<'c> Translation<'c> {
         read: Box<Expr>,
         write: Box<Expr>,
         rhs: Box<Expr>,
-        initial_lhs_type_id: CQualTypeId,
+        lhs_type_id: CQualTypeId,
         compute_lhs_type_id: CQualTypeId,
         compute_res_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
@@ -211,7 +211,7 @@ impl<'c> Translation<'c> {
         } else {
             let lhs = self.make_cast(
                 ctx.used(),
-                initial_lhs_type_id,
+                lhs_type_id,
                 compute_lhs_type_id,
                 WithStmts::new_val(read.clone()),
             )?;
@@ -331,16 +331,16 @@ impl<'c> Translation<'c> {
 
         let ty = self.convert_type(expr_type_id.ctype)?;
 
-        let result_type_id = compute_res_type_id.unwrap_or(expr_type_id);
-        let expr_or_comp_type_id = compute_lhs_type_id.unwrap_or(expr_type_id);
-        let initial_lhs = &self.ast_context.index_unwrap_parens(lhs).kind;
-        let initial_lhs_type_id = initial_lhs
+        let compute_res_type_id = compute_res_type_id.unwrap_or(expr_type_id);
+        let compute_lhs_type_id = compute_lhs_type_id.unwrap_or(expr_type_id);
+        let lhs_kind = &self.ast_context.index_unwrap_parens(lhs).kind;
+        let lhs_type_id = lhs_kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
-        let bitfield_id = match initial_lhs {
+        let bitfield_id = match *lhs_kind {
             CExprKind::Member(_, _, decl_id, _, _) => {
-                let kind = &self.ast_context[*decl_id].kind;
+                let kind = &self.ast_context[decl_id].kind;
 
                 if let CDeclKind::Field {
                     bitfield_width: Some(_),
@@ -357,16 +357,19 @@ impl<'c> Translation<'c> {
 
         if let Some(field_id) = bitfield_id {
             let rhs_expr = mk().cast_expr(rhs_translation.to_expr(), ty);
-            return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, *field_id);
+            return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
         }
 
-        let is_volatile = initial_lhs_type_id.qualifiers.is_volatile;
+        let is_volatile = lhs_type_id.qualifiers.is_volatile;
         let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;
 
-        let expr_resolved_ty = self.ast_context.resolve_type(expr_type_id.ctype);
-        let compute_resolved_ty = &self.ast_context.resolve_type(expr_or_comp_type_id.ctype);
+        let expr_type_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
+        let compute_lhs_type_kind = &self
+            .ast_context
+            .resolve_type(compute_lhs_type_id.ctype)
+            .kind;
 
-        let pointer_lhs = match &expr_resolved_ty.kind {
+        let pointer_lhs = match expr_type_kind {
             &CTypeKind::Pointer(pointee) => Some(pointee),
             _ => None,
         };
@@ -374,9 +377,9 @@ impl<'c> Translation<'c> {
         let is_unsigned_arith = op
             .underlying_assignment()
             .map_or(false, |op| op.is_arithmetic())
-            && compute_resolved_ty.kind.is_unsigned_integral_type();
+            && compute_lhs_type_kind.is_unsigned_integral_type();
 
-        let lhs_translation = if initial_lhs_type_id.ctype != expr_or_comp_type_id.ctype
+        let lhs_translation = if lhs_type_id.ctype != compute_lhs_type_id.ctype
             || ctx.is_used()
             || pointer_lhs.is_some()
             || is_volatile_compound_assign
@@ -403,10 +406,8 @@ impl<'c> Translation<'c> {
                 let assign_stmt = match op {
                     // Regular (possibly volatile) assignment
                     Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
-                    Assign => {
-                        WithStmts::new_val(self.volatile_write(write, initial_lhs_type_id, rhs)?)
-                            .set_unsafe()
-                    }
+                    Assign => WithStmts::new_val(self.volatile_write(write, lhs_type_id, rhs)?)
+                        .set_unsafe(),
 
                     // Anything volatile needs to be desugared into explicit reads and writes
                     op if is_volatile || is_unsigned_arith => {
@@ -419,27 +420,27 @@ impl<'c> Translation<'c> {
 
                         let lhs = self.make_cast(
                             ctx.used(),
-                            initial_lhs_type_id,
-                            expr_or_comp_type_id,
+                            lhs_type_id,
+                            compute_res_type_id,
                             WithStmts::new_val(read.clone()),
                         )?;
 
                         let val = lhs.and_then_try(|lhs| {
                             self.convert_binary_operator(
                                 ctx,
-                                result_type_id,
+                                compute_res_type_id,
                                 op,
-                                expr_or_comp_type_id,
+                                compute_lhs_type_id,
                                 rhs_type_id,
                                 lhs,
                                 rhs,
                             )
                         })?;
 
-                        let val = self.make_cast(ctx, result_type_id, expr_type_id, val)?;
+                        let val = self.make_cast(ctx, compute_res_type_id, expr_type_id, val)?;
 
                         if is_volatile {
-                            val.try_map(|val| self.volatile_write(write, initial_lhs_type_id, val))?
+                            val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
                                 .set_unsafe()
                         } else {
                             val.map(|val| mk().assign_expr(write, val))
@@ -472,9 +473,9 @@ impl<'c> Translation<'c> {
                             read.clone(),
                             write,
                             rhs,
-                            initial_lhs_type_id,
-                            compute_lhs_type_id.unwrap(),
-                            compute_res_type_id.unwrap(),
+                            lhs_type_id,
+                            compute_lhs_type_id,
+                            compute_res_type_id,
                             rhs_type_id,
                         )?
                     }
