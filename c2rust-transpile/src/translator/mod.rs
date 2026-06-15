@@ -3365,8 +3365,8 @@ impl<'c> Translation<'c> {
                 )
             }
 
-            Unary(type_id, op, arg, _lrvalue) => {
-                self.convert_unary_operator(ctx, override_ty.unwrap_or(type_id), op, arg)
+            Unary(result_type_id, op, arg, _lrvalue) => {
+                self.convert_unary_operator(ctx, override_ty, result_type_id, op, arg)
             }
 
             Conditional(ty, cond, lhs, rhs) => {
@@ -3442,10 +3442,11 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
+            Binary(result_type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
                 .convert_binary_expr(
                     ctx,
-                    override_ty.unwrap_or(type_id),
+                    override_ty,
+                    result_type_id,
                     op,
                     lhs,
                     rhs,
