@@ -25,7 +25,7 @@ from postprocess.transforms.comments import (
 from postprocess.utils import existing_file
 
 DEFAULT_LLM_MODEL = "gemini-3.5-flash"
-DEFAULT_TRANSFORMS = ("comments", "asserts")
+DEFAULT_TRANSFORMS = ("comments", "asserts", "formatting")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
