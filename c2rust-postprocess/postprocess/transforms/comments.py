@@ -11,6 +11,7 @@ from postprocess.definitions import (
 )
 from postprocess.models import AbstractGenerativeModel, api_key_from_env
 from postprocess.transforms.base import AbstractTransform, TransformError
+from postprocess.transforms.trim import TrimTransform
 from postprocess.utils import get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -73,6 +74,7 @@ class CommentsTransform(AbstractTransform):
         super().__init__(SYSTEM_INSTRUCTION)
         self.cache = cache
         self.model = model
+        self.trim_transform = TrimTransform(cache, model)
 
     def apply_ident(
         self,
@@ -86,8 +88,7 @@ class CommentsTransform(AbstractTransform):
         if rust_comments:
             logging.info(
                 f"Skipping Rust fn {identifier} with existing comments:\
-                \n{rust_comments} in\
-                \n{rust_definition}"
+                \n{get_highlighted_rust(rust_definition)}"
             )
             return
 
@@ -97,6 +98,31 @@ class CommentsTransform(AbstractTransform):
         if not c_comments:
             logging.info(f"Skipping C function without comments: {identifier}")
             return
+
+        match self.trim_transform.apply_ident(
+            rust_source_file=rust_source_file,
+            rust_definition=rust_definition,
+            c_definition=c_definition,
+            identifier=identifier,
+            update_rust=False,  # nothing to update here
+        ):
+            case None:
+                logging.error(
+                    f"Trim transform failed for {identifier}, "
+                    "skipping comments transfer"
+                )
+                return
+            case str() as trimmed_c_definition:
+                # TODO: consider trimming both the definition and the preprocessed
+                #       definition instead of possibly replacing the original
+                #       definition with the trimmed and preprocessed one.
+                c_definition = CDefinition(
+                    definition=trimmed_c_definition, preprocessed_definition=None
+                )
+            case _:
+                raise AssertionError(
+                    "Unexpected return type from trim transform: expected None or str"
+                )
 
         # TODO: make this function take a model and get prompt from model
         prompt_text = """
@@ -169,7 +195,10 @@ class CommentsTransform(AbstractTransform):
             response=response,
         )
 
-        print(get_highlighted_rust(rust_fn))
+        logging.info(
+            f"Comments transferred to Rust fn {identifier}:\
+                \n{get_highlighted_rust(rust_fn)}"
+        )
 
         # TODO: move this to apply_file?
         # the challenge is that not all transforms will update Rust code
