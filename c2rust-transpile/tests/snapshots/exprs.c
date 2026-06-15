@@ -108,3 +108,9 @@ void pointer_arithmetic(void) {
     ptrdiff_t diff = p1 - p2;
     int diff_int = p1 - p2;
 }
+
+void assign_result(void) {
+    unsigned long l = 0;
+    size_t s1 = l = 1;
+    size_t s2 = l += 2;
+}
