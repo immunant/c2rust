@@ -21,7 +21,7 @@ from postprocess.utils import existing_file
 from postprocess.validate import BaselineError, make_validator
 
 DEFAULT_LLM_MODEL = "gemini-3.5-flash"
-DEFAULT_TRANSFORMS = ("comments", "asserts")
+DEFAULT_TRANSFORMS = ("comments", "asserts", "formatting")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

@@ -3,6 +3,7 @@ from postprocess.models import AbstractGenerativeModel
 from postprocess.transforms.asserts import AssertsTransform
 from postprocess.transforms.base import AbstractTransform
 from postprocess.transforms.comments import CommentsTransform
+from postprocess.transforms.formatting import FormattingTransform
 
 
 def get_transform_by_id(
@@ -16,5 +17,7 @@ def get_transform_by_id(
             return CommentsTransform(cache=cache, model=model)
         case "asserts":
             return AssertsTransform(cache=cache, model=model)
+        case "formatting":
+            return FormattingTransform(cache=cache, model=model)
         case _:
             raise ValueError(f"Unsupported transform: {id}")
