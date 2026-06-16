@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -183,21 +183,52 @@ fn convert_module_list(
 
     let mut res = vec![];
     let mut module_tree = ModuleTree(BTreeMap::new());
+    // A C file can have the same stem as a sibling directory, such as
+    // `hash.c` and `hash/sha1.c`. The current nested module emitter cannot
+    // represent both at `mod hash`, so emit the file module with an explicit
+    // path and keep the directory in the nested tree.
+    let internal_modules = modules
+        .iter()
+        .filter_map(|m| {
+            if tcfg.is_binary(m) {
+                return None;
+            }
+            let relpath = m.strip_prefix(build_dir).ok()?;
+            let path = module_path(relpath);
+            Some((m, path))
+        })
+        .collect::<Vec<_>>();
+    let collision_modules = internal_modules
+        .iter()
+        .filter_map(|(module, path)| {
+            internal_modules
+                .iter()
+                .any(|(_, other)| other.len() > path.len() && other.starts_with(path))
+                .then_some(*module)
+        })
+        .collect::<BTreeSet<_>>();
+    let mut used_flat_names = BTreeSet::new();
+
     for m in &modules {
         match m.strip_prefix(build_dir) {
-            Ok(relpath) if !tcfg.is_binary(m) => {
+            Ok(relpath) if !tcfg.is_binary(m) && !collision_modules.contains(m) => {
                 // The module is inside the build directory, use nested modules
                 let mut cur = &mut module_tree;
-                for sm in relpath.iter() {
-                    let path = Path::new(sm);
-                    let name = get_module_name(path, true, false, false).unwrap();
+                for name in module_path(relpath) {
                     cur = cur.0.entry(name).or_default();
                 }
             }
             _ => {
                 let relpath = diff_paths(m, build_dir).unwrap();
                 let path = Some(relpath.to_str().unwrap().to_string());
-                let name = get_module_name(m, true, false, false).unwrap();
+                let name = if collision_modules.contains(m) {
+                    unique_collision_module_name(
+                        m.strip_prefix(build_dir).unwrap(),
+                        &mut used_flat_names,
+                    )
+                } else {
+                    get_module_name(m, true, false, false).unwrap()
+                };
                 res.push(Module {
                     path,
                     name,
@@ -209,6 +240,30 @@ fn convert_module_list(
     }
     module_tree.linearize(&mut res);
     res
+}
+
+fn module_path(path: &Path) -> Vec<String> {
+    path.iter()
+        .map(|component| {
+            let path = Path::new(component);
+            get_module_name(path, true, false, false).unwrap()
+        })
+        .collect()
+}
+
+fn unique_collision_module_name(path: &Path, used_names: &mut BTreeSet<String>) -> String {
+    let base = format!("c2rust_{}", module_path(path).into_iter().join("_"));
+    if used_names.insert(base.clone()) {
+        return base;
+    }
+
+    for i in 1.. {
+        let candidate = format!("{base}_{i}");
+        if used_names.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    unreachable!()
 }
 
 fn emit_thin_binaries(
