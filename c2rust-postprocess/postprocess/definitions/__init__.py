@@ -22,6 +22,10 @@ from postprocess.definitions.clang import (
 from postprocess.utils import get_tool_path
 
 
+class MergeRustError(RuntimeError):
+    """The merge_rust tool rejected a replacement Rust definition."""
+
+
 def get_c_sourcefile(compile_commands, rustfile: Path) -> Path | None:
     c_file_guesses = [rustfile.with_suffix(".c"), rustfile.with_suffix(".C")]
 
@@ -296,8 +300,13 @@ def update_rust_definition(
         )
 
         if result.returncode != 0:
-            print(result.stdout)
-            print(result.stderr)
-            raise RuntimeError(f"merge_rust failed with exit code {result.returncode}")
+            message_parts = [
+                f"merge_rust failed with exit code {result.returncode}"
+            ]
+            if result.stdout.strip():
+                message_parts.append(f"stdout:\n{result.stdout.strip()}")
+            if result.stderr.strip():
+                message_parts.append(f"stderr:\n{result.stderr.strip()}")
+            raise MergeRustError("\n".join(message_parts))
 
     logging.info(f"Updated Rust definition of {identifier}")
