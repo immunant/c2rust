@@ -15,6 +15,8 @@ expression: cat tests/snapshots/exprs.2021.clang15.rs
 extern "C" {
     fn puts(str: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
 }
+pub type ptrdiff_t = isize;
+pub type size_t = usize;
 pub type E = ::core::ffi::c_uint;
 pub const EA: E = 0;
 pub type int_t = ::core::ffi::c_int;
@@ -81,4 +83,21 @@ pub unsafe extern "C" fn statement_expr() {
         return;
     };
     puts(b"should be unreachable!\0".as_ptr() as *const ::core::ffi::c_char);
+}
+#[no_mangle]
+pub unsafe extern "C" fn pointer_arithmetic() {
+    let mut i1: [::core::ffi::c_int; 2] = [0 as ::core::ffi::c_int, 1 as ::core::ffi::c_int];
+    let mut i2: [::core::ffi::c_int; 2] = [10 as ::core::ffi::c_int, 11 as ::core::ffi::c_int];
+    let mut p1: *mut ::core::ffi::c_int = &raw mut i1 as *mut ::core::ffi::c_int;
+    let mut p2: *mut ::core::ffi::c_int = &raw mut i2 as *mut ::core::ffi::c_int;
+    let mut diff: ptrdiff_t = p1.offset_from(p2);
+    let mut diff_int: ::core::ffi::c_int = p1.offset_from(p2) as ::core::ffi::c_int;
+}
+#[no_mangle]
+pub unsafe extern "C" fn assign_result() {
+    let mut l: ::core::ffi::c_ulong = 0 as ::core::ffi::c_ulong;
+    l = 1 as ::core::ffi::c_ulong;
+    let mut s1: size_t = l as size_t;
+    l = l.wrapping_add(2 as ::core::ffi::c_ulong);
+    let mut s2: size_t = l as size_t;
 }

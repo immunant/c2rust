@@ -709,9 +709,7 @@ pub fn translate(
             None
         };
 
-        // Identify typedefs that name unnamed types and collapse the two declarations
-        // into a single name and declaration, eliminating the typedef altogether.
-        t.ast_context.set_prenamed_decls();
+        t.ast_context.bypass_typedefs();
 
         // Headers often pull in declarations that are unused;
         // we simplify the translator output by omitting those.
@@ -3367,8 +3365,8 @@ impl<'c> Translation<'c> {
                 )
             }
 
-            Unary(type_id, op, arg, _lrvalue) => {
-                self.convert_unary_operator(ctx, op, override_ty.unwrap_or(type_id), arg)
+            Unary(result_type_id, op, arg, _lrvalue) => {
+                self.convert_unary_operator(ctx, override_ty, result_type_id, op, arg)
             }
 
             Conditional(ty, cond, lhs, rhs) => {
@@ -3444,10 +3442,11 @@ impl<'c> Translation<'c> {
                 }
             }
 
-            Binary(type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
+            Binary(result_type_id, op, lhs, rhs, opt_lhs_type_id, opt_res_type_id) => self
                 .convert_binary_expr(
                     ctx,
-                    override_ty.unwrap_or(type_id),
+                    override_ty,
+                    result_type_id,
                     op,
                     lhs,
                     rhs,
