@@ -73,6 +73,7 @@ fn sibling_file_and_directory_modules_do_not_collide() {
         c2rust_transpile::create_temp_compile_commands(&[
             src.join("main.c"),
             src.join("hash.c"),
+            src.join("hash_.c"),
             src.join("hash/sha1.c"),
         ]);
 
@@ -80,9 +81,15 @@ fn sibling_file_and_directory_modules_do_not_collide() {
 
     let lib_rs = fs::read_to_string(output_dir.join("lib.rs")).unwrap();
     assert!(
-        lib_rs.contains("#[path = \"src/hash.rs\"]\npub mod c2rust_src_hash;"),
+        lib_rs.contains("pub mod hash_;"),
+        "generated module tree should include the non-colliding hash_.rs \
+         module normally:\n{lib_rs}"
+    );
+    assert!(
+        lib_rs.contains("#[path = \"hash.rs\"]\n    pub mod hash_1;"),
         "generated module tree should include the sibling hash.rs module via an \
-         explicit path module instead of shadowing it with the hash/ directory:\n{lib_rs}"
+         explicit path module inside its parent instead of shadowing it with \
+         the hash/ directory:\n{lib_rs}"
     );
     assert!(
         lib_rs.contains("pub mod sha1;"),
