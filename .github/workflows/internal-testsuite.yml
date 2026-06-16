@@ -31,6 +31,9 @@ jobs:
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
+    - name: Set postprocess on-error policy
+      run: echo "C2RUST_POSTPROCESS_ARGS=--on-error warn" >> "$GITHUB_ENV"
+
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     # Working dir is /home/runner/work/c2rust/c2rust
     - name: Checkout c2rust
@@ -139,3 +142,101 @@ jobs:
           ${{ github.workspace }}/tests/integration/**/compile_commands.json
           ${{ github.workspace }}/tests/integration/tests/refactor-diffs/**
       if: always()
+
+  postprocess-test:
+    runs-on: ubuntu-latest
+
+    env:
+      # TODO: move this back to the dedicated postprocess workflow once testing is done.
+      C2RUST_POSTPROCESS_MODEL: ${{ vars.C2RUST_POSTPROCESS_MODEL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # TODO: remove this override once the cache/model behavior is stable; `keep-going` is the default.
+      C2RUST_POSTPROCESS_ARGS: --on-error warn
+
+    steps:
+      - name: Require GEMINI key
+        if: ${{ env.GEMINI_API_KEY == '' }}
+        run: exit 1
+
+      - name: Checkout c2rust
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # TODO: remove this cache once the dedicated postprocess workflow is back in place.
+      - name: Restore postprocess cache
+        uses: actions/cache@v4
+        with:
+          path: c2rust-postprocess/tests/llm-cache
+          key: postprocess-cache-${{ runner.os }}-${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
+          restore-keys: |
+            postprocess-cache-${{ runner.os }}-${{ github.workflow }}-pr-${{ github.event.pull_request.number }}-
+
+      - name: Checkout submodules
+        run: |
+          git submodule update --init --checkout tests/integration/tests/json-c/repo
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uv python install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
+
+      - name: Install Rust toolchains
+        run: |
+          rustup toolchain install nightly-2022-11-03 \
+            --profile minimal --component rustfmt,rustc-dev
+          rustup toolchain install nightly-2023-04-15 \
+            --profile minimal --component rustfmt
+
+      - name: Provision Debian Packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: |
+            build-essential
+            libbrotli-dev
+            libbz2-dev
+            libclang-18-dev
+            libdb-dev
+            libgcrypt20
+            libgdbm-dev
+            libreadline-dev
+            libidn2-dev
+            libldap2-dev
+            liblzma-dev
+            libnghttp2-dev
+            libpcre3-dev
+            libpsl-dev
+            librtmp-dev
+            libtool
+            llvm
+            llvm-dev
+            libzstd-dev
+            rcs
+            tcl-dev
+            tk-dev
+            zlib1g-dev
+
+      # TODO: fold build-essential into the main package provisioning once this job is stable.
+      - name: Install build-essential
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install build-essential
+
+      - name: Build c2rust
+        env:
+          LLVM_CONFIG_PATH: /usr/bin/llvm-config-18
+        run: cargo build --release
+
+      - name: Build tools
+        run: |
+          (cd tools && cargo build --release --manifest-path split_rust/Cargo.toml)
+          (cd tools && cargo build --release --manifest-path merge_rust/Cargo.toml)
+
+      - name: Run json-c testsuite
+        run: |
+          export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
+          export C2RUST_DIR=$PWD
+          (cd tests/integration && ./test.py json-c)
