@@ -173,6 +173,7 @@ fn main() {
     }
 
     // Apply the collected rewrites to each file.
+    let mut pending_writes = Vec::new();
     for (file_path, mut rewrites) in file_rewrites {
         if rewrites.len() == 0 {
             continue;
@@ -201,9 +202,18 @@ fn main() {
         }
         new_src.push_str(&old_src[pos..]);
 
+        if let Err(error) = syn::parse_file(&new_src) {
+            eprintln!("merged Rust in {:?} failed to parse: {error}", file_path);
+            std::process::exit(1);
+        }
+
+        pending_writes.push((file_path, new_src, rewrites.len()));
+    }
+
+    for (file_path, new_src, rewrite_count) in pending_writes {
         let tmp_path = file_path.with_extension(".new");
         fs::write(&tmp_path, &new_src).unwrap();
         fs::rename(&tmp_path, &file_path).unwrap();
-        eprintln!("applied {} rewrites to {:?}", rewrites.len(), file_path);
+        eprintln!("applied {} rewrites to {:?}", rewrite_count, file_path);
     }
 }
