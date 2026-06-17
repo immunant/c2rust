@@ -1379,6 +1379,30 @@ impl TypedAstContext {
                         self.ast_context,
                         self.ast_context.c_exprs[&e].kind.get_qual_type().unwrap(),
                     ),
+                    CExprKind::Call(result_type_id, callee_id, _) => {
+                        let CExprKind::ImplicitCast(_, callee_id, CastKind::BuiltinFnToFnPtr, _, _) =
+                            self.ast_context.index_unwrap_parens(callee_id).kind
+                        else {
+                            return;
+                        };
+                        let CExprKind::DeclRef(_, decl_id, _) =
+                            self.ast_context.index_unwrap_parens(callee_id).kind
+                        else {
+                            return;
+                        };
+                        let CDeclKind::Function { ref name, .. } = self.ast_context[decl_id].kind
+                        else {
+                            return;
+                        };
+
+                        match name.as_str() {
+                            "__builtin_object_size" => {
+                                let type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
+                                Some(result_type_id.with_ctype(type_id))
+                            }
+                            _ => None,
+                        }
+                    }
                     CExprKind::Paren(_ty, e) => self.ast_context.c_exprs[&e].kind.get_qual_type(),
                     CExprKind::UnaryType(_, op, _, _) => {
                         // All of these `CUnTypeOp`s should return `size_t`.
