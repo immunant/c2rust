@@ -145,8 +145,11 @@ class CommentsTransform(AbstractTransform):
         # TODO: move this to apply_file?
         # the challenge is that not all transforms will update Rust code
         if update_rust:
-            update_rust_definition(
-                root_rust_source_file=rust_source_file,
-                identifier=prompt.identifier,
-                new_definition=rust_fn,
-            )
+            try:
+                update_rust_definition(
+                    root_rust_source_file=rust_source_file,
+                    identifier=prompt.identifier,
+                    new_definition=rust_fn,
+                )
+            except RuntimeError as error:
+                raise TransformError(str(error)) from error
