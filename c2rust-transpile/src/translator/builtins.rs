@@ -317,7 +317,7 @@ impl<'c> Translation<'c> {
             "__builtin_object_size" => {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
                 // (depending on the value of `type`), so we emit the following:
-                // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
+                // `(if (type & 2) == 0 { -1isize } else { 0isize })`
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
                 let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
 
@@ -335,14 +335,11 @@ impl<'c> Translation<'c> {
                         type_and_2,
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
                     );
-                    let if_expr = mk().ifte_expr(
+                    mk().ifte_expr(
                         if_cond,
                         mk().block(vec![mk().expr_stmt(minus_one)]),
                         Some(zero),
-                    );
-                    self.use_crate(ExternCrate::Libc);
-                    let size_t = mk().abs_path_ty(vec!["libc", "size_t"]);
-                    mk().cast_expr(if_expr, size_t)
+                    )
                 }))
             }
 
