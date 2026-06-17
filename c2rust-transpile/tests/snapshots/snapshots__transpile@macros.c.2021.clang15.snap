@@ -119,14 +119,14 @@ pub unsafe extern "C" fn local_muts() {
     let mut str_concatenation_ptr: *const ::core::ffi::c_char = STR_CONCATENATION.as_ptr();
     let mut str_concatenation: [::core::ffi::c_char; 18] = STR_CONCATENATION;
     let mut builtin: ::core::ffi::c_int =
-        (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
+        (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
     let mut ref_indexing: *const ::core::ffi::c_char = REF_MACRO;
     let mut ref_struct: *const S = REF_LITERAL;
     let mut ternary: ::core::ffi::c_int = TERNARY;
     let mut member: ::core::ffi::c_int = MEMBER;
     let mut stmt_expr: ::core::ffi::c_float = ({
         let mut builtin_0: ::core::ffi::c_int =
-            (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
+            (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
         let mut indexing_0: ::core::ffi::c_char = INDEXING;
         let mut mixed: ::core::ffi::c_float = MIXED_ARITHMETIC as ::core::ffi::c_float;
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -166,14 +166,15 @@ pub unsafe extern "C" fn local_consts() {
     let indexing: ::core::ffi::c_char = INDEXING;
     let str_concatenation_ptr: *const ::core::ffi::c_char = STR_CONCATENATION.as_ptr();
     let str_concatenation: [::core::ffi::c_char; 18] = STR_CONCATENATION;
-    let builtin: ::core::ffi::c_int = (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
+    let builtin: ::core::ffi::c_int =
+        (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
     let ref_indexing: *const ::core::ffi::c_char = REF_MACRO;
     let ref_struct: *const S = REF_LITERAL;
     let ternary: ::core::ffi::c_int = TERNARY;
     let member: ::core::ffi::c_int = MEMBER;
     let stmt_expr: ::core::ffi::c_float = ({
         let mut builtin_0: ::core::ffi::c_int =
-            (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
+            (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
         let mut indexing_0: ::core::ffi::c_char = INDEXING;
         let mut mixed: ::core::ffi::c_float = MIXED_ARITHMETIC as ::core::ffi::c_float;
         let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -219,7 +220,7 @@ static mut global_static_const_str_concatenation_ptr: *const ::core::ffi::c_char
     STR_CONCATENATION.as_ptr();
 static mut global_static_const_str_concatenation: [::core::ffi::c_char; 18] = STR_CONCATENATION;
 static mut global_static_const_builtin: ::core::ffi::c_int =
-    (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
+    (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
 static mut global_static_const_ref_indexing: *const ::core::ffi::c_char =
     ::core::ptr::null::<::core::ffi::c_char>();
 static mut global_static_const_ref_struct: *const S = REF_LITERAL;
@@ -288,7 +289,7 @@ pub static mut global_const_str_concatenation_ptr: *const ::core::ffi::c_char =
 pub static mut global_const_str_concatenation: [::core::ffi::c_char; 18] = STR_CONCATENATION;
 #[no_mangle]
 pub static mut global_const_builtin: ::core::ffi::c_int =
-    (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as i32;
+    (LITERAL_INT as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
 #[no_mangle]
 pub static mut global_const_ref_indexing: *const ::core::ffi::c_char =
     ::core::ptr::null::<::core::ffi::c_char>();
