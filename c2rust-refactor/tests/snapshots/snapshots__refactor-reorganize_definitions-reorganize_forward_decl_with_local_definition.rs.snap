@@ -1,0 +1,52 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+assertion_line: 212
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_forward_decl_with_local_definition.rs --edition 2021
+---
+#![feature(extern_types)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code)]
+#![allow(non_camel_case_types)]
+
+pub mod repository {
+
+    // =============== BEGIN repository_h ================
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct git_repository {
+        pub attrcache: *mut crate::attrcache::git_attr_cache,
+    }
+}
+
+pub mod attrcache {
+
+    // =============== BEGIN attrcache_h ================
+    pub const GIT_ATTR_CONFIG: i32 = 0;
+
+    pub mod repository_h {
+        use crate::attrcache::git_attr_cache;
+
+        pub unsafe extern "C" fn git_repository_attr_cache(
+            repo: *mut crate::repository::git_repository,
+        ) -> *mut git_attr_cache {
+            (*repo).attrcache
+        }
+    }
+
+    use crate::repository::git_repository;
+
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct git_attr_cache {
+        pub x: i32,
+    }
+
+    unsafe extern "C" fn attrcache_source_function(
+        repo: *mut crate::repository::git_repository,
+    ) -> *mut git_attr_cache {
+        repository_h::git_repository_attr_cache(repo)
+    }
+}
+
+fn main() {}
