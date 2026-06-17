@@ -15,6 +15,7 @@ from postprocess.utils import get_highlighted_rust, remove_backticks
 # TODO: get from model
 SYSTEM_INSTRUCTION = (
     "You are a helpful assistant that transfers comments from C code to Rust code."
+    " Preserve the Rust code exactly except for comments."
 )
 
 
@@ -79,8 +80,26 @@ class CommentsTransform(AbstractTransform):
         # TODO: make this function take a model and get prompt from model
         prompt_text = """
         Transfer the comments from the following C function to the corresponding Rust function.
-        Do not add any comments that are not present in the C function.
-        Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+        Rules:
+        - Treat the Rust function as the source of truth for all code.
+        - The C function is only a source of comment text and approximate comment placement.
+        - Do not copy any C code into Rust, including statements, assertions, macros, or preprocessor directives.
+        - Do not change any Rust token, identifier, operator, delimiter, literal, or whitespace outside comments.
+        - Do not reformat, rewrite, simplify, repair, or restructure the Rust code.
+        - Transfer only actual comments from the C function.
+        - Do not change comment text.
+        - Preserve the order of transferred comments.
+        - Keep each comment in the same relative location as in the C source.
+        - Keep leading comments leading and trailing comments trailing.
+        - Do not move a comment to another statement, expression, item, or line.
+        - If a comment is attached to a statement or expression in the function body, keep it as a normal comment and prefer placing it before that statement rather than after it.
+        - Prefer // for ordinary comments.
+        - Ordinary block comments must use /* ... */, not /** ... */.
+        - Use Rust doc comment syntax (/// or /** ... */) only for a comment that is directly and immediately above the Rust function definition.
+        - Never use /// or /** ... */ inside a function body.
+        - Do not infer that a C /** ... */ or /// comment should become a Rust doc comment.
+        - If a C comment is inside a function body, it must become // or /* ... */.
+        - Otherwise keep comments as // or /* ... */.
         Respond with the Rust function definition with the transferred comments; say nothing else.
         """  # noqa: E501
         prompt_text = dedent(prompt_text).strip()
