@@ -245,30 +245,23 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         fn keep_items(items: &[P<Item>]) -> HashSet<NodeId> {
             let mut keep_items = HashSet::new();
             let mut used_idents = HashSet::new();
+            let mut collect_used_idents = |item: &Item| {
+                visit_nodes(item, |path: &Path| {
+                    if let [segment] = &path.segments[..] {
+                        used_idents.insert(segment.ident);
+                    }
+                });
+            };
             for item in &items[..] {
                 match &item.kind {
-                    ItemKind::Fn(box Fn {
-                        body: Some(ref body),
-                        ..
-                    }) => {
+                    ItemKind::Fn(box Fn { body: Some(_), .. }) => {
                         keep_items.insert(item.id);
-                        visit_nodes(&**body, |path: &Path| {
-                            if let [segment] = &path.segments[..] {
-                                used_idents.insert(segment.ident);
-                            }
-                        });
+                        collect_used_idents(item);
                     }
 
-                    ItemKind::Static(_, _, init) if !is_exported(item) => {
+                    ItemKind::Static(_, _, _) if !is_exported(item) => {
                         keep_items.insert(item.id);
-
-                        if let Some(init) = init {
-                            visit_nodes(&**init, |path: &Path| {
-                                if let [segment] = &path.segments[..] {
-                                    used_idents.insert(segment.ident);
-                                }
-                            });
-                        }
+                        collect_used_idents(item);
                     }
 
                     _ => {}
