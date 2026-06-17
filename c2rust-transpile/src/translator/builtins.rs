@@ -50,6 +50,7 @@ impl<'c> Translation<'c> {
     pub fn convert_builtin(
         &self,
         ctx: ExprContext,
+        result_type_id: CQualTypeId,
         fexp: CExprId,
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -117,14 +118,17 @@ impl<'c> Translation<'c> {
                 self.import_num_traits(args[0])?;
 
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
-                    mk().cast_expr(val, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))
+                    mk().cast_expr(val, result_type_rs)
                 }))
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
 
                 Ok(val.map(|x| {
                     let add = BinOp::Add(Default::default());
@@ -132,7 +136,7 @@ impl<'c> Translation<'c> {
                     let one = mk().lit_expr(mk().int_lit(1, ""));
                     let cmp = BinOp::Eq(Default::default());
                     let zeros = mk().method_call_expr(x.clone(), "trailing_zeros", vec![]);
-                    let zeros_cast = mk().cast_expr(zeros, mk().path_ty(vec!["i32"]));
+                    let zeros_cast = mk().cast_expr(zeros, result_type_rs);
                     let zeros_plus1 = mk().binary_expr(add, zeros_cast, one);
                     let block = mk().block(vec![mk().expr_stmt(zero.clone())]);
                     let cond = mk().binary_expr(cmp, x, zero);
@@ -142,16 +146,20 @@ impl<'c> Translation<'c> {
             }
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![]);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(zeros, result_type_rs)
                 }))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![]);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(zeros, result_type_rs)
                 }))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
@@ -174,23 +182,26 @@ impl<'c> Translation<'c> {
                     "__builtin_isnan" => "is_nan",
                     _ => panic!(),
                 };
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|x| {
                     let call = mk().method_call_expr(x, seg, vec![]);
-                    mk().cast_expr(call, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(call, result_type_rs)
                 }))
             }
             "__builtin_isinf_sign" => {
+                let zero = self.mk_int_lit(ctx.used(), result_type_id, 0, IntBase::Dec, false)?;
+                let one = self.mk_int_lit(ctx.used(), result_type_id, 1, IntBase::Dec, false)?;
+                let minus_one =
+                    self.mk_int_lit(ctx.used(), result_type_id, 1, IntBase::Dec, true)?;
                 self.import_num_traits(args[0])?;
 
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 Ok(val.map(|x| {
                     let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
-                    let one = mk().lit_expr(mk().int_lit(1, ""));
-                    let minus_one = neg_expr(mk().lit_expr(mk().int_lit(1, "")));
                     let one_block = mk().block(vec![mk().expr_stmt(one)]);
                     let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
-                    let zero = mk().lit_expr(mk().int_lit(0, ""));
                     let outer_cond = mk().method_call_expr(x, "is_infinite", vec![]);
                     let inner_ifte_block = mk().block(vec![mk().expr_stmt(inner_ifte)]);
                     mk().ifte_expr(outer_cond, inner_ifte_block, Some(zero))
@@ -200,15 +211,18 @@ impl<'c> Translation<'c> {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
-                Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(1, "i32"))))
+                self.mk_int_lit(ctx, result_type_id, 1, IntBase::Dec, false)
+                    .map(WithStmts::new_val)
             }
             "__builtin_expect" => self.convert_expr(ctx.used(), args[0], None),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![]);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(zeros, result_type_rs)
                 }))
             }
             "__builtin_bzero" => {
@@ -296,7 +310,9 @@ impl<'c> Translation<'c> {
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
             // value is *not* a constant, but merely that GCC cannot prove it is a constant with
             // the specified value of the -O option. "
-            "__builtin_constant_p" => Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(0, "")))),
+            "__builtin_constant_p" => self
+                .mk_int_lit(ctx, result_type_id, 0, IntBase::Dec, false)
+                .map(WithStmts::new_val),
 
             "__builtin_object_size" => {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
@@ -304,21 +320,20 @@ impl<'c> Translation<'c> {
                 //
                 // ```
                 // (if (type & 2) == 0 {
-                //     -1isize as libc::size_t
+                //     -1 as ...
                 // } else {
-                //     0isize as libc::size_t
+                //     0 as ...
                 // })
                 // ```
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
                 let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
-                self.use_crate(ExternCrate::Libc);
-                let size_t = mk().abs_path_ty(vec!["libc", "size_t"]);
 
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
                 let minus_one = mk().cast_expr(
                     neg_expr(mk().lit_expr(mk().int_lit(1, "isize"))),
-                    size_t.clone(),
+                    result_type_rs,
                 );
-                let zero = mk().cast_expr(mk().lit_expr(mk().int_lit(0, "isize")), size_t);
+                let zero = self.mk_int_lit(ctx.used(), result_type_id, 0, IntBase::Dec, false)?;
 
                 Ok(ptr_arg.and_then(|_| {
                     type_arg.map(|type_arg| {
@@ -393,6 +408,8 @@ impl<'c> Translation<'c> {
 
             "__builtin_alloca" => {
                 let count = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(count.and_then(|count| {
                     // Get `alloca` allocation storage.
                     let mut fn_ctx = self.function_context.borrow_mut();
@@ -419,8 +436,7 @@ impl<'c> Translation<'c> {
                     let expr = mk().method_call_expr(expr, "last_mut", vec![]);
                     let expr = mk().method_call_expr(expr, "unwrap", vec![]);
                     let expr = mk().method_call_expr(expr, "as_mut_ptr", vec![]);
-                    let pointee_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
-                    let expr = mk().cast_expr(expr, mk().mutbl().ptr_ty(pointee_ty));
+                    let expr = mk().cast_expr(expr, result_type_rs);
 
                     WithStmts::new(vec![push_stmt], expr)
                 }))
