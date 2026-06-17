@@ -21,25 +21,25 @@ pub unsafe extern "C" fn test_builtin_expected_type(
     let mut ffs: int32_t = if y == 0 {
         0
     } else {
-        y.trailing_zeros() as i32 + 1
+        y.trailing_zeros() as ::core::ffi::c_int + 1
     };
-    let mut clz: int32_t = (y as ::core::ffi::c_uint).leading_zeros() as i32;
-    let mut isnan: int32_t = d.is_nan() as i32;
+    let mut clz: int32_t = (y as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
+    let mut isnan: int32_t = d.is_nan() as ::core::ffi::c_int;
     let mut isinf_sign: int32_t = if d.is_infinite() {
         if d.is_sign_positive() {
-            1
+            1 as ::core::ffi::c_int
         } else {
-            -1
+            -1 as ::core::ffi::c_int
         }
     } else {
-        0
+        0 as ::core::ffi::c_int
     };
-    let mut constant_p: int32_t = 0;
+    let mut constant_p: int32_t = 0 as ::core::ffi::c_int;
     let mut cond: int32_t = if y != 0 {
         if y == 0 {
             0
         } else {
-            y.trailing_zeros() as i32 + 1
+            y.trailing_zeros() as ::core::ffi::c_int + 1
         }
     } else {
         0 as int32_t
@@ -50,14 +50,14 @@ pub unsafe extern "C" fn test_builtin_object_size() {
     let mut x: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     &raw mut x;
     let mut n: ::core::ffi::c_ulong = if 1 as ::core::ffi::c_int & 2 == 0 {
-        -1isize as ::libc::size_t
+        -1isize as usize
     } else {
-        0isize as ::libc::size_t
+        0usize
     };
     &raw mut x;
     let mut n2: ::core::ffi::c_ulong = (if 1 as ::core::ffi::c_int & 2 == 0 {
-        -1isize as ::libc::size_t
+        -1isize as usize
     } else {
-        0isize as ::libc::size_t
+        0usize
     }) as ::core::ffi::c_ulong;
 }
