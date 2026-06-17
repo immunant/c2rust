@@ -74,55 +74,45 @@ impl<'c> Translation<'c> {
             }
         };
 
-        match builtin_name {
-            "__builtin_huge_valf" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
-            )),
-            "__builtin_huge_val" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
-            )),
+        let val = match builtin_name {
+            "__builtin_huge_valf" => {
+                WithStmts::new_val(mk().abs_path_expr(vec!["core", "f32", "INFINITY"]))
+            }
+            "__builtin_huge_val" => {
+                WithStmts::new_val(mk().abs_path_expr(vec!["core", "f64", "INFINITY"]))
+            }
             "__builtin_huge_vall" => {
                 self.use_crate(ExternCrate::F128);
 
-                Ok(WithStmts::new_val(
-                    mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
-                ))
+                WithStmts::new_val(mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]))
             }
-            "__builtin_inff" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f32", "INFINITY"]),
-            )),
-            "__builtin_inf" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
-            )),
+            "__builtin_inff" => {
+                WithStmts::new_val(mk().abs_path_expr(vec!["core", "f32", "INFINITY"]))
+            }
+            "__builtin_inf" => {
+                WithStmts::new_val(mk().abs_path_expr(vec!["core", "f64", "INFINITY"]))
+            }
             "__builtin_infl" => {
                 self.use_crate(ExternCrate::F128);
 
-                Ok(WithStmts::new_val(
-                    mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
-                ))
+                WithStmts::new_val(mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]))
             }
-            "__builtin_nanf" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f32", "NAN"]),
-            )),
-            "__builtin_nan" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f64", "NAN"]),
-            )),
+            "__builtin_nanf" => WithStmts::new_val(mk().abs_path_expr(vec!["core", "f32", "NAN"])),
+            "__builtin_nan" => WithStmts::new_val(mk().abs_path_expr(vec!["core", "f64", "NAN"])),
             "__builtin_nanl" => {
                 self.use_crate(ExternCrate::F128);
 
-                Ok(WithStmts::new_val(
-                    mk().abs_path_expr(vec!["f128", "f128", "NAN"]),
-                ))
+                WithStmts::new_val(mk().abs_path_expr(vec!["f128", "f128", "NAN"]))
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 let result_type_rs = self.convert_type(result_type_id.ctype)?;
                 self.import_num_traits(args[0])?;
 
-                Ok(val.map(|v| {
+                val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
                     mk().cast_expr(val, result_type_rs)
-                }))
+                })
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
@@ -131,7 +121,7 @@ impl<'c> Translation<'c> {
                 let zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
                 let one = mk().lit_expr(mk().int_unsuffixed_lit(1));
 
-                Ok(val.map(|val| {
+                val.map(|val| {
                     let cond =
                         mk().binary_expr(BinOp::Eq(Default::default()), val.clone(), zero.clone());
                     let zeros_plus1 = mk().binary_expr(
@@ -148,34 +138,34 @@ impl<'c> Translation<'c> {
                         mk().block(vec![mk().expr_stmt(zero)]),
                         Some(zeros_plus1),
                     )
-                }))
+                })
             }
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 let result_type_rs = self.convert_type(result_type_id.ctype)?;
 
-                Ok(val.map(|x| {
+                val.map(|x| {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![]);
                     mk().cast_expr(zeros, result_type_rs)
-                }))
+                })
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 let result_type_rs = self.convert_type(result_type_id.ctype)?;
 
-                Ok(val.map(|x| {
+                val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![]);
                     mk().cast_expr(zeros, result_type_rs)
-                }))
+                })
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-                Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![])))
+                val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![]))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 self.import_num_traits(args[0])?;
-                Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![])))
+                val.map(|x| mk().method_call_expr(x, "abs", vec![]))
             }
             "__builtin_isfinite" | "__builtin_isnan" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
@@ -188,10 +178,10 @@ impl<'c> Translation<'c> {
                 };
                 let result_type_rs = self.convert_type(result_type_id.ctype)?;
 
-                Ok(val.map(|x| {
+                val.map(|x| {
                     let call = mk().method_call_expr(x, seg, vec![]);
                     mk().cast_expr(call, result_type_rs)
-                }))
+                })
             }
             "__builtin_isinf_sign" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
@@ -201,7 +191,7 @@ impl<'c> Translation<'c> {
                 let minus_one = self.mk_int_lit(result_type_id, 1, IntBase::Dec, true)?;
                 self.import_num_traits(args[0])?;
 
-                Ok(val.map(|val| {
+                val.map(|val| {
                     let outer_cond = mk().method_call_expr(val.clone(), "is_infinite", vec![]);
                     let inner_cond = mk().method_call_expr(val, "is_sign_positive", vec![]);
                     let inner_ifte = mk().ifte_expr(
@@ -216,40 +206,39 @@ impl<'c> Translation<'c> {
                         mk().block(vec![mk().expr_stmt(inner_ifte)]),
                         Some(zero),
                     )
-                }))
+                })
             }
             "__builtin_flt_rounds" => {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
-                self.mk_int_lit(result_type_id, 1, IntBase::Dec, false)
-                    .map(WithStmts::new_val)
+                WithStmts::new_val(self.mk_int_lit(result_type_id, 1, IntBase::Dec, false)?)
             }
-            "__builtin_expect" => self.convert_expr(ctx.used(), args[0], None),
+            "__builtin_expect" => self.convert_expr(ctx.used(), args[0], None)?,
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
                 let result_type_rs = self.convert_type(result_type_id.ctype)?;
 
-                Ok(val.map(|x| {
+                val.map(|x| {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![]);
                     mk().cast_expr(zeros, result_type_rs)
-                }))
+                })
             }
             "__builtin_bzero" => {
                 let ptr_stmts = self.convert_expr(ctx.used(), args[0], None)?;
                 let n_stmts = self.convert_expr(ctx.used(), args[1], None)?;
                 let write_bytes = mk().abs_path_expr(vec!["core", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
-                Ok(ptr_stmts.and_then(|ptr| {
+                ptr_stmts.and_then(|ptr| {
                     n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n]))
-                }))
+                })
             }
 
             // If the target does not support data prefetch, the address expression is evaluated if
             // it includes side effects but no other code is generated and GCC does not issue a warning.
             // void __builtin_prefetch (const void *addr, ...);
-            "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0], None),
+            "__builtin_prefetch" => self.convert_expr(ctx.unused(), args[0], None)?,
 
             "__builtin_memcpy" | "__builtin_memcmp" | "__builtin_memmove" | "__builtin_strncmp"
             | "__builtin_strncpy" | "__builtin_strncat" => self.convert_libc_fns(
@@ -257,27 +246,27 @@ impl<'c> Translation<'c> {
                 ctx,
                 args,
                 &[LibcFnArgType::Mem, LibcFnArgType::Mem, LibcFnArgType::Size],
-            ),
+            )?,
             "__builtin_memchr" | "__builtin_memset" => self.convert_libc_fns(
                 builtin_name,
                 ctx,
                 args,
                 &[LibcFnArgType::Mem, LibcFnArgType::Int, LibcFnArgType::Size],
-            ),
+            )?,
             "__builtin_strchr" | "__builtin_strrchr" => self.convert_libc_fns(
                 builtin_name,
                 ctx,
                 args,
                 &[LibcFnArgType::Mem, LibcFnArgType::Int],
-            ),
+            )?,
             "__builtin_strndup" | "__builtin_strnlen" => self.convert_libc_fns(
                 builtin_name,
                 ctx,
                 args,
                 &[LibcFnArgType::Mem, LibcFnArgType::Size],
-            ),
+            )?,
             "__builtin_strdup" | "__builtin_strlen" => {
-                self.convert_libc_fns(builtin_name, ctx, args, &[LibcFnArgType::Mem])
+                self.convert_libc_fns(builtin_name, ctx, args, &[LibcFnArgType::Mem])?
             }
             "__builtin_strcmp" | "__builtin_strcat" | "__builtin_strcpy" | "__builtin_strcspn"
             | "__builtin_strpbrk" | "__builtin_strspn" | "__builtin_strstr" => self
@@ -286,7 +275,7 @@ impl<'c> Translation<'c> {
                     ctx,
                     args,
                     &[LibcFnArgType::Mem, LibcFnArgType::Mem],
-                ),
+                )?,
 
             "__builtin_add_overflow"
             | "__builtin_sadd_overflow"
@@ -295,7 +284,7 @@ impl<'c> Translation<'c> {
             | "__builtin_uadd_overflow"
             | "__builtin_uaddl_overflow"
             | "__builtin_uaddll_overflow" => {
-                self.convert_overflow_arith(ctx, "overflowing_add", args)
+                self.convert_overflow_arith(ctx, "overflowing_add", args)?
             }
 
             "__builtin_sub_overflow"
@@ -305,7 +294,7 @@ impl<'c> Translation<'c> {
             | "__builtin_usub_overflow"
             | "__builtin_usubl_overflow"
             | "__builtin_usubll_overflow" => {
-                self.convert_overflow_arith(ctx, "overflowing_sub", args)
+                self.convert_overflow_arith(ctx, "overflowing_sub", args)?
             }
 
             "__builtin_mul_overflow"
@@ -315,15 +304,15 @@ impl<'c> Translation<'c> {
             | "__builtin_umul_overflow"
             | "__builtin_umull_overflow"
             | "__builtin_umulll_overflow" => {
-                self.convert_overflow_arith(ctx, "overflowing_mul", args)
+                self.convert_overflow_arith(ctx, "overflowing_mul", args)?
             }
 
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
             // value is *not* a constant, but merely that GCC cannot prove it is a constant with
             // the specified value of the -O option. "
-            "__builtin_constant_p" => self
-                .mk_int_lit(result_type_id, 0, IntBase::Dec, false)
-                .map(WithStmts::new_val),
+            "__builtin_constant_p" => {
+                WithStmts::new_val(self.mk_int_lit(result_type_id, 0, IntBase::Dec, false)?)
+            }
 
             "__builtin_object_size" => {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
@@ -335,7 +324,7 @@ impl<'c> Translation<'c> {
                 let zero = self.mk_int_lit(result_type_id, 0, IntBase::Dec, false)?;
                 let minus_one = self.mk_int_lit(result_type_id, 1, IntBase::Dec, true)?;
 
-                Ok(ptr_arg.zip(type_arg).map(|(_ptr_arg, type_arg)| {
+                ptr_arg.zip(type_arg).map(|(_ptr_arg, type_arg)| {
                     let type_and_2 = mk().binary_expr(
                         BinOp::BitAnd(Default::default()),
                         type_arg,
@@ -351,7 +340,7 @@ impl<'c> Translation<'c> {
                         mk().block(vec![mk().expr_stmt(minus_one)]),
                         Some(zero),
                     )
-                }))
+                })
             }
 
             "__builtin_va_start" => {
@@ -372,10 +361,7 @@ impl<'c> Translation<'c> {
                 let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
                 let stmt = mk().semi_stmt(assign_expr);
 
-                Ok(WithStmts::new(
-                    vec![stmt],
-                    self.panic_or_err("va_start stub"),
-                ))
+                WithStmts::new(vec![stmt], self.panic_or_err("va_start stub"))
             }
             "__builtin_va_copy" => {
                 if ctx.is_used() || args.len() != 2 || self.match_vacopy(args[0], args[1]).is_none()
@@ -390,10 +376,7 @@ impl<'c> Translation<'c> {
                 let assign_expr = mk().assign_expr(dst.to_expr(), call_expr);
                 let stmt = mk().semi_stmt(assign_expr);
 
-                Ok(WithStmts::new(
-                    vec![stmt],
-                    self.panic_or_err("va_copy stub"),
-                ))
+                WithStmts::new(vec![stmt], self.panic_or_err("va_copy stub"))
             }
             "__builtin_va_end" => {
                 if ctx.is_used() || args.len() != 1 || self.match_vaend(args[0]).is_none() {
@@ -401,7 +384,7 @@ impl<'c> Translation<'c> {
                 }
 
                 // nothing to do since the translated Rust `va_list` values get `Drop`'ed.
-                Ok(WithStmts::new_val(self.panic("va_end stub")))
+                WithStmts::new_val(self.panic("va_end stub"))
             }
 
             "__builtin_alloca" => {
@@ -431,7 +414,7 @@ impl<'c> Translation<'c> {
                 let result_type_rs = self.convert_type(result_type_id.ctype)?;
                 let expr = mk().cast_expr(expr, result_type_rs);
 
-                Ok(count.and_then(|count| {
+                count.and_then(|count| {
                     // c2rust_alloca_allocations.push(std::vec::from_elem(0, count));
                     let init_expr = vec_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
@@ -443,7 +426,7 @@ impl<'c> Translation<'c> {
                         vec![init_expr],
                     ));
                     WithStmts::new(vec![push_stmt], expr)
-                }))
+                })
             }
 
             "__builtin_return_address" | "__builtin_frame_address" => {
@@ -460,7 +443,7 @@ impl<'c> Translation<'c> {
                     warn!("{builtin_name} has no Rust equivalent; emitting null pointer");
                 }
                 let level = self.convert_expr(ctx.unused(), args[0], None)?;
-                Ok(level.and_then(|_| {
+                level.and_then(|_| {
                     let void_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
                     let type_args = mk().angle_bracketed_args(vec![void_ty]);
                     let null_expr = mk().call_expr(
@@ -472,7 +455,7 @@ impl<'c> Translation<'c> {
                         vec![],
                     );
                     WithStmts::new_val(null_expr)
-                }))
+                })
             }
 
             "__builtin_extract_return_addr" | "__builtin_frob_return_addr" => {
@@ -480,7 +463,7 @@ impl<'c> Translation<'c> {
                 // architectures (only used to mask/unmask hardware-specific
                 // bits like the ARM Thumb mode bit). Pass the argument
                 // through unchanged.
-                self.convert_expr(ctx, args[0], None)
+                self.convert_expr(ctx, args[0], None)?
             }
 
             "__builtin_ia32_pause" => {
@@ -492,7 +475,7 @@ impl<'c> Translation<'c> {
                     ctx,
                     WithStmts::new_val(call),
                     "Builtin is not supposed to be used",
-                )
+                )?
             }
 
             "__builtin_arm_yield" => {
@@ -515,7 +498,7 @@ impl<'c> Translation<'c> {
                     ctx,
                     WithStmts::new_val(call),
                     "Builtin is not supposed to be used",
-                )
+                )?
             }
 
             "__sync_val_compare_and_swap_1"
@@ -545,7 +528,7 @@ impl<'c> Translation<'c> {
                             arg2,
                             returns_val,
                         )
-                    })
+                    })?
             }
 
             "__sync_synchronize" => {
@@ -555,7 +538,7 @@ impl<'c> Translation<'c> {
                     ctx,
                     WithStmts::new_val(call_expr),
                     "Builtin is not supposed to be used",
-                )
+                )?
             }
 
             // `__atomic_thread_fence` is a full fence (`atomic_fence`);
@@ -592,7 +575,7 @@ impl<'c> Translation<'c> {
                     ctx,
                     WithStmts::new_val(call_expr),
                     "Builtin is not supposed to be used",
-                )
+                )?
             }
 
             "__sync_lock_test_and_set_1"
@@ -611,7 +594,7 @@ impl<'c> Translation<'c> {
                         WithStmts::new_val(call_expr),
                         "Builtin is not supposed to be used",
                     )
-                })
+                })?
             }
 
             "__sync_lock_release_1"
@@ -630,31 +613,33 @@ impl<'c> Translation<'c> {
                         WithStmts::new_val(call_expr),
                         "Builtin is not supposed to be used",
                     )
-                })
+                })?
             }
             // There's currently no way to replicate this functionality in Rust, so we just
             // pass the ptr input param in its place.
-            "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0], None)?),
+            "__builtin_assume_aligned" => self.convert_expr(ctx.used(), args[0], None)?,
             // Skip over, there's no way to implement it in Rust
-            "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
-            "__builtin_unreachable" => Ok(WithStmts::new(
+            "__builtin_unwind_init" => WithStmts::new_val(self.panic_or_err("no value")),
+            "__builtin_unreachable" => WithStmts::new(
                 vec![mk().semi_stmt(mk().mac_expr(mk().mac::<Vec<TokenTree>>(
                     mk().path(vec!["unreachable"]),
                     vec![],
                     MacroDelimiter::Paren(Default::default()),
                 )))],
                 self.panic_or_err("unreachable stub"),
-            )),
+            ),
 
             "__builtin_rotateleft8"
             | "__builtin_rotateleft16"
             | "__builtin_rotateleft32"
-            | "__builtin_rotateleft64" => self.convert_builtin_rotate(ctx, args, "rotate_left"),
+            | "__builtin_rotateleft64" => self.convert_builtin_rotate(ctx, args, "rotate_left")?,
 
             "__builtin_rotateright8"
             | "__builtin_rotateright16"
             | "__builtin_rotateright32"
-            | "__builtin_rotateright64" => self.convert_builtin_rotate(ctx, args, "rotate_right"),
+            | "__builtin_rotateright64" => {
+                self.convert_builtin_rotate(ctx, args, "rotate_right")?
+            }
 
             _ => {
                 if let Some(atomic_op) = CAtomicBinOp::from_sync_builtin_fn(builtin_name) {
@@ -668,18 +653,20 @@ impl<'c> Translation<'c> {
                         .ok_or_else(|| format_err!("bad arg1 type"))?;
                     arg0.zip(arg1).and_then_try(|(arg0, arg1)| {
                         self.convert_atomic_op(ctx, atomic_op, SeqCst, arg0, arg1, arg1_type_id)
-                    })
+                    })?
                 } else if let Some(fn_name) = simd_fn_from_builtin_fn(builtin_name) {
-                    self.convert_simd_builtin(ctx, fn_name, args)
+                    self.convert_simd_builtin(ctx, fn_name, args)?
                 } else {
-                    Err(format_translation_err!(
+                    return Err(format_translation_err!(
                         self.ast_context.display_loc(src_loc),
                         "Unimplemented builtin {}",
                         builtin_name
-                    ))
+                    ));
                 }
             }
-        }
+        };
+
+        Ok(val)
     }
 
     fn import_num_traits(&self, arg_id: CExprId) -> TranslationResult<()> {
