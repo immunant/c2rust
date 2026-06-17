@@ -460,6 +460,13 @@ fn test_reorganize_foreign_types() {
 }
 
 #[test]
+fn test_reorganize_forward_decl_with_local_definition() {
+    refactor("reorganize_definitions")
+        .named("reorganize_forward_decl_with_local_definition.rs")
+        .test();
+}
+
+#[test]
 fn test_sink_lets() {
     refactor("sink_lets").test();
 }
