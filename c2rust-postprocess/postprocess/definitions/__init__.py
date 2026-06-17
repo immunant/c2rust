@@ -10,6 +10,7 @@ import tree_sitter_rust as tsrust
 from pygments import lex
 from pygments.lexer import RegexLexer
 from pygments.lexers.c_cpp import CLexer
+from pygments.lexers.rust import RustLexer
 from pygments.token import Comment
 from tree_sitter import Language, Node, Parser
 
@@ -203,6 +204,23 @@ def get_rust_comments(code: str) -> list[str]:
             yield from walk(child)
 
     return get_comments_text(walk(tree.root_node))
+
+
+def get_rust_code(code: str) -> list[str]:
+    """
+    Extract the Rust token stream from the given code.
+    Keep code tokens and attributes, but drop comments and whitespace.
+    """
+    code_tokens = []
+    for tok_type, tok_value in lex(code, RustLexer()):
+        if tok_value.isspace():
+            continue
+        if str(tok_type).startswith("Token.Comment") and tok_type != Comment.Preproc:
+            continue
+        if str(tok_type).startswith("Token.Literal.String.Doc"):
+            continue
+        code_tokens.append(tok_value)
+    return code_tokens
 
 
 def get_comments(code: str, lexer: RegexLexer) -> list[str]:
