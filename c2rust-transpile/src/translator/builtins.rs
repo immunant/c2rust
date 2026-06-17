@@ -50,6 +50,7 @@ impl<'c> Translation<'c> {
     pub fn convert_builtin(
         &self,
         ctx: ExprContext,
+        result_type_id: CQualTypeId,
         fexp: CExprId,
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -115,15 +116,17 @@ impl<'c> Translation<'c> {
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
                 self.import_num_traits(args[0])?;
 
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
-                    mk().cast_expr(val, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))
+                    mk().cast_expr(val, result_type_rs)
                 }))
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
 
                 let zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
                 let one = mk().lit_expr(mk().int_unsuffixed_lit(1));
@@ -135,7 +138,7 @@ impl<'c> Translation<'c> {
                         BinOp::Add(Default::default()),
                         mk().cast_expr(
                             mk().method_call_expr(val, "trailing_zeros", vec![]),
-                            mk().path_ty(vec!["i32"]),
+                            result_type_rs,
                         ),
                         one,
                     );
@@ -149,16 +152,20 @@ impl<'c> Translation<'c> {
             }
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![]);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(zeros, result_type_rs)
                 }))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![]);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(zeros, result_type_rs)
                 }))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
@@ -179,18 +186,19 @@ impl<'c> Translation<'c> {
                     "__builtin_isnan" => "is_nan",
                     _ => panic!(),
                 };
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
 
                 Ok(val.map(|x| {
                     let call = mk().method_call_expr(x, seg, vec![]);
-                    mk().cast_expr(call, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(call, result_type_rs)
                 }))
             }
             "__builtin_isinf_sign" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
 
-                let zero = mk().lit_expr(mk().int_unsuffixed_lit(0));
-                let one = mk().lit_expr(mk().int_unsuffixed_lit(1));
-                let minus_one = neg_expr(mk().lit_expr(mk().int_unsuffixed_lit(1)));
+                let zero = self.mk_int_lit(result_type_id, 0, IntBase::Dec, false)?;
+                let one = self.mk_int_lit(result_type_id, 1, IntBase::Dec, false)?;
+                let minus_one = self.mk_int_lit(result_type_id, 1, IntBase::Dec, true)?;
                 self.import_num_traits(args[0])?;
 
                 Ok(val.map(|val| {
@@ -214,15 +222,18 @@ impl<'c> Translation<'c> {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
-                Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(1, "i32"))))
+                self.mk_int_lit(result_type_id, 1, IntBase::Dec, false)
+                    .map(WithStmts::new_val)
             }
             "__builtin_expect" => self.convert_expr(ctx.used(), args[0], None),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![]);
-                    mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
+                    mk().cast_expr(zeros, result_type_rs)
                 }))
             }
             "__builtin_bzero" => {
@@ -310,19 +321,19 @@ impl<'c> Translation<'c> {
             // Should be safe to always return 0 here.  "A return of 0 does not indicate that the
             // value is *not* a constant, but merely that GCC cannot prove it is a constant with
             // the specified value of the -O option. "
-            "__builtin_constant_p" => Ok(WithStmts::new_val(
-                mk().lit_expr(mk().int_unsuffixed_lit(0)),
-            )),
+            "__builtin_constant_p" => self
+                .mk_int_lit(result_type_id, 0, IntBase::Dec, false)
+                .map(WithStmts::new_val),
 
             "__builtin_object_size" => {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
                 // (depending on the value of `type`), so we emit the following:
-                // `(if (type & 2) == 0 { -1isize } else { 0isize })`
+                // `(if (type & 2) == 0 { -1 as ? } else { 0 as ? })`
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
                 let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
 
-                let zero = mk().lit_expr(mk().int_lit(0, "isize"));
-                let minus_one = neg_expr(mk().lit_expr(mk().int_lit(1, "isize")));
+                let zero = self.mk_int_lit(result_type_id, 0, IntBase::Dec, false)?;
+                let minus_one = self.mk_int_lit(result_type_id, 1, IntBase::Dec, true)?;
 
                 Ok(ptr_arg.zip(type_arg).map(|(_ptr_arg, type_arg)| {
                     let type_and_2 = mk().binary_expr(
@@ -417,8 +428,8 @@ impl<'c> Translation<'c> {
                         (mk().path_segment("as_mut_ptr"), vec![]),
                     ],
                 );
-                let pointee_ty = mk().abs_path_ty(vec!["core", "ffi", "c_void"]);
-                let expr = mk().cast_expr(expr, mk().mutbl().ptr_ty(pointee_ty));
+                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+                let expr = mk().cast_expr(expr, result_type_rs);
 
                 Ok(count.and_then(|count| {
                     // c2rust_alloca_allocations.push(std::vec::from_elem(0, count));
