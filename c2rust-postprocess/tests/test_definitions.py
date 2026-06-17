@@ -8,6 +8,7 @@ from postprocess import main
 from postprocess.definitions import (
     get_c_sourcefile,
     get_function_span_pairs,
+    get_rust_code,
     get_rust_function_spans,
 )
 from postprocess.utils import read_chunk
@@ -60,6 +61,39 @@ def test_get_rust_function_spans(transpile_qsort, pytestconfig):
         fn_spans, expected_fn_spans, strict=True
     ):
         assert actual_fn_span == expected_fn_span
+
+
+def test_get_rust_code_ignores_comments_but_keeps_attributes():
+    code = """\
+/* comment */
+#[no_mangle]
+pub unsafe extern "C" fn f(x: i32) {
+    // inner
+    /** doc */
+    x
+}
+"""
+    assert get_rust_code(code) == [
+        "#[",
+        "no_mangle",
+        "]",
+        "pub",
+        "unsafe",
+        "extern",
+        '"',
+        "C",
+        '"',
+        "fn",
+        "f",
+        "(",
+        "x",
+        ":",
+        "i32",
+        ")",
+        "{",
+        "x",
+        "}",
+    ]
 
 
 # TODO: this test needs a clearer scope
