@@ -6,6 +6,7 @@ from conftest import EXAMPLES_ROOT
 
 from postprocess import main
 from postprocess.definitions import (
+    get_c_comments,
     get_c_sourcefile,
     get_function_span_pairs,
     get_rust_function_spans,
@@ -88,3 +89,39 @@ def test_comment_insertion_qsort():
     qsort_rs = Path(__file__).parent / "examples/qsort.rs"
     qsort_rs = qsort_rs.relative_to(Path.cwd())
     main([str(qsort_rs), "--no-update-rust"])
+
+
+def assert_get_c_comments(code: str, expected: list[str]) -> None:
+    assert get_c_comments(code) == expected
+
+
+def test_get_c_comments_ignores_include_filename():
+    code = """\
+// Keep
+#include "discard.h"
+/* Keep */
+#include <discard.h>
+"""
+    assert_get_c_comments(code, ["Keep", "Keep"])
+
+
+def test_get_c_comments_ignores_if0_body_line_comment():
+    code = """\
+// Keep
+#if 0
+// discard
+discard
+#endif
+"""
+    assert_get_c_comments(code, ["Keep"])
+
+
+def test_get_c_comments_ignores_if0_body_multiline_comment():
+    code = """\
+// Keep
+#if 0
+/* discard */
+discard
+#endif
+"""
+    assert_get_c_comments(code, ["Keep"])

@@ -208,8 +208,10 @@ def get_rust_comments(code: str) -> list[str]:
 def get_comments(code: str, lexer: RegexLexer) -> list[str]:
     comments = []
     for tok_type, tok_value in lex(code, lexer):
-        if tok_type in Comment and tok_type != Comment.Preproc:
-            # Keep exactly what appears, including delimiters (//, /* */)
+        # Keep only actual C comments. Pygments also classifies preprocessor
+        # directives and disabled `#if 0` regions under `Comment`, but those
+        # are not source comments and should not be transferred.
+        if tok_type in {Comment.Single, Comment.Multiline}:
             comments.append(tok_value)
     return comments
 
