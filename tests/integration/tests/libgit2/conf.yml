@@ -1,0 +1,14 @@
+transpile:
+  autogen: true
+  tflags: --reorganize-definitions --disable-refactoring
+  # libgit2 builds its tests with GIT_DEPRECATE_HARD but not the library
+  # itself (which implements the deprecated APIs), so the same struct has two
+  # incompatible declarations across TUs (e.g. git_remote_callbacks.update_tips
+  # vs .reserved_update_tips). That breaks the refactor stage's
+  # reorganize_definitions pass, which merges declarations by name. Undefine
+  # the macro during transpilation so every TU sees one consistent view; the
+  # structs are layout-identical and the tests don't use deprecated APIs.
+  cflags: -UGIT_DEPRECATE_HARD
+
+cargo.transpile:
+  autogen: true
