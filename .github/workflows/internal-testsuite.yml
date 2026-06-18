@@ -47,6 +47,7 @@ jobs:
       run: |
         git submodule update --init --checkout tests/integration/tests/curl/repo
         git submodule update --init --checkout tests/integration/tests/json-c/repo
+        git submodule update --init --checkout tests/integration/tests/libgit2/repo
         git submodule update --init --checkout tests/integration/tests/lua/repo
         git submodule update --init --checkout tests/integration/tests/nginx/repo
         git submodule update --init --checkout tests/integration/tests/zstd/repo
@@ -75,6 +76,7 @@ jobs:
         sudo apt-get -qq install    \
             bear                    \
             build-essential         \
+            cmake                   \
             libbrotli-dev           \
             libbz2-dev              \
             libclang-${{ matrix.clang-version }}-dev \
@@ -91,6 +93,7 @@ jobs:
             librtmp-dev             \
             libtool                 \
             libzstd-dev             \
+            pkg-config              \
             rcs                     \
             tcl-dev                 \
             tk-dev                  \
@@ -125,7 +128,7 @@ jobs:
         export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
-        ./tests/integration/test.py curl json-c lua nginx zstd libxml2 python2 libmcs
+        ./tests/integration/test.py curl json-c libgit2 lua nginx zstd libxml2 python2 libmcs
 
     - uses: actions/upload-artifact@v4
       with:
