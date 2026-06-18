@@ -1,3 +1,10 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - cmake
+        - pkg-config
+
 transpile:
   autogen: true
   tflags: --reorganize-definitions --disable-refactoring
