@@ -127,22 +127,38 @@ class CommentsTransform(AbstractTransform):
         ):
             return
 
-        response = self.model.generate_with_tools(messages)
+        if api_key_from_env(model) is None:
+            # No API key set: skip uncached entries instead of failing.
+            logging.warning(
+                f"Cache miss for {identifier}; skipping since no API key was set..."
+            )
+            return
 
-        if response is None:
-            if api_key_from_env(model) is None:
-                # No API key set: skip uncached entries instead of failing.
-                logging.warning(
-                    f"Cache miss for {identifier}; skipping since no API key was set..."
-                )
-                return
-            raise TransformError(f"model returned no response for {identifier}")
-
-        rust_fn = remove_backticks(response)
-
+        max_code_mismatch_retries = 3
         original_rust_code = get_rust_code(rust_definition)
-        updated_rust_code = get_rust_code(rust_fn)
-        if original_rust_code != updated_rust_code:
+        response = None
+        rust_fn = ""
+        updated_rust_code = []
+        for attempt in range(max_code_mismatch_retries + 1):
+            response = self.model.generate_with_tools(messages)
+
+            if response is None:
+                raise TransformError(f"model returned no response for {identifier}")
+
+            rust_fn = remove_backticks(response)
+            updated_rust_code = get_rust_code(rust_fn)
+            if original_rust_code == updated_rust_code:
+                break
+
+            if attempt < max_code_mismatch_retries:
+                logging.warning(
+                    "Rust code mismatch for %s on attempt %s/%s; retrying",
+                    identifier,
+                    attempt + 1,
+                    max_code_mismatch_retries + 1,
+                )
+                continue
+
             raise TransformError(
                 f"Rust code changed for {identifier}:"
                 f"\nbefore={original_rust_code!r}"
