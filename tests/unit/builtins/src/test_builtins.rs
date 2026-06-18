@@ -4,6 +4,7 @@ use crate::alloca::rust_alloca_hello;
 use crate::atomics::{rust_atomics_entry, rust_new_atomics};
 use crate::math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isinf_sign, rust_isnan};
 use crate::mem_x_fns::{rust_assume_aligned, rust_mem_x};
+use crate::overflow::rust_overflow_builtins;
 use std::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint};
 
 #[link(name = "test")]
@@ -18,6 +19,7 @@ unsafe extern "C" {
     fn isfinite(_: c_double) -> c_int;
     fn isnan(_: c_double) -> c_int;
     fn isinf_sign(_: c_double) -> c_int;
+    fn overflow_builtins(_: c_uint, _: *mut c_int);
 }
 
 const BUFFER_SIZE: usize = 1024;
@@ -58,6 +60,21 @@ pub fn test_new_atomics() {
 
     for index in 0..BUFFER_SIZE {
         eprintln!("buffer[{}] = {}", index, buffer[index]);
+        assert_eq!(buffer[index], rust_buffer[index]);
+    }
+}
+
+#[test]
+pub fn test_overflow_builtins() {
+    let mut buffer = [0; BUFFER_SIZE];
+    let mut rust_buffer = [0; BUFFER_SIZE];
+
+    unsafe {
+        overflow_builtins(BUFFER_SIZE as u32, buffer.as_mut_ptr());
+        rust_overflow_builtins(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
+    }
+
+    for index in 0..BUFFER_SIZE {
         assert_eq!(buffer[index], rust_buffer[index]);
     }
 }

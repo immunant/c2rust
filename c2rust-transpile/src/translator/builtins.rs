@@ -642,11 +642,41 @@ impl<'c> Translation<'c> {
         method_name: &str,
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        // The two operands can be distinct same-width types (e.g. `size_t`/`usize`
+        // vs `unsigned long`/`u64`), so coerce both to the output (pointee) type,
+        // which is also where `overflowing_*`'s result is stored.
+        let out_arg = *args.get(2).ok_or_else(|| {
+            TranslationError::generic("`convert_overflow_arith` must have exactly 3 arguments")
+        })?;
+        let result_ty_id = match self
+            .ast_context
+            .resolve_type(
+                self.ast_context
+                    .index_unwrap_parens(out_arg)
+                    .kind
+                    .get_type()
+                    .ok_or_else(|| {
+                        TranslationError::generic("overflow builtin output has no type")
+                    })?,
+            )
+            .kind
+        {
+            CTypeKind::Pointer(pointee) => pointee.ctype,
+            _ => {
+                return Err(TranslationError::generic(
+                    "overflow builtin output is not a pointer",
+                ))
+            }
+        };
+        let result_ty = self.convert_type(result_ty_id)?;
+
         let args = self.convert_exprs(ctx.used(), args, None)?;
         args.and_then_try(|args| {
             let [a, b, c]: [_; 3] = args
                 .try_into()
                 .map_err(|_| "`convert_overflow_arith` must have exactly 3 arguments")?;
+            let a = mk().cast_expr(a, result_ty.clone());
+            let b = mk().cast_expr(b, result_ty);
             let overflowing = mk().method_call_expr(a, method_name, vec![b]);
             let sum_name = self.renamer.borrow_mut().pick_name("c2rust_result");
             let over_name = self.renamer.borrow_mut().pick_name("c2rust_overflowed");
