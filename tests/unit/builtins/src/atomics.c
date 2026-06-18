@@ -66,3 +66,25 @@ void new_atomics(const unsigned buffer_size, int buffer[const])
     __atomic_store_n(&x, 0, __ATOMIC_RELAXED);
     buffer[i++] = x;
 }
+
+void fences(const unsigned buffer_size, int buffer[const])
+{
+    int i = 0, x = 34;
+    // Full memory fences (`__atomic_thread_fence`) and compiler-only fences
+    // (`__atomic_signal_fence`), across every memory order. A relaxed fence is
+    // a no-op. Fences have no observable effect here; this just exercises that
+    // each one transpiles and compiles.
+    __atomic_thread_fence(__ATOMIC_RELAXED);  buffer[i++] = ++x;
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);  buffer[i++] = ++x;
+    __atomic_thread_fence(__ATOMIC_RELEASE);  buffer[i++] = ++x;
+    __atomic_thread_fence(__ATOMIC_ACQ_REL);  buffer[i++] = ++x;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);  buffer[i++] = ++x;
+
+    __atomic_signal_fence(__ATOMIC_RELAXED);  buffer[i++] = ++x;
+    __atomic_signal_fence(__ATOMIC_ACQUIRE);  buffer[i++] = ++x;
+    __atomic_signal_fence(__ATOMIC_RELEASE);  buffer[i++] = ++x;
+    __atomic_signal_fence(__ATOMIC_ACQ_REL);  buffer[i++] = ++x;
+    __atomic_signal_fence(__ATOMIC_SEQ_CST);  buffer[i++] = ++x;
+
+    __sync_synchronize();                     buffer[i++] = ++x;
+}

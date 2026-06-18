@@ -19,7 +19,7 @@ fn order_suffix(order: Ordering) -> &'static str {
     }
 }
 
-fn order_ty_name(order: Ordering) -> &'static str {
+pub(crate) fn order_ty_name(order: Ordering) -> &'static str {
     use Ordering::*;
     match order {
         SeqCst => "SeqCst",
@@ -104,7 +104,7 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn convert_memordering(&self, expr: CExprId) -> Option<Ordering> {
+    pub(crate) fn convert_memordering(&self, expr: CExprId) -> Option<Ordering> {
         let memorder = &self.ast_context.index_unwrap_parens(expr);
         let i = match memorder.kind {
             CExprKind::Literal(_, CLiteral::Integer(i, _)) => Some(i),
