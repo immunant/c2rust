@@ -4174,8 +4174,6 @@ impl<'c> Translation<'c> {
         decl_id: CDeclId,
         type_id: CTypeId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.import_type(type_id);
-
         let name = self.type_converter.borrow().resolve_decl_name(decl_id);
         let name = name.as_deref().unwrap_or("???");
 
@@ -4190,6 +4188,7 @@ impl<'c> Translation<'c> {
         let func_name = func_name.as_deref().unwrap_or("<none>");
         log::debug!("deferring imports to save them for {name} in {func_name}");
         self.defer_imports();
+        self.import_type(type_id);
 
         let name_decl_id = match self.ast_context.resolve_type_no_typedef(type_id).kind {
             CTypeKind::Typedef(decl_id) => decl_id,
