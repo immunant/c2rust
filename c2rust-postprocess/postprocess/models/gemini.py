@@ -1,7 +1,10 @@
+import logging
 from collections.abc import Callable, Iterable
+import time
 from typing import Any
 
 from google import genai
+from google.genai import errors
 from google.genai import types
 
 from postprocess.models.base import AbstractGenerativeModel
@@ -43,9 +46,28 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
             **self._generation_config,
         )
 
-        response = self.client.models.generate_content(
-            model=self._id, contents=contents, config=config
-        )
+        delay = 1
+        while True:
+            try:
+                response = self.client.models.generate_content(
+                    model=self._id, contents=contents, config=config
+                )
+                break
+            except errors.ServerError as error:
+                if delay > 32:
+                    from postprocess.transforms.base import TransformError
+
+                    raise TransformError(
+                        f"Gemini service unavailable for model {self._id}: {error}"
+                    ) from error
+                logging.warning(
+                    "Gemini service error for model %s: %s; trying again in %s seconds",
+                    self._id,
+                    error,
+                    delay,
+                )
+                time.sleep(delay)
+                delay *= 2
 
         return response.text
 
