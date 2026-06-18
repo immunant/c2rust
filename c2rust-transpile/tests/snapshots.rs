@@ -582,6 +582,21 @@ fn test_wide_strings() {
         .run();
 }
 
+#[test]
+fn test_zero_init_typedef_reorg_imports() {
+    let c_path = Path::new("tests/snapshots/zero_init_typedef_reorg.c");
+    let mut cfg = config(Edition2021);
+    cfg.reorganize_definitions = true;
+    cfg.disable_refactoring = true;
+    compile_and_transpile_file(c_path, cfg);
+
+    let rs_path = c_path.with_extension("rs");
+    rustc(&rs_path)
+        .edition(Edition2021)
+        .crate_name("zero_init_typedef_reorg")
+        .run();
+}
+
 // arch-os-specific
 
 #[test]
