@@ -10,7 +10,7 @@ rm -f compile_commands.json
 cmake -S "$SCRIPT_DIR/repo" -B "$BUILD_DIR" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DBUILD_SHARED_LIBS=OFF \
-    -DBUILD_TESTS=OFF \
+    -DBUILD_TESTS=ON \
     -DBUILD_CLI=OFF \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_FUZZERS=OFF \
@@ -24,9 +24,10 @@ cmake -S "$SCRIPT_DIR/repo" -B "$BUILD_DIR" \
     -DUSE_ICONV=OFF \
     2>&1 | tee "$LOG_FILE"
 
-# Configuring is enough: it generates compile_commands.json and every header
-# that transpilation needs (e.g. gen_headers/{experimental,git2_features}.h).
-# Building the library is not required to transpile, so we skip it.
-
 # The test runner expects compile_commands.json in the fixture directory.
 ln -sf repo/build/compile_commands.json compile_commands.json
+
+# clar generates `clar_suite.h` at build time, so the test sources can't be
+# transpiled until the test target is built.
+cmake --build "$BUILD_DIR" --target libgit2_tests --parallel "$(nproc)" \
+    2>&1 | tee -a "$LOG_FILE"
