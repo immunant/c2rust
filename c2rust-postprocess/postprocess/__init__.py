@@ -198,19 +198,22 @@ def main(argv: Sequence[str] | None = None):
             logging.WARNING if args.on_error == "warn" else logging.ERROR
         )
         for transform in transforms:
-            transform_rewrites, transform_cache_hits, transform_skips, transform_failures = (
-                transform.apply_dir(
-                    root_rust_source_file=args.root_rust_source_file,
-                    exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
-                    ident_filter=args.ident_filter,
-                    update_rust=args.update_rust,
-                    keep_going=args.on_error != "abort",
-                    failure_log_level=failure_log_level,
-                )
+            (
+                transform_rewrites,
+                transform_cache_hits,
+                transform_skips,
+                transform_failures,
+            ) = transform.apply_dir(
+                root_rust_source_file=args.root_rust_source_file,
+                exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
+                ident_filter=args.ident_filter,
+                update_rust=args.update_rust,
+                keep_going=args.on_error != "abort",
+                failure_log_level=failure_log_level,
             )
-            transform_name = (
-                transform.__class__.__name__.removesuffix("Transform").lower()
-            )
+            transform_name = transform.__class__.__name__.removesuffix(
+                "Transform"
+            ).lower()
             if any(
                 (
                     transform_rewrites,

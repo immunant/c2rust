@@ -226,7 +226,9 @@ def get_rust_code(code: str) -> list[str]:
 def get_comments(code: str, lexer: RegexLexer) -> list[str]:
     comments = []
     for tok_type, tok_value in lex(code, lexer):
-        if tok_type in Comment and not str(tok_type).startswith("Token.Comment.Preproc"):
+        if tok_type in Comment and not str(tok_type).startswith(
+            "Token.Comment.Preproc"
+        ):
             # Keep exactly what appears, including delimiters (//, /* */)
             comments.append(tok_value)
     return comments

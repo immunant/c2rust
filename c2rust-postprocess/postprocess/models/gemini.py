@@ -1,11 +1,10 @@
 import logging
-from collections.abc import Callable, Iterable
 import time
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from google import genai
-from google.genai import errors
-from google.genai import types
+from google.genai import errors, types
 
 from postprocess.models.base import AbstractGenerativeModel
 

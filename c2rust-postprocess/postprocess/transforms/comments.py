@@ -181,6 +181,7 @@ class CommentsTransform(AbstractTransform):
                 f"\n{c_comments=}\n{rust_comments=}"
             )
 
+        assert response is not None
         self.cache.update(
             transform=transform,
             identifier=identifier,
