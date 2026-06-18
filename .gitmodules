@@ -101,3 +101,8 @@
 	path = tests/integration/tests/libmcs/repo
 	url = https://gitlab.com/gtd-gmbh/libmcs
 	update = none
+[submodule "tests/integration/tests/libgit2"]
+	path = tests/integration/tests/libgit2/repo
+	url = https://github.com/libgit2/libgit2
+	ignore = all
+	update = none
