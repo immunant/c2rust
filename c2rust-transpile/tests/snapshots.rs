@@ -377,6 +377,11 @@ fn test_factorial() {
 }
 
 #[test]
+fn test_fences() {
+    transpile("fences.c").run();
+}
+
+#[test]
 fn test_fn_attrs() {
     transpile("fn_attrs.c").run();
 }

@@ -1,0 +1,32 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/fences.2021.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(core_intrinsics)]
+#[no_mangle]
+pub unsafe extern "C" fn fences() {
+    ();
+    ::core::intrinsics::atomic_fence_acquire();
+    ::core::intrinsics::atomic_fence_release();
+    ::core::intrinsics::atomic_fence_acqrel();
+    ::core::intrinsics::atomic_fence_seqcst();
+    ();
+    ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::Acquire);
+    ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::Release);
+    ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::AcqRel);
+    ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::SeqCst);
+}
+pub const __ATOMIC_RELAXED: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+pub const __ATOMIC_ACQUIRE: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+pub const __ATOMIC_RELEASE: ::core::ffi::c_int = 3 as ::core::ffi::c_int;
+pub const __ATOMIC_ACQ_REL: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
+pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;

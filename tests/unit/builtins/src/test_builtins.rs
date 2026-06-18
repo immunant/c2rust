@@ -1,7 +1,7 @@
 //! feature_core_intrinsics, feature_raw_ref_op
 
 use crate::alloca::rust_alloca_hello;
-use crate::atomics::{rust_atomics_entry, rust_new_atomics};
+use crate::atomics::{rust_atomics_entry, rust_fences, rust_new_atomics};
 use crate::math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isinf_sign, rust_isnan};
 use crate::mem_x_fns::{rust_assume_aligned, rust_mem_x};
 use crate::overflow::rust_overflow_builtins;
@@ -12,6 +12,7 @@ unsafe extern "C" {
     fn alloca_hello() -> c_int;
     fn atomics_entry(_: c_uint, _: *mut c_int);
     fn new_atomics(_: c_uint, _: *mut c_int);
+    fn fences(_: c_uint, _: *mut c_int);
     fn mem_x(_: *const c_char, _: *mut c_char);
     fn ffs(_: c_int) -> c_int;
     fn ffsl(_: c_long) -> c_int;
@@ -72,6 +73,21 @@ pub fn test_overflow_builtins() {
     unsafe {
         overflow_builtins(BUFFER_SIZE as u32, buffer.as_mut_ptr());
         rust_overflow_builtins(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
+    }
+
+    for index in 0..BUFFER_SIZE {
+        assert_eq!(buffer[index], rust_buffer[index]);
+    }
+}
+
+#[test]
+pub fn test_fences() {
+    let mut buffer = [0; BUFFER_SIZE];
+    let mut rust_buffer = [0; BUFFER_SIZE];
+
+    unsafe {
+        fences(BUFFER_SIZE as u32, buffer.as_mut_ptr());
+        rust_fences(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
     }
 
     for index in 0..BUFFER_SIZE {

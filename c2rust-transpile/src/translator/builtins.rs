@@ -4,11 +4,12 @@
 use super::*;
 
 use crate::format_translation_err;
-use crate::translator::atomics::CAtomicBinOp;
+use crate::translator::atomics::{order_ty_name, CAtomicBinOp};
 use crate::translator::simd::simd_fn_from_builtin_fn;
 use c2rust_rust_tools::RustEdition::Edition2024;
 use log::warn;
 use std::sync::atomic::Ordering::Acquire;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::Ordering::Release;
 use std::sync::atomic::Ordering::SeqCst;
 
@@ -518,6 +519,43 @@ impl<'c> Translation<'c> {
             "__sync_synchronize" => {
                 let atomic_func = self.atomic_intrinsic_expr("fence", &[SeqCst]);
                 let call_expr = mk().call_expr(atomic_func, vec![]);
+                self.convert_side_effects_expr(
+                    ctx,
+                    WithStmts::new_val(call_expr),
+                    "Builtin is not supposed to be used",
+                )
+            }
+
+            // `__atomic_thread_fence` is a full fence (`atomic_fence`);
+            // `__atomic_signal_fence` only fences the compiler
+            // (`compiler_fence`). The order picks the intrinsic at
+            // compile time, so we only support a constant one. A relaxed fence
+            // is a no-op (and Rust has no relaxed fence intrinsic), so we drop it.
+            "__atomic_thread_fence" | "__atomic_signal_fence" => {
+                let order = self.convert_memordering(args[0]).ok_or_else(|| {
+                    format_translation_err!(
+                        self.ast_context.display_loc(src_loc),
+                        "non-constant memory order argument to {} is not supported",
+                        builtin_name
+                    )
+                })?;
+                let call_expr = if order == Relaxed {
+                    mk().tuple_expr(vec![])
+                } else if builtin_name == "__atomic_thread_fence" {
+                    mk().call_expr(self.atomic_intrinsic_expr("fence", &[order]), vec![])
+                } else {
+                    let ordering = mk().abs_path_expr(vec![
+                        "core",
+                        "sync",
+                        "atomic",
+                        "Ordering",
+                        order_ty_name(order),
+                    ]);
+                    mk().call_expr(
+                        mk().abs_path_expr(vec!["core", "sync", "atomic", "compiler_fence"]),
+                        vec![ordering],
+                    )
+                };
                 self.convert_side_effects_expr(
                     ctx,
                     WithStmts::new_val(call_expr),
