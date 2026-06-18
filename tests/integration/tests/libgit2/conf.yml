@@ -7,6 +7,7 @@ requirements:
 
 transpile:
   autogen: true
+  binary: main # clar test runner's `main()` lives in tests/clar/main.c
   tflags: --reorganize-definitions --disable-refactoring
   # libgit2 builds its tests with GIT_DEPRECATE_HARD but not the library
   # itself (which implements the deprecated APIs), so the same struct has two
