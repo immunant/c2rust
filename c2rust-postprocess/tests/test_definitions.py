@@ -6,6 +6,7 @@ from conftest import EXAMPLES_ROOT
 
 from postprocess import main
 from postprocess.definitions import (
+    get_c_comments,
     get_c_sourcefile,
     get_function_span_pairs,
     get_rust_code,
@@ -122,3 +123,17 @@ def test_comment_insertion_qsort():
     qsort_rs = Path(__file__).parent / "examples/qsort.rs"
     qsort_rs = qsort_rs.relative_to(Path.cwd())
     main([str(qsort_rs), "--no-update-rust"])
+
+
+def test_get_c_comments_ignores_preprocessor_noise():
+    code = """\
+#include "config.h"
+#define FOO 1
+#warning hello
+#ifdef ENABLE_THING
+// ordinary comment
+#endif
+#pragma once
+/* real comment */
+"""
+    assert get_c_comments(code) == ["ordinary comment", "real comment"]
