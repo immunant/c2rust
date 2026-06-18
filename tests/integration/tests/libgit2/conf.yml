@@ -11,3 +11,15 @@ transpile:
 
 cargo.transpile:
   autogen: true
+
+refactor:
+  autogen: true
+  transforms:
+    - rename_unnamed
+    - reorganize_definitions
+    - shorten_imported_paths
+    - remove_unused_labels
+    - remove_literal_suffixes
+
+cargo.refactor:
+  autogen: true
