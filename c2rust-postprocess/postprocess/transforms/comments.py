@@ -10,7 +10,11 @@ from postprocess.definitions import (
     update_rust_definition,
 )
 from postprocess.models import AbstractGenerativeModel, api_key_from_env
-from postprocess.transforms.base import AbstractTransform, TransformError
+from postprocess.transforms.base import (
+    AbstractTransform,
+    TransformError,
+    TransformOutcome,
+)
 from postprocess.utils import get_highlighted_rust, remove_backticks
 
 # TODO: get from model
@@ -62,7 +66,7 @@ class CommentsTransform(AbstractTransform):
         c_definition: str,
         identifier: str,
         update_rust: bool = True,
-    ) -> None:
+    ) -> TransformOutcome:
         rust_comments = get_rust_comments(rust_definition)
         if rust_comments:
             logging.info(
@@ -70,13 +74,13 @@ class CommentsTransform(AbstractTransform):
                 \n{rust_comments} in\
                 \n{rust_definition}"
             )
-            return
+            return TransformOutcome.SKIP
 
         # Skip functions without comments in C definition
         c_comments = get_c_comments(c_definition)
         if not c_comments:
             logging.info(f"Skipping C function without comments: {identifier}")
-            return
+            return TransformOutcome.SKIP
 
         # TODO: make this function take a model and get prompt from model
         prompt_text = """
@@ -125,14 +129,14 @@ class CommentsTransform(AbstractTransform):
             model=model,
             messages=messages,
         ):
-            return
+            return TransformOutcome.CACHE
 
         if api_key_from_env(model) is None:
             # No API key set: skip uncached entries instead of failing.
             logging.warning(
                 f"Cache miss for {identifier}; skipping since no API key was set..."
             )
-            return
+            return TransformOutcome.SKIP
 
         max_code_mismatch_retries = 3
         original_rust_code = get_rust_code(rust_definition)
@@ -198,3 +202,5 @@ class CommentsTransform(AbstractTransform):
                 )
             except RuntimeError as error:
                 raise TransformError(str(error)) from error
+
+        return TransformOutcome.REWRITE

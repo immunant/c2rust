@@ -198,21 +198,38 @@ def main(argv: Sequence[str] | None = None):
             logging.WARNING if args.on_error == "warn" else logging.ERROR
         )
         for transform in transforms:
-            failures += transform.apply_dir(
-                root_rust_source_file=args.root_rust_source_file,
-                exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
-                ident_filter=args.ident_filter,
-                update_rust=args.update_rust,
-                keep_going=args.on_error != "abort",
-                failure_log_level=failure_log_level,
+            transform_rewrites, transform_cache_hits, transform_skips, transform_failures = (
+                transform.apply_dir(
+                    root_rust_source_file=args.root_rust_source_file,
+                    exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
+                    ident_filter=args.ident_filter,
+                    update_rust=args.update_rust,
+                    keep_going=args.on_error != "abort",
+                    failure_log_level=failure_log_level,
+                )
             )
+            transform_name = (
+                transform.__class__.__name__.removesuffix("Transform").lower()
+            )
+            if any(
+                (
+                    transform_rewrites,
+                    transform_cache_hits,
+                    transform_skips,
+                    transform_failures,
+                )
+            ):
+                logging.info(
+                    f"{transform_name} transform stats: "
+                    f"rewrites {transform_rewrites}, "
+                    f"cache hits {transform_cache_hits}, "
+                    f"skips {transform_skips}, "
+                    f"fails {transform_failures}"
+                )
+            failures += transform_failures
 
-        if failures:
-            logging.log(
-                failure_log_level, f"Failed to transform {failures} function(s)"
-            )
-            if args.on_error != "warn":
-                return 1
+        if failures and args.on_error != "warn":
+            return 1
 
         return 0
     except TransformError as error:

@@ -1,6 +1,7 @@
 import logging
 import re
 from abc import ABC, abstractmethod
+from enum import Enum
 from pathlib import Path
 
 from postprocess.definitions import (
@@ -13,6 +14,12 @@ from postprocess.utils import get_highlighted_c
 
 class TransformError(Exception):
     """A transform failed to process a single definition."""
+
+
+class TransformOutcome(Enum):
+    REWRITE = "rewrite"
+    CACHE = "cache"
+    SKIP = "skip"
 
 
 class AbstractTransform(ABC):
@@ -35,7 +42,7 @@ class AbstractTransform(ABC):
         c_definition: str,
         identifier: str,
         update_rust: bool = True,
-    ) -> None:
+    ) -> TransformOutcome:
         """
         Implementations should apply transform to a single Rust definition
         with the given identifier.
@@ -50,13 +57,16 @@ class AbstractTransform(ABC):
         update_rust: bool = True,
         keep_going: bool = False,
         failure_log_level: int = logging.ERROR,
-    ) -> int:
+    ) -> tuple[int, int, int, int]:
         """
         Run `self.apply_file` on each `*.rs` in `dir`
         with a corresponding `*.c_decls.json`.
 
-        Returns the number of definitions that failed to transform.
+        Returns the number of rewrites, cache hits, skips, and failures.
         """
+        rewrites = 0
+        cache_hits = 0
+        skips = 0
         failures = 0
         root_dir = root_rust_source_file.parent
         c_decls_json_suffix = ".c_decls.json"
@@ -65,7 +75,7 @@ class AbstractTransform(ABC):
                 c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
             )
             assert rs_path.exists()
-            failures += self.apply_file(
+            file_rewrites, file_cache_hits, file_skips, file_failures = self.apply_file(
                 rust_source_file=rs_path,
                 exclude_list=exclude_list,
                 ident_filter=ident_filter,
@@ -73,7 +83,11 @@ class AbstractTransform(ABC):
                 keep_going=keep_going,
                 failure_log_level=failure_log_level,
             )
-        return failures
+            rewrites += file_rewrites
+            cache_hits += file_cache_hits
+            skips += file_skips
+            failures += file_failures
+        return rewrites, cache_hits, skips, failures
 
     def apply_file(
         self,
@@ -83,8 +97,11 @@ class AbstractTransform(ABC):
         update_rust: bool = True,
         keep_going: bool = False,
         failure_log_level: int = logging.ERROR,
-    ) -> int:
+    ) -> tuple[int, int, int, int]:
         ident_regex = re.compile(ident_filter) if ident_filter else None
+        rewrites = 0
+        cache_hits = 0
+        skips = 0
         failures = 0
 
         rust_definitions = get_rust_definitions(rust_source_file)
@@ -99,6 +116,7 @@ class AbstractTransform(ABC):
                     f"Skipping Rust fn {identifier} in {rust_source_file}"
                     f"due to exclude file {exclude_list.src_path}"
                 )
+                skips += 1
                 continue
 
             if ident_regex and not ident_regex.search(identifier):
@@ -106,10 +124,12 @@ class AbstractTransform(ABC):
                     f"Skipping Rust fn {identifier} in {rust_source_file}"
                     f"due to ident filter {ident_filter}"
                 )
+                skips += 1
                 continue
 
             if identifier not in c_definitions:
                 logging.warning(f"No corresponding C definition found for {identifier}")
+                skips += 1
                 continue
 
             c_definition = c_definitions[identifier]
@@ -120,13 +140,19 @@ class AbstractTransform(ABC):
             )
 
             try:
-                self.apply_ident(
+                outcome = self.apply_ident(
                     rust_source_file=rust_source_file,
                     rust_definition=rust_definition,
                     c_definition=c_definition,
                     identifier=identifier,
                     update_rust=update_rust,
                 )
+                if outcome is TransformOutcome.REWRITE:
+                    rewrites += 1
+                elif outcome is TransformOutcome.CACHE:
+                    cache_hits += 1
+                else:
+                    skips += 1
             except TransformError as error:
                 if not keep_going:
                     raise
@@ -136,7 +162,7 @@ class AbstractTransform(ABC):
                 )
                 failures += 1
 
-        return failures
+        return rewrites, cache_hits, skips, failures
 
 
 # TODO: We probably want a an interface that generates validators specialized to
