@@ -2985,7 +2985,7 @@ impl<'c> Translation<'c> {
     /// and in many cases should override it.
     pub fn convert_expr(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         expr_id: CExprId,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -3268,102 +3268,15 @@ impl<'c> Translation<'c> {
             Literal(ty, ref kind) => self.convert_literal(ctx, override_ty.unwrap_or(ty), kind),
 
             ImplicitCast(ty, expr, kind, opt_field_id, _)
-            | ExplicitCast(ty, expr, kind, opt_field_id, _) => {
-                let is_explicit = matches!(expr_kind, CExprKind::ExplicitCast(..));
-                // A reference must be decayed if a bitcast is required. Const casts in
-                // LLVM 8 are now NoOp casts, so we need to include it as well.
-                match kind {
-                    CastKind::IntegralToBoolean
-                    | CastKind::FloatingToBoolean
-                    | CastKind::PointerToBoolean => {
-                        return self.convert_condition(ctx, true, expr);
-                    }
-                    CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
-                        ctx.decay_ref = DecayRef::Yes
-                    }
-                    CastKind::ArrayToPointerDecay
-                    | CastKind::FunctionToPointerDecay
-                    | CastKind::BuiltinFnToFnPtr => {
-                        ctx.needs_address = true;
-                    }
-                    _ => {}
-                }
-
-                let expr_kind = &self.ast_context.index_unwrap_parens(expr).kind;
-                let target_ty = override_ty.unwrap_or(ty);
-
-                // In general, if we are casting the result of an expression, then the inner
-                // expression should be translated to whatever type it normally would.
-                // But for literals, if we don't absolutely have to cast, we would rather the
-                // literal is translated according to the type we're expecting, and then we can
-                // skip the cast entirely.
-                if !is_explicit {
-                    let mut literal_expr_kind = expr_kind;
-                    let mut is_negated = false;
-
-                    if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
-                        literal_expr_kind = &self.ast_context.index_unwrap_parens(subexpr_id).kind;
-                        is_negated = true;
-                    }
-
-                    if let CExprKind::Literal(_, lit) = literal_expr_kind {
-                        if self.literal_matches_ty(lit, target_ty, is_negated) {
-                            return self.convert_expr(ctx, expr, Some(target_ty));
-                        }
-                    }
-                }
-
-                let mut val = self.convert_expr(ctx, expr, None)?;
-
-                if is_explicit {
-                    let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
-                    val = val.prepend_stmts(stmts);
-                }
-
-                // Shuffle Vector "function" builtins will add a cast to the output of the
-                // builtin call which is unnecessary for translation purposes
-                if self.casting_simd_builtin_call(expr, is_explicit, kind) {
-                    return Ok(val);
-                }
-
-                let source_ty = if let Some(func_decl) = self
-                    .ast_context
-                    .fn_declref_decl(expr)
-                    .filter(|_| is_explicit)
-                {
-                    // If we're casting a function, look for its declared ty to use as a more
-                    // precise source type. The AST node's type will not preserve typedef arg types
-                    // but the function's declaration will.
-                    let kind_with_declared_args =
-                        self.ast_context.fn_decl_ty_with_declared_args(func_decl);
-                    let func_ty = self
-                        .ast_context
-                        .type_for_kind(&kind_with_declared_args)
-                        .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
-                    let func_ptr_ty = self
-                        .ast_context
-                        .type_for_kind(&CTypeKind::Pointer(CQualTypeId::new(func_ty)))
-                        .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
-
-                    CQualTypeId::new(func_ptr_ty)
-                } else {
-                    self.ast_context
-                        .index_unwrap_parens(expr)
-                        .kind
-                        .get_qual_type()
-                        .ok_or_else(|| format_err!("bad source type"))?
-                };
-
-                self.convert_cast(
-                    ctx,
-                    source_ty,
-                    target_ty,
-                    val,
-                    Some(expr),
-                    Some(kind),
-                    opt_field_id,
-                )
-            }
+            | ExplicitCast(ty, expr, kind, opt_field_id, _) => self.convert_cast(
+                ctx,
+                override_ty,
+                ty,
+                expr,
+                kind,
+                opt_field_id,
+                matches!(expr_kind, CExprKind::ExplicitCast(..)),
+            ),
 
             Unary(type_id, op, arg, _lrvalue) => {
                 self.convert_unary_operator(ctx, op, override_ty.unwrap_or(type_id), arg)
@@ -3653,6 +3566,120 @@ impl<'c> Translation<'c> {
     }
 
     pub fn convert_cast(
+        &self,
+        mut ctx: ExprContext,
+        override_ty: Option<CQualTypeId>,
+        ty: CQualTypeId,
+        expr: CExprId,
+        kind: CastKind,
+        opt_field_id: Option<CDeclId>,
+        is_explicit: bool,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        // A reference must be decayed if a bitcast is required. Const casts in
+        // LLVM 8 are now NoOp casts, so we need to include it as well.
+        match kind {
+            CastKind::IntegralToBoolean
+            | CastKind::FloatingToBoolean
+            | CastKind::PointerToBoolean => {
+                return self.convert_condition(ctx, true, expr);
+            }
+            CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
+                ctx.decay_ref = DecayRef::Yes
+            }
+            CastKind::ArrayToPointerDecay
+            | CastKind::FunctionToPointerDecay
+            | CastKind::BuiltinFnToFnPtr => {
+                ctx.needs_address = true;
+            }
+            _ => {}
+        }
+
+        let expr_kind = &self.ast_context.index_unwrap_parens(expr).kind;
+        let target_ty = override_ty.unwrap_or(ty);
+
+        // In general, if we are casting the result of an expression, then the inner
+        // expression should be translated to whatever type it normally would.
+        // But for literals, if we don't absolutely have to cast, we would rather the
+        // literal is translated according to the type we're expecting, and then we can
+        // skip the cast entirely.
+        if !is_explicit {
+            let mut literal_expr_kind = expr_kind;
+            let mut is_negated = false;
+
+            if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
+                literal_expr_kind = &self.ast_context.index_unwrap_parens(subexpr_id).kind;
+                is_negated = true;
+            }
+
+            if let CExprKind::Literal(_, lit) = literal_expr_kind {
+                if self.literal_matches_ty(lit, target_ty, is_negated) {
+                    return self.convert_expr(ctx, expr, Some(target_ty));
+                }
+            }
+        }
+
+        let mut val = self.convert_expr(ctx, expr, None)?;
+
+        if is_explicit {
+            let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
+            val = val.prepend_stmts(stmts);
+        }
+
+        // Shuffle Vector "function" builtins will add a cast to the output of the
+        // builtin call which is unnecessary for translation purposes
+        if self.casting_simd_builtin_call(expr, is_explicit, kind) {
+            return Ok(val);
+        }
+
+        let source_ty = if let Some(func_decl) = self
+            .ast_context
+            .fn_declref_decl(expr)
+            .filter(|_| is_explicit)
+        {
+            // If we're casting a function, look for its declared ty to use as a more
+            // precise source type. The AST node's type will not preserve typedef arg types
+            // but the function's declaration will.
+            let kind_with_declared_args = self.ast_context.fn_decl_ty_with_declared_args(func_decl);
+            let func_ty = self
+                .ast_context
+                .type_for_kind(&kind_with_declared_args)
+                .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
+            let func_ptr_ty = self
+                .ast_context
+                .type_for_kind(&CTypeKind::Pointer(CQualTypeId::new(func_ty)))
+                .unwrap_or_else(|| panic!("no type for kind {kind_with_declared_args:?}"));
+
+            CQualTypeId::new(func_ptr_ty)
+        } else {
+            self.ast_context
+                .index_unwrap_parens(expr)
+                .kind
+                .get_qual_type()
+                .ok_or_else(|| format_err!("bad source type"))?
+        };
+
+        self.make_cast_full(
+            ctx,
+            source_ty,
+            target_ty,
+            val,
+            Some(expr),
+            Some(kind),
+            opt_field_id,
+        )
+    }
+
+    pub fn make_cast(
+        &self,
+        ctx: ExprContext,
+        source_type_id: CQualTypeId,
+        target_type_id: CQualTypeId,
+        val: WithStmts<Box<Expr>>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        self.make_cast_full(ctx, source_type_id, target_type_id, val, None, None, None)
+    }
+
+    pub fn make_cast_full(
         &self,
         ctx: ExprContext,
         source_cty: CQualTypeId,

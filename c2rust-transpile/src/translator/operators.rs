@@ -211,14 +211,11 @@ impl<'c> Translation<'c> {
                 rhs,
             )))
         } else {
-            let lhs = self.convert_cast(
+            let lhs = self.make_cast(
                 ctx,
                 initial_lhs_type_id,
                 compute_lhs_type_id,
                 WithStmts::new_val(read.clone()),
-                None,
-                None,
-                None,
             )?;
 
             let ty = self.convert_type(compute_res_type_id.ctype)?;
@@ -234,8 +231,7 @@ impl<'c> Translation<'c> {
                 )
             })?;
 
-            let val =
-                self.convert_cast(ctx, compute_res_type_id, lhs_type_id, val, None, None, None)?;
+            let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
 
             Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
         }
@@ -423,14 +419,11 @@ impl<'c> Translation<'c> {
                         .underlying_assignment()
                         .expect("Cannot convert non-assignment operator");
 
-                    let lhs = self.convert_cast(
+                    let lhs = self.make_cast(
                         ctx,
                         initial_lhs_type_id,
                         expr_or_comp_type_id,
                         WithStmts::new_val(read.clone()),
-                        None,
-                        None,
-                        None,
                     )?;
 
                     let ty = self.convert_type(result_type_id.ctype)?;
@@ -446,14 +439,11 @@ impl<'c> Translation<'c> {
                         )
                     )?;
 
-                    let val = self.convert_cast(
+                    let val = self.make_cast(
                         ctx,
                         result_type_id,
                         expr_type_id,
                         val,
-                        None,
-                        None,
-                        None,
                     )?;
 
                     #[allow(clippy::let_and_return /* , reason = "block is large, so variable name helps" */)]
