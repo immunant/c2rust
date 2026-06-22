@@ -242,7 +242,7 @@ impl RelooperState {
         // body we don't want to consider back edges, which we strip before processing
         // the loop body.
         //
-        // TODO: If possible we should avoid recomputing this every time. I think the
+        // TODO: If possible we should avoid recomputing this every time `relooper` recurses. I think the
         // reachability information only meaningfully changes when we strip a back edge,
         // so in theory we should only need to recompute this after processing a loop.
         let strict_reachable_from = || flip_edges(transitive_closure(&local_successors));
