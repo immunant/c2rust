@@ -1,0 +1,13 @@
+name: daily-cronjobs
+
+# Temporary placeholder workflow so the daily cronjobs file can land on the
+# default branch before the real jobs are added.
+on:
+  workflow_dispatch:
+
+jobs:
+  postprocess-test-and-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op
+        run: echo "daily cronjobs placeholder"
