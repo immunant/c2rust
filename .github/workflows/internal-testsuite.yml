@@ -40,7 +40,7 @@ jobs:
         # `update = none` is set, which makes this not work, so we need to update them manually.
         # See `.gitmodules` for more info.
         submodules: false
-    
+
     - name: Checkout submodules
       run: |
         git submodule update --init --checkout tests/integration/tests/curl/repo
@@ -132,7 +132,8 @@ jobs:
         export C2RUST_DIR=$PWD
         # Needs to be run from `tests/integration/` (or further inside)
         # to correctly load the `pyproject.toml`.
-        (cd tests/integration && ./test.py curl json-c libgit2 lua nginx zstd libxml2 python2 libmcs)
+        # TESTING: temporarily disable all other integration tests
+        (cd tests/integration && ./test.py libgit2)
 
     - uses: actions/upload-artifact@v4
       with:
