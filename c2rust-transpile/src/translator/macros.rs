@@ -115,6 +115,14 @@ impl<'c> Translation<'c> {
 
     /// Determine if we're able to convert this const macro expansion.
     fn can_convert_const_macro_expansion(&self, expr_id: CExprId) -> TranslationResult<()> {
+        // Bitfield struct initializers are lowered to non-`const` setter calls,
+        // so they can't be emitted as a `const` item.
+        if self.expr_initializes_bitfield(expr_id) {
+            Err(format_err!(
+                "macro initializes a bitfield, which is not const"
+            ))?;
+        }
+
         match self.tcfg.translate_const_macros {
             TranslateMacros::None => Err(format_err!("translate_const_macros is None"))?,
             TranslateMacros::Conservative => {

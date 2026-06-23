@@ -1768,6 +1768,45 @@ impl<'c> Translation<'c> {
         false
     }
 
+    /// Does this expression initialize a struct that contains a bitfield?
+    ///
+    /// Bitfield initialization is lowered to non-`const` setter method calls
+    /// Such an initializer cannot appear in a `const` or `static` item.
+    /// Const-like macros that expand to one must be left inlined at use sites.
+    pub(crate) fn expr_initializes_bitfield(&self, expr_id: CExprId) -> bool {
+        for i in DFExpr::new(&self.ast_context, expr_id.into()) {
+            let expr_id = match i {
+                SomeId::Expr(expr_id) => expr_id,
+                _ => continue,
+            };
+            if let CExprKind::InitList(qtype, ..) =
+                self.ast_context.index_unwrap_parens(expr_id).kind
+            {
+                if let CTypeKind::Struct(decl_id) = self.ast_context.resolve_type(qtype.ctype).kind
+                {
+                    if let CDeclKind::Struct {
+                        fields: Some(fields),
+                        ..
+                    } = &self.ast_context[decl_id].kind
+                    {
+                        if fields.iter().any(|field_id| {
+                            matches!(
+                                self.ast_context[*field_id].kind,
+                                CDeclKind::Field {
+                                    bitfield_width: Some(_),
+                                    ..
+                                }
+                            )
+                        }) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     fn add_static_initializer_to_section(
         &self,
         ctx: ExprContext,
