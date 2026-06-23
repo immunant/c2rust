@@ -1,5 +1,7 @@
-static int trace_buf[16];
-static int trace_n;
+/* Thread-local so the parallel test harness gives each test its own trace
+ * instead of racing on shared state (both here and in the transpiled Rust). */
+static _Thread_local int trace_buf[16];
+static _Thread_local int trace_n;
 
 static void reset(void) {
     trace_n = 0;
