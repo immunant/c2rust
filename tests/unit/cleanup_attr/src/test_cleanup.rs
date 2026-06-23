@@ -1,3 +1,4 @@
+//! feature_thread_local
 use crate::cleanup::{
     rust_run_early_return, rust_run_goto, rust_run_multiple, rust_run_nested, rust_run_single,
     rust_run_typedef,
