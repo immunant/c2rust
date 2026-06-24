@@ -4,7 +4,7 @@ use rustc_ast::*;
 use rustc_parse::new_parser_from_file;
 use rustc_session::parse::ParseSess;
 use rustc_span::source_map::SourceMap;
-use rustc_span::FileName;
+use rustc_span::{sym, FileName};
 use smallvec::SmallVec;
 use std::path::PathBuf;
 
@@ -39,11 +39,24 @@ impl<'a> MutVisitor for LoadModules<'a> {
             }
 
             ModKind::Unloaded => {
-                // Look for dir_path/foo.rs, then try dir_path/foo/mod.rs
-                let mut mod_file_path = self.dir_path.join(ident.as_str()).with_extension("rs");
-                if !self.source_map.file_exists(&mod_file_path) {
-                    mod_file_path = self.dir_path.join(ident.as_str()).join("mod.rs");
-                }
+                // An explicit `#[path = "..."]` overrides the usual file lookup;
+                // the transpiler emits this for modules whose name was deconflicted
+                // from a sibling (e.g. `hash.c` and `hash/` becoming `hash_` and `hash`).
+                let path_attr = attrs
+                    .iter()
+                    .find(|attr| attr.has_name(sym::path))
+                    .and_then(|attr| attr.value_str());
+
+                let mod_file_path = if let Some(path) = path_attr {
+                    self.dir_path.join(path.as_str())
+                } else {
+                    // Look for dir_path/foo.rs, then try dir_path/foo/mod.rs
+                    let mut p = self.dir_path.join(ident.as_str()).with_extension("rs");
+                    if !self.source_map.file_exists(&p) {
+                        p = self.dir_path.join(ident.as_str()).join("mod.rs");
+                    }
+                    p
+                };
                 if !self.source_map.file_exists(&mod_file_path) {
                     panic!("unable to load module file {mod_file_path:?}");
                 }
