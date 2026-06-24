@@ -10,9 +10,18 @@ class AbstractGenerativeModel(ABC):
 
     def __init__(self, id: str):
         self._id = id
+        self._has_credentials = False
 
     @property
     def id(self) -> str:
+        return self._id
+
+    @property
+    def has_credentials(self) -> bool:
+        return self._has_credentials
+
+    @property
+    def cache_key(self) -> str:
         return self._id
 
     # @abstractmethod

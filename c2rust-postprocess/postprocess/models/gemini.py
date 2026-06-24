@@ -20,6 +20,7 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
         generation_config: dict[str, Any] | None = None,
     ):
         super().__init__(id)
+        self._has_credentials = api_key is not None
         self.client = genai.Client(api_key=api_key)
         if generation_config is None:
             generation_config = {}

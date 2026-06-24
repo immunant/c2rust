@@ -1,4 +1,6 @@
+import json
 import os
+from pathlib import Path
 
 from postprocess.models.base import AbstractGenerativeModel
 from postprocess.models.gemini import GoogleGenerativeModel
@@ -12,6 +14,29 @@ def api_key_from_env(model_id: str) -> str | None:
     elif model_id.startswith("gpt"):
         return os.getenv("OPENAI_API_KEY")
     return None
+
+
+def codex_login_api_key() -> str | None:
+    """Return the Codex CLI session token from the local login state."""
+    codex_home = Path(os.getenv("CODEX_HOME") or (Path.home() / ".codex"))
+    auth_path = codex_home / "auth.json"
+
+    if not auth_path.is_file():
+        return None
+
+    try:
+        auth_data = json.loads(auth_path.read_text())
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"failed to parse {auth_path}: {error}") from error
+
+    tokens = auth_data.get("tokens", {})
+    api_key = tokens.get("access_token")
+    if not isinstance(api_key, str) or not api_key:
+        raise RuntimeError(
+            "found Codex auth.json, but it does not contain a valid access token"
+        )
+
+    return api_key
 
 
 def get_model_by_id(id: str, generation_config: dict | None) -> AbstractGenerativeModel:

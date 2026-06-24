@@ -14,6 +14,7 @@ class GPTModel(AbstractGenerativeModel):
         base_url: str | None = None,
     ):
         super().__init__(id)
+        self._has_credentials = api_key is not None
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
     def generate_with_tools(

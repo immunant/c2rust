@@ -14,6 +14,7 @@ from google.genai import types
 from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.models import api_key_from_env, get_model_by_id
+from postprocess.models.codex import CodexModel
 from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
@@ -82,6 +83,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--codex-login",
+        action="store_true",
+        help=(
+            "Use the local Codex CLI login session for the Codex backend, "
+            "instead of OPENAI_API_KEY"
+        ),
+    )
+
+    parser.add_argument(
         "--cache-scope",
         type=str,
         required=False,
@@ -126,11 +136,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def get_model(model_id: str) -> AbstractGenerativeModel:
+def get_model(model_id: str, codex_login: bool = False) -> AbstractGenerativeModel:
     # CRISP_API_MODEL/_KEY/_BASE (see github.com/GaloisInc/Tractor-Crisp)
     # override CLI model selection; CRISP endpoints are OpenAI-compatible.
     if crisp_model_id := os.getenv("CRISP_API_MODEL"):
-        if not (crisp_api_key := os.getenv("CRISP_API_KEY")):
+        if not codex_login and not (crisp_api_key := os.getenv("CRISP_API_KEY")):
             raise RuntimeError(
                 "`CRISP_API_MODEL` is set but `CRISP_API_KEY` is not; "
                 "set both or neither."
@@ -139,11 +149,16 @@ def get_model(model_id: str) -> AbstractGenerativeModel:
             "CLI model selection overridden by `CRISP_API_MODEL` env var; "
             f"using model {crisp_model_id}."
         )
+        if codex_login:
+            return CodexModel(id=crisp_model_id)
         return GPTModel(
             id=crisp_model_id,
             api_key=crisp_api_key,
             base_url=os.getenv("CRISP_API_BASE"),
         )
+
+    if codex_login:
+        return CodexModel(id=model_id)
 
     api_key = api_key_from_env(model_id)
     if api_key is None:
@@ -175,7 +190,7 @@ def main(argv: Sequence[str] | None = None):
         if not args.update_cache:
             cache = FrozenCache(cache)
 
-        model = get_model(args.llm_model)
+        model = get_model(args.llm_model, codex_login=args.codex_login)
 
         # sort transform IDs to transforms always run in the same order to
         # maximize cache hits even if the user passed them in a different order

@@ -156,10 +156,14 @@ class DirectoryCache(AbstractCache):
         *,
         transform: str,
         identifier: str,
+        model: str,
         messages: list[dict[str, Any]],
     ) -> Path:
         message_digest = self.get_message_digest(messages)
-        return self._path / transform / identifier / message_digest
+        cache_path = self._path / transform / identifier
+        if model.startswith("codex-"):
+            cache_path /= model
+        return cache_path / message_digest
 
     def lookup(
         self,
@@ -170,7 +174,10 @@ class DirectoryCache(AbstractCache):
         messages: list[dict[str, Any]],
     ) -> str | None:
         cache_dir = self.cache_dir(
-            transform=transform, identifier=identifier, messages=messages
+            transform=transform,
+            identifier=identifier,
+            model=model,
+            messages=messages,
         )
         cache_file = cache_dir / "metadata.toml"
         try:
@@ -209,7 +216,10 @@ class DirectoryCache(AbstractCache):
         toml = to_multiline_toml(data)
 
         cache_dir = self.cache_dir(
-            transform=transform, identifier=identifier, messages=messages
+            transform=transform,
+            identifier=identifier,
+            model=model,
+            messages=messages,
         )
         cache_dir.mkdir(parents=True, exist_ok=True)
         metadata_path = cache_dir / "metadata.toml"
