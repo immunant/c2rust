@@ -438,6 +438,11 @@ fn test_predefined() {
 }
 
 #[test]
+fn test_raw_keywords() {
+    transpile("raw_keywords.c").run();
+}
+
+#[test]
 fn test_records() {
     transpile("records.c").run();
 }
