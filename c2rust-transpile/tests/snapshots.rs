@@ -355,6 +355,13 @@ fn test_compound_literals() {
 }
 
 #[test]
+fn test_const_macro_bitfield() {
+    transpile("const_macro_bitfield.c")
+        .expect_compile_error(true)
+        .run();
+}
+
+#[test]
 fn test_empty_init() {
     transpile("empty_init.c").run();
 }

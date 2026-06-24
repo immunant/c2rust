@@ -1,0 +1,36 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/const_macro_bitfield.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#[derive(Copy, Clone, ::c2rust_bitfields::BitfieldStruct)]
+#[repr(C)]
+pub struct indexwriter {
+    #[bitfield(name = "should_write", ty = "::core::ffi::c_uint", bits = "0..=0")]
+    pub should_write: [u8; 1],
+    #[bitfield(padding)]
+    pub c2rust_padding: [u8; 3],
+    pub fd: ::core::ffi::c_int,
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn make_writer() -> indexwriter {
+    let mut writer: indexwriter = {
+        let mut init = indexwriter {
+            should_write: [0; 1],
+            c2rust_padding: [0; 3],
+            fd: 0 as ::core::ffi::c_int,
+        };
+        init.set_should_write(0 as ::core::ffi::c_uint);
+        init
+    };
+    return writer;
+}
