@@ -1,0 +1,14 @@
+requirements:
+  ubuntu:
+    apt:
+      packages:
+        - cmake
+        - pkg-config
+
+transpile:
+  autogen: true
+  binary: main # clar test runner's `main()` lives in tests/clar/main.c
+  tflags: --reorganize-definitions --disable-refactoring
+
+cargo.transpile:
+  autogen: true
