@@ -503,6 +503,28 @@ impl ConversionContext {
             self.visit_node(untyped_context, node_id, new_id, expected_ty)
         }
 
+        // Check what primitive kinds were emitted by the compiler.
+        let mut found_kinds: HashMap<_, _> = CTypeKind::PRIMITIVE_KINDS
+            .into_iter()
+            .map(|kind| (kind, false))
+            .collect();
+
+        for Located { kind, .. } in self.typed_context.c_types.values() {
+            if let Some(is_found) = found_kinds.get_mut(kind) {
+                *is_found = true;
+            }
+        }
+
+        // If any primitives are missing, add them ourselves.
+        for (kind, is_found) in found_kinds {
+            if !is_found {
+                let new_id = self.id_mapper.fresh_id();
+                self.add_type(new_id, not_located(kind));
+                self.processed_nodes
+                    .insert(new_id, self::node_types::OTHER_TYPE);
+            }
+        }
+
         // Function declarations' types look through typedefs, but we want to use the types with
         // typedefs intact in some cases during translation. To ensure that these types exist in the
         // `TypedAstContext`, iterate over all function decls, compute their adjusted type using

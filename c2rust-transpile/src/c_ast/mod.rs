@@ -2483,7 +2483,7 @@ pub struct AsmOperand {
 }
 
 /// Type qualifiers (6.7.3)
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Qualifiers {
     /// The `const` qualifier, which marks lvalues as non-assignable.
     ///
@@ -2519,7 +2519,7 @@ impl Qualifiers {
 }
 
 /// Qualified type
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct CQualTypeId {
     pub qualifiers: Qualifiers,
     pub ctype: CTypeId,
@@ -2546,7 +2546,7 @@ impl CQualTypeId {
 /// Represents a type in C (6.2.5 Types)
 ///
 /// Reflects the types in <http://clang.llvm.org/doxygen/classclang_1_1Type.html>
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CTypeKind {
     Void,
 
@@ -2670,6 +2670,17 @@ pub enum CTypeKind {
 }
 
 impl CTypeKind {
+    /// Kinds for C primitive types. These are emitted by the compiler, but possibly only if
+    /// they are actually used in the code.
+    pub const PRIMITIVE_KINDS: [CTypeKind; 16] = {
+        use CTypeKind::*;
+        [
+            Void, Bool, Char, SChar, Short, Int, Long, LongLong, UChar, UShort, UInt, ULong,
+            ULongLong, Float, Double, LongDouble,
+        ]
+    };
+
+    /// Kinds for Rust types that are pulled back into C, for more fine-grained translation.
     pub const PULLBACK_KINDS: [CTypeKind; 16] = {
         use CTypeKind::*;
         [
