@@ -122,13 +122,16 @@ impl<'c> Translation<'c> {
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
-                let ptr_name = self.renamer.borrow_mut().fresh();
+                let ptr_name = self.renamer.borrow_mut().pick_name("c2rust_lvalue_ptr");
 
-                // let ref mut p = lhs;
+                // let p = &raw mut lhs;
+                // Use a raw pointer here so that it doesn't create borrow conflicts and
+                // doesn't invalidate other pointers.
+                self.use_feature("raw_ref_op");
                 let compute_ref = mk().local_stmt(Box::new(mk().local(
-                    mk().mutbl().ident_ref_pat(&ptr_name),
+                    mk().ident_pat(&ptr_name),
                     None,
-                    Some(reference),
+                    Some(mk().mutbl().raw_borrow_expr(reference)),
                 )));
 
                 let write =
