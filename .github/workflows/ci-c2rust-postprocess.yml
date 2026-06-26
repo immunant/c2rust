@@ -1,0 +1,145 @@
+name: ci-c2rust-postprocess
+
+on:
+  workflow_dispatch: # Enables manual triggering
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  run-testsuite:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: Linux
+            arch: x86_64
+            clang-version: 18
+          - runner: ubuntu-22.04
+            os: Linux
+            arch: x86_64
+            clang-version: 15
+      fail-fast: false
+    name: "postprocess-test-and-cache (${{ matrix.runner }}: ${{ matrix.os }} ${{ matrix.arch}}, Clang ${{ matrix.clang-version }})"
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.runner }}
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      # Working dir is /home/runner/work/c2rust/c2rust
+      - name: Checkout c2rust
+        uses: actions/checkout@v4
+        with:
+          repository: immunant/c2rust
+          # `update = none` is set, which makes this not work, so we need to update them manually.
+          # See `.gitmodules` for more info.
+          submodules: false
+
+      - name: Checkout submodules
+        run: |
+          git submodule update --init --checkout tests/integration/tests/json-c/repo
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uv python install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
+
+      - name: Install Rust toolchains
+        run: |
+          rustup toolchain install nightly-2022-11-03 \
+            --profile minimal --component rustfmt,rustc-dev
+          rustup toolchain install nightly-2023-04-15 \
+            --profile minimal --component rustfmt
+
+      - name: Provision Debian Packages
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install    \
+              build-essential         \
+              libbrotli-dev           \
+              libbz2-dev              \
+              libclang-${{ matrix.clang-version }}-dev \
+              libdb-dev               \
+              libgcrypt20             \
+              libgdbm-dev             \
+              libreadline-dev         \
+              libidn2-dev             \
+              libldap2-dev            \
+              liblzma-dev             \
+              libnghttp2-dev          \
+              libpcre3-dev            \
+              libpsl-dev              \
+              librtmp-dev             \
+              libtool                 \
+              libzstd-dev             \
+              rcs                     \
+              tcl-dev                 \
+              tk-dev                  \
+              zlib1g-dev
+
+      # Runs a single command using the runners shell
+      # Working dir is /home/runner/work/c2rust/c2rust
+      - name: Build c2rust
+        env:
+          LLVM_CONFIG_PATH: /usr/bin/llvm-config-${{ matrix.clang-version }}
+        run: cargo build --release
+
+      - name: Build tools
+        run: |
+          (cd tools && cargo build --release --manifest-path split_rust/Cargo.toml)
+          (cd tools && cargo build --release --manifest-path merge_rust/Cargo.toml)
+
+      # Use separate restore/save steps so we still save the cache even if the
+      # testsuite fails.
+      - name: Restore postprocess cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/llm-cache
+          # Restore the newest cache matching this runner/compiler prefix.
+          key: postprocess-cache-${{ matrix.runner }}-${{ matrix.arch }}-clang-${{ matrix.clang-version }}-
+
+      # Entry mtimes drive LRU pruning (see `DirectoryCache.prune`) and must
+      # survive the tar round-trip through `actions/cache`; log the oldest
+      # entries so this can be verified.
+      - name: Show restored cache entry ages
+        run: |
+          find ${{ runner.temp }}/llm-cache -name metadata.toml -printf '%TF %p\n' 2>/dev/null | sort | head -n 20
+
+      - name: Run c2rust testsuite
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # TODO: Remove the ident filter when we know the cronjob works.
+          # The value is expanded unquoted by postprocess.gen.sh, so no shell
+          # quoting: args must not contain whitespace.
+          C2RUST_POSTPROCESS_EXTRA_ARGS: >-
+            --ident-filter ^(json_object_set_userdata|json_object_to_file)$
+            --cache-dir ${{ runner.temp }}/llm-cache
+        run: |
+          export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
+          echo "PATH=$PATH"
+          export C2RUST_DIR=$PWD
+          # Needs to be run from `tests/integration/` (or further inside)
+          # to correctly load the `pyproject.toml`.
+          (cd tests/integration && ./test.py json-c)
+
+      # Stale entries are pruned by postprocess itself (--prune-cache-days).
+      - name: Save postprocess cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/llm-cache
+          # Save a fresh snapshot every run: caches are immutable, and entry
+          # mtimes (which drive pruning) only persist via a new snapshot even
+          # when entry contents are unchanged. Old snapshots stop being
+          # restored and age out via GitHub's cache eviction.
+          key: postprocess-cache-${{ matrix.runner }}-${{ matrix.arch }}-clang-${{ matrix.clang-version }}-${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: testsuite-${{ matrix.runner }}-artifacts
+          path: |
+            ${{ github.workspace }}/tests/integration/**/*.log
+        if: always()
