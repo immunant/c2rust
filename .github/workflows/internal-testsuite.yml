@@ -67,20 +67,6 @@ jobs:
         rustup toolchain install nightly-2023-04-15 \
           --profile minimal --component rustfmt
 
-    # TODO(pl): Figure out why json-c fails when caching compile commands
-    # - name: Get Image Version
-    #   id: get-image-ver
-    #   run: |
-    #     echo "::set-output name=version::$(echo $ImageVersion)"
-    #   shell: bash
-
-    # - name: Cache testsuite compile_commands
-    #   uses: actions/cache@v4
-    #   with:
-    #     path: |
-    #       ${{ github.workspace }}/tests/integration/tests/**/compile_commands.json
-    #     key: ${{ runner.os }}-ccdb-${{ steps.get-image-ver.outputs.version }}
-
     - name: Provision Debian Packages
       run: |
         sudo apt-get -qq update
@@ -120,10 +106,8 @@ jobs:
         (cd tools && cargo build --release --manifest-path split_rust/Cargo.toml)
         (cd tools && cargo build --release --manifest-path merge_rust/Cargo.toml)
 
-    # TODO(pl): figure out why compile_commands.json may cause json-c to fail
     - name: Run c2rust testsuite
       run: |
-        find tests/integration -type f -name compile_commands.json -delete
         export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
