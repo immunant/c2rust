@@ -14,6 +14,8 @@ jobs:
   # This workflow contains a single job called "build"
   run-testsuite:
     strategy:
+      # ci-c2rust-postprocess.yml generates postprocess caches for this matrix.
+      # Keep both matrices in sync so this workflow can restore those caches.
       matrix:
         include:
           - runner: ubuntu-latest
@@ -28,6 +30,11 @@ jobs:
     name: "run-testsuite (${{ matrix.runner }}: ${{ matrix.os }} ${{ matrix.arch}}, Clang ${{ matrix.clang-version }})"
     # The type of runner that the job will run on
     runs-on: ${{ matrix.runner }}
+
+    env:
+      # Uses cache-only responses; skips uncached work and exercises cached
+      # postprocess output usage.
+      C2RUST_POSTPROCESS_ARGS: --on-error warn
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -105,6 +112,13 @@ jobs:
         # `cd tools` to pick up `tools/rust-toolchain.toml` (stable, for `edition = "2024"`)
         (cd tools && cargo build --release --manifest-path split_rust/Cargo.toml)
         (cd tools && cargo build --release --manifest-path merge_rust/Cargo.toml)
+
+    - name: Restore postprocess cache
+      uses: actions/cache/restore@v4
+      with:
+        path: c2rust-postprocess/tests/llm-cache
+        # Restore the newest available cache entry that matches this prefix.
+        key: postprocess-cache-${{ matrix.runner }}-${{ matrix.arch }}-clang-${{ matrix.clang-version }}-
 
     - name: Run c2rust testsuite
       run: |
