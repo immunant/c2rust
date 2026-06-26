@@ -199,17 +199,21 @@ def autogen_postprocess(
     if not (ag and isinstance(ag, bool)):
         return
 
-    params = {"args": ""}
+    args: list[str] = []
 
     exclude_file = conf.with_name("postprocess-exclude.yml")
     if exclude_file.exists():
         # args are relative to script dir
-        params["args"] = shlex.join(
-            ["--exclude-file", str(exclude_file.relative_to(conf.parent))]
-        )
+        args.extend(["--exclude-file", str(exclude_file.relative_to(conf.parent))])
+
+    extra_args = os.getenv("C2RUST_POSTPROCESS_ARGS")
+    if extra_args:
+        args.extend(shlex.split(extra_args))
 
     if verbose:
-        params["args"] = f"--log-level DEBUG {params['args']}".rstrip()
+        args[0:0] = ["--log-level", "DEBUG"]
+
+    params = {"args": shlex.join(args)}
 
     out_path = conf.with_name("postprocess.gen.sh")
     render_script(POSTPROCESS_SH, out_path, params)
