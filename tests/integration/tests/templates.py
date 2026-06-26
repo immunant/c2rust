@@ -88,7 +88,8 @@ LOG_FILE="$SCRIPT_DIR/$(basename "$0")".log
 
 cd "${SCRIPT_DIR}"
 
-c2rust-postprocess --update-rust {{args}} repo/lib.rs 2>&1 | tee "$LOG_FILE"
+# C2RUST_POSTPROCESS_EXTRA_ARGS is whitespace-split; quoting is not re-parsed.
+c2rust-postprocess --update-rust {{args}} ${C2RUST_POSTPROCESS_EXTRA_ARGS} repo/lib.rs 2>&1 | tee "$LOG_FILE"
 """
 
 CARGO_SH: str = r"""#!/usr/bin/env bash
