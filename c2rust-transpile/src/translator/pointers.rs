@@ -343,10 +343,18 @@ impl<'c> Translation<'c> {
                         self.convert_pointer_offset(lhs, rhs, pointee_type_id.ctype, false, deref);
 
                     if lrvalue.is_rvalue() {
+                        let source_type_id = if deref {
+                            pointee_type_id
+                        } else {
+                            let pointer_type_id = self
+                                .ast_context
+                                .type_for_kind(&CTypeKind::Pointer(pointee_type_id));
+                            CQualTypeId::new(pointer_type_id)
+                        };
                         val = self.make_cast(
                             ctx,
-                            pointee_type_id,
-                            override_ty.unwrap_or(pointee_type_id),
+                            source_type_id,
+                            override_ty.unwrap_or(source_type_id),
                             val,
                         )?;
                     }
