@@ -22,6 +22,14 @@ def check_isinstance[T](value: object, typ: type[T]) -> T:
 def get_tool_path(tool_name: str) -> Path:
     """Get the path to the given tool in the system PATH."""
 
+    # Validate tool_name to prevent path traversal
+    if os.sep in tool_name or '/' in tool_name:
+        raise ValueError(f"tool_name must not contain path separators: {tool_name!r}")
+    if '..' in tool_name:
+        raise ValueError(f"tool_name must not contain '..': {tool_name!r}")
+    if not tool_name.isidentifier():
+        raise ValueError(f"tool_name must be a valid identifier: {tool_name!r}")
+
     tool_path = which(tool_name)
     if tool_path is None:
         root = Path(__file__).resolve().parents[2]
