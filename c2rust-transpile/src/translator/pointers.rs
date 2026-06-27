@@ -341,13 +341,16 @@ impl<'c> Translation<'c> {
 
                     let mut val =
                         self.convert_pointer_offset(lhs, rhs, pointee_type_id.ctype, false, deref);
-                    // if the context wants a different type, add a cast
-                    if let Some(expected_ty) = override_ty {
-                        if lrvalue.is_rvalue() && expected_ty != pointee_type_id {
-                            let ty = self.convert_type(expected_ty.ctype)?;
-                            val = val.map(|val| mk().cast_expr(val, ty));
-                        }
+
+                    if lrvalue.is_rvalue() {
+                        val = self.make_cast(
+                            ctx,
+                            pointee_type_id,
+                            override_ty.unwrap_or(pointee_type_id),
+                            val,
+                        )?;
                     }
+
                     Ok(val)
                 })
             }

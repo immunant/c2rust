@@ -2905,15 +2905,16 @@ impl<'c> Translation<'c> {
     pub fn compute_size_of_type(
         &self,
         ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         type_id: CTypeId,
-        override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if let CTypeKind::VariableArray(elts, len) = self.ast_context.resolve_type(type_id).kind {
             let len = len.expect("Sizeof a VLA type with count expression omitted");
 
-            let elts = self.compute_size_of_type(ctx, elts, override_ty)?;
+            let elts = self.compute_size_of_type(ctx, expected_type_id, result_type_id, elts)?;
             return elts.and_then_try(|lhs| {
-                let len = self.convert_expr(ctx.used().not_static(), len, override_ty)?;
+                let len = self.convert_expr(ctx.used().not_static(), len, expected_type_id)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
@@ -2921,17 +2922,14 @@ impl<'c> Translation<'c> {
             });
         }
         let ty = self.convert_type(type_id)?;
-        let mut result = self.mk_size_of_ty_expr(ty);
-        // cast to expected ty if one is known
-        if let Some(expected_ty) = override_ty {
-            trace!(
-                "Converting result of sizeof to {:?}",
-                self.ast_context.resolve_type(expected_ty.ctype)
-            );
-            let result_ty = self.convert_type(expected_ty.ctype)?;
-            result = result.map(|x| x.map(|x| mk().cast_expr(x, result_ty)));
-        }
-        result
+        let result = self.mk_size_of_ty_expr(ty)?;
+
+        self.make_cast(
+            ctx,
+            result_type_id,
+            expected_type_id.unwrap_or(result_type_id),
+            result,
+        )
     }
 
     fn mk_size_of_ty_expr(&self, ty: Box<Type>) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -2949,6 +2947,9 @@ impl<'c> Translation<'c> {
 
     pub fn compute_align_of_type(
         &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         mut type_id: CTypeId,
         preferred: bool,
         src_loc: &Option<SrcSpan>,
@@ -2985,7 +2986,12 @@ impl<'c> Translation<'c> {
             path.push(mk().path_segment_with_args("align_of", mk().angle_bracketed_args(tys)));
         }
         let call = mk().call_expr(mk().abs_path_expr(path), vec![]);
-        Ok(WithStmts::new_val(call))
+        self.make_cast(
+            ctx,
+            result_type_id,
+            expected_type_id.unwrap_or(result_type_id),
+            WithStmts::new_val(call),
+        )
     }
 
     /// Convert multiple expressions (while collecting a context of statements) given either all or
@@ -3066,13 +3072,19 @@ impl<'c> Translation<'c> {
                 }),
             ConvertVector(..) => Err(TranslationError::generic("convert vector not supported")),
 
-            UnaryType(_ty, kind, opt_expr, arg_ty) => {
+            UnaryType(result_type_id, kind, opt_expr, arg_ty) => {
                 let result = match kind {
                     CUnTypeOp::SizeOf => match opt_expr {
-                        None => self.compute_size_of_type(ctx, arg_ty.ctype, override_ty)?,
+                        None => self.compute_size_of_type(
+                            ctx,
+                            override_ty,
+                            result_type_id,
+                            arg_ty.ctype,
+                        )?,
                         Some(_) => {
                             let inner = self.variable_array_base_type(arg_ty.ctype);
-                            let inner_size = self.compute_size_of_type(ctx, inner, override_ty)?;
+                            let inner_size =
+                                self.compute_size_of_type(ctx, override_ty, result_type_id, inner)?;
 
                             if let Some(sz) = self.compute_size_of_expr(arg_ty.ctype) {
                                 inner_size.map(|x| {
@@ -3084,12 +3096,22 @@ impl<'c> Translation<'c> {
                             }
                         }
                     },
-                    CUnTypeOp::AlignOf => {
-                        self.compute_align_of_type(arg_ty.ctype, false, src_loc)?
-                    }
-                    CUnTypeOp::PreferredAlignOf => {
-                        self.compute_align_of_type(arg_ty.ctype, true, src_loc)?
-                    }
+                    CUnTypeOp::AlignOf => self.compute_align_of_type(
+                        ctx,
+                        override_ty,
+                        result_type_id,
+                        arg_ty.ctype,
+                        false,
+                        src_loc,
+                    )?,
+                    CUnTypeOp::PreferredAlignOf => self.compute_align_of_type(
+                        ctx,
+                        override_ty,
+                        result_type_id,
+                        arg_ty.ctype,
+                        true,
+                        src_loc,
+                    )?,
                 };
 
                 Ok(result)
@@ -3099,7 +3121,7 @@ impl<'c> Translation<'c> {
                 if let Some(constant) = value {
                     self.convert_constant(constant).map(WithStmts::new_val)
                 } else {
-                    self.convert_expr(ctx, child, Some(ty))
+                    self.convert_expr(ctx, child, Some(override_ty.unwrap_or(ty)))
                 }
             }
 
@@ -3223,14 +3245,13 @@ impl<'c> Translation<'c> {
                     val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
                 }
 
-                // if the context wants a different type, add a cast
-                if let Some(expected_ty) = override_ty {
-                    if lrvalue.is_rvalue() && expected_ty != qual_ty {
-                        val = mk().cast_expr(val, self.convert_type(expected_ty.ctype)?);
-                    }
+                let mut val = WithStmts::new_val(val).merge_unsafe(set_unsafe);
+
+                if lrvalue.is_rvalue() {
+                    val = self.make_cast(ctx, qual_ty, override_ty.unwrap_or(qual_ty), val)?;
                 }
 
-                Ok(WithStmts::new_val(val).merge_unsafe(set_unsafe))
+                Ok(val)
             }
 
             OffsetOf(ty, ref kind) => match kind {
@@ -3437,7 +3458,9 @@ impl<'c> Translation<'c> {
                 self.convert_init_list(ctx, override_ty, ty, ids, opt_union_field_id)
             }
 
-            ImplicitValueInit(ty) => self.implicit_default_expr(ctx, ty.ctype),
+            ImplicitValueInit(ty) => {
+                self.implicit_default_expr(ctx, override_ty.unwrap_or(ty).ctype)
+            }
 
             Predefined(_, val_id) => self.convert_expr(ctx, val_id, override_ty),
 

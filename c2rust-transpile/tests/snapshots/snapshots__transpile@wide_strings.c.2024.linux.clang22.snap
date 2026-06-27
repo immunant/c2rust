@@ -42,5 +42,5 @@ pub unsafe extern "C" fn func() {
     let mut ptr: *const wchar_t =
         const { ::core::mem::transmute::<[u8; 8], [::core::ffi::c_int; 2]>(*b"x\0\0\0\0\0\0\0") }
             .as_ptr() as *const wchar_t;
-    let mut len: size_t = wcslen(&raw mut array as *mut wchar_t) as size_t;
+    let mut len: size_t = wcslen(&raw mut array as *mut wchar_t);
 }

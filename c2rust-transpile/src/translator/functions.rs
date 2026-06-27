@@ -448,16 +448,13 @@ impl<'c> Translation<'c> {
 
             let args = self.convert_call_args(ctx.used(), args, arg_tys.as_deref(), is_variadic)?;
 
-            let mut call_expr = args.map(|args| mk().call_expr(func, args));
-            if let Some(expected_ty) = override_ty {
-                if call_expr_ty != expected_ty {
-                    let ret_ty = self.convert_type(expected_ty.ctype)?;
-                    call_expr = call_expr.map(|call| mk().cast_expr(call, ret_ty));
-                }
-            }
-
-            let res: TranslationResult<_> = Ok(call_expr);
-            res
+            let call_expr = args.map(|args| mk().call_expr(func, args));
+            self.make_cast(
+                ctx,
+                call_expr_ty,
+                override_ty.unwrap_or(call_expr_ty),
+                call_expr,
+            )
         })?;
 
         self.convert_side_effects_expr(
