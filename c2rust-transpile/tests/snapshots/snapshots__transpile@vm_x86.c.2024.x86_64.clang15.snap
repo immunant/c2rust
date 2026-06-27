@@ -46,13 +46,12 @@ pub unsafe extern "C" fn VM_CallCompiled(
     while arg < MAX_VMMAIN_ARGS {
         *(image.offset(
             (programStack + 8 as ::core::ffi::c_int + arg * 4 as ::core::ffi::c_int) as isize,
-        ) as *mut byte as *mut ::core::ffi::c_int) = *args.offset(arg as isize);
+        ) as *mut ::core::ffi::c_int) = *args.offset(arg as isize);
         arg += 1;
     }
-    *(image.offset((programStack + 4 as ::core::ffi::c_int) as isize) as *mut byte
-        as *mut ::core::ffi::c_int) = 0 as ::core::ffi::c_int;
-    *(image.offset(programStack as isize) as *mut byte as *mut ::core::ffi::c_int) =
-        -1 as ::core::ffi::c_int;
+    *(image.offset((programStack + 4 as ::core::ffi::c_int) as isize) as *mut ::core::ffi::c_int) =
+        0 as ::core::ffi::c_int;
+    *(image.offset(programStack as isize) as *mut ::core::ffi::c_int) = -1 as ::core::ffi::c_int;
     entryPoint = (*vm).codeBase.offset((*vm).entryOfs as isize);
     opStack = (&raw mut stack as *mut byte as *mut ::core::ffi::c_int)
         .offset(16 as ::core::ffi::c_int as isize);

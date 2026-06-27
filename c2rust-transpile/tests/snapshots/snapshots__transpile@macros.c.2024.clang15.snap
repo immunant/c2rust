@@ -80,7 +80,7 @@ pub const STR_CONCATENATION: [::core::ffi::c_char; 18] = unsafe {
 pub const REF_MACRO: *const ::core::ffi::c_char = unsafe {
     NESTED_STR
         .as_ptr()
-        .offset(LITERAL_FLOAT as ::core::ffi::c_int as isize) as *const ::core::ffi::c_char
+        .offset(LITERAL_FLOAT as ::core::ffi::c_int as isize)
 };
 pub const REF_LITERAL: *mut S = &LITERAL_STRUCT as *const S as *mut S;
 pub const TERNARY: ::core::ffi::c_int = if LITERAL_BOOL != 0 {
