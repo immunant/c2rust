@@ -18,11 +18,11 @@ use proc_macro2::{Punct, Spacing::*, Span, TokenStream, TokenTree};
 use syn::spanned::Spanned as _;
 use syn::{
     AttrStyle, BareVariadic, BinOp, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast,
-    ExprField, ExprIndex, ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn,
-    ForeignItemMacro, ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum,
-    ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct,
-    ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment,
-    ReturnType, Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
+    ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
+    ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
+    ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
+    ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
+    Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
 };
 
 use crate::diagnostics::TranslationResult;
