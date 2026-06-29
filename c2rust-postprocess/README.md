@@ -7,7 +7,12 @@ accelerate the types of translation and migration that help move C code to Rust.
 
 - Python 3.12 or later
 - `uv` in path
-- A valid `GEMINI_API_KEY` set
+- A backend for the chosen `--llm-model`:
+  - `gemini*` (default): a valid `GEMINI_API_KEY` set
+  - `gpt*`: a valid `OPENAI_API_KEY` set
+  - `codex` / `codex:<model>`: the `codex` CLI in path, logged in via `codex login`
+    (works with a ChatGPT subscription; no API key required). `codex` is driven
+    non-interactively via `codex exec` in a read-only sandbox.
 - A transpiled codebase with `*.c_decls.json` for each `*.rs` you want to transfer comments to.
 - `../tools/split_rust/target/release/split_rust`
 - `../tools/merge_rust/target/release/merge_rust`
@@ -16,6 +21,9 @@ accelerate the types of translation and migration that help move C code to Rust.
 
 - `c2rust-postprocess path/to/transpiled_rust.rs`, or
 - `uv run postprocess path/to/transpiled_rust.rs`
+
+Select the model with `--llm-model`, e.g. `--llm-model codex` or
+`--llm-model codex:gpt-5.1-codex-mini` to run the Codex agent via `codex exec`.
 
 ## Excluding/Filtering
 

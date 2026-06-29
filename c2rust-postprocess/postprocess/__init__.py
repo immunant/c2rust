@@ -13,7 +13,8 @@ from google.genai import types
 
 from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.exclude_list import IdentifierExcludeList
-from postprocess.models import api_key_from_env, get_model_by_id
+from postprocess.models import codex_model_name, get_model_by_id, is_model_available
+from postprocess.models.codex import CodexModel
 from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
@@ -145,13 +146,21 @@ def get_model(model_id: str) -> AbstractGenerativeModel:
             base_url=os.getenv("CRISP_API_BASE"),
         )
 
-    api_key = api_key_from_env(model_id)
-    if api_key is None:
+    if not is_model_available(model_id):
         logging.warning(
-            f"API key for model {model_id} not found in env; "
+            f"Model {model_id} is unavailable (no API key / codex login found); "
             "using cached responses only."
         )
         return MockGenerativeModel()
+
+    # Codex authenticates via its own CLI and takes a plain system instruction,
+    # so it bypasses the Google-shaped `generation_config` below.
+    if model_id.startswith("codex"):
+        return CodexModel(
+            id=model_id,
+            codex_model=codex_model_name(model_id),
+            system_instruction=SYSTEM_INSTRUCTION,
+        )
 
     # TODO: remove google specific API bits
     return get_model_by_id(
