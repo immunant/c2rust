@@ -66,6 +66,8 @@ $ ./scripts/test_translator.py --keep=all                 tests/unit
 $ ./scripts/test_translator.py --help
 ```
 
+*Note*: The tests in [`tests/unit`](../tests/unit) can also be executed by running `cargo nextest run` in the main c2rust workspace.
+
 ## What happens under the hood
 
 This `tests/unit` directory contains regression, feature, and unit tests. A test directory goes through the following set of steps:
