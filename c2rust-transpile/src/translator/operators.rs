@@ -576,7 +576,7 @@ impl<'c> Translation<'c> {
 
         if let &CTypeKind::Pointer(pointee) = rhs_type {
             let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
-            let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff).unwrap();
+            let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
             self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
