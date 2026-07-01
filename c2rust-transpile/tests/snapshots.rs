@@ -234,7 +234,6 @@ impl<'a> TranspileTest<'a> {
 
     /// Expect some decls to fail translation. Failed decls are omitted from
     /// the output instead of aborting, so the snapshot pins what is rejected.
-    #[allow(unused)] // TODO remove once used
     pub fn expect_translation_error(self, expect_translation_error: bool) -> Self {
         Self {
             expect_translation_error,
@@ -459,6 +458,13 @@ fn test_main_fn() {
 #[test]
 fn test_out_of_range_lit() {
     transpile("out_of_range_lit.c").run();
+}
+
+#[test]
+fn test_overflow_128() {
+    transpile("overflow_128.c")
+        .expect_translation_error(true)
+        .run();
 }
 
 #[test]
