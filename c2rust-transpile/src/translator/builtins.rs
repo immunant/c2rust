@@ -710,6 +710,15 @@ impl<'c> Translation<'c> {
         // so compute in `i128` and check that narrowing to the result type
         // preserves the value.
         let same_types = a_kind == b_kind && b_kind == result_kind;
+        let is_128_bit = |kind: &CTypeKind| matches!(kind, CTypeKind::Int128 | CTypeKind::UInt128);
+        if !same_types && [a_kind, b_kind, result_kind].into_iter().any(is_128_bit) {
+            // The `i128` computation below cannot represent all values of
+            // `unsigned __int128` operands or results. Reject rather than
+            // translate wrongly: https://github.com/immunant/c2rust/issues/1878
+            return Err(TranslationError::generic(
+                "mixed-type overflow builtins involving 128-bit integers are not supported",
+            ));
+        }
         let result_ty = if same_types {
             None
         } else {
