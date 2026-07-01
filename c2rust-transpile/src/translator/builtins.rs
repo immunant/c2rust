@@ -680,32 +680,93 @@ impl<'c> Translation<'c> {
         method_name: &str,
         args: &[CExprId],
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let &[a_arg, b_arg, out_arg] = args else {
+            return Err(TranslationError::generic(
+                "`convert_overflow_arith` must have exactly 3 arguments",
+            ));
+        };
+
+        let arg_type = |arg: CExprId| {
+            self.ast_context
+                .index_unwrap_parens(arg)
+                .kind
+                .get_type()
+                .ok_or_else(|| TranslationError::generic("overflow builtin argument has no type"))
+        };
+        let result_ty_id = self
+            .ast_context
+            .get_pointee_qual_type(arg_type(out_arg)?)
+            .ok_or_else(|| TranslationError::generic("overflow builtin output is not a pointer"))?
+            .ctype;
+        let type_kind = |ty| &self.ast_context.resolve_type(ty).kind;
+        let a_kind = type_kind(arg_type(a_arg)?);
+        let b_kind = type_kind(arg_type(b_arg)?);
+        let result_kind = type_kind(result_ty_id);
+
+        // The `s`/`u`-prefixed builtins use one common type; the type-generic
+        // ones accept operand and result types that all differ. With a common
+        // type, Rust's native `overflowing_*` matches the builtin exactly.
+        // Otherwise, overflow is defined against the infinite-precision result,
+        // so compute in `i128` and check that narrowing to the result type
+        // preserves the value.
+        let same_types = a_kind == b_kind && b_kind == result_kind;
+        let result_ty = if same_types {
+            None
+        } else {
+            Some(self.convert_type(result_ty_id)?)
+        };
+
         let args = self.convert_exprs(ctx.used(), args, None)?;
         args.and_then_try(|args| {
-            let [a, b, c]: [_; 3] = args
-                .try_into()
-                .map_err(|_| "`convert_overflow_arith` must have exactly 3 arguments")?;
+            let [a, b, out]: [_; 3] = args.try_into().map_err(|_| "expected 3 arguments")?;
+            let (a, b) = if same_types {
+                (a, b)
+            } else {
+                (cast_int(a, "i128", true), cast_int(b, "i128", true))
+            };
             let overflowing = mk().method_call_expr(a, method_name, vec![b]);
-            let sum_name = self.renamer.borrow_mut().pick_name("c2rust_result");
+            let result_name = self.renamer.borrow_mut().pick_name("c2rust_result");
             let over_name = self.renamer.borrow_mut().pick_name("c2rust_overflowed");
-            let overflow_let = mk().local_stmt(Box::new(mk().local(
+            let mut stmts = vec![mk().local_stmt(Box::new(mk().local(
                 mk().tuple_pat(vec![
-                    mk().ident_pat(&sum_name),
-                    mk().ident_pat(over_name.clone()),
+                    mk().ident_pat(&result_name),
+                    mk().ident_pat(&over_name),
                 ]),
                 None,
                 Some(overflowing),
+            )))];
+            let mut overflowed = mk().ident_expr(&over_name);
+            let mut out_name = result_name.clone();
+
+            if let Some(result_ty) = result_ty {
+                // `c2rust_result as result_ty` truncates silently. Casting back
+                // up and comparing against `c2rust_result` detects when that
+                // truncation lost information -- overflow distinct from
+                // `overflowing`'s own flag, which only fires when even `i128`
+                // cannot hold the result.
+                let narrow_name = self.renamer.borrow_mut().pick_name("c2rust_result_narrow");
+                stmts.push(mk().local_stmt(Box::new(mk().local(
+                    mk().ident_pat(&narrow_name),
+                    None,
+                    Some(mk().cast_expr(mk().ident_expr(&result_name), result_ty)),
+                ))));
+                let roundtrip =
+                    mk().cast_expr(mk().ident_expr(&narrow_name), mk().path_ty(vec!["i128"]));
+                let truncated = mk().binary_expr(
+                    BinOp::Ne(Default::default()),
+                    roundtrip,
+                    mk().ident_expr(&result_name),
+                );
+                overflowed = mk().binary_expr(BinOp::Or(Default::default()), overflowed, truncated);
+                out_name = narrow_name;
+            }
+
+            stmts.push(mk().expr_stmt(mk().assign_expr(
+                mk().unary_expr(UnOp::Deref(Default::default()), out),
+                mk().ident_expr(&out_name),
             )));
 
-            let out_assign = mk().assign_expr(
-                mk().unary_expr(UnOp::Deref(Default::default()), c),
-                mk().ident_expr(&sum_name),
-            );
-
-            Ok(WithStmts::new(
-                vec![overflow_let, mk().expr_stmt(out_assign)],
-                mk().ident_expr(over_name),
-            ))
+            Ok(WithStmts::new(stmts, overflowed))
         })
     }
 

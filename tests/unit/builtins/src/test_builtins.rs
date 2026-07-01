@@ -4,6 +4,10 @@ use crate::alloca::rust_alloca_hello;
 use crate::atomics::{rust_atomics_entry, rust_fences, rust_new_atomics};
 use crate::math::{rust_ffs, rust_ffsl, rust_ffsll, rust_isfinite, rust_isinf_sign, rust_isnan};
 use crate::mem_x_fns::{rust_assume_aligned, rust_mem_x};
+use crate::overflow::{
+    rust_overflow_builtins, rust_overflow_builtins_mixed, rust_overflow_builtins_narrow_result,
+    rust_overflow_builtins_prefixed, rust_overflow_builtins_uint128,
+};
 use std::ffi::{c_char, c_double, c_int, c_long, c_longlong, c_uint};
 
 #[link(name = "test")]
@@ -19,6 +23,11 @@ unsafe extern "C" {
     fn isfinite(_: c_double) -> c_int;
     fn isnan(_: c_double) -> c_int;
     fn isinf_sign(_: c_double) -> c_int;
+    fn overflow_builtins(_: c_uint, _: *mut c_int);
+    fn overflow_builtins_prefixed(_: c_uint, _: *mut c_int);
+    fn overflow_builtins_uint128(_: c_uint, _: *mut c_int);
+    fn overflow_builtins_narrow_result(_: c_uint, _: *mut c_int);
+    fn overflow_builtins_mixed(_: c_uint, _: *mut c_int);
 }
 
 const BUFFER_SIZE: usize = 1024;
@@ -76,6 +85,52 @@ pub fn test_fences() {
     for index in 0..BUFFER_SIZE {
         assert_eq!(buffer[index], rust_buffer[index]);
     }
+}
+
+/// Run the C and Rust versions of a buffer-filling function and compare the buffers.
+fn compare_c_and_rust(
+    c_fn: unsafe extern "C" fn(c_uint, *mut c_int),
+    rust_fn: unsafe extern "C" fn(c_uint, *mut c_int),
+) {
+    let mut buffer = [0; BUFFER_SIZE];
+    let mut rust_buffer = [0; BUFFER_SIZE];
+
+    unsafe {
+        c_fn(BUFFER_SIZE as u32, buffer.as_mut_ptr());
+        rust_fn(BUFFER_SIZE as u32, rust_buffer.as_mut_ptr());
+    }
+
+    for index in 0..BUFFER_SIZE {
+        assert_eq!(buffer[index], rust_buffer[index]);
+    }
+}
+
+#[test]
+pub fn test_overflow_builtins() {
+    compare_c_and_rust(overflow_builtins, rust_overflow_builtins);
+}
+
+#[test]
+pub fn test_overflow_builtins_prefixed() {
+    compare_c_and_rust(overflow_builtins_prefixed, rust_overflow_builtins_prefixed);
+}
+
+#[test]
+pub fn test_overflow_builtins_uint128() {
+    compare_c_and_rust(overflow_builtins_uint128, rust_overflow_builtins_uint128);
+}
+
+#[test]
+pub fn test_overflow_builtins_narrow_result() {
+    compare_c_and_rust(
+        overflow_builtins_narrow_result,
+        rust_overflow_builtins_narrow_result,
+    );
+}
+
+#[test]
+pub fn test_overflow_builtins_mixed() {
+    compare_c_and_rust(overflow_builtins_mixed, rust_overflow_builtins_mixed);
 }
 
 #[test]
