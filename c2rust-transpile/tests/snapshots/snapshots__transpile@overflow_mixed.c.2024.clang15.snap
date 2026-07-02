@@ -1,0 +1,38 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/overflow_mixed.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mixed_types(
+    mut a: ::core::ffi::c_longlong,
+    mut b: ::core::ffi::c_int,
+    mut out: *mut ::core::ffi::c_ulonglong,
+) -> ::core::ffi::c_int {
+    let (c2rust_result, c2rust_overflowed) = (a as i128).overflowing_add(b as i128);
+    let c2rust_result_narrow = c2rust_result as ::core::ffi::c_ulonglong;
+    *out = c2rust_result_narrow;
+    return (c2rust_overflowed || ::core::ffi::c_ulonglong::try_from(c2rust_result).is_err())
+        as ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn narrow_result(
+    mut a: ::core::ffi::c_longlong,
+    mut b: ::core::ffi::c_longlong,
+    mut out: *mut ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let (c2rust_result, c2rust_overflowed) = (a as i128).overflowing_mul(b as i128);
+    let c2rust_result_narrow = c2rust_result as ::core::ffi::c_int;
+    *out = c2rust_result_narrow;
+    return (c2rust_overflowed || ::core::ffi::c_int::try_from(c2rust_result).is_err())
+        as ::core::ffi::c_int;
+}

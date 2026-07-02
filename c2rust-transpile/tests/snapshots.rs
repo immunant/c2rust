@@ -468,6 +468,11 @@ fn test_overflow_128() {
 }
 
 #[test]
+fn test_overflow_mixed() {
+    transpile("overflow_mixed.c").run();
+}
+
+#[test]
 fn test_predefined() {
     transpile("predefined.c").run();
 }
