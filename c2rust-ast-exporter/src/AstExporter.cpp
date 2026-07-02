@@ -15,6 +15,8 @@
 #include "llvm/Support/Path.h"
 // Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
+// Declares clang::DoPrintPreprocessedInput.
+#include "clang/Frontend/Utils.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 
 #include "clang/AST/DeclVisitor.h"
@@ -3071,6 +3073,41 @@ class TranslateAction : public clang::ASTFrontendAction {
     }
 };
 
+// Prints preprocessed source to a string, like `clang -E -fdirectives-only -C`:
+// conditional directives are resolved (dropping inactive regions and their
+// comments) but macro invocations are not expanded, comments are kept, and
+// line markers are kept so output lines can be mapped back to source lines.
+class PrintPreprocessedToStringAction
+    : public clang::PreprocessorFrontendAction {
+    PreprocessedOutputs *outputs;
+
+  public:
+    explicit PrintPreprocessedToStringAction(PreprocessedOutputs *outputs)
+        : outputs(outputs) {}
+
+  protected:
+    void ExecuteAction() override {
+        auto &CI = getCompilerInstance();
+
+        clang::PreprocessorOutputOptions Opts;
+        Opts.ShowCPP = 1;
+        Opts.ShowComments = 1;
+        Opts.ShowLineMarkers = 1;
+#if CLANG_VERSION_MAJOR >= 11
+        // Without directives-only support, fall back to full macro expansion;
+        // the output is still usable, just further from the original source.
+        Opts.DirectivesOnly = 1;
+        CI.getPreprocessor().SetMacroExpansionOnlyInDirectives();
+#endif // CLANG_VERSION_MAJOR >= 11
+
+        std::string out;
+        llvm::raw_string_ostream OS(out);
+        clang::DoPrintPreprocessedInput(CI.getPreprocessor(), &OS, Opts);
+        OS.flush();
+        (*outputs)[make_realpath(getCurrentFile().str())] = std::move(out);
+    }
+};
+
 // Apply a custom category to all command-line options so that they are the
 // only ones displayed.
 static llvm::cl::OptionCategory MyToolCategory("my-tool options");
@@ -3139,8 +3176,26 @@ class MyFrontendActionFactory : public FrontendActionFactory {
 #endif // CLANG_VERSION_MAJOR
 };
 
+class PreprocessActionFactory : public FrontendActionFactory {
+    PreprocessedOutputs *outputs;
+
+  public:
+    PreprocessActionFactory(PreprocessedOutputs *outputs) : outputs(outputs) {}
+
+#if CLANG_VERSION_MAJOR < 10
+    clang::FrontendAction *create() override {
+        return new PrintPreprocessedToStringAction(outputs);
+    }
+#else
+    std::unique_ptr<FrontendAction> create() override {
+        return std::make_unique<PrintPreprocessedToStringAction>(outputs);
+    }
+#endif // CLANG_VERSION_MAJOR
+};
+
 // Marshal the output map into something easy to manipulate in Rust
-ExportResult *make_export_result(const Outputs &outputs) {
+ExportResult *make_export_result(const Outputs &outputs,
+                                 const PreprocessedOutputs &preprocessed) {
     auto result = new ExportResult;
     auto n = outputs.size();
     result->resize(n);
@@ -3158,6 +3213,14 @@ ExportResult *make_export_result(const Outputs &outputs) {
         std::copy(std::begin(bytes), std::end(bytes), byte_array);
         result->bytes[i] = byte_array;
         result->sizes[i] = bytes.size();
+
+        auto pp = preprocessed.find(name);
+        if (pp != preprocessed.end()) {
+            auto const &text = pp->second;
+            auto pp_array = new char[text.size() + 1];
+            memcpy(pp_array, text.c_str(), text.size() + 1);
+            result->preprocessed[i] = pp_array;
+        }
         i++;
     }
 
@@ -3166,7 +3229,8 @@ ExportResult *make_export_result(const Outputs &outputs) {
 
 // Extract clang AST for the source file specified in the argument vector.
 // Note: The arguments should only reference one source file at a time.
-Outputs process(int argc, const char *argv[], int *result) {
+Outputs process(int argc, const char *argv[], int *result,
+                PreprocessedOutputs *preprocessed) {
     auto argv_ = augment_argv(argc, argv);
     int argc_ = argv_.size() - 1; // ignore the extra nullptr
 
@@ -3204,12 +3268,24 @@ Outputs process(int argc, const char *argv[], int *result) {
 
     *result = Tool.run(&myFrontendActionFactory);
     assert(outputs.size() == 1 && "Expected exactly one output.");
+
+    if (preprocessed) {
+        // The AST run above already reported diagnostics; don't repeat them.
+        IgnoringDiagConsumer diagConsumer;
+        Tool.setDiagnosticConsumer(&diagConsumer);
+        PreprocessActionFactory preprocessActionFactory(preprocessed);
+        // Failure here is not fatal: the preprocessed text is optional
+        // metadata, and its absence shows up as a missing map entry.
+        Tool.run(&preprocessActionFactory);
+    }
+
     return outputs;
 }
 
 // AST exporter library interface.
 extern "C" {
-ExportResult *ast_exporter(int argc, const char *argv[], int debug) {
+ExportResult *ast_exporter(int argc, const char *argv[], int debug,
+                           int emit_preprocessed) {
 #ifndef NDEBUG
     if (debug) {
         llvm::DebugFlag = true;
@@ -3218,8 +3294,10 @@ ExportResult *ast_exporter(int argc, const char *argv[], int debug) {
 #endif // NDEBUG
 
     int result;
-    auto outputs = process(argc, argv, &result);
-    return make_export_result(outputs);
+    PreprocessedOutputs preprocessed;
+    auto outputs = process(argc, argv, &result,
+                           emit_preprocessed ? &preprocessed : nullptr);
+    return make_export_result(outputs, preprocessed);
 }
 
 void drop_export_result(ExportResult *result) { delete result; }

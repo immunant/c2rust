@@ -677,11 +677,12 @@ fn transpile_single(
     }
 
     // Extract the untyped AST from the CBOR file
-    let untyped_context = match ast_exporter::get_untyped_ast(
+    let (untyped_context, preprocessed_source) = match ast_exporter::get_untyped_ast(
         input_path,
         cc_db,
         extra_clang_args,
         tcfg.debug_ast_exporter,
+        tcfg.emit_c_decl_map,
     ) {
         Err(e) => {
             warn!(
@@ -720,9 +721,17 @@ fn transpile_single(
         println!("{:#?}", Printer::new(io::stdout()).print(&typed_context));
     }
 
+    // Extract preprocessed text for each function definition so the C decl
+    // map can carry it alongside the original source snippet.
+    let preprocessed_definitions = preprocessed_source
+        .map(|source| {
+            translator::collect_preprocessed_definitions(&typed_context, input_path, &source)
+        })
+        .unwrap_or_default();
+
     // Perform the translation
     let (translated_string, maybe_decl_map, pragmas, crates) =
-        translator::translate(typed_context, tcfg, input_path);
+        translator::translate(typed_context, tcfg, input_path, &preprocessed_definitions);
 
     if let Some(decl_map) = maybe_decl_map {
         let decl_map_path = output_path.with_extension("c_decls.json");

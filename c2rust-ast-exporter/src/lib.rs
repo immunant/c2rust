@@ -27,15 +27,19 @@ pub fn get_clang_major_version() -> Option<u32> {
         .ok()
 }
 
+/// Returns the untyped AST and, if `emit_preprocessed` was set and
+/// preprocessing succeeded, the preprocessed source text of the translation
+/// unit (directives-only, with comments and line markers preserved).
 pub fn get_untyped_ast(
     file_path: &Path,
     cc_db: &Path,
     extra_args: &[&str],
     debug: bool,
-) -> Result<clang_ast::AstContext, Error> {
-    let cbors = get_ast_cbors(file_path, cc_db, extra_args, debug);
-    let buffer = cbors
-        .values()
+    emit_preprocessed: bool,
+) -> Result<(clang_ast::AstContext, Option<String>), Error> {
+    let cbors = get_ast_cbors(file_path, cc_db, extra_args, debug, emit_preprocessed);
+    let (buffer, preprocessed) = cbors
+        .into_values()
         .next()
         .ok_or_else(|| Error::new(ErrorKind::InvalidData, "Could not parse input file"))?;
 
@@ -46,7 +50,9 @@ pub fn get_untyped_ast(
 
     let items: Value = from_slice(&buffer[..]).unwrap();
 
-    clang_ast::process(items).map_err(|e| Error::new(ErrorKind::InvalidData, format!("{}", e)))
+    let ast = clang_ast::process(items)
+        .map_err(|e| Error::new(ErrorKind::InvalidData, format!("{}", e)))?;
+    Ok((ast, preprocessed))
 }
 
 /// libClangTooling is not thread-safe, so we must not allow concurrent calls to `ast_exporter`.
@@ -57,9 +63,8 @@ fn get_ast_cbors(
     cc_db: &Path,
     extra_args: &[&str],
     debug: bool,
-) -> HashMap<String, Vec<u8>> {
-    let mut res = 0;
-
+    emit_preprocessed: bool,
+) -> HashMap<String, (Vec<u8>, Option<String>)> {
     let mut args_owned = vec![CString::new("ast_exporter").unwrap()];
     args_owned.push(CString::new(file_path.to_str().unwrap()).unwrap());
     args_owned.push(CString::new("-p").unwrap());
@@ -78,7 +83,7 @@ fn get_ast_cbors(
             args_ptrs.len() as c_int,
             args_ptrs.as_ptr(),
             debug.into(),
-            &mut res,
+            emit_preprocessed.into(),
         );
         drop(lock);
         hashmap = marshal_result(ptr);
@@ -98,12 +103,13 @@ extern "C" {
     /// # Safety
     ///
     /// Not thread-safe; must not be called multiple times concurrently.
-    // ExportResult *ast_exporter(int argc, char *argv[]);
+    // ExportResult *ast_exporter(int argc, char *argv[],
+    //                            int debug, int emit_preprocessed);
     fn ast_exporter(
         argc: c_int,
         argv: *const *const c_char,
         debug: c_int,
-        res: *mut c_int,
+        emit_preprocessed: c_int,
     ) -> *mut ffi::ExportResult;
 
     // void drop_export_result(ExportResult *result);
@@ -112,7 +118,9 @@ extern "C" {
     fn clang_version() -> *const c_char;
 }
 
-unsafe fn marshal_result(result: *const ffi::ExportResult) -> HashMap<String, Vec<u8>> {
+unsafe fn marshal_result(
+    result: *const ffi::ExportResult,
+) -> HashMap<String, (Vec<u8>, Option<String>)> {
     let mut output = HashMap::new();
 
     let n = (*result).entries as isize;
@@ -131,7 +139,15 @@ unsafe fn marshal_result(result: *const ffi::ExportResult) -> HashMap<String, Ve
         let mut v = Vec::new();
         v.extend_from_slice(bytes);
 
-        output.insert(name, v);
+        // Convert optional preprocessed source text
+        let cpreprocessed = *res.preprocessed.offset(i);
+        let preprocessed = if cpreprocessed.is_null() {
+            None
+        } else {
+            Some(CStr::from_ptr(cpreprocessed).to_str().unwrap().to_owned())
+        };
+
+        output.insert(name, (v, preprocessed));
     }
     output
 }

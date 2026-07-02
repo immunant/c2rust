@@ -4,6 +4,7 @@ from textwrap import dedent
 
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
+    CDefinition,
     get_c_comments,
     get_rust_comments,
     update_rust_definition,
@@ -20,31 +21,51 @@ SYSTEM_INSTRUCTION = (
 
 class CommentsTransformPrompt:
     c_function: str
+    c_function_preprocessed: str | None
     rust_function: str
     prompt_text: str
     identifier: str
 
-    __slots__ = ("c_function", "rust_function", "prompt_text", "identifier")
+    __slots__ = (
+        "c_function",
+        "c_function_preprocessed",
+        "rust_function",
+        "prompt_text",
+        "identifier",
+    )
 
     def __init__(
-        self, c_function: str, rust_function: str, prompt_text: str, identifier: str
+        self,
+        c_function: str,
+        c_function_preprocessed: str | None,
+        rust_function: str,
+        prompt_text: str,
+        identifier: str,
     ):
         self.c_function = c_function
+        self.c_function_preprocessed = c_function_preprocessed
         self.rust_function = rust_function
         self.prompt_text = prompt_text
         self.identifier = identifier
 
     def __str__(self) -> str:
-        return (
+        prompt = (
             self.prompt_text
             + "\n\n"
             + "C function:\n```c\n"
             + self.c_function
             + "```\n\n"
-            + "Rust function:\n```rust\n"
-            + self.rust_function
-            + "```\n"
         )
+        if self.c_function_preprocessed is not None:
+            prompt += (
+                "The same C function after preprocessing; comments that do not"
+                " appear here were in inactive preprocessor regions and must"
+                " not be transferred:\n```c\n"
+                + self.c_function_preprocessed
+                + "```\n\n"
+            )
+        prompt += "Rust function:\n```rust\n" + self.rust_function + "```\n"
+        return prompt
 
 
 class CommentsTransform(AbstractTransform):
@@ -57,7 +78,7 @@ class CommentsTransform(AbstractTransform):
         self,
         rust_source_file: Path,
         rust_definition: str,
-        c_definition: str,
+        c_definition: CDefinition,
         identifier: str,
         update_rust: bool = True,
     ) -> None:
@@ -70,8 +91,9 @@ class CommentsTransform(AbstractTransform):
             )
             return
 
-        # Skip functions without comments in C definition
-        c_comments = get_c_comments(c_definition)
+        # Skip functions without comments that survive preprocessing; comments
+        # only present in inactive preprocessor regions must not be transferred.
+        c_comments = get_c_comments(c_definition.effective)
         if not c_comments:
             logging.info(f"Skipping C function without comments: {identifier}")
             return
@@ -86,7 +108,14 @@ class CommentsTransform(AbstractTransform):
         prompt_text = dedent(prompt_text).strip()
 
         prompt = CommentsTransformPrompt(
-            c_function=c_definition,
+            c_function=c_definition.definition,
+            # Only include the preprocessed text when it differs, so prompts
+            # (and thus cache keys) are unchanged for directive-free functions.
+            c_function_preprocessed=(
+                c_definition.preprocessed_definition
+                if c_definition.was_changed_by_preprocessing
+                else None
+            ),
             rust_function=rust_definition,
             prompt_text=prompt_text,
             identifier=identifier,
@@ -121,7 +150,7 @@ class CommentsTransform(AbstractTransform):
 
         rust_fn = remove_backticks(response)
 
-        c_comments = get_c_comments(prompt.c_function)
+        c_comments = get_c_comments(c_definition.effective)
         logging.debug(f"{c_comments=}")
 
         rust_comments = get_rust_comments(rust_fn)

@@ -2,6 +2,7 @@ import json
 import logging
 import subprocess
 from collections.abc import Generator, Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -233,12 +234,37 @@ def get_rust_definitions(root_rust_source_file: Path) -> dict[str, str]:
     return json.loads(result.stdout)
 
 
-def get_c_definitions(root_rust_source_file: Path) -> dict[str, str]:
+@dataclass(frozen=True)
+class CDefinition:
+    definition: str
+    preprocessed_definition: str | None
+
+    @property
+    def effective(self) -> str:
+        """Preprocessed text when available, original otherwise."""
+        return self.preprocessed_definition or self.definition
+
+    @property
+    def was_changed_by_preprocessing(self) -> bool:
+        return (
+            self.preprocessed_definition is not None
+            and self.preprocessed_definition != self.definition
+        )
+
+
+def get_c_definitions(root_rust_source_file: Path) -> dict[str, CDefinition]:
     c_defs_json = root_rust_source_file.with_suffix(".c_decls.json")
 
     logging.debug(f"Loading C definitions from {c_defs_json}")
     try:
-        return json.loads(c_defs_json.read_text())
+        c_decls = json.loads(c_defs_json.read_text())
+        return {
+            identifier: CDefinition(
+                definition=decl["definition"],
+                preprocessed_definition=decl.get("preprocessed_definition"),
+            )
+            for identifier, decl in c_decls["definitions"].items()
+        }
     except OSError as e:
         e.add_note(f"C definitions JSON file not found: {c_defs_json}")
         raise e

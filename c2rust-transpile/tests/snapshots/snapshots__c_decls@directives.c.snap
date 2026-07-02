@@ -1,0 +1,16 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/c_decls_snapshots/directives.c_decls.json
+---
+{
+  "definitions": {
+    "cond_fn": {
+      "definition": "// comment for cond_fn\nint cond_fn(void) {\n#ifdef NOT_DEFINED\n    /* comment in inactive region; must not appear in preprocessed text */\n    return 1;\n#else\n    // comment in active region\n    return 2;\n#endif\n}",
+      "preprocessed_definition": "// comment for cond_fn\nint cond_fn(void) {\n\n\n\n\n    // comment in active region\n    return 2;\n\n}"
+    },
+    "uses_macro": {
+      "definition": "/* comment for uses_macro */\nint uses_macro(int n) {\n    /* macro invocation should stay unexpanded */\n    return DOUBLE(n);\n}",
+      "preprocessed_definition": "/* comment for uses_macro */\nint uses_macro(int n) {\n    /* macro invocation should stay unexpanded */\n    return DOUBLE(n);\n}"
+    }
+  }
+}
