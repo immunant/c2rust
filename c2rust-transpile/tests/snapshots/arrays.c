@@ -1,4 +1,4 @@
-#include <stdlib.h>
+#include <stddef.h>
 
 char static_char_array[] = "mystring";
 char *static_char_ptr = "mystring";
@@ -56,4 +56,26 @@ void short_initializer() {
 
     struct {short x; int y;} single_struct[1] = { { 1, 2 } };
     struct {short x; int y;} many_struct[3] = { { 1, 2 } };
+}
+
+void variable_length(void) {
+    size_t length = 5;
+    int arr[length];
+    size_t size = sizeof(arr);
+
+    for (size_t i = 0; i < length; ++i) {
+        arr[i] = i;
+    }
+
+    int nested[2][length];
+    size_t nested_size = sizeof(nested);
+
+    for (size_t i = 0; i < length; ++i) {
+        nested[0][i] = i;
+        nested[1][i] = i;
+    }
+
+    int (*first)[length] = &nested[1];
+    int (*second)[length] = first + 1;
+    ptrdiff_t diff = second - first;
 }
