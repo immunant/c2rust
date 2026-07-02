@@ -472,6 +472,12 @@ impl ConversionContext {
             self.add_type(new_id, not_located(rust_type_kind));
             self.processed_nodes
                 .insert(new_id, self::node_types::OTHER_TYPE);
+
+            let complex_kind = CTypeKind::Complex(CTypeId(new_id));
+            let new_id = self.id_mapper.fresh_id();
+            self.add_type(new_id, not_located(complex_kind));
+            self.processed_nodes
+                .insert(new_id, self::node_types::OTHER_TYPE);
         }
 
         // Continue popping Clang nodes off of the stack of nodes we have promised to visit
