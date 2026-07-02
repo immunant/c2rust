@@ -71,6 +71,7 @@ jobs:
       run: |
         sudo apt-get -qq update
         sudo apt-get -qq install    \
+            bear                    \
             build-essential         \
             libbrotli-dev           \
             libbz2-dev              \
@@ -111,9 +112,7 @@ jobs:
         export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
-        # Needs to be run from `tests/integration/` (or further inside)
-        # to correctly load the `pyproject.toml`.
-        (cd tests/integration && ./test.py curl json-c lua nginx zstd libxml2 python2 libmcs)
+        ./tests/integration/test.py curl json-c lua nginx zstd libxml2 python2 libmcs
 
     - uses: actions/upload-artifact@v4
       with:
