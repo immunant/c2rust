@@ -99,15 +99,16 @@ class CommentsTransform(AbstractTransform):
         transform = self.__class__.__name__
         identifier = prompt.identifier
         model = self.model.id
-        if response := self.cache.lookup(
+        response = self.cache.lookup(
             transform=transform,
             identifier=identifier,
             model=model,
             messages=messages,
-        ):
-            return
+        )
+        cache_hit = response is not None
 
-        response = self.model.generate_with_tools(messages)
+        if response is None:
+            response = self.model.generate_with_tools(messages)
 
         if response is None:
             if api_key_from_env(model) is None:
@@ -132,13 +133,14 @@ class CommentsTransform(AbstractTransform):
                 f"\n{c_comments=}\n{rust_comments=}"
             )
 
-        self.cache.update(
-            transform=transform,
-            identifier=identifier,
-            model=model,
-            messages=messages,
-            response=response,
-        )
+        if not cache_hit:
+            self.cache.update(
+                transform=transform,
+                identifier=identifier,
+                model=model,
+                messages=messages,
+                response=response,
+            )
 
         print(get_highlighted_rust(rust_fn))
 
