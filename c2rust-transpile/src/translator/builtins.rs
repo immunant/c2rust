@@ -722,7 +722,21 @@ impl<'c> Translation<'c> {
         let result_ty = if same_types {
             None
         } else {
-            Some(self.convert_type(result_ty_id)?)
+            let ty = self.convert_type(result_ty_id)?;
+            // Also derive `result_ty::try_from` for the truncation check below.
+            let try_from = match &*ty {
+                Type::Path(ty_path) if ty_path.qself.is_none() => {
+                    let mut path = ty_path.path.clone();
+                    path.segments.push(mk().path_segment("try_from"));
+                    path
+                }
+                _ => {
+                    return Err(TranslationError::generic(
+                        "overflow builtin result type is not a plain path type",
+                    ))
+                }
+            };
+            Some((ty, try_from))
         };
 
         let args = self.convert_exprs(ctx.used(), args, None)?;
@@ -747,24 +761,25 @@ impl<'c> Translation<'c> {
             let mut overflowed = mk().ident_expr(&over_name);
             let mut out_name = result_name.clone();
 
-            if let Some(result_ty) = result_ty {
-                // `c2rust_result as result_ty` truncates silently. Casting back
-                // up and comparing against `c2rust_result` detects when that
-                // truncation lost information -- overflow distinct from
-                // `overflowing`'s own flag, which only fires when even `i128`
-                // cannot hold the result.
+            if let Some((result_ty, try_from)) = result_ty {
+                // `c2rust_result as result_ty` truncates silently, matching the
+                // value C stores on overflow. `result_ty::try_from` detects
+                // whether that truncation lost information -- overflow distinct
+                // from `overflowing`'s own flag, which only fires when even
+                // `i128` cannot hold the result.
                 let narrow_name = self.renamer.borrow_mut().pick_name("c2rust_result_narrow");
                 stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().ident_pat(&narrow_name),
                     None,
                     Some(mk().cast_expr(mk().ident_expr(&result_name), result_ty)),
                 ))));
-                let roundtrip =
-                    mk().cast_expr(mk().ident_expr(&narrow_name), mk().path_ty(vec!["i128"]));
-                let truncated = mk().binary_expr(
-                    BinOp::Ne(Default::default()),
-                    roundtrip,
-                    mk().ident_expr(&result_name),
+                let truncated = mk().method_call_expr(
+                    mk().call_expr(
+                        mk().path_expr(try_from),
+                        vec![mk().ident_expr(&result_name)],
+                    ),
+                    "is_err",
+                    vec![],
                 );
                 overflowed = mk().binary_expr(BinOp::Or(Default::default()), overflowed, truncated);
                 out_name = narrow_name;
