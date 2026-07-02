@@ -13,7 +13,14 @@ macro_rules! match_or_else {
     ([$e:expr] $($arm_pat:pat => $arm_body:expr),*; $or_else:expr) => {
         match $e {
             $( $arm_pat => $arm_body, )*
-            ref x @ _ => $or_else(x),
+            _ => $or_else,
+        }
+    };
+
+    ([$e:expr] $($arm_pat:pat => $arm_body:expr),*; $or_else_var:ident => $or_else:expr) => {
+        match $e {
+            $( $arm_pat => $arm_body, )*
+            ref $or_else_var @ _ => $or_else,
         }
     };
 }
@@ -22,11 +29,11 @@ macro_rules! match_or_else {
 macro_rules! expect {
     ([$e:expr] $arm_pat:pat => $arm_body:expr) => {
         $crate::match_or_else!([$e] $arm_pat => $arm_body;
-            |x| panic!("expected {}, got {:?}", stringify!($arm_pat), x))
+            x => panic!("expected {}, got {:?}", stringify!($arm_pat), x))
     };
     ([$e:expr] $($arm_pat:pat => $arm_body:expr),*) => {
         $crate::match_or_else!([$e] $($arm_pat => $arm_body),*;
-            |x| panic!("expected one of: {}, got {:?}", stringify!($($arm_pat),*), x))
+            x => panic!("expected one of: {}, got {:?}", stringify!($($arm_pat),*), x))
     };
 }
 
@@ -34,6 +41,28 @@ macro_rules! expect {
 macro_rules! unpack {
     ([$e:expr] $enum_:ident :: $variant:ident ( $($arg:ident),* )) => {
         let ($($arg,)*) = $crate::expect!([$e] $enum_::$variant($($arg),*) => ($($arg,)*));
+    };
+
+    (
+        [$e:expr]
+        $enum_:ident :: $variant:ident ( $($arg:ident),* );
+        $or_else:expr
+    ) => {
+        let ($($arg,)*) = $crate::match_or_else!(
+            [$e] $enum_::$variant($($arg),*) => ($($arg,)*);
+            $or_else
+        );
+    };
+
+    (
+        [$e:expr]
+        $enum_:ident :: $variant:ident ( $($arg:ident),* );
+        $or_else_var:ident => $or_else:expr
+    ) => {
+        let ($($arg,)*) = $crate::match_or_else!(
+            [$e] $enum_::$variant($($arg),*) => ($($arg,)*);
+            $or_else_var => $or_else
+        );
     };
 }
 
