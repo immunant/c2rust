@@ -171,73 +171,62 @@ fn parse_cast_kind(kind: &str) -> CastKind {
 impl ConversionContext {
     fn parse_attributes(&mut self, attributes: Vec<Value>) -> IndexSet<Attribute> {
         let mut attrs = IndexSet::new();
-        let mut expect_section_value = false;
-        let mut expect_alias_value = false;
-        let mut expect_visibility_value = false;
-        let mut expect_cleanup_id = false;
 
         for attr in attributes.into_iter() {
-            if expect_cleanup_id {
-                expect_cleanup_id = false;
-                match from_value::<ClangId>(attr) {
-                    Ok(func_id) => {
-                        attrs.insert(Attribute::Cleanup(self.visit_decl(func_id)));
-                    }
-                    Err(_) => {
-                        diag!(
-                            Diagnostic::ClangAst,
-                            "cleanup attribute is missing its function decl id",
-                        );
-                        self.invalid_clang_ast = true;
-                    }
-                }
-                continue;
-            }
+            let attr_info =
+                from_value::<Vec<Value>>(attr).expect("Expected to find attribute info array");
 
-            let attr_str = from_value::<String>(attr).expect("Decl attributes should be strings");
-
-            match attr_str.as_str() {
-                "alias" => expect_alias_value = true,
-                "always_inline" => {
-                    attrs.insert(Attribute::AlwaysInline);
-                }
-                "cleanup" => expect_cleanup_id = true,
-                "cold" => {
-                    attrs.insert(Attribute::Cold);
-                }
-                "gnu_inline" => {
-                    attrs.insert(Attribute::GnuInline);
-                }
-                "noinline" => {
-                    attrs.insert(Attribute::NoInline);
-                }
-                "used" => {
-                    attrs.insert(Attribute::Used);
-                }
-                "visibility" => expect_visibility_value = true,
-                "section" => expect_section_value = true,
-                s if expect_section_value => {
-                    attrs.insert(Attribute::Section(s.into()));
-
-                    expect_section_value = false;
-                }
-                s if expect_alias_value => {
-                    attrs.insert(Attribute::Alias(s.into()));
-
-                    expect_alias_value = false;
-                }
-                s if expect_visibility_value => {
-                    attrs.insert(Attribute::Visibility(s.into()));
-
-                    expect_visibility_value = false;
-                }
-                s => {
-                    diag!(Diagnostic::ClangAst, "unrecognized attribute: {}", s);
-                }
+            if let Some(attr) = self.parse_attribute(attr_info) {
+                attrs.insert(attr);
             }
         }
 
         attrs
+    }
+
+    fn parse_attribute(&mut self, attr_info: Vec<Value>) -> Option<Attribute> {
+        let attr_str =
+            from_value::<String>(attr_info[0].clone()).expect("Decl attributes should be strings");
+
+        match attr_str.as_str() {
+            "alias" => {
+                let alias = from_value(attr_info[1].clone()).expect("alias name not found");
+                Some(Attribute::Alias(alias))
+            }
+            "always_inline" => Some(Attribute::AlwaysInline),
+            "cleanup" => match from_value::<ClangId>(attr_info[1].clone()) {
+                Ok(func_id) => Some(Attribute::Cleanup(self.visit_decl(func_id))),
+                Err(_) => {
+                    diag!(
+                        Diagnostic::ClangAst,
+                        "cleanup attribute is missing its function decl id",
+                    );
+                    self.invalid_clang_ast = true;
+                    None
+                }
+            },
+            "cold" => Some(Attribute::Cold),
+            "fallthrough" | "__fallthrough__" => Some(Attribute::Fallthrough),
+            "gnu_inline" => Some(Attribute::GnuInline),
+            "noinline" => Some(Attribute::NoInline),
+            "noreturn" => Some(Attribute::NoReturn),
+            "notnull" => Some(Attribute::NotNull),
+            "nullable" => Some(Attribute::Nullable),
+            "packed" => Some(Attribute::Packed),
+            "section" => {
+                let section = from_value(attr_info[1].clone()).expect("section name not found");
+                Some(Attribute::Section(section))
+            }
+            "used" => Some(Attribute::Used),
+            "visibility" => {
+                let vis = from_value(attr_info[1].clone()).expect("visibility kind not found");
+                Some(Attribute::Visibility(vis))
+            }
+            s => {
+                diag!(Diagnostic::ClangAst, "unrecognized attribute: {}", s);
+                None
+            }
+        }
     }
 }
 
@@ -269,13 +258,6 @@ fn display_loc(ctx: &AstContext, loc: &Option<SrcSpan>) -> Option<DisplaySrcSpan
         file: ctx.files[loc.fileid as usize].path.clone(),
         loc: *loc,
     })
-}
-
-fn has_packed_attribute(attrs: Vec<Value>) -> bool {
-    attrs
-        .into_iter()
-        .map(|attr| from_value::<String>(attr).expect("Record attributes should be strings"))
-        .any(|attr_name| attr_name == "packed")
 }
 
 impl ConversionContext {
@@ -917,17 +899,13 @@ impl ConversionContext {
                         .expect("Attributed type child not found");
                     let ty = self.visit_qualified_type(ty_id);
 
-                    let kind = match expect_opt_str(&ty_node.extras[1])
-                        .expect("Attributed type kind not found")
-                    {
-                        None => None,
-                        Some("noreturn") => Some(Attribute::NoReturn),
-                        Some("nullable") => Some(Attribute::Nullable),
-                        Some("notnull") => Some(Attribute::NotNull),
-                        Some(other) => panic!("Unknown type attribute: {}", other),
+                    let attribute = match ty_node.extras[1] {
+                        Value::Null => None,
+                        Value::Array(ref value) => self.parse_attribute(value.clone()),
+                        _ => panic!("Expected to find attribute"),
                     };
 
-                    let ty = CTypeKind::Attributed(ty, kind);
+                    let ty = CTypeKind::Attributed(ty, attribute);
                     self.add_type(new_id, not_located(ty));
                     self.processed_nodes.insert(new_id, TYPE);
                 }
@@ -1183,17 +1161,9 @@ impl ConversionContext {
 
                 ASTEntryTag::TagAttributedStmt if expected_ty & OTHER_STMT != 0 => {
                     let substatement = node.children[0].map(|id| self.visit_stmt(id)).unwrap();
-                    let mut attributes = vec![];
-
-                    match expect_opt_str(&node.extras[0])
-                        .expect("Attributed statement kind not found")
-                    {
-                        Some("fallthrough") | Some("__fallthrough__") => {
-                            attributes.push(Attribute::Fallthrough)
-                        }
-                        Some(str) => panic!("Unknown statement attribute: {}", str),
-                        None => panic!("Invalid statement attribute"),
-                    };
+                    let attributes = from_value::<Vec<Value>>(node.extras[0].clone())
+                        .expect("Expected to find attributes");
+                    let attributes = self.parse_attributes(attributes);
 
                     let astmt = CStmtKind::Attributed {
                         attributes,
@@ -2366,6 +2336,7 @@ impl ConversionContext {
                         .expect("Expected to find whether decl is definition");
                     let attributes = from_value::<Vec<Value>>(node.extras[5].clone())
                         .expect("Expected attribute array on var decl");
+                    let attrs = self.parse_attributes(attributes);
 
                     assert!(
                         has_static_duration || has_thread_duration || !is_externally_visible,
@@ -2386,8 +2357,6 @@ impl ConversionContext {
                         .expect("Expected to find type on variable declaration");
                     let typ = self.visit_qualified_type(typ_id);
 
-                    let attrs = self.parse_attributes(attributes);
-
                     let variable_decl = CDeclKind::Variable {
                         has_static_duration,
                         has_thread_duration,
@@ -2407,8 +2376,9 @@ impl ConversionContext {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let has_def = from_value(node.extras[1].clone())
                         .expect("Expected has_def flag on struct");
-                    let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
+                    let attributes = from_value::<Vec<Value>>(node.extras[2].clone())
                         .expect("Expected attribute array on record");
+                    let attrs = self.parse_attributes(attributes);
                     let manual_alignment =
                         expect_opt_u64(&node.extras[3]).expect("Expected struct alignment");
                     let max_field_alignment =
@@ -2427,7 +2397,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let is_packed = has_packed_attribute(attrs);
+                    let is_packed = attrs.contains(&Attribute::Packed);
 
                     let record = CDeclKind::Struct {
                         name,
@@ -2447,8 +2417,9 @@ impl ConversionContext {
                     let name = expect_opt_str(&node.extras[0]).unwrap().map(str::to_string);
                     let has_def = from_value(node.extras[1].clone())
                         .expect("Expected has_def flag on struct");
-                    let attrs = from_value::<Vec<Value>>(node.extras[2].clone())
+                    let attributes = from_value::<Vec<Value>>(node.extras[2].clone())
                         .expect("Expected attribute array on record");
+                    let attrs = self.parse_attributes(attributes);
                     let fields: Option<Vec<CDeclId>> = if has_def {
                         Some(
                             self.visit_record_children(untyped_context, node, new_id)
@@ -2458,7 +2429,7 @@ impl ConversionContext {
                         None
                     };
 
-                    let is_packed = has_packed_attribute(attrs);
+                    let is_packed = attrs.contains(&Attribute::Packed);
 
                     let record = CDeclKind::Union {
                         name,
@@ -2534,16 +2505,29 @@ impl ConversionContext {
                     // Look up the canonical declaration and see if it declares a
                     // struct. If so, check attributes of the non-canonical declaration
                     // and potentially update its `is_packed` property.
-                    if let Some(v) = self.typed_context.c_decls.get_mut(&canonical_decl) {
-                        match &mut v.kind {
+                    let is_record = self
+                        .typed_context
+                        .c_decls
+                        .get(&canonical_decl)
+                        .map_or(false, |v| {
+                            matches!(v.kind, CDeclKind::Struct { .. } | CDeclKind::Union { .. })
+                        });
+
+                    if is_record {
+                        let attributes = from_value::<Vec<Value>>(node.extras[0].clone())
+                            .expect("Expected attribute array on non-canonical record decl");
+                        let attrs = self.parse_attributes(attributes);
+
+                        match &mut self
+                            .typed_context
+                            .c_decls
+                            .get_mut(&canonical_decl)
+                            .unwrap()
+                            .kind
+                        {
                             CDeclKind::Struct { is_packed, .. }
                             | CDeclKind::Union { is_packed, .. } => {
-                                let attrs = from_value::<Vec<Value>>(node.extras[0].clone())
-                                    .expect(
-                                        "Expected attribute array on non-canonical record decl",
-                                    );
-
-                                *is_packed = has_packed_attribute(attrs);
+                                *is_packed = attrs.contains(&Attribute::Packed);
                             }
                             _ => {}
                         }

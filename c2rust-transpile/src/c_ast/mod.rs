@@ -2470,7 +2470,7 @@ pub enum CStmtKind {
     // statement in case of __attribute__((__fallthrough__)) at the end of a
     // case statement
     Attributed {
-        attributes: Vec<Attribute>,
+        attributes: IndexSet<Attribute>,
         substatement: CStmtId,
     },
 
@@ -2971,6 +2971,7 @@ pub enum Attribute {
     NoReturn,
     NotNull,
     Nullable,
+    Packed,
     /// __attribute__((section("foo"), __section__("foo")))
     Section(String),
     /// __attribute__((used, __used__))
