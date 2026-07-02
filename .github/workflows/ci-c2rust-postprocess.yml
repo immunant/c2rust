@@ -3,6 +3,7 @@ name: ci-c2rust-postprocess
 on:
   schedule:
     - cron: "0 4 * * *"
+  pull_request:
 
 jobs:
   run-testsuite:
@@ -102,6 +103,13 @@ jobs:
           # Restore the newest cache matching this runner/compiler prefix.
           key: postprocess-cache-${{ matrix.runner }}-${{ matrix.arch }}-clang-${{ matrix.clang-version }}-
 
+      - name: Inspect postprocess cache atimes
+        run: |
+          while IFS= read -r -d '' file; do
+            atime=$(stat -c %X "$file")
+            echo "considering $file atime=$atime"
+          done < <(find c2rust-postprocess/tests/llm-cache -mindepth 4 -maxdepth 4 -name metadata.toml -print0)
+
       - name: Run c2rust testsuite
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -111,7 +119,7 @@ jobs:
           export C2RUST_DIR=$PWD
           # Needs to be run from `tests/integration/` (or further inside)
           # to correctly load the `pyproject.toml`.
-          (cd tests/integration && ./test.py json-c)
+          (cd tests/integration && ./test.py --verbose json-c)
 
       # Prune by `metadata.toml` atime so hot entries survive and stale ones
       # disappear; GitHub cache eviction is what keeps the daily snapshot
@@ -121,7 +129,8 @@ jobs:
           cutoff=$(date -d '90 days ago' +%s)
           while IFS= read -r -d '' file; do
             dir=${file%/metadata.toml}
-            if [[ $(stat -c %X "$file") -lt $cutoff ]]; then
+            atime=$(stat -c %X "$file")
+            if [[ $atime -lt $cutoff ]]; then
               rm -rf "$dir"
             fi
           done < <(find c2rust-postprocess/tests/llm-cache -mindepth 4 -maxdepth 4 -name metadata.toml -print0)
