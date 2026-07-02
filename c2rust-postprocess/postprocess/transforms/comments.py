@@ -5,6 +5,7 @@ from textwrap import dedent
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
     get_c_comments,
+    get_rust_code,
     get_rust_comments,
     update_rust_definition,
 )
@@ -119,6 +120,15 @@ class CommentsTransform(AbstractTransform):
             raise TransformError(f"model returned no response for {identifier}")
 
         rust_fn = remove_backticks(response)
+
+        original_rust_code = get_rust_code(rust_definition)
+        updated_rust_code = get_rust_code(rust_fn)
+        if original_rust_code != updated_rust_code:
+            raise TransformError(
+                f"Rust code changed for {identifier}:"
+                f"\nbefore={original_rust_code!r}"
+                f"\nafter={updated_rust_code!r}"
+            )
 
         c_comments = get_c_comments(prompt.c_function)
         logging.debug(f"{c_comments=}")
