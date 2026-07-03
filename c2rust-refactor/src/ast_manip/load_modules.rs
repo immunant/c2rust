@@ -4,7 +4,7 @@ use rustc_ast::*;
 use rustc_parse::new_parser_from_file;
 use rustc_session::parse::ParseSess;
 use rustc_span::source_map::SourceMap;
-use rustc_span::FileName;
+use rustc_span::{sym, FileName};
 use smallvec::SmallVec;
 use std::path::PathBuf;
 
@@ -26,9 +26,10 @@ impl<'a> MutVisitor for LoadModules<'a> {
             return mut_visit::noop_flat_map_item(i, self);
         };
 
-        match mod_kind {
+        let child_path = match mod_kind {
             ModKind::Loaded(_items, Inline::Yes, _spans) => {
                 // TODO: handle #[path="..."]
+                self.dir_path.join(ident.as_str())
             }
 
             ModKind::Loaded(_items, Inline::No, _spans) => {
@@ -39,11 +40,24 @@ impl<'a> MutVisitor for LoadModules<'a> {
             }
 
             ModKind::Unloaded => {
-                // Look for dir_path/foo.rs, then try dir_path/foo/mod.rs
-                let mut mod_file_path = self.dir_path.join(ident.as_str()).with_extension("rs");
-                if !self.source_map.file_exists(&mod_file_path) {
-                    mod_file_path = self.dir_path.join(ident.as_str()).join("mod.rs");
-                }
+                // An explicit `#[path = "..."]` overrides the usual file lookup;
+                // the transpiler emits this for modules whose name was deconflicted
+                // from a sibling (e.g. `hash.c` and `hash/` becoming `hash_1` and `hash`).
+                let path_attr = attrs
+                    .iter()
+                    .find(|attr| attr.has_name(sym::path))
+                    .and_then(|attr| attr.value_str());
+
+                let mod_file_path = if let Some(path) = path_attr {
+                    self.dir_path.join(path.as_str())
+                } else {
+                    // Look for dir_path/foo.rs, then try dir_path/foo/mod.rs
+                    let mut p = self.dir_path.join(ident.as_str()).with_extension("rs");
+                    if !self.source_map.file_exists(&p) {
+                        p = self.dir_path.join(ident.as_str()).join("mod.rs");
+                    }
+                    p
+                };
                 if !self.source_map.file_exists(&mod_file_path) {
                     panic!("unable to load module file {mod_file_path:?}");
                 }
@@ -56,12 +70,23 @@ impl<'a> MutVisitor for LoadModules<'a> {
 
                 attrs.append(&mut inner_attrs);
                 *mod_kind = ModKind::Loaded(items, Inline::No, inner_span);
-            }
-        }
 
-        self.dir_path.push(ident.as_str());
+                if path_attr.is_some() {
+                    // If the module was loaded from a `#[path="..."]` attribute, use
+                    // the parent directory of the specified file for any child modules.
+                    mod_file_path
+                        .parent()
+                        .expect("have module file path")
+                        .to_owned()
+                } else {
+                    self.dir_path.join(ident.as_str())
+                }
+            }
+        };
+
+        let saved_dir_path = std::mem::replace(&mut self.dir_path, child_path);
         let res = mut_visit::noop_flat_map_item(i, self);
-        self.dir_path.pop();
+        self.dir_path = saved_dir_path;
 
         res
     }
