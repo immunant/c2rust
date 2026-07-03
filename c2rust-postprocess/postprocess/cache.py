@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from hashlib import sha256
 from pathlib import Path
@@ -187,6 +188,8 @@ class DirectoryCache(AbstractCache):
             return None
         logging.debug(f"Cache hit: {cache_file}:\n{toml}")
         data = tomli.loads(toml)
+        data["atime"] = int(time.time())
+        cache_file.write_text(to_multiline_toml(data))
 
         return data["response"]
 
@@ -205,6 +208,7 @@ class DirectoryCache(AbstractCache):
             "model": model,
             "messages": messages,
             "response": response,
+            "atime": int(time.time()),
         }
         toml = to_multiline_toml(data)
 
