@@ -1,6 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::Write;
+use std::ops::Bound::{Excluded, Unbounded};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -107,7 +108,7 @@ pub fn emit_build_files<'lcmd>(
     })
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct Module {
     path: Option<String>,
     name: String,
@@ -116,19 +117,23 @@ struct Module {
 }
 
 #[derive(Debug, Default)]
-struct ModuleTree(BTreeMap<String, ModuleTree>);
+struct ModuleTree {
+    children: BTreeMap<String, ModuleTree>,
+    path_modules: Vec<Module>,
+}
 
 impl ModuleTree {
     /// Convert the tree representation into a linear vector
     /// and push it into `res`
     fn linearize(&self, res: &mut Vec<Module>) {
-        for (name, child) in self.0.iter() {
+        res.extend(self.path_modules.iter().cloned());
+        for (name, child) in self.children.iter() {
             child.linearize_internal(name, res);
         }
     }
 
     fn linearize_internal(&self, name: &str, res: &mut Vec<Module>) {
-        if self.0.is_empty() {
+        if self.path_modules.is_empty() && self.children.is_empty() {
             res.push(Module {
                 name: name.to_string(),
                 path: None,
@@ -150,6 +155,55 @@ impl ModuleTree {
                 close: true,
             });
         }
+    }
+
+    fn insert_nested(&mut self, path: Vec<String>) {
+        let mut cur = self;
+        for name in path {
+            cur = cur.children.entry(name).or_default();
+        }
+    }
+
+    fn insert_path_module(
+        &mut self,
+        parent_path: &[String],
+        file_name: String,
+        module_name: String,
+    ) {
+        let mut cur = self;
+        for name in parent_path {
+            cur = cur.children.entry(name.clone()).or_default();
+        }
+        let name = cur.unique_child_name(&module_name);
+        cur.path_modules.push(Module {
+            path: Some(file_name),
+            name,
+            open: false,
+            close: false,
+        });
+    }
+
+    fn unique_child_name(&self, module_name: &str) -> String {
+        if !self.child_name_exists(module_name) {
+            return module_name.to_owned();
+        }
+
+        for i in 1.. {
+            let candidate = format!("{module_name}_{i}");
+            if !self.child_name_exists(&candidate) {
+                return candidate;
+            }
+        }
+
+        unreachable!("We tried all the numbers and couldn't find one that didn't collide")
+    }
+
+    fn child_name_exists(&self, module_name: &str) -> bool {
+        self.children.contains_key(module_name)
+            || self
+                .path_modules
+                .iter()
+                .any(|module| module.name == module_name)
     }
 }
 
@@ -182,17 +236,51 @@ fn convert_module_list(
     });
 
     let mut res = vec![];
-    let mut module_tree = ModuleTree(BTreeMap::new());
+    let mut module_tree = ModuleTree::default();
+    // A C file can have the same stem as a sibling directory, such as
+    // `hash.c` and `hash/sha1.c`. The current nested module emitter cannot
+    // represent both at `mod hash`, so emit the file module with an explicit
+    // path and keep the directory in the nested tree.
+    let internal_modules = modules
+        .iter()
+        .filter_map(|m| {
+            if tcfg.is_binary(m) {
+                return None;
+            }
+            let relpath = m.strip_prefix(build_dir).ok()?;
+            let path = module_path(relpath);
+            Some((m, path))
+        })
+        .collect::<Vec<_>>();
+    // A module collides when another module's path strictly extends it, i.e. a
+    // file whose stem matches a sibling directory (`hash.c` next to `hash/`).
+    // Every strict extension of a path sorts immediately after it, so checking
+    // each path's immediate successor in the sorted set settles it without
+    // comparing every pair.
+    let module_paths = internal_modules
+        .iter()
+        .map(|(_, path)| path.clone())
+        .collect::<BTreeSet<_>>();
+    let collision_modules = internal_modules
+        .iter()
+        .filter(|(_, path)| {
+            module_paths
+                .range::<Vec<String>, _>((Excluded(path), Unbounded))
+                .next()
+                .is_some_and(|next| next.len() > path.len() && next.starts_with(path))
+        })
+        .map(|(module, _)| *module)
+        .collect::<BTreeSet<_>>();
+
+    let mut collision_relpaths = vec![];
     for m in &modules {
         match m.strip_prefix(build_dir) {
-            Ok(relpath) if !tcfg.is_binary(m) => {
+            Ok(relpath) if !tcfg.is_binary(m) && !collision_modules.contains(m) => {
                 // The module is inside the build directory, use nested modules
-                let mut cur = &mut module_tree;
-                for sm in relpath.iter() {
-                    let path = Path::new(sm);
-                    let name = get_module_name(path, true, false, false).unwrap();
-                    cur = cur.0.entry(name).or_default();
-                }
+                module_tree.insert_nested(module_path(relpath));
+            }
+            Ok(relpath) if !tcfg.is_binary(m) => {
+                collision_relpaths.push(relpath.to_path_buf());
             }
             _ => {
                 let relpath = diff_paths(m, build_dir).unwrap();
@@ -207,8 +295,26 @@ fn convert_module_list(
             }
         }
     }
+    for relpath in collision_relpaths {
+        let mut path = module_path(&relpath);
+        // Insert the shadowed file as an explicit `#[path]` module in its
+        // parent. `insert_path_module` renames it if the stem collides with the
+        // sibling directory (or another module), so pass the plain stem.
+        let module_name = path.pop().unwrap();
+        let file_name = relpath.file_name().unwrap().to_str().unwrap().to_string();
+        module_tree.insert_path_module(&path, file_name, module_name);
+    }
     module_tree.linearize(&mut res);
     res
+}
+
+fn module_path(path: &Path) -> Vec<String> {
+    path.iter()
+        .map(|component| {
+            let path = Path::new(component);
+            get_module_name(path, true, false, false).unwrap()
+        })
+        .collect()
 }
 
 fn emit_thin_binaries(
