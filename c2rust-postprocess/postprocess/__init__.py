@@ -98,6 +98,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--prune-cache-days",
+        type=int,
+        required=False,
+        default=90,
+        help="Remove cache entries unused for this many days "
+        "(0 disables pruning; default: 90)",
+    )
+
+    parser.add_argument(
         "--update-rust",
         required=False,
         default=True,
@@ -182,6 +191,8 @@ def main(argv: Sequence[str] | None = None):
             cache = DirectoryCache(args.cache_dir)
         else:
             cache = getattr(DirectoryCache, args.cache_scope)()
+        if args.update_cache and args.prune_cache_days > 0:
+            cache.prune(args.prune_cache_days)
         if not args.update_cache:
             cache = FrozenCache(cache)
 
