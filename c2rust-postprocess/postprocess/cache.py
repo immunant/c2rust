@@ -63,18 +63,6 @@ class AbstractCache(ABC):
         """
         pass
 
-    @abstractmethod
-    def clear(self) -> None:
-        """Clear the entire cache."""
-        pass
-
-    def flush(self) -> None:  # noqa: B027
-        """
-        Optional: Persist cache to disk.
-        Not abstract because not all implementations need it.
-        """
-        pass
-
 
 TomlValue = Union[None, str, int, float, bool, "TomlList", "TomlDict"]
 TomlList = list[TomlValue]
@@ -218,9 +206,6 @@ class DirectoryCache(AbstractCache):
         response_path.write_text(response)
         logging.debug(f"Cache updated: {cache_dir}:\n{toml}")
 
-    def clear(self) -> None:
-        self._path.unlink(missing_ok=True)
-
 
 class FrozenCache(AbstractCache):
     """
@@ -259,7 +244,4 @@ class FrozenCache(AbstractCache):
         messages: list[dict[str, Any]],
         response: str,
     ) -> None:
-        pass
-
-    def clear(self) -> None:
         pass
