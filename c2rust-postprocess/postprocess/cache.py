@@ -1,5 +1,7 @@
 import json
 import logging
+import shutil
+import time
 from abc import ABC, abstractmethod
 from hashlib import sha256
 from pathlib import Path
@@ -165,6 +167,8 @@ class DirectoryCache(AbstractCache):
             logging.debug(f"Cache miss: {cache_file}:\n{toml}")
             return None
         logging.debug(f"Cache hit: {cache_file}:\n{toml}")
+        # Mark the entry as recently used for `prune`.
+        cache_file.touch()
         data = tomli.loads(toml)
 
         return data["response"]
@@ -196,6 +200,19 @@ class DirectoryCache(AbstractCache):
         metadata_path.write_text(toml)
         response_path.write_text(response)
         logging.debug(f"Cache updated: {cache_dir}:\n{toml}")
+
+    def prune(self, max_age_days: int) -> None:
+        """
+        Remove entries that have not been looked up or updated in
+        `max_age_days`. Recency is tracked via `metadata.toml`'s mtime,
+        which (unlike atime) survives tar-based cache round-trips such
+        as `actions/cache`.
+        """
+        cutoff = time.time() - max_age_days * 24 * 60 * 60
+        for metadata_path in self._path.glob("*/*/*/metadata.toml"):
+            if metadata_path.stat().st_mtime < cutoff:
+                logging.debug(f"Pruning stale cache entry: {metadata_path.parent}")
+                shutil.rmtree(metadata_path.parent)
 
 
 class FrozenCache(AbstractCache):
