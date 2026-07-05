@@ -126,15 +126,6 @@ class DirectoryCache(AbstractCache):
         path = Path(user_cache_dir(appname="c2rust-postprocess"))
         return cls(path=path)
 
-    @classmethod
-    def repo(cls) -> Self:
-        """
-        Use a cache that is checked into the git repo.
-        This is intended to be used by CI.
-        """
-        path = Path(__file__).parent / "../tests/llm-cache"
-        return cls(path=path)
-
     def get_message_digest(self, messages: list[dict[str, Any]]) -> str:
         messages_str = json.dumps(messages, sort_keys=True)
         return sha256(messages_str.encode()).hexdigest()
