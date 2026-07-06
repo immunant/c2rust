@@ -303,8 +303,12 @@ private:
                 tag = "nullable";
                 break;
             }
+
             if (tag) {
-                cbor_encode_text_stringz(local, tag);
+                CborEncoder attr_info;
+                cbor_encoder_create_array(local, &attr_info, 1);
+                cbor_encode_text_stringz(&attr_info, tag);
+                cbor_encoder_close_container(local, &attr_info);
             } else {
                 cbor_encode_null(local);
             }
@@ -1121,10 +1125,15 @@ class TranslateASTVisitor final
     bool VisitAttributedStmt(AttributedStmt *S) {
         std::vector<void*> childIds { S->getSubStmt() };
         encode_entry(S, TagAttributedStmt, childIds,
-                     [S](CborEncoder *array){
+                     [this, S](CborEncoder *local){
+                         CborEncoder array;
+                         cbor_encoder_create_array(local, &array, CborIndefiniteLength);
+
                          for (auto s: S->getAttrs()) {
-                             cbor_encode_text_stringz(array, s->getSpelling());
+                             encodeAttribute(&array, s);
                          }
+
+                         cbor_encoder_close_container(local, &array);
         });
         return true;
     }
@@ -2185,30 +2194,19 @@ class TranslateASTVisitor final
                 cbor_encode_boolean(array, is_inline_externally_visible);
 
                 // Encode attribute names and relevant info if supported
-                CborEncoder attr_info;
-                bool has_attrs = def ? def->hasAttrs() : FD->hasAttrs();
+                CborEncoder attr_array;
+                cbor_encoder_create_array(array, &attr_array, CborIndefiniteLength);
+                auto attr_decl = def ? def : FD;
 
-                cbor_encoder_create_array(array, &attr_info,
-                                          CborIndefiniteLength);
-
-                if (has_attrs) {
-                    auto attrs = def ? def->getAttrs() : FD->getAttrs();
+                if (attr_decl->hasAttrs()) {
+                    auto attrs = attr_decl->getAttrs();
 
                     for (auto attr : attrs) {
-                        cbor_encode_text_stringz(&attr_info,
-                                                 attr->getSpelling());
-
-                        if (auto *aa = dyn_cast<AliasAttr>(attr)) {
-                            cbor_encode_text_stringz(
-                                &attr_info, aa->getAliasee().str().c_str());
-                        } else if (auto *va = dyn_cast<VisibilityAttr>(attr)) {
-                            const char *vis = VisibilityAttr::ConvertVisibilityTypeToStr(va->getVisibility());
-                            cbor_encode_text_stringz(&attr_info, vis);
-                        }
+                        encodeAttribute(&attr_array, attr);
                     }
                 }
 
-                cbor_encoder_close_container(array, &attr_info);
+                cbor_encoder_close_container(array, &attr_array);
             });
         typeEncoder.VisitQualTypeOf(functionType, paramsFD);
 
@@ -2290,38 +2288,16 @@ class TranslateASTVisitor final
                 cbor_encode_boolean(array, is_defn);
 
                 // Encode attribute names and relevant info if supported
-                CborEncoder attr_info;
+                CborEncoder attr_array;
+                cbor_encoder_create_array(array, &attr_array, CborIndefiniteLength);
 
-                cbor_encoder_create_array(array, &attr_info,
-                                          CborIndefiniteLength);
-
-                bool has_attrs = def->hasAttrs();
-
-                if (has_attrs) {
+                if (def->hasAttrs()) {
                     for (auto attr : def->attrs()) {
-                        cbor_encode_text_stringz(&attr_info,
-                                                 attr->getSpelling());
-
-                        if (auto *sa = dyn_cast<SectionAttr>(attr)) {
-                            cbor_encode_text_stringz(
-                                &attr_info, sa->getName().str().c_str());
-                        } else if (auto *aa = dyn_cast<AliasAttr>(attr)) {
-                            cbor_encode_text_stringz(
-                                &attr_info, aa->getAliasee().str().c_str());
-                        } else if (auto *ca = dyn_cast<CleanupAttr>(attr)) {
-                            cbor_encode_uint(
-                                &attr_info,
-                                uintptr_t(ca->getFunctionDecl()->getCanonicalDecl()));
-                        } else {
-                            printDiag(Context, DiagnosticsEngine::Warning,
-                                      std::string("ignoring unsupported variable attribute: ") +
-                                          attr->getSpelling(),
-                                      def);
-                        }
+                        encodeAttribute(&attr_array, attr);
                     }
                 }
 
-                cbor_encoder_close_container(array, &attr_info);
+                cbor_encoder_close_container(array, &attr_array);
             });
 
         typeEncoder.VisitQualTypeOf(T, def);
@@ -2343,15 +2319,14 @@ class TranslateASTVisitor final
             // we emit them too.
             std::vector<void *> childIds = {D->getCanonicalDecl()};
             encode_entry(D, TagNonCanonicalDecl, D->getSourceRange(), childIds, QualType(),
-                [D](CborEncoder *local) {
+                [this, D](CborEncoder *local) {
                 // 1. Attributes stored as an array of attribute names
-                CborEncoder attrs;
-                size_t attrs_n = D->hasAttrs() ? D->getAttrs().size() : 0;
-                cbor_encoder_create_array(local, &attrs, attrs_n);
+                CborEncoder attr_array;
+                cbor_encoder_create_array(local, &attr_array, CborIndefiniteLength);
                 for (auto a : D->attrs()) {
-                    cbor_encode_text_stringz(&attrs, a->getSpelling());
+                    encodeAttribute(&attr_array, a);
                 }
-                cbor_encoder_close_container(local, &attrs);
+                cbor_encoder_close_container(local, &attr_array);
             });
             return true;
         }
@@ -2388,7 +2363,7 @@ class TranslateASTVisitor final
 
         encode_entry(
             D, tag, loc, childIds, QualType(),
-            [D, def, recordAlignment, byteSize](CborEncoder *local) {
+            [this, D, def, recordAlignment, byteSize](CborEncoder *local) {
                 // 1. Encode name or null
                 auto name = D->getNameAsString();
                 if (name.empty()) {
@@ -2401,13 +2376,12 @@ class TranslateASTVisitor final
                 cbor_encode_boolean(local, !!def);
 
                 // 3. Attributes stored as an array of attribute names
-                CborEncoder attrs;
-                size_t attrs_n = D->hasAttrs() ? D->getAttrs().size() : 0;
-                cbor_encoder_create_array(local, &attrs, attrs_n);
+                CborEncoder attr_array;
+                cbor_encoder_create_array(local, &attr_array, CborIndefiniteLength);
                 for (auto a : D->attrs()) {
-                    cbor_encode_text_stringz(&attrs, a->getSpelling());
+                    encodeAttribute(&attr_array, a);
                 }
-                cbor_encoder_close_container(local, &attrs);
+                cbor_encoder_close_container(local, &attr_array);
 
                 // 4. Encode manually specified alignment
                 auto align = D->getMaxAlignment();
@@ -2596,6 +2570,83 @@ class TranslateASTVisitor final
         typeEncoder.VisitQualTypeOf(typeForDecl, D);
 
         return true;
+    }
+
+    void encodeAttribute(CborEncoder *array, const Attr *attr) {
+        std::function<void(CborEncoder *)> extra = [](CborEncoder *) {};
+
+        switch (attr->getKind()) {
+            case attr::Alias:
+                extra = [attr](CborEncoder *local) {
+                    auto *alias_attr = dyn_cast<AliasAttr>(attr);
+                    cbor_encode_text_stringz(
+                        local,
+                        alias_attr->getAliasee().str().c_str()
+                    );    
+                };
+                break;
+
+            case attr::Cleanup:
+                extra = [attr](CborEncoder *local) {
+                    auto *cleanup_attr = dyn_cast<CleanupAttr>(attr);
+                    cbor_encode_uint(
+                        local,
+                        uintptr_t(cleanup_attr->getFunctionDecl()->getCanonicalDecl())
+                    );
+                };
+                break;
+
+            case attr::Section:
+                extra = [attr](CborEncoder *local) {
+                    auto *section_attr = dyn_cast<SectionAttr>(attr);
+                    cbor_encode_text_stringz(
+                        local,
+                        section_attr->getName().str().c_str()
+                    );
+                };
+                break;
+
+            case attr::Visibility:
+                extra = [attr](CborEncoder *local) {
+                    auto *visibility_attr = dyn_cast<VisibilityAttr>(attr);
+                    cbor_encode_text_stringz(
+                        local,
+                        VisibilityAttr::ConvertVisibilityTypeToStr(
+                            visibility_attr->getVisibility()
+                        )
+                    );
+                };
+                break;
+
+            case attr::AlwaysInline:
+            case attr::Cold:
+            case attr::FallThrough:
+            case attr::GNUInline:
+            case attr::NoInline:
+            case attr::NoReturn:
+            case attr::TypeNonNull:
+            case attr::TypeNullable:
+            case attr::Packed:
+            case attr::Used:
+                break;
+
+            default:
+                return;
+        }
+
+        encodeAttributeRaw(array, attr, extra);
+    }
+
+    void encodeAttributeRaw(
+        CborEncoder *array,
+        const Attr *attr,
+        std::function<void(CborEncoder *)> extra
+    ) {
+        CborEncoder attr_info;
+        cbor_encoder_create_array(array, &attr_info, CborIndefiniteLength);
+        cbor_encode_text_stringz(&attr_info, attr->getSpelling());
+        extra(&attr_info);
+        cbor_encoder_close_container(array, &attr_info);
     }
 
     //
