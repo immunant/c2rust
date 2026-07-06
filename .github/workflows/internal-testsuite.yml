@@ -31,11 +31,6 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ${{ matrix.runner }}
 
-    env:
-      # Uses cache-only responses; skips uncached work and exercises cached
-      # postprocess output usage.
-      C2RUST_POSTPROCESS_EXTRA_ARGS: --on-error warn --cache-dir ${{ runner.temp }}/llm-cache
-
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -47,7 +42,7 @@ jobs:
         # `update = none` is set, which makes this not work, so we need to update them manually.
         # See `.gitmodules` for more info.
         submodules: false
-    
+
     - name: Checkout submodules
       run: |
         git submodule update --init --checkout tests/integration/tests/curl/repo
@@ -121,6 +116,10 @@ jobs:
         key: postprocess-cache-${{ matrix.runner }}-${{ matrix.arch }}-clang-${{ matrix.clang-version }}-
 
     - name: Run c2rust testsuite
+      env:
+        # Uses cache-only responses; skips uncached work and exercises cached
+        # postprocess output usage.
+        C2RUST_POSTPROCESS_EXTRA_ARGS: --on-error warn --cache-dir ${{ runner.temp }}/llm-cache
       run: |
         export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
