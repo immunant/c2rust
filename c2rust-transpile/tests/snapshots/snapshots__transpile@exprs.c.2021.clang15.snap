@@ -139,7 +139,7 @@ pub unsafe extern "C" fn pointer_arithmetic() {
 pub unsafe extern "C" fn assign_result() {
     let mut l: ::core::ffi::c_ulong = 0 as ::core::ffi::c_ulong;
     l = 1 as ::core::ffi::c_ulong;
-    let mut s1: size_t = l;
+    let mut s1: size_t = l as size_t;
     l = l.wrapping_add(2 as ::core::ffi::c_ulong);
-    let mut s2: size_t = l;
+    let mut s2: size_t = l as size_t;
 }
