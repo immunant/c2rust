@@ -295,15 +295,25 @@ impl<'c> Translation<'c> {
 
             // Don't dereference the offset if we're still within the variable portion
             let val = if let Some(elt_type_id) = var_elt_type_id {
-                let offset_rs = self.convert_expr(ctx.used(), offset_id, None)?;
+                let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
+                let offset_rs = self.convert_expr_with_cast(
+                    ctx.used(),
+                    CQualTypeId::new(target_type_id),
+                    offset_id,
+                )?;
                 array_rs.zip(offset_rs).and_then(|(array_rs, offset_rs)| {
-                    self.convert_pointer_offset(array_rs, offset_rs, elt_type_id, false, deref)
+                    self.make_pointer_offset(array_rs, offset_rs, elt_type_id, false, deref)
                 })
             } else {
-                let offset_rs = self.convert_expr(ctx.used(), offset_id, None)?;
-                array_rs.zip(offset_rs).map(|(array_rs, offset_rs)| {
-                    mk().index_expr(array_rs, cast_int(offset_rs, "usize", false))
-                })
+                let target_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
+                let offset_rs = self.convert_expr_with_cast(
+                    ctx.used(),
+                    CQualTypeId::new(target_type_id),
+                    offset_id,
+                )?;
+                array_rs
+                    .zip(offset_rs)
+                    .map(|(array_rs, offset_rs)| mk().index_expr(array_rs, offset_rs))
             };
 
             Ok(val)
@@ -322,12 +332,17 @@ impl<'c> Translation<'c> {
 
             // LHS must be ref decayed for the offset method call's self param
             let pointer_rs = self.convert_expr(ctx.used().decay_ref(), pointer_id, None)?;
-            let offset_rs = self.convert_expr(ctx.used(), offset_id, None)?;
+            let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
+            let offset_rs = self.convert_expr_with_cast(
+                ctx.used(),
+                CQualTypeId::new(target_type_id),
+                offset_id,
+            )?;
 
             let mut val = pointer_rs
                 .zip(offset_rs)
                 .and_then(|(pointer_rs, offset_rs)| {
-                    self.convert_pointer_offset(
+                    self.make_pointer_offset(
                         pointer_rs,
                         offset_rs,
                         pointee_type_id.ctype,

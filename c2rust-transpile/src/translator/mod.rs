@@ -3506,6 +3506,30 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Converts `expr_id` as if it were wrapped in an `ImplicitCast` expression.
+    pub(crate) fn convert_expr_with_cast(
+        &self,
+        ctx: ExprContext,
+        target_type_id: CQualTypeId,
+        expr_id: CExprId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let source_type_id = self.ast_context[expr_id].kind.get_qual_type().unwrap();
+
+        let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
+        let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
+
+        let kind = CastKind::from_types(source_type_kind, target_type_kind).unwrap_or_else(|| {
+            warn!(
+                "Unknown CastKind for {source_type_kind:?} to {target_type_kind:?} cast. \
+                Defaulting to BitCast",
+            );
+
+            CastKind::BitCast
+        });
+
+        self.convert_cast(ctx, None, target_type_id, expr_id, kind, None, false)
+    }
+
     pub fn convert_constant(&self, constant: ConstIntExpr) -> TranslationResult<Box<Expr>> {
         let expr = match constant {
             ConstIntExpr::U(n) => mk().lit_expr(mk().int_unsuffixed_lit(n as u128)),
