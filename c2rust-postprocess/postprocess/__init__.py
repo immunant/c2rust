@@ -9,8 +9,6 @@ from argparse import BooleanOptionalAction
 from collections.abc import Sequence
 from pathlib import Path
 
-from google.genai import types
-
 from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.models import api_key_from_env, get_model_by_id
@@ -18,10 +16,7 @@ from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
 from postprocess.transforms.base import TransformError
-from postprocess.transforms.comments import (
-    SYSTEM_INSTRUCTION,
-    AbstractGenerativeModel,
-)
+from postprocess.transforms.comments import AbstractGenerativeModel
 from postprocess.utils import existing_file
 
 DEFAULT_LLM_MODEL = "gemini-3.5-flash"
@@ -169,15 +164,7 @@ def get_model(model_id: str) -> AbstractGenerativeModel:
         )
         return MockGenerativeModel()
 
-    # TODO: remove google specific API bits
-    return get_model_by_id(
-        model_id,
-        generation_config={
-            "system_instruction": types.Content(
-                role="system", parts=[types.Part.from_text(text=SYSTEM_INSTRUCTION)]
-            )
-        },
-    )
+    return get_model_by_id(model_id)
 
 
 def main(argv: Sequence[str] | None = None):

@@ -17,13 +17,9 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
         self,
         id: str = "gemini-2.5-flash",
         api_key: str | None = None,
-        generation_config: dict[str, Any] | None = None,
     ):
         super().__init__(id)
         self.client = genai.Client(api_key=api_key)
-        if generation_config is None:
-            generation_config = {}
-        self._generation_config = generation_config
 
     def generate_with_tools(
         self,
@@ -40,7 +36,6 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
                 disable=False,
                 maximum_remote_calls=max_tool_loops,  # Enforces the loop limit natively
             ),
-            **self._generation_config,
         )
 
         response = self.client.models.generate_content(
