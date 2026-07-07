@@ -115,7 +115,6 @@ jobs:
           # The value is expanded unquoted by postprocess.gen.sh, so no shell
           # quoting: args must not contain whitespace.
           C2RUST_POSTPROCESS_EXTRA_ARGS: >-
-            --ident-filter ^(json_object_set_userdata|json_object_to_file)$
             --cache-dir ${{ runner.temp }}/llm-cache
         run: |
           export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
