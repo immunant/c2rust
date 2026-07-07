@@ -364,27 +364,43 @@ impl<'c> Translation<'c> {
         offset: Box<Expr>,
         pointee_cty: CTypeId,
         neg: bool,
+        deref: bool,
+    ) -> WithStmts<Box<Expr>> {
+        self.make_pointer_offset(
+            ptr,
+            cast_int(offset, "isize", false),
+            pointee_cty,
+            neg,
+            deref,
+        )
+    }
+
+    /// Creates a pointer offset expression. Assumes that `offset_rs` is of type `isize`.
+    pub(crate) fn make_pointer_offset(
+        &self,
+        pointer_rs: Box<Expr>,
+        mut offset_rs: Box<Expr>,
+        pointee_type_id: CTypeId,
+        neg: bool,
         mut deref: bool,
     ) -> WithStmts<Box<Expr>> {
-        let mut offset = cast_int(offset, "isize", false);
-
-        if let Some(mul) = self.compute_size_of_expr(pointee_cty) {
+        if let Some(mul) = self.compute_size_of_expr(pointee_type_id) {
             let mul = cast_int(mul, "isize", false);
-            offset = mk().binary_expr(BinOp::Mul(Default::default()), offset, mul);
+            offset_rs = mk().binary_expr(BinOp::Mul(Default::default()), offset_rs, mul);
             deref = false;
         }
 
         if neg {
-            offset = neg_expr(offset);
+            offset_rs = neg_expr(offset_rs);
         }
 
-        let mut res = mk().method_call_expr(ptr, "offset", vec![offset]);
+        let mut expr = mk().method_call_expr(pointer_rs, "offset", vec![offset_rs]);
 
         if deref {
-            res = mk().unary_expr(UnOp::Deref(Default::default()), res);
+            expr = mk().unary_expr(UnOp::Deref(Default::default()), expr);
         }
 
-        WithStmts::new_val(res).set_unsafe()
+        WithStmts::new_val(expr).set_unsafe()
     }
 
     /// Creates a pointer difference expression. Returns an expression of type `isize`.
