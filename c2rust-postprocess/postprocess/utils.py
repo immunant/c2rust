@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from shutil import which
 from typing import Any
@@ -113,6 +114,14 @@ def get_highlighted_rust(rust_code: str, bg="dark") -> str:
     return get_highlighted_code(rust_code, RustLexer(), bg=bg)
 
 
+def color_enabled() -> bool:
+    # https://no-color.org/
+    if os.environ.get("NO_COLOR"):
+        return False
+    return sys.stderr.isatty()
+
+
 def get_highlighted_code(code: str, lexer: RegexLexer, bg: str) -> str:
-    # TODO: detect when terminal supports colors
+    if not color_enabled():
+        return code
     return highlight(code, lexer, TerminalFormatter(bg=bg))
