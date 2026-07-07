@@ -3340,7 +3340,7 @@ impl<'c> Translation<'c> {
                     CDeclKind::EnumConstant { .. } => {
                         // If the variable is actually an `EnumConstant`, we need to add a cast to
                         // the expected integral type.
-                        val = self.convert_cast_from_enum(qual_ty.ctype, val)?;
+                        return self.convert_cast_from_enum(qual_ty.ctype, val);
                     }
 
                     CDeclKind::Function { parameters, .. } => {
