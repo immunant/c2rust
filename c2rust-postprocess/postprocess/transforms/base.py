@@ -96,14 +96,14 @@ class AbstractTransform(ABC):
         for identifier, rust_definition in rust_definitions.items():
             if exclude_list.contains(path=rust_source_file, identifier=identifier):
                 logging.info(
-                    f"Skipping Rust fn {identifier} in {rust_source_file}"
+                    f"Skipping Rust fn {identifier} in {rust_source_file} "
                     f"due to exclude file {exclude_list.src_path}"
                 )
                 continue
 
             if ident_regex and not ident_regex.search(identifier):
                 logging.info(
-                    f"Skipping Rust fn {identifier} in {rust_source_file}"
+                    f"Skipping Rust fn {identifier} in {rust_source_file} "
                     f"due to ident filter {ident_filter}"
                 )
                 continue
