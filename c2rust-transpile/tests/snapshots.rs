@@ -634,6 +634,18 @@ fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
 }
 
 #[test]
+fn test_c_decls_directives() {
+    let c_path = Path::new("tests/c_decls_snapshots/directives.c");
+    transpile_with_c_decl_map_snapshot(c_path);
+}
+
+#[test]
+fn test_c_decls_line_directives() {
+    let c_path = Path::new("tests/c_decls_snapshots/line_directives.c");
+    transpile_with_c_decl_map_snapshot(c_path);
+}
+
+#[test]
 fn test_c_decls_nh() {
     let c_path = Path::new("tests/c_decls_snapshots/nh.c");
     transpile_with_c_decl_map_snapshot(c_path);
