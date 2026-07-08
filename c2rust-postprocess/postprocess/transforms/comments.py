@@ -132,7 +132,8 @@ class CommentsTransform(AbstractTransform):
         Transfer exactly the comment lines listed below, in order; do not transfer any other
         comments in the C function (they may come from inactive preprocessor regions) and do
         not add new ones.
-        Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
+        Use Rust doc comment syntax (///) only for comments placed before the function signature;
+        inside the function body use plain // comments (/// before a statement does not compile).
         Respond with the Rust function definition with the transferred comments; say nothing else.
         """  # noqa: E501
         prompt_text = dedent(prompt_text).strip()
