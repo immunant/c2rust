@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from postprocess.definitions import (
+    CDefinition,
     get_c_definitions,
     get_rust_definitions,
 )
@@ -32,7 +33,7 @@ class AbstractTransform(ABC):
         self,
         rust_source_file: Path,
         rust_definition: str,
-        c_definition: str,
+        c_definition: CDefinition,
         identifier: str,
         update_rust: bool = True,
     ) -> None:
@@ -114,7 +115,7 @@ class AbstractTransform(ABC):
 
             c_definition = c_definitions[identifier]
 
-            highlighted_c_definition = get_highlighted_c(c_definition)
+            highlighted_c_definition = get_highlighted_c(c_definition.effective)
             logging.debug(
                 f"C function {identifier} definition:\n{highlighted_c_definition}\n"
             )
