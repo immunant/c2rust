@@ -9,6 +9,7 @@ from postprocess.definitions import (
     CDefinition,
     get_c_comments,
     get_rust_comments,
+    rust_parse_has_errors,
     update_rust_definition,
 )
 from postprocess.models import AbstractGenerativeModel, api_key_from_env
@@ -171,6 +172,11 @@ class CommentsTransform(AbstractTransform):
             raise TransformError(f"model returned no response for {identifier}")
 
         rust_fn = remove_backticks(response)
+
+        if rust_parse_has_errors(rust_fn):
+            raise TransformError(
+                f"model response for {identifier} is not syntactically valid Rust"
+            )
 
         logging.debug(f"{c_comments=}")
 
