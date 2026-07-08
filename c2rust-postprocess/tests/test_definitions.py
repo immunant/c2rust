@@ -6,6 +6,7 @@ from conftest import EXAMPLES_ROOT
 
 from postprocess import main
 from postprocess.definitions import (
+    demote_misplaced_doc_comments,
     get_c_sourcefile,
     get_function_span_pairs,
     get_rust_function_spans,
@@ -83,6 +84,45 @@ def test_c_function_splitting(generate_compile_commands_for_qsort, transpile_qso
         print(f"Rust function {rust_fn['name']} definition:\n{rust_def}\n")
 
     # assert False
+
+
+def test_demote_misplaced_doc_comments():
+    code = """\
+#[no_mangle]
+/// doc on fn stays
+pub unsafe extern "C" fn f() -> i32 {
+    /// doc before let
+    let mut x = 0;
+    /// doc before expr stmt
+    x = 1;
+    /** block doc */
+    x = 2;
+    //// four slashes is a plain comment
+    // plain comment
+    return x;
+}
+"""
+    expected = """\
+#[no_mangle]
+/// doc on fn stays
+pub unsafe extern "C" fn f() -> i32 {
+    // doc before let
+    let mut x = 0;
+    // doc before expr stmt
+    x = 1;
+    /* block doc */
+    x = 2;
+    //// four slashes is a plain comment
+    // plain comment
+    return x;
+}
+"""
+    assert demote_misplaced_doc_comments(code) == expected
+
+
+def test_demote_misplaced_doc_comments_inner_doc():
+    code = "//! inner doc\nfn f() {}\n"
+    assert demote_misplaced_doc_comments(code) == "// inner doc\nfn f() {}\n"
 
 
 def test_rust_parse_has_errors():

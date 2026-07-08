@@ -7,6 +7,7 @@ from textwrap import dedent
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
     CDefinition,
+    demote_misplaced_doc_comments,
     get_c_comments,
     get_rust_comments,
     rust_parse_has_errors,
@@ -177,6 +178,8 @@ class CommentsTransform(AbstractTransform):
             raise TransformError(
                 f"model response for {identifier} is not syntactically valid Rust"
             )
+
+        rust_fn = demote_misplaced_doc_comments(rust_fn)
 
         logging.debug(f"{c_comments=}")
 

@@ -6,6 +6,7 @@ import pytest
 from postprocess.cache import AbstractCache
 from postprocess.definitions import CDefinition
 from postprocess.models.mock import MockGenerativeModel
+from postprocess.transforms import comments
 from postprocess.transforms.base import TransformError
 from postprocess.transforms.comments import CommentsTransform
 
@@ -103,6 +104,35 @@ pub unsafe extern "C" fn f() -> libc::c_int {
     return 1 as libc::c_int;
 }
 """
+
+
+def test_body_doc_comments_are_demoted(monkeypatch) -> None:
+    response = """\
+pub unsafe extern "C" fn f() -> libc::c_int {
+    /// @note a body comment
+    return 1 as libc::c_int;
+}
+"""
+    cache = StaticCache(response)
+    transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
+
+    merged: dict[str, str] = {}
+
+    def fake_update(*, root_rust_source_file, identifier, new_definition):
+        merged[identifier] = new_definition
+
+    monkeypatch.setattr(comments, "update_rust_definition", fake_update)
+
+    transform.apply_ident(
+        rust_source_file=Path("unused.rs"),
+        rust_definition=RUST_DEFINITION_NO_COMMENTS,
+        c_definition=C_DEFINITION_BODY_COMMENT,
+        identifier="f",
+        update_rust=True,
+    )
+
+    assert "/// @note" not in merged["f"]
+    assert "// @note a body comment" in merged["f"]
 
 
 def test_syntactically_invalid_response_is_rejected() -> None:

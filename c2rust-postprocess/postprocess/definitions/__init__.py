@@ -206,6 +206,69 @@ def get_rust_comments(code: str) -> list[str]:
     return get_comments_text(walk(tree.root_node))
 
 
+def _plain_comment_prefix(comment: str) -> str | None:
+    """
+    The plain-comment marker that replaces a doc-comment marker,
+    or None if `comment` is not a doc comment.
+    """
+    # Per rustc: ////... and /***...*/ and the empty /**/ are plain comments.
+    if comment.startswith("//!"):
+        return "//"
+    if comment.startswith("///") and not comment.startswith("////"):
+        return "//"
+    if comment.startswith("/*!"):
+        return "/*"
+    if (
+        comment.startswith("/**")
+        and not comment.startswith("/***")
+        and comment != "/**/"
+    ):
+        return "/*"
+    return None
+
+
+def demote_misplaced_doc_comments(code: str) -> str:
+    """
+    Rewrite doc comments as plain comments wherever rustc would reject or
+    ignore them in a function definition fragment. A /// before an expression
+    statement desugars to an attribute on the expression, which is a hard
+    error on stable (E0658, stmt_expr_attributes); elsewhere in a body it is
+    an unused_doc_comments warning. Inner doc comments (//!) are demoted
+    everywhere since the fragment is merged into the middle of a file.
+    """
+    parser = Parser(RUST_LANGUAGE)
+    code_bytes = code.encode()
+    tree = parser.parse(code_bytes)
+
+    replacements = []
+
+    def walk(node: Node) -> None:
+        if node.type in {"line_comment", "block_comment"}:
+            text = code_bytes[node.start_byte : node.end_byte].decode()
+            prefix = _plain_comment_prefix(text)
+            inner_doc = text.startswith(("//!", "/*!"))
+            misplaced = node.parent is None or node.parent.type != "source_file"
+            if prefix is not None and (inner_doc or misplaced):
+                # all doc-comment markers are 3 bytes
+                replacements.append((node.start_byte, node.end_byte, prefix + text[3:]))
+        for child in node.children:
+            walk(child)
+
+    walk(tree.root_node)
+
+    if not replacements:
+        return code
+
+    out = []
+    pos = 0
+    for start, end, new_text in replacements:
+        out.append(code_bytes[pos:start].decode())
+        out.append(new_text)
+        pos = end
+    out.append(code_bytes[pos:].decode())
+    return "".join(out)
+
+
 def rust_parse_has_errors(code: str) -> bool:
     """True if tree-sitter finds syntax errors in the given Rust code."""
     parser = Parser(RUST_LANGUAGE)
