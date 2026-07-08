@@ -593,7 +593,8 @@ pub fn emit_c_decl_map(
     let byte_offset_of = |loc| src_loc_to_byte_offset(&line_end_offsets, loc);
 
     // Slice into the source file, fixing up the ends to account for Clang AST quirks.
-    let slice_decl_with_fixups = |begin: SrcLoc, mid: SrcLoc, end: SrcLoc| -> &[u8] {
+    // Also returns the line within the slice where the decl itself (`mid`) begins.
+    let slice_decl_with_fixups = |begin: SrcLoc, mid: SrcLoc, end: SrcLoc| -> (&[u8], usize) {
         assert!(begin.line <= mid.line, "{} <= {}", begin.line, mid.line);
         assert!(mid.line <= end.line, "{} <= {}", mid.line, end.line);
 
@@ -656,23 +657,28 @@ pub fn emit_c_decl_map(
             end_offset += 1;
         }
 
-        &file_content[begin_offset..end_offset]
+        // Line within the emitted text where the decl itself begins; earlier
+        // lines hold preceding comments and other front matter.
+        let decl_line = file_content[begin_offset..mid_offset.max(begin_offset)]
+            .iter()
+            .filter(|&&c| c == b'\n')
+            .count();
+
+        (&file_content[begin_offset..end_offset], decl_line)
     };
 
     let definitions = path_to_c_source_range
         .into_iter()
         .map(|(ident, (decl_id, range))| {
             let path = ident.to_string();
-            let c_src = std::str::from_utf8(slice_decl_with_fixups(
-                range.earliest_begin,
-                range.strict_begin,
-                range.end,
-            ))
-            .unwrap();
+            let (c_src, decl_line) =
+                slice_decl_with_fixups(range.earliest_begin, range.strict_begin, range.end);
+            let c_src = std::str::from_utf8(c_src).unwrap();
             (
                 path,
                 CDeclMapDefinition {
                     definition: c_src.to_owned(),
+                    decl_line,
                     preprocessed_definition: preprocessed_definitions.get(&decl_id).cloned(),
                 },
             )
@@ -833,6 +839,8 @@ pub struct DeclMap {
 #[derive(Serialize)]
 struct CDeclMapDefinition {
     definition: String,
+    /// 0-based line within `definition` where the decl itself begins.
+    decl_line: usize,
     preprocessed_definition: Option<String>,
 }
 
