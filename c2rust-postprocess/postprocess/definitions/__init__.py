@@ -206,10 +206,18 @@ def get_rust_comments(code: str) -> list[str]:
     return get_comments_text(walk(tree.root_node))
 
 
+def is_comment_token(tok_type: Any) -> bool:
+    """True for real comments; excludes directives and include paths."""
+    return tok_type in Comment and tok_type not in {
+        Comment.Preproc,
+        Comment.PreprocFile,
+    }
+
+
 def get_comments(code: str, lexer: RegexLexer) -> list[str]:
     comments = []
     for tok_type, tok_value in lex(code, lexer):
-        if tok_type in Comment and tok_type != Comment.Preproc:
+        if is_comment_token(tok_type):
             # Keep exactly what appears, including delimiters (//, /* */)
             comments.append(tok_value)
     return comments
