@@ -242,7 +242,9 @@ class CDefinition:
     @property
     def effective(self) -> str:
         """Preprocessed text when available, original otherwise."""
-        return self.preprocessed_definition or self.definition
+        if self.preprocessed_definition is not None:
+            return self.preprocessed_definition
+        return self.definition
 
     @property
     def was_changed_by_preprocessing(self) -> bool:
@@ -250,6 +252,12 @@ class CDefinition:
             self.preprocessed_definition is not None
             and self.preprocessed_definition != self.definition
         )
+
+    @property
+    def preprocessed_if_changed(self) -> str | None:
+        if self.was_changed_by_preprocessing:
+            return self.preprocessed_definition
+        return None
 
 
 def get_c_definitions(root_rust_source_file: Path) -> dict[str, CDefinition]:
