@@ -8,11 +8,12 @@ from postprocess.transforms.comments import CommentsTransform
 
 
 class StaticCache(AbstractCache):
+    """Cache with a single response for `CommentsTransform` lookups."""
+
     def __init__(self, response: str):
         super().__init__(Path())
         self.response = response
-        self.lookups = 0
-        self.messages: list[list[dict[str, Any]]] = []
+        self.lookups: list[tuple[str, list[dict[str, Any]]]] = []
 
     def lookup(
         self,
@@ -22,9 +23,10 @@ class StaticCache(AbstractCache):
         model: str,
         messages: list[dict[str, Any]],
     ) -> str | None:
-        self.lookups += 1
-        self.messages.append(messages)
-        return self.response
+        self.lookups.append((transform, messages))
+        if transform == "CommentsTransform":
+            return self.response
+        return None
 
     def update(
         self,
@@ -77,6 +79,7 @@ pub unsafe extern "C" fn enabled() -> libc::c_int {
         update_rust=False,
     )
 
-    assert cache.lookups == 1
-    prompt = cache.messages[0][0]["content"]
+    transforms = [transform for transform, _ in cache.lookups]
+    assert transforms == ["TrimTransform", "CommentsTransform"]
+    prompt = cache.lookups[-1][1][0]["content"]
     assert "preprocessor directive lines" in prompt
