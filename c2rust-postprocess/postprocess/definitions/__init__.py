@@ -206,6 +206,12 @@ def get_rust_comments(code: str) -> list[str]:
     return get_comments_text(walk(tree.root_node))
 
 
+def rust_parse_has_errors(code: str) -> bool:
+    """True if tree-sitter finds syntax errors in the given Rust code."""
+    parser = Parser(RUST_LANGUAGE)
+    return parser.parse(code.encode()).root_node.has_error
+
+
 def is_comment_token(tok_type: Any) -> bool:
     """True for real comments; excludes directives and include paths."""
     return tok_type in Comment and tok_type not in {

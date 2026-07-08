@@ -1,9 +1,12 @@
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from postprocess.cache import AbstractCache
 from postprocess.definitions import CDefinition
 from postprocess.models.mock import MockGenerativeModel
+from postprocess.transforms.base import TransformError
 from postprocess.transforms.comments import CommentsTransform
 
 
@@ -83,3 +86,39 @@ pub unsafe extern "C" fn enabled() -> libc::c_int {
     assert transforms == ["TrimTransform", "CommentsTransform"]
     prompt = cache.lookups[-1][1][0]["content"]
     assert "Comment lines to transfer:\n```\nenabled path\n```" in prompt
+
+
+C_DEFINITION_BODY_COMMENT = CDefinition(
+    definition="""\
+int f(void) {
+    /// @note a body comment
+    return 1;
+}
+""",
+    preprocessed_definition=None,
+)
+
+RUST_DEFINITION_NO_COMMENTS = """\
+pub unsafe extern "C" fn f() -> libc::c_int {
+    return 1 as libc::c_int;
+}
+"""
+
+
+def test_syntactically_invalid_response_is_rejected() -> None:
+    response = """\
+pub unsafe extern "C" fn f( -> libc::c_int {
+    /// @note a body comment
+    return 1 as libc::c_int;
+"""
+    cache = StaticCache(response)
+    transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
+
+    with pytest.raises(TransformError, match="not syntactically valid"):
+        transform.apply_ident(
+            rust_source_file=Path("unused.rs"),
+            rust_definition=RUST_DEFINITION_NO_COMMENTS,
+            c_definition=C_DEFINITION_BODY_COMMENT,
+            identifier="f",
+            update_rust=False,
+        )

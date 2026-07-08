@@ -9,6 +9,7 @@ from postprocess.definitions import (
     get_c_sourcefile,
     get_function_span_pairs,
     get_rust_function_spans,
+    rust_parse_has_errors,
 )
 from postprocess.utils import read_chunk
 
@@ -82,6 +83,11 @@ def test_c_function_splitting(generate_compile_commands_for_qsort, transpile_qso
         print(f"Rust function {rust_fn['name']} definition:\n{rust_def}\n")
 
     # assert False
+
+
+def test_rust_parse_has_errors():
+    assert not rust_parse_has_errors("fn f() -> i32 { 1 }\n")
+    assert rust_parse_has_errors("fn f( -> i32 { 1 }\n")
 
 
 def test_comment_insertion_qsort():
