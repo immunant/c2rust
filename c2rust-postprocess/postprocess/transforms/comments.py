@@ -1,5 +1,6 @@
 import logging
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 
@@ -20,34 +21,13 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+@dataclass(slots=True)
 class CommentsTransformPrompt:
     c_function: str
     c_function_preprocessed: str | None
     rust_function: str
     prompt_text: str
     identifier: str
-
-    __slots__ = (
-        "c_function",
-        "c_function_preprocessed",
-        "rust_function",
-        "prompt_text",
-        "identifier",
-    )
-
-    def __init__(
-        self,
-        c_function: str,
-        c_function_preprocessed: str | None,
-        rust_function: str,
-        prompt_text: str,
-        identifier: str,
-    ):
-        self.c_function = c_function
-        self.c_function_preprocessed = c_function_preprocessed
-        self.rust_function = rust_function
-        self.prompt_text = prompt_text
-        self.identifier = identifier
 
     def __str__(self) -> str:
         prompt = (
@@ -131,13 +111,7 @@ class CommentsTransform(AbstractTransform):
 
         prompt = CommentsTransformPrompt(
             c_function=c_definition.definition,
-            # Only include the preprocessed text when it differs, so prompts
-            # (and thus cache keys) are unchanged for directive-free functions.
-            c_function_preprocessed=(
-                c_definition.preprocessed_definition
-                if c_definition.was_changed_by_preprocessing
-                else None
-            ),
+            c_function_preprocessed=c_definition.preprocessed_if_changed,
             rust_function=rust_definition,
             prompt_text=prompt_text,
             identifier=identifier,
