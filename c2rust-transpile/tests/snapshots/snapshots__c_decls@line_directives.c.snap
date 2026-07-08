@@ -5,6 +5,7 @@ expression: cat tests/c_decls_snapshots/line_directives.c_decls.json
 {
   "definitions": {
     "before_line": {
+      "decl_line": 0,
       "definition": "int before_line(void) {\n    return 1;\n}",
       "preprocessed_definition": null
     }
