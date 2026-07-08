@@ -12,7 +12,9 @@
 #include <vector>
 
 using Outputs = std::unordered_map<std::string, std::vector<uint8_t>>;
+using PreprocessedOutputs = std::unordered_map<std::string, std::string>;
 
-Outputs process(int argc, const char *argv[], int *result);
+Outputs process(int argc, const char *argv[], int *result,
+                PreprocessedOutputs *preprocessed = nullptr);
 
 #endif /* AstExporter_hpp */
