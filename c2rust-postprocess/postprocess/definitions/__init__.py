@@ -246,6 +246,9 @@ def get_rust_definitions(root_rust_source_file: Path) -> dict[str, str]:
 class CDefinition:
     definition: str
     preprocessed_definition: str | None
+    # 0-based line within `definition` where the decl itself begins; earlier
+    # lines hold preceding comments and other front matter.
+    decl_line: int | None = None
 
     @property
     def effective(self) -> str:
@@ -278,6 +281,7 @@ def get_c_definitions(root_rust_source_file: Path) -> dict[str, CDefinition]:
             identifier: CDefinition(
                 definition=decl["definition"],
                 preprocessed_definition=decl.get("preprocessed_definition"),
+                decl_line=decl.get("decl_line"),
             )
             for identifier, decl in c_decls["definitions"].items()
         }
