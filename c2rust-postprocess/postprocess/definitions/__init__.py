@@ -257,19 +257,6 @@ class CDefinition:
             return self.preprocessed_definition
         return self.definition
 
-    @property
-    def was_changed_by_preprocessing(self) -> bool:
-        return (
-            self.preprocessed_definition is not None
-            and self.preprocessed_definition != self.definition
-        )
-
-    @property
-    def preprocessed_if_changed(self) -> str | None:
-        if self.was_changed_by_preprocessing:
-            return self.preprocessed_definition
-        return None
-
 
 def get_c_definitions(root_rust_source_file: Path) -> dict[str, CDefinition]:
     c_defs_json = root_rust_source_file.with_suffix(".c_decls.json")
