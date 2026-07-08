@@ -82,4 +82,4 @@ pub unsafe extern "C" fn enabled() -> libc::c_int {
     transforms = [transform for transform, _ in cache.lookups]
     assert transforms == ["TrimTransform", "CommentsTransform"]
     prompt = cache.lookups[-1][1][0]["content"]
-    assert "preprocessor directive lines" in prompt
+    assert "Comment lines to transfer:\n```\nenabled path\n```" in prompt

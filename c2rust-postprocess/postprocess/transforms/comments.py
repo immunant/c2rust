@@ -25,31 +25,25 @@ SYSTEM_INSTRUCTION = (
 @dataclass(slots=True)
 class CommentsTransformPrompt:
     c_function: str
-    c_function_preprocessed: str | None
+    c_comments: list[str]
     rust_function: str
     prompt_text: str
     identifier: str
 
     def __str__(self) -> str:
-        prompt = (
+        return (
             self.prompt_text
             + "\n\n"
+            + "Comment lines to transfer:\n```\n"
+            + "\n".join(self.c_comments)
+            + "\n```\n\n"
             + "C function:\n```c\n"
             + self.c_function
             + "```\n\n"
+            + "Rust function:\n```rust\n"
+            + self.rust_function
+            + "```\n"
         )
-        if self.c_function_preprocessed is not None:
-            prompt += (
-                "The same C function after preprocessing; comments that are"
-                " absent here may have been in inactive preprocessor regions"
-                " and must not be transferred. Comments on preprocessor"
-                " directive lines in the original C function may be absent"
-                " here even when they annotate active code:\n```c\n"
-                + self.c_function_preprocessed
-                + "```\n\n"
-            )
-        prompt += "Rust function:\n```rust\n" + self.rust_function + "```\n"
-        return prompt
 
 
 def _get_directive_line_comments(code: str) -> list[str]:
@@ -114,11 +108,12 @@ class CommentsTransform(AbstractTransform):
                     f"{identifier}; continuing with the original definition"
                 )
             case str() as trimmed_c_definition:
-                # TODO: consider trimming both the definition and the preprocessed
-                #       definition instead of possibly replacing the original
-                #       definition with the trimmed and preprocessed one.
+                # Keep the (untrimmed) preprocessed definition: it is only used
+                # as a comment multiset when computing transferable comments,
+                # so trimming it is unnecessary.
                 c_definition = CDefinition(
-                    definition=trimmed_c_definition, preprocessed_definition=None
+                    definition=trimmed_c_definition,
+                    preprocessed_definition=c_definition.preprocessed_definition,
                 )
                 c_comments = _get_transferable_c_comments(c_definition)
                 if not c_comments:
@@ -132,7 +127,9 @@ class CommentsTransform(AbstractTransform):
         # TODO: make this function take a model and get prompt from model
         prompt_text = """
         Transfer the comments from the following C function to the corresponding Rust function.
-        Do not add any comments that are not present in the C function.
+        Transfer exactly the comment lines listed below, in order; do not transfer any other
+        comments in the C function (they may come from inactive preprocessor regions) and do
+        not add new ones.
         Use Rust doc comment syntax (///) where appropriate (e.g., for function documentation).
         Respond with the Rust function definition with the transferred comments; say nothing else.
         """  # noqa: E501
@@ -140,7 +137,7 @@ class CommentsTransform(AbstractTransform):
 
         prompt = CommentsTransformPrompt(
             c_function=c_definition.definition,
-            c_function_preprocessed=c_definition.preprocessed_if_changed,
+            c_comments=c_comments,
             rust_function=rust_definition,
             prompt_text=prompt_text,
             identifier=identifier,
