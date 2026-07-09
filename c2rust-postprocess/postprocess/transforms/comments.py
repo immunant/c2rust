@@ -11,9 +11,8 @@ from postprocess.definitions import (
     get_c_comments,
     get_rust_comments,
     rust_parse_has_errors,
-    update_rust_definition,
 )
-from postprocess.models import AbstractGenerativeModel, api_key_from_env
+from postprocess.models import AbstractGenerativeModel
 from postprocess.transforms.base import AbstractTransform, TransformError
 from postprocess.transforms.trim import TrimTransform
 from postprocess.utils import get_highlighted_rust, remove_backticks
@@ -71,31 +70,28 @@ def _get_transferable_c_comments(c_definition: CDefinition) -> list[str]:
 
 class CommentsTransform(AbstractTransform):
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
-        super().__init__(SYSTEM_INSTRUCTION)
-        self.cache = cache
-        self.model = model
+        super().__init__(SYSTEM_INSTRUCTION, cache, model)
         self.trim_transform = TrimTransform(cache, model)
 
-    def apply_ident(
+    def try_apply_ident(
         self,
         rust_source_file: Path,
         rust_definition: str,
         c_definition: CDefinition,
         identifier: str,
-        update_rust: bool = True,
-    ) -> None:
+    ) -> str | None:
         rust_comments = get_rust_comments(rust_definition)
         if rust_comments:
             logging.info(
                 f"Skipping Rust fn {identifier} with existing comments:\
                 \n{get_highlighted_rust(rust_definition)}"
             )
-            return
+            return None
 
         c_comments = _get_transferable_c_comments(c_definition)
         if not c_comments:
             logging.info(f"Skipping C function without comments: {identifier}")
-            return
+            return None
 
         match self.trim_transform.apply_ident(
             rust_source_file=rust_source_file,
@@ -120,7 +116,7 @@ class CommentsTransform(AbstractTransform):
                 c_comments = _get_transferable_c_comments(c_definition)
                 if not c_comments:
                     logging.info(f"Skipping C function without comments: {identifier}")
-                    return
+                    return None
             case _:
                 raise AssertionError(
                     "Unexpected return type from trim transform: expected None or str"
@@ -150,68 +146,33 @@ class CommentsTransform(AbstractTransform):
             {"role": "user", "content": str(prompt)},
         ]
 
-        transform = self.__class__.__name__
-        identifier = prompt.identifier
-        model = self.model.id
-        response = self.cache.lookup(
-            transform=transform,
-            identifier=identifier,
-            model=model,
-            messages=messages,
-        )
-        cache_hit = response is not None
+        def check(response: str) -> str:
+            rust_fn = remove_backticks(response)
 
-        if response is None:
-            response = self.model.generate_with_tools(messages)
-
-        if response is None:
-            if api_key_from_env(model) is None:
-                # No API key set: skip uncached entries instead of failing.
-                logging.warning(
-                    f"Cache miss for {identifier}; skipping since no API key was set..."
+            if rust_parse_has_errors(rust_fn):
+                raise TransformError(
+                    f"model response for {identifier} is not syntactically valid "
+                    f"Rust:\n```rust\n{rust_fn}\n```"
                 )
-                return
-            raise TransformError(f"model returned no response for {identifier}")
 
-        rust_fn = remove_backticks(response)
+            rust_fn = demote_misplaced_doc_comments(rust_fn)
 
-        if rust_parse_has_errors(rust_fn):
-            raise TransformError(
-                f"model response for {identifier} is not syntactically valid Rust"
-            )
+            rust_comments = get_rust_comments(rust_fn)
+            if c_comments != rust_comments:
+                raise TransformError(
+                    f"comments were not transferred verbatim for {identifier}:"
+                    f"\n{c_comments=}\n{rust_comments=}"
+                )
 
-        rust_fn = demote_misplaced_doc_comments(rust_fn)
+            return rust_fn
 
-        logging.debug(f"{c_comments=}")
-
-        rust_comments = get_rust_comments(rust_fn)
-        logging.debug(f"{rust_comments=}")
-
-        if c_comments != rust_comments:
-            raise TransformError(
-                f"comments were not transferred verbatim for {identifier}:"
-                f"\n{c_comments=}\n{rust_comments=}"
-            )
-
-        if not cache_hit:
-            self.cache.update(
-                transform=transform,
-                identifier=identifier,
-                model=model,
-                messages=messages,
-                response=response,
-            )
+        rust_fn = self.generate(identifier, messages, check)
+        if rust_fn is None:
+            return None
 
         logging.info(
             f"Comments transferred to Rust fn {identifier}:\
                 \n{get_highlighted_rust(rust_fn)}"
         )
 
-        # TODO: move this to apply_file?
-        # the challenge is that not all transforms will update Rust code
-        if update_rust:
-            update_rust_definition(
-                root_rust_source_file=rust_source_file,
-                identifier=prompt.identifier,
-                new_definition=rust_fn,
-            )
+        return rust_fn

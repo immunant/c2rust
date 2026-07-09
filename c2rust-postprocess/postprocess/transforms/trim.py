@@ -8,7 +8,7 @@ from pygments.lexers.c_cpp import CLexer
 from postprocess.cache import AbstractCache
 from postprocess.definitions import CDefinition, get_c_comments, is_comment_token
 from postprocess.models import AbstractGenerativeModel
-from postprocess.transforms.base import AbstractTransform
+from postprocess.transforms.base import AbstractTransform, TransformError
 from postprocess.utils import remove_backticks
 
 SYSTEM_INSTRUCTION = (
@@ -59,9 +59,7 @@ def _is_suffix_ignoring_whitespace(trimmed: str, original: str) -> bool:
 
 class TrimTransform(AbstractTransform):
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
-        super().__init__(SYSTEM_INSTRUCTION)
-        self.cache = cache
-        self.model = model
+        super().__init__(SYSTEM_INSTRUCTION, cache, model)
 
     def apply_ident(
         self,
@@ -110,43 +108,22 @@ class TrimTransform(AbstractTransform):
             {"role": "user", "content": prompt},
         ]
 
-        transform = self.__class__.__name__
-        model = self.model.id
-        response = self.cache.lookup(
-            transform=transform,
-            identifier=identifier,
-            model=model,
-            messages=messages,
-        )
-        cache_hit = response is not None
+        def check(response: str) -> str:
+            trimmed = remove_backticks(response)
 
-        if response is None:
-            response = self.model.generate_with_tools(messages)
+            # A correct trim is a trailing slice of its input. This also keeps a
+            # response with hallucinated comment edits from becoming the ground
+            # truth that comment transfer is later validated against.
+            if not _is_suffix_ignoring_whitespace(trimmed, definition):
+                raise TransformError(
+                    f"response is not a trailing slice of the input for {identifier}"
+                )
 
-        if response is None:
-            logging.error("Model returned no response")
+            return trimmed
+
+        try:
+            return self.generate(identifier, messages, check)
+        except TransformError as error:
+            # Trimming is best-effort; callers fall back to the untrimmed input.
+            logging.warning(f"{self.__class__.__name__}: {error}")
             return None
-
-        trimmed = remove_backticks(response)
-
-        # A correct trim is a trailing slice of its input. This also keeps a
-        # response with hallucinated comment edits from becoming the ground
-        # truth that comment transfer is later validated against.
-        if not _is_suffix_ignoring_whitespace(trimmed, definition):
-            logging.warning(
-                f"{self.__class__.__name__}: "
-                f"response is not a trailing slice of the input for {identifier};"
-                " ignoring it"
-            )
-            return None
-
-        if not cache_hit:
-            self.cache.update(
-                transform=transform,
-                identifier=identifier,
-                model=model,
-                messages=messages,
-                response=response,
-            )
-
-        return trimmed
