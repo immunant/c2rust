@@ -28,8 +28,18 @@ impl<'a> MutVisitor for LoadModules<'a> {
 
         let child_path = match mod_kind {
             ModKind::Loaded(_items, Inline::Yes, _spans) => {
-                // TODO: handle #[path="..."]
-                self.dir_path.join(ident.as_str())
+                // An explicit `#[path = "..."]` on an inline module sets the directory
+                // used to resolve any of its out-of-line child modules.
+                let path_attr = attrs
+                    .iter()
+                    .find(|attr| attr.has_name(sym::path))
+                    .and_then(|attr| attr.value_str());
+
+                if let Some(path) = path_attr {
+                    self.dir_path.join(path.as_str())
+                } else {
+                    self.dir_path.join(ident.as_str())
+                }
             }
 
             ModKind::Loaded(_items, Inline::No, _spans) => {
