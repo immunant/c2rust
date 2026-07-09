@@ -66,7 +66,7 @@ impl<'a> MutVisitor for LoadModules<'a> {
                     new_parser_from_file(&self.parse_sess, &mod_file_path, Some(*span));
                 let (mut inner_attrs, items, inner_span) = parser
                     .parse_mod(&token::Eof)
-                    .expect("failed to parse {mod_file_path:?}");
+                    .expect(&format!("failed to parse {mod_file_path:?}"));
 
                 attrs.append(&mut inner_attrs);
                 *mod_kind = ModKind::Loaded(items, Inline::No, inner_span);
