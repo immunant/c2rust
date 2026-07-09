@@ -1,14 +1,18 @@
 import logging
 import re
-from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+from postprocess.cache import AbstractCache
 from postprocess.definitions import (
     CDefinition,
     get_c_definitions,
     get_rust_definitions,
+    update_rust_definition,
 )
 from postprocess.exclude_list import IdentifierExcludeList
+from postprocess.models import AbstractGenerativeModel, api_key_from_env
 from postprocess.utils import get_highlighted_c
 
 
@@ -16,19 +20,27 @@ class TransformError(Exception):
     """A transform failed to process a single definition."""
 
 
-class AbstractTransform(ABC):
+class AbstractTransform:
     """
     Abstract base class for LLM-driven transforms of c2rust transpiler output.
     """
 
-    def __init__(self, system_instruction: str):
+    max_attempts = 3
+
+    def __init__(
+        self,
+        system_instruction: str,
+        cache: AbstractCache,
+        model: AbstractGenerativeModel,
+    ):
         self._system_instruction = system_instruction
+        self.cache = cache
+        self.model = model
 
     @property
     def system_instruction(self) -> str:
         return self._system_instruction
 
-    @abstractmethod
     def apply_ident(
         self,
         rust_source_file: Path,
@@ -38,10 +50,115 @@ class AbstractTransform(ABC):
         update_rust: bool = True,
     ) -> str | None:
         """
-        Implementations should apply transform to a single Rust definition
-        with the given identifier.
+        Apply the transform to one Rust definition and commit it through
+        merge_rust.
         """
-        pass
+        new_definition = self.try_apply_ident(
+            rust_source_file=rust_source_file,
+            rust_definition=rust_definition,
+            c_definition=c_definition,
+            identifier=identifier,
+        )
+        if new_definition is None:
+            return None
+
+        if new_definition == rust_definition:
+            logging.info(
+                f"{self.__class__.__name__}: No changes for function: {identifier}"
+            )
+            return None
+
+        if update_rust:
+            update_rust_definition(
+                root_rust_source_file=rust_source_file,
+                identifier=identifier,
+                new_definition=new_definition,
+            )
+
+        logging.info(f"{self.__class__.__name__}: Updated Rust fn {identifier}")
+        return new_definition
+
+    def try_apply_ident(
+        self,
+        rust_source_file: Path,
+        rust_definition: str,
+        c_definition: CDefinition,
+        identifier: str,
+    ) -> str | None:
+        """
+        Return a replacement Rust definition for `identifier`,
+        or None to skip it.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement try_apply_ident, "
+            "or override apply_ident directly"
+        )
+
+    def generate(
+        self,
+        identifier: str,
+        messages: list[dict[str, Any]],
+        check: Callable[[str], str],
+    ) -> str | None:
+        """
+        Model call with caching, validation, and retries. `check` returns the
+        validated result or raises TransformError to trigger regeneration.
+        """
+        transform = self.__class__.__name__
+        error: TransformError | None = None
+
+        response = self.cache.lookup(
+            transform=transform,
+            identifier=identifier,
+            model=self.model.id,
+            messages=messages,
+        )
+        if response is not None:
+            try:
+                return check(response)
+            except TransformError as stale:
+                error = stale
+                logging.warning(
+                    f"{transform}: cached response for {identifier} "
+                    f"failed validation: {stale}"
+                )
+
+        if api_key_from_env(self.model.id) is None:
+            if error is not None:
+                # Can't regenerate the invalid cached response without a key.
+                raise error
+            logging.warning(
+                f"Cache miss for {identifier}; skipping since no API key was set..."
+            )
+            return None
+
+        for attempt in range(self.max_attempts):
+            try:
+                response = self.model.generate_with_tools(messages)
+                if response is None:
+                    raise TransformError(f"model returned no response for {identifier}")
+                result = check(response)
+            except TransformError as rejected:
+                error = rejected
+                logging.warning(
+                    f"{transform}: response for {identifier} rejected on attempt "
+                    f"{attempt + 1}/{self.max_attempts}: {rejected}"
+                )
+                continue
+
+            self.cache.update(
+                transform=transform,
+                identifier=identifier,
+                model=self.model.id,
+                messages=messages,
+                response=response,
+            )
+            return result
+
+        raise TransformError(
+            f"{transform} failed after {self.max_attempts} attempts "
+            f"for {identifier}: {error}"
+        ) from error
 
     def apply_dir(
         self,

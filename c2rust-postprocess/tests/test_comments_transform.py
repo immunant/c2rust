@@ -6,7 +6,7 @@ import pytest
 from postprocess.cache import AbstractCache
 from postprocess.definitions import CDefinition
 from postprocess.models.mock import MockGenerativeModel
-from postprocess.transforms import comments
+from postprocess.transforms import base
 from postprocess.transforms.base import TransformError
 from postprocess.transforms.comments import CommentsTransform
 
@@ -97,6 +97,7 @@ int f(void) {
 }
 """,
     preprocessed_definition=None,
+    decl_line=0,  # no front matter, so the trim transform skips the model
 )
 
 RUST_DEFINITION_NO_COMMENTS = """\
@@ -121,7 +122,7 @@ pub unsafe extern "C" fn f() -> libc::c_int {
     def fake_update(*, root_rust_source_file, identifier, new_definition):
         merged[identifier] = new_definition
 
-    monkeypatch.setattr(comments, "update_rust_definition", fake_update)
+    monkeypatch.setattr(base, "update_rust_definition", fake_update)
 
     transform.apply_ident(
         rust_source_file=Path("unused.rs"),
@@ -152,3 +153,105 @@ pub unsafe extern "C" fn f( -> libc::c_int {
             identifier="f",
             update_rust=False,
         )
+
+
+class RecordingCache(AbstractCache):
+    """Cache with a fixed `CommentsTransform` response that records updates."""
+
+    def __init__(self, response: str | None):
+        super().__init__(Path())
+        self.response = response
+        self.updates: list[tuple[list[dict[str, Any]], str]] = []
+
+    def lookup(
+        self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
+        messages: list[dict[str, Any]],
+    ) -> str | None:
+        if transform != "CommentsTransform":
+            return None
+        return self.response
+
+    def update(
+        self,
+        *,
+        transform: str,
+        identifier: str,
+        model: str,
+        messages: list[dict[str, Any]],
+        response: str,
+    ) -> None:
+        self.updates.append((messages, response))
+
+
+class QueuedModel(MockGenerativeModel):
+    """Mock model that returns queued responses."""
+
+    def __init__(self, responses: list[str]):
+        super().__init__()
+        self.responses = responses
+        self.calls = 0
+
+    def generate_with_tools(self, messages, tools=(), max_tool_loops=5):
+        self.calls += 1
+        return self.responses.pop(0)
+
+
+BAD_RESPONSE = """\
+pub unsafe extern "C" fn f( -> libc::c_int {
+    /// @note a body comment
+    return 1 as libc::c_int;
+"""
+GOOD_RESPONSE = """\
+pub unsafe extern "C" fn f() -> libc::c_int {
+    /// @note a body comment
+    return 1 as libc::c_int;
+}
+"""
+
+
+def apply_to_body_comment_fn(
+    cache: AbstractCache, model: MockGenerativeModel
+) -> str | None:
+    transform = CommentsTransform(cache=cache, model=model)
+    return transform.apply_ident(
+        rust_source_file=Path("unused.rs"),
+        rust_definition=RUST_DEFINITION_NO_COMMENTS,
+        c_definition=C_DEFINITION_BODY_COMMENT,
+        identifier="f",
+        update_rust=False,
+    )
+
+
+def test_rejected_response_is_regenerated(monkeypatch) -> None:
+    monkeypatch.setattr(base, "api_key_from_env", lambda model_id: "test-key")
+    cache = RecordingCache(None)
+    model = QueuedModel([BAD_RESPONSE, GOOD_RESPONSE])
+
+    result = apply_to_body_comment_fn(cache, model)
+
+    assert result is not None
+    assert "// @note a body comment" in result
+    assert model.calls == 2
+    # Only the validated response is cached, keyed by the unchanged prompt.
+    [(messages, response)] = cache.updates
+    assert len(messages) == 1
+    assert response == GOOD_RESPONSE
+
+
+def test_invalid_cached_response_is_regenerated(monkeypatch) -> None:
+    monkeypatch.setattr(base, "api_key_from_env", lambda model_id: "test-key")
+    cache = RecordingCache(BAD_RESPONSE)
+    model = QueuedModel([GOOD_RESPONSE])
+
+    result = apply_to_body_comment_fn(cache, model)
+
+    assert result is not None
+    assert model.calls == 1
+    # The stale entry is overwritten under the same key.
+    [(messages, response)] = cache.updates
+    assert len(messages) == 1
+    assert response == GOOD_RESPONSE
