@@ -22,6 +22,10 @@ postprocess = "postprocess.__main__:main" # CLI entry point
 # let `uv` to manage the environment
 package = true
 
+[tool.uv.sources]
+# TODO: Remove this override once tree-sitter-rust PR #312 merges upstream.
+tree-sitter-rust = { git = "https://github.com/thedataking/tree-sitter-rust.git", rev = "1d3d5d6df51d5edfac3bdd3178433eb0aa437ea5" }
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
