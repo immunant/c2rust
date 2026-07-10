@@ -65,6 +65,15 @@ class AbstractCache(ABC):
         """
         pass
 
+    @abstractmethod
+    def invalidate(self, *, transform: str, identifier: str) -> None:
+        """
+        Remove the most recently used entry for `(transform, identifier)`,
+        so a later run can regenerate the response behind a rewrite that
+        failed validation. A no-op if none was used.
+        """
+        pass
+
 
 TomlValue = Union[None, str, int, float, bool, "TomlList", "TomlDict"]
 TomlList = list[TomlValue]
@@ -109,6 +118,7 @@ class DirectoryCache(AbstractCache):
     def __init__(self, path: Path):
         super().__init__(path)
         self._path.mkdir(parents=True, exist_ok=True)
+        self._last_used: dict[tuple[str, str], Path] = {}
 
         logging.debug(f"Using cache directory: {self._path}")
 
@@ -169,6 +179,7 @@ class DirectoryCache(AbstractCache):
         logging.debug(f"Cache hit: {cache_file}:\n{toml}")
         # Mark the entry as recently used for `prune`.
         cache_file.touch()
+        self._last_used[(transform, identifier)] = cache_dir
         data = tomli.loads(toml)
 
         return data["response"]
@@ -199,7 +210,14 @@ class DirectoryCache(AbstractCache):
         response_path = cache_dir / "response.txt"
         metadata_path.write_text(toml)
         response_path.write_text(response)
+        self._last_used[(transform, identifier)] = cache_dir
         logging.debug(f"Cache updated: {cache_dir}:\n{toml}")
+
+    def invalidate(self, *, transform: str, identifier: str) -> None:
+        cache_dir = self._last_used.pop((transform, identifier), None)
+        if cache_dir is not None and cache_dir.exists():
+            shutil.rmtree(cache_dir)
+            logging.debug(f"Cache invalidated: {cache_dir}")
 
     def prune(self, max_age_days: int) -> None:
         """
@@ -252,4 +270,9 @@ class FrozenCache(AbstractCache):
         messages: list[dict[str, Any]],
         response: str,
     ) -> None:
+        pass
+
+    def invalidate(self, *, transform: str, identifier: str) -> None:
+        # A rejected cached response stays; later frozen runs will reject it
+        # again and report it as an unrecoverable cached failure.
         pass

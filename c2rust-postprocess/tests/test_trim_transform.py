@@ -103,6 +103,9 @@ class RecordingCache(AbstractCache):
     ) -> None:
         self.updates += 1
 
+    def invalidate(self, *, transform: str, identifier: str) -> None:
+        raise AssertionError("no invalidation expected")
+
 
 def apply_trim(c_definition: CDefinition, cache: AbstractCache) -> str | None:
     transform = TrimTransform(cache=cache, model=MockGenerativeModel())
