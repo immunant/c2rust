@@ -10,14 +10,15 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from postprocess.cache import DirectoryCache, FrozenCache
-from postprocess.exclude_list import IdentifierExcludeList
+from postprocess.exclude_list import IdentifierExcludeList, format_exclude_entries
 from postprocess.models import api_key_from_env, get_model_by_id
 from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
-from postprocess.transforms.base import TransformError
+from postprocess.transforms.base import TransformError, TransformResult
 from postprocess.transforms.comments import AbstractGenerativeModel
 from postprocess.utils import existing_file
+from postprocess.validate import BaselineError, make_validator
 
 DEFAULT_LLM_MODEL = "gemini-3.5-flash"
 
@@ -201,28 +202,44 @@ def main(argv: Sequence[str] | None = None):
             for transform_id in transform_ids
         ]
 
-        failures = 0
+        # Validate the baseline before applying any rewrites so a broken
+        # crate is never misattributed to them.
+        validator = (
+            make_validator(args.root_rust_source_file) if args.update_rust else None
+        )
+
+        result = TransformResult()
         failure_log_level = (
             logging.WARNING if args.on_error == "warn" else logging.ERROR
         )
         for transform in transforms:
-            failures += transform.apply_dir(
-                root_rust_source_file=args.root_rust_source_file,
-                exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
-                ident_filter=args.ident_filter,
-                update_rust=args.update_rust,
-                keep_going=args.on_error != "abort",
-                failure_log_level=failure_log_level,
+            result.extend(
+                transform.apply_dir(
+                    root_rust_source_file=args.root_rust_source_file,
+                    exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
+                    ident_filter=args.ident_filter,
+                    update_rust=args.update_rust,
+                    keep_going=args.on_error != "abort",
+                    failure_log_level=failure_log_level,
+                    validator=validator,
+                )
             )
 
-        if failures:
+        if result.failed:
+            base_dir = args.exclude_file.parent if args.exclude_file else Path.cwd()
             logging.log(
-                failure_log_level, f"Failed to transform {failures} function(s)"
+                failure_log_level,
+                f"Failed to transform {result.failures} function(s); "
+                "exclude-file entries to skip them:\n"
+                + format_exclude_entries(result.failed, base_dir),
             )
             if args.on_error != "warn":
                 return 1
 
         return 0
+    except BaselineError as error:
+        logging.error(error)
+        return 1
     except TransformError as error:
         logging.exception(f"Aborting at first transform failure: {error}")
         return 1

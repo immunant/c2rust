@@ -170,3 +170,13 @@ def test_cargo_checker_reports_type_error(tmp_path: Path) -> None:
     assert error is not None
     assert "mismatched types" in error
 
+
+@needs_cargo
+def test_main_aborts_on_broken_baseline(tmp_path: Path) -> None:
+    from postprocess import main
+
+    lib_rs = 'pub fn f() -> i32 { "oops" }\n'
+    make_crate(tmp_path, lib_rs)
+    exit_code = main([str(tmp_path / "lib.rs"), "--cache-dir", str(tmp_path / "cache")])
+    assert exit_code == 1
+    assert (tmp_path / "lib.rs").read_text() == lib_rs

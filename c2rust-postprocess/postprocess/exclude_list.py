@@ -1,8 +1,28 @@
+import os
+from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
 
 from postprocess.utils import check_isinstance
+
+
+def format_exclude_entries(
+    entries: Iterable[tuple[Path, str, str]], base_dir: Path
+) -> str:
+    """
+    Render `(path, identifier, reason)` tuples as exclude-file YAML entries,
+    with paths relative to `base_dir` (an exclude file's directory).
+    """
+    grouped: dict[str, list[str]] = {}
+    for path, identifier, reason in entries:
+        rel_path = os.path.relpath(path, base_dir)
+        grouped.setdefault(rel_path, []).append(f"  - {identifier} # {reason}")
+    lines = []
+    for rel_path in sorted(grouped):
+        lines.append(f"{rel_path}:")
+        lines.extend(grouped[rel_path])
+    return "\n".join(lines)
 
 
 class IdentifierExcludeList:

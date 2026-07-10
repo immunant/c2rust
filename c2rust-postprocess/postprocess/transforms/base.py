@@ -1,6 +1,8 @@
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +16,28 @@ from postprocess.definitions import (
 from postprocess.exclude_list import IdentifierExcludeList
 from postprocess.models import AbstractGenerativeModel, api_key_from_env
 from postprocess.utils import get_highlighted_c
+from postprocess.validate import BatchValidator, Candidate
 
 
 class TransformError(Exception):
     """A transform failed to process a single definition."""
+
+
+type TransformFailure = tuple[Path, str, str]
+
+
+@dataclass
+class TransformResult:
+    """Summary of applying a transform to one or more Rust definitions."""
+
+    failed: list[TransformFailure] = field(default_factory=list)
+
+    @property
+    def failures(self) -> int:
+        return len(self.failed)
+
+    def extend(self, other: "TransformResult") -> None:
+        self.failed.extend(other.failed)
 
 
 class AbstractTransform:
@@ -75,7 +95,7 @@ class AbstractTransform:
                 new_definition=new_definition,
             )
 
-        logging.info(f"{self.__class__.__name__}: Updated Rust fn {identifier}")
+        logging.info(f"{self.__class__.__name__}: Transformed Rust fn {identifier}")
         return new_definition
 
     def try_apply_ident(
@@ -168,14 +188,15 @@ class AbstractTransform:
         update_rust: bool = True,
         keep_going: bool = False,
         failure_log_level: int = logging.ERROR,
-    ) -> int:
+        validator: BatchValidator | None = None,
+    ) -> TransformResult:
         """
         Run `self.apply_file` on each `*.rs` in `dir`
         with a corresponding `*.c_decls.json`.
 
-        Returns the number of definitions that failed to transform.
+        Returns the failed and cargo-rejected definitions.
         """
-        failures = 0
+        result = TransformResult()
         root_dir = root_rust_source_file.parent
         c_decls_json_suffix = ".c_decls.json"
         for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
@@ -183,15 +204,18 @@ class AbstractTransform:
                 c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
             )
             assert rs_path.exists()
-            failures += self.apply_file(
-                rust_source_file=rs_path,
-                exclude_list=exclude_list,
-                ident_filter=ident_filter,
-                update_rust=update_rust,
-                keep_going=keep_going,
-                failure_log_level=failure_log_level,
+            result.extend(
+                self.apply_file(
+                    rust_source_file=rs_path,
+                    exclude_list=exclude_list,
+                    ident_filter=ident_filter,
+                    update_rust=update_rust,
+                    keep_going=keep_going,
+                    failure_log_level=failure_log_level,
+                    validator=validator,
+                )
             )
-        return failures
+        return result
 
     def apply_file(
         self,
@@ -201,9 +225,10 @@ class AbstractTransform:
         update_rust: bool = True,
         keep_going: bool = False,
         failure_log_level: int = logging.ERROR,
-    ) -> int:
+        validator: BatchValidator | None = None,
+    ) -> TransformResult:
         ident_regex = re.compile(ident_filter) if ident_filter else None
-        failures = 0
+        result = TransformResult()
 
         rust_definitions = get_rust_definitions(rust_source_file)
         c_definitions = get_c_definitions(rust_source_file)
@@ -211,6 +236,9 @@ class AbstractTransform:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
+        # Collect candidates without touching the file; application and
+        # validation happen per batch below.
+        candidates: list[Candidate] = []
         for identifier, rust_definition in rust_definitions.items():
             if exclude_list.contains(path=rust_source_file, identifier=identifier):
                 logging.info(
@@ -238,12 +266,12 @@ class AbstractTransform:
             )
 
             try:
-                self.apply_ident(
+                new_definition = self.apply_ident(
                     rust_source_file=rust_source_file,
                     rust_definition=rust_definition,
                     c_definition=c_definition,
                     identifier=identifier,
-                    update_rust=update_rust,
+                    update_rust=False,
                 )
             except TransformError as error:
                 if not keep_going:
@@ -252,9 +280,62 @@ class AbstractTransform:
                     failure_log_level,
                     f"Transform failed for {identifier} in {rust_source_file}: {error}",
                 )
-                failures += 1
+                result.failed.append(
+                    (rust_source_file, identifier, "failed to transform")
+                )
+                continue
 
-        return failures
+            if new_definition is None:
+                continue
+
+            candidates.append(
+                Candidate(
+                    identifier=identifier,
+                    files=(rust_source_file,),
+                    apply=partial(
+                        update_rust_definition,
+                        root_rust_source_file=rust_source_file,
+                        identifier=identifier,
+                        new_definition=new_definition,
+                    ),
+                    invalidate=partial(
+                        self.cache.invalidate,
+                        transform=self.__class__.__name__,
+                        identifier=identifier,
+                    ),
+                )
+            )
+
+        if not update_rust or not candidates:
+            return result
+
+        if validator is None:
+            for candidate in candidates:
+                candidate.apply()
+            return result
+
+        logging.info(
+            f"Validating {len(candidates)} rewrite(s) in {rust_source_file} "
+            "with cargo check"
+        )
+        _, rejected = validator.validate(candidates)
+        for candidate, error in rejected:
+            candidate.invalidate()
+            result.failed.append(
+                (rust_source_file, candidate.identifier, "rejected by cargo check")
+            )
+            logging.log(
+                failure_log_level,
+                f"cargo check rejected rewrite of {candidate.identifier} "
+                f"in {rust_source_file}:\n{error}",
+            )
+        if rejected and not keep_going:
+            raise TransformError(
+                f"cargo check rejected rewrite of {rejected[0][0].identifier} "
+                f"in {rust_source_file}"
+            )
+
+        return result
 
 
 # TODO: We probably want a an interface that generates validators specialized to
