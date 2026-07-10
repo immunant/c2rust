@@ -6,9 +6,14 @@ repo/src/lua.rs:
 
 repo/src/lstrlib.rs:
   - match_0 # repeated comment-order failures
+  - end_capture # rejected by cargo check
 
 repo/src/ldo.rs:
   - luaD_call # repeated comment-order failures
+  - luaD_shrinkstack # rejected by cargo check
 
 repo/src/lvm.rs:
   - luaV_execute # main interpreter loop; invalid Rust output
+
+repo/src/lmem.rs:
+  - tryagain # rejected by cargo check
