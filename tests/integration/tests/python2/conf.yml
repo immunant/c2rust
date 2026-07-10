@@ -44,3 +44,10 @@ refactor:
 cargo.refactor:
   autogen: true
   rustflags: "-C link-args=-Wl,-export-dynamic"
+
+postprocess:
+  autogen: true
+
+cargo.postprocess:
+  autogen: true
+  rustflags: "-C link-args=-Wl,-export-dynamic"
