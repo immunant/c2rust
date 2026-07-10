@@ -158,6 +158,50 @@ pub unsafe extern "C" fn f( -> libc::c_int {
         )
 
 
+def test_response_that_changes_non_comment_code_is_rejected() -> None:
+    response = """\
+pub unsafe extern "C" fn f() -> libc::c_int {
+    /// @note a body comment
+}
+"""
+    cache = StaticCache(response)
+    transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
+
+    with pytest.raises(TransformError, match="non-comment Rust code changed"):
+        transform.apply_ident(
+            rust_source_file=Path("unused.rs"),
+            rust_definition=RUST_DEFINITION_NO_COMMENTS,
+            c_definition=C_DEFINITION_BODY_COMMENT,
+            identifier="f",
+            update_rust=False,
+        )
+
+
+def test_response_may_reformat_non_comment_code() -> None:
+    response = """\
+pub unsafe extern "C" fn f(
+) -> libc::c_int
+{
+    /// @note a body comment
+    return 1
+        as libc::c_int;
+}
+"""
+    cache = StaticCache(response)
+    transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
+
+    result = transform.apply_ident(
+        rust_source_file=Path("unused.rs"),
+        rust_definition=RUST_DEFINITION_NO_COMMENTS,
+        c_definition=C_DEFINITION_BODY_COMMENT,
+        identifier="f",
+        update_rust=False,
+    )
+
+    assert result is not None
+    assert "// @note a body comment" in result
+
+
 class RecordingCache(AbstractCache):
     """Cache with a fixed `CommentsTransform` response that records updates."""
 
@@ -211,6 +255,11 @@ pub unsafe extern "C" fn f( -> libc::c_int {
     /// @note a body comment
     return 1 as libc::c_int;
 """
+BAD_CODE_RESPONSE = """\
+pub unsafe extern "C" fn f() -> libc::c_int {
+    /// @note a body comment
+}
+"""
 GOOD_RESPONSE = """\
 pub unsafe extern "C" fn f() -> libc::c_int {
     /// @note a body comment
@@ -258,6 +307,20 @@ def test_invalid_cached_response_is_regenerated(monkeypatch) -> None:
     assert result is not None
     assert model.calls == 1
     # The stale entry is overwritten under the same key.
+    [(messages, response)] = cache.updates
+    assert len(messages) == 1
+    assert response == GOOD_RESPONSE
+
+
+def test_code_changing_cached_response_is_regenerated(monkeypatch) -> None:
+    monkeypatch.setattr(base, "api_key_from_env", lambda model_id: "test-key")
+    cache = RecordingCache(BAD_CODE_RESPONSE)
+    model = QueuedModel([GOOD_RESPONSE])
+
+    result = apply_to_body_comment_fn(cache, model)
+
+    assert result is not None
+    assert model.calls == 1
     [(messages, response)] = cache.updates
     assert len(messages) == 1
     assert response == GOOD_RESPONSE

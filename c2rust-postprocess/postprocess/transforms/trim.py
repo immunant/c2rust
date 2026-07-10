@@ -108,7 +108,7 @@ class TrimTransform(AbstractTransform):
             {"role": "user", "content": prompt},
         ]
 
-        def check(response: str) -> str:
+        def validate(response: str) -> str:
             trimmed = remove_backticks(response)
 
             # A correct trim is a trailing slice of its input. This also keeps a
@@ -122,7 +122,7 @@ class TrimTransform(AbstractTransform):
             return trimmed
 
         try:
-            return self.generate(identifier, messages, check)
+            return self.generate(identifier, messages, validate)
         except TransformError as error:
             # Trimming is best-effort; callers fall back to the untrimmed input.
             logging.warning(f"{self.__class__.__name__}: {error}")
