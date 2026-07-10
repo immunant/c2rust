@@ -43,6 +43,9 @@ class StaticCache(AbstractCache):
     ) -> None:
         raise AssertionError("cached response should not be updated")
 
+    def invalidate(self, *, transform: str, identifier: str) -> None:
+        raise AssertionError("no invalidation expected")
+
 
 def test_directive_line_comment_survives_preprocessed_check() -> None:
     c_definition = CDefinition(
@@ -185,6 +188,9 @@ class RecordingCache(AbstractCache):
         response: str,
     ) -> None:
         self.updates.append((messages, response))
+
+    def invalidate(self, *, transform: str, identifier: str) -> None:
+        raise AssertionError("no invalidation expected")
 
 
 class QueuedModel(MockGenerativeModel):
