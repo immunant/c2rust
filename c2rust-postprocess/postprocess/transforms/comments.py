@@ -4,8 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 
+from tree_sitter import Node, Parser
+
 from postprocess.cache import AbstractCache
 from postprocess.definitions import (
+    RUST_LANGUAGE,
     CDefinition,
     demote_misplaced_doc_comments,
     get_c_comments,
@@ -21,6 +24,34 @@ from postprocess.utils import get_highlighted_rust, remove_backticks
 SYSTEM_INSTRUCTION = (
     "You are a helpful assistant that transfers comments from C code to Rust code."
 )
+
+_RUST_COMMENT_NODE_TYPES = {"line_comment", "block_comment"}
+
+
+def _non_comment_rust_tokens(code: str) -> list[tuple[str, str]]:
+    """
+    Return exact Rust leaf tokens, excluding comment subtrees and whitespace.
+
+    Keeping token text as well as tree-sitter node types catches changes to
+    identifiers, literals, and operators while allowing formatting changes.
+    """
+    code_bytes = code.encode()
+    tree = Parser(RUST_LANGUAGE).parse(code_bytes)
+    tokens = []
+
+    def walk(node: Node) -> None:
+        if node.type in _RUST_COMMENT_NODE_TYPES:
+            return
+        if not node.children:
+            tokens.append(
+                (node.type, code_bytes[node.start_byte : node.end_byte].decode())
+            )
+            return
+        for child in node.children:
+            walk(child)
+
+    walk(tree.root_node)
+    return tokens
 
 
 @dataclass(slots=True)
@@ -146,7 +177,7 @@ class CommentsTransform(AbstractTransform):
             {"role": "user", "content": str(prompt)},
         ]
 
-        def check(response: str) -> str:
+        def validate(response: str) -> str:
             rust_fn = remove_backticks(response)
 
             if rust_parse_has_errors(rust_fn):
@@ -164,9 +195,17 @@ class CommentsTransform(AbstractTransform):
                     f"\n{c_comments=}\n{rust_comments=}"
                 )
 
+            if _non_comment_rust_tokens(rust_definition) != _non_comment_rust_tokens(
+                rust_fn
+            ):
+                raise TransformError(
+                    f"non-comment Rust code changed while transferring comments "
+                    f"for {identifier}"
+                )
+
             return rust_fn
 
-        rust_fn = self.generate(identifier, messages, check)
+        rust_fn = self.generate(identifier, messages, validate)
         if rust_fn is None:
             return None
 

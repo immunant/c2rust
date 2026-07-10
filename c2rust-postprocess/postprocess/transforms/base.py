@@ -118,11 +118,11 @@ class AbstractTransform:
         self,
         identifier: str,
         messages: list[dict[str, Any]],
-        check: Callable[[str], str],
+        validate: Callable[[str], str],
     ) -> str | None:
         """
-        Model call with caching, validation, and retries. `check` returns the
-        validated result or raises TransformError to trigger regeneration.
+        Model call with caching, validation, and retries. `validate` returns
+        the validated result or raises TransformError to trigger regeneration.
         """
         transform = self.__class__.__name__
         error: TransformError | None = None
@@ -135,7 +135,7 @@ class AbstractTransform:
         )
         if response is not None:
             try:
-                return check(response)
+                return validate(response)
             except TransformError as stale:
                 error = stale
                 logging.warning(
@@ -157,7 +157,7 @@ class AbstractTransform:
                 response = self.model.generate_with_tools(messages)
                 if response is None:
                     raise TransformError(f"model returned no response for {identifier}")
-                result = check(response)
+                result = validate(response)
             except TransformError as rejected:
                 error = rejected
                 logging.warning(
