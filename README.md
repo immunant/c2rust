@@ -63,7 +63,7 @@ so refer to the in-tree [./manual/](./manual/) for more up-to-date instructions.
 
 ### Prerequisites
 
-C2Rust requires LLVM 7 or later with its corresponding clang compiler and libraries.
+C2Rust requires LLVM 15 or later with its corresponding clang compiler and libraries.
 Python (through `uv`), CMake 3.5 or later and openssl (1.0) are also required.
 These prerequisites may be installed with the following commands, depending on your platform:
 
@@ -75,7 +75,7 @@ uv venv
 uv pip install -r scripts/requirements.txt
 ```
 
-- **Ubuntu 18.04, Debian 10, and later:**
+- **Ubuntu 22.04, Debian 12, and later:**
 
     ```sh
     apt install build-essential llvm clang libclang-dev cmake libssl-dev pkg-config git
@@ -117,7 +117,7 @@ You can also set the LLVM version explicitly if you have multiple installed,
 like this, for example:
 
 ```sh
-LLVM_CONFIG_PATH=llvm-config-14 cargo install --locked c2rust
+LLVM_CONFIG_PATH=llvm-config-15 cargo install --locked c2rust
 ```
 
 If you're using LLVM from Homebrew (either on Apple Silicon, Intel Macs, or Linuxbrew),
@@ -396,6 +396,7 @@ This is a list of all significant uses of `c2rust transpile` that we know of:
 | [`tsuki`](https://github.com/ultimaweapon/tsuki) | [`lua`](https://www.lua.org/source/5.4/) | @ultimaweapon | fully safe | Lua interpreter |
 | [`spiro.rlib`](https://github.com/MFEK/spiro.rlib) | [`spiro`](https://github.com/raphlinus/spiro) | @ctrlcctrlv | fully safe | spline interpolation |
 | [`sapp-kms`](https://crates.io/crates/sapp-kms) | [`sokol`](https://github.com/floooh/sokol) | @not-fl3 | cleaned up, still unsafe | application rendering library |
+| `lhdcv5` | *(unknown)* | *(unknown)* | fully safe | Bluetooth audio codec |
 
 If any other project successfully uses `c2rust`, feel free to add your ported project here.
 
