@@ -24,6 +24,21 @@ The output of `c2rust transpile` is unsafe and unidiomatic; it is merely the fir
 Generating safe and idiomatic Rust code from C ultimately requires additional work.
 This work can be done by a human, a large language model, a deterministic tool, or some combination thereof.
 
+```mermaid
+flowchart LR
+    A[C sources] --> B
+    subgraph "C2Rust toolchain"
+        B["`c2rust transpile`"] --> C["`c2rust refactor`"]
+        C --> D["`c2rust postprocess`"]
+    end
+    D --> E[Human and/or agentic workflow]
+    E --> F[Safe, idiomatic Rust]
+
+    click B "https://github.com/immunant/c2rust/tree/master/c2rust-transpile" "c2rust transpile"
+    click C "https://github.com/immunant/c2rust/tree/master/c2rust-refactor" "c2rust refactor"
+    click D "https://github.com/immunant/c2rust/tree/master/c2rust-postprocess" "c2rust postprocess"
+```
+
 For instance, we provide a deterministic [refactoring tool](c2rust-refactor) to automate cleanup across the files produced by `c2rust transpile`.
 We also provide an LLM-powered [postprocessing tool](c2rust-postprocess) for additional types of cleanup that are hard to do deterministically.
 Even though the postprocessor validates the output of LLMs, it can introduce errors; we recommend using it in combination with a robust test suite.
