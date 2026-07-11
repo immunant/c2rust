@@ -624,12 +624,21 @@ impl<'c> Translation<'c> {
             _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
         };
 
-        let one_type_id =
-            if let CTypeKind::Pointer(..) = self.ast_context.resolve_type(arg_type.ctype).kind {
-                CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int))
-            } else {
-                arg_type
-            };
+        let mut one_type_id = arg_type;
+        let mut compute_lhs_type_id = arg_type;
+        let mut compute_res_type_id = ty;
+
+        match self.ast_context.resolve_type(arg_type.ctype).kind {
+            CTypeKind::Pointer(..) => {
+                one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int));
+            }
+            CTypeKind::Enum(enum_id) => {
+                one_type_id = self.enum_integral_type(enum_id);
+                compute_lhs_type_id = one_type_id;
+                compute_res_type_id = one_type_id;
+            }
+            _ => {}
+        };
 
         self.convert_assignment_operator_with_rhs(
             ctx,
@@ -638,8 +647,8 @@ impl<'c> Translation<'c> {
             arg,
             one_type_id,
             WithStmts::new_val(one),
-            Some(arg_type),
-            Some(ty),
+            Some(compute_lhs_type_id),
+            Some(compute_res_type_id),
         )
     }
 
@@ -697,9 +706,9 @@ impl<'c> Translation<'c> {
                 let mut is_unsafe = false; // Track unsafety if we call `pointer::offset`.
 
                 // *p + 1
-                let val = if let &CTypeKind::Pointer(pointee) =
-                    &self.ast_context.resolve_type(ty.ctype).kind
-                {
+                let mut type_kind = &self.ast_context.resolve_type(ty.ctype).kind;
+
+                let val = if let &CTypeKind::Pointer(pointee) = type_kind {
                     if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
                         one = n
                     }
@@ -711,15 +720,17 @@ impl<'c> Translation<'c> {
                     };
                     is_unsafe = true;
                     mk().method_call_expr(read, "offset", vec![n])
-                } else if self
-                    .ast_context
-                    .resolve_type(ty.ctype)
-                    .kind
-                    .is_unsigned_integral_type()
-                {
-                    mk().method_call_expr(read, op.wrapping_method(), vec![one])
                 } else {
-                    mk().binary_expr(BinOp::from(op), read, one)
+                    if let &CTypeKind::Enum(enum_id) = type_kind {
+                        let integral_type = self.enum_integral_type(enum_id);
+                        type_kind = &self.ast_context.resolve_type(integral_type.ctype).kind;
+                    }
+
+                    if type_kind.is_unsigned_integral_type() {
+                        mk().method_call_expr(read, op.wrapping_method(), vec![one])
+                    } else {
+                        mk().binary_expr(BinOp::from(op), read, one)
+                    }
                 };
 
                 // *p = *p + rhs

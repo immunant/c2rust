@@ -39,10 +39,10 @@ pub unsafe extern "C" fn test_enums() {
     bar = Bar3;
     foo = (foo as ::core::ffi::c_uint).wrapping_sub(2 as ::core::ffi::c_uint) as Foo;
     bar = (bar as ::core::ffi::c_int - 2 as ::core::ffi::c_int) as Bar;
-    foo += 1;
-    bar += 1;
+    foo = (foo as ::core::ffi::c_uint).wrapping_add(1) as Foo;
+    bar = (bar as ::core::ffi::c_int + 1) as Bar;
     let c2rust_fresh0 = foo;
-    foo = foo + 1;
+    foo = foo.wrapping_add(1);
     bar = c2rust_fresh0 as Bar;
     let c2rust_fresh1 = bar;
     bar = bar + 1;
