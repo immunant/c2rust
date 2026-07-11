@@ -1,13 +1,18 @@
 # LLM-based postprocessing of c2rust transpiler output
 
-This is currently a prototype effort to gauge the extent to which LLMs can 
-accelerate the types of translation and migration that help move C code to Rust.
+This tool uses LLMs to accelerate the types of translation and migration that
+help move C code to Rust. Compared to a modern coding agent, the postprocessor
+is more limited in scope. It is intended as a lightweight cleanup pass that 
+can be run immediately after c2rust transpile and c2rust refactor. 
+
+This is a good step to run before a human or a heavyweight agentic workflow
+attempts to produce fully safe and idiomatic Rust; not a replacement for these efforts. 
 
 # Prerequisites
 
 - Python 3.12 or later
 - `uv` in path
-- A valid `GEMINI_API_KEY` set
+- A valid `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `OPENROUTER_API_KEY` in the environment
 - A transpiled codebase with `*.c_decls.json` for each `*.rs` you want to transfer comments to.
 - `../tools/split_rust/target/release/split_rust`
 - `../tools/merge_rust/target/release/merge_rust`
@@ -65,21 +70,4 @@ uv run pytest -v tests/test_utils.py # filter tests to run
 
 - `uv run ruff format` to format
 - `uv run ruff check --fix .` to lint
-
-# TODOs
-
-- testable prototype
-  - [x] gemini api support
-    + using synchronous API, tabled async API for now
-  - file-based caching of model responses
-    + storage format could be improved to make it easier to create
-      golden input/output pairs for testing
-  - pluggable support for getting definitions
-  - verifying correctness of responses 
-  - filtering by file and function name
-  - openai model support
-  - antropic model support
-  - openrouter API support?
-  - non-trivial: use async support to speed up postprocessing
-    + supported by gemini api, IDK about others
 
