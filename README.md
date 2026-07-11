@@ -15,25 +15,22 @@
 ## Intro
 
 C2Rust helps you migrate C99-compliant code to Rust.
-The translator (or transpiler), [`c2rust transpile`](./c2rust-transpile/),
+The transpiler, [`c2rust transpile`](./c2rust-transpile/),
 produces unsafe Rust code that closely mirrors the input C code.
-The primary goal of the translator is to preserve functionality;
+The primary goal of the transpiler is to preserve functionality;
 test suites should continue to pass after translation.
 
-Generating safe and idiomatic Rust code from C ultimately requires manual effort.
-We are currently working on analysis to automate some of the effort
-required to lift unsafe Rust into safe Rust types.
-However, we are building a [refactoring tool](c2rust-refactor) that reduces the tedium of doing so.
-This work is still in the early stages; please get in touch if you're interested!
+The output of `c2rust transpile` is unsafe and unidiomatic; it is merely the first step in a longer migration process.
+Generating safe and idiomatic Rust code from C ultimately requires additional work.
+This work can be done by a human, a large language model, a deterministic tool, or some combination thereof.
+
+For instance, we provide a deterministic [refactoring tool](c2rust-refactor) to automate cleanup across the files produced by `c2rust transpile`.
+We also provide an LLM-powered [postprocessing tool](c2rust-postprocess) for additional types of cleanup that are hard to do deterministically.
+Even though the postprocessor validates the output of LLMs, it can introduce errors; we recommend using it in combination with a robust test suite.
 
 You can also [cross-check](cross-checks) the translated code against the original ([tutorial](docs/cross-check-tutorial.md)).
 
-Here's the big picture:
-
-![C2Rust overview](docs/c2rust-overview.png "C2Rust overview")
-
-To learn more, check out our [RustConf'18](https://www.youtube.com/watch?v=WEsR0Vv7jhg) talk on YouTube
-and try the C2Rust translator online using the [Compiler Explorer](https://godbolt.org/z/GdEzYWGq4).
+You can try `c2rust transpile` directly in the [Compiler Explorer](https://godbolt.org/z/GdEzYWGq4).
 This uses the current `master` branch, updated every night.
 
 <!-- ANCHOR_END: intro -->
