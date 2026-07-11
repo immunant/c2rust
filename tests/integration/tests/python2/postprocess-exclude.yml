@@ -1,0 +1,45 @@
+repo/src/Modules/_sre.rs:
+  - sre_match # failed to transform
+  - sre_umatch # failed to transform
+  - match_copy # rejected by cargo check
+repo/src/Objects/listobject.rs:
+  - gallop_left # failed to transform
+  - gallop_right # failed to transform
+repo/src/Objects/longobject.rs:
+  - long_true_divide # failed to transform
+repo/src/Objects/obmalloc.rs:
+  - PyObject_Malloc # failed to transform
+  - PyObject_Free # rejected by cargo check
+repo/src/Objects/stringobject.rs:
+  - PyString_DecodeEscape # failed to transform
+repo/src/Objects/typeobject.rs:
+  - subtype_dealloc # failed to transform
+  - inherit_slots # rejected by cargo check
+  - super_descr_get # rejected by cargo check
+repo/src/Objects/unicodeobject.rs:
+  - PyUnicodeUCS2_RichCompare # failed to transform
+  - _PyUnicode_New # failed to transform
+  - PyUnicodeUCS2_DecodeUnicodeEscape # failed to transform
+repo/src/Parser/tokenizer.rs:
+  - tok_get # failed to transform
+  - tok_nextc # failed to transform
+repo/src/Python/ast.rs:
+  - ast_for_testlist # rejected by cargo check
+repo/src/Python/ceval.rs:
+  - PyEval_EvalFrameEx # failed to transform
+repo/src/Python/dtoa.rs:
+  - _Py_dg_strtod # failed to transform
+repo/src/Python/errors.rs:
+  - PyErr_NormalizeException # failed to transform
+repo/src/Python/getargs.rs:
+  - convertsimple # failed to transform
+repo/src/Python/peephole.rs:
+  - PyCode_Optimize # failed to transform
+repo/src/Python/pystrtod.rs:
+  - PyOS_double_to_string # failed to transform
+  - ensure_decimal_point # failed to transform
+  - format_float_short # rejected by cargo check
+repo/src/Python/pythonrun.rs:
+  - handle_system_exit # rejected by cargo check
+repo/src/Python/structmember.rs:
+  - PyMember_SetOne # failed to transform
