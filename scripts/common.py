@@ -66,7 +66,7 @@ class Config:
 
     CBOR_PREFIX = os.path.join(BUILD_DIR, "tinycbor")
 
-    LLVM_VER = "7.0.0"
+    LLVM_VER = "15.0.1"
     LLVM_ARCHIVE_URLS = None  # initialized by _init_llvm_ver_deps
     OLD_LLVM_ARCHIVE_URLS = [
         'http://releases.llvm.org/{ver}/llvm-{ver}.src.tar.xz',
@@ -81,7 +81,7 @@ class Config:
         'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/compiler-rt-{ver}.src.tar.xz',
         # 'https://github.com/llvm/llvm-project/releases/download/llvmorg-{ver}/clang-tools-extra-{ver}.src.tar.xz',
     ]
-    # See http://releases.llvm.org/download.html#7.0.0
+    # See https://github.com/llvm/llvm-project/releases/tag/llvmorg-15.0.1
     LLVM_PUBKEY = "scripts/llvm-{ver}-key.asc".format(ver=LLVM_VER)
     LLVM_PUBKEY = os.path.join(ROOT_DIR, LLVM_PUBKEY)
     LLVM_SRC = os.path.join(BUILD_DIR, 'llvm-{ver}/src'.format(ver=LLVM_VER))
