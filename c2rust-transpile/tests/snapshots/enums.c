@@ -26,6 +26,12 @@ void test_enums(void) {
     foo -= 2;
     bar -= 2;
 
+    // Increment
+    ++foo;
+    ++bar;
+    bar = foo++;
+    foo = bar++;
+
     Foo e = Foo1;
 
     // Compare to same type
