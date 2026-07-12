@@ -418,6 +418,15 @@ impl RefactorState {
                         };
                         // One extra step for Phase 3: run the analysis passes
                         let _result = tcx.analysis(());
+                        // Transforms assume a well-typed crate; running them
+                        // over stale or partial typeck results produces bogus
+                        // rewrites or panics far from the real problem.
+                        if tcx.sess.has_errors().is_some() {
+                            tcx.sess.fatal(
+                                "refusing to refactor: the crate has compile errors \
+                                 (see diagnostics above)",
+                            );
+                        }
                         let cx = RefactorCtxt::new_phase_2_3(
                             session,
                             max_crate_node_id.unwrap(),
