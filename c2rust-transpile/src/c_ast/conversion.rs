@@ -2249,6 +2249,10 @@ impl ConversionContext {
                         if let Some(filename) = path.file_name() {
                             if filename == "stdint.h"
                                 || filename == "types.h"
+                                // glibc also declares `ssize_t` in these headers; whichever
+                                // header a TU includes first provides the typedef.
+                                || ((filename == "stdio.h" || filename == "unistd.h")
+                                    && name == "ssize_t")
                                 || filename
                                     .to_str()
                                     .map(|s| s.starts_with("__stddef_"))
