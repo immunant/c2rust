@@ -21,6 +21,7 @@ from postprocess.utils import existing_file
 from postprocess.validate import BaselineError, make_validator
 
 DEFAULT_LLM_MODEL = "gemini-3.5-flash"
+DEFAULT_TRANSFORMS = ("comments", "asserts", "formatting")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -125,10 +126,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         required=False,
         action="append",
-        default=["comments"],
+        default=None,
         help=(
             "Transform to apply; pass multiple times to apply multiple transforms "
-            "in sorted order (default: comments)"
+            "in the order provided; duplicate transforms are ignored "
+            f"(default: {', '.join(DEFAULT_TRANSFORMS)})"
         ),
     )
 
@@ -186,13 +188,16 @@ def main(argv: Sequence[str] | None = None):
 
         model = get_model(args.llm_model)
 
-        # sort transform IDs to transforms always run in the same order to
-        # maximize cache hits even if the user passed them in a different order
-        transform_ids = sorted(
-            transform_id.strip()
-            for transform_id in set(args.transform)
-            if transform_id.strip()
+        # De-duplicate transform IDs while preserving their first occurrence.
+        transform_args = args.transform or DEFAULT_TRANSFORMS
+        transform_ids = list(
+            dict.fromkeys(
+                transform_id.strip()
+                for transform_id in transform_args
+                if transform_id.strip()
+            )
         )
+
         transforms = [
             get_transform_by_id(
                 transform_id,

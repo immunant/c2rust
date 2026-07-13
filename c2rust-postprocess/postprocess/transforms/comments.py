@@ -40,10 +40,10 @@ class CommentsTransformPrompt:
             + "\n```\n\n"
             + "C function:\n```c\n"
             + self.c_function
-            + "```\n\n"
+            + "\n```\n\n"
             + "Rust function:\n```rust\n"
             + self.rust_function
-            + "```\n"
+            + "\n```\n"
         )
 
 
