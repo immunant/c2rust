@@ -21,7 +21,7 @@ impl<'tcx> ArgKind<'tcx> {
         use ArgKind::*;
         (if ty.is_unsafe_ptr() {
             RawPtr
-        } else if ty.is_region_ptr() {
+        } else if ty.is_ref() {
             Reference
         } else if ty.is_integral() {
             AddressUsize

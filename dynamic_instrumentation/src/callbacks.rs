@@ -31,8 +31,8 @@ impl rustc_driver::Callbacks for MirTransformCallbacks {
         _compiler: &Compiler,
         queries: &'tcx Queries<'tcx>,
     ) -> Compilation {
-        let parse = queries.parse().unwrap();
-        let mut parse = parse.peek_mut();
+        let mut parse = queries.parse().unwrap();
+        let parse = parse.get_mut();
         parse.items.push(P(Item {
             attrs: Default::default(),
             id: NodeId::from_u32(0),
@@ -63,7 +63,7 @@ fn override_queries(
         let mut mir = steal_mir.steal();
 
         let body_did = def.did.to_def_id();
-        let fn_ty = tcx.type_of(body_did);
+        let fn_ty = tcx.type_of(body_did).subst_identity();
         if fn_ty.is_fn() && !tcx.is_const_fn(body_did) && !tcx.is_static(body_did) {
             INSTRUMENTER.instrument_fn(tcx, &mut mir, body_did);
 

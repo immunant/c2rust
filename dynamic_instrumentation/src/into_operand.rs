@@ -22,7 +22,7 @@ impl<'tcx> IntoOperand<'tcx> for PlaceRef<'tcx> {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
         let place = Place {
             local: self.local,
-            projection: tcx.mk_place_elems(self.projection.iter()),
+            projection: tcx.mk_place_elems(self.projection),
         };
         place.op(tcx)
     }
