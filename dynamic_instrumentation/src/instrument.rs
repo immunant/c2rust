@@ -15,7 +15,8 @@ use rustc_middle::mir::visit::{
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, ClearCrossCrate, HasLocalDecls, Local, LocalDecl, Location,
     Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
-    SourceScopeData, Statement, StatementKind, Terminator, TerminatorKind, START_BLOCK,
+    SourceScopeData, Statement, StatementKind, Terminator, TerminatorKind, UnwindAction,
+    START_BLOCK,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash};
@@ -146,11 +147,11 @@ impl ProjectionSet for Instrumenter {
 }
 
 fn is_shared_or_unsafe_ptr(ty: Ty) -> bool {
-    ty.is_unsafe_ptr() || (ty.is_region_ptr() && !ty.is_mutable_ptr())
+    ty.is_unsafe_ptr() || (ty.is_ref() && !ty.is_mutable_ptr())
 }
 
 fn is_region_or_unsafe_ptr(ty: Ty) -> bool {
-    ty.is_unsafe_ptr() || ty.is_region_ptr()
+    ty.is_unsafe_ptr() || ty.is_ref()
 }
 
 impl<'tcx> Visitor<'tcx> for CollectAddressTakenLocals<'_, 'tcx> {
@@ -207,7 +208,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                         .into_iter()
                         .chain(place.projection)
                         .collect::<Vec<_>>();
-                    self.tcx().intern_place_elems(&v)
+                    self.tcx().mk_place_elems(&v)
                 };
                 // replace `_x` with `_y`
                 place.local = *substitute;
@@ -315,26 +316,9 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                             }
                         }
                     }
-                    TerminatorKind::DropAndReplace {
-                        place,
-                        value,
-                        target,
-                        unwind: _,
-                    } if value.place().is_some() => {
-                        if let Some(local_to_address) =
-                            place.as_local().and_then(|l| self.local_to_address.get(&l))
-                        {
-                            // put into first statement of following block
-                            local_address_statements.push((
-                                *place,
-                                Location {
-                                    block: *target,
-                                    statement_index: 0,
-                                },
-                            ));
-                            self.local_to_address.insert(place.local, *local_to_address);
-                        }
-                    }
+                    // `DropAndReplace` no longer exists in target MIR. Its replacement
+                    // assignment is an ordinary `StatementKind::Assign`, handled by the
+                    // statement scan above after the preceding `Drop` terminator runs.
                     _ => (),
                 }
             }
@@ -572,7 +556,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
             this.visit_rvalue(value, location)
         });
 
-        let locals = self.local_decls().clone();
+        let locals = self.body.local_decls.clone();
         let ctx = self.tcx();
 
         let op_ty = |op: &Operand<'tcx>| op.ty(&locals, ctx);
@@ -936,11 +920,18 @@ pub fn insert_call<'tcx>(
         }
     }
 
-    let fn_sig = tcx.fn_sig(func);
+    let fn_sig = tcx.fn_sig(func).subst_identity();
     let fn_sig = tcx.liberate_late_bound_regions(func, fn_sig);
 
     let ret_local = locals.push(LocalDecl::new(fn_sig.output(), DUMMY_SP));
-    let func = Operand::function_handle(tcx, func, tcx.mk_substs(ty_substs.into_iter()), DUMMY_SP);
+    let func = Operand::function_handle(tcx, func, tcx.mk_substs(&ty_substs), DUMMY_SP);
+    let unwind = if blocks[block].is_cleanup {
+        // A panic while already unwinding terminates the process.  This is the
+        // target-MIR equivalent of `cleanup: None` on a cleanup block.
+        UnwindAction::Terminate
+    } else {
+        UnwindAction::Continue
+    };
 
     let call = Terminator {
         kind: TerminatorKind::Call {
@@ -948,7 +939,7 @@ pub fn insert_call<'tcx>(
             args: args.iter().map(|arg| arg.inner().clone()).collect(),
             destination: ret_local.into(),
             target: Some(successor_block),
-            cleanup: None,
+            unwind,
             from_hir_call: true,
             fn_span: DUMMY_SP,
         },
