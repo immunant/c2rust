@@ -29,6 +29,12 @@ trait LRExpr {
     fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR);
 }
 
+impl LRExpr for [u8] {
+    fn fold_rvalue<LR: LRRewrites>(&mut self, _lr: &mut LR) {}
+    fn fold_lvalue<LR: LRRewrites>(&mut self, _lr: &mut LR) {}
+    fn fold_lvalue_mut<LR: LRRewrites>(&mut self, _lr: &mut LR) {}
+}
+
 /// A set of expr rewrites, one for each kind of context where an expr may appear.
 trait LRRewrites {
     fn fold_rvalue(&mut self, e: &mut P<Expr>);
@@ -146,6 +152,23 @@ impl LRExpr for P<Expr> {
     fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
         self.kind.fold_lvalue_mut(lr);
         lr.fold_lvalue_mut(self)
+    }
+}
+
+impl LRExpr for FormatArgs {
+    fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        for argument in self.arguments.all_args_mut() {
+            // `format_args!` borrows its arguments while constructing the formatting value.
+            argument.expr.fold_lvalue(lr);
+        }
+    }
+
+    fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.fold_rvalue(lr);
+    }
+
+    fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        self.fold_rvalue(lr);
     }
 }
 

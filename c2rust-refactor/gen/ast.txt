@@ -36,8 +36,8 @@ struct Item { ident, #[match=ignore] attrs, id, kind, vis, span, #[equiv_mode=ig
 enum ItemKind {
     ExternCrate(name),
     Use(vp),
-    Static(ty, mutbl, init),
-    Const(def, ty, init),
+    Static(item),
+    Const(item),
     Fn(fn),
     Mod(unsafety, kind),
     ForeignMod(fm),
@@ -52,6 +52,9 @@ enum ItemKind {
     MacCall(mac),
     MacroDef(tts),
 }
+
+struct StaticItem { ty, mutability, expr }
+struct ConstItem { defaultness, ty, expr }
 
 enum Inline {
     Yes,
@@ -90,7 +93,7 @@ enum Extern {
 }
 
 enum UseTreeKind {
-    Simple(ident, id1, id2),
+    Simple(ident),
     Glob,
     Nested(nested),
 }
@@ -100,7 +103,7 @@ struct UseTree { kind, prefix, span }
 #[extend_span]
 struct AssocItem { id, ident, #[match=ignore] attrs, vis, kind, span, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum AssocItemKind {
-    Const(defaultness, ty, init),
+    Const(item),
     Fn(fn),
     Type(ta),
     MacCall(mac),
@@ -174,7 +177,7 @@ enum TyKind {
     Slice(ty),
     Array(ty, len),
     Ptr(mty),
-    Rptr(lt, mty),
+    Ref(lt, mty),
     BareFn(ty),
     Never,
     Tup(tys),
@@ -289,11 +292,10 @@ enum LocalKind {
 struct Expr { id, kind, span, #[match=ignore] attrs, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 #[prec_contains_expr]
 enum ExprKind {
-    Box(#[prec=PREFIX] expr),
     Array(#[mac_table_seq] elems),
     ConstBlock(anon_const),
     Call(#[prec=POSTFIX] #[prec_special=Callee] func, #[mac_table_seq] args),
-    MethodCall(path_seg, #[prec=POSTFIX] receiver, #[mac_table_seq] args, span),
+    MethodCall(call),
     Tup(#[mac_table_seq] elems),
     Binary(op, #[prec_left_of_binop=op] a, #[prec_right_of_binop=op] b),
     Unary(op, #[prec=PREFIX] a),
@@ -304,11 +306,11 @@ enum ExprKind {
     If(#[prec_special=Cond] cond, then_body, else_body),
     While(#[prec_special=Cond] cond, body, label),
     ForLoop(pat, #[prec_special=Cond] iter, body, label),
-    Loop(body, label),
+    Loop(body, label, span),
     Match(#[prec_special=Cond] target, arms),
-    Closure(binder, cap, is_async, mov, decl, body, span),
+    Closure(closure),
     Block(body, label),
-    Async(cap, id, block),
+    Async(cap, block),
     Await(expr),
     TryBlock(body),
     Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs, span),
@@ -334,7 +336,30 @@ enum ExprKind {
     Try(#[prec=POSTFIX] expr),
     Yield(#[prec=JUMP] expr),
     Yeet(expr),
+    IncludedBytes(#[rewrite_ignore] bytes),
+    FormatArgs(args),
     Err,
+}
+
+#[boxed] #[prec_contains_expr]
+struct MethodCall {
+    seg,
+    #[prec=POSTFIX] receiver,
+    #[mac_table_seq] args,
+    span,
+}
+
+#[boxed]
+struct Closure {
+    binder,
+    capture_clause,
+    constness,
+    asyncness,
+    movability,
+    fn_decl,
+    body,
+    fn_decl_span,
+    fn_arg_span,
 }
 
 struct StructExpr {
@@ -423,14 +448,13 @@ enum PatKind {
     #[mac_table_record] MacCall(mac),
 }
 
-#[match=custom]
-struct Lit { token_lit, kind, span }
-
 struct StrLit { style, symbol, suffix, span, symbol_unescaped }
+
+struct MetaItemLit { symbol, suffix, kind, span }
 
 enum LitKind {
     Str(sym, style),
-    ByteStr(bytes),
+    ByteStr(bytes, style),
     Byte(x),
     Char(x),
     Int(x, ty),
@@ -444,6 +468,7 @@ enum LitFloatType {
     Unsuffixed,
 }
 
+#[match=custom]
 struct TokenLit { kind, symbol, suffix }
 
 enum TokenLitKind {
@@ -587,21 +612,27 @@ enum MacStmtStyle {
     Braces,
     NoBraces,
 }
-#[equiv_mode=ignore]
+#[equiv_mode=ignore] #[rewrite_skip=Rewrite]
 flag TokenStream;
 #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore]
 flag LazyAttrTokenStream;
 struct MacroDef { body, macro_rules }
 
-enum MacArgs {
+enum AttrArgs {
     Empty,
-    Delimited(span, delim, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens),
+    Delimited(args),
     Eq(span, value),
 }
 
-enum MacArgsEq {
+enum AttrArgsEq {
     Ast(expr),
     Hir(lit),
+}
+
+struct DelimArgs {
+    dspan,
+    delim,
+    #[equiv_mode=ignore] #[match=ignore] tokens,
 }
 
 struct InlineAsm {
@@ -686,6 +717,12 @@ enum TokenTree {
 
 struct DelimSpan { open, close }
 
+#[equiv_mode=custom] #[match=ignore] #[rewrite_skip=Rewrite] #[list_node_ids=custom] #[mac_table_custom] #[nt_match_custom] #[lr_expr_custom]
+flag FormatArgs;
+
+#[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore]
+flag FormatArguments;
+
 enum Delimiter {
     Parenthesis,
     Bracket,
@@ -762,5 +799,5 @@ enum MetaItemKind {
 }
 enum NestedMetaItem {
     MetaItem(mi),
-    Literal(lit),
+    Lit(lit),
 }

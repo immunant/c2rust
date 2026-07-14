@@ -39,6 +39,19 @@ pub trait NtMatch {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt);
 }
 
+impl NtMatch for FormatArgs {
+    fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
+        for (old, new) in old
+            .arguments
+            .all_args()
+            .iter()
+            .zip(new.arguments.all_args())
+        {
+            NtMatch::nt_match(&old.expr, &new.expr, cx);
+        }
+    }
+}
+
 include!(concat!(env!("OUT_DIR"), "/nt_match_gen.inc.rs"));
 
 impl<T: NtMatch + ?Sized> NtMatch for P<T> {
@@ -175,7 +188,7 @@ impl AsNonterminal for Lifetime {
     }
 }
 
-impl AsNonterminal for Lit {
+impl AsNonterminal for TokenLit {
     fn as_nonterminal(&self) -> Nonterminal {
         Nonterminal::NtLiteral(mk().lit_expr(self.clone()))
     }

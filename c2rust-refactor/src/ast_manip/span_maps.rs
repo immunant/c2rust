@@ -536,13 +536,13 @@ impl Visitor<'_> for AstSpanMapper {
                     });
                 }
             }
-            ExprKind::MethodCall(segment, recv, args, _span) => {
+            ExprKind::MethodCall(call) => {
                 // Visit the method name/generics (PathSegment)
-                self.visit_path_segment(segment);
+                self.visit_path_segment(&call.seg);
                 self.visit_child(child_slot::METHOD_RECEIVER, |this| {
-                    this.visit_expr(recv);
+                    this.visit_expr(&call.receiver);
                 });
-                for (i, arg) in args.iter().enumerate() {
+                for (i, arg) in call.args.iter().enumerate() {
                     let slot = child_slot::method_arg(i);
                     self.visit_child(slot, |this| {
                         this.visit_expr(arg);
