@@ -1,5 +1,5 @@
 use log::debug;
-use rustc_middle::ty::{self, Binder, EarlyBinder, FnSig, GenSig, Ty, TyCtxt};
+use rustc_middle::ty::{self, Binder, FnSig, GenSig, Ty, TyCtxt};
 
 pub trait IsTrivial<'tcx> {
     /// Something [`is_trivial`] if it has no effect on pointer permissions,
@@ -128,15 +128,16 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             }),
 
             // try to get the actual type and delegate to it
-            ty::Opaque(did, substs) => not_sure_yet(
-                EarlyBinder(tcx.type_of(did))
-                    .subst(tcx, substs)
+            ty::Alias(ty::Opaque, alias_ty) => not_sure_yet(
+                tcx.type_of(alias_ty.def_id)
+                    .subst(tcx, alias_ty.substs)
                     .is_trivial(tcx),
             ),
 
             // not sure how to handle yet, and may never come up anyways
             ty::GeneratorWitness(..)
-            | ty::Projection(..)
+            | ty::GeneratorWitnessMIR(..)
+            | ty::Alias(ty::Projection, ..)
             | ty::Error(_)
             | ty::Infer(_)
             | ty::Placeholder(..)

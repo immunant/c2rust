@@ -281,7 +281,13 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
     }
 
     for local in mir.local_decls.indices() {
-        let is_temp_ref = mir.local_kind(local) == LocalKind::Temp
+        // `LocalKind::Var` was folded into `LocalKind::Temp`, so use `LocalInfo` to keep
+        // user-visible bindings distinct from compiler-generated reference temporaries.
+        // `local_info()` asserts `ClearCrossCrate::Set`, which holds here because we only
+        // analyze local-crate MIR before the info is cleared for cross-crate export.
+        let is_user_variable = matches!(mir.local_decls[local].local_info(), LocalInfo::User(_));
+        let is_temp_ref = !is_user_variable
+            && mir.local_kind(local) == LocalKind::Temp
             && write_count.get(&local).copied().unwrap_or(0) == 1
             && rhs_is_ref.contains(&local);
 
@@ -300,8 +306,8 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
         .foreign_items()
         .map(|item| item.owner_id.def_id.to_def_id())
         .filter_map(|did| match tcx.def_kind(did) {
-            DefKind::Fn | DefKind::AssocFn => Some(tcx.mk_fn_ptr(tcx.fn_sig(did))),
-            DefKind::Static(_) => Some(tcx.type_of(did)),
+            DefKind::Fn | DefKind::AssocFn => Some(tcx.mk_fn_ptr(tcx.fn_sig(did).subst_identity())),
+            DefKind::Static(_) => Some(tcx.type_of(did).subst_identity()),
             _ => None,
         })
     {
@@ -328,7 +334,7 @@ where
                     continue;
                 }
                 for field in adt_def.all_fields() {
-                    let field_ty = tcx.type_of(field.did);
+                    let field_ty = tcx.type_of(field.did).subst_identity();
                     walk_adts(tcx, field_ty, f);
                 }
             }
@@ -489,7 +495,8 @@ fn check_rewrite_path_prefixes(tcx: TyCtxt, fixed_defs: &mut HashSet<DefId>, pre
                 | DefPathData::ClosureExpr
                 | DefPathData::Ctor
                 | DefPathData::AnonConst
-                | DefPathData::ImplTrait => continue,
+                | DefPathData::ImplTrait
+                | DefPathData::ImplTraitAssocTy => continue,
                 DefPathData::TypeNs(sym)
                 | DefPathData::ValueNs(sym)
                 | DefPathData::MacroNs(sym)
@@ -577,7 +584,7 @@ struct FuncInfo<'tcx> {
     /// propagating `READ`/`WRITE`/`OFFSET_ADD` and similar permissions.
     dataflow: MaybeUnset<DataflowConstraints>,
     /// Local equivalence-class information.  Combine with the [`GlobalEquivSet`] to get a
-    /// complete [`EquivSet`], which assigns an equivalence class to each [`PointerId`] that
+    /// complete [`EquivSet`](crate::equiv::EquivSet), which assigns an equivalence class to each [`PointerId`] that
     /// appears in the function.  Used for renumbering [`PointerId`]s.
     local_equiv: MaybeUnset<LocalEquivSet>,
     /// Constraints on pointee types gathered from the body of this function.
@@ -1685,7 +1692,7 @@ fn assign_pointer_ids<'tcx>(
 
     // Assign global `PointerId`s for all pointers that appear in function signatures.
     for &ldid in all_fn_ldids {
-        let sig = tcx.fn_sig(ldid.to_def_id());
+        let sig = tcx.fn_sig(ldid.to_def_id()).subst_identity();
         let sig = tcx.erase_late_bound_regions(sig);
 
         // All function signatures are fully annotated.
@@ -1713,7 +1720,7 @@ fn assign_pointer_ids<'tcx>(
         .map(|item| item.owner_id.def_id.to_def_id())
         .filter(|did| matches!(tcx.def_kind(did), DefKind::Fn | DefKind::AssocFn))
     {
-        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did));
+        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did).subst_identity());
         let inputs = sig
             .inputs()
             .iter()
@@ -1783,7 +1790,7 @@ fn assign_pointer_ids<'tcx>(
             for (local, decl) in mir.local_decls.iter_enumerated() {
                 // TODO: set PointerInfo::ANNOTATED for the parts of the type with user annotations
                 let lty = match mir.local_kind(local) {
-                    LocalKind::Var | LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
+                    LocalKind::Temp => acx.assign_pointer_ids(decl.ty),
                     LocalKind::Arg
                         if lsig.c_variadic && local.as_usize() - 1 == lsig.inputs.len() =>
                     {
@@ -2194,7 +2201,7 @@ fn make_sig_fixed(asn: &mut Assignment, lsig: &LFnSig) {
     }
 }
 
-/// For testing, putting #[c2rust_analyze_test::fail_before_analysis] on a function marks it as
+/// For testing, putting `#[c2rust_analyze_test::fail_before_analysis]` on a function marks it as
 /// failed at this point.
 fn apply_test_attr_fail_before_analysis(
     gacx: &mut GlobalAnalysisCtxt,
@@ -2213,7 +2220,7 @@ fn apply_test_attr_fail_before_analysis(
     }
 }
 
-/// For testing, putting #[c2rust_analyze_test::force_non_null_args] on a function marks its
+/// For testing, putting `#[c2rust_analyze_test::force_non_null_args]` on a function marks its
 /// arguments as `NON_NULL` and also adds `NON_NULL` to the `updates_forbidden` mask.
 fn apply_test_attr_force_non_null_args(
     gacx: &mut GlobalAnalysisCtxt,
@@ -2430,12 +2437,9 @@ fn pdg_update_permissions_with_callback<'tcx>(
 
 fn local_span(decl: &LocalDecl) -> Span {
     let mut span = decl.source_info.span;
-    if let Some(ref info) = decl.local_info {
-        if let LocalInfo::User(ref binding_form) = **info {
-            let binding_form = binding_form.as_ref().assert_crate_local();
-            if let BindingForm::Var(ref v) = *binding_form {
-                span = v.pat_span;
-            }
+    if let LocalInfo::User(binding_form) = decl.local_info() {
+        if let BindingForm::Var(v) = binding_form {
+            span = v.pat_span;
         }
     }
     span
@@ -2567,6 +2571,7 @@ fn is_impl_clone(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     };
     if let Some(impl_def_id) = tcx.impl_of_method(def_id) {
         if let Some(trait_ref) = tcx.impl_trait_ref(impl_def_id) {
+            let trait_ref = trait_ref.subst_identity();
             return trait_ref.def_id == clone_trait_def_id;
         }
     }
@@ -2596,7 +2601,7 @@ pub(super) fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
                     continue;
                 }
             }
-            DefKind::AnonConst | DefKind::Const | DefKind::Static(_) => continue,
+            DefKind::AnonConst | DefKind::Closure | DefKind::Const | DefKind::Static(_) => continue,
             dk => panic!(
                 "unexpected def_kind {:?} for body_owner {:?}",
                 dk, root_ldid
@@ -2700,7 +2705,7 @@ fn for_each_field_use(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(DefId)) {
                     None => adt_def.non_enum_variant(),
                     Some(i) => adt_def.variant(i),
                 };
-                let field_def = &variant_def.fields[field_idx.index()];
+                let field_def = &variant_def.fields[field_idx];
                 (self.f)(field_def.did);
             }
         }
@@ -2824,7 +2829,8 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
-        queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+        let mut global_ctxt = queries.global_ctxt().unwrap();
+        global_ctxt.enter(|tcx| {
             run(tcx);
         });
         rustc_driver::Compilation::Continue

@@ -58,7 +58,8 @@ pub fn categorize(context: PlaceContext) -> Option<DefUse> {
         // `StorageLive` and `StorageDead` appears to be consistent with `rustc -Z nll-facts`
         // output (tested on `tests/filecheck/move_mut.rs`).
         PlaceContext::NonUse(NonUseContext::StorageLive) |
-        PlaceContext::NonUse(NonUseContext::StorageDead) => None,
+        PlaceContext::NonUse(NonUseContext::StorageDead) |
+        PlaceContext::NonUse(NonUseContext::PlaceMention) => None,
 
         ///////////////////////////////////////////////////////////////////////////
         // REGULAR USES

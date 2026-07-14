@@ -184,6 +184,7 @@ impl ActionsBuilder {
                 self.push_lvalue_place(pl, loc);
             }
             StatementKind::FakeRead(..) => {}
+            StatementKind::PlaceMention(..) => {}
             StatementKind::SetDiscriminant {
                 ref place,
                 variant_index: _,
@@ -200,6 +201,7 @@ impl ActionsBuilder {
             StatementKind::Retag(..) => panic!("unexpected StatementKind::Retag"),
             StatementKind::AscribeUserType(..) => {}
             StatementKind::Coverage(..) => {}
+            StatementKind::ConstEvalCounter => {}
             StatementKind::Intrinsic(ref intrinsic) => match &**intrinsic {
                 NonDivergingIntrinsic::Assume(op) => {
                     self.push_operand(op, loc, WhichPlace::Operand(0));
@@ -221,19 +223,14 @@ impl ActionsBuilder {
                 self.push_operand(discr, loc, WhichPlace::Operand(0));
             }
             TerminatorKind::Resume => {}
-            TerminatorKind::Abort => {}
+            TerminatorKind::Terminate => {}
             TerminatorKind::Return => {}
             TerminatorKind::Unreachable => {}
             // We ignore automatically-inserted `Drop`s, since the `Drop` may be eliminated if a
             // previous use is converted to a move.
             TerminatorKind::Drop { .. } => {}
-            // `DropAndReplace` is used for some assignments.
-            TerminatorKind::DropAndReplace {
-                place, ref value, ..
-            } => {
-                self.push_operand(value, loc, WhichPlace::Operand(0));
-                self.push_lvalue_place(place, loc);
-            }
+            // `DropAndReplace` no longer exists in target MIR. Its replacement
+            // assignment is handled by `push_statement` above.
             TerminatorKind::Call {
                 ref func, ref args, ..
             } => {
