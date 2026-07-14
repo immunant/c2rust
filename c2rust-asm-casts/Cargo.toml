@@ -3,6 +3,7 @@ name = "c2rust-asm-casts"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Type cast helpers for use with C2Rust's inline assembly implementation"
 readme.workspace = true
 homepage.workspace = true

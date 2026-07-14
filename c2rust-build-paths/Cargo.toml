@@ -3,6 +3,7 @@ name = "c2rust-build-paths"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "C2Rust utilities related to build paths, primarily at build time"
 readme.workspace = true
 homepage.workspace = true

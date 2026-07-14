@@ -16,10 +16,10 @@ if [[ -z "$RUST_VER" ]]; then
 fi
 
 if hash rustup 2>/dev/null; then # rustup is installed
-  rustup toolchain install $RUST_VER
-  rustup default $RUST_VER
+  rustup toolchain install "$RUST_VER"
+  rustup default "$RUST_VER"
 else # rustup is not installed  
-  curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUST_VER
+  curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "$RUST_VER"
 fi 
 
 # make rust environment available on next login 
@@ -29,9 +29,9 @@ fi
 # make rust environment available for commands below 
 source ~/.cargo/env
 
-# rustfmt is required for c2rust-refactor tests
-# rustc-dev was added make sure it is installed on macOS-10.15
-rustup component add rustfmt rustc-dev rust-src
+# Keep this list synchronized with the root rust-toolchain.toml.  Installing
+# explicitly also validates component availability on each provisioned host.
+rustup component add --toolchain "$RUST_VER" rustfmt rustc-dev rust-src miri rust-analyzer
 
 # Make rustup directory world-writable so other test users can install new rust
 # versions

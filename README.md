@@ -8,7 +8,7 @@
 
 [Latest Version]: https://img.shields.io/crates/v/c2rust.svg
 [crates.io]: https://crates.io/crates/c2rust
-[rustc Version]: https://img.shields.io/badge/rustc-nightly--2022--11--03-lightgrey.svg "rustc nightly-2022-11-03"
+[rustc Version]: https://img.shields.io/badge/rustc-nightly--2023--04--15-lightgrey.svg "rustc nightly-2023-04-15"
 
 <!-- ANCHOR: intro -->
 
@@ -161,12 +161,12 @@ You should also set `LLVM_CONFIG_PATH` accordingly if required as described abov
 
 `c2rust` and `c2rust-transpile` are installed by default and can be built on `stable` `rustc`.
 The other tools, such as `c2rust-refactor`, use `rustc` internal APIs, however,
-and are thus pinned to a specific `rustc` `nightly` version: `nightly-2022-11-03`.
+and are thus pinned to a specific `rustc` `nightly` version: `nightly-2023-04-15`.
 These are also not published to `crates.io`.
 To install these, these can be installed with `cargo` with the pinned nightly.  For example,
 
 ```sh
-cargo +nightly-2022-11-03 install --locked --git https://github.com/immunant/c2rust.git c2rust-refactor
+cargo +nightly-2023-04-15 install --locked --git https://github.com/immunant/c2rust.git c2rust-refactor
 ```
 
 However, we recommend installing them from a full checkout,
