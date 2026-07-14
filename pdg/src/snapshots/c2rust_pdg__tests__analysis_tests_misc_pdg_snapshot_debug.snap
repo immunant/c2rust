@@ -35,7 +35,7 @@ g is_null=true {
 	n[14]: copy        n[10] => _18    @ bb16[4]: fn recur;                _18 = _2;
 	n[15]: copy        n[10] => _18    @ bb16[4]: fn recur;                _18 = _2;
 	n[16]: value.store n[0]  => _20.*  @ bb4[7]:  fn invalid;              (*_20) = const 0_usize as *mut pointers::S (PointerFromExposedAddress);
-	n[17]: value.store n[0]  => _17.*  @ bb8[4]:  fn fdevent_unregister;   (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
+	n[17]: value.store n[0]  => _17.*  @ bb8[5]:  fn fdevent_unregister;   (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
 	n[18]: int_to_ptr  n[0]  => _50    @ bb35[3]: fn main_0;               _50 = const 0_usize as *const pointers::S (PointerFromExposedAddress);
 	n[19]: value.store n[0]  => _3.*.2 @ bb0[1]:  fn test_addr_taken_arg;  ((*_3).2: *const pointers::S) = const 0_usize as *const pointers::S (PointerFromExposedAddress);
 }
@@ -374,7 +374,7 @@ g is_null=false {
 nodes_that_need_write = []
 
 g is_null=false {
-	n[0]: sized(8)   _    => _5 @ bb2[2]:  fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
+	n[0]: sized(8)   _    => _5 @ bb2[2]:  fn no_owner;  _5 = const {alloc1: *mut *mut pointers::S};
 	n[1]: addr.store n[0] => _  @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (PtrToPtr);
 	n[2]: addr.load  n[0] => _  @ bb6[6]:  fn main_0;    _12 = (*_13);
 	n[3]: addr.store n[0] => _  @ bb2[3]:  fn no_owner;  (*_5) = move _2 as *mut pointers::S (PtrToPtr);
@@ -386,7 +386,7 @@ g is_null=false {
 nodes_that_need_write = [7, 5, 3, 1, 0]
 
 g is_null=false {
-	n[0]: sized(8) _ => _13 @ bb6[5]: fn main_0;  _13 = const {alloc8: *mut *mut pointers::S};
+	n[0]: sized(8) _ => _13 @ bb6[5]: fn main_0;  _13 = const {alloc1: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
@@ -400,12 +400,12 @@ g is_null=false {
 nodes_that_need_write = []
 
 g is_null=false {
-	n[0]: sized(8) _ => _5 @ bb2[2]: fn no_owner;  _5 = const {alloc8: *mut *mut pointers::S};
+	n[0]: sized(8) _ => _5 @ bb2[2]: fn no_owner;  _5 = const {alloc1: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
 g is_null=false {
-	n[0]: sized(8) _ => _12 @ bb3[4]: fn no_owner;  _12 = const {alloc8: *mut *mut pointers::S};
+	n[0]: sized(8) _ => _12 @ bb3[4]: fn no_owner;  _12 = const {alloc1: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
@@ -428,7 +428,7 @@ g is_null=false {
 nodes_that_need_write = [3, 1, 0]
 
 g is_null=false {
-	n[0]: sized(8) _ => _6 @ bb2[9]: fn invalid;  _6 = const {alloc8: *mut *mut pointers::S};
+	n[0]: sized(8) _ => _6 @ bb2[9]: fn invalid;  _6 = const {alloc1: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
@@ -443,12 +443,12 @@ g is_null=false {
 nodes_that_need_write = []
 
 g is_null=false {
-	n[0]: sized(8) _ => _19 @ bb3[17]: fn invalid;  _19 = const {alloc8: *mut *mut pointers::S};
+	n[0]: sized(8) _ => _19 @ bb3[17]: fn invalid;  _19 = const {alloc1: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
 g is_null=false {
-	n[0]: sized(8) _ => _20 @ bb4[6]: fn invalid;  _20 = const {alloc8: *mut *mut pointers::S};
+	n[0]: sized(8) _ => _20 @ bb4[6]: fn invalid;  _20 = const {alloc1: *mut *mut pointers::S};
 }
 nodes_that_need_write = []
 
@@ -457,17 +457,17 @@ g is_null=false {
 	n[1]: addr.store  n[0] => _    @ bb0[1]:  fn testing;  _1 = const 10_i32;
 	n[2]: copy        n[0] => _4   @ bb0[9]:  fn testing;  _4 = &mut (*_8);
 	n[3]: copy        n[2] => _3   @ bb0[10]: fn testing;  _3 = &raw mut (*_4);
-	n[4]: copy        n[0] => _7   @ bb0[18]: fn testing;  _7 = &mut (*_8);
-	n[5]: copy        n[4] => _6   @ bb0[19]: fn testing;  _6 = &raw mut (*_7);
-	n[6]: value.store n[5] => _5.* @ bb0[20]: fn testing;  (*_5) = move _6;
+	n[4]: copy        n[0] => _7   @ bb0[19]: fn testing;  _7 = &mut (*_8);
+	n[5]: copy        n[4] => _6   @ bb0[20]: fn testing;  _6 = &raw mut (*_7);
+	n[6]: value.store n[5] => _5.* @ bb0[21]: fn testing;  (*_5) = move _6;
 }
 nodes_that_need_write = [1, 0]
 
 g is_null=false {
 	n[0]: &_3        _    => _  @ bb0[11]: fn testing;  _9 = &raw mut _3;
 	n[1]: addr.store n[0] => _  @ bb0[10]: fn testing;  _3 = &raw mut (*_4);
-	n[2]: copy       n[0] => _5 @ bb0[15]: fn testing;  _5 = &mut (*_9);
-	n[3]: addr.store n[2] => _  @ bb0[20]: fn testing;  (*_5) = move _6;
+	n[2]: copy       n[0] => _5 @ bb0[16]: fn testing;  _5 = &mut (*_9);
+	n[3]: addr.store n[2] => _  @ bb0[21]: fn testing;  (*_5) = move _6;
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
@@ -511,7 +511,7 @@ g is_null=false {
 	n[3]:  value.store n[2]  => _5.*.0 @ bb4[6]:  fn lighttpd_test;       ((*_5).0: *mut *mut pointers::fdnode_st) = move _9;
 	n[4]:  value.load  n[0]  => _8     @ bb0[2]:  fn fdevent_register;    _8 = ((*_1).0: *mut *mut pointers::fdnode_st);
 	n[5]:  offset[0]   n[4]  => _7     @ bb0[8]:  fn fdevent_register;    _7 = offset(move _8, move _9);
-	n[6]:  copy        n[5]  => _6     @ bb1[3]:  fn fdevent_register;    _6 = &mut (*_7);
+	n[6]:  copy        n[5]  => _6     @ bb1[4]:  fn fdevent_register;    _6 = &mut (*_7);
 	n[7]:  addr.store  n[6]  => _      @ bb2[0]:  fn fdevent_register;    (*_6) = move _11;
 	n[8]:  addr.load   n[6]  => _      @ bb2[3]:  fn fdevent_register;    _12 = (*_6);
 	n[9]:  value.load  n[0]  => _5     @ bb0[3]:  fn fdevent_unregister;  _5 = ((*_1).0: *mut *mut pointers::fdnode_st);
@@ -519,8 +519,8 @@ g is_null=false {
 	n[11]: addr.load   n[10] => _      @ bb1[2]:  fn fdevent_unregister;  _3 = (*_4);
 	n[12]: value.load  n[0]  => _19    @ bb7[4]:  fn fdevent_unregister;  _19 = ((*_1).0: *mut *mut pointers::fdnode_st);
 	n[13]: offset[0]   n[12] => _18    @ bb7[10]: fn fdevent_unregister;  _18 = offset(move _19, move _20);
-	n[14]: copy        n[13] => _17    @ bb8[3]:  fn fdevent_unregister;  _17 = &mut (*_18);
-	n[15]: addr.store  n[14] => _      @ bb8[4]:  fn fdevent_unregister;  (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
+	n[14]: copy        n[13] => _17    @ bb8[4]:  fn fdevent_unregister;  _17 = &mut (*_18);
+	n[15]: addr.store  n[14] => _      @ bb8[5]:  fn fdevent_unregister;  (*_17) = const 0_usize as *mut pointers::fdnode_st (PointerFromExposedAddress);
 	n[16]: copy        n[1]  => _20    @ bb6[6]:  fn lighttpd_test;       _20 = _1;
 	n[17]: copy        n[16] => _19    @ bb6[7]:  fn lighttpd_test;       _19 = move _20 as *mut libc::c_void (PtrToPtr);
 	n[18]: free        n[17] => _18    @ bb6[9]:  fn lighttpd_test;       _18 = free(move _19);
@@ -556,8 +556,8 @@ nodes_that_need_write = [3, 1, 0]
 g is_null=false {
 	n[0]:  &_11         _    => _   @ bb4[12]: fn lighttpd_test;        _24 = &raw mut _11;
 	n[1]:  addr.store   n[0] => _   @ bb4[11]: fn lighttpd_test;        _11 = pointers::server { ev: move _12 };
-	n[2]:  copy         n[0] => _10 @ bb4[15]: fn lighttpd_test;        _10 = &mut (*_24);
-	n[3]:  copy         n[2] => _14 @ bb4[18]: fn lighttpd_test;        _14 = &raw mut (*_10);
+	n[2]:  copy         n[0] => _10 @ bb4[16]: fn lighttpd_test;        _10 = &mut (*_24);
+	n[3]:  copy         n[2] => _14 @ bb4[19]: fn lighttpd_test;        _14 = &raw mut (*_10);
 	n[4]:  copy         n[3] => _1  @ bb0[0]:  fn connection_accepted;  _13 = connection_accepted(move _14, const 0_i32);
 	n[5]:  project[0]@0 n[4] => _   @ bb2[10]: fn connection_accepted;  _10 = ((*_1).0: *mut pointers::fdevents);
 	n[6]:  addr.load    n[4] => _   @ bb2[10]: fn connection_accepted;  _10 = ((*_1).0: *mut pointers::fdevents);
@@ -585,7 +585,7 @@ g is_null=false {
 	n[11]: project[1]@8 n[8]  => _       @ bb3[4]:  fn connection_accepted;  ((*_4).1: *mut pointers::fdnode_st) = move _9;
 	n[12]: addr.store   n[8]  => _       @ bb3[4]:  fn connection_accepted;  ((*_4).1: *mut pointers::fdnode_st) = move _9;
 	n[13]: copy         n[8]  => _0      @ bb3[6]:  fn connection_accepted;  _0 = _4;
-	n[14]: copy         n[13] => _13     @ bb4[19]: fn lighttpd_test;        _13 = connection_accepted(move _14, const 0_i32);
+	n[14]: copy         n[13] => _13     @ bb4[20]: fn lighttpd_test;        _13 = connection_accepted(move _14, const 0_i32);
 	n[15]: copy         n[14] => _17     @ bb5[6]:  fn lighttpd_test;        _17 = _13;
 	n[16]: copy         n[15] => _2      @ bb0[0]:  fn connection_close;     _15 = connection_close(move _16, move _17);
 	n[17]: project[1]@8 n[16] => _       @ bb0[4]:  fn connection_close;     _5 = ((*_2).1: *mut pointers::fdnode_st);
@@ -604,7 +604,7 @@ g is_null=false {
 	n[2]:  copy          n[1]  => _10    @ bb2[9]:  fn fdnode_init;                    _10 = _2;
 	n[3]:  copy          n[2]  => _1     @ bb0[0]:  fn is_null;                        _9 = is_null(move _10);
 	n[4]:  copy          n[1]  => _0     @ bb9[2]:  fn fdnode_init;                    _0 = _2;
-	n[5]:  copy          n[4]  => _11    @ bb1[5]:  fn fdevent_register;               _11 = fdnode_init();
+	n[5]:  copy          n[4]  => _11    @ bb1[6]:  fn fdevent_register;               _11 = fdnode_init();
 	n[6]:  value.store   n[5]  => _6.*   @ bb2[0]:  fn fdevent_register;               (*_6) = move _11;
 	n[7]:  value.load    n[0]  => _12    @ bb2[3]:  fn fdevent_register;               _12 = (*_6);
 	n[8]:  project[0]@0  n[7]  => _      @ bb2[8]:  fn fdevent_register;               ((*_12).0: std::option::Option<unsafe extern "C" fn(*mut libc::c_void, i32) -> u32>) = move _13;
@@ -631,7 +631,7 @@ g is_null=false {
 	n[29]: value.load    n[0]  => _3     @ bb1[2]:  fn fdevent_unregister;             _3 = (*_4);
 	n[30]: copy          n[29] => _12    @ bb1[11]: fn fdevent_unregister;             _12 = _3;
 	n[31]: ptr_to_int    n[30] => _      @ bb1[12]: fn fdevent_unregister;             _11 = move _12 as usize (PointerExposeAddress);
-	n[32]: copy          n[29] => _23    @ bb8[7]:  fn fdevent_unregister;             _23 = _3;
+	n[32]: copy          n[29] => _23    @ bb8[8]:  fn fdevent_unregister;             _23 = _3;
 	n[33]: copy          n[32] => _1     @ bb0[0]:  fn fdnode_free;                    _22 = fdnode_free(move _23);
 	n[34]: copy          n[33] => _4     @ bb0[3]:  fn fdnode_free;                    _4 = _1;
 	n[35]: copy          n[34] => _3     @ bb0[4]:  fn fdnode_free;                    _3 = move _4 as *mut libc::c_void (PtrToPtr);
@@ -710,17 +710,17 @@ g is_null=false {
 	n[1]: addr.store  n[0] => _    @ bb0[1]:  fn test_unique_ref;  _1 = const 10_i32;
 	n[2]: copy        n[0] => _4   @ bb0[9]:  fn test_unique_ref;  _4 = &mut (*_8);
 	n[3]: copy        n[2] => _3   @ bb0[10]: fn test_unique_ref;  _3 = &raw mut (*_4);
-	n[4]: copy        n[0] => _7   @ bb0[18]: fn test_unique_ref;  _7 = &mut (*_8);
-	n[5]: copy        n[4] => _6   @ bb0[19]: fn test_unique_ref;  _6 = &raw mut (*_7);
-	n[6]: value.store n[5] => _5.* @ bb0[20]: fn test_unique_ref;  (*_5) = move _6;
+	n[4]: copy        n[0] => _7   @ bb0[19]: fn test_unique_ref;  _7 = &mut (*_8);
+	n[5]: copy        n[4] => _6   @ bb0[20]: fn test_unique_ref;  _6 = &raw mut (*_7);
+	n[6]: value.store n[5] => _5.* @ bb0[21]: fn test_unique_ref;  (*_5) = move _6;
 }
 nodes_that_need_write = [1, 0]
 
 g is_null=false {
 	n[0]: &_3        _    => _  @ bb0[11]: fn test_unique_ref;  _9 = &raw mut _3;
 	n[1]: addr.store n[0] => _  @ bb0[10]: fn test_unique_ref;  _3 = &raw mut (*_4);
-	n[2]: copy       n[0] => _5 @ bb0[15]: fn test_unique_ref;  _5 = &mut (*_9);
-	n[3]: addr.store n[2] => _  @ bb0[20]: fn test_unique_ref;  (*_5) = move _6;
+	n[2]: copy       n[0] => _5 @ bb0[16]: fn test_unique_ref;  _5 = &mut (*_9);
+	n[3]: addr.store n[2] => _  @ bb0[21]: fn test_unique_ref;  (*_5) = move _6;
 }
 nodes_that_need_write = [3, 2, 1, 0]
 
