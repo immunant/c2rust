@@ -94,8 +94,8 @@ macro_rules! define_nt_use_visitor {
                         Nonterminal::$NtThing(ref y) => {
                             if AstEquiv::ast_equiv(x, y) {
                                 self.matched_ids.extend(
-                                    x.list_node_ids().into_iter().zip(
-                                        y.list_node_ids().into_iter()));
+                                    y.list_node_ids().into_iter().zip(
+                                        x.list_node_ids().into_iter()));
                                 // No need to continue looking for IDs inside this node.
                                 return;
                             }
