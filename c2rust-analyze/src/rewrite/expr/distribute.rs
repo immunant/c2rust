@@ -173,18 +173,41 @@ pub fn distribute(
     }
 
     // If a single `HirId` has rewrites from multiple different pieces of MIR at the same
-    // `Priority`, it's ambiguous how to order those rewrites.  (`mir_rewrites` only establishes an
-    // ordering between rewrites on the same `Location`.)  For now, we complain if we see this
-    // ambiguity; in the future, we may need to add rules to resolve it in a particular way, such
-    // as prioritizing one `SubLoc` over another.
+    // `Priority`, it's ambiguous how to order those rewrites unless their MIR locations establish
+    // an execution order.  The compiler can split multiple loads of the same HIR expression into
+    // separate statements in one block; order those by statement location.  Rewrites from
+    // different blocks, or different sublocations of one statement, remain ambiguous.
     for (&hir_id, infos) in &mut info_map {
-        infos.sort_by_key(|i| i.priority);
-        let all_same_loc = infos
+        infos.sort_by(|a, b| {
+            a.priority
+                .cmp(&b.priority)
+                .then_with(|| a.loc.loc.cmp(&b.loc.loc))
+        });
+        let unambiguous = infos
             .iter()
             .group_by(|i| i.priority)
             .into_iter()
-            .all(|(_, group)| group.map(|i| (&i.loc, i.desc)).all_equal());
-        if !all_same_loc {
+            .all(|(_, group)| {
+                let mut block = None;
+                let mut origins = HashMap::new();
+                for i in group {
+                    if block
+                        .replace(i.loc.loc.block)
+                        .is_some_and(|b| b != i.loc.loc.block)
+                    {
+                        return false;
+                    }
+                    let origin = (&i.loc, i.desc);
+                    if origins
+                        .insert(i.loc.loc, origin)
+                        .is_some_and(|previous| previous != origin)
+                    {
+                        return false;
+                    }
+                }
+                true
+            });
+        if !unambiguous {
             info!("rewrite info:");
             for i in infos {
                 info!(

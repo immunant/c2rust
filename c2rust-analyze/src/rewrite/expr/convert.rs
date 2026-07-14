@@ -68,7 +68,6 @@ impl<'tcx> ConvertVisitor<'tcx> {
     fn get_subexpr(&self, ex: &'tcx hir::Expr<'tcx>, idx: usize) -> Rewrite {
         use hir::ExprKind::*;
         let sub_ex = match (&ex.kind, idx) {
-            (&Box(e), 0) => e,
             (&Array(es), i) => &es[i],
             (&Call(_, args), i) => &args[i],
             (&MethodCall(_, recv, args, _), i) => {
