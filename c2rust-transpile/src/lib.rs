@@ -1,4 +1,3 @@
-#![feature(is_some_and)]
 #![allow(clippy::too_many_arguments)]
 
 mod diagnostics;
