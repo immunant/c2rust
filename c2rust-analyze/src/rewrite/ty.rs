@@ -232,7 +232,7 @@ fn deconstruct_hir_ty<'a, 'tcx>(
                 None
             }
         }
-        (&ty::TyKind::Ref(_, _, mutbl), &hir::TyKind::Rptr(_, ref hir_mt)) => {
+        (&ty::TyKind::Ref(_, _, mutbl), &hir::TyKind::Ref(_, ref hir_mt)) => {
             if hir_mt.mutbl == mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
@@ -367,7 +367,8 @@ fn mk_adt_with_generic_args<'tcx>(
     }
 
     let adt = tcx.adt_def(cur_did);
-    let substs = tcx.mk_substs(args.into_iter());
+    let args = args.into_iter().collect::<Vec<_>>();
+    let substs = tcx.mk_substs(&args);
     tcx.mk_adt(adt, substs)
 }
 
@@ -404,8 +405,10 @@ fn mk_rewritten_ty<'tcx>(
             (Some(pointee_ty), None) => {
                 // Just change the pointee type and nothing else.
                 let new_ty = match *ptr_ty.kind() {
-                    TyKind::Ref(rg, _ty, mutbl) => tcx.mk_ty(TyKind::Ref(rg, pointee_ty, mutbl)),
-                    TyKind::RawPtr(tm) => tcx.mk_ty(TyKind::RawPtr(TypeAndMut {
+                    TyKind::Ref(rg, _ty, mutbl) => {
+                        tcx.mk_ty_from_kind(TyKind::Ref(rg, pointee_ty, mutbl))
+                    }
+                    TyKind::RawPtr(tm) => tcx.mk_ty_from_kind(TyKind::RawPtr(TypeAndMut {
                         ty: pointee_ty,
                         mutbl: tm.mutbl,
                     })),
@@ -456,9 +459,9 @@ pub fn desc_parts_to_ty<'tcx>(
     ty = match own {
         Ownership::Raw => tcx.mk_imm_ptr(ty),
         Ownership::RawMut => tcx.mk_mut_ptr(ty),
-        Ownership::Imm => tcx.mk_imm_ref(tcx.mk_region(ReErased), ty),
-        Ownership::Cell => tcx.mk_imm_ref(tcx.mk_region(ReErased), ty),
-        Ownership::Mut => tcx.mk_mut_ref(tcx.mk_region(ReErased), ty),
+        Ownership::Imm => tcx.mk_imm_ref(tcx.mk_region_from_kind(ReErased), ty),
+        Ownership::Cell => tcx.mk_imm_ref(tcx.mk_region_from_kind(ReErased), ty),
+        Ownership::Mut => tcx.mk_mut_ref(tcx.mk_region_from_kind(ReErased), ty),
         Ownership::Rc => todo!(),
         Ownership::Box => tcx.mk_box(ty),
     };
@@ -892,7 +895,7 @@ pub fn gen_adt_ty_rewrites<'tcx>(
     );
 
     for field_def in field_defs.iter() {
-        let fdid = tcx.hir().local_def_id(field_def.hir_id).to_def_id();
+        let fdid = field_def.def_id.to_def_id();
         let field_metadata = &adt_metadata.field_info[&fdid];
         let f_lty = field_ltys[&fdid];
         let lcx = LabeledTyCtxt::<RewriteLabel>::new(tcx);

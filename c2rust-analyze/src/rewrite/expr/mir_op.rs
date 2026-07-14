@@ -161,7 +161,7 @@ pub enum RewriteKind {
     CastRawToRaw { to_mutbl: bool },
     /// Cast `*const T` to `& T` or `*mut T` to `&mut T`.
     UnsafeCastRawToRef { mutbl: bool },
-    /// Cast *mut T to *const Cell<T>
+    /// Cast `*mut T` to `*const Cell<T>`.
     CastRawMutToCellPtr { ty: String },
 
     /// Replace `y` in `let x = y` with `Cell::new(y)`, i.e. `let x = Cell::new(y)`
@@ -590,6 +590,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 self.enter_dest(|v| v.visit_place(pl, PlaceAccess::Mut, RequireSinglePointer::Yes));
             }
             StatementKind::FakeRead(..) => {}
+            StatementKind::PlaceMention(..) => {}
             StatementKind::SetDiscriminant { .. } => todo!("statement {:?}", stmt),
             StatementKind::Deinit(..) => {}
             StatementKind::StorageLive(..) => {}
@@ -597,6 +598,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             StatementKind::Retag(..) => {}
             StatementKind::AscribeUserType(..) => {}
             StatementKind::Coverage(..) => {}
+            StatementKind::ConstEvalCounter => {}
             StatementKind::Intrinsic(..) => todo!("statement {:?}", stmt),
             StatementKind::Nop => {}
         }
@@ -612,11 +614,11 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             TerminatorKind::Goto { .. } => {}
             TerminatorKind::SwitchInt { .. } => {}
             TerminatorKind::Resume => {}
-            TerminatorKind::Abort => {}
+            TerminatorKind::Terminate => {}
             TerminatorKind::Return => {}
             TerminatorKind::Unreachable => {}
             TerminatorKind::Drop { .. } => {}
-            TerminatorKind::DropAndReplace { .. } => {}
+            // Former `DropAndReplace` assignments are visited as ordinary statements.
             TerminatorKind::Call {
                 ref func,
                 ref args,

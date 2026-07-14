@@ -54,7 +54,7 @@ RemoveDeriveCopy = namedtuple('RemoveDeriveCopy', (
 ))
 
 MSG_LIFETIME_BOUND = 'lifetime may not live long enough'
-MSG_DERIVE_COPY = 'the trait `Copy` may not be implemented for this type'
+MSG_DERIVE_COPY = 'the trait `Copy` cannot be implemented for this type'
 
 LIFETIME_DEFINED_RE = re.compile(r'^lifetime `([^`]*)` defined here$')
 CONSIDER_ADDING_BOUND_RE = re.compile(r'^consider adding the following bound: `([^`:]*): ([^`]*)`$')
