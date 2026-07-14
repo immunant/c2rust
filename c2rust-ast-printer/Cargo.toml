@@ -3,6 +3,7 @@ name = "c2rust-ast-printer"
 version.workspace = true
 authors = ["The C2Rust Project Developers <c2rust@immunant.com>", "The Rust Project Developers"]
 edition.workspace = true
+rust-version.workspace = true
 description = "Customized version of libsyntax rust pretty-printer"
 readme = "README.md"
 homepage.workspace = true

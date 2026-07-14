@@ -3,6 +3,7 @@ name = "c2rust-analysis-rt"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "C2Rust runtime for recording dynamic analysis, targeted by c2rust-instrument and consumed by c2rust-pdg"
 readme.workspace = true
 homepage.workspace = true
