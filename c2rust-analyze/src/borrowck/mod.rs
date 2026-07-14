@@ -11,8 +11,8 @@ use log::{debug, info, warn};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
 use rustc_middle::ty::{
-    EarlyBoundRegion, GenericParamDefKind, List, OutlivesPredicate, PredicateKind, Region, Ty,
-    TyKind,
+    Clause, EarlyBoundRegion, GenericParamDefKind, List, OutlivesPredicate, PredicateKind, Region,
+    Ty, TyKind,
 };
 use rustc_type_ir::RegionKind::ReEarlyBound;
 use sha2::{Digest, Sha256};
@@ -244,7 +244,7 @@ fn run_polonius<'tcx>(
     for constraint in tcx.predicates_of(mir.source.def_id()).predicates {
         // FIXME: there should be a subset relation generated for function arguments
         // such as `arg: &'a &'b &'c`, i.e. 'c: 'b, 'b: 'a, and 'c: 'a
-        if let PredicateKind::RegionOutlives(OutlivesPredicate(a, b)) =
+        if let PredicateKind::Clause(Clause::RegionOutlives(OutlivesPredicate(a, b))) =
             &constraint.0.kind().skip_binder()
         {
             if let (ReEarlyBound(eba), ReEarlyBound(ebb)) = (a.kind(), b.kind()) {

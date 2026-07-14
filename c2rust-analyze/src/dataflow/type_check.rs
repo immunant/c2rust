@@ -206,6 +206,22 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     None => {} // not a ptr cast (no dataflow constraints needed); let rustc typeck this
                 };
             }
+            CastKind::Transmute => match is_transmutable_ptr_cast(from_ty, to_ty) {
+                Some(true) => {
+                    self.do_assign_pointer_ids(to_lty.label, from_lty.label);
+                }
+                Some(false) => {
+                    self.do_assign_pointer_ids(to_lty.label, from_lty.label);
+                    ::log::warn!(
+                        "TODO: unsupported pointer transmute between pointee types: \
+                         `{from_ty:?}` to `{to_ty:?}`"
+                    );
+                }
+                None if !from_lty.label.is_none() || !to_lty.label.is_none() => {
+                    panic!("transmute between pointer and non-pointer types is unsupported")
+                }
+                None => {}
+            },
             CastKind::IntToInt
             | CastKind::FloatToInt
             | CastKind::FloatToFloat

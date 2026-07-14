@@ -16,12 +16,11 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::interpret::{self, AllocId, ConstValue, GlobalAlloc};
 use rustc_middle::mir::{
-    Body, Constant, ConstantKind, Field, HasLocalDecls, Local, LocalDecls, Location, Operand,
-    Place, PlaceElem, PlaceRef, Rvalue,
+    Body, Constant, ConstantKind, HasLocalDecls, Local, LocalDecls, Location, Operand, Place,
+    PlaceElem, PlaceRef, Rvalue,
 };
 use rustc_middle::ty::tls;
 use rustc_middle::ty::AdtDef;
-use rustc_middle::ty::DefIdTree;
 use rustc_middle::ty::FieldDef;
 use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::GenericParamDefKind;
@@ -30,6 +29,7 @@ use rustc_middle::ty::RegionKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
+use rustc_target::abi::FieldIdx;
 use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
@@ -525,7 +525,7 @@ fn fn_origin_args_params<'tcx>(
     let mut fn_info = HashMap::new();
 
     for fn_did in fn_dids {
-        let fn_ty = tcx.type_of(fn_did);
+        let fn_ty = tcx.type_of(fn_did).subst_identity();
 
         // gather existing OriginParams
         let mut origin_params = vec![];
@@ -542,7 +542,7 @@ fn fn_origin_args_params<'tcx>(
         let mut arg_origin_args = vec![];
 
         // gather new and existing OriginArgs and push new OriginParams
-        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(fn_did));
+        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(fn_did).subst_identity());
         let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
         let mut next_hypo_origin_id = 0;
         let mut origin_lty = |ty: Ty<'tcx>| {
@@ -635,7 +635,7 @@ fn construct_adt_metadata<'tcx>(
 
     // Gather existing lifetime parameters for each struct
     for struct_did in &adt_metadata_table.struct_dids {
-        let struct_ty = tcx.type_of(struct_did);
+        let struct_ty = tcx.type_of(struct_did).subst_identity();
         if let TyKind::Adt(adt_def, substs) = struct_ty.kind() {
             adt_metadata_table
                 .table
@@ -931,15 +931,20 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     pub fn assign_pointer_to_static(&mut self, did: DefId) {
         trace!("assign_pointer_to_static({:?})", did);
         // Statics always have full type annotations.
-        let lty = self.assign_pointer_ids_with_info(self.tcx.type_of(did), PointerInfo::ANNOTATED);
+        let lty = self.assign_pointer_ids_with_info(
+            self.tcx.type_of(did).subst_identity(),
+            PointerInfo::ANNOTATED,
+        );
         let ptr = self.new_pointer(PointerInfo::empty());
         self.static_tys.insert(did, lty);
         self.addr_of_static.insert(did, ptr);
     }
 
     pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
-        let lty =
-            self.assign_pointer_ids_with_info(self.tcx.type_of(field.did), PointerInfo::ANNOTATED);
+        let lty = self.assign_pointer_ids_with_info(
+            self.tcx.type_of(field.did).subst_identity(),
+            PointerInfo::ANNOTATED,
+        );
         self.field_ltys.insert(field.did, lty);
     }
 
@@ -969,11 +974,10 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
     /// contained in the signatures of [`KnownFn`]s.
     ///
     /// This is determined by iterating through the [`LFnSig`]s in `self.fn_sigs`,
-    /// filtering out the foreign ones ([`gather_foreign_sigs`] adds them to `fn_sigs`),
+    /// filtering out the foreign ones (`assign_pointer_ids` adds them to `fn_sigs`),
     /// looking up the [`KnownFn`] for that foreign `fn`, if it exists,
     /// and then `flat_map`ping that to each [`KnownFn::ptr_perms`].
     ///
-    /// [`gather_foreign_sigs`]: crate::analyze::gather_foreign_sigs
     pub fn known_fn_ptr_perms<'a>(
         &'a self,
     ) -> impl Iterator<Item = (PointerId, PermissionSet)> + PhantomLifetime<'tcx> + 'a {
@@ -1234,8 +1238,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
 
     pub fn projection_lty(&self, lty: LTy<'tcx>, proj: &PlaceElem<'tcx>) -> LTy<'tcx> {
-        let projection_lty = |_lty: LTy, adt_def: AdtDef, field: Field| {
-            let field_def = &adt_def.non_enum_variant().fields[field.index()];
+        let projection_lty = |_lty: LTy, adt_def: AdtDef, field: FieldIdx| {
+            let field_def = &adt_def.non_enum_variant().fields[field];
             let field_def_name = field_def.name;
             debug!("projecting into {adt_def:?}.{field_def_name:}");
             let field_lty: LTy = self.gacx.field_ltys.get(&field_def.did).unwrap_or_else(|| {
@@ -1614,8 +1618,17 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
         }
 
         // Types that aren't actually supported by this code yet
-        Dynamic(..) | Closure(..) | Generator(..) | GeneratorWitness(..) | Projection(..)
-        | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
+        Dynamic(..)
+        | Closure(..)
+        | Generator(..)
+        | GeneratorWitness(..)
+        | GeneratorWitnessMIR(..)
+        | Alias(..)
+        | Param(..)
+        | Bound(..)
+        | Placeholder(..)
+        | Infer(..)
+        | Error(..) => {
             write!(dest, "unknown:{:?}", lty.ty).unwrap();
         }
     }
