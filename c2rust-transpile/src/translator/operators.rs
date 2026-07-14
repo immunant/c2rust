@@ -238,7 +238,7 @@ impl<'c> Translation<'c> {
     ///
     /// `compute_lhs_ty` and `compute_res_ty` correspond to Clang's
     /// `CompoundAssignOperator::{CompLHSType,CompResultType}`; see the Clang docs:
-    /// https://clang.llvm.org/doxygen/classclang_1_1CompoundAssignOperator.html#details
+    /// <https://clang.llvm.org/doxygen/classclang_1_1CompoundAssignOperator.html#details>
     fn convert_assignment_operator(
         &self,
         ctx: ExprContext,
