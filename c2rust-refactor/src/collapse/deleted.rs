@@ -8,6 +8,7 @@ use smallvec::SmallVec;
 /// info later to re-insert those nodes during macro collapsing.
 use std::collections::{HashMap, HashSet};
 use std::mem;
+use thin_vec::ThinVec;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::number_nodes::{number_nodes_with, NodeIdCounter};
@@ -83,8 +84,8 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
             ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.handle_seq(x.id, elements);
             }
-            ExprKind::MethodCall(_, recv, args, _) => {
-                self.handle_seq(x.id, std::iter::once(recv).chain(args));
+            ExprKind::MethodCall(call) => {
+                self.handle_seq(x.id, std::iter::once(&call.receiver).chain(&call.args));
             }
             _ => {}
         }
@@ -173,7 +174,7 @@ struct RestoreDeletedNodes<'a, 'ast> {
 }
 
 impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
-    fn restore_seq<T>(&mut self, parent: NodeId, nodes: &mut Vec<T>)
+    fn restore_seq<T>(&mut self, parent: NodeId, nodes: &mut ThinVec<T>)
     where
         T: GetNodeId + ListNodeIds + MutVisit + AsMacNodeRef,
     {
@@ -203,11 +204,11 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
             ins_after.entry(last_pred).or_insert_with(Vec::new).push(dn);
         }
 
-        let result = Vec::with_capacity(nodes.len() + deleted.len());
+        let result = ThinVec::with_capacity(nodes.len() + deleted.len());
         let old_nodes = mem::replace(nodes, result);
         let counter = self.counter;
         let node_map = &mut *self.node_map;
-        let mut push_ins_after = |nodes: &mut Vec<_>, id| {
+        let mut push_ins_after = |nodes: &mut ThinVec<_>, id| {
             for dn in ins_after.remove(&id).into_iter().flat_map(|x| x) {
                 let mut n = T::clone_from_mac_node_ref(dn.node);
                 number_nodes_with(&mut n, counter);
@@ -260,17 +261,17 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
             ExprKind::Array(elements) | ExprKind::Call(_, elements) | ExprKind::Tup(elements) => {
                 self.restore_seq(id, elements);
             }
-            ExprKind::MethodCall(_, recv, args, _) => {
+            ExprKind::MethodCall(call) => {
                 // Merge the receiver and args into a single list.
-                let mut all = std::iter::once(mem::replace(recv, mk().err_expr()))
-                    .chain(mem::take(args))
+                let mut all = std::iter::once(mem::replace(&mut call.receiver, mk().err_expr()))
+                    .chain(mem::take(&mut call.args))
                     .collect();
 
                 self.restore_seq(id, &mut all);
 
                 // Pull the new receiver and elements out of the merged list.
-                *recv = all.remove(0);
-                *args = all;
+                call.receiver = all.remove(0);
+                call.args = all;
             }
             _ => {}
         }

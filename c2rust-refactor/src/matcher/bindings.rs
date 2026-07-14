@@ -4,9 +4,10 @@ use std::convert::{TryFrom, TryInto};
 
 use derive_more::{From, TryInto};
 use rustc_ast::ptr::P;
+use rustc_ast::token::Lit;
 use rustc_ast::token::{LitKind as TokenLitKind, Token, TokenKind};
-use rustc_ast::tokenstream::{Cursor, Spacing, TokenStream, TokenTree};
-use rustc_ast::{Expr, Item, Lit, Pat, Path, Stmt, Ty};
+use rustc_ast::tokenstream::{Spacing, TokenStream, TokenTree, TokenTreeCursor};
+use rustc_ast::{Expr, Item, Pat, Path, Stmt, Ty};
 use rustc_span::source_map::DUMMY_SP;
 use rustc_span::symbol::{Ident, Symbol};
 
@@ -291,7 +292,7 @@ impl Type {
     }
 }
 
-fn maybe_get_type(c: &mut Cursor) -> Type {
+fn maybe_get_type(c: &mut TokenTreeCursor) -> Type {
     let mut c_idx = 0;
     if let Some(TokenTree::Token(
         Token {

@@ -434,6 +434,19 @@ trait CollectMacros {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>);
 }
 
+impl CollectMacros for FormatArgs {
+    fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
+        for (old, new) in old
+            .arguments
+            .all_args()
+            .iter()
+            .zip(new.arguments.all_args())
+        {
+            CollectMacros::collect_macros(&old.expr, &new.expr, cx);
+        }
+    }
+}
+
 include!(concat!(env!("OUT_DIR"), "/mac_table_gen.inc.rs"));
 
 impl<T: CollectMacros + ?Sized> CollectMacros for Rc<T> {

@@ -1,5 +1,6 @@
 //! Miscellaneous utility functions.
 use rustc_ast::ptr::P;
+use rustc_ast::token::{self, Lit};
 use rustc_ast::*;
 use rustc_hir::def::{self, Namespace, Res};
 use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
@@ -29,10 +30,7 @@ impl PatternSymbol for Ident {
 
 impl PatternSymbol for Lit {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match self.kind {
-            LitKind::Err => Some(self.token_lit.symbol),
-            _ => None,
-        }
+        (self.kind == token::LitKind::Err).then_some(self.symbol)
     }
 }
 
@@ -93,10 +91,11 @@ impl PatternSymbol for Ty {
 
 impl PatternSymbol for MacCall {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        match &*self.args {
-            MacArgs::Empty => self.path.pattern_symbol(),
-            _ => None,
-        }
+        self.args
+            .tokens
+            .is_empty()
+            .then(|| self.path.pattern_symbol())
+            .flatten()
     }
 }
 
@@ -187,9 +186,9 @@ impl UseInfo {
     /// Retrieve the list of Idents and their NodeIds defined by the given UseTree
     pub fn from_use_tree(tree: &UseTree, id0: NodeId) -> Vec<Self> {
         match &tree.kind {
-            UseTreeKind::Simple(_, id1, id2) => vec![Self {
+            UseTreeKind::Simple(_) => vec![Self {
                 ident: tree.ident(),
-                ids: vec![id0, *id1, *id2],
+                ids: vec![id0],
             }],
             // TODO: support globs but the AST doesn't tell us
             // which identifiers are imported right now
@@ -235,7 +234,7 @@ pub fn split_uses(item: P<Item>) -> SmallVec<[P<Item>; 1]> {
     let mut out = smallvec![];
     let initial_path = Path {
         span: use_tree.prefix.span,
-        segments: vec![],
+        segments: vec![].into(),
         tokens: None,
     };
     let id = item.id;
@@ -263,8 +262,19 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
             }
             Macro(..) => Some(Namespace::MacroNS),
 
-            ExternCrate | Use | ForeignMod | AnonConst | InlineConst | OpaqueTy | Field
-            | LifetimeParam | GlobalAsm | Impl | Closure | Generator | ImplTraitPlaceholder => None,
+            ExternCrate
+            | Use
+            | ForeignMod
+            | AnonConst
+            | InlineConst
+            | OpaqueTy
+            | Field
+            | LifetimeParam
+            | GlobalAsm
+            | Closure
+            | Generator
+            | Impl { .. }
+            | ImplTraitPlaceholder => None,
         },
 
         Res::PrimTy(..) | Res::SelfTyParam { .. } | Res::SelfTyAlias { .. } | Res::ToolMod => {

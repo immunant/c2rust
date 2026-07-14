@@ -68,13 +68,13 @@ impl TryMatch for Path {
     }
 }
 
-impl TryMatch for Lit {
+impl TryMatch for TokenLit {
     fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         if mcx.maybe_capture_lit(self, target)? {
             return Ok(());
         }
 
-        default_try_match_lit(self, target, mcx)
+        default_try_match_token_lit(self, target, mcx)
     }
 }
 

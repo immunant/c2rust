@@ -439,7 +439,7 @@ fn token_rewrite_map(
 
 fn rewrite_tokens(
     invoc_id: InvocId,
-    tts: tokenstream::Cursor,
+    tts: tokenstream::TokenTreeCursor,
     rewrites: &mut BTreeMap<BytePos, RewriteItem>,
 ) -> TokenStream {
     let mut new_tts = Vec::new();
@@ -489,7 +489,7 @@ fn convert_token_rewrites(
     rewrite_vec: Vec<RewriteItem>,
     mac_table: &MacTable,
     matched_ids: &mut Vec<(NodeId, NodeId)>,
-) -> HashMap<InvocId, P<MacArgs>> {
+) -> HashMap<InvocId, P<DelimArgs>> {
     let mut rewrite_map = token_rewrite_map(rewrite_vec, matched_ids);
     let invoc_ids = rewrite_map
         .values()
@@ -502,14 +502,10 @@ fn convert_token_rewrites(
                 .get_invoc(invoc_id)
                 .expect("recorded token rewrites for nonexistent invocation?");
             if let InvocKind::Mac(mac) = invoc {
-                let old_tts = mac.args.inner_tokens();
+                let old_tts = mac.args.tokens.clone();
                 let new_tts = rewrite_tokens(invoc_id, old_tts.into_trees(), &mut rewrite_map);
                 let mut new_args = mac.args.clone();
-                match *new_args {
-                    MacArgs::Delimited(.., ref mut tokens) => *tokens = new_tts,
-                    MacArgs::Eq(..) => todo!("Rewrite attribute macros"),
-                    _ => {}
-                }
+                new_args.tokens = new_tts;
                 Some((invoc_id, new_args))
             } else {
                 None
@@ -525,7 +521,7 @@ fn convert_token_rewrites(
 /// remaining nodes that were unaffected by the collapsing.
 struct ReplaceTokens<'a> {
     mac_table: &'a MacTable<'a>,
-    new_args: HashMap<InvocId, P<MacArgs>>,
+    new_args: HashMap<InvocId, P<DelimArgs>>,
     matched_ids: &'a mut Vec<(NodeId, NodeId)>,
 }
 
@@ -641,7 +637,7 @@ pub fn collapse_macros(krate: &mut Crate, mac_table: &MacTable) -> Vec<(NodeId, 
         debug!(
             "new tokens for {:?} = {:?}",
             k,
-            rustc_ast_pretty::pprust::tts_to_string(&v.inner_tokens())
+            rustc_ast_pretty::pprust::tts_to_string(&v.tokens)
         );
     }
 

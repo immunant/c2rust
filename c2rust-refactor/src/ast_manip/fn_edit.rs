@@ -3,7 +3,6 @@ use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::*;
-use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use smallvec::smallvec;
@@ -245,8 +244,10 @@ where
     }
 
     fn visit_foreign_mod(&mut self, nm: &mut ForeignMod) {
-        nm.items
-            .flat_map_in_place(|i| self.flat_map_foreign_item(i));
+        nm.items = std::mem::take(&mut nm.items)
+            .into_iter()
+            .flat_map(|i| self.flat_map_foreign_item(i))
+            .collect();
     }
 
     fn flat_map_foreign_item(&mut self, i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {

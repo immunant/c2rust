@@ -20,6 +20,7 @@ mod visit;
 mod visit_node;
 
 pub use self::ast_deref::AstDeref;
+pub(crate) use self::ast_equiv::format_args_structure_equiv;
 pub use self::ast_equiv::AstEquiv;
 pub use self::ast_map::{
     map_ast, map_ast_into, map_ast_into_unified, map_ast_unified, AstMap, NodeTable, UnifiedAstMap,

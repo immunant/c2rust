@@ -23,7 +23,8 @@ use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::MacCall;
 use rustc_ast::{
-    Expr, ExprKind, Item, ItemKind, Label, MacArgs, Pat, PatKind, Path, Stmt, StmtKind, Ty, TyKind,
+    DelimArgs, Expr, ExprKind, Item, ItemKind, Label, Pat, PatKind, Path, Stmt, StmtKind, Ty,
+    TyKind,
 };
 use rustc_ast_pretty::pprust;
 use rustc_data_structures::sync::Lrc;
@@ -83,7 +84,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
             {
                 let nt = match bv.clone() {
                     BindingValue::Path(x) => Nonterminal::NtPath(P(x)),
-                    BindingValue::Lit(x) => Nonterminal::NtLiteral(mk().span(x.span).lit_expr(x)),
+                    BindingValue::Lit(x) => Nonterminal::NtLiteral(mk().span(span).lit_expr(x)),
                     BindingValue::Expr(x) => Nonterminal::NtExpr(x),
                     BindingValue::Pat(x) => Nonterminal::NtPat(x),
                     BindingValue::Ty(x) => Nonterminal::NtTy(x),
@@ -108,12 +109,12 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
     }
 }
 
-fn unwrap_or_panic_tts<T, E>(x: Result<T, E>, args: &MacArgs, kind: &str) -> T
+fn unwrap_or_panic_tts<T, E>(x: Result<T, E>, args: &DelimArgs, kind: &str) -> T
 where
     E: std::fmt::Debug,
 {
     x.unwrap_or_else(|e| {
-        let tts = pprust::tts_to_string(&args.inner_tokens());
+        let tts = pprust::tts_to_string(&args.tokens);
         panic!("Failed to parse {kind} parse!({tts}): {e:?}");
     })
 }
@@ -165,7 +166,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         match e.kind {
             ExprKind::While(_, _, ref mut label)
             | ExprKind::ForLoop(_, _, _, ref mut label)
-            | ExprKind::Loop(_, ref mut label)
+            | ExprKind::Loop(_, ref mut label, _)
             | ExprKind::Block(_, ref mut label)
             | ExprKind::Break(ref mut label, _)
             | ExprKind::Continue(ref mut label) => {
@@ -175,7 +176,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             ExprKind::MacCall(ref mc) if mc.path.is_named("parse") => {
                 let mut parser = Parser::new(
                     &self.cx.session().parse_sess,
-                    mc.args.inner_tokens().clone(),
+                    mc.args.tokens.clone(),
                     false,
                     None,
                 );
@@ -201,7 +202,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
-                mc.args.inner_tokens().clone(),
+                mc.args.tokens.clone(),
                 false,
                 None,
             );
@@ -225,7 +226,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
-                mc.args.inner_tokens().clone(),
+                mc.args.tokens.clone(),
                 false,
                 None,
             );
@@ -251,7 +252,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
-                mcs.mac.args.inner_tokens().clone(),
+                mcs.mac.args.tokens.clone(),
                 false,
                 None,
             );
@@ -276,7 +277,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         {
             let mut parser = Parser::new(
                 &self.cx.session().parse_sess,
-                mc.args.inner_tokens().clone(),
+                mc.args.tokens.clone(),
                 false,
                 None,
             );
@@ -291,18 +292,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
-        match &mut *mac.args {
-            MacArgs::Empty => {}
-            MacArgs::Delimited(_span, _delim, ts) => {
-                *ts = self.subst_token_stream_bindings(std::mem::take(ts));
-            }
-            MacArgs::Eq(_span, eq) => {
-                // According to the rustc AST, this only shows up for
-                // key-value attributes, which users shouldn't put into
-                // a substitution
-                unimplemented!("Unsupported substitution for MacArgsEq: {eq:#?}");
-            }
-        }
+        mac.args.tokens = self.subst_token_stream_bindings(std::mem::take(&mut mac.args.tokens));
 
         mut_visit::noop_visit_mac(mac, self)
     }
