@@ -22,7 +22,7 @@ pub enum NodeKind {
     /// that don't change the type or value of the pointer.
     Copy,
 
-    /// [`Field`] projection.
+    /// [`FieldIdx`](rustc_target::abi::FieldIdx) projection.
     ///
     /// Used for operations like `_2 = &(*_1).0`.
     Project(usize, Vec<usize>),
@@ -236,7 +236,7 @@ impl Display for Node {
 
 newtype_index!(
     /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-    pub struct NodeId { DEBUG_FORMAT = "NodeId({})" }
+    pub struct NodeId {}
 );
 
 impl Serialize for NodeId {
@@ -331,7 +331,7 @@ impl Display for Graph {
 
 newtype_index!(
     /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
-    pub struct GraphId { DEBUG_FORMAT = "GraphId({})" }
+    pub struct GraphId {}
 );
 
 impl Serialize for GraphId {
