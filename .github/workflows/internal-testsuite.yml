@@ -128,7 +128,7 @@ jobs:
         export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
-        ./tests/integration/test.py curl json-c libgit2 lua nginx zstd libxml2 python2 libmcs
+        ./tests/integration/test.py --refactor-jobs 1 curl json-c libgit2 lua nginx zstd libxml2 python2 libmcs
 
     - uses: actions/upload-artifact@v4
       with:

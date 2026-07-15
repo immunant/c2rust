@@ -263,7 +263,7 @@ def run_tests(conf: Config, generated_scripts: set[Path]):
     # Each `refactor` stage runs `c2rust-refactor` holding compiler state for a
     # whole transpiled crate, so overlapping refactor stages dominate the peak
     # memory of a testsuite run.
-    refactor_stage_semaphore = threading.Semaphore(1)
+    refactor_stage_semaphore = threading.Semaphore(conf.refactor_jobs)
 
     tests = [
         Test(Path(td), generated_scripts, refactor_stage_semaphore)
