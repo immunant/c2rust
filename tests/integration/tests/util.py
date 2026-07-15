@@ -17,6 +17,7 @@ class Config(object):
         self.projects = args.projects  # projects filter
         self.stages = args.stages  # stage filter
         self.ignore_requirements = args.ignore_requirements
+        self.refactor_jobs = args.refactor_jobs
         self.project_dirs = find_project_dirs(self)
         self.project_conf = {cf: get_yaml(cf) for cf in get_conf_files(self)}
 
