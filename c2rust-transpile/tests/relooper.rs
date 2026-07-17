@@ -19,10 +19,6 @@ fn run_transpiler() {
 }
 
 #[test]
-#[cfg_attr(
-    debug_assertions,
-    ignore = "the relooper exhausts its stack in debug builds"
-)]
 fn issue_1821_transpiles_quickly() {
     // HACK: Use a thread with a larger stack size. Relooper is tail-recursive,
     // and long functions can cause us to recurse far enough to overflow the
@@ -31,7 +27,7 @@ fn issue_1821_transpiles_quickly() {
     //
     // See https://github.com/immunant/c2rust/issues/1908
     std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
+        .stack_size(64 * 1024 * 1024)
         .spawn(run_transpiler)
         .unwrap()
         .join()
