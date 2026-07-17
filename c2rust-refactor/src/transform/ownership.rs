@@ -362,7 +362,7 @@ fn do_split_variants(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
                 return smallvec![fl];
             }
 
-            let path_str = cx.ty_ctxt().def_path(def_id).to_string_no_crate_verbose();
+            let path_str = ownership::def_path_string_no_crate(cx.ty_ctxt(), def_id);
 
             // For consistency, we run the split logic even for funcs with only one mono.  This way
             // the "1 variant, N monos" case is handled here, and the "N variants, N monos" case is
