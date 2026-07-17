@@ -3599,7 +3599,7 @@ impl<'c> Translation<'c> {
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             ArraySubscript(_, lhs, rhs, lrvalue) => self
-                .convert_array_subscript(ctx, lhs, rhs, lrvalue, override_ty, true)
+                .convert_array_subscript(ctx, override_ty, lhs, rhs, lrvalue, true)
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             Call(call_expr_ty, func, ref args) => {
@@ -3668,6 +3668,30 @@ impl<'c> Translation<'c> {
                 ..
             } => self.convert_atomic(ctx, name, ptr, order, val1, order_fail, val2, weak),
         }
+    }
+
+    /// Converts `expr_id` as if it were wrapped in an `ImplicitCast` expression.
+    pub(crate) fn convert_expr_with_cast(
+        &self,
+        ctx: ExprContext,
+        target_type_id: CQualTypeId,
+        expr_id: CExprId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let source_type_id = self.ast_context[expr_id].kind.get_qual_type().unwrap();
+
+        let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
+        let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
+
+        let kind = CastKind::from_types(source_type_kind, target_type_kind).unwrap_or_else(|| {
+            warn!(
+                "Unknown CastKind for {source_type_kind:?} to {target_type_kind:?} cast. \
+                Defaulting to BitCast",
+            );
+
+            CastKind::BitCast
+        });
+
+        self.convert_cast(ctx, None, target_type_id, expr_id, kind, None, false)
     }
 
     pub fn convert_constant(&self, constant: ConstIntExpr) -> TranslationResult<Box<Expr>> {
