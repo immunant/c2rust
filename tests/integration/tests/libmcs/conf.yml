@@ -1,5 +1,6 @@
 transpile:
   autogen: true
+  tflags: --reorganize-definitions --disable-refactoring
 
 cargo.transpile:
   autogen: true
@@ -7,6 +8,9 @@ cargo.transpile:
 refactor:
   autogen: true
   transforms:
+    - rename_unnamed
+    - reorganize_definitions
+    - shorten_imported_paths
     - remove_unused_labels
 
 cargo.refactor:
