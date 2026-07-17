@@ -225,11 +225,6 @@ impl RelooperState {
             return;
         }
 
-        let local_successors = blocks
-            .iter()
-            .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
-            .collect();
-
         // Map from each label to the set of labels that reach it. A label does not
         // count as reaching itself unless there is an explicit back edge to that label.
         //
@@ -241,13 +236,26 @@ impl RelooperState {
         // blocks. Global reachability won't work here because when we're inside a loop
         // body we don't want to consider back edges, which we strip before processing
         // the loop body.
-        let strict_reachable_from = flip_edges(transitive_closure(&local_successors));
+        //
+        // TODO: If possible we should avoid recomputing this every time `relooper`
+        // recurses. I think the reachability information only meaningfully changes when
+        // we strip a back edge, so in theory we should only need to recompute this after
+        // processing a loop.
+        let strict_reachable_from = |blocks: &BasicBlocks| {
+            let local_successors = blocks
+                .iter()
+                .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
+                .collect();
+            flip_edges(transitive_closure(&local_successors))
+        };
 
         // Handle our simple case of only 1 entry. If there's no back edge to the entry
         // we generate a `Simple` structure, otherwise we make a loop.
         if entries.len() == 1 {
             let entry = entries.first().unwrap();
-            if !strict_reachable_from.contains_key(entry) {
+            let has_back_edge = blocks.values().any(|block| block.has_successor(entry));
+
+            if !has_back_edge {
                 let bb = blocks
                     .swap_remove(entry)
                     .expect("Entry not present in current blocks");
@@ -295,10 +303,12 @@ impl RelooperState {
 
                 self.relooper(new_entries, blocks, result);
             } else {
-                self.make_loop(&strict_reachable_from, blocks, entries, result);
+                self.make_loop(&strict_reachable_from(&blocks), blocks, entries, result);
             }
             return;
         }
+
+        let strict_reachable_from = strict_reachable_from(&blocks);
 
         // Sanity check that we have entries that are in our current set of blocks. We
         // may have entries that aren't present in our current blocks when we're inside

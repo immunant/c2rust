@@ -302,6 +302,21 @@ impl<S1, S2> BasicBlock<StructureLabel<S1>, S2> {
             })
             .collect()
     }
+
+    /// Check whether this block has a `GoTo` to `target`.
+    fn has_successor(&self, target: &Label) -> bool {
+        let is_target = |label: &StructureLabel<S1>| match label {
+            StructureLabel::GoTo(successor) => successor == target,
+            _ => false,
+        };
+
+        match &self.terminator {
+            End => false,
+            Jump(label) => is_target(label),
+            Branch(_, then_label, else_label) => is_target(then_label) || is_target(else_label),
+            Switch { cases, .. } => cases.iter().any(|(_, label)| is_target(label)),
+        }
+    }
 }
 
 /// Represents the control flow choices one can make when at the end of a `BasicBlock`.
