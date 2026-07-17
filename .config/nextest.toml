@@ -1,0 +1,3 @@
+[[profile.default.overrides]]
+filter = "package(c2rust-transpile) and test(issue_1821_transpiles_quickly)"
+slow-timeout = { period = "30s", terminate-after = 1 }
