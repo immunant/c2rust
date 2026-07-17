@@ -38,7 +38,7 @@ use c2rust_ast_exporter as ast_exporter;
 
 use crate::build_files::{emit_build_files, get_build_dir, CrateConfig};
 use crate::compile_cmds::get_compile_commands;
-pub use crate::translator::ReplaceMode;
+pub use crate::translator::{EnumMode, ReplaceMode};
 use std::prelude::v1::Vec;
 
 type PragmaVec = Vec<(&'static str, Vec<&'static str>)>;
@@ -109,6 +109,7 @@ pub struct TranspilerConfig {
     pub log_level: log::LevelFilter,
     pub edition: RustEdition,
     pub deny_unsafe_op_in_unsafe_fn: bool,
+    pub enum_mode: EnumMode,
 
     /// Run `c2rust-postprocess` after transpiling and potentially refactoring.
     pub postprocess: bool,
