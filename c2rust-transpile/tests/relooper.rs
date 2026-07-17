@@ -16,6 +16,13 @@ fn run_transpiler() {
     cfg.emit_c_decl_map = false;
     cfg.output_dir = Some(output_dir.path().to_owned());
     c2rust_transpile::transpile(cfg, &compile_commands, &[]);
+
+    let output = std::fs::read(output_dir.path().join("src/issue_1821.rs"))
+        .expect("transpiler did not produce issue_1821.rs");
+    assert!(
+        !output.is_empty(),
+        "transpiler produced an empty output file"
+    );
 }
 
 #[test]
