@@ -3832,23 +3832,11 @@ impl<'c> Translation<'c> {
         opt_field_id: Option<CDeclId>,
         is_explicit: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        // A reference must be decayed if a bitcast is required. Const casts in
-        // LLVM 8 are now NoOp casts, so we need to include it as well.
-        match kind {
-            CastKind::IntegralToBoolean
-            | CastKind::FloatingToBoolean
-            | CastKind::PointerToBoolean => {
-                return self.convert_condition(ctx, true, expr);
-            }
-            CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
-                ctx.decay_ref = DecayRef::Yes
-            }
-            CastKind::ArrayToPointerDecay
-            | CastKind::FunctionToPointerDecay
-            | CastKind::BuiltinFnToFnPtr => {
-                ctx.needs_address = true;
-            }
-            _ => {}
+        if matches!(
+            kind,
+            CastKind::IntegralToBoolean | CastKind::FloatingToBoolean | CastKind::PointerToBoolean
+        ) {
+            return self.convert_condition(ctx, true, expr);
         }
 
         let expr_kind = &self.ast_context.index_unwrap_parens(expr).kind;
@@ -3873,6 +3861,20 @@ impl<'c> Translation<'c> {
                     return self.convert_expr(ctx, expr, Some(target_ty));
                 }
             }
+        }
+
+        match kind {
+            // A reference must be decayed if a bitcast is required. Const casts in
+            // LLVM 8 are now NoOp casts, so we need to include it as well.
+            CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
+                ctx.decay_ref = DecayRef::Yes
+            }
+            CastKind::ArrayToPointerDecay
+            | CastKind::FunctionToPointerDecay
+            | CastKind::BuiltinFnToFnPtr => {
+                ctx.needs_address = true;
+            }
+            _ => {}
         }
 
         let mut val = self.convert_expr(ctx, expr, None)?;
