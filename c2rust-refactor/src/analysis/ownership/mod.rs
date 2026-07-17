@@ -15,7 +15,7 @@
 //! its callees and simplifying to produce a complete summary for the current function.
 
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::{self, Write};
 use std::u32;
 
 use log::{debug, log_enabled, Level};
@@ -43,6 +43,23 @@ mod mono;
 /*
 mod mono_filter;
 */
+
+/// Render a definition path in the bracketed format used by C2Rust's
+/// ownership annotations and fixtures, e.g. `::ptr[0]::{{impl}}[1]::offset[0]`,
+/// with every disambiguator included even when zero. rustc's
+/// `DefPath::to_string_no_crate_verbose` printed this form when the ownership
+/// analysis was written, but stopped around 2020 (rust-lang/rust#70334),
+/// silently breaking the `#[ownership_variant_of(...)]` fixture expectations
+/// and the hard-coded `ptr::offset` constraint below.
+pub fn def_path_string_no_crate(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+    let path = tcx.def_path(def_id);
+    let mut result = String::new();
+    for component in path.data {
+        write!(result, "::{}[{}]", component.data, component.disambiguator).unwrap();
+    }
+    result
+}
+
 mod debug;
 
 use self::annot::{handle_attrs, handle_marks};
@@ -259,7 +276,7 @@ fn is_mut_t(ty: &Ty) -> bool {
 // more generic
 fn register_std_constraints<'a, 'tcx, 'lty>(ctxt: &mut Ctxt<'lty, 'tcx>, tctxt: TyCtxt<'tcx>) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
-        let fn_name_path = tctxt.def_path(*def_id).to_string_no_crate_verbose();
+        let fn_name_path = def_path_string_no_crate(tctxt, *def_id);
 
         // #[ownership_constraints(le(WRITE, _0), le(WRITE, _1), le(_0, _1))]
         // fn offset<T>(self: *mut T, _: isize) -> *mut T;
@@ -619,7 +636,7 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
         format!("{:?} -> {:?}", pretty_slice(inputs), Pretty(output))
     };
 
-    let path_str = |def_id| dcx.ty_ctxt().def_path(def_id).to_string_no_crate_verbose();
+    let path_str = |def_id| def_path_string_no_crate(dcx.ty_ctxt(), def_id);
 
     let mut ids = results.statics.keys().cloned().collect::<Vec<_>>();
     ids.sort();
