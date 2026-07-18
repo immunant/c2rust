@@ -6,7 +6,7 @@ use rustc_index::vec::IndexVec;
 use rustc_middle::mir::*;
 use rustc_middle::ty::{Ty, TyKind};
 use rustc_span::source_map::{Spanned, DUMMY_SP};
-use rustc_target::abi::VariantIdx;
+use rustc_target::abi::{FieldIdx, VariantIdx};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::expect;
@@ -136,7 +136,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             };
 
             let span = match &decl.local_info {
-                Some(box LocalInfo::User(ClearCrossCrate::Set(binding))) => Some(binding),
+                ClearCrossCrate::Set(box LocalInfo::User(binding)) => Some(binding),
                 _ => None,
             }
             .map(|binding| match binding {
@@ -287,7 +287,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             let last_elem = projection.pop().unwrap();
             let parent = Place {
                 local: lv.local.clone(),
-                projection: self.cx.tcx.intern_place_elems(&projection),
+                projection: self.cx.tcx.mk_place_elems(&projection),
             };
             let (base_ty, base_perm, base_variant) = self.place_lty_downcast(&parent);
 
@@ -325,10 +325,15 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         }
     }
 
-    fn field_lty(&mut self, base_ty: ITy<'lty, 'tcx>, v: VariantIdx, f: Field) -> ITy<'lty, 'tcx> {
+    fn field_lty(
+        &mut self,
+        base_ty: ITy<'lty, 'tcx>,
+        v: VariantIdx,
+        f: FieldIdx,
+    ) -> ITy<'lty, 'tcx> {
         match base_ty.ty.kind() {
             TyKind::Adt(adt, _substs) => {
-                let field_def = &adt.variants()[v].fields[f.index()];
+                let field_def = &adt.variants()[v].fields[f];
                 let poly_ty = self.static_ty(field_def.did);
                 self.ilcx.subst(poly_ty, &base_ty.args)
             }
@@ -418,11 +423,12 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                         let field_def_id = adt.non_enum_variant().fields[union_variant].did;
                         let poly_field_ty = self.static_ty(field_def_id);
                         let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
-                        let (op_ty, op_perm) = self.operand_lty(&ops[0]);
+                        let (op_ty, op_perm) = self.operand_lty(&ops[FieldIdx::from_usize(0)]);
                         self.propagate(field_ty, op_ty, op_perm);
                     } else {
                         for (i, op) in ops.iter().enumerate() {
-                            let field_def_id = adt.variant(disr).fields[i].did;
+                            let field_def_id =
+                                adt.variant(disr).fields[FieldIdx::from_usize(i)].did;
                             let poly_field_ty = self.static_ty(field_def_id);
                             let field_ty = self.ilcx.subst(poly_field_ty, adt_ty.args);
                             let (op_ty, op_perm) = self.operand_lty(op);
@@ -595,12 +601,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 }
                 StatementKind::Intrinsic(..) => unimplemented!(),
                 StatementKind::FakeRead(..)
+                | StatementKind::PlaceMention(..)
                 | StatementKind::SetDiscriminant { .. }
                 | StatementKind::StorageLive(_)
                 | StatementKind::StorageDead(_)
                 | StatementKind::Retag { .. }
                 | StatementKind::AscribeUserType(..)
                 | StatementKind::Coverage(..)
+                | StatementKind::ConstEvalCounter
                 | StatementKind::Nop => {}
             }
         }
@@ -620,20 +628,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             // InlineAsm has some Lvalues and Operands, but we can't do anything useful
             // with them without analysing the actual asm code.
             | TerminatorKind::InlineAsm { .. }
-            | TerminatorKind::Abort => {}
+            | TerminatorKind::Terminate => {}
 
-            TerminatorKind::DropAndReplace {
-                ref place,
-                ref value,
-                ..
-            } => {
-                let (loc_ty, loc_perm) = self.place_lty(place);
-                let (val_ty, val_perm) = self.operand_lty(value);
-                self.propagate(loc_ty, val_ty, val_perm);
-                self.propagate_perm(Perm::write(), loc_perm);
-                debug!("    {:?}: {:?}", place, loc_ty);
-                debug!("    ^-- {:?}: {:?}", value, val_ty);
-            }
+            // `DropAndReplace` no longer exists in target MIR. Its replacement
+            // assignment is handled by the ordinary statement analysis above.
 
             TerminatorKind::Call {
                 ref func,

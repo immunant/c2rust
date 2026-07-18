@@ -127,9 +127,6 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
         let id = e.id;
 
         match &mut e.kind {
-            ExprKind::Box(content) => {
-                illtyped |= self.ensure(content, ty.boxed_ty());
-            }
             ExprKind::Array(elems) => {
                 let expected_elem_ty = ty.builtin_index().unwrap();
                 for e in elems {
@@ -155,9 +152,12 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                     }
                 }
             }
-            ExprKind::MethodCall(_seg, recv, args, _span) => {
+            ExprKind::MethodCall(call) => {
                 if let Some(fn_sig) = opt_fn_sig {
-                    for (i, arg) in std::iter::once(recv).chain(args).enumerate() {
+                    for (i, arg) in std::iter::once(&mut call.receiver)
+                        .chain(&mut call.args)
+                        .enumerate()
+                    {
                         if let Some(&ty) = fn_sig.inputs().get(i) {
                             illtyped |= self.ensure(arg, ty);
                         }
@@ -278,9 +278,12 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
         for i in items.iter_mut() {
             let id = i.id;
             match &mut i.kind {
-                ItemKind::Static(_ty, _mutbl, Some(expr)) => {
+                ItemKind::Static(item) => {
+                    let Some(expr) = &mut item.expr else {
+                        continue;
+                    };
                     let did = self.cx.node_def_id(id);
-                    let expected_ty = self.cx.ty_ctxt().type_of(did);
+                    let expected_ty = self.cx.ty_ctxt().type_of(did).subst_identity();
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
 
                     let tcx = self.cx.ty_ctxt();
@@ -294,9 +297,12 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
 
                     self.ensure(expr, expected_ty);
                 }
-                ItemKind::Const(_defaultness, _ty, Some(expr)) => {
+                ItemKind::Const(item) => {
+                    let Some(expr) = &mut item.expr else {
+                        continue;
+                    };
                     let did = self.cx.node_def_id(id);
-                    let expected_ty = self.cx.ty_ctxt().type_of(did);
+                    let expected_ty = self.cx.ty_ctxt().type_of(did).subst_identity();
                     self.ensure(expr, expected_ty);
                 }
                 _ => {}
@@ -326,12 +332,12 @@ fn handle_struct<'tcx, F>(
                                     return);
     let vdef = adt_def.variant_of_res(variant_hir_res);
 
-    mut_visit::visit_vec(&mut se.fields, |f: &mut ExprField| {
+    for f in &mut se.fields {
         let idx = match_or!([cx.ty_ctxt().find_field_index(f.ident, vdef)] Some(x) => x; return);
         let fdef = &vdef.fields[idx];
         let field_ty = fdef.ty(cx.ty_ctxt(), substs);
         ensure(&mut f.expr, field_ty);
-    });
+    }
     if let StructRest::Base(ref mut e) = se.rest {
         ensure(e, ty);
     }

@@ -41,7 +41,7 @@ use std::collections::HashMap;
 
 use ena::unify::{InPlace, UnificationTable, UnifyKey};
 use rustc_arena::DroplessArena;
-use rustc_hir::def_id::DefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::*;
 use rustc_middle::hir::nested_filter;
@@ -202,7 +202,7 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
     fn handle_body(&mut self, body_id: BodyId) {
         let tables = self.tcx.typeck_body(body_id);
 
-        for (&local_id, &ty) in tables.node_types().iter() {
+        for (local_id, &ty) in tables.node_types().items_in_stable_order() {
             let id = HirId {
                 owner: tables.hir_owner,
                 local_id,
@@ -292,12 +292,12 @@ impl<'lty, 'tcx> type_map::TypeSource for LabelTysSource<'lty, 'tcx> {
     }
 
     fn def_type(&mut self, did: DefId) -> Option<LTy<'lty, 'tcx>> {
-        let ty = self.tcx.type_of(did);
+        let ty = self.tcx.type_of(did).subst_identity();
         Some(self.ltt.label(ty))
     }
 
     fn fn_sig(&mut self, did: DefId) -> Option<LFnSig<'lty, 'tcx>> {
-        let sig = self.tcx.fn_sig(did);
+        let sig = self.tcx.fn_sig(did).subst_identity();
         Some(self.ltt.label_sig(sig.skip_binder()))
     }
 
@@ -458,7 +458,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
             _ => {}
         }
 
-        self.ltt.label(self.tcx.type_of(id))
+        self.ltt.label(self.tcx.type_of(id).subst_identity())
     }
 
     fn def_lty(&self, id: DefId) -> LTy<'lty, 'tcx> {
@@ -470,7 +470,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn compute_def_sig(&self, id: DefId) -> LFnSig<'lty, 'tcx> {
-        let sig = self.tcx.fn_sig(id);
+        let sig = self.tcx.fn_sig(id).subst_identity();
         let is_extern = match sig.skip_binder().abi {
             Abi::Rust | Abi::RustIntrinsic | Abi::RustCall => false,
             _ => true,
@@ -611,10 +611,6 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         // explicit.)
 
         match e.kind {
-            ExprKind::Box(ref e) => {
-                self.ltt.unify(rty.args[0], self.expr_lty(e));
-            }
-
             ExprKind::Array(ref es) => {
                 for e in &es[..] {
                     self.ltt.unify(rty.args[0], self.expr_lty(e));
@@ -903,14 +899,14 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         decl: &'hir FnDecl,
         body_id: BodyId,
         _span: Span,
-        id: HirId,
+        id: LocalDefId,
     ) {
         if let intravisit::FnKind::Closure = kind {
             return;
         }
 
         let body = self.tcx.hir().body(body_id);
-        let def_id = self.tcx.hir().local_def_id(id).to_def_id();
+        let def_id = id.to_def_id();
         let sig = self.def_sig(def_id);
         // The results of `def_sig` and `def_lty` are produced by calling `tcx.fn_sig` /
         // `tcx.type_of` and giving the results fresh labels, so they initially have no connection
@@ -939,13 +935,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
     fn visit_field_def(&mut self, field: &'hir FieldDef) {
         // Unify the field's type annotation with the definition type.
-        let def_id = self.tcx.hir().local_def_id(field.hir_id).to_def_id();
+        let def_id = field.def_id.to_def_id();
         self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
         intravisit::walk_field_def(self, field);
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
-        let def_id = self.tcx.hir().local_def_id(i.hir_id()).to_def_id();
+        let def_id = i.hir_id().owner.def_id.to_def_id();
         match i.kind {
             ForeignItemKind::Fn(ref decl, _, _) => {
                 let sig = self.def_sig(def_id);

@@ -317,7 +317,7 @@ fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'sta
 
 fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
     match nmeta {
-        ast::NestedMetaItem::Literal(ref lit) => match lit.kind {
+        ast::NestedMetaItem::Lit(ref lit) => match lit.kind {
             ast::LitKind::Str(s, _) => Ok(s),
             _ => Err("expected str"),
         },
