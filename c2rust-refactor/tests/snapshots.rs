@@ -474,6 +474,13 @@ fn test_reorganize_multi_namespace() {
 }
 
 #[test]
+fn test_reorganize_self_import_destination() {
+    refactor("reorganize_definitions")
+        .named("reorganize_self_import_destination.rs")
+        .test();
+}
+
+#[test]
 fn test_reorganize_split_namespace_imports() {
     refactor("reorganize_definitions")
         .named("reorganize_split_namespace_imports.rs")

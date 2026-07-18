@@ -98,6 +98,11 @@ struct ModuleInfo {
 
     /// Set of item idents defined in this module, per namespace
     items: PerNS<HashSet<Ident>>,
+
+    /// Targets of simple imports in this module, per namespace. This lets
+    /// destination selection distinguish a real name conflict from an import
+    /// of the declaration being moved into the module.
+    import_targets: PerNS<HashMap<Ident, DefId>>,
 }
 
 impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
@@ -184,43 +189,82 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         }
     }
 
-    /// Pick a destination module for a header item
-    fn find_destination_id(&mut self, declaration: &MovedDecl) -> NodeId {
+    /// Pick a destination module for a header item.
+    ///
+    /// `matching_defs` maps duplicate declarations to the definition retained
+    /// in their place, allowing imports and moved declarations to be compared
+    /// through their canonical targets.
+    fn find_destination_id(
+        &mut self,
+        declaration: &MovedDecl,
+        matching_defs: &HashMap<DefId, DefId>,
+    ) -> NodeId {
         if declaration.parent_header.is_std() {
             let mod_info = self.modules.get(&self.stdlib_id).unwrap();
             return mod_info.id;
         }
 
+        let mut declaration_targets: PerNS<Option<DefId>> = PerNS::default();
+        match &declaration.kind {
+            DeclKind::Item(item) if matches!(item.kind, ItemKind::Use(_)) => {
+                for (namespace, resolution) in self.cx.resolved_imports_for_item(item) {
+                    declaration_targets[namespace] = resolution.opt_def_id();
+                }
+            }
+            _ => {
+                for &namespace in &declaration.namespaces {
+                    declaration_targets[namespace] = Some(declaration.def_id);
+                }
+            }
+        }
+        let canonical = |mut def_id: DefId| {
+            while let Some(&next) = matching_defs.get(&def_id) {
+                def_id = next;
+            }
+            def_id
+        };
+
         // Try to find an existing module to put this item in
-        let dest_module =
-            self.modules.values().find(|dest_module_info| {
-                if dest_module_info.has_main {
-                    return false;
-                }
-                // TODO: This is a simple naive heuristic,
-                // and should be improved upon.
-                if !dest_module_info
-                    .headers
-                    .contains(&declaration.parent_header.path)
-                {
-                    return false;
-                }
+        let dest_module = self.modules.values().find(|dest_module_info| {
+            if dest_module_info.has_main {
+                return false;
+            }
+            // TODO: This is a simple naive heuristic,
+            // and should be improved upon.
+            if !dest_module_info
+                .headers
+                .contains(&declaration.parent_header.path)
+            {
+                return false;
+            }
 
-                if declaration.namespaces.iter().any(|&namespace| {
-                    dest_module_info.items[namespace].contains(&declaration.ident())
-                }) {
+            let conflicts = declaration.namespaces.iter().any(|&namespace| {
+                if !dest_module_info.items[namespace].contains(&declaration.ident()) {
                     return false;
                 }
-
-                let header_ident = declaration.parent_header.ident.as_str();
-                let module_ident = dest_module_info.orig_ident.as_str();
-                if header_ident.len() >= module_ident.len() {
-                    let (base, ext) = header_ident.split_at(module_ident.len());
-                    base == &*module_ident && (ext.is_empty() || ext == "_h")
-                } else {
-                    false
+                match (
+                    dest_module_info.import_targets[namespace].get(&declaration.ident()),
+                    declaration_targets[namespace],
+                ) {
+                    (Some(&import_target), Some(declaration_target)) => {
+                        canonical(import_target) != canonical(declaration_target)
+                    }
+                    _ => true,
                 }
             });
+            if conflicts {
+                return false;
+            }
+
+            let header_ident = declaration.parent_header.ident.as_str();
+            let module_ident = dest_module_info.orig_ident.as_str();
+            if header_ident.len() >= module_ident.len() {
+                let (base, ext) = header_ident.split_at(module_ident.len());
+                base == &*module_ident && (ext.is_empty() || ext == "_h")
+            } else {
+                false
+            }
+        });
         let dest_module = match dest_module {
             Some(m) => m,
             None => {
@@ -626,8 +670,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         } else if let ItemKind::Use(tree) = &item.kind {
                             if matches!(tree.kind, UseTreeKind::Simple(..)) {
                                 let ident = tree.ident();
-                                for (namespace, _) in self.cx.resolved_imports_for_item(item) {
+                                for (namespace, resolution) in
+                                    self.cx.resolved_imports_for_item(item)
+                                {
                                     info.items[namespace].insert(ident);
+                                    if let Some(def_id) = resolution.opt_def_id() {
+                                        info.import_targets[namespace].insert(ident, def_id);
+                                    }
                                 }
                             }
                         } else {
@@ -677,7 +726,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     item.ident_mut().name = Symbol::intern(&new_name);
                 }
 
-                let dest_module_id = self.find_destination_id(&item);
+                let dest_module_id = self.find_destination_id(&item, &matching_defs);
 
                 let ident = item.ident();
                 let dest_module_info = self.modules.get_mut(&dest_module_id).unwrap();
@@ -704,7 +753,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // Move unnamed items into module_items
         for item in unnamed_items.into_iter() {
             let ident = item.ident();
-            let parent = self.find_destination_id(&item);
+            let parent = self.find_destination_id(&item, &matching_defs);
 
             let dest_module_info = &self.modules[&parent];
             let mut path_segments = dest_module_info.path.clone();
@@ -1248,6 +1297,7 @@ impl ModuleInfo {
             header_lines: HashMap::new(),
             headers: HashSet::new(),
             items: PerNS::default(),
+            import_targets: PerNS::default(),
         }
     }
 
@@ -1291,6 +1341,7 @@ impl ModuleInfo {
             header_lines,
             headers,
             items: PerNS::default(),
+            import_targets: PerNS::default(),
         }
     }
 }
