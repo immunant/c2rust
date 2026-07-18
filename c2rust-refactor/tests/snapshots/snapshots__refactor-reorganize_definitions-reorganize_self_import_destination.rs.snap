@@ -1,0 +1,25 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_self_import_destination.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+pub mod dest {
+
+    // =============== BEGIN dest_h ================
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct item {
+        pub x: i32,
+    }
+
+    pub fn get(v: crate::dest::item) -> i32 {
+        v.x
+    }
+}
+
+fn main() {}
