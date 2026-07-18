@@ -460,6 +460,13 @@ fn test_reorganize_foreign_types() {
 }
 
 #[test]
+fn test_reorganize_identical_data_enums() {
+    refactor("reorganize_definitions")
+        .named("reorganize_identical_data_enums.rs")
+        .test();
+}
+
+#[test]
 fn test_reorganize_forward_decl_with_local_definition() {
     refactor("reorganize_definitions")
         .named("reorganize_forward_decl_with_local_definition.rs")
@@ -504,15 +511,11 @@ fn test_struct_merge_updates() {
         .test();
 }
 
-/// TODO Broken
-/// `f(x)` doesn't become `x + 1`.
 #[test]
 fn test_test_f_plus_one() {
     refactor("test_f_plus_one").test();
 }
 
-/// TODO Broken
-/// `2` doesn't become `1 + 1`.
 #[test]
 fn test_test_one_plus_one() {
     refactor("test_one_plus_one").test();
@@ -520,9 +523,7 @@ fn test_test_one_plus_one() {
 
 #[test]
 fn test_test_reflect() {
-    refactor("test_reflect")
-        .new_expect_compile_error(true)
-        .test();
+    refactor("test_reflect").test();
 }
 
 #[test]

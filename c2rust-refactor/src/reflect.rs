@@ -446,3 +446,51 @@ fn register_test_reflect(reg: &mut Registry) {
 pub fn register_commands(reg: &mut Registry) {
     register_test_reflect(reg);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustc_hir::def_id::CRATE_DEF_ID;
+    use rustc_span::source_map::Spanned;
+    use rustc_span::{BytePos, Span, SyntaxContext};
+
+    /// The HIR-to-AST conversion must retain a literal's source location on
+    /// the enclosing AST expression, because the literal token itself cannot
+    /// carry a span on this compiler. No current refactor command reflects
+    /// spanned anonymous constants end-to-end, so this is covered at the
+    /// unit level.
+    #[test]
+    fn hir_literal_span_is_kept_on_ast_expr() {
+        rustc_span::create_default_session_globals_then(|| {
+            let lit_span = Span::new(BytePos(10), BytePos(12), SyntaxContext::root(), None);
+            let hir_id = hir::HirId::make_owner(CRATE_DEF_ID);
+            let hir_lit_expr = hir::Expr {
+                hir_id,
+                kind: hir::ExprKind::Lit(Spanned {
+                    node: LitKind::Int(42, LitIntType::Unsuffixed),
+                    span: lit_span,
+                }),
+                span: lit_span,
+            };
+
+            let ast_expr = hir_expr_to_expr(&hir_lit_expr);
+            assert_eq!(ast_expr.span, lit_span);
+            assert!(matches!(ast_expr.kind, ExprKind::Lit(..)));
+
+            // A nested constant keeps the span on the literal leaf; the
+            // parent expression deliberately stays unspanned (see
+            // `hir_expr_to_expr`).
+            let outer_span = Span::new(BytePos(9), BytePos(12), SyntaxContext::root(), None);
+            let hir_neg_expr = hir::Expr {
+                hir_id,
+                kind: hir::ExprKind::Unary(hir::UnOp::Neg, &hir_lit_expr),
+                span: outer_span,
+            };
+
+            let ast_expr = hir_expr_to_expr(&hir_neg_expr);
+            assert_eq!(ast_expr.span, DUMMY_SP);
+            let inner = expect!([&ast_expr.kind] ExprKind::Unary(_, e) => e);
+            assert_eq!(inner.span, lit_span);
+        });
+    }
+}

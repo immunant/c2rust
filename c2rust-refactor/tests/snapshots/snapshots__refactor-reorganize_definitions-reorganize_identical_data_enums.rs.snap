@@ -1,0 +1,28 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_identical_data_enums.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code)]
+
+pub mod types_h {
+    #[repr(C)]
+    pub enum E {
+        V(i32),
+    }
+}
+pub mod first {
+
+    pub use crate::types_h::E;
+}
+
+pub mod second {
+
+    pub use crate::types_h::E;
+}
+
+fn main() {
+    let _ = first::E::V(1);
+    let _ = second::E::V(2);
+}
