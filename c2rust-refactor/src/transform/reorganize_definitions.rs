@@ -10,7 +10,6 @@ use rustc_ast::ptr::P;
 use rustc_ast::util::comments::{Comment, CommentStyle};
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, item_to_string, PrintState};
-use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_hir::def::{DefKind, Namespace, PerNS, Res};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::{self as hir, Node};
@@ -308,7 +307,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         collect_used_idents(item);
                     }
 
-                    ItemKind::Static(_, _, _) if !is_exported(item) => {
+                    ItemKind::Static(_) if !is_exported(item) => {
                         keep_items.insert(item.id);
                         collect_used_idents(item);
                     }
@@ -413,10 +412,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 // TODO: handle use's at the top of the crate
                 if let ItemKind::Mod(_, ModKind::Loaded(ref mut mod_items, _, _)) = &mut item.kind {
                     // Split complex uses before iterating over the items
-                    mod_items.flat_map_in_place(|item| match &item.kind {
-                        ItemKind::Use(tree) if is_nested(tree) => split_uses(item),
-                        _ => smallvec![item],
-                    });
+                    *mod_items = std::mem::take(mod_items)
+                        .into_iter()
+                        .flat_map(|item| match &item.kind {
+                            ItemKind::Use(tree) if is_nested(tree) => split_uses(item),
+                            _ => smallvec![item],
+                        })
+                        .collect();
 
                     let needed_items = keep_items(&mod_items);
 
@@ -530,7 +532,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     segments: vec![
                         PathSegment::path_root(DUMMY_SP),
                         PathSegment::from_ident(Ident::with_dummy_span(crate_name)),
-                    ],
+                    ]
+                    .into(),
                     tokens: None,
                 };
                 self.match_exports(declarations, path, item);
@@ -551,10 +554,15 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         let possible_match = match item.res {
             Res::Def(DefKind::ForeignTy, _) => false,
             Res::Def(DefKind::Fn, def_id) => {
-                matches!(self.cx.ty_ctxt().fn_sig(def_id).abi(), Abi::C { .. })
+                matches!(
+                    self.cx.ty_ctxt().fn_sig(def_id).subst_identity().abi(),
+                    Abi::C { .. }
+                )
             }
             Res::Def(DefKind::Static(_), def_id) => {
-                if let ty::TyKind::Adt(def, _) = self.cx.ty_ctxt().type_of(def_id).kind() {
+                if let ty::TyKind::Adt(def, _) =
+                    self.cx.ty_ctxt().type_of(def_id).subst_identity().kind()
+                {
                     def.repr().c()
                 } else {
                     false
@@ -589,7 +597,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             if let Some(decl_ty) = self.cx.opt_node_type(decl.id) {
                                 self.cx.structural_eq_tys_with_vis(
                                     decl_ty,
-                                    self.cx.ty_ctxt().type_of(def_id),
+                                    self.cx.ty_ctxt().type_of(def_id).subst_identity(),
                                 )
                             } else {
                                 false
@@ -604,13 +612,15 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     DeclKind::ForeignItem(foreign, _abi) => match &foreign.kind {
                         ForeignItemKind::Fn { .. } => {
                             if let Res::Def(DefKind::Fn, def_id) = item.res {
-                                let export_fn_sig = self.cx.ty_ctxt().fn_sig(def_id);
+                                let export_fn_sig =
+                                    self.cx.ty_ctxt().fn_sig(def_id).subst_identity();
                                 let export_fn_sig = match export_fn_sig.no_bound_vars() {
                                     Some(sig) => sig,
                                     None => return false,
                                 };
                                 let foreign_def_id = self.cx.node_def_id(foreign.id);
-                                let foreign_fn_sig = self.cx.ty_ctxt().fn_sig(foreign_def_id);
+                                let foreign_fn_sig =
+                                    self.cx.ty_ctxt().fn_sig(foreign_def_id).subst_identity();
                                 let foreign_fn_sig = match foreign_fn_sig.no_bound_vars() {
                                     Some(sig) => sig,
                                     None => return false,
@@ -622,9 +632,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         }
                         ForeignItemKind::Static(..) => {
                             if let Res::Def(DefKind::Static(_), def_id) = item.res {
-                                let export_static_ty = self.cx.ty_ctxt().type_of(def_id);
+                                let export_static_ty =
+                                    self.cx.ty_ctxt().type_of(def_id).subst_identity();
                                 let foreign_def_id = self.cx.node_def_id(foreign.id);
-                                let foreign_static_ty = self.cx.ty_ctxt().type_of(foreign_def_id);
+                                let foreign_static_ty =
+                                    self.cx.ty_ctxt().type_of(foreign_def_id).subst_identity();
                                 self.cx
                                     .structural_eq_tys_with_vis(export_static_ty, foreign_static_ty)
                             } else {
@@ -668,7 +680,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                 info.items[ns].insert(item.ident);
                             }
                         } else if let ItemKind::Use(tree) = &item.kind {
-                            if matches!(tree.kind, UseTreeKind::Simple(..)) {
+                            if matches!(tree.kind, UseTreeKind::Simple(_)) {
                                 let ident = tree.ident();
                                 for (namespace, resolution) in
                                     self.cx.resolved_imports_for_item(item)
@@ -808,38 +820,50 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
                     // Remove extern declarations or imports of new items we are
                     // injecting
-                    mod_items.drain_filter(|item| {
-                        if let ItemKind::ForeignMod(m) = &mut item.kind {
-                            let abi = m
-                                .abi
-                                .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
-                                .unwrap_or(Abi::Rust);
-                            m.items.retain(|item| {
-                                match declarations.find_foreign_item(item, abi) {
-                                    ContainsDecl::NotContained => true,
-                                    ContainsDecl::Equivalent(_) => false,
-                                    ContainsDecl::Definition(_) => false,
-                                    ContainsDecl::Use(_) => true,
+                    let mut retained_items = mem::take(mod_items)
+                        .into_iter()
+                        .filter_map(|mut item| {
+                            if let ItemKind::ForeignMod(m) = &mut item.kind {
+                                let abi = m
+                                    .abi
+                                    .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
+                                    .unwrap_or(Abi::Rust);
+                                m.items.retain(|item| {
+                                    match declarations.find_foreign_item(item, abi) {
+                                        ContainsDecl::NotContained => true,
+                                        ContainsDecl::Equivalent(_) => false,
+                                        ContainsDecl::Definition(_) => false,
+                                        ContainsDecl::Use(_) => true,
+                                    }
+                                });
+                                (!m.items.is_empty()).then_some(item)
+                            } else {
+                                let namespaces = self.cx.item_namespaces(&item);
+                                // Drop the existing item only if every
+                                // namespace it occupies is replaced by an
+                                // incoming declaration; an import that is only
+                                // partially covered must be retained so its
+                                // remaining resolutions stay alive.
+                                let replaced = !namespaces.is_empty()
+                                    && namespaces.iter().all(|&ns| {
+                                        matches!(
+                                            declarations.find_item(&item, ns, None),
+                                            ContainsDecl::Equivalent(_)
+                                                | ContainsDecl::Definition(_)
+                                        )
+                                    });
+                                if replaced {
+                                    None
+                                } else {
+                                    Some(item)
                                 }
-                            });
-                            m.items.is_empty()
-                        } else {
-                            let namespaces = self.cx.item_namespaces(&item);
-                            // Remove an existing item only if incoming
-                            // declarations replace every namespace it
-                            // occupies. A partially covered import must stay.
-                            !namespaces.is_empty()
-                                && namespaces.iter().all(|&namespace| {
-                                    matches!(
-                                        declarations.find_item(&item, namespace, None),
-                                        ContainsDecl::Equivalent(_) | ContainsDecl::Definition(_)
-                                    )
-                                })
-                        }
-                    });
+                            }
+                        })
+                        .collect();
+                    mem::swap(mod_items, &mut retained_items);
 
                     let new_items: Vec<P<Item>> = declarations.into_items(self.st, module_info);
-                    let old_items = mem::replace(mod_items, new_items);
+                    let old_items = mem::replace(mod_items, new_items.into());
                     mod_items.extend(old_items);
                 }
             }
@@ -929,12 +953,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     hir::Node::Item(item) => item,
                     _ => return None,
                 };
-                let hir_id = match &item.kind {
+                match &item.kind {
                     hir::ItemKind::Struct(variant_data, _)
-                    | hir::ItemKind::Union(variant_data, _) => variant_data.ctor_hir_id()?,
-                    _ => return None,
-                };
-                self.cx.hir_map().opt_local_def_id(hir_id)
+                    | hir::ItemKind::Union(variant_data, _) => variant_data.ctor_def_id(),
+                    _ => None,
+                }
             })
         };
 
@@ -1035,8 +1058,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let cast_ty = match_or!([cast_ty.kind()] ty::TyKind::RawPtr(ty) => ty; return);
             let cast_ty = cast_ty.ty;
             let cast_len = match_or!([cast_ty.kind()] ty::TyKind::Array(_ty, n) => n; return);
-            if let Some(0) = cast_len.try_eval_usize(tcx, ParamEnv::empty()) {
-                if let Some(val_len) = val_len.try_eval_usize(tcx, ParamEnv::empty()) {
+            if let Some(0) = cast_len.try_eval_target_usize(tcx, ParamEnv::empty()) {
+                if let Some(val_len) = val_len.try_eval_target_usize(tcx, ParamEnv::empty()) {
                     let ty = match_or!([&mut ty.kind] TyKind::Ptr(ty) => ty; return);
                     let cast_len = match_or!([&mut ty.ty.kind] TyKind::Array(_ty, n) => n; return);
                     let lit = mk().lit_expr(mk().int_lit(val_len as u128, LitIntType::Unsuffixed));
@@ -1092,72 +1115,79 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let mod_id = item.id;
             if let ItemKind::Mod(_, ModKind::Loaded(mod_items, _, _)) = &mut item.kind {
                 // Add use statements for split namespace imports
-                mod_items.flat_map_in_place(|item: P<Item>| -> SmallVec<[P<Item>; 1]> {
-                    let mut items = smallvec![];
-                    if let ItemKind::Use(_) = &item.kind {
-                        if let Some((path, def_ids)) = multi_namespace_uses.get(&item.id) {
-                            // The retained import uses the first (type/value/
-                            // macro ordered) resolution. Determine where that
-                            // resolution lives even when it was not remapped.
-                            let other_mod_id = remapped_paths
-                                .get(&item.id)
-                                .map(|&(mod_id, _)| mod_id)
-                                .or_else(|| {
-                                    let ldid = def_ids.first()?.1.as_local()?;
-                                    let mod_hir_id =
-                                        self.cx.ty_ctxt().parent_module_from_def_id(ldid);
-                                    Some(self.cx.hir_map().local_def_id_to_node_id(mod_hir_id))
-                                })
-                                .unwrap_or(DUMMY_NODE_ID);
-                            for &(namespace, def_id) in &def_ids[1..] {
-                                if let Some(Replacement { path, parent, .. }) =
-                                    self.path_mapping.get(&def_id)
-                                {
-                                    if other_mod_id != *parent {
-                                        let new_node_id = self.st.next_node_id();
-                                        let inserted = remapped_paths
-                                            .insert(new_node_id, (*parent, def_id))
-                                            .is_none();
-                                        assert!(inserted);
-                                        generated_import_targets
-                                            .insert(new_node_id, smallvec![(namespace, *parent)]);
-                                        items.push(
-                                            mk().id(new_node_id)
-                                                .use_simple_item(path, None::<String>),
-                                        );
-                                    }
-                                } else if is_relative_path(&path) {
-                                    // Canonicalize a new path from the crate root. Will rewrite
-                                    // any relative paths that we may have moved into absolute
-                                    // paths.
-                                    if let Some(ldid) = def_id.as_local() {
+                *mod_items = std::mem::take(mod_items)
+                    .into_iter()
+                    .flat_map(|item: P<Item>| -> SmallVec<[P<Item>; 1]> {
+                        let mut items = smallvec![];
+                        if let ItemKind::Use(_) = &item.kind {
+                            if let Some((path, def_ids)) = multi_namespace_uses.get(&item.id) {
+                                // The retained import uses the first (type/value/
+                                // macro ordered) resolution. Determine where that
+                                // resolution lives even when it was not remapped.
+                                let other_mod_id = remapped_paths
+                                    .get(&item.id)
+                                    .map(|&(mod_id, _)| mod_id)
+                                    .or_else(|| {
+                                        let ldid = def_ids.first()?.1.as_local()?;
                                         let mod_hir_id =
                                             self.cx.ty_ctxt().parent_module_from_def_id(ldid);
-                                        let mod_id =
-                                            self.cx.hir_map().local_def_id_to_node_id(mod_hir_id);
-                                        if other_mod_id != mod_id {
+                                        Some(self.cx.hir_map().local_def_id_to_node_id(mod_hir_id))
+                                    })
+                                    .unwrap_or(DUMMY_NODE_ID);
+                                for &(namespace, def_id) in &def_ids[1..] {
+                                    if let Some(Replacement { path, parent, .. }) =
+                                        self.path_mapping.get(&def_id)
+                                    {
+                                        if other_mod_id != *parent {
                                             let new_node_id = self.st.next_node_id();
                                             let inserted = remapped_paths
-                                                .insert(new_node_id, (mod_id, def_id))
+                                                .insert(new_node_id, (*parent, def_id))
                                                 .is_none();
                                             assert!(inserted);
                                             generated_import_targets.insert(
                                                 new_node_id,
-                                                smallvec![(namespace, mod_id)],
+                                                smallvec![(namespace, *parent)],
                                             );
-                                            items.push(mk().id(new_node_id).use_simple_item(
-                                                self.cx.def_path(def_id),
-                                                None::<String>,
-                                            ));
+                                            items.push(
+                                                mk().id(new_node_id)
+                                                    .use_simple_item(path, None::<String>),
+                                            );
+                                        }
+                                    } else if is_relative_path(&path) {
+                                        // Canonicalize a new path from the crate root. Will rewrite
+                                        // any relative paths that we may have moved into absolute
+                                        // paths.
+                                        if let Some(ldid) = def_id.as_local() {
+                                            let mod_hir_id =
+                                                self.cx.ty_ctxt().parent_module_from_def_id(ldid);
+                                            let mod_id = self
+                                                .cx
+                                                .hir_map()
+                                                .local_def_id_to_node_id(mod_hir_id);
+                                            if other_mod_id != mod_id {
+                                                let new_node_id = self.st.next_node_id();
+                                                let inserted = remapped_paths
+                                                    .insert(new_node_id, (mod_id, def_id))
+                                                    .is_none();
+                                                assert!(inserted);
+                                                generated_import_targets.insert(
+                                                    new_node_id,
+                                                    smallvec![(namespace, mod_id)],
+                                                );
+                                                items.push(mk().id(new_node_id).use_simple_item(
+                                                    self.cx.def_path(def_id),
+                                                    None::<String>,
+                                                ));
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                    items.push(item);
-                    items
-                });
+                        items.push(item);
+                        items
+                    })
+                    .collect();
 
                 // Mapping from ident to the module we are importing that ident from
                 let mut uses: PerNS<HashMap<Ident, NodeId>> = PerNS::default();
@@ -1165,7 +1195,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     if let ItemKind::Use(u) = &item.kind {
                         match u.kind {
                             // uses that rename need to be retained
-                            UseTreeKind::Simple(Some(_), _, _) => {}
+                            UseTreeKind::Simple(Some(_)) => {}
 
                             UseTreeKind::Glob => {
                                 return true;
@@ -1339,7 +1369,7 @@ impl ModuleInfo {
             orig_ident: item.ident,
             unique_ident: item.ident,
             id: item.id,
-            path: path.segments,
+            path: path.segments.to_vec(),
             has_main,
             header_lines,
             headers,
@@ -1440,7 +1470,7 @@ impl MovedDecl {
                 // sub-borrow different fields from it
                 let item = &mut **item;
                 if let ItemKind::Use(UseTree {
-                    kind: UseTreeKind::Simple(Some(rename), _, _),
+                    kind: UseTreeKind::Simple(Some(rename)),
                     ..
                 }) = &mut item.kind
                 {
@@ -2027,12 +2057,12 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
         // for a sanity check, but not doing that right now.
         (ForeignItemKind::Fn { .. }, ItemKind::Fn { .. }) => true,
 
-        (ForeignItemKind::Static(frn_ty, _frn_mutbl, _), ItemKind::Static(ty, _mutbl, _)) => {
-            if frn_ty.ast_equiv(&ty) {
+        (ForeignItemKind::Static(frn_ty, _frn_mutbl, _), ItemKind::Static(item)) => {
+            if frn_ty.ast_equiv(&item.ty) {
                 return true;
             }
 
-            match (&frn_ty.kind, &ty.kind) {
+            match (&frn_ty.kind, &item.ty.kind) {
                 // An extern array declaration of any length matches a concrete
                 // definition if they have the same element type
                 (TyKind::Array(frn_elem_ty, _), TyKind::Array(elem_ty, _)) => {
@@ -2053,7 +2083,7 @@ fn foreign_equiv(foreign: &ForeignItem, item: &Item) -> bool {
     }
 }
 
-/// Check if the [`Item`] is a [`Use`] of another [`ForeignItem`].
+/// Check if the [`Item`] is an [`ItemKind::Use`] of another [`ForeignItem`].
 fn is_use_of_foreign(item: &Item, cx: &RefactorCtxt) -> bool {
     if !matches!(item.kind, ItemKind::Use(..)) {
         return false;

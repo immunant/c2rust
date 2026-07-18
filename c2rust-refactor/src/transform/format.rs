@@ -119,18 +119,20 @@ fn build_format_macro(
             ExprKind::Lit(ref l) => break l,
             ExprKind::Cast(ref e, _) | ExprKind::Type(ref e, _) => ep = &*e,
             // `e.as_ptr()` or `e.as_mut_ptr()` => e
-            ExprKind::MethodCall(ref ps, ref recv, ref args, _)
-                if args.is_empty()
-                    && (ps.ident.as_str() == "as_ptr" || ps.ident.as_str() == "as_mut_ptr") =>
+            ExprKind::MethodCall(ref call)
+                if call.args.is_empty()
+                    && (call.seg.ident.as_str() == "as_ptr"
+                        || call.seg.ident.as_str() == "as_mut_ptr") =>
             {
-                ep = recv
+                ep = &call.receiver
             }
             _ => panic!("unexpected format string: {:?}", old_fmt_str_expr),
         }
     };
-    let s = expect!([lit.kind]
+    let lit_kind = LitKind::from_token_lit(*lit).unwrap();
+    let s = expect!([lit_kind]
         LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
-        LitKind::ByteStr(ref b) => str::from_utf8(b).unwrap().to_owned());
+        LitKind::ByteStr(ref b, _) => str::from_utf8(b).unwrap().to_owned());
 
     let mut new_s = String::with_capacity(s.len());
     let mut casts = HashMap::new();

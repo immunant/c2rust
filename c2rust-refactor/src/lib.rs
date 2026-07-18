@@ -15,6 +15,10 @@
 )]
 #![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
+#[cfg(feature = "profile")]
+#[macro_use]
+extern crate flamer;
+
 extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_ast_pretty;
@@ -459,7 +463,10 @@ fn main_impl(opts: Options) -> interface::Result<()> {
             let config = driver::create_config(&rustc_args.args);
             driver::run_compiler(config, None, |compiler| {
                 compiler.enter(|queries| {
-                    let expanded_crate = queries.expansion().unwrap().take().0;
+                    let expanded_crate = queries
+                        .global_ctxt()
+                        .unwrap()
+                        .enter(|tcx| tcx.resolver_for_lowering(()).borrow().1.clone());
                     for c in &opts.cursors {
                         let kind_result =
                             c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {

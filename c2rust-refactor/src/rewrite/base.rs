@@ -33,7 +33,7 @@ use std::fmt::Debug;
 use std::iter::Sum;
 use std::rc::Rc;
 
-use crate::ast_manip::{AstDeref, CommentStyle, GetSpan};
+use crate::ast_manip::{format_args_structure_equiv, AstDeref, CommentStyle, GetSpan};
 
 use super::strategy;
 use super::strategy::print;
@@ -47,6 +47,105 @@ pub trait Rewrite {
 }
 
 include!(concat!(env!("OUT_DIR"), "/rewrite_rewrite_gen.inc.rs"));
+
+/// Check that `old` and `new` agree on everything outside interpolated (nonterminal) tokens.
+/// An interpolated token in `new` stands for the run of original tokens its span covers in
+/// `old`.  `rewrite_interpolated_tokens` only records text for interpolated tokens, so any
+/// other difference would be silently dropped from the rewrite.
+fn non_interpolated_tokens_equal(old: &TokenStream, new: &TokenStream) -> bool {
+    fn tree_span(tree: &TokenTree) -> Span {
+        match tree {
+            TokenTree::Token(token, _) => token.span,
+            TokenTree::Delimited(span, _, _) => span.entire(),
+        }
+    }
+
+    let mut old_trees = old.trees().peekable();
+    for new_tree in new.trees() {
+        match new_tree {
+            TokenTree::Token(new_token, _)
+                if matches!(new_token.kind, TokenKind::Interpolated(..)) =>
+            {
+                // Consume the old token run this nonterminal replaced.
+                while old_trees.peek().map_or(false, |old_tree| {
+                    new_token.span.contains(tree_span(old_tree))
+                }) {
+                    old_trees.next();
+                }
+            }
+            TokenTree::Token(new_token, _) => match old_trees.next() {
+                Some(TokenTree::Token(old_token, _)) if old_token.kind == new_token.kind => {}
+                _ => return false,
+            },
+            TokenTree::Delimited(_, new_delim, new_tokens) => match old_trees.next() {
+                Some(TokenTree::Delimited(_, old_delim, old_tokens)) if old_delim == new_delim => {
+                    if !non_interpolated_tokens_equal(old_tokens, new_tokens) {
+                        return false;
+                    }
+                }
+                _ => return false,
+            },
+        }
+    }
+    old_trees.next().is_none()
+}
+
+fn rewrite_interpolated_tokens(tokens: &TokenStream, rcx: &mut RewriteCtxtRef) -> Option<bool> {
+    let mut found = false;
+    for tree in tokens.trees() {
+        match tree {
+            TokenTree::Token(token, _) if matches!(token.kind, TokenKind::Interpolated(..)) => {
+                if !is_rewritable(token.span) {
+                    return None;
+                }
+                let text = rustc_ast_pretty::pprust::token_to_string(token);
+                rcx.record_text(token.span, &text);
+                found = true;
+            }
+            TokenTree::Delimited(_, _, tokens) => {
+                found |= rewrite_interpolated_tokens(tokens, rcx)?;
+            }
+            TokenTree::Token(..) => {}
+        }
+    }
+    Some(found)
+}
+
+impl Rewrite for TokenStream {
+    fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {
+        if old == new {
+            return true;
+        }
+
+        // Macro collapsing represents rewritten arguments as interpolated AST
+        // nonterminals. Materialize those nodes back into their original token
+        // spans while leaving the rest of the invocation untouched.
+        debug_assert!(
+            non_interpolated_tokens_equal(old, new),
+            "token streams differ outside interpolated tokens; \
+             those differences would be dropped from the rewrite: {old:?} != {new:?}"
+        );
+        rewrite_interpolated_tokens(new, &mut rcx).unwrap_or(false)
+    }
+}
+
+impl Rewrite for FormatArgs {
+    fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {
+        if !format_args_structure_equiv(old, new) {
+            return false;
+        }
+
+        let old_arguments = old.arguments.all_args();
+        let new_arguments = new.arguments.all_args();
+
+        for (old, new) in old_arguments.iter().zip(new_arguments) {
+            if !Rewrite::rewrite(&old.expr, &new.expr, rcx.borrow()) {
+                return false;
+            }
+        }
+        true
+    }
+}
 
 // Generic Rewrite impls
 

@@ -1,10 +1,10 @@
 use ena::unify as ut;
 use rustc_arena::DroplessArena;
 use rustc_ast::ptr::P;
-use rustc_ast::token;
+use rustc_ast::token::{self, Lit};
+use rustc_ast::util::literal::{escape_byte_str_symbol, escape_string_symbol};
 use rustc_ast::visit::{self, Visitor};
 use rustc_ast::*;
-use rustc_data_structures::sync::Lrc;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
 use rustc_middle::ty;
@@ -44,11 +44,14 @@ impl Transform for ByteStrToStr {
             }
 
             match &mut e.kind {
-                ExprKind::Lit(l) => match l.kind {
-                    LitKind::ByteStr(ref bs) => {
+                ExprKind::Lit(l) => match LitKind::from_token_lit(*l) {
+                    Ok(LitKind::ByteStr(ref bs, _)) => {
                         let s = String::from_utf8(bs.to_vec()).unwrap();
-                        l.kind = LitKind::Str(Symbol::intern(&s), StrStyle::Cooked);
-                        l.token_lit.kind = token::LitKind::Str;
+                        *l = Lit::new(
+                            token::LitKind::Str,
+                            escape_string_symbol(Symbol::intern(&s)),
+                            None,
+                        );
                     }
                     _ => {}
                 },
@@ -85,19 +88,28 @@ impl Transform for RemoveNullTerminator {
             }
 
             match &mut e.kind {
-                ExprKind::Lit(l) => match &mut l.kind {
-                    LitKind::ByteStr(bs) => {
-                        let ms = &mut Lrc::get_mut(bs).unwrap();
-                        if let Some((last, rest)) = ms.split_last_mut() {
-                            if *last == 0 {
-                                *ms = rest;
-                                strip_null(&mut l.token_lit.symbol);
+                ExprKind::Lit(l) => match LitKind::from_token_lit(*l) {
+                    Ok(LitKind::ByteStr(ref bs, style)) if bs.last() == Some(&0) => {
+                        let bytes = &bs[..bs.len() - 1];
+                        let (kind, symbol) = match style {
+                            StrStyle::Cooked => {
+                                (token::LitKind::ByteStr, escape_byte_str_symbol(bytes))
                             }
-                        }
+                            StrStyle::Raw(n) => (
+                                token::LitKind::ByteStrRaw(n),
+                                Symbol::intern(std::str::from_utf8(bytes).unwrap()),
+                            ),
+                        };
+                        *l = Lit::new(kind, symbol, l.suffix);
                     }
-                    LitKind::Str(ref mut s, _style) => {
+                    Ok(LitKind::Str(mut s, style)) => {
                         if s.as_str().ends_with('\0') {
-                            strip_null(s);
+                            strip_null(&mut s);
+                            let (kind, symbol) = match style {
+                                StrStyle::Cooked => (token::LitKind::Str, escape_string_symbol(s)),
+                                StrStyle::Raw(n) => (token::LitKind::StrRaw(n), s),
+                            };
+                            *l = Lit::new(kind, symbol, l.suffix);
                         }
                     }
                     _ => {}
@@ -118,24 +130,16 @@ impl Transform for RemoveNullTerminator {
 pub struct RemoveLiteralSuffixes;
 
 fn remove_suffix(lit: &Lit) -> Option<Lit> {
-    match lit.kind {
-        LitKind::Int(x, _) => Some(Lit {
-            token_lit: token::Lit {
-                suffix: None,
-                ..lit.token_lit
-            },
-            kind: LitKind::Int(x, LitIntType::Unsuffixed),
-            span: lit.span,
+    match LitKind::from_token_lit(*lit).ok()? {
+        LitKind::Int(..) => Some(Lit {
+            suffix: None,
+            ..*lit
         }),
 
         LitKind::Float(sym, _) => match sym_token_kind(sym) {
             token::LitKind::Float => Some(Lit {
-                token_lit: token::Lit {
-                    suffix: None,
-                    ..lit.token_lit
-                },
-                kind: LitKind::Float(sym, LitFloatType::Unsuffixed),
-                span: lit.span,
+                suffix: None,
+                ..*lit
             }),
 
             // We can't remove suffixes on integer-like floats,
@@ -178,7 +182,7 @@ impl Transform for RemoveLiteralSuffixes {
                         }
 
                         LitTySource::Suffix(ty, needs_suffix) => {
-                            assert!(lit.kind.is_suffixed());
+                            assert!(lit.suffix.is_some());
                             // We have a set of literals with no other type source,
                             // so the first one (this one) gets a suffix to make it typed,
                             // and the rest lose their suffixes
@@ -351,7 +355,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             hir::TyKind::Slice(ref ty)
             | hir::TyKind::Array(ref ty, _)
             | hir::TyKind::Ptr(hir::MutTy { ref ty, .. })
-            | hir::TyKind::Rptr(_, hir::MutTy { ref ty, .. }) => {
+            | hir::TyKind::Ref(_, hir::MutTy { ref ty, .. }) => {
                 let ty_kt = self.hir_ty_to_key_tree(ty);
                 self.new_node(&[ty_kt])
             }
@@ -415,7 +419,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
     fn def_id_to_key_tree(&mut self, did: hir::def_id::DefId, sp: Span) -> LitTyKeyTree<'kt, 'tcx> {
         let tcx = self.cx.ty_ctxt();
-        let ty = tcx.at(sp).type_of(did);
+        let ty = tcx.at(sp).type_of(did).subst_identity();
         self.ty_to_key_tree(ty, true)
     }
 
@@ -491,7 +495,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // Since we're using the original signature
                 // and not performing any substitutions,
                 // it's safe to include the machine types
-                fn_sig_to_key_tree(tcx.fn_sig(def_id), true);
+                fn_sig_to_key_tree(tcx.fn_sig(def_id).subst_identity(), true);
             }
             sty::TyKind::FnPtr(fn_sig) => {
                 fn_sig_to_key_tree(*fn_sig, mach_actual);
@@ -545,8 +549,6 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     fn visit_expr_unify(&mut self, ex: &Expr, kt: LitTyKeyTree<'kt, 'tcx>) {
         let tcx = self.cx.ty_ctxt();
         match ex.kind {
-            ExprKind::Box(ref e) => self.unify_expr_child(e, kt),
-
             ExprKind::Array(ref exprs) => {
                 // We really want the subexpressions to at least unify with
                 // each other, so we need to either get the key tree
@@ -584,7 +586,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 }
             }
 
-            ExprKind::MethodCall(ref segment, ref recv, ref args, ref _span) => {
+            ExprKind::MethodCall(ref call) => {
                 let hir_id = self.cx.hir_map().node_to_hir_id(ex.id);
                 let parent = self.cx.hir_map().get_parent_item(hir_id);
                 let body = self.cx.hir_map().body_owned_by(parent);
@@ -600,19 +602,20 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     ch[0].set(LitTyKeyNode::Empty);
                 }
 
-                self.visit_path_segment(segment);
+                self.visit_path_segment(&call.seg);
                 if let Some(&[ref input_key_trees @ .., output_key_tree]) =
                     callee_key_tree.get().children()
                 {
-                    for (arg_expr, arg_key_tree) in
-                        std::iter::once(recv).chain(args).zip(input_key_trees)
+                    for (arg_expr, arg_key_tree) in std::iter::once(&call.receiver)
+                        .chain(&call.args)
+                        .zip(input_key_trees)
                     {
                         self.visit_expr_unify(arg_expr, arg_key_tree);
                     }
                     self.unify_key_trees(kt, output_key_tree);
                 } else {
-                    self.visit_expr(recv);
-                    for arg in args {
+                    self.visit_expr(&call.receiver);
+                    for arg in &call.args {
                         self.visit_expr(arg);
                     }
                 }
@@ -687,7 +690,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             },
 
             ExprKind::Lit(ref lit) => {
-                if ex.id != DUMMY_NODE_ID && lit.kind.is_suffixed() {
+                if ex.id != DUMMY_NODE_ID && lit.suffix.is_some() {
                     let source = LitTySource::from_lit_expr(ex, tcx);
                     let lit_key_tree = self.new_leaf(source);
                     self.unify_key_trees(kt, lit_key_tree);
@@ -815,7 +818,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
                             if struct_children.len() == v.fields.len() {
                                 let idx = tcx.find_field_index(ident, v).unwrap();
-                                self.unify_key_trees(kt, struct_children[idx]);
+                                self.unify_key_trees(kt, struct_children[idx.index()]);
                             } else {
                                 let struct_path = tcx.def_path_str(def.did());
                                 let field_name = ident.as_str();
@@ -932,7 +935,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         }
     }
 
-    fn unify_pat_children(&mut self, pats: &Vec<P<Pat>>, ch: &'kt [LitTyKeyTree<'kt, 'tcx>]) {
+    fn unify_pat_children(&mut self, pats: &[P<Pat>], ch: &'kt [LitTyKeyTree<'kt, 'tcx>]) {
         let mut ich = 0;
         for pat in pats {
             let is_rest = self.visit_pat_unify(pat, ch[ich]);
@@ -1114,11 +1117,19 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
 
     fn visit_item(&mut self, i: &'ast Item) {
         match i.kind {
-            ItemKind::Static(ref ty, _, Some(ref init))
-            | ItemKind::Const(_, ref ty, Some(ref init)) => {
-                let key_tree = self.ast_ty_to_key_tree(ty);
-                self.visit_ty(ty);
-                self.visit_expr_unify(init, key_tree);
+            ItemKind::Static(ref item) => {
+                if let Some(ref init) = item.expr {
+                    let key_tree = self.ast_ty_to_key_tree(&item.ty);
+                    self.visit_ty(&item.ty);
+                    self.visit_expr_unify(init, key_tree);
+                }
+            }
+            ItemKind::Const(ref item) => {
+                if let Some(ref init) = item.expr {
+                    let key_tree = self.ast_ty_to_key_tree(&item.ty);
+                    self.visit_ty(&item.ty);
+                    self.visit_expr_unify(init, key_tree);
+                }
             }
 
             _ => visit::walk_item(self, i),
@@ -1217,7 +1228,7 @@ impl<'tcx> LitTySource<'tcx> {
             ExprKind::Lit(ref lit) => lit,
             _ => panic!("expected ExprKind::Lit, got {:?}", e),
         };
-        match lit.kind {
+        match LitKind::from_token_lit(*lit).unwrap() {
             LitKind::Int(_, LitIntType::Signed(int_ty)) => {
                 LitTySource::Suffix(tcx.mk_mach_int(ty::int_ty(int_ty)), false)
             }

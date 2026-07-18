@@ -26,7 +26,7 @@ pub fn fix_users(
     krate: &mut Crate,
     replace_map: &HashMap<DefId, DefId>,
     path_ids: &HashMap<NodeId, DefId>,
-    new_paths: &HashMap<DefId, (Option<QSelf>, Path)>,
+    new_paths: &HashMap<DefId, (Option<P<QSelf>>, Path)>,
     cx: &RefactorCtxt,
 ) {
     let tcx = cx.ty_ctxt();
@@ -59,8 +59,8 @@ pub fn fix_users(
         }
 
         // This is a fn replacement.  Look up sigs and compare arg and return types.
-        let old_sig = tcx.fn_sig(old_did);
-        let new_sig = tcx.fn_sig(new_did);
+        let old_sig = tcx.fn_sig(old_did).subst_identity();
+        let new_sig = tcx.fn_sig(new_did).subst_identity();
 
         macro_rules! bail {
             ($msg:expr) => {{
@@ -261,7 +261,7 @@ impl Transform for CanonicalizeExterns {
             let did = def.def_id();
             if is_foreign_symbol(tcx, did) {
                 // Foreign fns can't have region or type params, so empty substs should be fine.
-                let inst = Instance::new(did, tcx.intern_substs(&[]));
+                let inst = Instance::new(did, tcx.mk_substs(&[]));
                 // Get the actual linker symbol for this extern item, considering both the item's
                 // name and its attributes.  This is distinct from the `ast::symbol::Symbol`
                 // produced by `module_children`, which is simply the name of the item.
@@ -289,7 +289,7 @@ impl Transform for CanonicalizeExterns {
                 return;
             }
 
-            let inst = Instance::new(did, tcx.intern_substs(&[]));
+            let inst = Instance::new(did, tcx.mk_substs(&[]));
             let sym = tcx.symbol_name(inst).name;
             if let Some(&repl_did) = symbol_map.get(&sym) {
                 replace_map.insert(did, repl_did);

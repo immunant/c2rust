@@ -116,7 +116,7 @@ impl Transform for InsertRemoveArgs {
                 new_args.push(mk_arg());
             }
 
-            fl.decl.inputs = new_args;
+            fl.decl.inputs = new_args.into();
         });
     }
 }
@@ -194,10 +194,7 @@ impl Transform for TestDebugCallees {
                     info!("      fn sig: {:?}", sig);
                     info!("      input tys: {:?}", sig.inputs());
                     info!("      input tys (skip): {:?}", sig.skip_binder().inputs());
-                    info!(
-                        "      anonymized: {:?}",
-                        tcx.anonymize_late_bound_regions(sig)
-                    );
+                    info!("      anonymized: {:?}", tcx.erase_late_bound_regions(sig));
                     info!("      erased: {:?}", tcx.erase_late_bound_regions(sig));
                     if let Some(substs) = substs {
                         let sig2 = tcx.subst_and_normalize_erasing_regions(
@@ -227,14 +224,24 @@ impl Transform for TestDebugCallees {
 
                 if let Some(did) = cx.try_resolve_expr(e) {
                     info!("    resolution: {:?}", did);
-                    describe_ty(tcx, "resolved ty", tcx.type_of(did), opt_substs);
+                    describe_ty(
+                        tcx,
+                        "resolved ty",
+                        tcx.type_of(did).subst_identity(),
+                        opt_substs,
+                    );
                 }
 
                 if let Some(tdd) = tdds.get(hir_id) {
                     info!("    tdd: {:?}", tdd);
                     if let Ok((_, did)) = tdd {
                         info!("    tdd id: {:?}", did);
-                        describe_ty(tcx, "tdd ty", tcx.type_of(*did), opt_substs);
+                        describe_ty(
+                            tcx,
+                            "tdd ty",
+                            tcx.type_of(*did).subst_identity(),
+                            opt_substs,
+                        );
                     }
                 }
             };

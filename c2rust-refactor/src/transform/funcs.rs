@@ -160,7 +160,7 @@ impl Transform for ToMethod {
                 } else {
                     match pat_ty.kind() {
                         TyKind::Ref(_, ty, _) if *ty == self_ty => match arg.ty.kind {
-                            ast::TyKind::Rptr(ref lt, ref mty) => {
+                            ast::TyKind::Ref(ref lt, ref mty) => {
                                 Some(SelfKind::Region(*lt, mty.mutbl))
                             }
                             _ => None,
@@ -274,7 +274,12 @@ impl Transform for ToMethod {
                 let mut args = args;
                 let recv = args.remove(arg_idx);
 
-                e.kind = ExprKind::MethodCall(mk().path_segment(&info.ident), recv, args, DUMMY_SP);
+                e.kind = ExprKind::MethodCall(Box::new(MethodCall {
+                    seg: mk().path_segment(&info.ident),
+                    receiver: recv,
+                    args,
+                    span: DUMMY_SP,
+                }));
             } else {
                 // There is no `self` argument, but change the function reference to the new path.
                 let mut new_path = cx.def_path(cx.node_def_id(dest.id));
@@ -412,7 +417,7 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
                     last.kind = StmtKind::Semi(expr);
                 }
 
-                return SmallVec::from_vec(stmts);
+                return SmallVec::from_vec(stmts.to_vec());
             }
         }
 
@@ -524,7 +529,7 @@ fn sink_unsafe(unsafety: &mut Unsafe, block: &mut P<Block>) {
         *unsafety = Unsafe::No;
         *block =
             mk().block(vec![mk().expr_stmt(
-                mk().block_expr(mk().unsafe_().block(block.stmts.clone())),
+                mk().block_expr(mk().unsafe_().block(block.stmts.to_vec())),
             )]);
     }
 }
@@ -674,7 +679,7 @@ impl Transform for WrapExtern {
                         .map(|name| mk().ident_expr(name))
                         .collect::<Vec<_>>();
                     let decl = P(FnDecl {
-                        inputs: wrapper_args,
+                        inputs: wrapper_args.into(),
                         output: f.decl.output.clone(),
                     });
                     let body = mk().block(vec![

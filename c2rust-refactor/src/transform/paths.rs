@@ -50,14 +50,15 @@ impl Transform for ShortenImportedPaths {
                     let Some(path) = cx.try_resolve_use_id(id) else {
                         continue;
                     };
-                    let Some(ns) = namespace(&path.res) else {
-                        continue;
-                    };
-
-                    let key = (item_mod_ldid, ns, use_info.ident.clone());
-                    if let Some(did) = path.res.opt_def_id() {
-                        let value = (id, did);
-                        all_uses.insert(key, value);
+                    for res in &path.res {
+                        let Some(ns) = namespace(res) else {
+                            continue;
+                        };
+                        if let Some(did) = res.opt_def_id() {
+                            let key = (item_mod_ldid, ns, use_info.ident.clone());
+                            let value = (id, did);
+                            all_uses.insert(key, value);
+                        }
                     }
                 }
             }
