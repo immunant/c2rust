@@ -3,12 +3,10 @@
 
 use std::fmt::Debug;
 
+use crate::context::HirMap;
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::*;
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty;
-
-use crate::context::HirMap;
 
 /// Provider of a higher-level type representation.
 ///
@@ -42,8 +40,21 @@ pub trait Signature<T>: Debug {
     fn output(&self) -> T;
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolvedTyKind {
+    Slice,
+    Array,
+    RawPtr,
+    Ref,
+    FnPtr,
+    Never,
+    Tuple,
+    Dynamic,
+    Other,
+}
+
 pub trait Type: Copy + Debug {
-    fn sty(&self) -> &ty::TyKind;
+    fn kind(&self) -> ResolvedTyKind;
     fn num_args(&self) -> usize;
     fn arg(&self, idx: usize) -> Self;
 }
@@ -64,25 +75,23 @@ where
     /// (The structures may not match if the `ast::Ty` refers to a type alias which has been
     /// expanded, for example - then `ast_ty` looks like `Alias` while `ty` is `Foo<Bar, Baz>`.)
     fn record_ty(&mut self, ty: S::Type, ast_ty: &Ty) {
-        use rustc_type_ir::sty::TyKind::*;
-
         (self.callback)(&mut self.source, ast_ty, ty);
 
-        match (&ast_ty.kind, ty.sty()) {
-            (&TyKind::Slice(ref elem), &Slice(..)) => self.record_ty(ty.arg(0), elem),
-            (&TyKind::Array(ref elem, _), &Array(..)) => self.record_ty(ty.arg(0), elem),
-            (&TyKind::Ptr(ref mty), &RawPtr(..)) => self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::Rptr(_, ref mty), &Ref(..)) => self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::Ptr(ref mty), &Ref(..)) => self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::BareFn(ref fn_ty), &FnPtr(..)) => {
+        match (&ast_ty.kind, ty.kind()) {
+            (&TyKind::Slice(ref elem), ResolvedTyKind::Slice) => self.record_ty(ty.arg(0), elem),
+            (&TyKind::Array(ref elem, _), ResolvedTyKind::Array) => self.record_ty(ty.arg(0), elem),
+            (&TyKind::Ptr(ref mty), ResolvedTyKind::RawPtr) => self.record_ty(ty.arg(0), &mty.ty),
+            (&TyKind::Ref(_, ref mty), ResolvedTyKind::Ref)
+            | (&TyKind::Ptr(ref mty), ResolvedTyKind::Ref) => self.record_ty(ty.arg(0), &mty.ty),
+            (&TyKind::BareFn(ref fn_ty), ResolvedTyKind::FnPtr) => {
                 assert!(ty.num_args() == fn_ty.decl.inputs.len() + 1);
                 for (i, arg) in fn_ty.decl.inputs.iter().enumerate() {
                     self.record_ty(ty.arg(i), &arg.ty);
                 }
                 self.record_function_ret_ty(ty.arg(fn_ty.decl.inputs.len()), &fn_ty.decl.output);
             }
-            (&TyKind::Never, &Never) => {}
-            (&TyKind::Tup(ref elems), &Tuple(..)) => {
+            (&TyKind::Never, ResolvedTyKind::Never) => {}
+            (&TyKind::Tup(ref elems), ResolvedTyKind::Tuple) => {
                 for (i, ast_ty) in elems.iter().enumerate() {
                     self.record_ty(ty.arg(i), ast_ty);
                 }
@@ -90,9 +99,9 @@ where
             (&TyKind::Path(ref qself, ref path), _) => {
                 // TyKind::Path could resolve to absolutely anything, since resolution includes
                 // expanding type aliases.  So this case gets special handling.
-                self.record_path_ty(ty, qself.as_ref(), path);
+                self.record_path_ty(ty, qself.as_deref(), path);
             }
-            (&TyKind::TraitObject(..), &Dynamic(..)) => {} // TODO
+            (&TyKind::TraitObject(..), ResolvedTyKind::Dynamic) => {} // TODO
             // `Paren` should never appear, but just in case...
             (&TyKind::Paren(ref ast_ty), _) => self.record_ty(ty, ast_ty),
             // No case for TyTypeof - it can't be written in source programs currently
@@ -167,10 +176,10 @@ where
                 }
             }
 
-            ExprKind::Closure(_, _, _, _, ref decl, _, _) => {
+            ExprKind::Closure(ref closure) => {
                 let def_id = self.hir_map.local_def_id_from_node_id(e.id).to_def_id();
                 if let Some(sig) = self.source.closure_sig(def_id) {
-                    self.record_fn_decl(sig, decl);
+                    self.record_fn_decl(sig, &closure.fn_decl);
                 }
             }
 
@@ -213,15 +222,15 @@ where
     fn visit_item(&mut self, i: &'ast Item) {
         let def_id = self.hir_map.local_def_id_from_node_id(i.id).to_def_id();
         match i.kind {
-            ItemKind::Static(ref ast_ty, _, _) => {
+            ItemKind::Static(ref item) => {
                 if let Some(ty) = self.source.def_type(def_id) {
-                    self.record_ty(ty, ast_ty);
+                    self.record_ty(ty, &item.ty);
                 }
             }
 
-            ItemKind::Const(_, ref ast_ty, _) => {
+            ItemKind::Const(ref item) => {
                 if let Some(ty) = self.source.def_type(def_id) {
-                    self.record_ty(ty, ast_ty);
+                    self.record_ty(ty, &item.ty);
                 }
             }
 
@@ -270,9 +279,9 @@ where
     fn visit_assoc_item(&mut self, i: &'ast AssocItem, ctxt: AssocCtxt) {
         let def_id = self.hir_map.local_def_id_from_node_id(i.id).to_def_id();
         match i.kind {
-            AssocItemKind::Const(_, ref ast_ty, _) => {
+            AssocItemKind::Const(ref item) => {
                 if let Some(ty) = self.source.def_type(def_id) {
-                    self.record_ty(ty, ast_ty);
+                    self.record_ty(ty, &item.ty);
                 }
             }
 

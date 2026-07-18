@@ -141,18 +141,16 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
     pub fn static_ty(&mut self, did: DefId) -> LTy<'lty, 'tcx> {
         let assign = &mut self.static_assign;
         match self.static_summ.entry(did) {
-            Entry::Vacant(e) => {
-                *e.insert(
-                    self.lcx
-                        .label(self.tcx.type_of(did), &mut |ty| match ty.kind() {
-                            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
-                                let v = assign.push(ConcretePerm::Move);
-                                Some(PermVar::Static(v))
-                            }
-                            _ => None,
-                        }),
-                )
-            }
+            Entry::Vacant(e) => *e.insert(self.lcx.label(
+                self.tcx.type_of(did).subst_identity(),
+                &mut |ty| match ty.kind() {
+                    TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                        let v = assign.push(ConcretePerm::Move);
+                        Some(PermVar::Static(v))
+                    }
+                    _ => None,
+                },
+            )),
 
             Entry::Occupied(e) => *e.get(),
         }
@@ -172,7 +170,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     "tried to create func summ for {:?}, which is already a variant",
                     did
                 );
-                let sig = tcx.fn_sig(did);
+                let sig = tcx.fn_sig(did).subst_identity().skip_binder();
                 let mut counter = 0;
 
                 let l_sig = {
@@ -186,9 +184,9 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     };
 
                     FnSig {
-                        inputs: lcx.label_slice(sig.skip_binder().inputs(), &mut f),
-                        output: lcx.label(sig.skip_binder().output(), &mut f),
-                        is_variadic: sig.skip_binder().c_variadic,
+                        inputs: lcx.label_slice(sig.inputs(), &mut f),
+                        output: lcx.label(sig.output(), &mut f),
+                        is_variadic: sig.c_variadic,
                     }
                 };
 

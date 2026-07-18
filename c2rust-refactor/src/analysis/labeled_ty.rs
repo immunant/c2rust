@@ -150,8 +150,8 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             | IrTyKind::Closure(..)
             | IrTyKind::Generator(..)
             | IrTyKind::GeneratorWitness(..)
-            | IrTyKind::Projection(..)
-            | IrTyKind::Opaque(..)
+            | IrTyKind::GeneratorWitnessMIR(..)
+            | IrTyKind::Alias(..)
             | IrTyKind::Param(..)
             | IrTyKind::Bound(..)
             | IrTyKind::Placeholder(..)
@@ -240,8 +240,18 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
 }
 
 impl<'lty, 'tcx, L: fmt::Debug> type_map::Type for LabeledTy<'lty, 'tcx, L> {
-    fn sty(&self) -> &'tcx TyKind {
-        &self.ty.kind()
+    fn kind(&self) -> type_map::ResolvedTyKind {
+        match self.ty.kind() {
+            IrTyKind::Slice(..) => type_map::ResolvedTyKind::Slice,
+            IrTyKind::Array(..) => type_map::ResolvedTyKind::Array,
+            IrTyKind::RawPtr(..) => type_map::ResolvedTyKind::RawPtr,
+            IrTyKind::Ref(..) => type_map::ResolvedTyKind::Ref,
+            IrTyKind::FnPtr(..) => type_map::ResolvedTyKind::FnPtr,
+            IrTyKind::Never => type_map::ResolvedTyKind::Never,
+            IrTyKind::Tuple(..) => type_map::ResolvedTyKind::Tuple,
+            IrTyKind::Dynamic(..) => type_map::ResolvedTyKind::Dynamic,
+            _ => type_map::ResolvedTyKind::Other,
+        }
     }
 
     fn num_args(&self) -> usize {
