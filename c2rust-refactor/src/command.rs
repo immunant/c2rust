@@ -9,15 +9,16 @@ use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface;
 use rustc_interface::util;
 use rustc_middle::ty::TyCtxt;
+use rustc_session::config::Input;
 use rustc_session::{self, Session};
+use rustc_span::hygiene::{self, SyntaxContext, Transparency};
 use rustc_span::source_map::SourceMap;
-use rustc_span::symbol::Symbol;
+use rustc_span::symbol::{kw, Symbol};
 use std::cell::{self, Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::iter;
 use std::mem;
-use std::ops::Deref;
 use std::process;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
@@ -39,6 +40,33 @@ use crate::rewrite::files;
 use crate::span_fix;
 use crate::RefactorCtxt;
 use crate::{profile_end, profile_start};
+
+fn update_dollar_crate_names(tcx: TyCtxt<'_>) {
+    hygiene::update_dollar_crate_names(|ctxt: SyntaxContext| {
+        let ctxt = ctxt.normalize_to_macro_rules();
+        let mut marks = ctxt.marks().into_iter().rev().peekable();
+        let mut defining_mark = None;
+
+        while let Some(&(mark, transparency)) = marks.peek() {
+            if transparency != Transparency::Opaque {
+                break;
+            }
+            defining_mark = Some(mark);
+            marks.next();
+        }
+        for (mark, transparency) in marks {
+            if transparency != Transparency::SemiTransparent {
+                break;
+            }
+            defining_mark = Some(mark);
+        }
+
+        defining_mark
+            .and_then(|mark| mark.expn_data().macro_def_id)
+            .filter(|def_id| !def_id.is_local())
+            .map_or(kw::Crate, |def_id| tcx.crate_name(def_id.krate))
+    });
+}
 
 /// Extra nodes that were parsed from strings while running a transformation pass.  During
 /// rewriting, we'd like to reuse the original strings for these, rather than pretty-printing them.
@@ -290,11 +318,11 @@ impl RefactorState {
         self.compiler.enter(|queries| {
             // Replace current parse query results
             profile_start!("Replace compiler crate");
-            let parse = queries.parse()?;
+            let mut parse = queries.parse()?;
 
             // Initialize initial parsed crate if not previously parsed
             let disk_state = disk_state.get_or_insert_with(|| {
-                let mut krate = parse.peek().clone();
+                let mut krate = parse.borrow().clone();
                 // Expand all the Unloaded modules ourselves
                 // since rustc folded that operation into expansion
                 load_modules(&mut krate, &session.parse_sess, source_map);
@@ -338,7 +366,8 @@ impl RefactorState {
             // `derive` attrs will be removed.
             span_fix::fix_attr_spans(&mut *cs.krate.borrow_mut());
 
-            *parse.peek_mut() = cs.krate().clone();
+            *parse.get_mut() = cs.krate().clone();
+            drop(parse);
             profile_end!("Replace compiler crate");
 
             let mut max_crate_node_id = None;
@@ -347,14 +376,12 @@ impl RefactorState {
 
                 Phase::Phase2 | Phase::Phase3 => {
                     profile_start!("Expand crate");
-                    let expansion = queries.expansion()?.peek();
-                    cs.krate.replace(expansion.0.deref().clone());
-                    max_crate_node_id = Some(
-                        expansion
-                            .1
-                            .borrow_mut()
-                            .access(|resolver| resolver.next_node_id()),
-                    );
+                    let (expanded, next_node_id) = queries.global_ctxt()?.enter(|tcx| {
+                        let resolver = tcx.resolver_for_lowering(()).borrow();
+                        (resolver.1.as_ref().clone(), resolver.0.next_node_id)
+                    });
+                    cs.krate.replace(expanded);
+                    max_crate_node_id = Some(next_node_id);
                     profile_end!("Expand crate");
                     remove_paren(cs.krate.get_mut());
                 }
@@ -372,73 +399,96 @@ impl RefactorState {
             };
 
             // Run the transform
-            let r = match phase {
-                Phase::Phase1 => {
-                    let cx = RefactorCtxt::new_phase_1(session);
-
-                    f(&cs, &cx)
-                }
-
-                Phase::Phase2 => {
-                    profile_start!("Lower to HIR");
-                    let r = queries.global_ctxt()?.take().enter(|tcx| {
-                        let (node_id_to_def_id, def_id_to_node_id, import_res_map) = {
-                            let resolver = tcx.resolver_for_lowering(()).borrow();
-                            (
-                                resolver.node_id_to_def_id.clone(),
-                                resolver.def_id_to_node_id.clone(),
-                                resolver.import_res_map.clone(),
-                            )
-                        };
-                        let cx = RefactorCtxt::new_phase_2_3(
-                            session,
-                            max_crate_node_id.unwrap(),
-                            tcx.hir(),
-                            node_id_to_def_id,
-                            def_id_to_node_id,
-                            import_res_map,
-                            GenerationalTyCtxt(tcx, tcx_gen.clone()),
-                            AstSpanMaps::new(&expanded),
-                        );
-                        profile_end!("Lower to HIR");
+            let r =
+                match phase {
+                    Phase::Phase1 => {
+                        let cx = RefactorCtxt::new_phase_1(session);
 
                         f(&cs, &cx)
-                    });
+                    }
 
-                    r
-                }
+                    Phase::Phase2 => {
+                        profile_start!("Lower to HIR");
+                        let r = queries.global_ctxt()?.enter(|tcx| {
+                            let (
+                                partial_res_map,
+                                node_id_to_def_id,
+                                def_id_to_node_id,
+                                import_res_map,
+                            ) = {
+                                let resolver = tcx.resolver_for_lowering(()).borrow();
+                                (
+                                    resolver.0.partial_res_map.clone(),
+                                    resolver.0.node_id_to_def_id.clone(),
+                                    resolver.0.def_id_to_node_id.clone(),
+                                    resolver.0.import_res_map.clone(),
+                                )
+                            };
+                            let cx = RefactorCtxt::new_phase_2_3(
+                                session,
+                                max_crate_node_id.unwrap(),
+                                tcx.hir(),
+                                partial_res_map,
+                                node_id_to_def_id,
+                                def_id_to_node_id,
+                                import_res_map,
+                                GenerationalTyCtxt(tcx, tcx_gen.clone()),
+                                AstSpanMaps::new(&expanded),
+                            );
+                            profile_end!("Lower to HIR");
 
-                Phase::Phase3 => {
-                    profile_start!("Compiler Phase 3");
-                    let r = queries.global_ctxt()?.take().enter(|tcx| {
-                        let (node_id_to_def_id, def_id_to_node_id, import_res_map) = {
-                            let resolver = tcx.resolver_for_lowering(()).borrow();
-                            (
-                                resolver.node_id_to_def_id.clone(),
-                                resolver.def_id_to_node_id.clone(),
-                                resolver.import_res_map.clone(),
-                            )
-                        };
-                        // One extra step for Phase 3: run the analysis passes
-                        let _result = tcx.analysis(());
-                        let cx = RefactorCtxt::new_phase_2_3(
-                            session,
-                            max_crate_node_id.unwrap(),
-                            tcx.hir(),
-                            node_id_to_def_id,
-                            def_id_to_node_id,
-                            import_res_map,
-                            GenerationalTyCtxt(tcx, tcx_gen.clone()),
-                            AstSpanMaps::new(&expanded),
-                        );
-                        profile_end!("Compiler Phase 3");
+                            let result = f(&cs, &cx);
+                            // rustc's hygiene tables outlive each rebuilt session. Resolve any
+                            // contexts decoded while this session was active before its crate store
+                            // is dropped, so the next command cannot interpret stale crate numbers.
+                            update_dollar_crate_names(tcx);
+                            result
+                        });
 
-                        f(&cs, &cx)
-                    });
+                        r
+                    }
 
-                    r
-                }
-            };
+                    Phase::Phase3 => {
+                        profile_start!("Compiler Phase 3");
+                        let r = queries.global_ctxt()?.enter(|tcx| {
+                            let (
+                                partial_res_map,
+                                node_id_to_def_id,
+                                def_id_to_node_id,
+                                import_res_map,
+                            ) = {
+                                let resolver = tcx.resolver_for_lowering(()).borrow();
+                                (
+                                    resolver.0.partial_res_map.clone(),
+                                    resolver.0.node_id_to_def_id.clone(),
+                                    resolver.0.def_id_to_node_id.clone(),
+                                    resolver.0.import_res_map.clone(),
+                                )
+                            };
+                            // One extra step for Phase 3: run the analysis passes
+                            let _result = tcx.analysis(());
+                            let cx = RefactorCtxt::new_phase_2_3(
+                                session,
+                                max_crate_node_id.unwrap(),
+                                tcx.hir(),
+                                partial_res_map,
+                                node_id_to_def_id,
+                                def_id_to_node_id,
+                                import_res_map,
+                                GenerationalTyCtxt(tcx, tcx_gen.clone()),
+                                AstSpanMaps::new(&expanded),
+                            );
+                            profile_end!("Compiler Phase 3");
+
+                            let result = f(&cs, &cx);
+                            // See the Phase 2 path above.
+                            update_dollar_crate_names(tcx);
+                            result
+                        });
+
+                        r
+                    }
+                };
 
             node_map.init(cs.new_parsed_node_ids.get_mut().drain(..));
 
@@ -489,11 +539,24 @@ impl RefactorState {
         let target_override = new_codegen_backend.target_override(&old_session.opts);
 
         let descriptions = rustc_driver::diagnostics_registry();
+        let input = match &old_session.io.input {
+            Input::File(path) => Input::File(path.clone()),
+            Input::Str { name, input } => Input::Str {
+                name: name.clone(),
+                input: input.clone(),
+            },
+        };
         let mut new_sess = rustc_session::build_session(
             old_session.opts.clone(),
-            old_session.local_crate_source_file.clone(),
+            rustc_session::CompilerIO {
+                input,
+                output_dir: old_session.io.output_dir.clone(),
+                output_file: old_session.io.output_file.clone(),
+                temps_dir: old_session.io.temps_dir.clone(),
+            },
             None,
             descriptions,
+            rustc_driver::DEFAULT_LOCALE_RESOURCES.to_vec(),
             Default::default(),
             None,
             target_override,
@@ -861,10 +924,10 @@ fn register_commit(reg: &mut Registry) {
             if git_commit && !commands.is_empty() {
                 let commit_msg = format!(
                     "refactor {} {}",
-                    rs.config
-                        .input_path
-                        .as_ref()
-                        .map_or(String::new(), |s| s.display().to_string()),
+                    match &rs.config.input {
+                        Input::File(path) => path.display().to_string(),
+                        Input::Str { name, .. } => name.prefer_local().to_string(),
+                    },
                     commands.join("\n"),
                 );
                 if !clean {

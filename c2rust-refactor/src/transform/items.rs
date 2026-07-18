@@ -9,6 +9,7 @@ use rustc_span::symbol::{Ident, Symbol};
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use thin_vec::ThinVec;
 
 use crate::ast_builder::{mk, IntoSymbol, Make};
 use crate::ast_manip::{AstEquiv, FlatMapNodes, MutVisit};
@@ -147,7 +148,7 @@ impl Transform for RenameUnnamed {
                 .insert(cx.hir_map().node_to_hir_id(i.id), new_name);
 
             if let ItemKind::Struct(variant_data, _) | ItemKind::Union(variant_data, _) = &i.kind {
-                if let Some(ctor_id) = variant_data.ctor_id() {
+                if let Some(ctor_id) = variant_data.ctor_node_id() {
                     renamer
                         .new_idents
                         .insert(cx.hir_map().node_to_hir_id(ctor_id), new_name);
@@ -371,7 +372,7 @@ impl Transform for SetMutability {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
                         match i.kind {
-                            ItemKind::Static(_, ref mut mutbl, _) => *mutbl = self.mutbl,
+                            ItemKind::Static(ref mut item) => item.mutability = self.mutbl,
                             _ => {}
                         }
                         i
@@ -495,7 +496,7 @@ impl Transform for CreateItem {
             fn handle_mod(
                 &mut self,
                 parent_id: NodeId,
-                m_items: &mut Vec<P<Item>>,
+                m_items: &mut ThinVec<P<Item>>,
                 skip_dummy: bool,
             ) {
                 let mut items = Vec::with_capacity(m_items.len());
@@ -526,7 +527,7 @@ impl Transform for CreateItem {
                     items.extend(self.items.iter().cloned());
                 }
 
-                *m_items = items;
+                *m_items = items.into();
             }
         }
 
@@ -558,7 +559,7 @@ impl Transform for CreateItem {
                         stmts.extend(self.items.iter().cloned().map(|i| mk().item_stmt(i)));
                     }
                 }
-                b.stmts = stmts;
+                b.stmts = stmts.into();
 
                 mut_visit::noop_visit_block(b, self)
             }

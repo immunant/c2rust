@@ -61,11 +61,11 @@ struct RemoveUnnecessaryRefs;
 impl Transform for RemoveUnnecessaryRefs {
     fn transform(&self, krate: &mut Crate, _st: &CommandState, cx: &RefactorCtxt) {
         MutVisitNodes::visit(krate, |expr: &mut P<Expr>| match &mut expr.kind {
-            ExprKind::MethodCall(_path, receiver, args, _span) => {
-                remove_reborrow(receiver, cx);
-                remove_ref(receiver);
-                remove_all_derefs(receiver, cx);
-                for arg in args.iter_mut() {
+            ExprKind::MethodCall(call) => {
+                remove_reborrow(&mut call.receiver, cx);
+                remove_ref(&mut call.receiver);
+                remove_all_derefs(&mut call.receiver, cx);
+                for arg in call.args.iter_mut() {
                     remove_reborrow(arg, cx);
                 }
             }
@@ -91,8 +91,8 @@ fn remove_ref(expr: &mut P<Expr>) {
 }
 
 fn is_pointer(expr: &P<Expr>, cx: &RefactorCtxt) -> bool {
-    let ty = cx.node_type(expr.id);
-    matches!(ty.kind(), sty::TyKind::RawPtr(..))
+    cx.opt_node_type(expr.id)
+        .map_or(false, |ty| matches!(ty.kind(), sty::TyKind::RawPtr(..)))
 }
 
 fn remove_all_derefs(expr: &mut P<Expr>, cx: &RefactorCtxt) {

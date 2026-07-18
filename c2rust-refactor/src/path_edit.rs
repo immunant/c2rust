@@ -3,7 +3,6 @@ use log::debug;
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
 use smallvec::smallvec;
@@ -16,7 +15,7 @@ use crate::{expect, unpack};
 
 struct ResolvedPathFolder<'a, 'tcx: 'a, F>
 where
-    F: FnMut(NodeId, Option<QSelf>, Path, &[Res]) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<P<QSelf>>, Path, &[Res]) -> (Option<P<QSelf>>, Path),
 {
     cx: &'a RefactorCtxt<'a, 'tcx>,
     callback: F,
@@ -24,7 +23,7 @@ where
 
 impl<'a, 'tcx, F> ResolvedPathFolder<'a, 'tcx, F>
 where
-    F: FnMut(NodeId, Option<QSelf>, Path, &[Res]) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<P<QSelf>>, Path, &[Res]) -> (Option<P<QSelf>>, Path),
 {
     // Some helper functions that get both the AST node and its HIR equivalent.
 
@@ -138,19 +137,25 @@ where
     pub fn alter_use_path(&mut self, item: &mut P<Item>, nodes: &[hir::Node]) {
         let id = item.id;
         unpack!([&mut item.kind] ItemKind::Use(tree));
-        let resolutions: Vec<_> = nodes
+        let mut resolutions: Vec<_> = nodes
             .iter()
-            .map(|node| {
+            .flat_map(|node| {
                 let hir = expect!([node] hir::Node::Item(i) => i);
                 if let hir::ItemKind::Use(ref hir_path, _) = hir.kind {
                     debug!("{:?}", hir_path);
-                    Some(hir_path.res)
+                    hir_path.res.iter().copied().collect()
                 } else {
-                    None
+                    Vec::new()
                 }
             })
-            .flatten()
             .collect();
+        // Before `UsePath::res` became a per-namespace collection, an
+        // unresolved import was represented by a single `Res::Err`.  Keep that
+        // invariant for callbacks: many of them inspect `resolutions[0]`, and
+        // `Res::Err` also tells them to leave the path unchanged.
+        if resolutions.is_empty() {
+            resolutions.push(Res::Err);
+        }
         let (_, new_path) = (self.callback)(id, None, tree.prefix.clone(), &resolutions);
         tree.prefix = new_path;
     }
@@ -160,10 +165,10 @@ where
     fn handle_qpath(
         &mut self,
         id: NodeId,
-        qself: Option<QSelf>,
+        qself: Option<P<QSelf>>,
         path: Path,
         hir_qpath: &hir::QPath,
-    ) -> (Option<QSelf>, Path) {
+    ) -> (Option<P<QSelf>>, Path) {
         match *hir_qpath {
             hir::QPath::Resolved(_, ref hir_path) => {
                 (self.callback)(id, qself, path, &[hir_path.res])
@@ -189,10 +194,10 @@ where
     fn handle_relative_path(
         &mut self,
         id: NodeId,
-        qself: Option<QSelf>,
+        qself: Option<P<QSelf>>,
         path: Path,
         hir_ty: &hir::Ty,
-    ) -> (Option<QSelf>, Path) {
+    ) -> (Option<P<QSelf>>, Path) {
         match hir_ty.kind {
             hir::TyKind::Path(ref qpath) => self.handle_qpath(id, qself, path, qpath),
 
@@ -203,7 +208,7 @@ where
 
 impl<'a, 'tcx, F> MutVisitor for ResolvedPathFolder<'a, 'tcx, F>
 where
-    F: FnMut(NodeId, Option<QSelf>, Path, &[Res]) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<P<QSelf>>, Path, &[Res]) -> (Option<P<QSelf>>, Path),
 {
     // There are several places in the AST that a `Path` can appear:
     //  - PatKind::Ident (single-element paths only)
@@ -255,18 +260,13 @@ where
     }
 
     fn flat_map_item(&mut self, item: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let mut v = match item.kind {
+        let v = match item.kind {
             ItemKind::Use(..) => {
                 // We split nested uses into simple uses to make path rewriting
                 // of use statements simpler.
                 let mut uses = split_uses(item);
                 for item in uses.iter_mut() {
-                    let use_tree = expect!([&item.kind] ItemKind::Use(u) => u);
-                    let mut hir_nodes = vec![self.cx.hir_map().find(item.id)];
-                    if let UseTreeKind::Simple(_, i, j) = &use_tree.kind {
-                        hir_nodes.push(self.cx.hir_map().find(*i));
-                        hir_nodes.push(self.cx.hir_map().find(*j));
-                    }
+                    let hir_nodes = vec![self.cx.hir_map().find(item.id)];
                     let hir_nodes: Vec<_> = hir_nodes.into_iter().flatten().collect();
                     self.alter_use_path(item, &hir_nodes);
                 }
@@ -275,8 +275,9 @@ where
             _ => smallvec![item],
         };
 
-        v.flat_map_in_place(|item| mut_visit::noop_flat_map_item(item, self));
-        v
+        v.into_iter()
+            .flat_map(|item| mut_visit::noop_flat_map_item(item, self))
+            .collect()
     }
 }
 
@@ -284,7 +285,7 @@ where
 pub fn fold_resolved_paths<T, F>(target: &mut T, cx: &RefactorCtxt, mut callback: F)
 where
     T: MutVisit,
-    F: FnMut(Option<QSelf>, Path, &[Res]) -> (Option<QSelf>, Path),
+    F: FnMut(Option<P<QSelf>>, Path, &[Res]) -> (Option<P<QSelf>>, Path),
 {
     let mut f = ResolvedPathFolder {
         cx,
@@ -298,7 +299,7 @@ where
 pub fn fold_resolved_paths_with_id<T, F>(target: &mut T, cx: &RefactorCtxt, callback: F)
 where
     T: MutVisit,
-    F: FnMut(NodeId, Option<QSelf>, Path, &[Res]) -> (Option<QSelf>, Path),
+    F: FnMut(NodeId, Option<P<QSelf>>, Path, &[Res]) -> (Option<P<QSelf>>, Path),
 {
     let mut f = ResolvedPathFolder { cx, callback };
     target.visit(&mut f)

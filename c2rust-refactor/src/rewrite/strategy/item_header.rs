@@ -12,7 +12,7 @@
 //! Aside from the special handling of qualifiers, this strategy works the same as `recursive`.
 use log::info;
 use rustc_ast::token::{Delimiter, Token, TokenKind};
-use rustc_ast::tokenstream::{TokenStream, TokenTree};
+use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use rustc_ast::*;
 use rustc_span::source_map::{BytePos, Span};
 use rustc_span::DUMMY_SP;
@@ -108,7 +108,7 @@ fn span_empty(sp: Span) -> bool {
 //     ident: Span,
 // }
 
-/// Generic parsing function for item headers of the form "<vis> <struct/enum/etc> <ident>".
+/// Generic parsing function for item headers of the form `<vis> <struct/enum/etc> <ident>`.
 // fn find_item_header_spans<'a>(p: &mut Parser<'a>) -> PResult<'a, ItemHeaderSpans> {
 //     // Skip over any attributes that were included in the token stream.
 //     loop {
@@ -178,6 +178,33 @@ fn find_fn_header_arg_list(ts: TokenStream, generics_span: Span) -> Option<(Toke
         .next()
 }
 
+fn shift_span(sp: Span, offset: BytePos) -> Span {
+    sp.with_lo(sp.lo() - offset).with_hi(sp.hi() - offset)
+}
+
+/// Move tokens parsed from an anonymous source file back to their corresponding positions in the
+/// original source file.
+fn shift_token_stream(ts: TokenStream, offset: BytePos) -> TokenStream {
+    TokenStream::new(
+        ts.into_trees()
+            .map(|tt| match tt {
+                TokenTree::Token(mut token, spacing) => {
+                    token.span = shift_span(token.span, offset);
+                    TokenTree::Token(token, spacing)
+                }
+                TokenTree::Delimited(sp, delimiter, tokens) => TokenTree::Delimited(
+                    DelimSpan {
+                        open: shift_span(sp.open, offset),
+                        close: shift_span(sp.close, offset),
+                    },
+                    delimiter,
+                    shift_token_stream(tokens, offset),
+                ),
+            })
+            .collect(),
+    )
+}
+
 /// Record a rewrite of a qualifier, such as `unsafe`.  We make two assumptions:
 ///  1. If `old_span` is empty, then it is placed at the start of the next token after the place
 ///     the new qualifier should go.
@@ -203,6 +230,39 @@ fn record_qualifier_rewrite(old_span: Span, new_span: Span, mut rcx: RewriteCtxt
     }
 
     rcx.record(TextRewrite::new(old_span, src_span));
+}
+
+fn record_visibility_rewrite(
+    old: &Visibility,
+    item_span: Span,
+    new_span: Span,
+    mut rcx: RewriteCtxtRef,
+) -> bool {
+    let old_span = if matches!(old.kind, VisibilityKind::Inherited) {
+        item_span.shrink_to_lo()
+    } else {
+        old.span
+    };
+
+    if old_span == DUMMY_SP {
+        if item_span == DUMMY_SP {
+            return false;
+        }
+        // A zero-width span at the very start of the first source file has the same encoding as
+        // `DUMMY_SP`.  Replace its first byte instead, preserving that byte after the visibility.
+        let first_byte = item_span.with_hi(item_span.lo() + BytePos(1));
+        let Ok(old_text) = rcx.session().source_map().span_to_snippet(first_byte) else {
+            return false;
+        };
+        let new_span = new_span.with_hi(new_span.hi() + BytePos(1));
+        let Ok(new_text) = rcx.session().source_map().span_to_snippet(new_span) else {
+            return false;
+        };
+        rcx.record_text(first_byte, &format!("{new_text}{old_text}"));
+    } else {
+        record_qualifier_rewrite(old_span, new_span, rcx.borrow());
+    }
+    true
 }
 
 fn rewrite_arg_list_with_tokens(
@@ -301,12 +361,6 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         tokens: ref _tokens2,
     } = new;
 
-    // We can't do anything without tokens to parse.  (This is not quite true - we could
-    // pretty-print and reparse `old`.  But that's a pain, so just require tokens instead.)
-    if tokens1.is_none() {
-        return false;
-    }
-
     match (kind1, kind2) {
         (
             &ItemKind::Fn(box Fn {
@@ -322,13 +376,37 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 ..
             }),
         ) => {
-            let tokens1_stream = tokens1
-                .as_ref()
-                .unwrap()
-                .to_attr_token_stream()
-                .to_tokenstream();
+            let (tokens1_stream, token_generics_span) = if let Some(tokens) = tokens1 {
+                (
+                    tokens.to_attr_token_stream().to_tokenstream(),
+                    generics1.span,
+                )
+            } else {
+                // Since rust-lang/rust#108300, rustc only retains item tokens when an attribute
+                // needs them.  Reparse this item with forced token collection, then translate the
+                // anonymous source-file spans back to the original file using the identifier as
+                // an anchor.  If any step fails (e.g. for macro-generated items whose spans have
+                // no usable source text), fall back to another rewrite strategy instead.
+                let Ok(src) = rcx.session().source_map().span_to_snippet(*span1) else {
+                    return false;
+                };
+                let reparsed = Item::<ItemKind>::parse(rcx.session(), &src);
+                let offset = reparsed.ident.span.lo() - ident1.span.lo();
+                let reparsed_generics = match &reparsed.kind {
+                    ItemKind::Fn(box Fn { ref generics, .. }) => generics,
+                    _ => return false,
+                };
+                let Some(tokens) = reparsed.tokens.as_ref() else {
+                    return false;
+                };
+                let tokens = tokens.to_attr_token_stream().to_tokenstream();
+                (
+                    shift_token_stream(tokens, offset),
+                    shift_span(reparsed_generics.span, offset),
+                )
+            };
             let (old_args_tokens, old_args_span) =
-                find_fn_header_arg_list(tokens1_stream, generics1.span)
+                find_fn_header_arg_list(tokens1_stream, token_generics_span)
                     .expect("failed to find arg list in item tokens");
 
             // First, try rewriting all the things we don't have special handling for.  If any of
@@ -363,7 +441,9 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // example, both `unsafe` and `extern`), we need to add them in the right order.
 
             if !vis1.kind.ast_equiv(&vis2.kind) {
-                record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
+                if !record_visibility_rewrite(vis1, *span1, reparsed.vis.span, rcx.borrow()) {
+                    return false;
+                }
             }
 
             if sig1.header.constness != sig2.header.constness {
@@ -400,7 +480,9 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             let reparsed = Item::<ItemKind>::parse(rcx.session(), &src2);
 
             if !vis1.kind.ast_equiv(&vis2.kind) {
-                record_qualifier_rewrite(vis1.span, reparsed.vis.span, rcx.borrow());
+                if !record_visibility_rewrite(vis1, *span1, reparsed.vis.span, rcx.borrow()) {
+                    return false;
+                }
             }
 
             if ident1 != ident2 {

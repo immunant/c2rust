@@ -1,10 +1,12 @@
 use log::{debug, info, trace};
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
+use rustc_ast::token::Lit;
 use rustc_ast::token::{BinOpToken, TokenKind};
 use rustc_ast::*;
 use rustc_ast_pretty::pprust;
-use rustc_errors::PResult;
+use rustc_data_structures::stable_hasher::StableHasher;
+use rustc_errors::{Diagnostic, PResult, TRACK_DIAGNOSTICS};
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyKind};
@@ -12,10 +14,12 @@ use rustc_parse::parser::Parser;
 use rustc_span::Span;
 use smallvec::{smallvec, SmallVec};
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::ops::DerefMut;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::ast_builder::{mk, IntoSymbol};
-use crate::ast_manip::fn_edit::{mut_visit_fns, visit_fns};
+use crate::ast_manip::fn_edit::mut_visit_fns;
 use crate::ast_manip::lr_expr::{self, fold_expr_with_context, fold_exprs_with_context};
 use crate::ast_manip::{fold_output_exprs, FlatMapNodes, MutVisit, MutVisitNodes};
 use crate::command::{Command, CommandState, RefactorState, Registry, TypeckLoopResult};
@@ -26,6 +30,85 @@ use crate::reflect::{self, reflect_tcx_ty};
 use crate::transform::Transform;
 use crate::RefactorCtxt;
 use crate::{expect, match_or};
+
+/// Hashes of structured rustc errors emitted by the compiler invocation
+/// currently being run for `autoretype`.  This is process-global because rustc
+/// can emit a diagnostic from a worker thread rather than the thread that
+/// started the command.  `Diagnostic` itself is not `Send` because it contains
+/// spans, so we store rustc's own stable diagnostic fingerprint instead.
+static AUTORETYPE_DIAGNOSTICS: Mutex<Option<Vec<u128>>> = Mutex::new(None);
+
+/// Only one process-global diagnostic capture can be active at a time.
+static AUTORETYPE_CAPTURE_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn track_autoretype_diagnostic(diagnostic: &mut Diagnostic, emit: &mut dyn FnMut(&mut Diagnostic)) {
+    if diagnostic.is_error() {
+        let mut hasher = StableHasher::new();
+        diagnostic.hash(&mut hasher);
+        let fingerprint = hasher.finish();
+        if let Some(diagnostics) = lock_unpoisoned(&AUTORETYPE_DIAGNOSTICS).as_mut() {
+            diagnostics.push(fingerprint);
+        }
+    }
+    let previous = *lock_unpoisoned(&PREVIOUS_DIAGNOSTIC_TRACKER);
+    previous(diagnostic, emit);
+}
+
+type DiagnosticTracker = fn(&mut Diagnostic, &mut dyn FnMut(&mut Diagnostic));
+
+static AUTORETYPE_DIAGNOSTIC_TRACKER: DiagnosticTracker = track_autoretype_diagnostic;
+static PREVIOUS_DIAGNOSTIC_TRACKER: Mutex<DiagnosticTracker> =
+    Mutex::new(emit_untracked_diagnostic);
+
+fn emit_untracked_diagnostic(diagnostic: &mut Diagnostic, emit: &mut dyn FnMut(&mut Diagnostic)) {
+    emit(diagnostic);
+}
+
+/// Captures structured diagnostics across the compiler sessions rebuilt by
+/// `autoretype`.
+struct AutoRetypeDiagnosticCapture {
+    _capture_guard: MutexGuard<'static, ()>,
+}
+
+impl AutoRetypeDiagnosticCapture {
+    fn start() -> Self {
+        let capture_guard = lock_unpoisoned(&AUTORETYPE_CAPTURE_LOCK);
+
+        // `rustc_interface::setup_callbacks` can replace this global callback
+        // between commands.  Reinstall our wrapper every time, updating its
+        // delegate only when the callback we displaced is not our own wrapper.
+        let previous = TRACK_DIAGNOSTICS.swap(&AUTORETYPE_DIAGNOSTIC_TRACKER);
+        if !std::ptr::eq(previous, &AUTORETYPE_DIAGNOSTIC_TRACKER) {
+            *lock_unpoisoned(&PREVIOUS_DIAGNOSTIC_TRACKER) = *previous;
+        }
+
+        let old = lock_unpoisoned(&AUTORETYPE_DIAGNOSTICS).replace(Vec::new());
+        assert!(old.is_none(), "nested autoretype diagnostic capture");
+        AutoRetypeDiagnosticCapture {
+            _capture_guard: capture_guard,
+        }
+    }
+
+    fn take(&self) -> Vec<u128> {
+        std::mem::take(
+            lock_unpoisoned(&AUTORETYPE_DIAGNOSTICS)
+                .as_mut()
+                .expect("autoretype diagnostic capture is not active"),
+        )
+    }
+}
+
+impl Drop for AutoRetypeDiagnosticCapture {
+    fn drop(&mut self) {
+        lock_unpoisoned(&AUTORETYPE_DIAGNOSTICS).take();
+    }
+}
 
 /// # `retype_argument` Command
 ///
@@ -119,12 +202,12 @@ impl Transform for RetypeArgument {
                         wrap_target(&mut args[idx]);
                     }
                 }
-                ExprKind::MethodCall(_, ref mut recv, ref mut args, _) => {
+                ExprKind::MethodCall(ref mut call) => {
                     for &idx in mod_args {
                         let target = if idx == 0 {
-                            &mut *recv
+                            &mut call.receiver
                         } else {
-                            &mut args[idx - 1]
+                            &mut call.args[idx - 1]
                         };
                         wrap_target(target);
                     }
@@ -264,9 +347,9 @@ impl Transform for RetypeStatic {
 
             smallvec![i.map(|mut i| {
                 match i.kind {
-                    ItemKind::Static(ref mut ty, _, ref mut init) => {
-                        *ty = new_ty.clone();
-                        if let Some(init) = init {
+                    ItemKind::Static(ref mut item) => {
+                        item.ty = new_ty.clone();
+                        if let Some(init) = &mut item.expr {
                             let mut bnd = Bindings::new();
                             bnd.add("__old", init.clone());
                             *init = rev_conv_assign.clone().subst(st, cx, &bnd);
@@ -432,7 +515,7 @@ where
             } else if crate::matches!([i.kind] ItemKind::Static(..)) {
                 i.map(|mut i| {
                     {
-                        let ty = expect!([i.kind] ItemKind::Static(ref mut ty, _, _) => ty);
+                        let ty = expect!([i.kind] ItemKind::Static(ref mut item) => &mut item.ty);
                         let old_ty = ty.clone();
                         if (self.retype)(ty) {
                             self.changed_defs.insert(i.id, (old_ty, ty.clone()));
@@ -443,7 +526,7 @@ where
             } else if crate::matches!([i.kind] ItemKind::Const(..)) {
                 i.map(|mut i| {
                     {
-                        let ty = expect!([i.kind] ItemKind::Const(_, ref mut ty, _) => ty);
+                        let ty = expect!([i.kind] ItemKind::Const(ref mut item) => &mut item.ty);
                         let old_ty = ty.clone();
                         if (self.retype)(ty) {
                             self.changed_defs.insert(i.id, (old_ty, ty.clone()));
@@ -864,17 +947,27 @@ impl AutoRetype {
 
 impl Command for AutoRetype {
     fn run(&mut self, state: &mut RefactorState) {
-        let type_annotations = state
+        let diagnostic_capture = AutoRetypeDiagnosticCapture::start();
+        let (type_annotations, preexisting_diagnostics) = state
             .transform_crate(Phase::Phase3, |st, cx| {
                 let mut retype_prep = RetypePrepFolder::new(st, cx, &self.mark_types);
                 st.map_krate(|krate| krate.visit(&mut retype_prep));
-                retype_prep.type_annotations
+                (retype_prep.type_annotations, diagnostic_capture.take())
             })
             .expect("Failed to run compiler");
+
+        // Discard anything emitted while the original compiler session was
+        // being torn down.  The next capture now starts cleanly at the first
+        // retyping iteration.
+        diagnostic_capture.take();
         state
             .run_typeck_loop(|krate, _st, cx| {
                 info!("Starting retyping iteration");
-                RetypeIteration::new(cx, &type_annotations).run(krate)
+                let current_diagnostics = diagnostic_capture.take();
+                let has_new_errors = current_diagnostics
+                    .iter()
+                    .any(|diagnostic| !preexisting_diagnostics.contains(diagnostic));
+                RetypeIteration::new(cx, &type_annotations, has_new_errors).run(krate)
 
                 // TODO: Proper error handling showing type checking errors
             })
@@ -1027,14 +1120,21 @@ struct RetypeIteration<'a, 'tcx: 'a, 'b> {
     num_inserted_casts: u32,
 
     type_annotations: &'b HashMap<Span, P<Ty>>,
+
+    has_new_errors: bool,
 }
 
 impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
-    fn new(cx: &'a RefactorCtxt<'a, 'tcx>, type_annotations: &'b HashMap<Span, P<Ty>>) -> Self {
+    fn new(
+        cx: &'a RefactorCtxt<'a, 'tcx>,
+        type_annotations: &'b HashMap<Span, P<Ty>>,
+        has_new_errors: bool,
+    ) -> Self {
         RetypeIteration {
             cx,
             num_inserted_casts: 0,
             type_annotations,
+            has_new_errors,
         }
     }
 
@@ -1048,6 +1148,9 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
         // annotation to see if that will fix the error.
         let mut local_type_restored = false;
         MutVisitNodes::visit(krate, |local: &mut P<Local>| {
+            if local.ty.is_some() {
+                return;
+            }
             let ty = self.cx.node_type(local.id);
             if let TyKind::Error(_) = ty.kind() {
                 if let Some(old_ty) = self.type_annotations.get(&local.span) {
@@ -1061,19 +1164,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             return TypeckLoopResult::Iterate;
         }
 
-        let mut errors = false;
-
-        visit_fns(krate, |func| {
-            if func.body.is_some() {
-                let def_id = self.cx.hir_map().local_def_id_from_node_id(func.id);
-                let tables = self.cx.ty_ctxt().typeck(def_id);
-                if tables.tainted_by_errors.is_some() {
-                    errors = true
-                }
-            }
-        });
-
-        if errors {
+        if self.has_new_errors {
             debug!("{:#?}", krate);
             TypeckLoopResult::Err("Typechecking failed")
         } else {
@@ -1290,7 +1381,8 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             }
         }
 
-        match (&expected.ty.kind(), &lit.kind) {
+        let lit_kind = LitKind::from_token_lit(lit).ok()?;
+        match (&expected.ty.kind(), &lit_kind) {
             (TyKind::Int(t), LitKind::Int(v, _)) => {
                 let int_type = t.normalize(self.cx.session().target.pointer_width);
                 let (_, max) = int_ty_range(int_type);
@@ -1340,13 +1432,13 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 }
             }
             (
-                ExprKind::MethodCall(ref path, ref recv, ref _arguments, _),
+                ExprKind::MethodCall(ref call),
                 TyKind::RawPtr(ty::TypeAndMut {
                     ty: ref inner_ty,
                     ref mutbl,
                 }),
-            ) if (path.ident.name.as_str() == "as_mut_ptr"
-                || path.ident.name.as_str() == "as_ptr") =>
+            ) if (call.seg.ident.name.as_str() == "as_mut_ptr"
+                || call.seg.ident.name.as_str() == "as_ptr") =>
             {
                 let new_method_name = if *mutbl == hir::Mutability::Mut {
                     "as_mut_ptr"
@@ -1356,7 +1448,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 let mut sub_expected = expected;
                 sub_expected.ty = self.cx.ty_ctxt().mk_slice(*inner_ty);
                 sub_expected.mutability = Some(*mutbl);
-                let mut e = recv.clone();
+                let mut e = call.receiver.clone();
                 if self.try_retype(&mut e, sub_expected.clone()) {
                     *expr = mk().method_call_expr(e, new_method_name, Vec::<P<Expr>>::new());
                     return true;
@@ -1375,7 +1467,9 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             }
             (ExprKind::Unary(UnOp::Deref, e), _) => {
                 let mut sub_expected = expected.clone();
-                let old_subtype = self.cx.node_type(e.id);
+                let Some(old_subtype) = self.cx.opt_node_type(e.id) else {
+                    return false;
+                };
                 sub_expected.ty = match old_subtype.kind() {
                     TyKind::RawPtr(ty::TypeAndMut {
                         mutbl: subtype_mutbl,
@@ -1421,13 +1515,15 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
     /// Attempt to coerce or cast an expression into the expected type
     fn try_retype(&mut self, expr: &mut P<Expr>, expected: TypeExpectation<'tcx>) -> bool {
-        let cur_ty = self.cx.node_type(expr.id);
+        let cur_ty = self.cx.opt_node_type(expr.id);
         debug!(
             "Attempting to retype {:?} from {:?} to {:?}",
             expr, cur_ty, expected
         );
-        if can_coerce(cur_ty, expected.ty, self.cx.ty_ctxt()) {
-            return true;
+        if let Some(cur_ty) = cur_ty {
+            if can_coerce(cur_ty, expected.ty, self.cx.ty_ctxt()) {
+                return true;
+            }
         }
 
         match &mut expr.kind {
@@ -1447,7 +1543,12 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             return true;
         }
 
-        let hir_id = self.cx.hir_map().node_to_hir_id(expr.id);
+        let Some(cur_ty) = cur_ty else {
+            return false;
+        };
+        let Some(hir_id) = self.cx.hir_map().opt_node_to_hir_id(expr.id) else {
+            return false;
+        };
         if self.can_cast(
             cur_ty,
             expected.ty,
@@ -1463,7 +1564,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 }
 
 /// Will `from_ty` coerce to `to_ty`?
-/// Based on rules described in https://doc.rust-lang.org/nomicon/coercions.html
+/// Based on rules described in <https://doc.rust-lang.org/nomicon/coercions.html>.
 fn can_coerce<'a, 'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     use rustc_type_ir::sty::TyKind::*;
 

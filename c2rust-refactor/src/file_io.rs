@@ -33,6 +33,9 @@ pub trait FileIO {
     }
 
     fn read_file(&self, path: &Path) -> io::Result<String>;
+    fn read_binary_file(&self, path: &Path) -> io::Result<Vec<u8>> {
+        fs::read(path)
+    }
     fn write_file(&self, path: &Path, s: &str) -> io::Result<()>;
     fn save_rewrites(
         &self,
@@ -266,5 +269,9 @@ impl FileLoader for ArcFileIO {
 
     fn read_file(&self, path: &Path) -> io::Result<String> {
         self.0.read_file(path)
+    }
+
+    fn read_binary_file(&self, path: &Path) -> io::Result<Vec<u8>> {
+        self.0.read_binary_file(path)
     }
 }

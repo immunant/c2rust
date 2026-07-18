@@ -1,6 +1,7 @@
 use log::debug;
 use rustc_ast::ptr::P;
-use rustc_ast::{Crate, Expr, ExprKind, Lit, LitKind, Stmt, StmtKind};
+use rustc_ast::token::Lit;
+use rustc_ast::{Crate, Expr, ExprKind, LitKind, Stmt, StmtKind};
 use rustc_hir::HirId;
 use rustc_hir_typeck::expr_use_visitor::*;
 use rustc_infer::infer::TyCtxtInferExt;
@@ -187,10 +188,7 @@ fn is_one_expr(e: &Expr) -> bool {
 }
 
 fn is_one_lit(l: &Lit) -> bool {
-    match l.kind {
-        LitKind::Int(1, _) => true,
-        _ => false,
-    }
+    matches!(LitKind::from_token_lit(*l), Ok(LitKind::Int(1, _)))
 }
 
 struct ForRangeDelegate<'a, 'hir> {
