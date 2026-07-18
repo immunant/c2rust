@@ -1,0 +1,41 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_multi_namespace.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+pub mod dest_h {
+    extern "C" {
+        pub fn tick(x: i32) -> i32;
+    }
+}
+pub mod provider {
+    // A braced struct and a function sharing one spelling: the type lives in
+    // the type namespace and the function in the value namespace.
+    #[derive(Copy, Clone)]
+    pub struct tick {
+        pub x: i32,
+    }
+
+    pub fn tick(v: tick) -> i32 {
+        v.x
+    }
+}
+
+pub mod dest {
+
+    // One simple use that imports both the type and the value. The header
+    // declaration above must not be moved into this module: the value
+    // namespace here is already occupied by this import.
+    use crate::provider::tick;
+
+    pub fn go(v: tick) -> i32 {
+        tick(v)
+    }
+}
+
+fn main() {}

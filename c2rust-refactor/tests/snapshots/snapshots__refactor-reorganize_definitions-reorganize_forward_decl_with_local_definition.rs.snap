@@ -9,14 +9,16 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-pub mod repository {
-
-    // =============== BEGIN repository_h ================
+pub mod repository_h {
     #[derive(Copy, Clone)]
     #[repr(C)]
     pub struct git_repository {
         pub attrcache: *mut crate::attrcache::git_attr_cache,
     }
+}
+pub mod repository {
+
+    use crate::repository_h::git_repository;
 }
 
 pub mod attrcache {
@@ -28,13 +30,13 @@ pub mod attrcache {
         use crate::attrcache::git_attr_cache;
 
         pub unsafe extern "C" fn git_repository_attr_cache(
-            repo: *mut crate::repository::git_repository,
+            repo: *mut crate::repository_h::git_repository,
         ) -> *mut git_attr_cache {
             (*repo).attrcache
         }
     }
 
-    use crate::repository::git_repository;
+    use crate::repository_h::git_repository;
 
     #[derive(Copy, Clone)]
     #[repr(C)]
@@ -43,7 +45,7 @@ pub mod attrcache {
     }
 
     unsafe extern "C" fn attrcache_source_function(
-        repo: *mut crate::repository::git_repository,
+        repo: *mut crate::repository_h::git_repository,
     ) -> *mut git_attr_cache {
         repository_h::git_repository_attr_cache(repo)
     }

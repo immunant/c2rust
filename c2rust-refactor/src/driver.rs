@@ -2,6 +2,7 @@
 //! `rustc_driver::run_compiler`.
 
 use rustc_ast::ast;
+use rustc_ast::node_id::NodeMap;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{self, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
@@ -16,6 +17,7 @@ use rustc_data_structures::sync::Lrc;
 use rustc_driver;
 use rustc_errors::PResult;
 use rustc_errors::{DiagnosticBuilder, ErrorGuaranteed};
+use rustc_hir::def::{PerNS, Res};
 use rustc_index::vec::IndexVec;
 use rustc_interface::interface;
 use rustc_interface::{util, Config};
@@ -72,6 +74,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         map: hir_map::Map<'tcx>,
         node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
+        import_res_map: NodeMap<PerNS<Option<Res<NodeId>>>>,
         tcx: GenerationalTyCtxt<'tcx>,
         span_maps: AstSpanMaps,
     ) -> RefactorCtxt<'a, 'tcx> {
@@ -82,6 +85,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
                 map,
                 node_id_to_def_id,
                 def_id_to_node_id,
+                import_res_map,
                 span_maps,
             )),
             Some(tcx),

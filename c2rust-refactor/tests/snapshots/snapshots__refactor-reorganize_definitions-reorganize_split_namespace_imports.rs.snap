@@ -1,0 +1,35 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_split_namespace_imports.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+pub mod stdlib {
+    extern "C" {
+        pub fn item(v: *const crate::stdlib::item) -> i32;
+    }
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct item {
+        pub x: i32,
+    }
+}
+pub mod wrapper {
+
+    // Two imports of one spelling, each resolving in a single namespace.
+
+    // Their targets both move into `stdlib`, so the rewritten imports become
+
+    // identical and resolve in both namespaces; only one may survive.
+    pub use crate::stdlib::item;
+
+    pub unsafe fn call(v: crate::stdlib::item) -> i32 {
+        crate::stdlib::item(&v)
+    }
+}
+
+fn main() {}
