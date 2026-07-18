@@ -2,6 +2,7 @@ use log::{trace, warn};
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
+use rustc_ast::node_id::NodeMap;
 use rustc_ast::ptr::P;
 use rustc_ast::{
     AssocItem, Expr, ExprKind, FnDecl, FnRetTy, ForeignItem, ForeignItemKind, Item, ItemKind,
@@ -9,7 +10,7 @@ use rustc_ast::{
 };
 use rustc_data_structures::fx::FxHashMap;
 use rustc_errors::{DiagnosticBuilder, Level};
-use rustc_hir::def::{DefKind, Namespace, Res};
+use rustc_hir::def::{DefKind, Namespace, PerNS, Res};
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::{self as hir, BodyId, HirId, Node};
 use rustc_index::vec::IndexVec;
@@ -19,9 +20,10 @@ use rustc_middle::ty::{FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_session::config::CrateType;
 use rustc_session::Session;
 use rustc_span::Span;
+use smallvec::{smallvec, SmallVec};
 
 use crate::ast_builder::mk;
-use crate::ast_manip::util::{is_export_attr, namespace};
+use crate::ast_manip::util::is_export_attr;
 use crate::ast_manip::{
     child_slot, AstEquiv, AstSpanMaps, NodeContextKey, NodeSpan, SpanNodeKind, StructuralContext,
 };
@@ -328,6 +330,7 @@ pub struct HirMap<'hir> {
 
     node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
     def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
+    import_res_map: NodeMap<PerNS<Option<Res<NodeId>>>>,
 
     span_to_hir_map: SpanToHirMap,
     /// Tie-breaker map keyed by (span, NodeContextKey) for nodes that share spans
@@ -341,6 +344,7 @@ impl<'hir> HirMap<'hir> {
         map: hir_map::Map<'hir>,
         node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
+        import_res_map: NodeMap<PerNS<Option<Res<NodeId>>>>,
         ast_span_maps: AstSpanMaps,
     ) -> Self {
         let mut mapper = SpanToHirMapper::new(map, &def_id_to_node_id);
@@ -352,6 +356,7 @@ impl<'hir> HirMap<'hir> {
             max_node_id,
             node_id_to_def_id,
             def_id_to_node_id,
+            import_res_map,
             span_to_hir_map,
             context_to_hir_map,
             ast_span_maps,
@@ -789,6 +794,65 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         Some(path)
     }
 
+    /// Return every resolution of a simple import, paired with the namespace
+    /// in which rustc resolved it.
+    ///
+    /// The old HIR keeps only one of these resolutions on `hir::Path::res`,
+    /// while the resolver map retains all three.  Keep the resolver's
+    /// type/value/macro ordering so callers never have to infer a namespace
+    /// from the selected HIR resolution.
+    pub fn resolved_imports(&self, id: NodeId) -> SmallVec<[(Namespace, Res<NodeId>); 3]> {
+        let Some(resolutions) = self.hir_map().import_res_map.get(&id) else {
+            return smallvec![];
+        };
+        let mut result = SmallVec::new();
+        for (namespace, resolution) in [
+            (Namespace::TypeNS, &resolutions.type_ns),
+            (Namespace::ValueNS, &resolutions.value_ns),
+            (Namespace::MacroNS, &resolutions.macro_ns),
+        ] {
+            if let Some(resolution) = resolution {
+                if !matches!(resolution, Res::Err) {
+                    result.push((namespace, *resolution));
+                }
+            }
+        }
+        result
+    }
+
+    /// Return every resolution of a simple AST `use`, including resolutions
+    /// stored under the supplemental NodeIds used by the old lowering shape.
+    pub fn resolved_imports_for_item(
+        &self,
+        item: &Item,
+    ) -> SmallVec<[(Namespace, Res<NodeId>); 3]> {
+        let tree = match &item.kind {
+            ItemKind::Use(tree) => tree,
+            _ => return smallvec![],
+        };
+        let (type_id, value_id) = match tree.kind {
+            UseTreeKind::Simple(_, type_id, value_id) => (type_id, value_id),
+            _ => return smallvec![],
+        };
+        let ids: SmallVec<[NodeId; 3]> = smallvec![item.id, type_id, value_id];
+
+        let mut result = SmallVec::new();
+        for namespace in [Namespace::TypeNS, Namespace::ValueNS, Namespace::MacroNS] {
+            let resolution = ids.iter().find_map(|id| {
+                self.hir_map()
+                    .import_res_map
+                    .get(id)
+                    .and_then(|resolutions| resolutions[namespace])
+            });
+            if let Some(resolution) = resolution {
+                if !matches!(resolution, Res::Err) {
+                    result.push((namespace, resolution));
+                }
+            }
+        }
+        result
+    }
+
     /// Compare two items for type compatibility under the C definition.
     ///
     /// If `match_vis` is `true`, the visibility of all `struct`/`enum`/`union`
@@ -829,28 +893,35 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         self.sess.crate_types().contains(&CrateType::Executable)
     }
 
-    pub fn item_namespace(&self, item: &Item) -> Option<Namespace> {
+    /// Return every namespace the given item occupies.
+    ///
+    /// A simple `use` may resolve in the type, value, and macro namespaces at
+    /// once. Every other named item occupies exactly one namespace. Results
+    /// preserve rustc's type/value/macro order and contain no duplicates.
+    pub fn item_namespaces(&self, item: &Item) -> SmallVec<[Namespace; 3]> {
         match &item.kind {
             ItemKind::Use(tree) => {
                 // Nested uses should be already split apart
                 if let UseTreeKind::Nested(..) = &tree.kind {
-                    None
+                    smallvec![]
                 } else {
-                    let path = self.try_resolve_use_id(item.id)?;
-                    namespace(&path.res)
+                    self.resolved_imports_for_item(item)
+                        .into_iter()
+                        .map(|(namespace, _)| namespace)
+                        .collect()
                 }
             }
 
             // Extern headers cannot contain impls
-            ItemKind::Impl(..) => None,
+            ItemKind::Impl(..) => smallvec![],
 
-            ItemKind::ForeignMod(_) => None,
+            ItemKind::ForeignMod(_) => smallvec![],
 
             ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
-                Some(Namespace::ValueNS)
+                smallvec![Namespace::ValueNS]
             }
 
-            _ => Some(Namespace::TypeNS),
+            _ => smallvec![Namespace::TypeNS],
         }
     }
 
@@ -1213,8 +1284,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             }
 
             _ => {
-                if self.cx.item_namespace(item1) == Some(Namespace::TypeNS)
-                    && self.cx.item_namespace(item2) == Some(Namespace::TypeNS)
+                if self.cx.item_namespaces(item1).contains(&Namespace::TypeNS)
+                    && self.cx.item_namespaces(item2).contains(&Namespace::TypeNS)
                 {
                     match (
                         self.cx.opt_node_type(item1.id),

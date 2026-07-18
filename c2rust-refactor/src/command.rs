@@ -382,11 +382,12 @@ impl RefactorState {
                 Phase::Phase2 => {
                     profile_start!("Lower to HIR");
                     let r = queries.global_ctxt()?.take().enter(|tcx| {
-                        let (node_id_to_def_id, def_id_to_node_id) = {
+                        let (node_id_to_def_id, def_id_to_node_id, import_res_map) = {
                             let resolver = tcx.resolver_for_lowering(()).borrow();
                             (
                                 resolver.node_id_to_def_id.clone(),
                                 resolver.def_id_to_node_id.clone(),
+                                resolver.import_res_map.clone(),
                             )
                         };
                         let cx = RefactorCtxt::new_phase_2_3(
@@ -395,6 +396,7 @@ impl RefactorState {
                             tcx.hir(),
                             node_id_to_def_id,
                             def_id_to_node_id,
+                            import_res_map,
                             GenerationalTyCtxt(tcx, tcx_gen.clone()),
                             AstSpanMaps::new(&expanded),
                         );
@@ -409,11 +411,12 @@ impl RefactorState {
                 Phase::Phase3 => {
                     profile_start!("Compiler Phase 3");
                     let r = queries.global_ctxt()?.take().enter(|tcx| {
-                        let (node_id_to_def_id, def_id_to_node_id) = {
+                        let (node_id_to_def_id, def_id_to_node_id, import_res_map) = {
                             let resolver = tcx.resolver_for_lowering(()).borrow();
                             (
                                 resolver.node_id_to_def_id.clone(),
                                 resolver.def_id_to_node_id.clone(),
+                                resolver.import_res_map.clone(),
                             )
                         };
                         // One extra step for Phase 3: run the analysis passes
@@ -424,6 +427,7 @@ impl RefactorState {
                             tcx.hir(),
                             node_id_to_def_id,
                             def_id_to_node_id,
+                            import_res_map,
                             GenerationalTyCtxt(tcx, tcx_gen.clone()),
                             AstSpanMaps::new(&expanded),
                         );
