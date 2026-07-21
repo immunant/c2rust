@@ -1,0 +1,4 @@
+schema: "4.1"
+duplicates:
+  match_on:
+    - output
