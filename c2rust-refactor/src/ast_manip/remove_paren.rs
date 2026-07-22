@@ -31,7 +31,6 @@ impl MutVisitor for RemoveParen {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn remove_paren<T: MutVisit>(x: &mut T) {
     x.visit(&mut RemoveParen)
 }

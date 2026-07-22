@@ -29,7 +29,6 @@ slotmap = {version = "1.0.7", features = ["unstable"]}
 derive_more = "=0.99.17"
 c2rust-macros = { path = "../c2rust-macros", version = "0.22.1" }
 flame = { version = "0.2.2", optional = true }
-flamer = { version = "0.4", optional = true }
 failure = "0.1"
 bincode = "1.0.1"
 petgraph = "0.4"
@@ -51,7 +50,7 @@ itertools = "0.14.0"
 
 [features]
 default = []
-profile = ["flame", "flamer"]
+profile = ["flame"]
 
 [package.metadata.rust-analyzer]
 rustc_private = true

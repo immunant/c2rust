@@ -175,7 +175,6 @@ pub fn create_config(args: &[String]) -> interface::Config {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn run_compiler<F, R>(
     mut config: interface::Config,
     file_loader: Option<Box<dyn FileLoader + Send + Sync>>,
@@ -193,7 +192,6 @@ where
     interface::run_compiler(config, f)
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn run_refactoring<F, R>(
     mut config: interface::Config,
     cmd_reg: Registry,
@@ -282,7 +280,6 @@ pub fn emit_and_panic(mut db: DiagnosticBuilder<ErrorGuaranteed>, what: &str) ->
 }
 
 // Helper functions for parsing source code in an existing `Session`.
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     let mut p = make_parser(sess, src);
     match p.parse_expr() {
@@ -294,7 +291,6 @@ pub fn parse_expr(sess: &Session, src: &str) -> P<Expr> {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     let mut p = make_parser(sess, src);
     // TODO: do we want to allow top-level or-patterns here?
@@ -307,7 +303,6 @@ pub fn parse_pat(sess: &Session, src: &str) -> P<Pat> {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     let mut p = make_parser(sess, src);
     match p.parse_ty() {
@@ -319,7 +314,6 @@ pub fn parse_ty(sess: &Session, src: &str) -> P<Ty> {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     let mut p = make_parser(sess, src);
     let mut stmts = Vec::new();
@@ -336,7 +330,6 @@ pub fn parse_stmts(sess: &Session, src: &str) -> Vec<Stmt> {
     stmts
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     let mut p = make_parser(sess, src);
     let mut items = Vec::new();
@@ -353,7 +346,6 @@ pub fn parse_items(sess: &Session, src: &str) -> Vec<P<Item>> {
     items
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<P<AssocItem>> {
     // TODO: rustc no longer exposes `parse_impl_item_`. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
@@ -367,7 +359,6 @@ pub fn parse_impl_items(sess: &Session, src: &str) -> Vec<P<AssocItem>> {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<P<ForeignItem>> {
     // TODO: rustc no longer exposes a method for parsing ForeignItems. `parse_item` is a hacky
     // workaround that may cause suboptimal error messages.
@@ -381,7 +372,6 @@ pub fn parse_foreign_items(sess: &Session, src: &str) -> Vec<P<ForeignItem>> {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_block(sess: &Session, src: &str) -> P<Block> {
     let mut p = make_parser(sess, src);
 
@@ -422,7 +412,6 @@ fn parse_arg_inner<'a>(p: &mut Parser<'a>) -> PResult<'a, Param> {
     })
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn parse_arg(sess: &Session, src: &str) -> Param {
     let mut p = make_parser(sess, src);
     match parse_arg_inner(&mut p) {
@@ -434,7 +423,6 @@ pub fn parse_arg(sess: &Session, src: &str) -> Param {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn run_parser<F, R>(sess: &Session, src: &str, f: F) -> R
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
@@ -446,7 +434,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> R
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
@@ -462,7 +449,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn try_run_parser<F, R>(sess: &Session, src: &str, f: F) -> Option<R>
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
@@ -477,7 +463,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn try_run_parser_tts<F, R>(sess: &Session, tts: Vec<TokenTree>, f: F) -> Option<R>
 where
     F: for<'a> FnOnce(&mut Parser<'a>) -> PResult<'a, R>,
