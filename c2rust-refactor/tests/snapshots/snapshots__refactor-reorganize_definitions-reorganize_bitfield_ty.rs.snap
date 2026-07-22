@@ -11,7 +11,7 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 pub mod data_h {
     #[repr(C)]
     pub struct data_t {
-        #[bitfield(name = "flag", ty = "bit", bits = "0..=0")]
+        #[bitfield(name = "flag", ty = "crate::setup_h::bit", bits = "0..=0")]
         #[bitfield(name = "wide", ty = "::core::ffi::c_uint", bits = "1..=3")]
         pub flag_wide: [u8; 1],
         #[bitfield(padding)]
