@@ -204,10 +204,17 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..) | Closure(..) | Generator(..) | GeneratorWitness(..) | Projection(..)
-            | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
-                self.mk(ty, &[], label)
-            }
+            Dynamic(..)
+            | Closure(..)
+            | Generator(..)
+            | GeneratorWitness(..)
+            | GeneratorWitnessMIR(..)
+            | Alias(..)
+            | Param(..)
+            | Bound(..)
+            | Placeholder(..)
+            | Infer(..)
+            | Error(..) => self.mk(ty, &[], label),
         }
     }
 
@@ -357,19 +364,21 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             Adt(adt, substs) => {
                 // Copy `substs`, but replace all types with those from `args`.
                 let mut it = args.iter().cloned();
-                let substs = self
-                    .tcx
-                    .mk_substs(substs.iter().map(|arg| match arg.unpack() {
+                let substs = substs
+                    .iter()
+                    .map(|arg| match arg.unpack() {
                         GenericArgKind::Type(_) => it.next().unwrap().into(),
                         GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
                         GenericArgKind::Const(cn) => GenericArg::from(cn),
-                    }));
+                    })
+                    .collect::<Vec<_>>();
+                let substs = self.tcx.mk_substs(&substs);
                 assert!(it.next().is_none());
                 self.tcx.mk_adt(adt, substs)
             }
             Array(_, len) => {
                 let &[elem]: &[_; 1] = args[..].try_into().unwrap();
-                self.tcx.mk_ty(Array(elem, len))
+                self.tcx.mk_ty_from_kind(Array(elem, len))
             }
             Slice(_) => {
                 let &[elem]: &[_; 1] = args[..].try_into().unwrap();
@@ -389,13 +398,15 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             FnDef(def_id, substs) => {
                 // Copy `substs`, but replace all types with those from `args`.
                 let mut it = args.iter().cloned();
-                let substs = self
-                    .tcx
-                    .mk_substs(substs.iter().map(|arg| match arg.unpack() {
+                let substs = substs
+                    .iter()
+                    .map(|arg| match arg.unpack() {
                         GenericArgKind::Type(_) => it.next().unwrap().into(),
                         GenericArgKind::Lifetime(rg) => GenericArg::from(rg),
                         GenericArgKind::Const(cn) => GenericArg::from(cn),
-                    }));
+                    })
+                    .collect::<Vec<_>>();
+                let substs = self.tcx.mk_substs(&substs);
                 assert!(it.next().is_none());
                 self.tcx.mk_fn_def(def_id, substs)
             }
@@ -403,13 +414,20 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 // FIXME: replace all the types under the binder
                 lty.ty
             }
-            Tuple(_) => self.tcx.mk_tup(args.iter().cloned()),
+            Tuple(_) => self.tcx.mk_tup(&args),
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..) | Closure(..) | Generator(..) | GeneratorWitness(..) | Projection(..)
-            | Opaque(..) | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
-                lty.ty
-            }
+            Dynamic(..)
+            | Closure(..)
+            | Generator(..)
+            | GeneratorWitness(..)
+            | GeneratorWitnessMIR(..)
+            | Alias(..)
+            | Param(..)
+            | Bound(..)
+            | Placeholder(..)
+            | Infer(..)
+            | Error(..) => lty.ty,
         };
 
         func(ty, &args, lty.label)

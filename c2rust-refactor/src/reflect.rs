@@ -8,7 +8,7 @@ use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::definitions::DefPathData;
 use rustc_hir::Node;
 use rustc_middle::hir::map::Map as HirMap;
-use rustc_middle::ty::{self, DefIdTree, EarlyBinder, GenericParamDefKind, TyCtxt};
+use rustc_middle::ty::{self, GenericParamDefKind, TyCtxt};
 use rustc_span::source_map::DUMMY_SP;
 use rustc_span::symbol::kw;
 use rustc_type_ir::sty::TyKind as IrTyKind;
@@ -26,7 +26,7 @@ pub struct Reflector<'a, 'tcx> {
 
     /// Mapping from old DefId to new DefId for defs that have been replaced
     /// after types were resolved.
-    def_mapping: Option<&'a HashMap<DefId, (Option<QSelf>, Path)>>,
+    def_mapping: Option<&'a HashMap<DefId, (Option<P<QSelf>>, Path)>>,
 }
 
 impl<'a, 'tcx> Reflector<'a, 'tcx> {
@@ -41,7 +41,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
     /// replaced defs.
     pub fn new_with_mapping(
         tcx: TyCtxt<'tcx>,
-        def_mapping: &'a HashMap<DefId, (Option<QSelf>, Path)>,
+        def_mapping: &'a HashMap<DefId, (Option<P<QSelf>>, Path)>,
     ) -> Self {
         Self {
             tcx,
@@ -66,8 +66,25 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     let (qself, path) = self.reflect_def_path_inner(def.did(), None);
                     mk().qpath_ty(qself, path)
                 } else {
+                    let explicit_type_args = self
+                        .tcx
+                        .generics_of(def.did())
+                        .own_substs_no_defaults(self.tcx, substs)
+                        .iter()
+                        .filter(|arg| matches!(arg.unpack(), ty::GenericArgKind::Type(_)))
+                        .count();
                     let substs = substs.types().collect::<Vec<_>>();
-                    let (qself, path) = self.reflect_def_path_inner(def.did(), Some(&substs));
+                    let (qself, mut path) = self.reflect_def_path_inner(def.did(), Some(&substs));
+                    if let Some(segment) = path.segments.last_mut() {
+                        if explicit_type_args == 0 {
+                            segment.args = None;
+                        } else if let Some(args) = &mut segment.args {
+                            let GenericArgs::AngleBracketed(args) = &mut **args else {
+                                unreachable!("reflected type arguments must be angle bracketed")
+                            };
+                            args.args.truncate(explicit_type_args);
+                        }
+                    }
                     mk().qpath_ty(qself, path)
                 }
             }
@@ -79,7 +96,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             IrTyKind::Array(ty, len) => mk().array_ty(
                 self.reflect_ty(*ty),
                 mk().lit_expr(mk().int_lit(
-                    len.eval_usize(self.tcx, ty::ParamEnv::empty()) as u128,
+                    len.eval_target_usize(self.tcx, ty::ParamEnv::empty()) as u128,
                     "usize",
                 )),
             ),
@@ -106,12 +123,12 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             IrTyKind::Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
+            IrTyKind::GeneratorWitnessMIR(..) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::Never => mk().never_ty(),
             IrTyKind::Tuple(tys) => {
                 mk().tuple_ty(tys.iter().map(|ty| self.reflect_ty(ty)).collect())
             }
-            IrTyKind::Projection(..) => mk().infer_ty(), // TODO
-            IrTyKind::Opaque(..) => mk().infer_ty(),     // TODO (impl Trait)
+            IrTyKind::Alias(..) => mk().infer_ty(), // TODO (projection and impl Trait)
             IrTyKind::Param(param) => {
                 if infer_args {
                     mk().infer_ty()
@@ -134,7 +151,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
         &self,
         id: DefId,
         opt_substs: Option<&[ty::Ty<'tcx>]>,
-    ) -> (Option<QSelf>, Path) {
+    ) -> (Option<P<QSelf>>, Path) {
         if let Some(mapping) = self.def_mapping {
             if let Some(new_path) = mapping.get(&id) {
                 return new_path.clone();
@@ -177,10 +194,10 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                             .iter()
                             .map(|&t| t.into())
                             .collect::<Vec<_>>();
-                        let ty = EarlyBinder(ty).subst(self.tcx, &tcx_substs);
+                        let ty = ty.subst(self.tcx, &tcx_substs);
                         reflect_tcx_ty(self.tcx, ty)
                     } else {
-                        self.reflect_ty_inner(ty, true)
+                        self.reflect_ty_inner(ty.subst_identity(), true)
                     };
 
                     match ast_ty.kind {
@@ -189,11 +206,11 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                             segments.extend(ty_path.segments.iter().rev().cloned());
                         }
                         _ => {
-                            qself = Some(QSelf {
+                            qself = Some(P(QSelf {
                                 ty: ast_ty.clone(),
                                 path_span: DUMMY_SP,
                                 position: 0,
-                            });
+                            }));
                         }
                     }
 
@@ -229,7 +246,8 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     | DefPathData::ClosureExpr
                     | DefPathData::Ctor
                     | DefPathData::AnonConst
-                    | DefPathData::ImplTrait => {}
+                    | DefPathData::ImplTrait
+                    | DefPathData::ImplTraitAssocTy => {}
             }
 
             // Special logic for certain node kinds
@@ -271,8 +289,8 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                             GenericParamDefKind::Const { .. } => false,
                         })
                         .count();
-                    if let Some(substs) = opt_substs {
-                        if !substs.is_empty() {
+                    if num_params != 0 {
+                        if let Some(substs) = opt_substs {
                             assert!(substs.len() >= num_params);
                             let start = substs.len() - num_params;
                             let tys = substs[start..]
@@ -280,7 +298,8 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                                 .map(|ty| self.reflect_ty(*ty))
                                 .collect::<Vec<_>>();
                             let abpd = mk().angle_bracketed_args(tys);
-                            segments.last_mut().unwrap().args = abpd.into();
+                            segments.last_mut().unwrap().args =
+                                Some(P(GenericArgs::AngleBracketed(abpd)));
                             opt_substs = Some(&substs[..start]);
                         }
                     }
@@ -320,19 +339,26 @@ pub fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
 
 fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
     use rustc_hir::ExprKind::*;
+    // The token::Lit inside an AST literal expression cannot carry a span on
+    // this compiler, so the HIR literal's span is applied to the enclosing
+    // expression instead. Binary and unary expressions are deliberately left
+    // with the builder's dummy span, matching the previous behavior where
+    // only the literal itself was spanned; propagating parent spans would
+    // change the rewriter's text-recovery decisions and is a separate,
+    // deliberate improvement.
     match e.kind {
         Binary(op, ref a, ref b) => {
             let op: BinOpKind = op.node.into();
             mk().binary_expr(op, hir_expr_to_expr(a), hir_expr_to_expr(b))
         }
         Unary(op, ref a) => mk().unary_expr(op.as_str(), hir_expr_to_expr(a)),
-        Lit(ref l) => mk().lit_expr(l.clone()),
+        Lit(ref l) => mk().span(l.span).lit_expr(l.clone()),
         ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
 }
 
 /// Build a path referring to a specific def.
-pub fn reflect_def_path(tcx: TyCtxt, id: DefId) -> (Option<QSelf>, Path) {
+pub fn reflect_def_path(tcx: TyCtxt, id: DefId) -> (Option<P<QSelf>>, Path) {
     Reflector::new(tcx).reflect_def_path_inner(id, None)
 }
 
@@ -419,4 +445,52 @@ fn register_test_reflect(reg: &mut Registry) {
 
 pub fn register_commands(reg: &mut Registry) {
     register_test_reflect(reg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustc_hir::def_id::CRATE_DEF_ID;
+    use rustc_span::source_map::Spanned;
+    use rustc_span::{BytePos, Span, SyntaxContext};
+
+    /// The HIR-to-AST conversion must retain a literal's source location on
+    /// the enclosing AST expression, because the literal token itself cannot
+    /// carry a span on this compiler. No current refactor command reflects
+    /// spanned anonymous constants end-to-end, so this is covered at the
+    /// unit level.
+    #[test]
+    fn hir_literal_span_is_kept_on_ast_expr() {
+        rustc_span::create_default_session_globals_then(|| {
+            let lit_span = Span::new(BytePos(10), BytePos(12), SyntaxContext::root(), None);
+            let hir_id = hir::HirId::make_owner(CRATE_DEF_ID);
+            let hir_lit_expr = hir::Expr {
+                hir_id,
+                kind: hir::ExprKind::Lit(Spanned {
+                    node: LitKind::Int(42, LitIntType::Unsuffixed),
+                    span: lit_span,
+                }),
+                span: lit_span,
+            };
+
+            let ast_expr = hir_expr_to_expr(&hir_lit_expr);
+            assert_eq!(ast_expr.span, lit_span);
+            assert!(matches!(ast_expr.kind, ExprKind::Lit(..)));
+
+            // A nested constant keeps the span on the literal leaf; the
+            // parent expression deliberately stays unspanned (see
+            // `hir_expr_to_expr`).
+            let outer_span = Span::new(BytePos(9), BytePos(12), SyntaxContext::root(), None);
+            let hir_neg_expr = hir::Expr {
+                hir_id,
+                kind: hir::ExprKind::Unary(hir::UnOp::Neg, &hir_lit_expr),
+                span: outer_span,
+            };
+
+            let ast_expr = hir_expr_to_expr(&hir_neg_expr);
+            assert_eq!(ast_expr.span, DUMMY_SP);
+            let inner = expect!([&ast_expr.kind] ExprKind::Unary(_, e) => e);
+            assert_eq!(inner.span, lit_span);
+        });
+    }
 }

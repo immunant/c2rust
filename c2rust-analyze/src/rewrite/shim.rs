@@ -7,9 +7,9 @@ use crate::type_desc::{self, TypeDesc};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::intravisit::{self, Visitor};
-use rustc_hir::{Expr, ExprKind, FnRetTy, OwnerId};
+use rustc_hir::{Expr, ExprKind, FnRetTy};
 use rustc_middle::hir::nested_filter;
-use rustc_middle::ty::{DefIdTree, TyCtxt, TypeckResults};
+use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::HashSet;
 use std::mem;
@@ -190,9 +190,7 @@ pub fn gen_shim_definition_rewrite<'tcx>(
 ) -> (Span, Rewrite) {
     let tcx = gacx.tcx;
 
-    let owner_node = tcx.hir().expect_owner(OwnerId {
-        def_id: def_id.as_local().unwrap(),
-    });
+    let owner_node = tcx.hir().expect_owner(def_id.as_local().unwrap());
     let insert_span = owner_node.span().shrink_to_hi();
 
     let fn_decl = owner_node.fn_decl().unwrap();

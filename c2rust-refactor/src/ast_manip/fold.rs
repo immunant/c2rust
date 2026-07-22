@@ -2,7 +2,6 @@
 use rustc_ast::mut_visit::*;
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_data_structures::map_in_place::MapInPlace;
 use rustc_span::source_map::Span;
 use rustc_span::symbol::Ident;
 
@@ -10,6 +9,21 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::util::Lone;
 use c2rust_macros::gen_visitor_impls;
+
+trait MapInPlace<T> {
+    fn flat_map_in_place<F>(&mut self, f: F)
+    where
+        F: FnMut(T) -> SmallVec<[T; 1]>;
+}
+
+impl<T> MapInPlace<T> for SmallVec<[T; 1]> {
+    fn flat_map_in_place<F>(&mut self, f: F)
+    where
+        F: FnMut(T) -> SmallVec<[T; 1]>,
+    {
+        *self = std::mem::take(self).into_iter().flat_map(f).collect();
+    }
+}
 
 /// A trait for AST nodes that can accept a `MutVisitor`.
 pub trait MutVisit: Sized {
@@ -215,7 +229,7 @@ pub trait MutVisitor: Sized {
         noop_visit_path(p, self);
     }
 
-    fn visit_qself(&mut self, qs: &mut Option<QSelf>) {
+    fn visit_qself(&mut self, qs: &mut Option<P<QSelf>>) {
         noop_visit_qself(qs, self);
     }
 

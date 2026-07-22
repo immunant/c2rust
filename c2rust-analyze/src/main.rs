@@ -367,7 +367,7 @@ fn rustc_wrapper() -> anyhow::Result<()> {
 /// Set `$RUST_TOOLCHAIN` to the toolchain channel specified in `rust-toolchain.toml`.
 /// This ensures that we use a toolchain compatible with the `rustc` private crates that we linked to.
 fn set_rust_toolchain() -> anyhow::Result<()> {
-    let toml = include_str!("../rust-toolchain.toml");
+    let toml = include_str!("../../rust-toolchain.toml");
     // Couldn't find an `include_toml!` macro to do this at compile time.
     let doc = toml.parse::<toml_edit::Document>()?;
     let channel = doc["toolchain"]["channel"].as_str();

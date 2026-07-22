@@ -27,6 +27,14 @@ impl ListNodeIds for NodeId {
     }
 }
 
+impl ListNodeIds for FormatArgs {
+    fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
+        for argument in self.arguments.all_args() {
+            argument.expr.add_node_ids(ids);
+        }
+    }
+}
+
 impl<T: ListNodeIds + ?Sized> ListNodeIds for P<T> {
     fn add_node_ids(&self, ids: &mut Vec<NodeId>) {
         <T as ListNodeIds>::add_node_ids(self, ids)

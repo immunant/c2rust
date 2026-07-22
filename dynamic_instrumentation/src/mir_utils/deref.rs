@@ -13,7 +13,7 @@ pub fn remove_outer_deref<'tcx>(p: Place<'tcx>, tcx: TyCtxt<'tcx>) -> Place<'tcx
             projection: &[ref base @ .., ProjectionElem::Deref],
         } => Place {
             local,
-            projection: tcx.intern_place_elems(base),
+            projection: tcx.mk_place_elems(base),
         },
         _ => p,
     }

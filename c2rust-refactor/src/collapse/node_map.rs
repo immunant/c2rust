@@ -29,7 +29,7 @@ pub fn match_nonterminal_ids(node_map: &mut NodeMap, mac_table: &MacTable) {
 
         // Find all nonterminals in the macro's input tokens.
         let mut span_map = HashMap::new();
-        collect_nonterminals(mac.args.inner_tokens(), &mut span_map);
+        collect_nonterminals(mac.args.tokens.clone(), &mut span_map);
 
         // Match IDs of nonterminal nodes with IDs of their uses in the expanded AST.
         let mut v = NtUseVisitor {
@@ -94,8 +94,8 @@ macro_rules! define_nt_use_visitor {
                         Nonterminal::$NtThing(ref y) => {
                             if AstEquiv::ast_equiv(x, y) {
                                 self.matched_ids.extend(
-                                    x.list_node_ids().into_iter().zip(
-                                        y.list_node_ids().into_iter()));
+                                    y.list_node_ids().into_iter().zip(
+                                        x.list_node_ids().into_iter()));
                                 // No need to continue looking for IDs inside this node.
                                 return;
                             }

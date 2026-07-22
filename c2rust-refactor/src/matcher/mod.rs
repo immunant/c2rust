@@ -38,10 +38,9 @@
 
 use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_ast::token::{self, TokenKind};
-use rustc_ast::tokenstream::TokenStream;
+use rustc_ast::token::{self, Lit, TokenKind};
 use rustc_ast::{
-    Block, Expr, ExprKind, Item, Label, Lit, MacArgs, Pat, Path, QSelf, Stmt, Ty, TyKind,
+    Block, DelimArgs, Expr, ExprKind, Item, Label, Pat, Path, QSelf, Stmt, Ty, TyKind,
 };
 use rustc_errors::PResult;
 use rustc_hir::def_id::DefId;
@@ -482,14 +481,14 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     // util.rs.
 
     /// Handle the `marked!(...)` matching form.
-    pub fn do_marked<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
+    pub fn do_marked<T, F>(&mut self, args: &DelimArgs, func: F, target: &T) -> Result<()>
     where
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            args.inner_tokens().clone(),
+            args.tokens.clone(),
             false,
             None,
         );
@@ -514,13 +513,13 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     /// Core implementation of the `def!(...)` matching form.
     fn do_def_impl(
         &mut self,
-        args: &MacArgs,
+        args: &DelimArgs,
         opt_def_id: Option<DefId>,
-        parse_path: impl FnOnce(&mut Parser) -> Option<(Option<QSelf>, Path)>,
+        parse_path: impl FnOnce(&mut Parser) -> Option<(Option<P<QSelf>>, Path)>,
     ) -> Result<()> {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            args.inner_tokens(),
+            args.tokens.clone(),
             false,
             None,
         );
@@ -545,7 +544,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_expr(&mut self, args: &MacArgs, target: &Expr) -> Result<()> {
+    pub fn do_def_expr(&mut self, args: &DelimArgs, target: &Expr) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_expr(target);
         self.do_def_impl(args, opt_def_id, |p| {
             match p.parse_expr().unwrap().into_inner().kind {
@@ -556,7 +555,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Handle the `def!(...)` matching form for exprs.
-    pub fn do_def_ty(&mut self, args: &MacArgs, target: &Ty) -> Result<()> {
+    pub fn do_def_ty(&mut self, args: &DelimArgs, target: &Ty) -> Result<()> {
         let opt_def_id = self.cx.try_resolve_ty(target);
         self.do_def_impl(args, opt_def_id, |p| {
             match p.parse_ty().unwrap().into_inner().kind {
@@ -567,14 +566,14 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     }
 
     /// Handle the `typed!(...)` matching form.
-    pub fn do_typed<T, F>(&mut self, args: &MacArgs, func: F, target: &T) -> Result<()>
+    pub fn do_typed<T, F>(&mut self, args: &DelimArgs, func: F, target: &T) -> Result<()>
     where
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
         let mut p = Parser::new(
             &self.cx.session().parse_sess,
-            args.inner_tokens(),
+            args.tokens.clone(),
             false,
             None,
         );
@@ -601,11 +600,11 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         self.try_match(&pattern, target)
     }
 
-    pub fn do_cast<F>(&mut self, args: &MacArgs, func: F, target: &Expr) -> Result<()>
+    pub fn do_cast<F>(&mut self, args: &DelimArgs, func: F, target: &Expr) -> Result<()>
     where
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>>,
     {
-        let ts: TokenStream = args.inner_tokens();
+        let ts = args.tokens.clone();
         let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);
 
         let mut target = target;
@@ -851,7 +850,7 @@ where
 
         if last != 0 {
             new_stmts.extend_from_slice(&b.stmts[last..]);
-            b.stmts = new_stmts;
+            b.stmts = new_stmts.into();
         }
     }
 }

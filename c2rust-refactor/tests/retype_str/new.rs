@@ -2,6 +2,13 @@
 
 use std::slice;
 
+#[allow(non_camel_case_types)]
+mod libc {
+    pub type c_char = i8;
+    pub type c_ulong = u64;
+    pub type c_int = i32;
+}
+
 extern "C" {
     fn strlen(_: *const u8) -> libc::c_ulong;
     fn printf(_: *const u8, ...) -> libc::c_int;

@@ -70,7 +70,7 @@ impl<'ast> AnyNode<'ast> {
     pub fn mutbl(&self) -> Option<Mutability> {
         match *self {
             AnyNode::Item(i) => match i.kind {
-                ItemKind::Static(_, mutbl, _) => Some(mutbl),
+                ItemKind::Static(ref item) => Some(item.mutability),
                 _ => None,
             },
             AnyNode::ForeignItem(fi) => match fi.kind {

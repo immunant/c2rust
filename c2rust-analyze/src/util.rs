@@ -6,13 +6,13 @@ use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
 use rustc_middle::mir::{
-    Body, Constant, Field, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+    Body, Constant, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{
-    self, AdtDef, DefIdTree, EarlyBinder, FnSig, GenericArg, List, SubstsRef, Ty, TyCtxt, TyKind,
-    UintTy,
+    self, AdtDef, FnSig, GenericArg, List, SubstsRef, Ty, TyCtxt, TyKind, UintTy,
 };
 use rustc_span::symbol::{sym, Symbol};
+use rustc_target::abi::FieldIdx;
 use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
@@ -263,13 +263,13 @@ fn builtin_callee<'tcx>(
         "offset" => {
             // The `offset` inherent method of `*const T` and `*mut T`.
             let parent_did = tcx.parent(did);
-            if tcx.def_kind(parent_did) != DefKind::Impl {
+            if !matches!(tcx.def_kind(parent_did), DefKind::Impl { .. }) {
                 return None;
             }
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = EarlyBinder(tcx.type_of(parent_did)).subst(tcx, substs);
+            let parent_impl_ty = tcx.type_of(parent_did).subst(tcx, substs);
             let (pointee_ty, mutbl) = match parent_impl_ty.kind() {
                 TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
                 _ => return None,
@@ -280,13 +280,13 @@ fn builtin_callee<'tcx>(
         name @ "as_ptr" | name @ "as_mut_ptr" => {
             // The `as_ptr` and `as_mut_ptr` inherent methods of `[T]`, `[T; n]`, and `str`.
             let parent_did = tcx.parent(did);
-            if tcx.def_kind(parent_did) != DefKind::Impl {
+            if !matches!(tcx.def_kind(parent_did), DefKind::Impl { .. }) {
                 return None;
             }
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = EarlyBinder(tcx.type_of(parent_did)).subst(tcx, substs);
+            let parent_impl_ty = tcx.type_of(parent_did).subst(tcx, substs);
             let elem_ty = match *parent_impl_ty.kind() {
                 TyKind::Array(ty, _) => ty,
                 TyKind::Slice(ty) => ty,
@@ -350,13 +350,13 @@ fn builtin_callee<'tcx>(
         "is_null" => {
             // The `offset` inherent method of `*const T` and `*mut T`.
             let parent_did = tcx.parent(did);
-            if tcx.def_kind(parent_did) != DefKind::Impl {
+            if !matches!(tcx.def_kind(parent_did), DefKind::Impl { .. }) {
                 return None;
             }
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = EarlyBinder(tcx.type_of(parent_did)).subst(tcx, substs);
+            let parent_impl_ty = tcx.type_of(parent_did).subst(tcx, substs);
             let (_pointee_ty, _mutbl) = match parent_impl_ty.kind() {
                 TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
                 _ => return None,
@@ -418,7 +418,7 @@ fn builtin_callee<'tcx>(
 pub fn lty_project<'tcx, L: Debug>(
     lty: LabeledTy<'tcx, L>,
     proj: &PlaceElem<'tcx>,
-    mut field_lty: impl FnMut(LabeledTy<'tcx, L>, AdtDef<'tcx>, Field) -> LabeledTy<'tcx, L>,
+    mut field_lty: impl FnMut(LabeledTy<'tcx, L>, AdtDef<'tcx>, FieldIdx) -> LabeledTy<'tcx, L>,
 ) -> LabeledTy<'tcx, L> {
     match *proj {
         ProjectionElem::Deref => {

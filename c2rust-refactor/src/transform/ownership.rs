@@ -286,15 +286,15 @@ fn parens(ts: Vec<TokenTree>) -> TokenTree {
     )
 }
 
-fn delimited(ts: Vec<TokenTree>) -> MacArgs {
-    MacArgs::Delimited(
-        DelimSpan::dummy(),
-        MacDelimiter::Parenthesis,
-        ts.into_iter().collect::<TokenStream>(),
-    )
+fn delimited(ts: Vec<TokenTree>) -> AttrArgs {
+    AttrArgs::Delimited(DelimArgs {
+        dspan: DelimSpan::dummy(),
+        delim: MacDelimiter::Parenthesis,
+        tokens: ts.into_iter().collect::<TokenStream>(),
+    })
 }
 
-fn make_attr(name: &str, args: MacArgs) -> Attribute {
+fn make_attr(name: &str, args: AttrArgs) -> Attribute {
     Attribute {
         id: AttrId::from_u32(0),
         style: AttrStyle::Outer,
@@ -481,8 +481,8 @@ fn rename_callee(e: &mut P<Expr>, new_name: &str) {
             seg.ident = mk().ident(new_name);
         }
 
-        ExprKind::MethodCall(ref mut seg, _, _, _) => {
-            seg.ident = mk().ident(new_name);
+        ExprKind::MethodCall(ref mut call) => {
+            call.seg.ident = mk().ident(new_name);
         }
 
         _ => panic!("rename_callee: unexpected expr kind: {:?}", e),

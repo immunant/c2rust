@@ -32,20 +32,16 @@ fn main() {
         ): (i32, crate::S<::std::option::Option<i32>>),
     ): crate::S<(i32, crate::S<::std::option::Option<i32>>)>;
 
-    let mut v = (::std::vec::Vec::<i32, ::std::alloc::Global>::new: _)():
-        ::std::vec::Vec<i32, ::std::alloc::Global>;
+    let mut v = (::std::vec::Vec::<i32>::new: _)(): ::std::vec::Vec<i32>;
 
-    (v: ::std::vec::Vec<i32, ::std::alloc::Global>).push(123: i32): ();
-    let f = ::std::vec::Vec::<i32, ::std::alloc::Global>::pop: _;
+    (v: ::std::vec::Vec<i32>).push(123: i32): ();
+    let f = ::std::vec::Vec::<i32>::pop: _;
 
-    (::std::vec::Vec::<i32, ::std::alloc::Global>::pop: _)(
-        &mut (v: ::std::vec::Vec<i32, ::std::alloc::Global>):
-            &mut ::std::vec::Vec<i32, ::std::alloc::Global>,
-    ): ::std::option::Option<i32>;
+    (::std::vec::Vec::<i32>::pop: _)(&mut (v: ::std::vec::Vec<i32>): &mut ::std::vec::Vec<i32>):
+        ::std::option::Option<i32>;
 
-    (::std::vec::Vec::<i32, ::std::alloc::Global>::drain::<::std::ops::RangeFull>: _)(
-        &mut (v: ::std::vec::Vec<i32, ::std::alloc::Global>):
-            &mut ::std::vec::Vec<i32, ::std::alloc::Global>,
+    (::std::vec::Vec::<i32>::drain::<::std::ops::RangeFull>: _)(
+        &mut (v: ::std::vec::Vec<i32>): &mut ::std::vec::Vec<i32>,
         (..): ::std::ops::RangeFull,
-    ): ::std::vec::Drain<i32, ::std::alloc::Global>;
+    ): ::std::vec::Drain<i32>;
 }

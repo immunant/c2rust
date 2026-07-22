@@ -3,6 +3,7 @@ name = "c2rust-transpile"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "C2Rust transpiler implementation"
 readme.workspace = true
 homepage.workspace = true

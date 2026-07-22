@@ -259,11 +259,11 @@ pub fn find_arg_uses<T: Visit>(
                 if st.marked(node_id, label) {
                     match e.kind {
                         ExprKind::Call(_, ref args) => st.add_mark(args[arg_idx].id, label),
-                        ExprKind::MethodCall(_, ref recv, ref args, _) => {
+                        ExprKind::MethodCall(ref call) => {
                             let id = if arg_idx == 0 {
-                                recv.id
+                                call.receiver.id
                             } else {
-                                args[arg_idx - 1].id
+                                call.args[arg_idx - 1].id
                             };
                             st.add_mark(id, label);
                         }

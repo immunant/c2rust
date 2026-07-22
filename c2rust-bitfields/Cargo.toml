@@ -3,6 +3,7 @@ name = "c2rust-bitfields"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "C-compatible struct bitfield implementation used in the C2Rust project"
 readme = "README.md"
 homepage.workspace = true

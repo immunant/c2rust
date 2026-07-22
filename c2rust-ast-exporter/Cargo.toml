@@ -3,6 +3,7 @@ name = "c2rust-ast-exporter"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Clang AST extraction API for use in the C2Rust project"
 readme.workspace = true
 homepage.workspace = true

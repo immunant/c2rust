@@ -3,6 +3,7 @@ name = "c2rust-rust-tools"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Utilities for running Rust tooling on c2rust output"
 readme.workspace = true
 homepage.workspace = true

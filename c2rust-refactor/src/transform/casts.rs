@@ -1,6 +1,6 @@
 use log::debug;
 use rustc_ast::ptr::P;
-use rustc_ast::token;
+use rustc_ast::token::{self, Lit};
 use rustc_ast::*;
 use rustc_middle::ty::{self, ParamEnv, TyKind};
 use rustc_span::Symbol;
@@ -84,7 +84,7 @@ impl Transform for RemoveRedundantCasts {
                             return;
                         }
                     }
-                    if lit.kind.is_unsuffixed() {
+                    if lit.suffix.is_none() {
                         // If we're casting an unsuffixed literal to a type,
                         // we need to keep the cast, otherwise we get type errors
                         return;
@@ -109,7 +109,7 @@ impl Transform for RemoveRedundantCasts {
                                 return;
                             }
                         }
-                        if lit.kind.is_unsuffixed() {
+                        if lit.suffix.is_none() {
                             // See comment above on unsuffixed literals
                             return;
                         }
@@ -343,8 +343,8 @@ pub(crate) fn sym_token_kind(sym: Symbol) -> token::LitKind {
     }
 }
 
-fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
-    let mk_int = |i, ty| {
+fn replace_suffix(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
+    let mk_int = |ty| {
         // We need to build the new `Lit` ourselves instead of
         // calling `mk().int_lit()`, so we can reuse
         // the original `symbol` from `token::Lit`
@@ -354,13 +354,9 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
             LitIntType::Unsuffixed => None,
         };
         let new_lit = Lit {
-            kind: LitKind::Int(i, ty),
-            span: lit.span,
-            token_lit: token::Lit {
-                kind: token::LitKind::Integer,
-                symbol: lit.token_lit.symbol,
-                suffix: new_suffix,
-            },
+            kind: token::LitKind::Integer,
+            symbol: lit.symbol,
+            suffix: new_suffix,
         };
         Some(new_lit)
     };
@@ -368,30 +364,27 @@ fn replace_suffix<'tcx>(lit: &Lit, ty: SimpleTy) -> Option<Lit> {
     let mk_float = |fs: String, ty: FloatTy| {
         let fsym = Symbol::intern(&fs);
         Some(Lit {
-            kind: LitKind::Float(fsym, LitFloatType::Suffixed(ty)),
-            span: lit.span,
-            token_lit: token::Lit {
-                kind: sym_token_kind(fsym),
-                symbol: fsym,
-                suffix: Some(Symbol::intern(ty.name_str())),
-            },
+            kind: sym_token_kind(fsym),
+            symbol: fsym,
+            suffix: Some(Symbol::intern(ty.name_str())),
         })
     };
 
-    let lit_mk = mk().span(lit.span);
-    match (&lit.kind, &ty) {
+    let kind = LitKind::from_token_lit(*lit).ok()?;
+    let lit_mk = mk();
+    match (&kind, &ty) {
         // Very conservative approach: only convert to `isize`/`usize`
         // if the value fits in a 16-bit value
         (LitKind::Int(i, _), SimpleTy::Size(true)) if *i <= i16::max_value() as u128 => {
-            mk_int(*i, LitIntType::Signed(IntTy::Isize))
+            mk_int(LitIntType::Signed(IntTy::Isize))
         }
 
         (LitKind::Int(i, _), SimpleTy::Size(false)) if *i <= u16::max_value() as u128 => {
-            mk_int(*i, LitIntType::Unsigned(UintTy::Usize))
+            mk_int(LitIntType::Unsigned(UintTy::Usize))
         }
 
         (LitKind::Int(i, _), SimpleTy::Int(..)) if *i <= ty.max_int_value() => {
-            mk_int(*i, ty.ast_lit_int_type())
+            mk_int(ty.ast_lit_int_type())
         }
 
         (LitKind::Int(i, _), SimpleTy::Float32) | (LitKind::Int(i, _), SimpleTy::Float64) => {
@@ -473,7 +466,7 @@ impl ConstantValue {
 fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
     match e.kind {
         ExprKind::Lit(ref lit) => {
-            match lit.kind {
+            match LitKind::from_token_lit(*lit).ok()? {
                 LitKind::Int(i, LitIntType::Unsuffixed) => Some(ConstantValue::Uint(i)),
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::Isize)) => {

@@ -11,11 +11,12 @@ use log::debug;
 use rustc_hir::def_id::DefId;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::{
-    AggregateKind, BinOp, Body, BorrowKind, CastKind, Field, Local, LocalDecl, Location, Operand,
-    Place, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    AggregateKind, BinOp, Body, BorrowKind, CastKind, Local, LocalDecl, Location, Operand, Place,
+    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
 use rustc_middle::ty::adjustment::PointerCast;
 use rustc_middle::ty::{AdtDef, FieldDef, RegionKind, TyKind};
+use rustc_target::abi::FieldIdx;
 use std::collections::HashMap;
 
 use super::OriginArg;
@@ -44,10 +45,15 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         )
     }
 
-    pub fn field_lty(&self, base_lty: LTy<'tcx>, base_adt_def: AdtDef, field: Field) -> LTy<'tcx> {
+    pub fn field_lty(
+        &self,
+        base_lty: LTy<'tcx>,
+        base_adt_def: AdtDef,
+        field: FieldIdx,
+    ) -> LTy<'tcx> {
         let base_origin_param_map: IndexMap<OriginParam, Origin> =
             IndexMap::from_iter(base_lty.label.origin_params.to_vec());
-        let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field.index()];
+        let field_def: &FieldDef = &base_adt_def.non_enum_variant().fields[field];
         let perm = self.field_permissions[&field_def.did];
         let base_metadata = &self.acx.gacx.adt_metadata.table[&base_adt_def.did()];
         let field_metadata = &base_metadata.field_info[&field_def.did];
@@ -448,7 +454,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
 
                     let adt_def = tcx.adt_def(adt_did);
                     for (fid, op) in ops.iter().enumerate() {
-                        let field_lty = self.field_lty(expect_ty, adt_def, Field::from(fid));
+                        let field_lty =
+                            self.field_lty(expect_ty, adt_def, FieldIdx::from_usize(fid));
                         let op_lty = self.visit_operand(op);
                         debug!("pseudo-assigning fields {field_lty:?} = {op_lty:?}");
                         self.do_assign(field_lty, op_lty);

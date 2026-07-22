@@ -10,6 +10,9 @@ Attributes:
   nonterminal.  When `nt_match` enters such a node, it will check the old
   node's SyntaxContext, and may record the old span and new node into the
   `Ctxt`.  The type must implement `GetSpan` and `AsNonterminal`.
+
+- `#[nt_match_custom]`: Don't generate an impl for this type - a custom one
+  will be provided elsewhere.
 '''
 
 from datetime import datetime
@@ -57,4 +60,5 @@ def generate(decls):
     yield ''
 
     for d in decls:
-        yield do_nt_match_impl(d)
+        if 'nt_match_custom' not in d.attrs:
+            yield do_nt_match_impl(d)

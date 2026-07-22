@@ -3,6 +3,7 @@ name = "c2rust-macros"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Procedural macro support crate for C2Rust"
 readme.workspace = true
 homepage.workspace = true

@@ -2,7 +2,6 @@
 use rustc_ast::mut_visit::{self, visit_opt, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_data_structures::map_in_place::MapInPlace;
 use smallvec::SmallVec;
 
 use crate::ast_manip::MutVisit;
@@ -97,7 +96,10 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
             //ExprKind::Loop(body) => { TODO },
             ExprKind::Match(target, arms) => {
                 self.with_trailing(false, |f| f.visit_expr(target));
-                arms.flat_map_in_place(|arm| self.flat_map_arm(arm));
+                *arms = std::mem::take(arms)
+                    .into_iter()
+                    .flat_map(|arm| self.flat_map_arm(arm))
+                    .collect();
             }
 
             ExprKind::Block(b, _lbl) => {

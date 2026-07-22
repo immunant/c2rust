@@ -81,8 +81,8 @@ impl Transform for CollectToStruct {
             let mut insert_point = None;
 
             while let Some((ident, ty, init)) = curs.advance_until_match(|i| {
-                match_or!([i.kind] ItemKind::Static(ref ty, _, ref init) =>
-                                  Some((i.ident, ty.clone(), init.clone())); None)
+                match_or!([i.kind] ItemKind::Static(ref item) =>
+                                  item.expr.clone().map(|expr| (i.ident, item.ty.clone(), expr)); None)
             }) {
                 if !st.marked(curs.next().id, "target") {
                     curs.advance();
@@ -255,7 +255,7 @@ impl Transform for Localize {
             }
 
             match i.kind {
-                ItemKind::Static(ref ty, mutbl, _) => {
+                ItemKind::Static(ref item) => {
                     let def_id = cx.node_def_id(i.id);
                     let arg_name_str = format!("{}_", i.ident.name.as_str());
                     let arg_name = (&arg_name_str as &str).into_symbol();
@@ -264,8 +264,8 @@ impl Transform for Localize {
                         StaticInfo {
                             name: i.ident,
                             arg_name: arg_name,
-                            ty: ty.clone(),
-                            mutbl: mutbl,
+                            ty: item.ty.clone(),
+                            mutbl: item.mutability,
                         },
                     );
                 }
@@ -471,15 +471,15 @@ impl Transform for StaticToLocal {
             }
 
             match i.kind {
-                ItemKind::Static(ref ty, mutbl, ref expr) => {
+                ItemKind::Static(ref item) => {
                     let def_id = cx.node_def_id(i.id);
                     statics.insert(
                         def_id,
                         StaticInfo {
                             name: i.ident,
-                            ty: ty.clone(),
-                            mutbl: mutbl,
-                            expr: expr.clone(),
+                            ty: item.ty.clone(),
+                            mutbl: item.mutability,
+                            expr: item.expr.clone(),
                         },
                     );
                     return smallvec![];
@@ -515,7 +515,7 @@ impl Transform for StaticToLocal {
 
             if let Some(block) = &mut fl.body {
                 let new_stmts = Vec::with_capacity(refs.len() + block.stmts.len());
-                let old_stmts = mem::replace(&mut block.stmts, new_stmts);
+                let old_stmts = mem::replace(&mut block.stmts, new_stmts.into());
 
                 for &info in &refs {
                     let pat = mk().set_mutbl(info.mutbl).ident_pat(info.name);

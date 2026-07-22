@@ -736,7 +736,7 @@ fn create_file_for_module(
                 path.push(path_attr.to_string());
             } else {
                 if sess
-                    .local_crate_source_file
+                    .local_crate_source_file()
                     .as_ref()
                     .map_or(false, |f| *f == path)
                 {
@@ -749,18 +749,16 @@ fn create_file_for_module(
                         let _ = fs::create_dir_all(&path);
 
                         // Add a #[path = "..."] attribute
-                        let path_item = attr::mk_name_value_item_str(
-                            Ident::from_str("path"),
+                        path_attr = Some(attr::mk_attr_name_value_str(
+                            &sess.parse_sess.attr_id_generator,
+                            AttrStyle::Outer,
+                            Symbol::intern("path"),
                             Symbol::intern(&format!(
                                 "src{}{}",
                                 path::MAIN_SEPARATOR,
                                 mod_file_name,
                             )),
                             DUMMY_SP,
-                        );
-                        path_attr = Some(attr::mk_attr_outer(
-                            &sess.parse_sess.attr_id_generator,
-                            path_item,
                         ));
                     }
                 } else {
@@ -853,7 +851,14 @@ impl RewriteAt for Item {
                 describe_rewrite(inner_span, reparsed_span, &rcx);
                 let mut rw =
                     TextRewrite::adjusted(inner_span, reparsed_span, self.get_adjustment(&rcx));
-                RecoverChildren::recover_children(&reparsed, &m_items, rcx.enter(&mut rw));
+                // `reparsed` is a `Vec` while `m_items` is a `ThinVec`; borrow
+                // both as slices so no items need to be cloned into a common
+                // collection type.
+                <[P<Item>] as RecoverChildren>::recover_children(
+                    &reparsed,
+                    &m_items,
+                    rcx.enter(&mut rw),
+                );
                 rcx.record(rw);
 
                 return true;

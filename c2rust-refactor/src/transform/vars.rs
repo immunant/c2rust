@@ -180,8 +180,8 @@ impl Transform for SinkLets {
                 .iter()
                 .map(|&id| mk().local_stmt(&locals[&id].local))
                 .collect::<Vec<_>>();
-            new_stmts.append(&mut b.stmts);
-            b.stmts = new_stmts;
+            new_stmts.extend(mem::take(&mut b.stmts));
+            b.stmts = new_stmts.into();
         });
 
         // (5) Remove old locals

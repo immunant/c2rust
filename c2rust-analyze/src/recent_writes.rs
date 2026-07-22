@@ -305,9 +305,9 @@ fn scan_blocks(mir: &Body, rw: &mut RecentWrites) {
             statement_index,
         };
         match bb_data.terminator().kind {
-            TerminatorKind::Drop { place, .. } | TerminatorKind::DropAndReplace { place, .. } => {
-                rw.record_place_written(loc, place)
-            }
+            TerminatorKind::Drop { place, .. } => rw.record_place_written(loc, place),
+            // Former `DropAndReplace` writes are ordinary assignments in target MIR and
+            // are recorded by the statement scan above.
             TerminatorKind::Call { destination, .. } => rw.record_place_written(loc, destination),
             TerminatorKind::Yield { resume_arg, .. } => rw.record_place_written(loc, resume_arg),
             TerminatorKind::InlineAsm { .. } => error!("recent_writes InlineAsm NYI"),

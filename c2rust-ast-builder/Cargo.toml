@@ -3,6 +3,7 @@ name = "c2rust-ast-builder"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Rust AST builder support crate for the C2Rust project"
 readme.workspace = true
 homepage.workspace = true

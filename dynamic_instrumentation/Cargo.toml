@@ -3,6 +3,7 @@ name = "c2rust-instrument"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "C2Rust instrumentation of Rust code for dynamic analysis"
 readme.workspace = true
 homepage.workspace = true

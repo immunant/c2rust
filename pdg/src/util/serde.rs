@@ -1,21 +1,22 @@
 use serde::{Deserialize, Serialize};
 
-use rustc_middle::mir::{BasicBlock, Field, Local};
+use rustc_middle::mir::{BasicBlock, Local};
+use rustc_target::abi::FieldIdx;
 
 #[derive(Serialize, Deserialize)]
-#[serde(remote = "Field")]
+#[serde(remote = "FieldIdx")]
 pub struct FieldDef {
     #[serde(getter = "field_as_u32")]
     raw: u32,
 }
 
-fn field_as_u32(f: &Field) -> u32 {
+fn field_as_u32(f: &FieldIdx) -> u32 {
     f.as_u32()
 }
 
-impl From<FieldDef> for Field {
-    fn from(def: FieldDef) -> Field {
-        Field::from_u32(def.raw)
+impl From<FieldDef> for FieldIdx {
+    fn from(def: FieldDef) -> FieldIdx {
+        FieldIdx::from_u32(def.raw)
     }
 }
 

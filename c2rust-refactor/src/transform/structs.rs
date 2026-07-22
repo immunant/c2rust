@@ -140,7 +140,7 @@ fn unpack_struct_update(s: Stmt) -> (Path, Vec<ExprField>, P<Expr>) {
         path, fields, rest, ..
     } = se.into_inner();
     let base = expect!([rest] StructRest::Base(base) => base);
-    (path, fields, base)
+    (path, fields.to_vec(), base)
 }
 
 fn build_struct_update(path: Path, fields: Vec<ExprField>, base: P<Expr>) -> Stmt {

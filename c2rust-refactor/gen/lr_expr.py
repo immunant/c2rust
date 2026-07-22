@@ -11,6 +11,9 @@ Attributes:
 
 - `#[lr_propagate]`: This subexpression is an lvalue if the parent expression
   is an lvalue, with the same mutability.
+
+- `#[lr_expr_custom]`: Do not generate an implementation for this type; a
+  custom implementation is supplied by hand.
 '''
 
 from datetime import datetime
@@ -38,7 +41,7 @@ def expr_kind_match(d, mode):
                 yield '      Mutability::Not =>'
                 yield '        r#%s.fold_lvalue(lr),' % f.name
                 yield '    }'
-            else:
+            elif 'rewrite_ignore' not in f.attrs:
                 yield '    r#%s.fold_rvalue(lr);' % f.name
         yield '  }'
     yield '}'
@@ -95,7 +98,9 @@ def generate(decls):
     yield ''
 
     for d in decls:
-        if d.name == 'Expr':
+        if 'lr_expr_custom' in d.attrs:
+            pass
+        elif d.name == 'Expr':
             # We implement P<Expr> manually
             # yield expr_impl(d)
             pass

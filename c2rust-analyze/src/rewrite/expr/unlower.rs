@@ -8,7 +8,7 @@ use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::HirId;
 use rustc_middle::hir::nested_filter;
-use rustc_middle::mir::{self, Body, Location, Operand};
+use rustc_middle::mir::{self, Body, LocalInfo, Location, Operand};
 use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability, PointerCast};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
@@ -211,6 +211,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         if let Some(stmt) = self.mir.stmt_at(loc).left() {
             match stmt.kind {
                 mir::StatementKind::FakeRead(..)
+                | mir::StatementKind::PlaceMention(..)
                 | mir::StatementKind::StorageLive(..)
                 | mir::StatementKind::StorageDead(..)
                 | mir::StatementKind::Nop => return true,
@@ -1028,7 +1029,11 @@ fn is_var(pl: mir::Place) -> bool {
 }
 
 fn is_temp_var(mir: &Body, pl: mir::PlaceRef) -> bool {
-    pl.projection.is_empty() && mir.local_kind(pl.local) == mir::LocalKind::Temp
+    // `LocalKind::Var` was folded into `LocalKind::Temp`; `LocalInfo` is what
+    // now distinguishes source bindings from compiler-created temporaries.
+    pl.projection.is_empty()
+        && mir.local_kind(pl.local) == mir::LocalKind::Temp
+        && !matches!(mir.local_decls[pl.local].local_info(), LocalInfo::User(_))
 }
 
 fn is_temp_var_operand(mir: &Body, op: &mir::Operand) -> bool {
@@ -1061,10 +1066,13 @@ fn get_operand_place<'tcx>(op: &mir::Operand<'tcx>) -> Option<mir::Place<'tcx>> 
 
 /// Indicate whether a given MIR statement should be considered when building the unlowering map.
 fn filter_stmt(stmt: &mir::Statement) -> bool {
-    // Ignore `AscribeUserType` annotations.  These appear in the middle of some expressions.
-    // It's easier to ignore them all at this level rather than try to handle them in all the
-    // places they might appear.
-    !matches!(stmt.kind, mir::StatementKind::AscribeUserType(..))
+    // Ignore annotations and non-semantic place mentions.  These can appear in the middle or at
+    // the end of an expression's statements, so including them would obscure the assignment that
+    // actually computes the expression.
+    !matches!(
+        stmt.kind,
+        mir::StatementKind::AscribeUserType(..) | mir::StatementKind::PlaceMention(..)
+    )
 }
 
 /// Indicate whether a given MIR terminator should be considered when building the unlowering map.
