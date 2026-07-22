@@ -455,7 +455,6 @@ dependencies = [
  "env_logger 0.10.0",
  "failure",
  "flame",
- "flamer",
  "fs-err",
  "indexmap",
  "insta",
@@ -1167,17 +1166,6 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "thread-id",
-]
-
-[[package]]
-name = "flamer"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36b732da54fd4ea34452f2431cf464ac7be94ca4b339c9cd3d3d12eb06fe7aab"
-dependencies = [
- "flame",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

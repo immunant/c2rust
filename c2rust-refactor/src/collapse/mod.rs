@@ -43,7 +43,6 @@ pub struct CollapseInfo<'ast> {
 }
 
 impl<'ast> CollapseInfo<'ast> {
-    #[cfg_attr(feature = "profile", flame)]
     pub fn collect(
         unexpanded: &'ast Crate,
         expanded: &'ast Crate,
@@ -69,7 +68,6 @@ impl<'ast> CollapseInfo<'ast> {
         }
     }
 
-    #[cfg_attr(feature = "profile", flame)]
     pub fn collapse(self, node_map: &mut NodeMap, cs: &CommandState) {
         // Collapse macros + update node_map.  The cfg_attr step requires the updated node_map
         // TODO: we should be able to skip some of these steps if `!cmd_state.krate_changed()`

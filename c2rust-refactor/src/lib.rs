@@ -13,7 +13,6 @@
     let_chains,
     never_type
 )]
-#![cfg_attr(feature = "profile", feature(proc_macro_hygiene))]
 
 #[cfg(feature = "profile")]
 #[macro_use]
@@ -188,7 +187,6 @@ pub struct Options {
 
 /// Try to find the rustup installation that provides the rustc at the given path.  The input path
 /// should be normalized already.
-#[cfg_attr(feature = "profile", flame)]
 fn get_rustup_path(rustc: &Path) -> Option<PathBuf> {
     use std::ffi::OsStr;
     use std::fs;
@@ -211,7 +209,6 @@ fn get_rustup_path(rustc: &Path) -> Option<PathBuf> {
     None
 }
 
-#[cfg_attr(feature = "profile", flame)]
 fn get_rustc_executable(path: &Path) -> String {
     use std::process::{Command, Stdio};
 
@@ -232,7 +229,6 @@ fn get_rustc_executable(path: &Path) -> String {
     resolved.to_str().unwrap().to_owned()
 }
 
-#[cfg_attr(feature = "profile", flame)]
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
     match src {
         RustcArgSource::CmdLine(mut args) => {
@@ -282,7 +278,6 @@ fn setup_cargo<'cfg>(config: &'cfg Config) -> (CompileOptions, Workspace<'cfg>) 
     (compile_opts, ws)
 }
 
-#[cfg_attr(feature = "profile", flame)]
 fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     let config = cargo_config();
     let (compile_opts, ws) = setup_cargo(&config);
@@ -432,7 +427,6 @@ fn init() {
 
 static INIT: Once = Once::new();
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn lib_main(opts: Options) -> interface::Result<()> {
     INIT.call_once(init);
     rustc_driver::catch_fatal_errors(move || main_impl(opts)).and_then(|x| x)

@@ -180,7 +180,6 @@ impl MutVisitor for FixAttrs {
     }
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn fix_format<T: MutVisit>(node: &mut T) {
     let mut fix_format = FixFormat {
         ctxt: FormatCtxt::new(DUMMY_SP),
@@ -188,7 +187,6 @@ pub fn fix_format<T: MutVisit>(node: &mut T) {
     node.visit(&mut fix_format)
 }
 
-#[cfg_attr(feature = "profile", flame)]
 pub fn fix_attr_spans<T: MutVisit>(node: &mut T) {
     node.visit(&mut FixAttrs)
 }

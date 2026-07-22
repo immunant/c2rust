@@ -168,7 +168,6 @@ pub struct RefactorState {
     tcx_gen: TyCtxtGeneration,
 }
 
-// #[cfg_attr(feature = "profile", flame)]
 // fn parse_crate(queries: &interface::Compiler) -> Crate {
 //     let mut krate = queries.parse().unwrap().take();
 //     remove_paren(&mut krate);
@@ -180,7 +179,6 @@ pub const FRESH_NODE_ID_START: u32 = 0x8000_0000;
 
 impl DiskState {
     /// Initialization shared between new() and load_crate()
-    #[cfg_attr(feature = "profile", flame)]
     fn new(
         krate: Crate,
         source_map: &SourceMap,
@@ -207,7 +205,6 @@ impl DiskState {
 }
 
 impl RefactorState {
-    #[cfg_attr(feature = "profile", flame)]
     pub fn new(
         config: interface::Config,
         cmd_reg: Registry,
@@ -252,7 +249,6 @@ impl RefactorState {
 
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
     /// rewriting with the previous `orig_crate` any more.
-    #[cfg_attr(feature = "profile", flame)]
     pub fn load_crate(&mut self) {
         self.compiler = driver::make_compiler(&self.config, self.file_io.clone());
         self.disk_state = None;
@@ -268,7 +264,6 @@ impl RefactorState {
     /// Note that we allow multiple calls to `save_crate` with no intervening `load_crate`.  The
     /// later `save_crate`s will simply keep using the original source text (even if it no longer
     /// matches the text on disk) as the basis for rewriting.
-    #[cfg_attr(feature = "profile", flame)]
     pub fn save_crate(&mut self) {
         if let None = self.krate {
             return;
@@ -298,7 +293,6 @@ impl RefactorState {
         files::rewrite_files_with(self.source_map(), &rw, &*self.file_io).unwrap();
     }
 
-    #[cfg_attr(feature = "profile", flame)]
     pub fn transform_crate<F, R>(&mut self, phase: Phase, f: F) -> interface::Result<R>
     where
         F: FnOnce(&CommandState, &RefactorCtxt) -> R,
@@ -513,7 +507,6 @@ impl RefactorState {
         })
     }
 
-    #[cfg_attr(feature = "profile", flame)]
     fn rebuild_session(&mut self) {
         // // Ensure we've take the expansion result if we're in phase 2 or 3 since
         // // we need later queries to rebuild it.
@@ -574,7 +567,6 @@ impl RefactorState {
         *Lrc::get_mut(&mut compiler.codegen_backend).unwrap() = new_codegen_backend;
     }
 
-    #[cfg_attr(feature = "profile", flame)]
     pub fn run_typeck_loop<F>(&mut self, mut func: F) -> Result<(), &'static str>
     where
         F: FnMut(&mut Crate, &CommandState, &RefactorCtxt) -> TypeckLoopResult,
@@ -604,7 +596,6 @@ impl RefactorState {
     }
 
     /// Invoke a registered command with the given command name and arguments.
-    #[cfg_attr(feature = "profile", flame)]
     pub fn run<S: AsRef<str>>(&mut self, cmd_name: &str, args: &[S]) -> Result<(), String> {
         let args = args
             .iter()
