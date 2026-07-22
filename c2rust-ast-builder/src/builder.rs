@@ -180,6 +180,11 @@ where
     intersperse(items, comma).collect()
 }
 
+fn str_to_ident(s: &str, span: Span) -> Ident {
+    // NB: We cannot use `Ident::new` here because it does not support raw identifiers.
+    quote::format_ident!("{}", s, span = span)
+}
+
 pub trait Make<T> {
     fn make(self, mk: &Builder) -> T;
 }
@@ -192,19 +197,19 @@ impl<T> Make<T> for T {
 
 impl Make<Ident> for &str {
     fn make(self, mk: &Builder) -> Ident {
-        Ident::new(self, mk.span)
+        str_to_ident(self, mk.span)
     }
 }
 
 impl Make<Ident> for String {
     fn make(self, mk: &Builder) -> Ident {
-        Ident::new(&self, mk.span)
+        str_to_ident(self.as_str(), mk.span)
     }
 }
 
 impl Make<Ident> for &String {
     fn make(self, mk: &Builder) -> Ident {
-        Ident::new(self, mk.span)
+        str_to_ident(self.as_str(), mk.span)
     }
 }
 

@@ -14,10 +14,10 @@ expression: cat tests/snapshots/scalar_init.2024.clang15.rs
 )]
 pub type E = ::core::ffi::c_uint;
 pub const A: E = 0;
-pub const true_0: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn scalar_init() {
-    let mut b: bool = true_0 != 0;
+    let mut b: bool = r#true != 0;
     let mut c: ::core::ffi::c_char = 'c' as ::core::ffi::c_char;
     let mut i: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
     let mut l: ::core::ffi::c_long = 42 as ::core::ffi::c_long;

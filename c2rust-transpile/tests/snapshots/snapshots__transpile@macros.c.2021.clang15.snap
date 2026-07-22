@@ -35,10 +35,10 @@ pub type zstd_platform_dependent_type = ::core::ffi::c_long;
 pub struct ntlmdata {
     pub target_info_len: ::core::ffi::c_uint,
 }
-pub const true_0: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
+pub const r#true: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
 pub const UINTPTR_MAX: ::core::ffi::c_ulong = 18446744073709551615 as ::core::ffi::c_ulong;
 pub const LITERAL_INT: ::core::ffi::c_int = 0xffff as ::core::ffi::c_int;
-pub const LITERAL_BOOL: ::core::ffi::c_int = true_0;
+pub const LITERAL_BOOL: ::core::ffi::c_int = r#true;
 pub const LITERAL_FLOAT: ::core::ffi::c_double = 3.14f64;
 pub const LITERAL_CHAR: ::core::ffi::c_int = 'x' as ::core::ffi::c_int;
 pub const LITERAL_STR: [::core::ffi::c_char; 6] =
@@ -62,8 +62,8 @@ pub const NEGATIVE_INT: ::core::ffi::c_int = -LITERAL_INT;
 pub const INT_ARITHMETIC: ::core::ffi::c_int = NESTED_INT + LITERAL_INT + 1 as ::core::ffi::c_int;
 pub const MIXED_ARITHMETIC: ::core::ffi::c_double = LITERAL_INT as ::core::ffi::c_double
     + NESTED_FLOAT * LITERAL_CHAR as ::core::ffi::c_double
-    - true_0 as ::core::ffi::c_double;
-pub const PARENS: ::core::ffi::c_int = NESTED_INT * (LITERAL_CHAR + true_0);
+    - r#true as ::core::ffi::c_double;
+pub const PARENS: ::core::ffi::c_int = NESTED_INT * (LITERAL_CHAR + r#true);
 pub const PTR_ARITHMETIC: *const ::core::ffi::c_char = unsafe {
     LITERAL_STR
         .as_ptr()
