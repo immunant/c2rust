@@ -452,6 +452,17 @@ fn test_reorganize_assoc_items() {
         .test();
 }
 
+/// The inputs don't compile standalone because the `bitfield` attribute
+/// comes from the `c2rust_bitfields` derive crate, which isn't available
+/// to plain `rustc` here.
+#[test]
+fn test_reorganize_bitfield_ty() {
+    refactor("reorganize_definitions")
+        .named("reorganize_bitfield_ty.rs")
+        .expect_compile_error(true)
+        .test();
+}
+
 #[test]
 fn test_reorganize_foreign_types() {
     refactor("reorganize_definitions")
