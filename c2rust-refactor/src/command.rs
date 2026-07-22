@@ -39,7 +39,6 @@ use crate::rewrite;
 use crate::rewrite::files;
 use crate::span_fix;
 use crate::RefactorCtxt;
-use crate::{profile_end, profile_start};
 
 fn update_dollar_crate_names(tcx: TyCtxt<'_>) {
     hygiene::update_dollar_crate_names(|ctxt: SyntaxContext| {
@@ -311,7 +310,6 @@ impl RefactorState {
 
         self.compiler.enter(|queries| {
             // Replace current parse query results
-            profile_start!("Replace compiler crate");
             let mut parse = queries.parse()?;
 
             // Initialize initial parsed crate if not previously parsed
@@ -362,21 +360,18 @@ impl RefactorState {
 
             *parse.get_mut() = cs.krate().clone();
             drop(parse);
-            profile_end!("Replace compiler crate");
 
             let mut max_crate_node_id = None;
             match phase {
                 Phase::Phase1 => {}
 
                 Phase::Phase2 | Phase::Phase3 => {
-                    profile_start!("Expand crate");
                     let (expanded, next_node_id) = queries.global_ctxt()?.enter(|tcx| {
                         let resolver = tcx.resolver_for_lowering(()).borrow();
                         (resolver.1.as_ref().clone(), resolver.0.next_node_id)
                     });
                     cs.krate.replace(expanded);
                     max_crate_node_id = Some(next_node_id);
-                    profile_end!("Expand crate");
                     remove_paren(cs.krate.get_mut());
                 }
             }
@@ -402,7 +397,6 @@ impl RefactorState {
                     }
 
                     Phase::Phase2 => {
-                        profile_start!("Lower to HIR");
                         let r = queries.global_ctxt()?.enter(|tcx| {
                             let (
                                 partial_res_map,
@@ -429,7 +423,6 @@ impl RefactorState {
                                 GenerationalTyCtxt(tcx, tcx_gen.clone()),
                                 AstSpanMaps::new(&expanded),
                             );
-                            profile_end!("Lower to HIR");
 
                             let result = f(&cs, &cx);
                             // rustc's hygiene tables outlive each rebuilt session. Resolve any
@@ -443,7 +436,6 @@ impl RefactorState {
                     }
 
                     Phase::Phase3 => {
-                        profile_start!("Compiler Phase 3");
                         let r = queries.global_ctxt()?.enter(|tcx| {
                             let (
                                 partial_res_map,
@@ -472,7 +464,6 @@ impl RefactorState {
                                 GenerationalTyCtxt(tcx, tcx_gen.clone()),
                                 AstSpanMaps::new(&expanded),
                             );
-                            profile_end!("Compiler Phase 3");
 
                             let result = f(&cs, &cx);
                             // See the Phase 2 path above.
@@ -616,9 +607,7 @@ impl RefactorState {
             }
             e
         })?;
-        profile_start!(format!("Command {}", cmd_name));
         cmd.run(self);
-        profile_end!(format!("Command {}", cmd_name));
         Ok(())
     }
 
