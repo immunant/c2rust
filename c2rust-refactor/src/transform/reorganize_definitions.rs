@@ -7,6 +7,8 @@ use std::mem;
 
 use crate::transform::Transform;
 use rustc_ast::ptr::P;
+use rustc_ast::token::{self, TokenKind};
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::util::comments::{Comment, CommentStyle};
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, item_to_string, PrintState};
@@ -60,6 +62,14 @@ pub struct Reorganizer<'a, 'tcx: 'a> {
     // replacements parent module NodeId
     path_mapping: HashMap<DefId, Replacement>,
 
+    // Maps the NodeId of each struct/union with `#[bitfield(ty = "...")]`
+    // attributes whose `ty` is a module-relative path to the resolution of
+    // each such path in the struct's original module. These paths are string
+    // literals that `update_paths` cannot see, and the imports that resolved
+    // them do not survive the move, so `update_bitfield_attr_tys` rewrites
+    // the strings using this map.
+    bitfield_ty_defs: HashMap<NodeId, HashMap<String, DefId>>,
+
     // Counter used by `unique_ident`
     ident_counter: HashMap<Ident, usize>,
 }
@@ -111,6 +121,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             cx,
             modules: IndexMap::new(),
             path_mapping: HashMap::new(),
+            bitfield_ty_defs: HashMap::new(),
             stdlib_id: DUMMY_NODE_ID,
             ident_counter: HashMap::new(),
         }
@@ -129,7 +140,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         self.move_items(header_decls, krate);
         self.add_ctor_mappings();
 
-        self.update_paths(krate)
+        self.update_paths(krate);
+        self.update_bitfield_attr_tys(krate);
     }
 
     /// Return a new unique identifier with the given prefix
@@ -419,6 +431,11 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             _ => smallvec![item],
                         })
                         .collect();
+
+                    // Resolve the type paths hidden in `#[bitfield(ty = "...")]`
+                    // strings while the module scope that makes them
+                    // resolvable still exists.
+                    self.collect_bitfield_attr_tys(mod_items);
 
                     let needed_items = keep_items(&mod_items);
 
@@ -1294,6 +1311,121 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             smallvec![item]
         });
     }
+
+    /// Record the resolution of every module-relative type path that appears
+    /// inside a `#[bitfield(ty = "...")]` string literal in `mod_items`.
+    /// These paths resolve against the scope of the module they were written
+    /// in, which does not survive the reorganization.
+    fn collect_bitfield_attr_tys(&mut self, mod_items: &[P<Item>]) {
+        let mut type_ns_defs: HashMap<Symbol, DefId> = HashMap::new();
+        for item in mod_items {
+            if let ItemKind::Use(tree) = &item.kind {
+                let type_res = self
+                    .cx
+                    .resolved_imports_for_item(item)
+                    .into_iter()
+                    .find(|&(namespace, _)| namespace == Namespace::TypeNS);
+                if let Some((_, resolution)) = type_res {
+                    if let Some(def_id) = resolution.opt_def_id() {
+                        type_ns_defs.insert(tree.ident().name, def_id);
+                    }
+                }
+            } else if item.ident.name != kw::Empty
+                && self.cx.item_namespaces(item).contains(&Namespace::TypeNS)
+            {
+                type_ns_defs.insert(item.ident.name, self.cx.node_def_id(item.id));
+            }
+        }
+
+        for item in mod_items {
+            let fields = match &item.kind {
+                ItemKind::Struct(vdata, _) | ItemKind::Union(vdata, _) => vdata.fields(),
+                _ => continue,
+            };
+            let mut ty_defs = HashMap::new();
+            for field in fields {
+                for attr in &field.attrs {
+                    let ty_str = match bitfield_ty_str(attr) {
+                        Some(ty_str) => ty_str,
+                        None => continue,
+                    };
+                    if ty_str.contains("::") {
+                        // Multi-segment paths are either already absolute or
+                        // beyond what we can resolve here.
+                        continue;
+                    }
+                    match type_ns_defs.get(&Symbol::intern(&ty_str)) {
+                        Some(&def_id) => {
+                            ty_defs.insert(ty_str, def_id);
+                        }
+                        None => warn!(
+                            "could not resolve `ty = \"{}\"` of a bitfield in {:?}",
+                            ty_str, item.ident,
+                        ),
+                    }
+                }
+            }
+            if !ty_defs.is_empty() {
+                self.bitfield_ty_defs.insert(item.id, ty_defs);
+            }
+        }
+    }
+
+    /// Rewrite the type paths inside `#[bitfield(ty = "...")]` string
+    /// literals to the new absolute paths of their targets, using the
+    /// resolutions recorded by `collect_bitfield_attr_tys`.
+    fn update_bitfield_attr_tys(&self, krate: &mut Crate) {
+        if self.bitfield_ty_defs.is_empty() {
+            return;
+        }
+        FlatMapNodes::visit(krate, |mut item: P<Item>| {
+            let ty_defs = match self.bitfield_ty_defs.get(&item.id) {
+                Some(ty_defs) => ty_defs,
+                None => return smallvec![item],
+            };
+            let fields = match &mut item.kind {
+                ItemKind::Struct(vdata, _) | ItemKind::Union(vdata, _) => match vdata {
+                    VariantData::Struct(fields, _) => fields,
+                    _ => return smallvec![item],
+                },
+                _ => return smallvec![item],
+            };
+            for field in fields {
+                for attr in field.attrs.iter_mut() {
+                    let ty_str = match bitfield_ty_str(attr) {
+                        Some(ty_str) => ty_str,
+                        None => continue,
+                    };
+                    let def_id = match ty_defs.get(&ty_str) {
+                        Some(&def_id) => def_id,
+                        None => continue,
+                    };
+                    let path = match self.path_mapping.get(&def_id) {
+                        Some(replacement) => replacement.path.clone(),
+                        None => {
+                            // The target did not move; use its original
+                            // absolute path.
+                            let (qself, path) = self.cx.def_qpath(def_id);
+                            if qself.is_some() {
+                                warn!(
+                                    "cannot express bitfield `ty = \"{}\"` target {:?} \
+                                     as a plain path",
+                                    ty_str, def_id,
+                                );
+                                continue;
+                            }
+                            path
+                        }
+                    };
+                    let new_ty = pprust::path_to_string(&path);
+                    if new_ty != ty_str {
+                        *attr = replace_bitfield_ty(attr, &new_ty);
+                    }
+                }
+            }
+            smallvec![item]
+        });
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -2126,6 +2258,88 @@ fn is_nested(tree: &UseTree) -> bool {
         true
     } else {
         false
+    }
+}
+
+/// Return the value of the `ty = "..."` argument of a
+/// `#[bitfield(name = "...", ty = "...", bits = "...")]` attribute.
+fn bitfield_ty_str(attr: &Attribute) -> Option<String> {
+    if !attr.has_name(Symbol::intern("bitfield")) {
+        return None;
+    }
+    let meta = attr.meta()?;
+    let nested = match meta.kind {
+        MetaItemKind::List(ref nested) => nested,
+        _ => return None,
+    };
+    nested.iter().find_map(|nested_meta| match nested_meta {
+        NestedMetaItem::MetaItem(meta_item) if meta_item.has_name(Symbol::intern("ty")) => {
+            meta_item.value_str().map(|sym| sym.to_string())
+        }
+        _ => None,
+    })
+}
+
+/// Build a copy of a `#[bitfield(...)]` attribute with the string literal
+/// argument of `ty` replaced by `new_ty`. The copy gets a fresh `AttrId` so
+/// the rewriter reprints it instead of descending into its token stream.
+fn replace_bitfield_ty(attr: &Attribute, new_ty: &str) -> Attribute {
+    let normal = match &attr.kind {
+        AttrKind::Normal(normal) => normal,
+        AttrKind::DocComment(..) => panic!("expected a normal attribute"),
+    };
+    let delim_args = match &normal.item.args {
+        AttrArgs::Delimited(delim_args) => delim_args,
+        _ => panic!("expected a delimited attribute"),
+    };
+
+    let ty_sym = Symbol::intern("ty");
+    let mut saw_ty = false;
+    let mut saw_eq = false;
+    let mut trees: Vec<TokenTree> = Vec::new();
+    for tree in delim_args.tokens.trees() {
+        let mut tree = tree.clone();
+        match &mut tree {
+            TokenTree::Token(tok, _) => match &mut tok.kind {
+                TokenKind::Ident(name, _) => {
+                    saw_ty = *name == ty_sym;
+                    saw_eq = false;
+                }
+                TokenKind::Eq => saw_eq = saw_ty,
+                TokenKind::Literal(lit) if saw_ty && saw_eq && lit.kind == token::LitKind::Str => {
+                    lit.symbol = Symbol::intern(new_ty);
+                    saw_ty = false;
+                    saw_eq = false;
+                }
+                _ => {
+                    saw_ty = false;
+                    saw_eq = false;
+                }
+            },
+            _ => {
+                saw_ty = false;
+                saw_eq = false;
+            }
+        }
+        trees.push(tree);
+    }
+
+    Attribute {
+        id: AttrId::from_u32(0),
+        style: attr.style,
+        kind: AttrKind::Normal(P(NormalAttr {
+            item: AttrItem {
+                path: normal.item.path.clone(),
+                args: AttrArgs::Delimited(DelimArgs {
+                    dspan: delim_args.dspan,
+                    delim: delim_args.delim,
+                    tokens: TokenStream::new(trees),
+                }),
+                tokens: None,
+            },
+            tokens: None,
+        })),
+        span: DUMMY_SP,
     }
 }
 
