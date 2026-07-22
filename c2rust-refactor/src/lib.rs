@@ -14,10 +14,6 @@
     never_type
 )]
 
-#[cfg(feature = "profile")]
-#[macro_use]
-extern crate flamer;
-
 extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_ast_pretty;
@@ -548,15 +544,5 @@ fn main_impl(opts: Options) -> interface::Result<()> {
         }
     }
 
-    dump_profile();
-
     Ok(())
 }
-
-#[cfg(feature = "profile")]
-fn dump_profile() {
-    flame::dump_html(&mut std::fs::File::create("flame-graph.html").unwrap()).unwrap();
-}
-
-#[cfg(not(feature = "profile"))]
-fn dump_profile() {}
