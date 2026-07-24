@@ -1140,24 +1140,27 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         let mut items = smallvec![];
                         if let ItemKind::Use(_) = &item.kind {
                             if let Some((path, def_ids)) = multi_namespace_uses.get(&item.id) {
-                                // The retained import uses the first (type/value/
-                                // macro ordered) resolution. Determine where that
-                                // resolution lives even when it was not remapped.
-                                let other_mod_id = remapped_paths
-                                    .get(&item.id)
-                                    .map(|&(mod_id, _)| mod_id)
-                                    .or_else(|| {
-                                        let ldid = def_ids.first()?.1.as_local()?;
-                                        let mod_hir_id =
-                                            self.cx.ty_ctxt().parent_module_from_def_id(ldid);
-                                        Some(self.cx.hir_map().local_def_id_to_node_id(mod_hir_id))
-                                    })
-                                    .unwrap_or(DUMMY_NODE_ID);
+                                // The retained import was rewritten (by the path
+                                // folding above) to the path of its first (type/
+                                // value/macro ordered) resolution. Reconstruct
+                                // that path and add an import for each remaining
+                                // resolution the retained path does not cover.
+                                // Parent module NodeIds cannot decide coverage:
+                                // DUMMY_NODE_ID stands for every external module,
+                                // so only path equality proves it.
+                                let first_def = def_ids.first().unwrap().1;
+                                let retained_path = match self.path_mapping.get(&first_def) {
+                                    Some(replacement) => replacement.path.clone(),
+                                    None if is_relative_path(&path) => {
+                                        self.cx.def_qpath(first_def).1
+                                    }
+                                    None => path.clone(),
+                                };
                                 for &(namespace, def_id) in &def_ids[1..] {
                                     if let Some(Replacement { path, parent, .. }) =
                                         self.path_mapping.get(&def_id)
                                     {
-                                        if other_mod_id != *parent {
+                                        if !path.ast_equiv(&retained_path) {
                                             let new_node_id = self.st.next_node_id();
                                             let inserted = remapped_paths
                                                 .insert(new_node_id, (*parent, def_id))
@@ -1183,7 +1186,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                                 .cx
                                                 .hir_map()
                                                 .local_def_id_to_node_id(mod_hir_id);
-                                            if other_mod_id != mod_id {
+                                            let target_path = self.cx.def_path(def_id);
+                                            if !target_path.ast_equiv(&retained_path) {
                                                 let new_node_id = self.st.next_node_id();
                                                 let inserted = remapped_paths
                                                     .insert(new_node_id, (mod_id, def_id))
@@ -1194,7 +1198,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                                     smallvec![(namespace, mod_id)],
                                                 );
                                                 items.push(mk().id(new_node_id).use_simple_item(
-                                                    self.cx.def_path(def_id),
+                                                    target_path,
                                                     None::<String>,
                                                 ));
                                             }

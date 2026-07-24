@@ -53,6 +53,7 @@ pub mod dest {
 // paths (`tick_1` vs `tick`), so a second import must be added for the value
 // namespace: the retained import only covers the renamed type.
 pub mod user {
+    use crate::dest::tick;
     use crate::dest::tick_1;
 
     pub fn make(x: i32) -> crate::dest::tick_1 {
