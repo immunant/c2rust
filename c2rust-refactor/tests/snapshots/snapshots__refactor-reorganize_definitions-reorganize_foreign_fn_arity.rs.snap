@@ -13,6 +13,8 @@ pub mod decl_h {
     extern "C" {
 
         pub fn takes_args(x: libc::c_int) -> libc::c_int;
+
+        pub fn takes_args_1(x: libc::c_int, y: libc::c_int) -> libc::c_int;
     }
 
     use ::libc;
@@ -38,10 +40,10 @@ pub mod a {
 pub mod b {
     use libc;
 
-    use crate::decl_h::takes_args;
+    use crate::decl_h::takes_args_1;
 
     pub unsafe fn call_two() -> libc::c_int {
-        crate::decl_h::takes_args(1, 2)
+        crate::decl_h::takes_args_1(1, 2)
     }
 }
 
