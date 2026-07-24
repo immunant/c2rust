@@ -841,10 +841,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         .into_iter()
                         .filter_map(|mut item| {
                             if let ItemKind::ForeignMod(m) = &mut item.kind {
+                                // `extern` without an explicit ABI string defaults
+                                // to "C", same as rustc's lowering.
                                 let abi = m
                                     .abi
                                     .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
-                                    .unwrap_or(Abi::Rust);
+                                    .unwrap_or(Abi::FALLBACK);
                                 m.items.retain(|item| {
                                     match declarations.find_foreign_item(item, abi) {
                                         ContainsDecl::NotContained => true,
@@ -1776,10 +1778,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             // defined in ident_map after processing the whole list of items.
             ItemKind::ForeignMod(f) => {
                 for item in f.items.iter() {
+                    // `extern` without an explicit ABI string defaults to "C",
+                    // same as rustc's lowering.
                     let abi = f
                         .abi
                         .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
-                        .unwrap_or(Abi::Rust);
+                        .unwrap_or(Abi::FALLBACK);
                     self.insert_foreign_item(item.clone(), abi, parent_header.clone());
                 }
                 true
