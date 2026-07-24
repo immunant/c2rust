@@ -600,6 +600,17 @@ fn test_reorganize_orphaned_impls() {
         .test();
 }
 
+/// A definition that a header declaration is matched to has to be nameable
+/// from the modules whose paths are rewritten to point at it, even when it
+/// is only "exported" in the sense of carrying `#[no_mangle]`.
+#[test]
+fn test_reorganize_private_no_mangle_def() {
+    refactor("reorganize_definitions")
+        .named("reorganize_private_no_mangle_def.rs")
+        .new_expect_compile_error(true)
+        .test();
+}
+
 #[test]
 fn test_reorganize_self_import_destination() {
     refactor("reorganize_definitions")
