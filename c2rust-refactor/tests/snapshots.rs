@@ -463,17 +463,13 @@ fn test_reorganize_bitfield_ty() {
         .test();
 }
 
-/// TODO Broken; ignored because it is *nondeterministic*, not because it
-/// always fails. Foreign items are grouped into one `extern` block per ABI by
-/// iterating a `HashMap<Abi, _>`, so the two blocks are emitted in a different
-/// order from run to run and the stored snapshot (which records one of the two
-/// orders) only matches some of the time. The blocks are also hoisted ahead of
-/// every regular item *after* the `BEGIN`/`END` header comments have been
-/// assigned in source order, so the comments describe a layout that is not the
-/// one emitted: the header comments on the foreign items are lost entirely,
-/// and the surviving ones read `END aa_h` / `BEGIN bb_h` across a boundary the
-/// hoisted `extern` blocks used to sit on. Un-ignore once `into_items` orders
-/// the ABI groups deterministically and assigns the comments after hoisting.
+/// Foreign items are grouped into `extern` blocks by header and ABI, and the
+/// groups are emitted in the order they are first encountered rather than in
+/// `HashMap` iteration order, so the output is the same from run to run. The
+/// `BEGIN`/`END` header comments are assigned over the final item sequence, so
+/// they describe the layout that is actually emitted: `aa_h` is entered twice
+/// here, once for its `extern` blocks and again for its struct, because the
+/// blocks are hoisted ahead of every regular item.
 #[test]
 fn test_reorganize_extern_block_order() {
     refactor("reorganize_definitions")
