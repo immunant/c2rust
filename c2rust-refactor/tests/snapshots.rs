@@ -463,6 +463,24 @@ fn test_reorganize_bitfield_ty() {
         .test();
 }
 
+/// An `extern` function that is renamed to avoid a collision must keep
+/// naming the symbol it linked against before the rename.
+#[test]
+fn test_reorganize_foreign_fn_rename() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_fn_rename.rs")
+        .test();
+}
+
+/// An `extern` static that is renamed to avoid a collision must keep
+/// naming the symbol it linked against before the rename.
+#[test]
+fn test_reorganize_foreign_static_rename() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_static_rename.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_foreign_types() {
     refactor("reorganize_definitions")

@@ -1,0 +1,61 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_foreign_static_rename.rs --edition 2021
+---
+#![feature(rustc_private)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+
+pub mod cfg_h {
+    extern "C" {
+        pub static mut cfg: crate::cfg_h::a_t;
+
+        pub static mut cfg_1: crate::cfg_h::b_t;
+    }
+    use ::libc;
+
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+
+    pub struct a_t {
+        pub x: libc::c_int,
+    }
+
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+
+    pub struct b_t {
+        pub y: libc::c_double,
+    }
+}
+extern crate libc;
+
+// Two translation units declare the same C global with incompatible types,
+// so the two declarations cannot be collapsed into one and the second is
+// renamed to avoid the collision. An `extern` static links against its own
+// name, so the renamed declaration has to keep naming the original symbol.
+
+pub mod a {
+    use libc;
+
+    use crate::cfg_h::cfg;
+
+    pub unsafe fn get() -> libc::c_int {
+        crate::cfg_h::cfg.x
+    }
+}
+
+pub mod b {
+    use libc;
+
+    use crate::cfg_h::cfg_1;
+
+    pub unsafe fn get() -> libc::c_double {
+        crate::cfg_h::cfg_1.y
+    }
+}
+
+fn main() {}

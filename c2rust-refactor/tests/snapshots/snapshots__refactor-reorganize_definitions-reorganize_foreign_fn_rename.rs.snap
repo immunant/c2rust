@@ -1,0 +1,47 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_foreign_fn_rename.rs --edition 2021
+---
+#![feature(rustc_private)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+
+pub mod decl_h {
+    extern "C" {
+        pub fn compute(x: libc::c_int) -> libc::c_int;
+
+        pub fn compute_1(x: libc::c_double) -> libc::c_double;
+    }
+    use ::libc;
+}
+extern crate libc;
+
+// Two translation units declare the same C function with incompatible
+// signatures, so the two declarations cannot be collapsed into one and the
+// second is renamed to avoid the collision. An `extern` function links
+// against its own name, so the renamed declaration has to keep naming the
+// original symbol.
+
+pub mod a {
+    use libc;
+
+    use crate::decl_h::compute;
+
+    pub unsafe fn call() -> libc::c_int {
+        crate::decl_h::compute(1)
+    }
+}
+
+pub mod b {
+    use libc;
+
+    use crate::decl_h::compute_1;
+
+    pub unsafe fn call() -> libc::c_double {
+        crate::decl_h::compute_1(1.0)
+    }
+}
+
+fn main() {}
