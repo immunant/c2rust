@@ -327,7 +327,7 @@ pub static mut p: *const fn_ptrs = &raw const fns;
 pub const ZSTD_WINDOWLOG_MAX_32: ::core::ffi::c_int = 30 as ::core::ffi::c_int;
 pub const ZSTD_WINDOWLOG_MAX_64: ::core::ffi::c_int = 31 as ::core::ffi::c_int;
 pub const ZSTD_WINDOWLOG_MAX: ::core::ffi::c_int =
-    if ::core::mem::size_of::<zstd_platform_dependent_type>() == 4 as usize {
+    if ::core::mem::size_of::<zstd_platform_dependent_type>() == 4usize {
         ZSTD_WINDOWLOG_MAX_32
     } else {
         ZSTD_WINDOWLOG_MAX_64

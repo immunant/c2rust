@@ -2,10 +2,10 @@
 //! This code is used to generate literal expressions of various kinds.
 //! These include integer, floating, array, struct, union, enum literals.
 
-use failure::format_err;
-
 use super::*;
+use failure::format_err;
 use std::iter;
+use syn::{Path, TypePath};
 
 impl<'c> Translation<'c> {
     /// Generate an integer literal corresponding to the given type, value, and base.
@@ -16,19 +16,31 @@ impl<'c> Translation<'c> {
         base: IntBase,
         negative: bool,
     ) -> TranslationResult<Box<Expr>> {
-        let lit = match base {
-            IntBase::Dec => mk().int_unsuffixed_lit(val),
-            IntBase::Hex => mk().float_unsuffixed_lit(&format!("0x{:x}", val)),
-            IntBase::Oct => mk().float_unsuffixed_lit(&format!("0o{:o}", val)),
+        let target_ty = self.convert_type(ty.ctype)?;
+        let suffix = numeric_literal_suffix(&target_ty);
+        let is_suffix = suffix.is_some();
+
+        let mut lit_str = match base {
+            IntBase::Dec => format!("{val}"),
+            IntBase::Hex => format!("0x{val:x}"),
+            IntBase::Oct => format!("0o{val:o}"),
         };
-        let mut expr = mk().lit_expr(lit);
+
+        if let Some(suffix) = suffix {
+            lit_str.push_str(&suffix);
+        }
+
+        let mut expr = mk().lit_expr(mk().float_unsuffixed_lit(&lit_str));
 
         if negative {
             expr = neg_expr(expr);
         }
 
-        let target_ty = self.convert_type(ty.ctype)?;
-        Ok(mk().cast_expr(expr, target_ty))
+        Ok(if is_suffix {
+            expr
+        } else {
+            mk().cast_expr(expr, target_ty)
+        })
     }
 
     /// Return whether the literal can be directly translated as this type.
@@ -341,4 +353,42 @@ impl<'c> Translation<'c> {
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),
         }
     }
+}
+
+fn numeric_literal_suffix(ty: &Type) -> Option<String> {
+    let Type::Path(TypePath {
+        path: Path { segments, .. },
+        ..
+    }) = ty
+    else {
+        return None
+    };
+
+    if segments.len() != 1 {
+        return None;
+    }
+
+    let segment = &segments[0];
+
+    if !segment.arguments.is_none() {
+        return None;
+    }
+
+    let name = segment.ident.to_string();
+
+    matches!(
+        name.as_str(),
+        "i8" | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+    )
+    .then_some(name)
 }
