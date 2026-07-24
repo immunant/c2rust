@@ -366,7 +366,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // individually processed as a moved declaration — is deferred to
         // `pending_impls` and reattached directly to the self type's
         // destination module in `move_items`, once that is known.
-        let mut impls: HashMap<DefId, MovedDeclImpl> = HashMap::new();
+        // An `IndexMap` because the entries left over below are appended to
+        // `pending_impls` by iterating it, and `move_items` emits those in
+        // order; `HashMap` iteration order varies between runs.
+        let mut impls: IndexMap<DefId, MovedDeclImpl> = IndexMap::new();
         let mut pending_impls: Vec<(DefId, MovedDeclImpl)> = Vec::new();
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             if let Some((path, _)) = parse_source_header(&item.attrs) {
@@ -421,13 +424,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             item: item.clone(),
                             parent_header: HeaderInfo::new(header_ident, path.clone()),
                         };
-                        if impl_is_carryable(r#impl) {
-                            match impls.entry(decl_def_id) {
-                                Entry::Vacant(entry) => {
-                                    entry.insert(moved_impl);
-                                }
-                                Entry::Occupied(_) => pending_impls.push((decl_def_id, moved_impl)),
-                            }
+                        if impl_is_carryable(r#impl) && !impls.contains_key(&decl_def_id) {
+                            impls.insert(decl_def_id, moved_impl);
                         } else {
                             pending_impls.push((decl_def_id, moved_impl));
                         }
@@ -507,7 +505,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         let inserted = declarations.insert_item(
                             item.clone(),
                             header_info,
-                            impls.remove(&new_def_id),
+                            impls.shift_remove(&new_def_id),
                         );
                         // Keep the item if we are not collapsing it
                         !inserted
