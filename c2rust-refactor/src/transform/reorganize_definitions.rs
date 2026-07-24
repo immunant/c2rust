@@ -2180,7 +2180,13 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                             (
                                 ForeignItemKind::Fn(box Fn { sig: sig1, .. }),
                                 ForeignItemKind::Fn(box Fn { sig: sig2, .. }),
-                            ) => self.cx.compatible_fn_prototypes(&sig1.decl, &sig2.decl),
+                            ) => compatible_foreign_fns(
+                                self.cx,
+                                existing_foreign,
+                                item,
+                                &sig1.decl,
+                                &sig2.decl,
+                            ),
 
                             _ => existing_foreign.ast_equiv(item),
                         };
@@ -2208,6 +2214,43 @@ enum ContainsDecl<'a> {
 
     /// The module contains a use of the given item.
     Use(&'a mut MovedDecl),
+}
+
+// Returns `true` if two foreign function declarations declare the same
+// function, and so may be collapsed into one.
+//
+// The two declarations come from different modules, so comparing their
+// written-out signatures is not enough: a parameter spelled `*mut stat` in
+// each can name a different `stat` in each module, and merging on that basis
+// silently repoints one module's calls at the other module's type. A foreign
+// item has no body, so its signature carries no node types for
+// `compatible_fn_prototypes` to compare, and it falls back to comparing the
+// syntax. Compare the resolved signatures instead, and only fall back to the
+// syntactic comparison when a signature cannot be resolved.
+//
+// Resolution fails (`no_bound_vars` returns `None`) when a signature contains
+// late-bound lifetimes, e.g. an elided or function-scoped lifetime in a
+// reference parameter such as `fn f(x: &u8)` or `fn f<'a>(x: &'a Foo)`.
+// Transpiled declarations use raw pointers and are unaffected, but hand-edited
+// code can carry references; two such signatures cannot be compared without
+// instantiating their bound regions, so they take the syntactic path.
+fn compatible_foreign_fns(
+    cx: &RefactorCtxt,
+    foreign1: &ForeignItem,
+    foreign2: &ForeignItem,
+    decl1: &FnDecl,
+    decl2: &FnDecl,
+) -> bool {
+    let tcx = cx.ty_ctxt();
+    let sig_of = |foreign: &ForeignItem| {
+        tcx.fn_sig(cx.node_def_id(foreign.id))
+            .subst_identity()
+            .no_bound_vars()
+    };
+    match (sig_of(foreign1), sig_of(foreign2)) {
+        (Some(sig1), Some(sig2)) => cx.compatible_fn_sigs(&sig1, &sig2),
+        _ => cx.compatible_fn_prototypes(decl1, decl2),
+    }
 }
 
 /// Returns true if the given ForeignItem can be a declaration for the given
