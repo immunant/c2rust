@@ -10,7 +10,9 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 
 pub mod first {
 
+    // =============== BEGIN first_h ================
     extern "C" {
+
         pub fn compute(x: i32) -> i32;
     }
 

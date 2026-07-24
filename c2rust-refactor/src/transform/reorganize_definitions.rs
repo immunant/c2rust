@@ -2162,49 +2162,60 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             }
         });
 
-        let mut items: Vec<P<Item>> = Vec::new();
-        let mut foreign_items: HashMap<Abi, Vec<P<ForeignItem>>> = HashMap::new();
-        let mut last_item_mod = None;
-        let mut last_foreign_item_mod = None;
+        // Each item is paired with the header it came from, so the
+        // `BEGIN`/`END` comments can be assigned once the final order is known.
+        let mut items: Vec<(Ident, P<Item>)> = Vec::new();
+        // Foreign items are grouped by header as well as by ABI: keying on the
+        // ABI alone would produce `extern` blocks spanning several headers,
+        // which no single header comment can describe. An `IndexMap` keeps the
+        // groups in the order they are first encountered, which is derived from
+        // the sort above, instead of in `HashMap` iteration order (which varies
+        // between runs).
+        let mut foreign_items: IndexMap<(Ident, Abi), Vec<P<ForeignItem>>> = IndexMap::new();
         for item in all_items {
             let cur_mod_name = item.parent_header.ident;
             match item.kind {
-                DeclKind::Item(i) => {
-                    if last_item_mod != Some(cur_mod_name) {
-                        st.add_comment(i.id, make_header_comment(last_item_mod, cur_mod_name));
-                        last_item_mod = Some(cur_mod_name);
-                    }
-                    items.push(i);
-                }
+                DeclKind::Item(i) => items.push((cur_mod_name, i)),
                 DeclKind::ForeignItem(fi, abi) => {
-                    if last_foreign_item_mod != Some(cur_mod_name) {
-                        st.add_comment(
-                            fi.id,
-                            make_header_comment(last_foreign_item_mod, cur_mod_name),
-                        );
-                        last_foreign_item_mod = Some(cur_mod_name);
-                    }
-                    foreign_items.entry(abi).or_default().push(fi);
+                    foreign_items
+                        .entry((cur_mod_name, abi))
+                        .or_default()
+                        .push(fi);
                 }
             }
 
             // If there is an impl item, add it now.
             if let Some(r#impl) = item.r#impl {
-                let cur_mod_name = r#impl.parent_header.ident;
-                let i = r#impl.item;
-                if last_item_mod != Some(cur_mod_name) {
-                    st.add_comment(i.id, make_header_comment(last_item_mod, cur_mod_name));
-                    last_item_mod = Some(cur_mod_name);
-                }
-                items.push(i);
+                items.push((r#impl.parent_header.ident, r#impl.item));
             }
         }
 
-        let foreign_mods = foreign_items
-            .into_iter()
-            .map(|(abi, items)| mk().extern_(abi).foreign_items(items));
+        let foreign_mods = foreign_items.into_iter().map(|((header, abi), items)| {
+            // A fresh, registered `NodeId` so the header comment below has
+            // something to attach to; comments on the foreign items inside the
+            // block never reach the output, since the whole block is
+            // pretty-printed as one new item.
+            let id = st.next_node_id();
+            st.register_new_node_id(id);
+            (header, mk().id(id).extern_(abi).foreign_items(items))
+        });
 
-        foreign_mods.chain(items.into_iter()).collect()
+        // Assign the header comments while walking the items in the order they
+        // are emitted. The `extern` blocks are hoisted ahead of every other
+        // item, so a header can be entered, left, and entered again in the
+        // final layout; walking the declarations in their pre-hoisting order
+        // instead would describe a layout that never gets written out.
+        let mut last_mod = None;
+        foreign_mods
+            .chain(items)
+            .map(|(header, item)| {
+                if last_mod != Some(header) {
+                    st.add_comment(item.id, make_header_comment(last_mod, header));
+                    last_mod = Some(header);
+                }
+                item
+            })
+            .collect()
     }
 
     fn find_item<'b>(
