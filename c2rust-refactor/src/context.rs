@@ -1378,6 +1378,16 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
     /// Compare two function declarations for equivalent argument and return types,
     /// ignoring argument names.
     pub fn compatible_fn_prototypes(&self, decl1: &FnDecl, decl2: &FnDecl) -> bool {
+        // `zip` below stops at the shorter parameter list, so the lengths have
+        // to be compared separately. Otherwise a declaration is compatible
+        // with any other one that merely extends it, which is exactly the
+        // shape an unprototyped `int f()` and a prototyped `int f(int)` take
+        // after translation. A trailing `...` is a `CVarArgs` parameter, so
+        // this covers a variadic/non-variadic mismatch too.
+        if decl1.inputs.len() != decl2.inputs.len() {
+            return false;
+        }
+
         let mut args = decl1.inputs.iter().zip(decl2.inputs.iter());
         if !args.all(|(arg1, arg2)| self.structural_eq_ast_tys(&arg1.ty, &arg2.ty, true)) {
             return false;
