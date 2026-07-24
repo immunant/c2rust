@@ -519,6 +519,19 @@ fn test_reorganize_forward_decl_with_local_definition() {
         .test();
 }
 
+/// TODO Broken.
+/// A macro and a struct sharing a name live in different namespaces and do
+/// not collide, so the struct should still move into the module holding the
+/// macro. `item_namespaces` classifies `MacroDef` as `TypeNS` instead of
+/// `MacroNS`, so the transform sees a type-namespace collision and banishes
+/// the struct to a new `thing_h` module.
+#[test]
+fn test_reorganize_macro_namespace() {
+    refactor("reorganize_definitions")
+        .named("reorganize_macro_namespace.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_multi_namespace() {
     refactor("reorganize_definitions")
