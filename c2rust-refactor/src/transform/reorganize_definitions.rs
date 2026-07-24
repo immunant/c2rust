@@ -18,7 +18,7 @@ use rustc_hir::{self as hir, Node};
 use rustc_middle::metadata::ModChild;
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_span::symbol::{kw, Ident};
-use rustc_span::{BytePos, Symbol, DUMMY_SP};
+use rustc_span::{sym, BytePos, Symbol, DUMMY_SP};
 use rustc_target::spec::abi::{self, Abi};
 use smallvec::smallvec;
 use thin_vec::ThinVec;
@@ -755,6 +755,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     let old_name = ident.name.as_str();
                     let new_name = format!("{old_name}_{idx}");
                     warn!("Renaming identifier {old_name} to {new_name} due to collision");
+                    item.preserve_link_name(ident);
                     item.ident_mut().name = Symbol::intern(&new_name);
                 }
 
@@ -1596,6 +1597,30 @@ impl MovedDecl {
         }
     }
 
+    /// Pin down the symbol an `extern` declaration links against, before its
+    /// ident is changed to resolve a collision. A foreign function or static
+    /// links against its own name unless a `#[link_name]` says otherwise, so
+    /// renaming one silently repoints it at a symbol that does not exist.
+    fn preserve_link_name(&mut self, orig: Ident) {
+        let item = match &mut self.kind {
+            DeclKind::ForeignItem(item, _) => item,
+            // A regular item is mangled under its own path, so renaming it
+            // does not change what it exports.
+            DeclKind::Item(_) => return,
+        };
+        // An `extern type` has no symbol of its own to preserve.
+        if !matches!(
+            item.kind,
+            ForeignItemKind::Fn(..) | ForeignItemKind::Static(..)
+        ) {
+            return;
+        }
+        if item.attrs.iter().any(|attr| attr.has_name(sym::link_name)) {
+            return;
+        }
+        item.attrs.push(mk_link_name_attr(orig.name));
+    }
+
     fn ident_mut(&mut self) -> &mut Ident {
         match &mut self.kind {
             DeclKind::ForeignItem(item, _) => &mut item.ident,
@@ -2262,6 +2287,26 @@ fn is_nested(tree: &UseTree) -> bool {
         true
     } else {
         false
+    }
+}
+
+/// Build a `#[link_name = "<symbol>"]` attribute.
+fn mk_link_name_attr(symbol: Symbol) -> Attribute {
+    Attribute {
+        id: AttrId::from_u32(0),
+        style: AttrStyle::Outer,
+        kind: AttrKind::Normal(P(NormalAttr {
+            item: AttrItem {
+                path: mk().path(vec![sym::link_name]),
+                args: AttrArgs::Eq(
+                    DUMMY_SP,
+                    AttrArgsEq::Ast(mk().lit_expr(mk().str_lit(symbol).as_token_lit())),
+                ),
+                tokens: None,
+            },
+            tokens: None,
+        })),
+        span: DUMMY_SP,
     }
 }
 

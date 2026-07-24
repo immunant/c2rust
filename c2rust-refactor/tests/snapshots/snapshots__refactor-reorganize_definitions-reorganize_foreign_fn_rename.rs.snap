@@ -12,6 +12,7 @@ pub mod decl_h {
     extern "C" {
         pub fn compute(x: libc::c_int) -> libc::c_int;
 
+        #[link_name = "compute"]
         pub fn compute_1(x: libc::c_double) -> libc::c_double;
     }
     use ::libc;

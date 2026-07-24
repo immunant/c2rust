@@ -13,6 +13,7 @@ pub mod cfg_h {
     extern "C" {
         pub static mut cfg: crate::cfg_h::a_t;
 
+        #[link_name = "cfg"]
         pub static mut cfg_1: crate::cfg_h::b_t;
     }
     use ::libc;
