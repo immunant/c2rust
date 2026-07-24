@@ -18,15 +18,15 @@ pub mod user {
     pub mod user_h {
         // A glob import in a header module. It has no single ident to merge
         // on, so `reorganize_definitions` must keep it in the header instead
-        // of trying to move it (or panicking). Note that items moved out of
-        // this header cannot rely on the glob's bindings: bare paths that
-        // resolve through it are not canonicalized on the way out.
+        // of trying to move it (or panicking). The bare `thing` path below
+        // resolves through this glob; it must be canonicalized when `config`
+        // moves out of the header, since the glob stays behind.
         pub use crate::defs::*;
 
         #[c2rust::src_loc = "3:0"]
         #[derive(Copy, Clone)]
         pub struct config {
-            pub t: crate::defs::thing,
+            pub t: thing,
         }
     }
     use self::user_h::config;
