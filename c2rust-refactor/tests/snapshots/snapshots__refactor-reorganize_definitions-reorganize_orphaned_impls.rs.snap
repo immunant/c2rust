@@ -16,6 +16,21 @@ pub mod stuff {
     pub struct opts {
         pub x: i32,
     }
+    // An impl containing a non-const item; it never qualifies for
+    // saving in the first place.
+
+    impl opts {
+        pub fn reset(&mut self) {
+            self.x = 0;
+        }
+    }
+    // A const-only impl whose self type is defined outside the header
+    // modules. Its saved `impls` entry is keyed by the external def,
+    // which no moved declaration ever consumes.
+
+    impl opts {
+        pub const DEFAULT_X: i32 = 3;
+    }
 }
 
 pub mod opts {
