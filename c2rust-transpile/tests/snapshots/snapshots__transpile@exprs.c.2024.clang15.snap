@@ -71,11 +71,11 @@ pub unsafe extern "C" fn inc_decl_with_rvalue_side_effect() {
     let mut pre_dec: ::core::ffi::c_int = *c2rust_lvalue_ptr_0;
     let c2rust_lvalue_ptr_1 = &raw mut arr[side_effect() as usize];
     let c2rust_fresh0 = *c2rust_lvalue_ptr_1;
-    *c2rust_lvalue_ptr_1 = *c2rust_lvalue_ptr_1 + 1;
+    *c2rust_lvalue_ptr_1 += 1;
     let mut post_inc: ::core::ffi::c_int = c2rust_fresh0;
     let c2rust_lvalue_ptr_2 = &raw mut arr[side_effect() as usize];
     let c2rust_fresh1 = *c2rust_lvalue_ptr_2;
-    *c2rust_lvalue_ptr_2 = *c2rust_lvalue_ptr_2 - 1;
+    *c2rust_lvalue_ptr_2 -= 1;
     let mut post_dec: ::core::ffi::c_int = c2rust_fresh1;
 }
 #[unsafe(no_mangle)]
@@ -92,11 +92,11 @@ pub unsafe extern "C" fn inc_decl_with_lvalue_side_effect() {
     let mut pre_dec: ::core::ffi::c_int = *c2rust_lvalue_ptr_0;
     let c2rust_lvalue_ptr_1 = &raw mut *lvalue_side_effect();
     let c2rust_fresh2 = *c2rust_lvalue_ptr_1;
-    *c2rust_lvalue_ptr_1 = *c2rust_lvalue_ptr_1 + 1;
+    *c2rust_lvalue_ptr_1 += 1;
     let mut post_inc: ::core::ffi::c_int = c2rust_fresh2;
     let c2rust_lvalue_ptr_2 = &raw mut *lvalue_side_effect();
     let c2rust_fresh3 = *c2rust_lvalue_ptr_2;
-    *c2rust_lvalue_ptr_2 = *c2rust_lvalue_ptr_2 - 1;
+    *c2rust_lvalue_ptr_2 -= 1;
     let mut post_dec: ::core::ffi::c_int = c2rust_fresh3;
 }
 #[unsafe(no_mangle)]
