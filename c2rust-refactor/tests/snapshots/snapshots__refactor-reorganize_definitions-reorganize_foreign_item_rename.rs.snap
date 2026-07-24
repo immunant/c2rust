@@ -64,8 +64,10 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 
 pub mod foreign_h {
     extern "C" {
+        #[link_name = "cfg"]
         pub static mut cfg_1: crate::foreign_h::cfg_int;
 
+        #[link_name = "compute"]
         pub fn compute_1(p: *mut [::core::ffi::c_int; 4]) -> ::core::ffi::c_int;
 
         pub static mut cfg: ::core::ffi::c_int;
