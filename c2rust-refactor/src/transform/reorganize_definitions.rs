@@ -27,7 +27,7 @@ use crate::ast_builder::mk;
 use crate::ast_manip::util::{
     is_c2rust_attr, is_exported, is_relative_path, join_visibility, namespace, split_uses,
 };
-use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
+use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisit, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -766,9 +766,24 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 let dest_module_id = self.find_destination_id(&item, &matching_defs);
 
                 let ident = item.ident();
+                // If this declaration is an import, record its targets so
+                // that later phases know the destination module keeps this
+                // ident bound (`update_module_info_items` does the same for
+                // the destination's original imports).
+                let import_targets = match &item.kind {
+                    DeclKind::Item(decl_item) if matches!(decl_item.kind, ItemKind::Use(_)) => {
+                        self.cx.resolved_imports_for_item(decl_item)
+                    }
+                    _ => smallvec![],
+                };
                 let dest_module_info = self.modules.get_mut(&dest_module_id).unwrap();
                 for &namespace in &item.namespaces {
                     dest_module_info.items[namespace].insert(ident);
+                }
+                for (namespace, resolution) in import_targets {
+                    if let Some(def_id) = resolution.opt_def_id() {
+                        dest_module_info.import_targets[namespace].insert(ident, def_id);
+                    }
                 }
                 let mut path_segments = dest_module_info.path.clone();
                 path_segments.push(mk().path_segment(ident.name));
@@ -816,6 +831,32 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
             if let Some(mapping) = self.path_mapping.get(&new_def).cloned() {
                 self.path_mapping.insert(*old_def, mapping);
+            }
+        }
+
+        // Canonicalize single-segment paths inside the moved declarations.
+        // Their targets may be bound by imports that stay behind in the
+        // header module (e.g. a glob import, which we never move), so a bare
+        // path to a local item that is not itself moving must be rewritten
+        // into an absolute path here — unless the destination module still
+        // binds the ident to the same def. Paths to moved items are left
+        // alone; `update_paths` rewrites those through `path_mapping`. This
+        // runs after the `matching_defs` loop above so that declarations
+        // replaced by a retained duplicate are also skipped.
+        for (&dest_module_id, items) in module_items.iter_mut() {
+            let dest_info = &self.modules[&dest_module_id];
+            for decl in items.iter_mut() {
+                match &mut decl.kind {
+                    DeclKind::Item(item) => {
+                        self.canonicalize_moved_decl_paths(item, dest_info, &matching_defs)
+                    }
+                    DeclKind::ForeignItem(item, _) => {
+                        self.canonicalize_moved_decl_paths(item, dest_info, &matching_defs)
+                    }
+                }
+                if let Some(r#impl) = &mut decl.r#impl {
+                    self.canonicalize_moved_decl_paths(&mut r#impl.item, dest_info, &matching_defs)
+                }
             }
         }
 
@@ -967,6 +1008,67 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             item.attrs
                 .retain(|attr| !is_c2rust_attr(attr, "header_src"));
             smallvec![item]
+        });
+    }
+
+    /// Rewrite single-segment paths inside a moved declaration into absolute
+    /// paths when their target is a local item that is not being moved. Such
+    /// paths resolved through the scope of the header module (its items and
+    /// imports), which the declaration is about to leave. Paths whose ident
+    /// stays bound to the same def in the destination module `dest_info`
+    /// (through an import, or because the target is defined there) are left
+    /// alone.
+    fn canonicalize_moved_decl_paths<T: MutVisit>(
+        &self,
+        target: &mut T,
+        dest_info: &ModuleInfo,
+        matching_defs: &HashMap<DefId, DefId>,
+    ) {
+        let cx = self.cx;
+        let path_mapping = &self.path_mapping;
+        let canonical = |mut def_id: DefId| {
+            while let Some(&next) = matching_defs.get(&def_id) {
+                def_id = next;
+            }
+            def_id
+        };
+        fold_resolved_paths_with_id(target, cx, |_, qself, path, defs| {
+            if qself.is_none() && path.segments.len() == 1 {
+                if let Some(&Res::Def(kind, def_id)) = defs.first() {
+                    // Only handle kinds whose definitions have a plain,
+                    // nameable path; in particular, this excludes generic
+                    // parameters and associated items.
+                    let nameable = matches!(
+                        kind,
+                        DefKind::Struct
+                            | DefKind::Union
+                            | DefKind::Enum
+                            | DefKind::TyAlias
+                            | DefKind::ForeignTy
+                            | DefKind::Fn
+                            | DefKind::Static(_)
+                            | DefKind::Const
+                    );
+                    if nameable && def_id.is_local() && !path_mapping.contains_key(&def_id) {
+                        let ident = path.segments[0].ident;
+                        let import_covers = namespace(&defs[0]).map_or(false, |ns| {
+                            dest_info.import_targets[ns]
+                                .get(&ident)
+                                .map_or(false, |&target| {
+                                    canonical(target) == canonical(def_id)
+                                })
+                        });
+                        let defined_in_dest = def_id.as_local().map_or(false, |ldid| {
+                            let mod_hir_id = cx.ty_ctxt().parent_module_from_def_id(ldid);
+                            cx.hir_map().local_def_id_to_node_id(mod_hir_id) == dest_info.id
+                        });
+                        if !import_covers && !defined_in_dest {
+                            return cx.def_qpath(def_id);
+                        }
+                    }
+                }
+            }
+            (qself, path)
         });
     }
 
