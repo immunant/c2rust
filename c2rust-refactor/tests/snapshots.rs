@@ -492,7 +492,6 @@ fn test_reorganize_foreign_fn_arity() {
 fn test_reorganize_foreign_fn_type_identity() {
     refactor("reorganize_definitions")
         .named("reorganize_foreign_fn_type_identity.rs")
-        .new_expect_compile_error(true)
         .test();
 }
 
