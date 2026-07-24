@@ -1,0 +1,40 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_private_no_mangle_def.rs --edition 2021
+---
+#![feature(rustc_private)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+
+pub mod counter_h {
+    use ::libc;
+}
+extern crate libc;
+
+// `counter` carries `#[no_mangle]`, so it is visible to the linker from
+// another translation unit, but it is private to its module in Rust terms.
+// The header declaration in `user` is matched to it and every path to the
+// declaration is rewritten to point here, from outside this module.
+
+pub mod def {
+    use libc;
+
+    #[no_mangle]
+
+    static mut counter: libc::c_int = 0;
+}
+
+pub mod user {
+    use libc;
+
+    use crate::def::counter;
+
+    pub unsafe fn read() -> libc::c_int {
+        crate::def::counter
+    }
+}
+
+fn main() {}
