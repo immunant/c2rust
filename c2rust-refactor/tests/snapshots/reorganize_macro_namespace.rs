@@ -16,11 +16,10 @@ pub mod thing {
 
     // A macro sharing the `point` spelling with the struct in the header
     // above. Macros live in the macro namespace, so the two names do not
-    // collide and the struct should still move into this module. But
-    // `item_namespaces` classifies every item it doesn't recognize as
-    // `TypeNS`, `MacroDef` included, so `update_module_info_items` records
-    // `point` as occupying this module's *type* namespace and
-    // `find_destination_id` rejects `thing` as a destination for the struct.
+    // collide and the struct still moves into this module. Classifying
+    // `MacroDef` as a type instead would make `update_module_info_items`
+    // record `point` as occupying this module's *type* namespace, and
+    // `find_destination_id` would reject `thing` as a destination.
     //
     // Note there is deliberately no `use self::thing_h::point;` here: an
     // import of the struct would land in `import_targets` and let the

@@ -554,6 +554,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 // Values
                 ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => Namespace::ValueNS,
 
+                // Macros. Kept in sync with `item_namespaces`, which decides
+                // the namespaces the declarations searched below were filed
+                // under; classifying a macro here as a type would look for it
+                // among the type declarations and never find it.
+                ItemKind::MacroDef(..) => Namespace::MacroNS,
+
                 // Types
                 _ => Namespace::TypeNS,
             };
