@@ -1,0 +1,33 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_orphaned_impls.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+
+pub mod stuff {
+    // The type the header impls attach to is defined here, outside any
+    // header module.
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct opts {
+        pub x: i32,
+    }
+}
+
+pub mod opts {
+
+    // =============== BEGIN opts_h ================
+    pub use crate::stuff::opts;
+
+    pub fn go() -> i32 {
+        let mut o = opts { x: opts::DEFAULT_X };
+        o.reset();
+        o.x
+    }
+}
+
+fn main() {}
