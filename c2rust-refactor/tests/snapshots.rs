@@ -517,6 +517,16 @@ fn test_reorganize_split_namespace_imports() {
         .test();
 }
 
+/// A multi-namespace import whose type-namespace target is collision-renamed
+/// must still get a second import for the value namespace: coverage is
+/// decided by comparing target paths, not parent modules.
+#[test]
+fn test_reorganize_split_renamed_import() {
+    refactor("reorganize_definitions")
+        .named("reorganize_split_renamed_import.rs")
+        .test();
+}
+
 #[test]
 fn test_sink_lets() {
     refactor("sink_lets").test();
