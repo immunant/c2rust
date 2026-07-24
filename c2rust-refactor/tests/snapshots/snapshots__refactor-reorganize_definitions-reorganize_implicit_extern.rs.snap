@@ -11,7 +11,7 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 pub mod first {
 
     // =============== BEGIN first_h ================
-    extern "C" {
+    extern "Rust" {
 
         pub fn compute(x: i32) -> i32;
     }
@@ -23,10 +23,15 @@ pub mod first {
 
 pub mod second {
 
-    use crate::first::compute;
+    // =============== BEGIN second_h ================
+    extern "C" {
+
+        #[link_name = "compute"]
+        pub fn compute_1(x: i32) -> i32;
+    }
 
     pub fn call_second(x: i32) -> i32 {
-        unsafe { crate::first::compute(x) }
+        unsafe { crate::second::compute_1(x) }
     }
 }
 
