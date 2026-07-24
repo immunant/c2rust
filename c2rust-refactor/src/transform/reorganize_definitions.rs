@@ -81,6 +81,14 @@ pub struct Reorganizer<'a, 'tcx: 'a> {
 
     // Counter used by `unique_ident`
     ident_counter: HashMap<Ident, usize>,
+
+    // Definitions that `match_defs` redirected a header declaration to, and
+    // which are not `pub`. `is_exported` accepts a `#[no_mangle]` value
+    // whatever its Rust visibility, because that is what decides whether the
+    // C symbol is visible to another translation unit; but the paths that now
+    // point at the definition come from other modules, which a private item
+    // cannot be named from. `widen_matched_defs` widens these.
+    widened_defs: HashSet<NodeId>,
 }
 
 #[derive(Clone)]
@@ -134,6 +142,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             pending_impls: Vec::new(),
             stdlib_id: DUMMY_NODE_ID,
             ident_counter: HashMap::new(),
+            widened_defs: HashSet::new(),
         }
     }
 
@@ -145,6 +154,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         let mut header_decls = self.remove_header_items(krate);
 
         self.match_defs(&mut header_decls, krate);
+        self.widen_matched_defs(krate);
         self.update_module_info_items(krate);
 
         self.move_items(header_decls, krate);
@@ -568,6 +578,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 DeclKind::ForeignItem(foreign, _) => foreign_equiv(&foreign, item),
             });
             if !decl_ids.is_empty() {
+                if !item.vis.kind.is_pub() {
+                    self.widened_defs.insert(item.id);
+                }
                 let def_id = self.cx.node_def_id(item.id);
                 let dest_path = self.cx.def_path(def_id);
                 let ldid = def_id.expect_local();
@@ -728,6 +741,32 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 );
             });
         }
+    }
+
+    /// Widen the visibility of the definitions `match_defs` redirected header
+    /// declarations to, so that the rewritten paths can name them.
+    ///
+    /// `match_defs` accepts a definition that `is_exported` calls exported,
+    /// which for a value means it carries `#[no_mangle]` or `#[export_name]` —
+    /// a statement about the C symbol, not about Rust visibility. Such a
+    /// definition can be private to its module while the declarations it
+    /// replaces were used from other modules, whose paths now point at it.
+    fn widen_matched_defs(&self, krate: &mut Crate) {
+        if self.widened_defs.is_empty() {
+            return;
+        }
+        // The users are all in this crate, so `pub(crate)` is enough.
+        let crate_vis = VisibilityKind::Restricted {
+            path: P(Path::from_ident(Ident::new(kw::Crate, DUMMY_SP))),
+            id: DUMMY_NODE_ID,
+            shorthand: true,
+        };
+        FlatMapNodes::visit(krate, |mut item: P<Item>| {
+            if self.widened_defs.contains(&item.id) {
+                item.vis.kind = join_visibility(&item.vis.kind, &crate_vis);
+            }
+            smallvec![item]
+        });
     }
 
     /// Update items set in ModuleInfos with current remaining items in that
