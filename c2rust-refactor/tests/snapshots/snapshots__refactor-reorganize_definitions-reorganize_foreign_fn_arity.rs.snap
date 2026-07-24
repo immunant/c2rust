@@ -14,6 +14,7 @@ pub mod decl_h {
 
         pub fn takes_args(x: libc::c_int) -> libc::c_int;
 
+        #[link_name = "takes_args"]
         pub fn takes_args_1(x: libc::c_int, y: libc::c_int) -> libc::c_int;
     }
 
