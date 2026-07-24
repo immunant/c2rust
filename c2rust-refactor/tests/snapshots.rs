@@ -463,6 +463,16 @@ fn test_reorganize_bitfield_ty() {
         .test();
 }
 
+/// Two foreign declarations of the same function that differ in the number
+/// of parameters are not interchangeable and must not be merged.
+#[test]
+fn test_reorganize_foreign_fn_arity() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_fn_arity.rs")
+        .new_expect_compile_error(true)
+        .test();
+}
+
 /// A foreign item, `static` or `fn`, that is renamed to avoid a collision must
 /// keep naming the symbol it linked against before the rename.
 #[test]
