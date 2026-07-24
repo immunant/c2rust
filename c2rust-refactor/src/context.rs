@@ -939,6 +939,11 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                 smallvec![Namespace::ValueNS]
             }
 
+            // A macro shares no namespace with a type or a value of the same
+            // name, so it must not be reported as occupying `TypeNS`; doing so
+            // makes an unrelated type of the same name look like a collision.
+            ItemKind::MacroDef(..) => smallvec![Namespace::MacroNS],
+
             _ => smallvec![Namespace::TypeNS],
         }
     }
