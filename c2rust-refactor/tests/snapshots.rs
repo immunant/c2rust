@@ -472,7 +472,6 @@ fn test_reorganize_foreign_types() {
 
 /// A glob import inside a header module used to panic in
 /// `UseTree::ident()`; it must instead be kept in the header module.
-#[should_panic]
 #[test]
 fn test_reorganize_glob_import() {
     refactor("reorganize_definitions")

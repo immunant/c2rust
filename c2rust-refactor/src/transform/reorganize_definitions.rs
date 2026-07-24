@@ -331,7 +331,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             // This assume the complex uses have been split apart already
             for item in &items[..] {
                 if let ItemKind::Use(tree) = &item.kind {
-                    if used_idents.contains(&tree.ident()) {
+                    // Glob imports have no single ident to merge on and
+                    // moving them could change what they bind, so always
+                    // keep them in the header.
+                    if matches!(tree.kind, UseTreeKind::Glob)
+                        || used_idents.contains(&tree.ident())
+                    {
                         keep_items.insert(item.id);
                         continue;
                     }
@@ -1771,6 +1776,10 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                 }
                 true
             }
+
+            // Glob imports have no single ident to merge on; keep them in
+            // the header module untouched.
+            ItemKind::Use(tree) if matches!(tree.kind, UseTreeKind::Glob) => false,
 
             // Keep function definitions, if any
             ItemKind::Fn(..) => false,
