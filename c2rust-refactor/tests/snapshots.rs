@@ -440,9 +440,7 @@ fn test_reorder_derives() {
 #[cfg(target_os = "linux")] // `statvfs` and `statfs64` are Linux only.
 #[test]
 fn test_reorganize_definitions() {
-    refactor("reorganize_definitions")
-        .new_expect_compile_error(true)
-        .test();
+    refactor("reorganize_definitions").test();
 }
 
 #[test]
@@ -556,7 +554,6 @@ fn test_reorganize_non_ascii_ident() {
 fn test_reorganize_private_no_mangle_def() {
     refactor("reorganize_definitions")
         .named("reorganize_private_no_mangle_def.rs")
-        .new_expect_compile_error(true)
         .test();
 }
 
