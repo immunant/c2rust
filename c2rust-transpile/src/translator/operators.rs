@@ -725,7 +725,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad arg type"))?;
 
-        let mut one = match self.ast_context.resolve_type(arg_type.ctype).kind {
+        let one = match self.ast_context.resolve_type(arg_type.ctype).kind {
             // TODO: If rust gets f16 support:
             // CTypeKind::Half |
             CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
@@ -773,69 +773,34 @@ impl<'c> Translation<'c> {
                 Some(compute_res_type_id),
             )
         } else {
-            let op = op
-                .underlying_assignment()
-                .expect("not an valid assignment operator");
-
-            self.name_reference_write_read(ctx, arg)?.and_then_try(
-                |NamedReference {
-                     lvalue: write,
-                     rvalue: read,
-                 }| {
+            self.name_reference_write_read(ctx, arg)?
+                .and_then(|lhs| {
                     let val_name = self.renamer.borrow_mut().fresh();
                     let save_old_val = mk().local_stmt(Box::new(mk().local(
                         mk().ident_pat(&val_name),
                         None,
-                        Some(read.clone()),
+                        Some(lhs.rvalue.clone()),
                     )));
+                    let old_val_expr = mk().ident_expr(val_name);
+                    WithStmts::new(vec![save_old_val], (lhs, old_val_expr))
+                })
+                .and_then_try(|(lhs, old_val_expr)| {
+                    let val = self.make_assignment_operator(
+                        ctx.unused(),
+                        expected_type_id,
+                        result_type_id,
+                        op,
+                        lhs,
+                        arg_type,
+                        one,
+                        one_type_id,
+                        compute_lhs_type_id,
+                        compute_res_type_id,
+                    )?;
 
-                    let mut is_unsafe = false; // Track unsafety if we call `pointer::offset`.
-
-                    // *p + 1
-                    let mut type_kind = &self.ast_context.resolve_type(arg_type.ctype).kind;
-
-                    let val = if let &CTypeKind::Pointer(pointee) = type_kind {
-                        if let Some(n) = self.compute_size_of_expr(pointee.ctype) {
-                            one = n
-                        }
-
-                        let n = if op == CBinOp::Subtract {
-                            neg_expr(one)
-                        } else {
-                            one
-                        };
-                        is_unsafe = true;
-                        mk().method_call_expr(read, "offset", vec![n])
-                    } else {
-                        if let &CTypeKind::Enum(enum_id) = type_kind {
-                            let integral_type = self.enum_integral_type(enum_id);
-                            type_kind = &self.ast_context.resolve_type(integral_type.ctype).kind;
-                        }
-
-                        if type_kind.is_unsigned_integral_type() {
-                            mk().method_call_expr(read, op.wrapping_method(), vec![one])
-                        } else {
-                            mk().binary_expr(BinOp::from(op), read, one)
-                        }
-                    };
-
-                    // *p = *p + rhs
-                    let assign_stmt = if arg_type.qualifiers.is_volatile {
-                        is_unsafe = true;
-                        self.volatile_write(write, arg_type, val)?
-                    } else {
-                        mk().assign_expr(write, val)
-                    };
-
-                    let val = WithStmts::new(
-                        vec![save_old_val, mk().expr_stmt(assign_stmt)],
-                        mk().ident_expr(val_name),
-                    )
-                    .merge_unsafe(is_unsafe);
-
-                    Ok(val)
-                },
-            )
+                    // Replace the assignment result with the old value
+                    Ok(val.map(|_| old_val_expr))
+                })
         }
     }
 
