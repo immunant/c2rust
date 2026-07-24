@@ -477,6 +477,18 @@ fn test_reorganize_identical_data_enums() {
         .test();
 }
 
+/// An `extern` block without an explicit ABI string defaults to the "C"
+/// ABI; its declarations must dedup with `extern "C"` declarations of the
+/// same functions from other headers. The input fails the format check
+/// because rustfmt's `force_explicit_abi` rewrites the implicit `extern`.
+#[test]
+fn test_reorganize_implicit_extern() {
+    refactor("reorganize_definitions")
+        .named("reorganize_implicit_extern.rs")
+        .old_expect_format_error(true)
+        .test();
+}
+
 #[test]
 fn test_reorganize_forward_decl_with_local_definition() {
     refactor("reorganize_definitions")

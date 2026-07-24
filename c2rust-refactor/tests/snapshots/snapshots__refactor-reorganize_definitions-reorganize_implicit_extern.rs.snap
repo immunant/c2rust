@@ -1,0 +1,33 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_implicit_extern.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+pub mod first {
+
+    extern "Rust" {
+        pub fn compute(x: i32) -> i32;
+    }
+
+    pub fn call_first(x: i32) -> i32 {
+        unsafe { crate::first::compute(x) }
+    }
+}
+
+pub mod second {
+
+    extern "C" {
+        pub fn compute_1(x: i32) -> i32;
+    }
+
+    pub fn call_second(x: i32) -> i32 {
+        unsafe { crate::second::compute_1(x) }
+    }
+}
+
+fn main() {}
