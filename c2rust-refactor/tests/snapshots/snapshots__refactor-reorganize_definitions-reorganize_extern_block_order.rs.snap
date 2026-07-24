@@ -1,0 +1,59 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_extern_block_order.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+
+// The destination all the standard library headers below are merged into.
+// It has to already exist for the `BEGIN`/`END` header comments to make it
+// into the output.
+pub mod stdlib {
+
+    // =============== BEGIN aa_h ================
+    extern "C" {
+
+        pub fn aa_c_fn() -> i32;
+    }
+    extern "sysv64" {
+
+        pub fn aa_sysv_fn() -> i32;
+    }
+    // ================ END aa_h ================
+    // =============== BEGIN bb_h ================
+    extern "C" {
+
+        pub fn bb_c_fn() -> i32;
+    }
+    // ================ END bb_h ================
+    // =============== BEGIN aa_h ================
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct aa_ty {
+        pub x: i32,
+    }
+    // ================ END aa_h ================
+    // =============== BEGIN bb_h ================
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct bb_ty {
+        pub y: i32,
+    }
+    pub const STDLIB_MARKER: i32 = 0;
+}
+
+pub mod api {
+
+    pub unsafe fn go() -> i32 {
+        let a = crate::stdlib::aa_ty { x: 1 };
+        let b = crate::stdlib::bb_ty { y: 2 };
+        a.x + b.y
+            + crate::stdlib::aa_c_fn()
+            + crate::stdlib::aa_sysv_fn()
+            + crate::stdlib::bb_c_fn()
+    }
+}
+
+fn main() {}

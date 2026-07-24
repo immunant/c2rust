@@ -463,10 +463,33 @@ fn test_reorganize_bitfield_ty() {
         .test();
 }
 
+/// Foreign items are grouped into `extern` blocks by header and ABI, and the
+/// groups are emitted in the order they are first encountered rather than in
+/// `HashMap` iteration order, so the output is the same from run to run. The
+/// `BEGIN`/`END` header comments are assigned over the final item sequence, so
+/// they describe the layout that is actually emitted: `aa_h` is entered twice
+/// here, once for its `extern` blocks and again for its struct, because the
+/// blocks are hoisted ahead of every regular item.
+#[test]
+fn test_reorganize_extern_block_order() {
+    refactor("reorganize_definitions")
+        .named("reorganize_extern_block_order.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_foreign_types() {
     refactor("reorganize_definitions")
         .named("reorganize_foreign_types.rs")
+        .test();
+}
+
+/// A glob import inside a header module used to panic in
+/// `UseTree::ident()`; it must instead be kept in the header module.
+#[test]
+fn test_reorganize_glob_import() {
+    refactor("reorganize_definitions")
+        .named("reorganize_glob_import.rs")
         .test();
 }
 
@@ -477,6 +500,18 @@ fn test_reorganize_identical_data_enums() {
         .test();
 }
 
+/// An `extern` block without an explicit ABI string defaults to the "C"
+/// ABI; its declarations must dedup with `extern "C"` declarations of the
+/// same functions from other headers. The input fails the format check
+/// because rustfmt's `force_explicit_abi` rewrites the implicit `extern`.
+#[test]
+fn test_reorganize_implicit_extern() {
+    refactor("reorganize_definitions")
+        .named("reorganize_implicit_extern.rs")
+        .old_expect_format_error(true)
+        .test();
+}
+
 #[test]
 fn test_reorganize_forward_decl_with_local_definition() {
     refactor("reorganize_definitions")
@@ -484,10 +519,47 @@ fn test_reorganize_forward_decl_with_local_definition() {
         .test();
 }
 
+/// A macro and a struct sharing a name live in different namespaces and do
+/// not collide, so the struct must still move into the module holding the
+/// macro rather than being banished to a new `thing_h` module.
+#[test]
+fn test_reorganize_macro_namespace() {
+    refactor("reorganize_definitions")
+        .named("reorganize_macro_namespace.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_multi_namespace() {
     refactor("reorganize_definitions")
         .named("reorganize_multi_namespace.rs")
+        .test();
+}
+
+/// `find_destination_id` decides whether a header belongs to a candidate
+/// destination by comparing their names, which must not assume either is
+/// ASCII: slicing the header name at the destination name's length in *bytes*
+/// panics when that offset falls inside a multi-byte character.
+///
+/// Module `a` is one byte long, so comparing it against `ü_h` used to split
+/// the `ü` in half; the names don't match, so `thing` moves to a new module.
+/// Module `é` is the matching case, pinning down that non-ASCII names are
+/// still compared correctly rather than merely never matching: `é_h` is named
+/// after its parent, so `other` moves into it.
+#[test]
+fn test_reorganize_non_ascii_ident() {
+    refactor("reorganize_definitions")
+        .named("reorganize_non_ascii_ident.rs")
+        .test();
+}
+
+/// `impl` blocks in header modules whose self type is defined outside the
+/// headers, or which contain a non-`const` item, must be reattached to
+/// their self type's destination module rather than dropped.
+#[test]
+fn test_reorganize_orphaned_impls() {
+    refactor("reorganize_definitions")
+        .named("reorganize_orphaned_impls.rs")
         .test();
 }
 
@@ -502,6 +574,16 @@ fn test_reorganize_self_import_destination() {
 fn test_reorganize_split_namespace_imports() {
     refactor("reorganize_definitions")
         .named("reorganize_split_namespace_imports.rs")
+        .test();
+}
+
+/// A multi-namespace import whose type-namespace target is collision-renamed
+/// must still get a second import for the value namespace: coverage is
+/// decided by comparing target paths, not parent modules.
+#[test]
+fn test_reorganize_split_renamed_import() {
+    refactor("reorganize_definitions")
+        .named("reorganize_split_renamed_import.rs")
         .test();
 }
 
