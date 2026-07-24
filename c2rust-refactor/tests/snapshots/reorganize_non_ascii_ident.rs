@@ -3,14 +3,9 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-// The destination module's name is one byte long, and the header module it
-// contains starts with a two-byte character. `find_destination_id` tests
-// whether the header name starts with the module name by slicing the header
-// name at `module_ident.len()` *bytes*, which lands in the middle of the `é`
-// and panics.
 pub mod a {
-    #[c2rust::header_src = "/home/user/some/workspace/é.h:1"]
-    pub mod é_h {
+    #[c2rust::header_src = "/home/user/some/workspace/ü.h:1"]
+    pub mod ü_h {
         #[c2rust::src_loc = "2:0"]
         #[derive(Copy, Clone)]
         #[repr(C)]
@@ -20,8 +15,25 @@ pub mod a {
     }
 
     pub fn go() -> i32 {
-        let t = é_h::thing { x: 1 };
+        let t = ü_h::thing { x: 1 };
         t.x
+    }
+}
+
+pub mod é {
+    #[c2rust::header_src = "/home/user/some/workspace/é.h:3"]
+    pub mod é_h {
+        #[c2rust::src_loc = "4:0"]
+        #[derive(Copy, Clone)]
+        #[repr(C)]
+        pub struct other {
+            pub y: i32,
+        }
+    }
+
+    pub fn go() -> i32 {
+        let o = é_h::other { y: 2 };
+        o.y
     }
 }
 
