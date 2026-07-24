@@ -518,6 +518,19 @@ fn test_reorganize_multi_namespace() {
         .test();
 }
 
+/// TODO Broken.
+/// `find_destination_id` compares a header module's name against a candidate
+/// destination's by slicing the header name at the destination name's length
+/// in *bytes*, so a destination whose name length lands inside a multi-byte
+/// character of the header name panics in `str::split_at`.
+#[should_panic(expected = "byte index 1 is not a char boundary")]
+#[test]
+fn test_reorganize_non_ascii_ident() {
+    refactor("reorganize_definitions")
+        .named("reorganize_non_ascii_ident.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_self_import_destination() {
     refactor("reorganize_definitions")
