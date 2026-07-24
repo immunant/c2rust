@@ -463,6 +463,15 @@ fn test_reorganize_bitfield_ty() {
         .test();
 }
 
+/// A foreign item, `static` or `fn`, that is renamed to avoid a collision must
+/// keep naming the symbol it linked against before the rename.
+#[test]
+fn test_reorganize_foreign_item_rename() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_item_rename.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_foreign_types() {
     refactor("reorganize_definitions")
