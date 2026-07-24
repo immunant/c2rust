@@ -101,12 +101,12 @@ pub unsafe extern "C" fn conditional_operator(
     let mut x: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     let mut y: ::core::ffi::c_int = 1 as ::core::ffi::c_int;
     *if false { &raw mut y } else { &raw mut x } = 10 as ::core::ffi::c_int;
-    *(buf as *mut ::core::ffi::c_int).offset(2 as isize) = if true {
+    *(buf as *mut ::core::ffi::c_int).offset(2isize) = if true {
         2 as ::core::ffi::c_int
     } else {
         3 as ::core::ffi::c_int
     };
-    *(buf as *mut ::core::ffi::c_int).offset(3 as isize) = if false {
+    *(buf as *mut ::core::ffi::c_int).offset(3isize) = if false {
         2 as ::core::ffi::c_int
     } else {
         3 as ::core::ffi::c_int
@@ -129,13 +129,13 @@ pub unsafe extern "C" fn binary_conditional_operator(
     buf: *mut ::core::ffi::c_int,
 ) {
     let c2rust_fresh0 = id(0 as ::core::ffi::c_int);
-    *(buf as *mut ::core::ffi::c_int).offset(0 as isize) = if c2rust_fresh0 != 0 {
+    *(buf as *mut ::core::ffi::c_int).offset(0isize) = if c2rust_fresh0 != 0 {
         c2rust_fresh0
     } else {
         id(1 as ::core::ffi::c_int)
     };
     let c2rust_fresh1 = id(2 as ::core::ffi::c_int);
-    *(buf as *mut ::core::ffi::c_int).offset(1 as isize) = if c2rust_fresh1 != 0 {
+    *(buf as *mut ::core::ffi::c_int).offset(1isize) = if c2rust_fresh1 != 0 {
         c2rust_fresh1
     } else {
         id(3 as ::core::ffi::c_int)
