@@ -11,14 +11,23 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 // It has to already exist for the `BEGIN`/`END` header comments to make it
 // into the output.
 pub mod stdlib {
+
+    // =============== BEGIN aa_h ================
     extern "C" {
+
         pub fn aa_c_fn() -> i32;
-        pub fn bb_c_fn() -> i32;
     }
     extern "sysv64" {
 
         pub fn aa_sysv_fn() -> i32;
     }
+    // ================ END aa_h ================
+    // =============== BEGIN bb_h ================
+    extern "C" {
+
+        pub fn bb_c_fn() -> i32;
+    }
+    // ================ END bb_h ================
     // =============== BEGIN aa_h ================
     #[derive(Copy, Clone)]
     #[repr(C)]
