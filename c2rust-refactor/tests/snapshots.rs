@@ -553,6 +553,16 @@ fn test_reorganize_non_ascii_ident() {
         .test();
 }
 
+/// `impl` blocks deferred to `pending_impls` must be reattached to their
+/// destination module in a stable order, so the output is the same from run
+/// to run.
+#[test]
+fn test_reorganize_orphaned_impl_order() {
+    refactor("reorganize_definitions")
+        .named("reorganize_orphaned_impl_order.rs")
+        .test();
+}
+
 /// `impl` blocks in header modules whose self type is defined outside the
 /// headers, or which contain a non-`const` item, must be reattached to
 /// their self type's destination module rather than dropped.
