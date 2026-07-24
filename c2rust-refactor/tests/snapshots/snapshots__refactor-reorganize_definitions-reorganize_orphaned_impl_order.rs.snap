@@ -29,10 +29,6 @@ pub mod stuff {
     pub struct gamma {
         pub z: i32,
     }
-
-    impl gamma {
-        pub const DEFAULT: i32 = 3;
-    }
     // Three const-only impls, each on a different self type. All three
     // qualify to be carried alongside a moved declaration, so all three
     // land in the `impls` map, and none of them is ever claimed. They
@@ -44,6 +40,10 @@ pub mod stuff {
 
     impl beta {
         pub const DEFAULT: i32 = 2;
+    }
+
+    impl gamma {
+        pub const DEFAULT: i32 = 3;
     }
 }
 
