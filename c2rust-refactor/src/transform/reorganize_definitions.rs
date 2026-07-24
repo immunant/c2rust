@@ -277,13 +277,15 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 return false;
             }
 
+            // The header belongs to this module if it is named after it,
+            // either exactly or with the usual `_h` suffix. Splitting the
+            // header name at the module name's length in bytes would panic
+            // when that offset falls inside a multi-byte character.
             let header_ident = declaration.parent_header.ident.as_str();
             let module_ident = dest_module_info.orig_ident.as_str();
-            if header_ident.len() >= module_ident.len() {
-                let (base, ext) = header_ident.split_at(module_ident.len());
-                base == &*module_ident && (ext.is_empty() || ext == "_h")
-            } else {
-                false
+            match header_ident.strip_prefix(&*module_ident) {
+                Some(ext) => ext.is_empty() || ext == "_h",
+                None => false,
             }
         });
         let dest_module = match dest_module {

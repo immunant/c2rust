@@ -536,12 +536,16 @@ fn test_reorganize_multi_namespace() {
         .test();
 }
 
-/// TODO Broken.
-/// `find_destination_id` compares a header module's name against a candidate
-/// destination's by slicing the header name at the destination name's length
-/// in *bytes*, so a destination whose name length lands inside a multi-byte
-/// character of the header name panics in `str::split_at`.
-#[should_panic(expected = "byte index 1 is not a char boundary")]
+/// `find_destination_id` decides whether a header belongs to a candidate
+/// destination by comparing their names, which must not assume either is
+/// ASCII: slicing the header name at the destination name's length in *bytes*
+/// panics when that offset falls inside a multi-byte character.
+///
+/// Module `a` is one byte long, so comparing it against `ü_h` used to split
+/// the `ü` in half; the names don't match, so `thing` moves to a new module.
+/// Module `é` is the matching case, pinning down that non-ASCII names are
+/// still compared correctly rather than merely never matching: `é_h` is named
+/// after its parent, so `other` moves into it.
 #[test]
 fn test_reorganize_non_ascii_ident() {
     refactor("reorganize_definitions")
