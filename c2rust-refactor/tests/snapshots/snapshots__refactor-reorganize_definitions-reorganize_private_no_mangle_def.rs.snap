@@ -24,7 +24,7 @@ pub mod def {
 
     #[no_mangle]
 
-    static mut counter: libc::c_int = 0;
+    pub(crate) static mut counter: libc::c_int = 0;
 }
 
 pub mod user {
