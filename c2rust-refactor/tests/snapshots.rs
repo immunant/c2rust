@@ -477,6 +477,16 @@ fn test_reorganize_extern_block_order() {
         .test();
 }
 
+/// Two foreign declarations of the same function that differ in the number
+/// of parameters are not interchangeable and must not be merged.
+#[test]
+fn test_reorganize_foreign_fn_arity() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_fn_arity.rs")
+        .new_expect_compile_error(true)
+        .test();
+}
+
 #[test]
 fn test_reorganize_foreign_types() {
     refactor("reorganize_definitions")
