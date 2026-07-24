@@ -70,6 +70,15 @@ pub struct Reorganizer<'a, 'tcx: 'a> {
     // the strings using this map.
     bitfield_ty_defs: HashMap<NodeId, HashMap<String, DefId>>,
 
+    // `impl` blocks collected out of header modules by `remove_header_items`
+    // that were not carried alongside a moved declaration via
+    // `MovedDecl::r#impl` (trait impls, impls with non-`const` items, extra
+    // impls beyond the one carried per declaration, and impls whose self
+    // type was never itself individually processed as a moved declaration).
+    // `move_items` reattaches each one directly to its self type's
+    // destination module once that is known.
+    pending_impls: Vec<(DefId, MovedDeclImpl)>,
+
     // Counter used by `unique_ident`
     ident_counter: HashMap<Ident, usize>,
 }
@@ -122,6 +131,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             modules: IndexMap::new(),
             path_mapping: HashMap::new(),
             bitfield_ty_defs: HashMap::new(),
+            pending_impls: Vec::new(),
             stdlib_id: DUMMY_NODE_ID,
             ident_counter: HashMap::new(),
         }
@@ -346,66 +356,82 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         }
 
         // First, remove and store `impl` items, indexing them by the type they belong to.
+        //
+        // At most one const-only inherent impl per self type can be carried
+        // alongside a moved declaration (via `MovedDecl::r#impl`, consumed
+        // below when that declaration's own item is processed); everything
+        // else — trait impls, impls with non-`const` items, extra impls
+        // beyond the first, and impls whose self type is never itself
+        // individually processed as a moved declaration — is deferred to
+        // `pending_impls` and reattached directly to the self type's
+        // destination module in `move_items`, once that is known.
         let mut impls: HashMap<DefId, MovedDeclImpl> = HashMap::new();
+        let mut pending_impls: Vec<(DefId, MovedDeclImpl)> = Vec::new();
         FlatMapNodes::visit(krate, |mut item: P<Item>| {
             if let Some((path, _)) = parse_source_header(&item.attrs) {
                 let header_ident = item.ident;
                 if let ItemKind::Mod(_, ModKind::Loaded(ref mut mod_items, _, _)) = &mut item.kind {
                     mod_items.retain(|item| {
-                        if let ItemKind::Impl(r#impl) = &item.kind {
-                            // Only keep `impl` items with simple path types, and only if they
-                            // contain nothing but `const` items.
-                            fn impl_parent_decl<'hir>(
-                                cx: &'hir RefactorCtxt,
-                                r#impl: &Impl,
-                            ) -> Option<(DefId, &'hir hir::Path<'hir>)>
-                            {
-                                // Only inherent `impl`s that contain no items other than `const`.
-                                if r#impl.of_trait.is_some()
-                                    || !r#impl
-                                        .items
-                                        .iter()
-                                        .all(|item| matches!(item.kind, AssocItemKind::Const(..)))
-                                {
-                                    return None;
-                                };
-                                let ty = match cx.hir_map().find(r#impl.self_ty.id)? {
-                                    hir::Node::Ty(ty) => ty,
-                                    _ => return None,
-                                };
-                                let ty_path = match &ty.kind {
-                                    hir::TyKind::Path(hir::QPath::Resolved(None, path)) => path,
-                                    _ => return None,
-                                };
-                                match ty_path.res {
-                                    Res::Def(_, def_id) => Some((def_id, ty_path)),
-                                    _ => None,
-                                }
-                            }
+                        let r#impl = match &item.kind {
+                            ItemKind::Impl(r#impl) => r#impl,
+                            _ => return true,
+                        };
 
-                            if let Some((decl_def_id, impl_type_path)) =
-                                impl_parent_decl(&self.cx, &r#impl)
-                            {
-                                match impls.entry(decl_def_id) {
-                                    Entry::Occupied(_) => warn!(
-                                        "decl {decl_def_id:?} ({impl_type_path:?}) \
-                                        has more than one `impl` block, dropping the others"
-                                    ),
-                                    Entry::Vacant(entry) => {
-                                        let parent_header =
-                                            HeaderInfo::new(header_ident, path.clone());
-                                        entry.insert(MovedDeclImpl {
-                                            item: item.clone(),
-                                            parent_header,
-                                        });
-                                    }
-                                }
+                        // Find the `DefId` of the impl's self type, when it's a
+                        // plain path to a definition. This is required to know
+                        // where to eventually put the impl; one on any other
+                        // kind of self type (generic, reference, etc.) has to
+                        // stay exactly where it is.
+                        fn impl_self_type_def(cx: &RefactorCtxt, r#impl: &Impl) -> Option<DefId> {
+                            let ty = match cx.hir_map().find(r#impl.self_ty.id)? {
+                                hir::Node::Ty(ty) => ty,
+                                _ => return None,
+                            };
+                            let ty_path = match &ty.kind {
+                                hir::TyKind::Path(hir::QPath::Resolved(None, path)) => path,
+                                _ => return None,
+                            };
+                            match ty_path.res {
+                                Res::Def(_, def_id) => Some(def_id),
+                                _ => None,
                             }
-
-                            false
-                        } else {
-                            true
                         }
+                        // Only inherent impls containing nothing but `const`
+                        // items can be carried alongside a moved declaration.
+                        fn impl_is_carryable(r#impl: &Impl) -> bool {
+                            r#impl.of_trait.is_none()
+                                && r#impl
+                                    .items
+                                    .iter()
+                                    .all(|item| matches!(item.kind, AssocItemKind::Const(..)))
+                        }
+
+                        let decl_def_id = match impl_self_type_def(&self.cx, r#impl) {
+                            Some(def_id) => def_id,
+                            None => {
+                                warn!(
+                                    "could not resolve the self type of an `impl` \
+                                     block in header {header_ident}; leaving it in place"
+                                );
+                                return true;
+                            }
+                        };
+                        let moved_impl = MovedDeclImpl {
+                            item: item.clone(),
+                            parent_header: HeaderInfo::new(header_ident, path.clone()),
+                        };
+                        if impl_is_carryable(r#impl) {
+                            match impls.entry(decl_def_id) {
+                                Entry::Vacant(entry) => {
+                                    entry.insert(moved_impl);
+                                }
+                                Entry::Occupied(_) => pending_impls.push((decl_def_id, moved_impl)),
+                            }
+                        } else {
+                            pending_impls.push((decl_def_id, moved_impl));
+                        }
+
+                        false
                     });
 
                     if mod_items.is_empty() {
@@ -446,6 +472,15 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
                     mod_items.retain(|item| {
                         if needed_items.contains(&item.id) {
+                            return true;
+                        }
+
+                        if matches!(item.kind, ItemKind::Impl(..)) {
+                            // Any `impl` items still here have an unresolvable
+                            // self type (the pass above left them in place).
+                            // Leave them untouched rather than falling into
+                            // `insert_item`, which unconditionally discards
+                            // `Impl` items.
                             return true;
                         }
 
@@ -492,6 +527,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                 smallvec![item]
             }
         });
+
+        // Anything still in `impls` was never consumed by a matching
+        // declaration's item being individually processed above (e.g. its
+        // self type is defined outside any header module); defer it too.
+        pending_impls.extend(impls);
+        self.pending_impls = pending_impls;
+
         declarations
     }
 
@@ -844,20 +886,62 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // runs after the `matching_defs` loop above so that declarations
         // replaced by a retained duplicate are also skipped.
         for (&dest_module_id, items) in module_items.iter_mut() {
-            let dest_info = &self.modules[&dest_module_id];
             for decl in items.iter_mut() {
                 match &mut decl.kind {
                     DeclKind::Item(item) => {
-                        self.canonicalize_moved_decl_paths(item, dest_info, &matching_defs)
+                        self.canonicalize_moved_decl_paths(item, dest_module_id, &matching_defs)
                     }
                     DeclKind::ForeignItem(item, _) => {
-                        self.canonicalize_moved_decl_paths(item, dest_info, &matching_defs)
+                        self.canonicalize_moved_decl_paths(item, dest_module_id, &matching_defs)
                     }
                 }
                 if let Some(r#impl) = &mut decl.r#impl {
-                    self.canonicalize_moved_decl_paths(&mut r#impl.item, dest_info, &matching_defs)
+                    self.canonicalize_moved_decl_paths(
+                        &mut r#impl.item,
+                        dest_module_id,
+                        &matching_defs,
+                    )
                 }
             }
+        }
+
+        // Attach `impl` blocks deferred by `remove_header_items` (trait
+        // impls, impls with non-`const` items, extra impls beyond the one
+        // carried per declaration, and impls whose self type was never
+        // itself individually processed as a moved declaration) directly to
+        // their self type's destination module, now that `path_mapping` is
+        // complete. If the self type itself moved, its destination is
+        // already recorded there; otherwise the type is a pre-existing
+        // definition, and we look up the module it's already defined in.
+        let mut pending_impl_items: HashMap<NodeId, Vec<P<Item>>> = HashMap::new();
+        for (self_def_id, moved_impl) in mem::take(&mut self.pending_impls) {
+            let dest_module_id = self
+                .path_mapping
+                .get(&self_def_id)
+                .map(|replacement| replacement.parent)
+                .filter(|&id| id != DUMMY_NODE_ID)
+                .or_else(|| {
+                    self_def_id.as_local().map(|ldid| {
+                        let mod_hir_id = self.cx.ty_ctxt().parent_module_from_def_id(ldid);
+                        self.cx.hir_map().local_def_id_to_node_id(mod_hir_id)
+                    })
+                });
+            let dest_module_id = match dest_module_id {
+                Some(id) => id,
+                None => {
+                    warn!(
+                        "could not find a destination module for an `impl` \
+                         block on {self_def_id:?}; dropping it"
+                    );
+                    continue;
+                }
+            };
+            let mut item = moved_impl.item;
+            self.canonicalize_moved_decl_paths(&mut item, dest_module_id, &matching_defs);
+            pending_impl_items
+                .entry(dest_module_id)
+                .or_default()
+                .push(item);
         }
 
         // Convert the module_items vector into a HeaderDeclarations struct for
@@ -931,6 +1015,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     let old_items = mem::replace(mod_items, new_items.into());
                     mod_items.extend(old_items);
                 }
+                if let Some(pending_items) = pending_impl_items.remove(&id) {
+                    mod_items.extend(pending_items);
+                }
             }
             smallvec![item]
         });
@@ -940,48 +1027,52 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // will conflict.
         let _inline = self.cx.is_executable();
         for mod_info in self.modules.values() {
-            if let Some(declarations) = module_item_decls.remove(&mod_info.id) {
-                let new_items = declarations.into_items(self.st, mod_info);
-                if !new_items.is_empty() {
-                    #[inline]
-                    fn match_mod_item(item: &mut P<Item>, ident: Ident) -> Option<&mut ModKind> {
-                        if item.ident == ident {
-                            match item.kind {
-                                ItemKind::Mod(_, ref mut m) => Some(m),
-                                _ => None,
-                            }
-                        } else {
-                            None
+            let mut new_items = module_item_decls
+                .remove(&mod_info.id)
+                .map(|declarations| declarations.into_items(self.st, mod_info))
+                .unwrap_or_default();
+            if let Some(pending_items) = pending_impl_items.remove(&mod_info.id) {
+                new_items.extend(pending_items);
+            }
+            if !new_items.is_empty() {
+                #[inline]
+                fn match_mod_item(item: &mut P<Item>, ident: Ident) -> Option<&mut ModKind> {
+                    if item.ident == ident {
+                        match item.kind {
+                            ItemKind::Mod(_, ref mut m) => Some(m),
+                            _ => None,
                         }
-                    }
-
-                    if let Some(ModKind::Loaded(ref mut mod_items, _, _)) = krate
-                        .items
-                        .iter_mut()
-                        .find_map(|item| match_mod_item(item, mod_info.unique_ident))
-                    {
-                        // FIXME: we should also check if items overlap
-                        mod_items.extend(new_items.into_iter());
                     } else {
-                        // TODO: we should outline the modules, but there
-                        // is currently an issue with the pretty-printer
-                        // where it both writes an output file, and the inline
-                        // module in the parent
-                        //
-                        //let modb = if inline {
-                        //    mk.inline()
-                        //} else {
-                        //    mk()
-                        //};
-                        let modb = mk().inline();
-                        let new_mod = modb.mod_(new_items);
-                        let new_mod_item = mk()
-                            .pub_()
-                            .id(mod_info.id)
-                            .mod_item(mod_info.unique_ident, new_mod);
-
-                        krate.items.insert(0, new_mod_item);
+                        None
                     }
+                }
+
+                if let Some(ModKind::Loaded(ref mut mod_items, _, _)) = krate
+                    .items
+                    .iter_mut()
+                    .find_map(|item| match_mod_item(item, mod_info.unique_ident))
+                {
+                    // FIXME: we should also check if items overlap
+                    mod_items.extend(new_items.into_iter());
+                } else {
+                    // TODO: we should outline the modules, but there
+                    // is currently an issue with the pretty-printer
+                    // where it both writes an output file, and the inline
+                    // module in the parent
+                    //
+                    //let modb = if inline {
+                    //    mk.inline()
+                    //} else {
+                    //    mk()
+                    //};
+                    let modb = mk().inline();
+                    let new_mod = modb.mod_(new_items);
+                    let new_mod_item = mk()
+                        .pub_()
+                        .id(mod_info.id)
+                        .mod_item(mod_info.unique_ident, new_mod);
+
+                    krate.items.insert(0, new_mod_item);
                 }
             }
         }
@@ -1015,17 +1106,24 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// paths when their target is a local item that is not being moved. Such
     /// paths resolved through the scope of the header module (its items and
     /// imports), which the declaration is about to leave. Paths whose ident
-    /// stays bound to the same def in the destination module `dest_info`
+    /// stays bound to the same def in the destination module `dest_module_id`
     /// (through an import, or because the target is defined there) are left
-    /// alone.
+    /// alone. `dest_module_id` need not be a module tracked in `self.modules`
+    /// (e.g. when reattaching an orphaned `impl` block to a pre-existing,
+    /// non-header module); in that case, import coverage can't be checked,
+    /// so paths are always canonicalized.
     fn canonicalize_moved_decl_paths<T: MutVisit>(
         &self,
         target: &mut T,
-        dest_info: &ModuleInfo,
+        dest_module_id: NodeId,
         matching_defs: &HashMap<DefId, DefId>,
     ) {
         let cx = self.cx;
         let path_mapping = &self.path_mapping;
+        let dest_import_targets = self
+            .modules
+            .get(&dest_module_id)
+            .map(|info| &info.import_targets);
         let canonical = |mut def_id: DefId| {
             while let Some(&next) = matching_defs.get(&def_id) {
                 def_id = next;
@@ -1052,15 +1150,13 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     if nameable && def_id.is_local() && !path_mapping.contains_key(&def_id) {
                         let ident = path.segments[0].ident;
                         let import_covers = namespace(&defs[0]).map_or(false, |ns| {
-                            dest_info.import_targets[ns]
-                                .get(&ident)
-                                .map_or(false, |&target| {
-                                    canonical(target) == canonical(def_id)
-                                })
+                            dest_import_targets
+                                .and_then(|targets| targets[ns].get(&ident))
+                                .map_or(false, |&target| canonical(target) == canonical(def_id))
                         });
                         let defined_in_dest = def_id.as_local().map_or(false, |ldid| {
                             let mod_hir_id = cx.ty_ctxt().parent_module_from_def_id(ldid);
-                            cx.hir_map().local_def_id_to_node_id(mod_hir_id) == dest_info.id
+                            cx.hir_map().local_def_id_to_node_id(mod_hir_id) == dest_module_id
                         });
                         if !import_covers && !defined_in_dest {
                             return cx.def_qpath(def_id);

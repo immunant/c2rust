@@ -512,17 +512,13 @@ fn test_reorganize_multi_namespace() {
         .test();
 }
 
-/// TODO Broken (finding #2 in the reorganize_definitions bug report).
-/// `impl` blocks in header modules are silently dropped when their self
-/// type is defined outside the headers (the saved impl is never
-/// re-attached) or when they contain any non-`const` item. The output
-/// loses `DEFAULT_X` and `reset`, so it no longer compiles; when this is
-/// fixed, drop the `new_expect_compile_error` flag.
+/// `impl` blocks in header modules whose self type is defined outside the
+/// headers, or which contain a non-`const` item, must be reattached to
+/// their self type's destination module rather than dropped.
 #[test]
 fn test_reorganize_orphaned_impls() {
     refactor("reorganize_definitions")
         .named("reorganize_orphaned_impls.rs")
-        .new_expect_compile_error(true)
         .test();
 }
 
