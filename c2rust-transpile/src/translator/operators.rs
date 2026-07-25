@@ -101,6 +101,17 @@ impl<'c> Translation<'c> {
                         // Ops like division and bitxor accept inputs of their expected result type.
                         lhs_type_id = expr_type_id;
                         rhs_type_id = expr_type_id;
+
+                        // For complex arithmetic, complex and real values can be mixed.
+                        if let &CTypeKind::Complex(result_scalar_type_id) = expr_type_kind {
+                            if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
+                                lhs_type_id.ctype = result_scalar_type_id;
+                            }
+
+                            if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                                rhs_type_id.ctype = result_scalar_type_id;
+                            }
+                        }
                     } else if op.input_types_same() && lhs_type_kind != rhs_type_kind {
                         // Ops like comparisons require argument types to match, but the result type
                         // doesn't inform us what type to choose. Select a synthetic definition of a
@@ -246,7 +257,15 @@ impl<'c> Translation<'c> {
         if lhs_rhs_types_must_match {
             // If the rhs must match the lhs but doesn't, add a cast.
             // For compound assignment, use the compute type; for regular assignment, use lhs type
-            let effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
+            let mut effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
+
+            // For complex arithmetic, complex and real values can be mixed.
+            if let &CTypeKind::Complex(lhs_scalar_type_id) = lhs_type_kind {
+                if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                    effective_lhs_ty.ctype = lhs_scalar_type_id;
+                }
+            }
+
             if effective_lhs_ty.ctype != rhs_type_id.ctype {
                 let new_rhs_ty = self.convert_type(effective_lhs_ty.ctype)?;
                 rhs_translation = rhs_translation.map(|val| mk().cast_expr(val, new_rhs_ty));
