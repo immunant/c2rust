@@ -87,30 +87,30 @@ impl<'c> Translation<'c> {
 
                 // If this operation will (in Rust) take args of the same type, then propagate our
                 // expected type down to the translation of our argument expressions.
-                let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
-                let expr_ty_kind = &self.ast_context.index(expr_type_id.ctype).kind;
+                let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+                let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
+                let expr_type_kind = &self.ast_context.index(expr_type_id.ctype).kind;
+
                 // Addition and subtraction can accept one pointer argument for .offset(), in which
                 // case we don't want to homogenize arg types.
-                if !lhs_resolved_ty.kind.is_pointer()
-                    && !rhs_resolved_ty.kind.is_pointer()
-                    && !expr_ty_kind.is_pointer()
+                if !lhs_type_kind.is_pointer()
+                    && !rhs_type_kind.is_pointer()
+                    && !expr_type_kind.is_pointer()
                 {
                     if op.all_types_same() {
                         // Ops like division and bitxor accept inputs of their expected result type.
                         lhs_type_id = expr_type_id;
                         rhs_type_id = expr_type_id;
-                    } else if op.input_types_same() && lhs_resolved_ty.kind != rhs_resolved_ty.kind
-                    {
+                    } else if op.input_types_same() && lhs_type_kind != rhs_type_kind {
                         // Ops like comparisons require argument types to match, but the result type
                         // doesn't inform us what type to choose. Select a synthetic definition of a
                         // portable rust type (e.g. u64 or usize) if either arg is one.
                         trace!(
                             "Binary op arg types differ: {:?} vs {:?}",
-                            lhs_resolved_ty.kind,
-                            rhs_resolved_ty.kind
+                            lhs_type_kind,
+                            rhs_type_kind
                         );
-                        let ty = if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                        let ty = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
                             lhs_type_id
                         } else {
                             rhs_type_id
@@ -227,13 +227,13 @@ impl<'c> Translation<'c> {
 
         // First, translate the rhs.
         let mut rhs_translation = self.convert_expr(ctx.used(), rhs, Some(rhs_type_id))?;
+        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+        let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
+
         let lhs_rhs_types_must_match = {
-            let lhs_resolved_ty = &self.ast_context.resolve_type(lhs_type_id.ctype);
-            let rhs_resolved_ty = &self.ast_context.resolve_type(rhs_type_id.ctype);
             // Addition and subtraction can accept one pointer argument for .offset(), in which
             // case we don't want to homogenize arg types.
-            let neither_ptr =
-                !lhs_resolved_ty.kind.is_pointer() && !rhs_resolved_ty.kind.is_pointer();
+            let neither_ptr = !lhs_type_kind.is_pointer() && !rhs_type_kind.is_pointer();
 
             op.underlying_assignment().map_or(true, |op| {
                 if op.is_pointer_arithmetic() {
