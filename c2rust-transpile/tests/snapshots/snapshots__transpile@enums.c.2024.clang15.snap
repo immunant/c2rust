@@ -31,16 +31,16 @@ pub unsafe extern "C" fn test_enums() {
     let mut bar: Bar = Bar0;
     foo = Foo1;
     bar = BarN1;
-    foo = Bar0 as ::core::ffi::c_int as Foo;
-    bar = Foo0 as ::core::ffi::c_int as Bar;
+    foo = Bar0 as Foo;
+    bar = Foo0 as ::core::ffi::c_int;
     foo = Foo1;
     bar = Bar1;
     foo = Foo3;
     bar = Bar3;
-    foo = (foo as ::core::ffi::c_uint).wrapping_sub(2 as ::core::ffi::c_uint) as Foo;
-    bar = (bar as ::core::ffi::c_int - 2 as ::core::ffi::c_int) as Bar;
-    foo = (foo as ::core::ffi::c_uint).wrapping_add(1) as Foo;
-    bar = (bar as ::core::ffi::c_int + 1) as Bar;
+    foo = foo.wrapping_sub(2 as ::core::ffi::c_uint);
+    bar = bar - 2 as ::core::ffi::c_int;
+    foo = foo.wrapping_add(1);
+    bar = bar + 1;
     let c2rust_fresh0 = foo;
     foo = (foo as ::core::ffi::c_uint).wrapping_add(1) as Foo;
     bar = c2rust_fresh0 as Bar;
@@ -48,20 +48,17 @@ pub unsafe extern "C" fn test_enums() {
     bar = (bar as ::core::ffi::c_int + 1) as Bar;
     foo = c2rust_fresh1 as Foo;
     let mut e: Foo = Foo1;
-    let mut enum_enum: ::core::ffi::c_int =
-        (e as ::core::ffi::c_uint == foo as ::core::ffi::c_uint) as ::core::ffi::c_int;
-    let mut enum_constant: ::core::ffi::c_int = (e as ::core::ffi::c_uint
-        == Foo0 as ::core::ffi::c_int as ::core::ffi::c_uint)
-        as ::core::ffi::c_int;
+    let mut enum_enum: ::core::ffi::c_int = (e == foo) as ::core::ffi::c_int;
+    let mut enum_constant: ::core::ffi::c_int =
+        (e == Foo0 as ::core::ffi::c_int as ::core::ffi::c_uint) as ::core::ffi::c_int;
     let mut wrong_enum_enum: ::core::ffi::c_int =
-        (e as ::core::ffi::c_uint == bar as ::core::ffi::c_uint) as ::core::ffi::c_int;
-    let mut wrong_enum_constant: ::core::ffi::c_int = (e as ::core::ffi::c_uint
-        == Bar0 as ::core::ffi::c_int as ::core::ffi::c_uint)
-        as ::core::ffi::c_int;
-    match foo as ::core::ffi::c_uint {
+        (e == bar as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    let mut wrong_enum_constant: ::core::ffi::c_int =
+        (e == Bar0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    match foo {
         0 | 1 | 2 | 3 | 42 | 4294967254 | _ => {}
     }
-    match bar as ::core::ffi::c_int {
+    match bar {
         0 | BAR1_MACRO | 2 | 3 | -1 | 42 | -42 | _ => {}
     };
 }

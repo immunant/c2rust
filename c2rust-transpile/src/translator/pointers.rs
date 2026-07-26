@@ -549,8 +549,8 @@ impl<'c> Translation<'c> {
                     val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
                     mk().cast_expr(val, target_ty)
                 }))
-            } else if let &CTypeKind::Enum(..) = source_ty_kind {
-                val.and_then_try(|val| self.convert_cast_from_enum(target_cty, val))
+            } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
+                val.and_then_try(|val| self.convert_cast_from_enum(ctx, enum_id, target_cty, val))
             } else {
                 Ok(val.map(|val| mk().cast_expr(val, target_ty)))
             }
@@ -559,9 +559,10 @@ impl<'c> Translation<'c> {
             let source_type_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
             let size_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
 
-            let val = if let &CTypeKind::Enum(..) = source_type_kind {
-                let size_type_id = CQualTypeId::new(size_type_id);
-                val.and_then_try(|val| self.convert_cast_from_enum(size_type_id, val))?
+            let val = if let &CTypeKind::Enum(enum_id) = source_type_kind {
+                val.and_then_try(|val| {
+                    self.convert_cast_from_enum(ctx, enum_id, CQualTypeId::new(size_type_id), val)
+                })?
             } else {
                 let size_type_rs = self.convert_type(size_type_id)?;
                 val.map(|val| mk().cast_expr(val, size_type_rs))
@@ -644,10 +645,19 @@ impl<'c> Translation<'c> {
             let val = val.map(|val| mk().method_call_expr(val, method_name, vec![]));
 
             // Then cast the `usize` to the target type.
+            let size_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
             let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
 
             if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-                val.and_then_try(|val| self.convert_cast_to_enum(ctx, enum_decl_id, expr, val))
+                val.and_then_try(|val| {
+                    self.convert_cast_to_enum(
+                        ctx,
+                        CQualTypeId::new(size_type_id),
+                        enum_decl_id,
+                        expr,
+                        val,
+                    )
+                })
             } else {
                 Ok(val.map(|val| mk().cast_expr(val, target_type_rs)))
             }
