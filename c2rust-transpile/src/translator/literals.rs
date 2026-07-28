@@ -187,7 +187,10 @@ impl<'c> Translation<'c> {
             return self.convert_expr(ctx, val, override_ty);
         }
 
-        let fresh_name = self.renamer.borrow_mut().pick_name("c2rust_lvalue");
+        let fresh_name = self
+            .renamer
+            .borrow_mut()
+            .pick_name("c2rust_lvalue", Namespaces::values());
         let fresh_ty = self.convert_type(override_ty.unwrap_or(qty).ctype)?;
 
         // Translate the expression to be assigned to the fresh variable.

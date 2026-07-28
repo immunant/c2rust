@@ -276,16 +276,16 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         target
     }
 
-    pub fn pick_name(&mut self, basename: &str) -> String {
+    pub fn pick_name(&mut self, basename: &str, ns: Namespaces) -> String {
         check_c2rust_name(basename);
-        self.pick_name_in_scope(basename, Namespaces::all(), None)
+        self.pick_name_in_scope(basename, ns, None)
     }
 
     /// Permanently assign a name that doesn't collide with anything
     /// currently in scope, and also never goes out of scope
-    pub fn pick_name_root(&mut self, basename: &str) -> String {
+    pub fn pick_name_root(&mut self, basename: &str, ns: Namespaces) -> String {
         check_c2rust_name(basename);
-        self.pick_name_in_scope(basename, Namespaces::all(), Some(0))
+        self.pick_name_in_scope(basename, ns, Some(0))
     }
 
     /// Introduce a new name binding into a particular scope or the current one if None is provided.
@@ -320,15 +320,15 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// Introduce a new name binding into the current scope. If the key is unbound in
     /// the current scope then Some of the resulting mangled name is returned, otherwise
     /// None.
-    pub fn insert(&mut self, key: T, basename: &str) -> Option<String> {
-        self.insert_in_scope(key, basename, Namespaces::all(), None)
+    pub fn insert(&mut self, key: T, basename: &str, ns: Namespaces) -> Option<String> {
+        self.insert_in_scope(key, basename, ns, None)
     }
 
     /// Introduce a new name binding into the root scope. If the key is unbound in
     /// the root scope then Some of the resulting mangled name is returned, otherwise
     /// None.
-    pub fn insert_root(&mut self, key: T, basename: &str) -> Option<String> {
-        self.insert_in_scope(key, basename, Namespaces::all(), Some(0))
+    pub fn insert_root(&mut self, key: T, basename: &str, ns: Namespaces) -> Option<String> {
+        self.insert_in_scope(key, basename, ns, Some(0))
     }
 
     /// Assign a name in the current scope without reservation or checking for overlap.
@@ -351,10 +351,10 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         None
     }
 
-    pub fn fresh(&mut self) -> String {
+    pub fn fresh(&mut self, ns: Namespaces) -> String {
         let fresh = self.next_fresh;
         self.next_fresh += 1;
-        self.pick_name(&format!("c2rust_fresh{fresh}"))
+        self.pick_name(&format!("c2rust_fresh{fresh}"), ns)
     }
 
     fn raw_identifier_if_reserved_name(basename: &str) -> Option<String> {
@@ -449,11 +449,11 @@ mod tests {
     fn simple() {
         let mut renamer = Renamer::new([("reserved", Namespaces::all())]);
 
-        let one1 = renamer.insert(1, "one").unwrap();
+        let one1 = renamer.insert(1, "one", Namespaces::all()).unwrap();
         let one2 = renamer.get(&1).unwrap();
         assert_eq!(one1, one2);
 
-        let reserved1 = renamer.insert(2, "reserved").unwrap();
+        let reserved1 = renamer.insert(2, "reserved", Namespaces::all()).unwrap();
         let reserved2 = renamer.get(&2).unwrap();
         assert_eq!(reserved1, "reserved_0");
         assert_eq!(reserved2, "reserved_0");
@@ -463,13 +463,13 @@ mod tests {
     fn scoped() {
         let mut renamer = Renamer::new([]);
 
-        let one1 = renamer.insert(10, "one").unwrap();
+        let one1 = renamer.insert(10, "one", Namespaces::all()).unwrap();
         renamer.add_scope();
 
         let one2 = renamer.get(&10).unwrap();
         assert_eq!(one1, one2);
 
-        let one3 = renamer.insert(20, "one").unwrap();
+        let one3 = renamer.insert(20, "one", Namespaces::all()).unwrap();
         let one4 = renamer.get(&20).unwrap();
         assert_eq!(one3, one4);
         assert_ne!(one3, one2);
@@ -485,7 +485,7 @@ mod tests {
         let mut renamer = Renamer::new([]);
         assert_eq!(renamer.get(&1), None);
         renamer.add_scope();
-        renamer.insert(1, "example");
+        renamer.insert(1, "example", Namespaces::all());
         renamer.drop_scope();
         assert_eq!(renamer.get(&1), None);
     }
@@ -495,19 +495,19 @@ mod tests {
         let mut renamer = Renamer::new(RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all())));
 
         // A reserved keyword that can be expressed as a raw identifier
-        let reserved1 = renamer.insert(1, "dyn").unwrap();
+        let reserved1 = renamer.insert(1, "dyn", Namespaces::all()).unwrap();
         let reserved2 = renamer.get(&1).unwrap();
         assert_eq!(reserved1, "r#dyn");
         assert_eq!(reserved2, "r#dyn");
 
         // A reserved keyword that is already bound and therefore does not need the "#r" prefix
-        let reserved1 = renamer.insert(2, "dyn").unwrap();
+        let reserved1 = renamer.insert(2, "dyn", Namespaces::all()).unwrap();
         let reserved2 = renamer.get(&2).unwrap();
         assert_eq!(reserved1, "dyn_0");
         assert_eq!(reserved2, "dyn_0");
 
         // A reserved that cannot be used as a raw identifier because it can be used in a path
-        let reserved1 = renamer.insert(3, "self").unwrap();
+        let reserved1 = renamer.insert(3, "self", Namespaces::all()).unwrap();
         let reserved2 = renamer.get(&3).unwrap();
         assert_eq!(reserved1, "self_0");
         assert_eq!(reserved2, "self_0");

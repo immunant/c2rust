@@ -40,7 +40,7 @@ use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
-use crate::renamer::Renamer;
+use crate::renamer::{Namespaces, Renamer};
 use crate::with_stmts::WithStmts;
 use crate::{c_ast, format_translation_err};
 use crate::{ExternCrate, TranspilerConfig};
@@ -441,7 +441,10 @@ fn prefix_names(translation: &mut Translation, prefix: &str) {
 
                 name.insert_str(0, prefix);
 
-                translation.renamer.borrow_mut().insert(decl_id, name);
+                translation
+                    .renamer
+                    .borrow_mut()
+                    .insert(decl_id, name, Namespaces::values());
             }
             CDeclKind::Variable {
                 ref mut ident,
@@ -952,7 +955,9 @@ pub fn translate(
                         .declare_decl_name(decl_id, name);
                 }
                 Name::Var(name) => {
-                    t.renamer.borrow_mut().insert(decl_id, name);
+                    t.renamer
+                        .borrow_mut()
+                        .insert(decl_id, name, Namespaces::values());
                 }
             }
         }
@@ -1998,7 +2003,7 @@ impl<'c> Translation<'c> {
         let fn_name = self
             .renamer
             .borrow_mut()
-            .pick_name("c2rust_run_static_initializers");
+            .pick_name("c2rust_run_static_initializers", Namespaces::values());
         let fn_ty = ReturnType::Default;
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
         let fn_bare_decl = (vec![], None, fn_ty);
@@ -2403,7 +2408,10 @@ impl<'c> Translation<'c> {
         let mut cfg_info = cfg::structures::CfgInfo::default();
         cfg::structures::gather_cfg_info(&relooped, &mut cfg_info);
 
-        let current_block_ident = self.renamer.borrow_mut().pick_name("c2rust_current_block");
+        let current_block_ident = self
+            .renamer
+            .borrow_mut()
+            .pick_name("c2rust_current_block", Namespaces::values());
         let current_block = mk().ident_expr(&current_block_ident);
         let mut stmts: Vec<Stmt> = lifted_stmts;
         if !cfg_info.checked_entries.is_empty() {
@@ -2572,7 +2580,7 @@ impl<'c> Translation<'c> {
                 let ident2 = self
                     .renamer
                     .borrow_mut()
-                    .insert_root(decl_id, ident)
+                    .insert_root(decl_id, ident, Namespaces::values())
                     .ok_or_else(|| {
                         TranslationError::generic(
                             "Unable to rename function scoped static initializer",
@@ -2627,7 +2635,7 @@ impl<'c> Translation<'c> {
                 let rust_name = self
                     .renamer
                     .borrow_mut()
-                    .insert(decl_id, ident)
+                    .insert(decl_id, ident, Namespaces::values())
                     .unwrap_or_else(|| panic!("Failed to insert variable '{}'", ident));
 
                 if self.ast_context.is_va_list(typ.ctype) {
@@ -2757,7 +2765,10 @@ impl<'c> Translation<'c> {
 
             ref decl => {
                 let inserted = if let Some(ident) = decl.get_name() {
-                    self.renamer.borrow_mut().insert(decl_id, ident).is_some()
+                    self.renamer
+                        .borrow_mut()
+                        .insert(decl_id, ident, Namespaces::values())
+                        .is_some()
                 } else {
                     false
                 };
@@ -3038,7 +3049,7 @@ impl<'c> Translation<'c> {
                             let name = self
                                 .renamer
                                 .borrow_mut()
-                                .insert(CDeclId(expr_id.0), "vla")
+                                .insert(CDeclId(expr_id.0), "vla", Namespaces::values())
                                 .unwrap(); // try using declref name?
                                            // TODO: store the name corresponding to expr_id
 
@@ -3560,7 +3571,7 @@ impl<'c> Translation<'c> {
                     let lhs = self
                         .convert_expr(ctx.used(), lhs, None)?
                         .merge_unsafe(rhs.is_unsafe());
-                    let fresh_name = self.renamer.borrow_mut().fresh();
+                    let fresh_name = self.renamer.borrow_mut().fresh(Namespaces::values());
 
                     lhs.and_then_try(|lhs| {
                         let fresh_stmt = mk().local_stmt(Box::new(mk().local(
@@ -3751,7 +3762,10 @@ impl<'c> Translation<'c> {
                 let result_id = substmt_ids[n - 1];
 
                 let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
-                let lbl_ident = self.renamer.borrow_mut().pick_name("c2rust_label");
+                let lbl_ident = self
+                    .renamer
+                    .borrow_mut()
+                    .pick_name("c2rust_label", Namespaces::values());
                 let lbl = cfg::Label::FromC(compound_stmt_id, Some(Rc::from(lbl_ident)));
 
                 let mut stmts = match self.ast_context[result_id].kind {
