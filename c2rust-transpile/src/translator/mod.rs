@@ -1671,8 +1671,7 @@ impl<'c> Translation<'c> {
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
-            // TODO: Use Renamer::value_namespace() for most renamings.
-            renamer: RefCell::new(Renamer::global_value_namespace()),
+            renamer: RefCell::new(Renamer::keywords_and_prelude()),
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),

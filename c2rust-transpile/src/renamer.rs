@@ -194,31 +194,21 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         Renamer::new(keywords)
     }
 
-    pub fn type_namespace() -> Self {
+    pub fn keywords_and_prelude() -> Self {
         let keywords = RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all()));
         let prelude_types = PRELUDE_TYPE_NAMESPACE
             .iter()
             .map(|&name| (name, Namespaces::types()));
-        Renamer::new(keywords.chain(prelude_types))
-    }
-
-    pub fn value_namespace() -> Self {
-        let keywords = RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all()));
         let prelude_values = PRELUDE_VALUE_NAMESPACE
             .iter()
             .map(|&name| (name, Namespaces::values()));
-        Renamer::new(keywords.chain(prelude_values))
-    }
-
-    pub fn global_value_namespace() -> Self {
-        let keywords = RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all()));
-        let prelude_values = PRELUDE_VALUE_NAMESPACE
-            .iter()
-            .map(|&name| (name, Namespaces::values()));
+        // TODO: Do not include "main" for most renamings.
+        let main = [("main", Namespaces::values())];
         Renamer::new(
             keywords
+                .chain(prelude_types)
                 .chain(prelude_values)
-                .chain([("main", Namespaces::values())]),
+                .chain(main),
         )
     }
 

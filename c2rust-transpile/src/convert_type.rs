@@ -34,7 +34,7 @@ impl TypeConverter {
         TypeConverter {
             edition: tcfg.edition,
             translate_valist: tcfg.translate_valist,
-            renamer: Renamer::type_namespace(),
+            renamer: Renamer::keywords_and_prelude(),
             fields: HashMap::new(),
             suffix_names: HashMap::new(),
             features: HashSet::new(),
@@ -92,7 +92,7 @@ impl TypeConverter {
 
         self.fields
             .entry(record_id)
-            .or_insert_with(|| Renamer::keywords())
+            .or_insert_with(Renamer::keywords)
             .insert(FieldKey::Field(field_id), name, Namespaces::values())
             .expect("Field already declared")
     }
@@ -101,7 +101,7 @@ impl TypeConverter {
         let field = self
             .fields
             .entry(record_id)
-            .or_insert_with(|| Renamer::keywords());
+            .or_insert_with(Renamer::keywords);
         let key = FieldKey::Padding(padding_idx);
         if let Some(name) = field.get(&key) {
             name
