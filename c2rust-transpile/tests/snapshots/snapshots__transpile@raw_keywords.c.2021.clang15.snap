@@ -12,9 +12,11 @@ expression: cat tests/snapshots/raw_keywords.2021.clang15.rs
     unused_mut
 )]
 pub type r#type = ::core::ffi::c_int;
-pub type r#as = ::core::ffi::c_uint;
-pub const r#await: r#as = 1;
-pub const r#async: r#as = 0;
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct r#as(pub ::core::ffi::c_uint);
+pub const r#await: r#as = r#as(1);
+pub const r#async: r#as = r#as(0);
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct r#dyn {

@@ -12,17 +12,21 @@ expression: cat tests/snapshots/enums.2024.clang15.rs
     unused_assignments,
     unused_mut
 )]
-pub type Foo = ::core::ffi::c_uint;
-pub const Foo3: Foo = 3;
-pub const Foo2: Foo = 2;
-pub const Foo1: Foo = 1;
-pub const Foo0: Foo = 0;
-pub type Bar = ::core::ffi::c_int;
-pub const Bar3: Bar = 3;
-pub const Bar2: Bar = 2;
-pub const Bar1: Bar = 1;
-pub const Bar0: Bar = 0;
-pub const BarN1: Bar = -1;
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct Foo(pub ::core::ffi::c_uint);
+pub const Foo3: Foo = Foo(3);
+pub const Foo2: Foo = Foo(2);
+pub const Foo1: Foo = Foo(1);
+pub const Foo0: Foo = Foo(0);
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct Bar(pub ::core::ffi::c_int);
+pub const Bar3: Bar = Bar(3);
+pub const Bar2: Bar = Bar(2);
+pub const Bar1: Bar = Bar(1);
+pub const Bar0: Bar = Bar(0);
+pub const BarN1: Bar = Bar(-1);
 pub const FOO1_MACRO: ::core::ffi::c_uint = 1 as ::core::ffi::c_uint;
 pub const BAR1_MACRO: ::core::ffi::c_int = 1;
 #[unsafe(no_mangle)]
@@ -31,34 +35,34 @@ pub unsafe extern "C" fn test_enums() {
     let mut bar: Bar = Bar0;
     foo = Foo1;
     bar = BarN1;
-    foo = Bar0 as Foo;
-    bar = Foo0 as ::core::ffi::c_int;
+    foo = Foo(Bar0.0 as ::core::ffi::c_uint);
+    bar = Bar(Foo0.0 as ::core::ffi::c_int);
     foo = Foo1;
     bar = Bar1;
     foo = Foo3;
     bar = Bar3;
-    foo = foo.wrapping_sub(2 as ::core::ffi::c_uint);
-    bar = bar - 2 as ::core::ffi::c_int;
-    foo = foo.wrapping_add(1);
-    bar = bar + 1;
+    foo = Foo(foo.0.wrapping_sub(2 as ::core::ffi::c_uint));
+    bar = Bar(bar.0 - 2 as ::core::ffi::c_int);
+    foo = Foo(foo.0.wrapping_add(1));
+    bar = Bar(bar.0 + 1);
     let c2rust_fresh0 = foo;
-    foo = (foo as ::core::ffi::c_uint).wrapping_add(1) as Foo;
-    bar = c2rust_fresh0 as Bar;
+    foo = Foo(foo.0.wrapping_add(1));
+    bar = Bar(c2rust_fresh0.0 as ::core::ffi::c_int);
     let c2rust_fresh1 = bar;
-    bar = (bar as ::core::ffi::c_int + 1) as Bar;
-    foo = c2rust_fresh1 as Foo;
+    bar = Bar(bar.0 + 1);
+    foo = Foo(c2rust_fresh1.0 as ::core::ffi::c_uint);
     let mut e: Foo = Foo1;
-    let mut enum_enum: ::core::ffi::c_int = (e == foo) as ::core::ffi::c_int;
+    let mut enum_enum: ::core::ffi::c_int = (e.0 == foo.0) as ::core::ffi::c_int;
     let mut enum_constant: ::core::ffi::c_int =
-        (e == Foo0 as ::core::ffi::c_int as ::core::ffi::c_uint) as ::core::ffi::c_int;
+        (e.0 == Foo0.0 as ::core::ffi::c_int as ::core::ffi::c_uint) as ::core::ffi::c_int;
     let mut wrong_enum_enum: ::core::ffi::c_int =
-        (e == bar as ::core::ffi::c_uint) as ::core::ffi::c_int;
+        (e.0 == bar.0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
     let mut wrong_enum_constant: ::core::ffi::c_int =
-        (e == Bar0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
-    match foo {
+        (e.0 == Bar0.0 as ::core::ffi::c_uint) as ::core::ffi::c_int;
+    match foo.0 {
         0 | 1 | 2 | 3 | 42 | 4294967254 | _ => {}
     }
-    match bar {
+    match bar.0 {
         0 | BAR1_MACRO | 2 | 3 | -1 | 42 | -42 | _ => {}
     };
 }
