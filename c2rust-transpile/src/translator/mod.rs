@@ -2602,6 +2602,12 @@ impl<'c> Translation<'c> {
         };
 
         match self.ast_context.index(decl_id).kind {
+            // These are emitted globally in `translate`.
+            CDeclKind::Struct { .. }
+            | CDeclKind::Union { .. }
+            | CDeclKind::Enum { .. }
+            | CDeclKind::Typedef { .. } => Ok(cfg::DeclStmtInfo::new(vec![], vec![], vec![])),
+
             CDeclKind::Variable {
                 has_static_duration: false,
                 has_thread_duration: false,
@@ -2759,39 +2765,29 @@ impl<'c> Translation<'c> {
                 // TODO: We need this because we can have multiple 'extern' decls of the same variable.
                 //       When we do, we must make sure to insert into the renamer the first time, and
                 //       then skip subsequent times.
-                use CDeclKind::*;
-                let skip = match decl {
-                    Variable { .. } => !inserted,
-                    Struct { .. } => true,
-                    Union { .. } => true,
-                    Enum { .. } => true,
-                    Typedef { .. } => true,
-                    _ => false,
+                if matches!(decl, CDeclKind::Variable { .. }) && !inserted {
+                    return Ok(cfg::DeclStmtInfo::new(vec![], vec![], vec![]));
+                }
+
+                use ConvertedDecl::*;
+                let items = match self.convert_decl(ctx, decl_id)? {
+                    Item(item) => vec![item],
+                    ForeignItem(item) => {
+                        vec![mk()
+                            .unsafety(extern_block_unsafety(self.tcfg.edition))
+                            .extern_("C")
+                            .foreign_items(vec![*item])]
+                    }
+                    Items(items) => items,
+                    NoItem => return Ok(cfg::DeclStmtInfo::empty()),
                 };
 
-                if skip {
-                    Ok(cfg::DeclStmtInfo::new(vec![], vec![], vec![]))
-                } else {
-                    use ConvertedDecl::*;
-                    let items = match self.convert_decl(ctx, decl_id)? {
-                        Item(item) => vec![item],
-                        ForeignItem(item) => {
-                            vec![mk()
-                                .unsafety(extern_block_unsafety(self.tcfg.edition))
-                                .extern_("C")
-                                .foreign_items(vec![*item])]
-                        }
-                        Items(items) => items,
-                        NoItem => return Ok(cfg::DeclStmtInfo::empty()),
-                    };
-
-                    let item_stmt = |item| mk().item_stmt(item);
-                    Ok(cfg::DeclStmtInfo::new(
-                        items.iter().cloned().map(item_stmt).collect(),
-                        vec![],
-                        items.into_iter().map(item_stmt).collect(),
-                    ))
-                }
+                let item_stmt = |item| mk().item_stmt(item);
+                Ok(cfg::DeclStmtInfo::new(
+                    items.iter().cloned().map(item_stmt).collect(),
+                    vec![],
+                    items.into_iter().map(item_stmt).collect(),
+                ))
             }
         }
     }
