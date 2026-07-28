@@ -438,6 +438,11 @@ fn test_ref_ub() {
 }
 
 #[test]
+fn test_renamer() {
+    transpile("renamer.c").run();
+}
+
+#[test]
 fn test_rotate() {
     transpile("rotate.c").run();
 }
