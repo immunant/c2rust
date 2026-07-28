@@ -16,5 +16,5 @@ expression: cat tests/snapshots/renamer.2021.clang15.rs
 pub struct foo {}
 #[no_mangle]
 pub unsafe extern "C" fn local_type() {
-    let mut foo_0: ::core::ffi::c_int = 0;
+    let mut foo: ::core::ffi::c_int = 0;
 }
