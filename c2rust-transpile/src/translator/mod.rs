@@ -896,7 +896,9 @@ pub fn translate(
         fn ns_for_decl(decl_kind: &CDeclKind) -> Namespaces {
             use CDeclKind::*;
             match decl_kind {
-                Struct { .. } | Union { .. } | Enum { .. } | Typedef { .. } => Namespaces::types(),
+                // Tuple structs are in both namespaces.
+                Enum { .. } => Namespaces::types() | Namespaces::values(),
+                Struct { .. } | Union { .. } | Typedef { .. } => Namespaces::types(),
                 Function { .. } | EnumConstant { .. } | Variable { .. } | MacroObject { .. } => {
                     Namespaces::values()
                 }
@@ -4289,7 +4291,6 @@ impl<'c> Translation<'c> {
                 field.map(|field| mk().struct_expr(vec![name], vec![field]))
             }
 
-            // Transmute the number `0` into the enum type
             CDeclKind::Enum { .. } => self.convert_enum_zero_initializer(decl_id),
 
             _ => {
@@ -4394,7 +4395,7 @@ impl<'c> Translation<'c> {
             }
 
             let val = if ty.is_enum() {
-                mk().cast_expr(val, mk().path_ty(vec!["u64"]))
+                self.integer_from_enum(val)
             } else {
                 val
             };
