@@ -56,17 +56,6 @@ impl TypeConverter {
         &self.extern_crates
     }
 
-    pub fn declare_decl_name(&mut self, decl_id: CDeclId, name: &str) -> String {
-        self.renamer
-            .borrow_mut()
-            .insert(decl_id, name, Namespaces::types())
-            .expect("Name already assigned")
-    }
-
-    pub fn alias_decl_name(&mut self, new_decl_id: CDeclId, old_decl_id: CDeclId) {
-        self.renamer.borrow_mut().alias(new_decl_id, &old_decl_id)
-    }
-
     pub fn resolve_decl_name(&self, decl_id: CDeclId) -> Option<String> {
         self.renamer.borrow().get(&decl_id)
     }

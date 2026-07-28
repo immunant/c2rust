@@ -363,6 +363,10 @@ pub struct Namespaces {
 }
 
 impl Namespaces {
+    pub fn none() -> Self {
+        Default::default()
+    }
+
     pub fn all() -> Self {
         Self {
             types: true,
