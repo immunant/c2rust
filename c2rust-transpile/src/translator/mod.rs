@@ -888,33 +888,27 @@ pub fn translate(
         // in the presence of typedefs.
         t.ast_context.bubble_expr_types();
 
-        enum Name<'a> {
-            Var(&'a str),
-            Type(&'a str),
-            Anonymous,
-            None,
-        }
-
-        fn some_type_name(s: Option<&str>) -> Name<'_> {
-            match s {
-                None => Name::Anonymous,
-                Some(r) => Name::Type(r),
-            }
-        }
-
         // Used for testing; so that we don't overlap with C function names
         if let Some(ref prefix) = t.tcfg.prefix_function_names {
             prefix_names(&mut t, prefix);
         }
 
+        fn ns_for_decl(decl_kind: &CDeclKind) -> Namespaces {
+            use CDeclKind::*;
+            match decl_kind {
+                Struct { .. } | Union { .. } | Enum { .. } | Typedef { .. } => Namespaces::types(),
+                Function { .. } | EnumConstant { .. } | Variable { .. } | MacroObject { .. } => {
+                    Namespaces::values()
+                }
+                _ => Namespaces::none(),
+            }
+        }
+
         for (&decl_id, &subdecl_id) in &t.ast_context.prenamed_decls {
             if let CDeclKind::Typedef { ref name, .. } = t.ast_context[decl_id].kind {
-                t.type_converter
-                    .borrow_mut()
-                    .declare_decl_name(decl_id, name);
-                t.type_converter
-                    .borrow_mut()
-                    .alias_decl_name(subdecl_id, decl_id);
+                let ns = ns_for_decl(&t.ast_context[subdecl_id].kind);
+                t.renamer.borrow_mut().insert(decl_id, name, ns);
+                t.renamer.borrow_mut().alias(subdecl_id, &decl_id);
             }
         }
 
@@ -927,38 +921,24 @@ pub fn translate(
 
         // Populate renamer with top-level names
         for (&decl_id, decl) in t.ast_context.iter_decls() {
-            use CDeclKind::*;
-            let decl_name = match decl.kind {
-                _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::None,
-                Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-                Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-                Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-                Typedef { ref name, .. } => Name::Type(name),
-                Function { ref name, .. } => Name::Var(name),
-                EnumConstant { ref name, .. } => Name::Var(name),
-                Variable { ref ident, .. } if t.ast_context.c_decls_top.contains(&decl_id) => {
-                    Name::Var(ident)
-                }
-                MacroObject { ref name, .. } => Name::Var(name),
-                _ => Name::None,
-            };
-            match decl_name {
-                Name::None => (),
-                Name::Anonymous => {
-                    t.type_converter
-                        .borrow_mut()
-                        .declare_decl_name(decl_id, "C2Rust_Unnamed");
-                }
-                Name::Type(name) => {
-                    t.type_converter
-                        .borrow_mut()
-                        .declare_decl_name(decl_id, name);
-                }
-                Name::Var(name) => {
-                    t.renamer
-                        .borrow_mut()
-                        .insert(decl_id, name, Namespaces::values());
-                }
+            if contains(&t.ast_context.prenamed_decls, &decl_id) {
+                continue;
+            }
+
+            if matches!(decl.kind, CDeclKind::Variable { .. })
+                && !t.ast_context.c_decls_top.contains(&decl_id)
+            {
+                continue;
+            }
+
+            let ns = ns_for_decl(&decl.kind);
+
+            if !ns.is_empty() {
+                let name = &decl
+                    .kind
+                    .get_name()
+                    .map_or("C2Rust_Unnamed", String::as_str);
+                t.renamer.borrow_mut().insert(decl_id, name, ns);
             }
         }
 
