@@ -710,8 +710,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             }
                         } else {
                             let namespaces = self.cx.item_namespaces(item);
-                            // Only a `Use` can occupy multiple namespaces.
-                            assert!(namespaces.len() <= 1);
                             for namespace in namespaces {
                                 info.items[namespace].insert(item.ident);
                             }
@@ -1516,7 +1514,7 @@ struct MovedDecl {
     kind: DeclKind,
     def_id: DefId,
     /// Every namespace this declaration occupies. A simple `use` may occupy
-    /// the type, value, and macro namespaces at once; other declarations
+    /// the type, value, and macro namespaces at once; most other declarations
     /// occupy exactly one. The declaration itself is stored only once.
     namespaces: SmallVec<[Namespace; 3]>,
     loc: Option<SrcLoc>,

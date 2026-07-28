@@ -6,7 +6,7 @@ use rustc_ast::node_id::NodeMap;
 use rustc_ast::ptr::P;
 use rustc_ast::{
     AssocItem, Expr, ExprKind, FnDecl, FnRetTy, ForeignItem, ForeignItemKind, Item, ItemKind,
-    NodeId, Path, QSelf, UseTreeKind, DUMMY_NODE_ID,
+    NodeId, Path, QSelf, UseTreeKind, VariantData, DUMMY_NODE_ID,
 };
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::unord::UnordMap;
@@ -913,7 +913,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     /// Return every namespace the given item occupies.
     ///
     /// A simple `use` may resolve in the type, value, and macro namespaces at
-    /// once. Every other named item occupies exactly one namespace. Results
+    /// once. Most other named items occupy exactly one namespace. Results
     /// preserve rustc's type/value/macro order and contain no duplicates. An
     /// empty result means the item does not occupy a tracked namespace.
     pub fn item_namespaces(&self, item: &Item) -> SmallVec<[Namespace; 3]> {
@@ -937,6 +937,11 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
             ItemKind::Static(..) | ItemKind::Const(..) | ItemKind::Fn(..) => {
                 smallvec![Namespace::ValueNS]
+            }
+
+            // Tuple and unit structs occupy both namespaces: the type itself and its constructor.
+            ItemKind::Struct(VariantData::Tuple(..) | VariantData::Unit(..), _) => {
+                smallvec![Namespace::TypeNS, Namespace::ValueNS]
             }
 
             _ => smallvec![Namespace::TypeNS],
