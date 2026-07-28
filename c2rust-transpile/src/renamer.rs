@@ -1,21 +1,17 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::hash::Hash;
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 
 struct Scope<T> {
     name_map: HashMap<T, String>,
-    used: HashSet<String>,
+    used: HashMap<String, Namespaces>,
 }
 
 impl<T: Clone + Eq + Hash> Scope<T> {
     pub fn new() -> Self {
-        Self::new_with_reserved(HashSet::new())
-    }
-
-    pub fn new_with_reserved(reserved: HashSet<String>) -> Self {
         Scope {
             name_map: HashMap::new(),
-            used: reserved,
+            used: HashMap::new(),
         }
     }
 
@@ -27,12 +23,14 @@ impl<T: Clone + Eq + Hash> Scope<T> {
         self.name_map.contains_key(key)
     }
 
-    pub fn contains_value(&self, val: &str) -> bool {
-        self.used.contains(val)
+    pub fn contains_value(&self, val: &str, ns: Namespaces) -> bool {
+        self.used
+            .get(val)
+            .is_some_and(|val_ns| val_ns.intersects(ns))
     }
 
-    pub fn reserve(&mut self, val: String) {
-        self.used.insert(val);
+    pub fn reserve(&mut self, val: &str, ns: Namespaces) {
+        *self.used.entry(val.to_owned()).or_default() |= ns;
     }
 }
 
@@ -178,32 +176,50 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// Creates a new renaming environment with a single, empty scope. The given set of
     /// reserved names will exclude those names from being chosen as the mangled names from
     /// the insert method.
-    pub fn new(reserved_names: &[&[&str]]) -> Self {
-        let set = reserved_names
-            .iter()
-            .flat_map(|&names| names)
-            .map(|&s| s.to_owned())
-            .collect::<HashSet<_>>();
+    pub fn new<'a>(reserved_names: impl IntoIterator<Item = (&'a str, Namespaces)>) -> Self {
+        let mut global_scope = Scope::new();
+
+        for (name, ns) in reserved_names {
+            global_scope.reserve(name, ns);
+        }
+
         Renamer {
-            scopes: vec![Scope::new_with_reserved(set)],
+            scopes: vec![global_scope],
             next_fresh: 0,
         }
     }
 
     pub fn keywords() -> Self {
-        Renamer::new(&[RUST_KEYWORDS])
+        let keywords = RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all()));
+        Renamer::new(keywords)
     }
 
     pub fn type_namespace() -> Self {
-        Renamer::new(&[RUST_KEYWORDS, PRELUDE_TYPE_NAMESPACE])
+        let keywords = RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all()));
+        let prelude_types = PRELUDE_TYPE_NAMESPACE
+            .iter()
+            .map(|&name| (name, Namespaces::types()));
+        Renamer::new(keywords.chain(prelude_types))
     }
 
     pub fn value_namespace() -> Self {
-        Renamer::new(&[RUST_KEYWORDS, PRELUDE_VALUE_NAMESPACE])
+        let keywords = RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all()));
+        let prelude_values = PRELUDE_VALUE_NAMESPACE
+            .iter()
+            .map(|&name| (name, Namespaces::values()));
+        Renamer::new(keywords.chain(prelude_values))
     }
 
     pub fn global_value_namespace() -> Self {
-        Renamer::new(&[RUST_KEYWORDS, PRELUDE_VALUE_NAMESPACE, &["main"]])
+        let keywords = RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all()));
+        let prelude_values = PRELUDE_VALUE_NAMESPACE
+            .iter()
+            .map(|&name| (name, Namespaces::values()));
+        Renamer::new(
+            keywords
+                .chain(prelude_values)
+                .chain([("main", Namespaces::values())]),
+        )
     }
 
     /// Introduces a new name binding scope
@@ -229,20 +245,23 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     }
 
     /// Is the mangled name currently in use
-    fn is_target_used(&self, key: &str) -> bool {
-        let key = key.to_string();
-
-        self.scopes.iter().any(|x| x.contains_value(&key))
+    fn is_target_used(&self, key: &str, ns: Namespaces) -> bool {
+        self.scopes.iter().any(|x| x.contains_value(key, ns))
     }
 
     /// Assigns a name that doesn't collide with anything in the context of a particular
     /// scope, defaulting to the current scope if None is provided
-    fn pick_name_in_scope(&mut self, basename: &str, scope: Option<usize>) -> String {
+    fn pick_name_in_scope(
+        &mut self,
+        basename: &str,
+        ns: Namespaces,
+        scope: Option<usize>,
+    ) -> String {
         let mut target =
             Self::raw_identifier_if_reserved_name(basename).unwrap_or_else(|| basename.to_string());
 
         for i in 0.. {
-            if self.is_target_used(&target) {
+            if self.is_target_used(&target, ns) {
                 target = format!("{}_{}", basename, i);
             } else {
                 break;
@@ -250,8 +269,8 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
         }
 
         match scope {
-            Some(scope_index) => self.scopes[scope_index].reserve(target.clone()),
-            None => self.current_scope_mut().reserve(target.clone()),
+            Some(scope_index) => self.scopes[scope_index].reserve(&target, ns),
+            None => self.current_scope_mut().reserve(&target, ns),
         }
 
         target
@@ -259,20 +278,26 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
 
     pub fn pick_name(&mut self, basename: &str) -> String {
         check_c2rust_name(basename);
-        self.pick_name_in_scope(basename, None)
+        self.pick_name_in_scope(basename, Namespaces::all(), None)
     }
 
     /// Permanently assign a name that doesn't collide with anything
     /// currently in scope, and also never goes out of scope
     pub fn pick_name_root(&mut self, basename: &str) -> String {
         check_c2rust_name(basename);
-        self.pick_name_in_scope(basename, Some(0))
+        self.pick_name_in_scope(basename, Namespaces::all(), Some(0))
     }
 
     /// Introduce a new name binding into a particular scope or the current one if None is provided.
     /// If the key is unbound in the scope then Some of the resulting mangled name is returned,
     /// otherwise None.
-    fn insert_in_scope(&mut self, key: T, basename: &str, scope: Option<usize>) -> Option<String> {
+    fn insert_in_scope(
+        &mut self,
+        key: T,
+        basename: &str,
+        ns: Namespaces,
+        scope: Option<usize>,
+    ) -> Option<String> {
         let contains_key = match scope {
             Some(scope_index) => self.scopes[scope_index].contains_key(&key),
             None => self.current_scope().contains_key(&key),
@@ -282,7 +307,7 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
             return None;
         }
 
-        let target = self.pick_name_in_scope(basename, scope);
+        let target = self.pick_name_in_scope(basename, ns, scope);
 
         match scope {
             Some(scope_index) => self.scopes[scope_index].insert(key, target.clone()),
@@ -296,14 +321,14 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     /// the current scope then Some of the resulting mangled name is returned, otherwise
     /// None.
     pub fn insert(&mut self, key: T, basename: &str) -> Option<String> {
-        self.insert_in_scope(key, basename, None)
+        self.insert_in_scope(key, basename, Namespaces::all(), None)
     }
 
     /// Introduce a new name binding into the root scope. If the key is unbound in
     /// the root scope then Some of the resulting mangled name is returned, otherwise
     /// None.
     pub fn insert_root(&mut self, key: T, basename: &str) -> Option<String> {
-        self.insert_in_scope(key, basename, Some(0))
+        self.insert_in_scope(key, basename, Namespaces::all(), Some(0))
     }
 
     /// Assign a name in the current scope without reservation or checking for overlap.
@@ -341,6 +366,77 @@ impl<T: Clone + Eq + Hash> Renamer<T> {
     }
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct Namespaces {
+    pub types: bool,
+    pub values: bool,
+}
+
+impl Namespaces {
+    pub fn all() -> Self {
+        Self {
+            types: true,
+            values: true,
+        }
+    }
+
+    pub fn types() -> Self {
+        Self {
+            types: true,
+            ..Default::default()
+        }
+    }
+
+    pub fn values() -> Self {
+        Self {
+            values: true,
+            ..Default::default()
+        }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self == Self::default()
+    }
+
+    pub fn intersects(self, other: Self) -> bool {
+        !(self & other).is_empty()
+    }
+}
+
+impl BitAnd for Namespaces {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self {
+            types: self.types && rhs.types,
+            values: self.values && rhs.values,
+        }
+    }
+}
+
+impl BitAndAssign for Namespaces {
+    fn bitand_assign(&mut self, rhs: Self) {
+        *self = *self & rhs;
+    }
+}
+
+impl BitOr for Namespaces {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self {
+            types: self.types || rhs.types,
+            values: self.values || rhs.values,
+        }
+    }
+}
+
+impl BitOrAssign for Namespaces {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs;
+    }
+}
+
 fn check_c2rust_name(basename: &str) {
     assert!(basename.starts_with("c2rust_") || basename.starts_with("C2Rust_"));
 }
@@ -351,7 +447,7 @@ mod tests {
 
     #[test]
     fn simple() {
-        let mut renamer = Renamer::new(&[&["reserved"]]);
+        let mut renamer = Renamer::new([("reserved", Namespaces::all())]);
 
         let one1 = renamer.insert(1, "one").unwrap();
         let one2 = renamer.get(&1).unwrap();
@@ -365,7 +461,7 @@ mod tests {
 
     #[test]
     fn scoped() {
-        let mut renamer = Renamer::new(&[]);
+        let mut renamer = Renamer::new([]);
 
         let one1 = renamer.insert(10, "one").unwrap();
         renamer.add_scope();
@@ -386,7 +482,7 @@ mod tests {
 
     #[test]
     fn forgets() {
-        let mut renamer = Renamer::new(&[]);
+        let mut renamer = Renamer::new([]);
         assert_eq!(renamer.get(&1), None);
         renamer.add_scope();
         renamer.insert(1, "example");
@@ -396,7 +492,7 @@ mod tests {
 
     #[test]
     fn raw_identifier() {
-        let mut renamer = Renamer::new(&[RUST_KEYWORDS]);
+        let mut renamer = Renamer::new(RUST_KEYWORDS.iter().map(|&name| (name, Namespaces::all())));
 
         // A reserved keyword that can be expressed as a raw identifier
         let reserved1 = renamer.insert(1, "dyn").unwrap();
