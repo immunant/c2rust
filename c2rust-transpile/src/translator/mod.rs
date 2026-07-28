@@ -280,7 +280,7 @@ pub struct Translation<'c> {
 
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
-    renamer: RefCell<Renamer<CDeclId>>,
+    renamer: Rc<RefCell<Renamer<CDeclId>>>,
     zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
@@ -1659,7 +1659,8 @@ impl<'c> Translation<'c> {
         main_file: &Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
-        let type_converter = TypeConverter::new(tcfg);
+        let renamer = Rc::new(RefCell::new(Renamer::keywords_and_prelude()));
+        let type_converter = TypeConverter::new(tcfg, renamer.clone());
 
         let main_file = ast_context
             .find_file_id(main_file)
@@ -1671,7 +1672,7 @@ impl<'c> Translation<'c> {
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
-            renamer: RefCell::new(Renamer::keywords_and_prelude()),
+            renamer,
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
