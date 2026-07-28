@@ -105,7 +105,10 @@ impl<'c> Translation<'c> {
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
-                let ptr_name = self.renamer.borrow_mut().pick_name("c2rust_lvalue_ptr");
+                let ptr_name = self
+                    .renamer
+                    .borrow_mut()
+                    .pick_name("c2rust_lvalue_ptr", Namespaces::values());
 
                 // let p = &raw mut lhs;
                 // Use a raw pointer here so that it doesn't create borrow conflicts and

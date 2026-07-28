@@ -56,7 +56,7 @@ impl TypeConverter {
 
     pub fn declare_decl_name(&mut self, decl_id: CDeclId, name: &str) -> String {
         self.renamer
-            .insert(decl_id, name)
+            .insert(decl_id, name, Namespaces::types())
             .expect("Name already assigned")
     }
 
@@ -73,7 +73,8 @@ impl TypeConverter {
         self.suffix_names.entry(key).or_insert_with(|| {
             let name = self.renamer.get(&decl_id);
             let name = name.as_deref().unwrap_or("Unnamed");
-            self.renamer.pick_name(&format!("C2Rust_{name}_{suffix}"))
+            self.renamer
+                .pick_name(&format!("C2Rust_{name}_{suffix}"), Namespaces::types())
         })
     }
 
@@ -92,7 +93,7 @@ impl TypeConverter {
         self.fields
             .entry(record_id)
             .or_insert_with(|| Renamer::keywords())
-            .insert(FieldKey::Field(field_id), name)
+            .insert(FieldKey::Field(field_id), name, Namespaces::values())
             .expect("Field already declared")
     }
 
@@ -105,7 +106,9 @@ impl TypeConverter {
         if let Some(name) = field.get(&key) {
             name
         } else {
-            field.insert(key, "c2rust_padding").unwrap()
+            field
+                .insert(key, "c2rust_padding", Namespaces::values())
+                .unwrap()
         }
     }
 
