@@ -3592,6 +3592,13 @@ impl<'c> Translation<'c> {
             }
         }
 
+        if let CDeclKind::EnumConstant { .. } = decl {
+            return self.convert_enum_constant_decl_ref(
+                expected_type_id.unwrap_or(result_type_id),
+                decl_id,
+            );
+        }
+
         let varname = decl.get_name().expect("expected variable name").to_owned();
         let rustname = self
             .renamer
@@ -3610,12 +3617,6 @@ impl<'c> Translation<'c> {
         let mut set_unsafe = false;
 
         match decl {
-            CDeclKind::EnumConstant { .. } => {
-                // If the variable is actually an `EnumConstant`, we need to add a cast to
-                // the expected integral type.
-                return self.convert_cast_from_enum(result_type_id, val);
-            }
-
             CDeclKind::Function { parameters, .. } => {
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
