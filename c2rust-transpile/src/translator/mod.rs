@@ -40,7 +40,7 @@ use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
-use crate::renamer::Renamer;
+use crate::renamer::{Namespaces, Renamer};
 use crate::with_stmts::WithStmts;
 use crate::{c_ast, format_translation_err};
 use crate::{ExternCrate, TranspilerConfig};
@@ -280,7 +280,7 @@ pub struct Translation<'c> {
 
     // Translation state and utilities
     type_converter: RefCell<TypeConverter>,
-    renamer: RefCell<Renamer<CDeclId>>,
+    renamer: Rc<RefCell<Renamer<CDeclId>>>,
     zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
@@ -441,7 +441,10 @@ fn prefix_names(translation: &mut Translation, prefix: &str) {
 
                 name.insert_str(0, prefix);
 
-                translation.renamer.borrow_mut().insert(decl_id, name);
+                translation
+                    .renamer
+                    .borrow_mut()
+                    .insert(decl_id, name, Namespaces::values());
             }
             CDeclKind::Variable {
                 ref mut ident,
@@ -885,33 +888,27 @@ pub fn translate(
         // in the presence of typedefs.
         t.ast_context.bubble_expr_types();
 
-        enum Name<'a> {
-            Var(&'a str),
-            Type(&'a str),
-            Anonymous,
-            None,
-        }
-
-        fn some_type_name(s: Option<&str>) -> Name<'_> {
-            match s {
-                None => Name::Anonymous,
-                Some(r) => Name::Type(r),
-            }
-        }
-
         // Used for testing; so that we don't overlap with C function names
         if let Some(ref prefix) = t.tcfg.prefix_function_names {
             prefix_names(&mut t, prefix);
         }
 
+        fn ns_for_decl(decl_kind: &CDeclKind) -> Namespaces {
+            use CDeclKind::*;
+            match decl_kind {
+                Struct { .. } | Union { .. } | Enum { .. } | Typedef { .. } => Namespaces::types(),
+                Function { .. } | EnumConstant { .. } | Variable { .. } | MacroObject { .. } => {
+                    Namespaces::values()
+                }
+                _ => Namespaces::none(),
+            }
+        }
+
         for (&decl_id, &subdecl_id) in &t.ast_context.prenamed_decls {
             if let CDeclKind::Typedef { ref name, .. } = t.ast_context[decl_id].kind {
-                t.type_converter
-                    .borrow_mut()
-                    .declare_decl_name(decl_id, name);
-                t.type_converter
-                    .borrow_mut()
-                    .alias_decl_name(subdecl_id, decl_id);
+                let ns = ns_for_decl(&t.ast_context[subdecl_id].kind);
+                t.renamer.borrow_mut().insert(decl_id, name, ns);
+                t.renamer.borrow_mut().alias(subdecl_id, &decl_id);
             }
         }
 
@@ -924,36 +921,24 @@ pub fn translate(
 
         // Populate renamer with top-level names
         for (&decl_id, decl) in t.ast_context.iter_decls() {
-            use CDeclKind::*;
-            let decl_name = match decl.kind {
-                _ if contains(&t.ast_context.prenamed_decls, &decl_id) => Name::None,
-                Struct { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-                Enum { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-                Union { ref name, .. } => some_type_name(name.as_ref().map(String::as_str)),
-                Typedef { ref name, .. } => Name::Type(name),
-                Function { ref name, .. } => Name::Var(name),
-                EnumConstant { ref name, .. } => Name::Var(name),
-                Variable { ref ident, .. } if t.ast_context.c_decls_top.contains(&decl_id) => {
-                    Name::Var(ident)
-                }
-                MacroObject { ref name, .. } => Name::Var(name),
-                _ => Name::None,
-            };
-            match decl_name {
-                Name::None => (),
-                Name::Anonymous => {
-                    t.type_converter
-                        .borrow_mut()
-                        .declare_decl_name(decl_id, "C2Rust_Unnamed");
-                }
-                Name::Type(name) => {
-                    t.type_converter
-                        .borrow_mut()
-                        .declare_decl_name(decl_id, name);
-                }
-                Name::Var(name) => {
-                    t.renamer.borrow_mut().insert(decl_id, name);
-                }
+            if contains(&t.ast_context.prenamed_decls, &decl_id) {
+                continue;
+            }
+
+            if matches!(decl.kind, CDeclKind::Variable { .. })
+                && !t.ast_context.c_decls_top.contains(&decl_id)
+            {
+                continue;
+            }
+
+            let ns = ns_for_decl(&decl.kind);
+
+            if !ns.is_empty() {
+                let name = &decl
+                    .kind
+                    .get_name()
+                    .map_or("C2Rust_Unnamed", String::as_str);
+                t.renamer.borrow_mut().insert(decl_id, name, ns);
             }
         }
 
@@ -1654,7 +1639,8 @@ impl<'c> Translation<'c> {
         main_file: &Path,
     ) -> Self {
         let comment_context = CommentContext::new(&mut ast_context);
-        let type_converter = TypeConverter::new(tcfg);
+        let renamer = Rc::new(RefCell::new(Renamer::keywords_and_prelude()));
+        let type_converter = TypeConverter::new(tcfg, renamer.clone());
 
         let main_file = ast_context
             .find_file_id(main_file)
@@ -1666,8 +1652,7 @@ impl<'c> Translation<'c> {
             type_converter: RefCell::new(type_converter),
             ast_context,
             tcfg,
-            // TODO: Use Renamer::value_namespace() for most renamings.
-            renamer: RefCell::new(Renamer::global_value_namespace()),
+            renamer,
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
@@ -1998,7 +1983,7 @@ impl<'c> Translation<'c> {
         let fn_name = self
             .renamer
             .borrow_mut()
-            .pick_name("c2rust_run_static_initializers");
+            .pick_name("c2rust_run_static_initializers", Namespaces::values());
         let fn_ty = ReturnType::Default;
         let fn_decl = mk().fn_decl(fn_name.clone(), vec![], None, fn_ty.clone());
         let fn_bare_decl = (vec![], None, fn_ty);
@@ -2403,7 +2388,10 @@ impl<'c> Translation<'c> {
         let mut cfg_info = cfg::structures::CfgInfo::default();
         cfg::structures::gather_cfg_info(&relooped, &mut cfg_info);
 
-        let current_block_ident = self.renamer.borrow_mut().pick_name("c2rust_current_block");
+        let current_block_ident = self
+            .renamer
+            .borrow_mut()
+            .pick_name("c2rust_current_block", Namespaces::values());
         let current_block = mk().ident_expr(&current_block_ident);
         let mut stmts: Vec<Stmt> = lifted_stmts;
         if !cfg_info.checked_entries.is_empty() {
@@ -2572,7 +2560,7 @@ impl<'c> Translation<'c> {
                 let ident2 = self
                     .renamer
                     .borrow_mut()
-                    .insert_root(decl_id, ident)
+                    .insert_root(decl_id, ident, Namespaces::values())
                     .ok_or_else(|| {
                         TranslationError::generic(
                             "Unable to rename function scoped static initializer",
@@ -2627,7 +2615,7 @@ impl<'c> Translation<'c> {
                 let rust_name = self
                     .renamer
                     .borrow_mut()
-                    .insert(decl_id, ident)
+                    .insert(decl_id, ident, Namespaces::values())
                     .unwrap_or_else(|| panic!("Failed to insert variable '{}'", ident));
 
                 if self.ast_context.is_va_list(typ.ctype) {
@@ -2757,7 +2745,10 @@ impl<'c> Translation<'c> {
 
             ref decl => {
                 let inserted = if let Some(ident) = decl.get_name() {
-                    self.renamer.borrow_mut().insert(decl_id, ident).is_some()
+                    self.renamer
+                        .borrow_mut()
+                        .insert(decl_id, ident, Namespaces::values())
+                        .is_some()
                 } else {
                     false
                 };
@@ -3038,7 +3029,7 @@ impl<'c> Translation<'c> {
                             let name = self
                                 .renamer
                                 .borrow_mut()
-                                .insert(CDeclId(expr_id.0), "vla")
+                                .insert(CDeclId(expr_id.0), "vla", Namespaces::values())
                                 .unwrap(); // try using declref name?
                                            // TODO: store the name corresponding to expr_id
 
@@ -3560,7 +3551,7 @@ impl<'c> Translation<'c> {
                     let lhs = self
                         .convert_expr(ctx.used(), lhs, None)?
                         .merge_unsafe(rhs.is_unsafe());
-                    let fresh_name = self.renamer.borrow_mut().fresh();
+                    let fresh_name = self.renamer.borrow_mut().fresh(Namespaces::values());
 
                     lhs.and_then_try(|lhs| {
                         let fresh_stmt = mk().local_stmt(Box::new(mk().local(
@@ -3751,7 +3742,10 @@ impl<'c> Translation<'c> {
                 let result_id = substmt_ids[n - 1];
 
                 let name = format!("<stmt-expr_{:?}>", compound_stmt_id);
-                let lbl_ident = self.renamer.borrow_mut().pick_name("c2rust_label");
+                let lbl_ident = self
+                    .renamer
+                    .borrow_mut()
+                    .pick_name("c2rust_label", Namespaces::values());
                 let lbl = cfg::Label::FromC(compound_stmt_id, Some(Rc::from(lbl_ident)));
 
                 let mut stmts = match self.ast_context[result_id].kind {

@@ -388,7 +388,7 @@ impl<'c> Translation<'c> {
                         &*fn_ctx.alloca_allocations_name.get_or_insert_with(|| {
                             self.renamer
                                 .borrow_mut()
-                                .pick_name("c2rust_alloca_allocations")
+                                .pick_name("c2rust_alloca_allocations", Namespaces::values())
                         });
 
                     // c2rust_alloca_allocations.push(std::vec::from_elem(0, count));
@@ -734,8 +734,14 @@ impl<'c> Translation<'c> {
                 (cast_int(a, "i128", true), cast_int(b, "i128", true))
             };
             let overflowing = mk().method_call_expr(a, method_name, vec![b]);
-            let result_name = self.renamer.borrow_mut().pick_name("c2rust_result");
-            let over_name = self.renamer.borrow_mut().pick_name("c2rust_overflowed");
+            let result_name = self
+                .renamer
+                .borrow_mut()
+                .pick_name("c2rust_result", Namespaces::values());
+            let over_name = self
+                .renamer
+                .borrow_mut()
+                .pick_name("c2rust_overflowed", Namespaces::values());
             let mut stmts = vec![mk().local_stmt(Box::new(mk().local(
                 mk().tuple_pat(vec![
                     mk().ident_pat(&result_name),
@@ -753,7 +759,10 @@ impl<'c> Translation<'c> {
                 // truncation lost information -- overflow distinct from
                 // `overflowing`'s own flag, which only fires when even `i128`
                 // cannot hold the result.
-                let narrow_name = self.renamer.borrow_mut().pick_name("c2rust_result_narrow");
+                let narrow_name = self
+                    .renamer
+                    .borrow_mut()
+                    .pick_name("c2rust_result_narrow", Namespaces::values());
                 stmts.push(mk().local_stmt(Box::new(mk().local(
                     mk().ident_pat(&narrow_name),
                     None,

@@ -11,6 +11,7 @@ use crate::c_ast::{
     CUnOp, MemberKind,
 };
 use crate::diagnostics::TranslationResult;
+use crate::renamer::Namespaces;
 use crate::translator::variadic::mk_va_list_ty;
 use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
@@ -761,7 +762,10 @@ impl<'a> Translation<'a> {
                         stmts.push(mk().semi_stmt(method_call));
                     }
                     _ if contains_block(&param_expr) => {
-                        let name = self.renamer.borrow_mut().pick_name("c2rust_rhs");
+                        let name = self
+                            .renamer
+                            .borrow_mut()
+                            .pick_name("c2rust_rhs", Namespaces::values());
                         let name_ident = mk().mutbl().ident_pat(name.clone());
                         let temporary_stmt = mk().local(name_ident, None, Some(param_expr.clone()));
                         let assignment_expr = mk().method_call_expr(

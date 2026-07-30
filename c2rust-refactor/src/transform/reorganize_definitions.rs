@@ -18,7 +18,7 @@ use rustc_hir::{self as hir, Node};
 use rustc_middle::metadata::ModChild;
 use rustc_middle::ty::{self, ParamEnv};
 use rustc_span::symbol::{kw, Ident};
-use rustc_span::{BytePos, Symbol, DUMMY_SP};
+use rustc_span::{sym, BytePos, Symbol, DUMMY_SP};
 use rustc_target::spec::abi::{self, Abi};
 use smallvec::smallvec;
 use thin_vec::ThinVec;
@@ -752,7 +752,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     // multiple items with the same name in a namespace.
                     let old_name = ident.name.as_str();
                     let new_name = format!("{old_name}_{idx}");
-                    warn!("Renaming identifier {old_name} to {new_name} due to collision");
+                    item.preserve_link_name(ident);
                     item.ident_mut().name = Symbol::intern(&new_name);
                 }
 
@@ -1590,6 +1590,40 @@ impl MovedDecl {
                 }
             }
         }
+    }
+
+    fn preserve_link_name(&mut self, orig: Ident) {
+        let item = match &mut self.kind {
+            DeclKind::ForeignItem(item, _) => item,
+            // A regular item is mangled under its own path, so renaming it
+            // does not change what it exports.
+            DeclKind::Item(_) => return,
+        };
+        // An `extern type` has no symbol of its own to preserve.
+        if !matches!(
+            item.kind,
+            ForeignItemKind::Fn(..) | ForeignItemKind::Static(..)
+        ) {
+            warn!(
+                "`#[link_name]` attribute not needed on renamed foreign item {}",
+                orig,
+            );
+            return;
+        }
+        if item.attrs.iter().any(|attr| attr.has_name(sym::link_name)) {
+            warn!(
+                "`#[link_name]` attribute already exists on renamed item {}, keeping the existing one",
+                orig,
+            );
+            return;
+        }
+        item.attrs
+            .extend(mk().str_attr(vec![sym::link_name], orig.name).into_attrs());
+
+        warn!(
+            "`#[link_name]` attribute added to preserve link name on renamed item {}",
+            orig,
+        );
     }
 
     fn ident_mut(&mut self) -> &mut Ident {

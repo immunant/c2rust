@@ -1,0 +1,103 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_foreign_item_rename.rs --edition 2021
+---
+#![allow(clippy::missing_safety_doc)]
+#![allow(dead_code)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+#![allow(unused_assignments)]
+#![allow(unused_mut)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+
+// Transpiled from two translation units that include the same header with
+// different `-D` flags:
+//
+//     /* foreign.h */
+//     #ifdef FOREIGN_ALT
+//     typedef int cfg_int;
+//     extern cfg_int cfg;
+//     int compute(int (*p)[4]);
+//     #else
+//     extern int cfg;
+//     int compute(int (*p)[]);
+//     #endif
+//
+//     /* a.c, compiled without `-DFOREIGN_ALT` */
+//     #include "foreign.h"
+//
+//     int a_use(int (*p)[4]) {
+//         return cfg + compute(p);
+//     }
+//
+//     /* b.c, compiled with `-DFOREIGN_ALT` */
+//     #include "foreign.h"
+//
+//     int b_use(int (*p)[4]) {
+//         return cfg + compute(p);
+//     }
+//
+// The C is strictly conforming. `cfg_int` is an alias for `int`, not a distinct
+// type, so both declarations of `cfg` give it the same type. The two `compute`
+// signatures are compatible as well: an array type of unknown size is
+// compatible with any array type of the same element type (C11 6.7.6.2p6), and
+// pointers are compatible when their pointees are, so `int (*)[]` matches
+// `int (*)[4]`. Every declaration of `cfg` and of `compute` therefore satisfies
+// C11 6.2.7p2 ("All declarations that refer to the same object or function
+// shall have compatible type").
+//
+// Both declarations of each item come from the same header, so they land in the
+// same header module. Neither pair can be collapsed there. The two `cfg`
+// declarations spell the same type differently, one through the alias, so they
+// are not syntactically identical. C's incomplete array type has no Rust
+// equivalent and is transpiled as a zero-length array, so the two `compute`
+// declarations are not interchangeable either. The second of each pair is
+// therefore renamed to clear the collision. Since an `extern` static or
+// function links against its own name, the renamed declarations have to keep
+// naming the original symbols.
+//
+// The two pairs survive for different reasons: the transform compares statics
+// syntactically, which the alias defeats, but resolves types for functions,
+// which collapses the alias and leaves the array sizes to keep the pair apart.
+
+pub mod foreign_h {
+    extern "C" {
+        #[link_name = "cfg"]
+        pub static mut cfg_1: crate::foreign_h::cfg_int;
+
+        #[link_name = "compute"]
+        pub fn compute_1(p: *mut [::core::ffi::c_int; 4]) -> ::core::ffi::c_int;
+
+        pub static mut cfg: ::core::ffi::c_int;
+
+        pub fn compute(p: *mut [::core::ffi::c_int; 0]) -> ::core::ffi::c_int;
+    }
+    pub type cfg_int = ::core::ffi::c_int;
+}
+pub mod a {
+
+    use crate::foreign_h::cfg;
+    use crate::foreign_h::compute;
+    #[no_mangle]
+
+    pub unsafe extern "C" fn a_use(mut p: *mut [::core::ffi::c_int; 4]) -> ::core::ffi::c_int {
+        return crate::foreign_h::cfg
+            + crate::foreign_h::compute(p as *mut [::core::ffi::c_int; 0]);
+    }
+}
+
+pub mod b {
+
+    pub use crate::foreign_h::cfg_1;
+    pub use crate::foreign_h::cfg_int;
+    pub use crate::foreign_h::compute_1;
+    #[no_mangle]
+
+    pub unsafe extern "C" fn b_use(mut p: *mut [::core::ffi::c_int; 4]) -> ::core::ffi::c_int {
+        return crate::foreign_h::cfg_1 as ::core::ffi::c_int + crate::foreign_h::compute_1(p);
+    }
+}
+
+fn main() {}

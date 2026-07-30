@@ -11,7 +11,7 @@
   };
 
   outputs =
-    inputs@{
+    {
       self,
       nixpkgs,
       utils,
@@ -124,7 +124,6 @@
         devShells = {
           # Include a fixed version of clang in the development environment for testing.
           default = pkgs.mkShell (
-            with pkgs;
             env
             // {
               strictDeps = true;

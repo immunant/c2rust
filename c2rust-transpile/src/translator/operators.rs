@@ -699,7 +699,7 @@ impl<'c> Translation<'c> {
         } else {
             self.name_reference_write_read(ctx, arg)?
                 .and_then(|lhs| {
-                    let val_name = self.renamer.borrow_mut().fresh();
+                    let val_name = self.renamer.borrow_mut().fresh(Namespaces::values());
                     let save_old_val = mk().local_stmt(Box::new(mk().local(
                         mk().ident_pat(&val_name),
                         None,
