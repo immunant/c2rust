@@ -190,53 +190,6 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn convert_assignment_operator_aux(
-        &self,
-        ctx: ExprContext,
-        bin_op_kind: BinOp,
-        bin_op: CBinOp,
-        read: Box<Expr>,
-        write: Box<Expr>,
-        rhs: Box<Expr>,
-        lhs_type_id: CQualTypeId,
-        compute_lhs_type_id: CQualTypeId,
-        compute_res_type_id: CQualTypeId,
-        rhs_type_id: CQualTypeId,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
-            == self.ast_context.resolve_type_id(lhs_type_id.ctype)
-        {
-            Ok(WithStmts::new_val(mk().assign_op_expr(
-                bin_op_kind,
-                write,
-                rhs,
-            )))
-        } else {
-            let lhs = self.make_cast(
-                ctx.used(),
-                lhs_type_id,
-                compute_lhs_type_id,
-                WithStmts::new_val(read.clone()),
-            )?;
-
-            let val = lhs.and_then_try(|lhs| {
-                self.convert_binary_operator(
-                    ctx,
-                    compute_res_type_id,
-                    bin_op,
-                    compute_lhs_type_id,
-                    rhs_type_id,
-                    lhs,
-                    rhs,
-                )
-            })?;
-
-            let val = self.make_cast(ctx.used(), compute_res_type_id, lhs_type_id, val)?;
-
-            Ok(val.map(|val| mk().assign_expr(write.clone(), val)))
-        }
-    }
-
     /// Translate an assignment binary operator.
     ///
     /// `compute_lhs_type_id` and `compute_res_type_id` correspond to Clang's
@@ -489,19 +442,33 @@ impl<'c> Translation<'c> {
                 } else {
                     val.map(|val| mk().assign_expr(write, val))
                 }
+            } else if self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
+                == self.ast_context.resolve_type_id(lhs_type_id.ctype)
+            {
+                WithStmts::new_val(mk().assign_op_expr(BinOp::from(op), write, rhs))
             } else {
-                self.convert_assignment_operator_aux(
-                    ctx,
-                    BinOp::from(op),
-                    underlying_op,
-                    read.clone(),
-                    write,
-                    rhs,
+                let lhs = self.make_cast(
+                    ctx.used(),
                     lhs_type_id,
                     compute_lhs_type_id,
-                    compute_res_type_id,
-                    rhs_type_id,
-                )?
+                    WithStmts::new_val(read.clone()),
+                )?;
+
+                let val = lhs.and_then_try(|lhs| {
+                    self.convert_binary_operator(
+                        ctx,
+                        compute_res_type_id,
+                        underlying_op,
+                        compute_lhs_type_id,
+                        rhs_type_id,
+                        lhs,
+                        rhs,
+                    )
+                })?;
+
+                let val = self.make_cast(ctx.used(), compute_res_type_id, lhs_type_id, val)?;
+
+                val.map(|val| mk().assign_expr(write.clone(), val))
             }
         } else {
             // Regular assignment
