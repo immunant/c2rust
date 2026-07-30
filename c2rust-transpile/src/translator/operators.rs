@@ -471,7 +471,7 @@ impl<'c> Translation<'c> {
                 let lhs = self.make_cast(
                     ctx.used(),
                     lhs_type_id,
-                    compute_res_type_id,
+                    compute_lhs_type_id,
                     WithStmts::new_val(read.clone()),
                 )?;
 
