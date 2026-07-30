@@ -3600,13 +3600,11 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("name not declared: '{}'", varname))?;
 
         // Import the referenced global decl into our submodule
-        if self.tcfg.reorganize_definitions {
-            self.add_import(decl_id, &rustname);
-            // match decl {
-            //     CDeclKind::Variable { is_defn: false, .. } => {}
-            //     _ => self.add_import(decl_id, &rustname),
-            // }
-        }
+        self.add_import(decl_id, &rustname);
+        // match decl {
+        //     CDeclKind::Variable { is_defn: false, .. } => {}
+        //     _ => self.add_import(decl_id, &rustname),
+        // }
 
         let mut val = mk().path_expr(vec![rustname]);
         let mut set_unsafe = false;
