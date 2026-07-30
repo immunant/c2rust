@@ -454,7 +454,10 @@ impl<'c> Translation<'c> {
         let assign_stmt = if let Some(underlying_op) = op.underlying_assignment() {
             // Compound assignment
 
-            if is_volatile || is_unsigned_arith {
+            if is_volatile
+                || is_unsigned_arith
+                || underlying_op.is_pointer_arithmetic() && pointer_lhs.is_some()
+            {
                 // Some operations, including anything volatile, need to be desugared into a
                 // regular assignment with the underlying non-assignment operator.
                 // Cast the lhs to the compute lhs type, do the compute, and then
@@ -486,15 +489,6 @@ impl<'c> Translation<'c> {
                 } else {
                     val.map(|val| mk().assign_expr(write, val))
                 }
-            } else if underlying_op.is_pointer_arithmetic() && pointer_lhs.is_some() {
-                let ptr = self.convert_pointer_offset(
-                    write.clone(),
-                    rhs,
-                    pointer_lhs.unwrap().ctype,
-                    underlying_op == CBinOp::Subtract,
-                    false,
-                );
-                ptr.map(|ptr| mk().assign_expr(write, ptr))
             } else {
                 self.convert_assignment_operator_aux(
                     ctx,
