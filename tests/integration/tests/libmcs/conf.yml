@@ -12,6 +12,8 @@ refactor:
     - reorganize_definitions
     - shorten_imported_paths
     - remove_unused_labels
+    - remove_redundant_casts
+    - remove_literal_suffixes
 
 cargo.refactor:
   autogen: true

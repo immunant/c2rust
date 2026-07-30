@@ -23,6 +23,7 @@ refactor:
     - rename_unnamed
     - reorganize_definitions
     - shorten_imported_paths
+    - remove_redundant_casts
     - remove_literal_suffixes
     - convert_cast_as_ptr
     - remove_unnecessary_refs
