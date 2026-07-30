@@ -410,6 +410,8 @@ impl<'c> Translation<'c> {
             if is_volatile
                 || is_unsigned_arith
                 || underlying_op.is_pointer_arithmetic() && pointer_lhs.is_some()
+                || self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
+                    != self.ast_context.resolve_type_id(lhs_type_id.ctype)
             {
                 // Some operations, including anything volatile, need to be desugared into a
                 // regular assignment with the underlying non-assignment operator.
@@ -442,33 +444,8 @@ impl<'c> Translation<'c> {
                 } else {
                     val.map(|val| mk().assign_expr(write, val))
                 }
-            } else if self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
-                == self.ast_context.resolve_type_id(lhs_type_id.ctype)
-            {
-                WithStmts::new_val(mk().assign_op_expr(BinOp::from(op), write, rhs))
             } else {
-                let lhs = self.make_cast(
-                    ctx.used(),
-                    lhs_type_id,
-                    compute_lhs_type_id,
-                    WithStmts::new_val(read.clone()),
-                )?;
-
-                let val = lhs.and_then_try(|lhs| {
-                    self.convert_binary_operator(
-                        ctx,
-                        compute_res_type_id,
-                        underlying_op,
-                        compute_lhs_type_id,
-                        rhs_type_id,
-                        lhs,
-                        rhs,
-                    )
-                })?;
-
-                let val = self.make_cast(ctx.used(), compute_res_type_id, lhs_type_id, val)?;
-
-                val.map(|val| mk().assign_expr(write.clone(), val))
+                WithStmts::new_val(mk().assign_op_expr(BinOp::from(op), write, rhs))
             }
         } else {
             // Regular assignment
