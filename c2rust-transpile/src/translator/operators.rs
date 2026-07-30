@@ -316,33 +316,18 @@ impl<'c> Translation<'c> {
             return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
         }
 
-        let is_volatile = lhs_type_id.qualifiers.is_volatile;
-        let is_volatile_compound_assign = op.underlying_assignment().is_some() && is_volatile;
-
-        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let compute_res_type_id = compute_res_type_id.unwrap_or(lhs_type_id);
         let compute_lhs_type_id = compute_lhs_type_id.unwrap_or(lhs_type_id);
-        let compute_lhs_type_kind = &self
-            .ast_context
-            .resolve_type(compute_lhs_type_id.ctype)
-            .kind;
+        let compound_assignment_needs_desugaring =
+            op.underlying_assignment().is_some_and(|underlying_op| {
+                self.compound_assignment_needs_desugaring(
+                    underlying_op,
+                    lhs_type_id,
+                    compute_lhs_type_id,
+                )
+            });
 
-        let pointer_lhs = match lhs_type_kind {
-            &CTypeKind::Pointer(pointee) => Some(pointee),
-            _ => None,
-        };
-
-        let is_unsigned_arith = op
-            .underlying_assignment()
-            .map_or(false, |op| op.is_arithmetic())
-            && compute_lhs_type_kind.is_unsigned_integral_type();
-
-        let lhs_translation = if lhs_type_id.ctype != compute_lhs_type_id.ctype
-            || ctx.is_used()
-            || pointer_lhs.is_some()
-            || is_volatile_compound_assign
-            || is_unsigned_arith
-        {
+        let lhs_translation = if ctx.is_used() || compound_assignment_needs_desugaring {
             self.name_reference_write_read(ctx, lhs)?
         } else {
             self.name_reference_write(ctx, lhs)?.map(|named_ref| {
@@ -384,20 +369,6 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let is_volatile = lhs_type_id.qualifiers.is_volatile;
 
-        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-        let compute_lhs_type_kind = &self
-            .ast_context
-            .resolve_type(compute_lhs_type_id.ctype)
-            .kind;
-        let is_unsigned_arith = op
-            .underlying_assignment()
-            .map_or(false, |op| op.is_arithmetic())
-            && compute_lhs_type_kind.is_unsigned_integral_type();
-        let pointer_lhs = match lhs_type_kind {
-            &CTypeKind::Pointer(pointee) => Some(pointee),
-            _ => None,
-        };
-
         let NamedReference {
             lvalue: write,
             rvalue: read,
@@ -407,14 +378,11 @@ impl<'c> Translation<'c> {
         let assign_stmt = if let Some(underlying_op) = op.underlying_assignment() {
             // Compound assignment
 
-            if is_volatile
-                || is_unsigned_arith
-                || underlying_op.is_pointer_arithmetic() && pointer_lhs.is_some()
-                || self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
-                    != self.ast_context.resolve_type_id(lhs_type_id.ctype)
-            {
-                // Some operations, including anything volatile, need to be desugared into a
-                // regular assignment with the underlying non-assignment operator.
+            if self.compound_assignment_needs_desugaring(
+                underlying_op,
+                lhs_type_id,
+                compute_lhs_type_id,
+            ) {
                 // Cast the lhs to the compute lhs type, do the compute, and then
                 // cast the compute result to the final lhs type.
                 let lhs = self.make_cast(
@@ -473,6 +441,35 @@ impl<'c> Translation<'c> {
             .and_then(|(assign_stmt, assign_result)| {
                 WithStmts::new(vec![mk().semi_stmt(assign_stmt)], assign_result)
             }))
+    }
+
+    /// Returns whether a compound assignment operation needs to be desugared into a regular
+    /// assignment with the underlying non-assignment operator.
+    fn compound_assignment_needs_desugaring(
+        &self,
+        underlying_op: CBinOp,
+        lhs_type_id: CQualTypeId,
+        compute_lhs_type_id: CQualTypeId,
+    ) -> bool {
+        let is_volatile = lhs_type_id.qualifiers.is_volatile;
+
+        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+        let compute_lhs_type_kind = &self
+            .ast_context
+            .resolve_type(compute_lhs_type_id.ctype)
+            .kind;
+        let is_unsigned_arith =
+            underlying_op.is_arithmetic() && compute_lhs_type_kind.is_unsigned_integral_type();
+        let pointer_lhs = match lhs_type_kind {
+            &CTypeKind::Pointer(pointee) => Some(pointee),
+            _ => None,
+        };
+
+        is_volatile
+            || is_unsigned_arith
+            || underlying_op.is_pointer_arithmetic() && pointer_lhs.is_some()
+            || self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
+                != self.ast_context.resolve_type_id(lhs_type_id.ctype)
     }
 
     /// Translate a non-assignment binary operator. It is expected that the `lhs` and `rhs`
