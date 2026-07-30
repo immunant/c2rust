@@ -452,82 +452,73 @@ impl<'c> Translation<'c> {
 
         // Assignment expression itself
         use CBinOp::*;
-        let assign_stmt = match op {
-            // Regular (possibly volatile) assignment
-            Assign if !is_volatile => WithStmts::new_val(mk().assign_expr(write, rhs)),
-            Assign => {
-                WithStmts::new_val(self.volatile_write(write, lhs_type_id, rhs)?).set_unsafe()
-            }
+        let assign_stmt = if op == Assign && !is_volatile {
+            WithStmts::new_val(mk().assign_expr(write, rhs))
+        } else if op == Assign {
+            WithStmts::new_val(self.volatile_write(write, lhs_type_id, rhs)?).set_unsafe()
+        } else if is_volatile || is_unsigned_arith {
+            // Anything volatile needs to be desugared into explicit reads and writes.
+            // Cast the lhs to the compute lhs type, do the compute, and then
+            // cast the compute result to the final lhs type.
 
-            // Anything volatile needs to be desugared into explicit reads and writes
-            op if is_volatile || is_unsigned_arith => {
-                // Cast the lhs to the compute lhs type, do the compute, and then
-                // cast the compute result to the final lhs type.
+            let op = op
+                .underlying_assignment()
+                .expect("Cannot convert non-assignment operator");
 
-                let op = op
-                    .underlying_assignment()
-                    .expect("Cannot convert non-assignment operator");
+            let lhs = self.make_cast(
+                ctx.used(),
+                lhs_type_id,
+                compute_lhs_type_id,
+                WithStmts::new_val(read.clone()),
+            )?;
 
-                let lhs = self.make_cast(
-                    ctx.used(),
-                    lhs_type_id,
-                    compute_lhs_type_id,
-                    WithStmts::new_val(read.clone()),
-                )?;
-
-                let val = lhs.and_then_try(|lhs| {
-                    self.convert_binary_operator(
-                        ctx,
-                        compute_res_type_id,
-                        op,
-                        compute_lhs_type_id,
-                        rhs_type_id,
-                        lhs,
-                        rhs,
-                    )
-                })?;
-
-                let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
-
-                if is_volatile {
-                    val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
-                        .set_unsafe()
-                } else {
-                    val.map(|val| mk().assign_expr(write, val))
-                }
-            }
-
-            // Everything else
-            AssignAdd | AssignSubtract if pointer_lhs.is_some() => {
-                let ptr = self.convert_pointer_offset(
-                    write.clone(),
-                    rhs,
-                    pointer_lhs.unwrap().ctype,
-                    op == AssignSubtract,
-                    false,
-                );
-                ptr.map(|ptr| mk().assign_expr(write, ptr))
-            }
-
-            _ => {
-                let bin_op = op
-                    .underlying_assignment()
-                    .expect("Cannot convert non-assignment operator");
-                let bin_op_kind = BinOp::from(op);
-
-                self.convert_assignment_operator_aux(
+            let val = lhs.and_then_try(|lhs| {
+                self.convert_binary_operator(
                     ctx,
-                    bin_op_kind,
-                    bin_op,
-                    read.clone(),
-                    write,
-                    rhs,
-                    lhs_type_id,
-                    compute_lhs_type_id,
                     compute_res_type_id,
+                    op,
+                    compute_lhs_type_id,
                     rhs_type_id,
-                )?
+                    lhs,
+                    rhs,
+                )
+            })?;
+
+            let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
+
+            if is_volatile {
+                val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
+                    .set_unsafe()
+            } else {
+                val.map(|val| mk().assign_expr(write, val))
             }
+        } else if matches!(op, AssignAdd | AssignSubtract) && pointer_lhs.is_some() {
+            let ptr = self.convert_pointer_offset(
+                write.clone(),
+                rhs,
+                pointer_lhs.unwrap().ctype,
+                op == AssignSubtract,
+                false,
+            );
+            ptr.map(|ptr| mk().assign_expr(write, ptr))
+        } else {
+            let bin_op = op
+                .underlying_assignment()
+                .expect("Cannot convert non-assignment operator");
+            let bin_op_kind = BinOp::from(op);
+
+            self.convert_assignment_operator_aux(
+                ctx,
+                bin_op_kind,
+                bin_op,
+                read.clone(),
+                write,
+                rhs,
+                lhs_type_id,
+                compute_lhs_type_id,
+                compute_res_type_id,
+                rhs_type_id,
+            )?
         };
 
         let assign_result = if ctx.is_used() {
