@@ -2,13 +2,11 @@ use c2rust_ast_builder::mk;
 use proc_macro2::Span;
 use syn::Expr;
 
-use crate::c_ast::CUnOp;
 use crate::{
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
     with_stmts::WithStmts,
-    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CLiteral, CQualTypeId, CTypeKind,
-    ConstIntExpr,
+    CDeclKind, CEnumConstantId, CEnumId, CExprId, CExprKind, CQualTypeId, CTypeKind, ConstIntExpr,
 };
 
 impl<'c> Translation<'c> {
@@ -128,20 +126,6 @@ impl<'c> Translation<'c> {
                     // because the translation of a const macro skips implicit casts in its context.
                     if !expr_is_macro {
                         val = self.enum_constant_expr(enum_constant_id);
-                        return Ok(WithStmts::new_val(val));
-                    }
-                }
-
-                CExprKind::Literal(_, CLiteral::Integer(i, _)) => {
-                    val = self.enum_for_i64(enum_id, i as i64);
-                    return Ok(WithStmts::new_val(val));
-                }
-
-                CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) => {
-                    if let &CExprKind::Literal(_, CLiteral::Integer(i, _)) =
-                        &self.ast_context.index_unwrap_parens(subexpr_id).kind
-                    {
-                        val = self.enum_for_i64(enum_id, -(i as i64));
                         return Ok(WithStmts::new_val(val));
                     }
                 }
