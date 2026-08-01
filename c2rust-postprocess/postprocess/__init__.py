@@ -20,7 +20,7 @@ from postprocess.transforms.comments import AbstractGenerativeModel
 from postprocess.utils import existing_file
 from postprocess.validate import BaselineError, make_validator
 
-DEFAULT_LLM_MODEL = "gemini-3.5-flash"
+DEFAULT_LLM_MODEL = "gpt-5.6-luna"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
