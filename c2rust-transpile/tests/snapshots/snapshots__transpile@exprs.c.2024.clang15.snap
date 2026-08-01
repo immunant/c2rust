@@ -120,7 +120,8 @@ pub unsafe extern "C" fn cast_literals() {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn compound_literal() {
-    let mut i: ::core::ffi::c_int = B.0 as ::core::ffi::c_int;
+    let mut i: ::core::ffi::c_int =
+        C2Rust_Unnamed(1 as ::core::ffi::c_int as ::core::ffi::c_uint).0 as ::core::ffi::c_int;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn statement_expr() {

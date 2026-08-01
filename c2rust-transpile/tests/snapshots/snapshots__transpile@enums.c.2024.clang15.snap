@@ -37,10 +37,10 @@ pub unsafe extern "C" fn test_enums() {
     bar = BarN1;
     foo = Foo(Bar0.0 as ::core::ffi::c_uint);
     bar = Bar(Foo0.0 as ::core::ffi::c_int);
-    foo = Foo1;
-    bar = Bar1;
-    foo = Foo3;
-    bar = Bar3;
+    foo = Foo(1 as ::core::ffi::c_int as ::core::ffi::c_uint);
+    bar = Bar(1 as ::core::ffi::c_int);
+    foo = Foo(3 as ::core::ffi::c_int as ::core::ffi::c_uint);
+    bar = Bar(3 as ::core::ffi::c_int);
     foo = Foo(foo.0.wrapping_sub(2 as ::core::ffi::c_uint));
     bar = Bar(bar.0 - 2 as ::core::ffi::c_int);
     foo = Foo(foo.0.wrapping_add(1));
