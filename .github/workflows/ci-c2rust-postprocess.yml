@@ -110,6 +110,7 @@ jobs:
       - name: Run c2rust testsuite
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # TODO: Remove the ident filter when we know the cronjob works.
           # The value is expanded unquoted by postprocess.gen.sh, so no shell
           # quoting: args must not contain whitespace.
