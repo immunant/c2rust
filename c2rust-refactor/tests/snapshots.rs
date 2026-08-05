@@ -429,6 +429,21 @@ fn test_rename_unnamed() {
     refactor("rename_unnamed").test();
 }
 
+/// Currently panics (#1818): the `PartialEq` derive expansion stamps the span of the
+/// `PartialEq` token on every node it generates, so the NodeId -> HirId lookup pairs the
+/// `&C2Rust_Unnamed` parameter type of the derived `fn eq` with the HIR node for `bool`:
+///
+/// ```shell
+///     thread 'main' panicked at 'expected TyKind::Path(qself, path), got Ref(None, MutTy { ty: Ty { id: NodeId(104), kind: Path(None, Path { span: Span { lo: BytePos(22), hi: BytePos(31), ctxt: #6 }, segments: [PathSegment { ident: C2Rust_Unnamed#0, id: NodeId(105), args: None }], tokens: None }), span: Span { lo: BytePos(22), hi: BytePos(31), ctxt: #6 }, tokens: None }, mutbl: Not })', c2rust-refactor/src/path_edit.rs:126:17
+/// ```
+#[should_panic]
+#[test]
+fn test_rename_unnamed_partial_eq() {
+    refactor("rename_unnamed")
+        .named("rename_unnamed_partial_eq.rs")
+        .test();
+}
+
 #[test]
 fn test_reorder_derives() {
     refactor("noop")
