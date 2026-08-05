@@ -1011,14 +1011,23 @@ impl<'hir> HirMap<'hir> {
 
         if let Some(node_span) = self.ast_span_maps.node_id_to_span_map.get(&id) {
             if let Some(context_key) = self.ast_span_maps.node_id_to_context_map.get(&id) {
-                if let Some(hir_id) = self
-                    .context_to_hir_map
-                    .get(&(*node_span, context_key.clone()))
-                {
-                    return Some(*hir_id);
+                let key = (*node_span, context_key.clone());
+                if let Some(hir_id) = self.context_to_hir_map.get(&key) {
+                    // Both maps keep only the last node inserted under each key, so several
+                    // same-span siblings (e.g. the signature types of a derived `fn eq`) can
+                    // collapse into one entry.  Only trust the lookup if `id` is the node the
+                    // AST side kept for this key; any other node shares the fingerprint with
+                    // the winner, and the HirId we found belongs to that winner, not to it.
+                    if self.ast_span_maps.context_to_node_id_map.get(&key) == Some(&id) {
+                        return Some(*hir_id);
+                    }
+                    return None;
                 }
             }
-            return self.span_to_hir_map.get(node_span).copied();
+            // Same winner check as above, for the span-only fallback map.
+            if self.ast_span_maps.span_to_node_id_map.get(node_span) == Some(&id) {
+                return self.span_to_hir_map.get(node_span).copied();
+            }
         }
 
         None
