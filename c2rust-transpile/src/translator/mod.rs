@@ -128,6 +128,10 @@ pub struct ExprContext {
     /// translation.
     is_const: bool,
 
+    /// In a context where a pattern is expected, such as for `match` arms.
+    /// This restricts what kinds of expressions can be emitted.
+    is_pattern: bool,
+
     /// Evaluating a C global/static variable.
     /// This is usually in a const context, but doesn't have to be, for example with initializers
     /// that are executed by the `c2rust_run_static_initializers` function.
@@ -178,6 +182,18 @@ impl ExprContext {
     pub fn not_const(self) -> Self {
         ExprContext {
             is_const: false,
+            ..self
+        }
+    }
+    pub fn pattern(self) -> Self {
+        ExprContext {
+            is_pattern: true,
+            ..self
+        }
+    }
+    pub fn not_pattern(self) -> Self {
+        ExprContext {
+            is_pattern: false,
             ..self
         }
     }
@@ -856,8 +872,9 @@ pub fn translate(
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
         used: true,
-        is_static: false,
         is_const: false,
+        is_pattern: false,
+        is_static: false,
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
@@ -3207,6 +3224,21 @@ impl<'c> Translation<'c> {
             }
         }
 
+        if ctx.is_pattern
+            && !matches!(
+                expr_kind,
+                CExprKind::Paren(..)
+                    | CExprKind::ConstantExpr(..)
+                    | CExprKind::Literal(..)
+                    | CExprKind::ImplicitCast(..)
+                    | CExprKind::ExplicitCast(..)
+            )
+        {
+            return Err(TranslationError::generic(
+                "expr kind is not supported in patterns",
+            ));
+        }
+
         use CExprKind::*;
         match *expr_kind {
             DesignatedInitExpr(..) => {
@@ -3272,7 +3304,11 @@ impl<'c> Translation<'c> {
 
             ConstantExpr(ty, child, value) => {
                 if let Some(constant) = value {
-                    self.convert_constant(constant).map(WithStmts::new_val)
+                    if ctx.is_pattern {
+                        self.convert_expr(ctx, child, override_ty)
+                    } else {
+                        self.convert_constant(constant).map(WithStmts::new_val)
+                    }
                 } else {
                     self.convert_expr(ctx, child, Some(override_ty.unwrap_or(ty)))
                 }
@@ -3284,6 +3320,7 @@ impl<'c> Translation<'c> {
 
             OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => Ok(WithStmts::new_val(self.mk_int_lit(
+                    ctx,
                     override_ty.unwrap_or(ty),
                     *val,
                     IntBase::Dec,
@@ -3855,7 +3892,7 @@ impl<'c> Translation<'c> {
         // But for some expression types, if we don't absolutely have to cast,
         // we would rather the expression is translated according to the type we're
         // expecting, and then we can skip the cast entirely.
-        if self.can_propagate_cast(expr, target_ty, is_explicit) {
+        if self.can_propagate_cast(ctx, expr, target_ty, is_explicit) {
             return self.convert_expr(ctx, expr, Some(target_ty));
         }
 
@@ -3922,6 +3959,7 @@ impl<'c> Translation<'c> {
 
     fn can_propagate_cast(
         &self,
+        ctx: ExprContext,
         expr_id: CExprId,
         target_type_id: CQualTypeId,
         is_explicit: bool,
@@ -3931,7 +3969,14 @@ impl<'c> Translation<'c> {
             return false;
         }
 
-        let expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
+        let mut expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
+
+        // In patterns, skip over `ConstantExpr`s.
+        if ctx.is_pattern {
+            if let &CExprKind::ConstantExpr(_, expr_id, _) = expr_kind {
+                expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
+            }
+        }
 
         if let &CExprKind::DeclRef(_, decl_id, _) = expr_kind {
             if let CDeclKind::EnumConstant { .. } = self.ast_context[decl_id].kind {
@@ -4010,6 +4055,12 @@ impl<'c> Translation<'c> {
 
         if source_ty_kind == target_ty_kind && kind != CastKind::LValueToRValue {
             return Ok(val);
+        }
+
+        if ctx.is_pattern && !matches!(kind, CastKind::ToVoid | CastKind::ConstCast) {
+            return Err(TranslationError::generic(
+                "cast kind is not supported in patterns",
+            ));
         }
 
         match kind {
