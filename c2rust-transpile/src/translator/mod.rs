@@ -3574,12 +3574,17 @@ impl<'c> Translation<'c> {
     }
 
     /// Converts `expr_id` as if it were wrapped in an `ImplicitCast` expression.
+    /// If `target_type_id` is `None`, just calls `convert_expr`.
     pub(crate) fn convert_expr_with_cast(
         &self,
         ctx: ExprContext,
-        target_type_id: CQualTypeId,
+        target_type_id: Option<CQualTypeId>,
         expr_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let Some(target_type_id) = target_type_id else {
+            return self.convert_expr(ctx, expr_id, None);
+        };
+
         let source_type_id = self.ast_context[expr_id].kind.get_qual_type().unwrap();
 
         let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
