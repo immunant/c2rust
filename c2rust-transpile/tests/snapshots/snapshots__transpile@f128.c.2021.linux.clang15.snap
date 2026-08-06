@@ -24,12 +24,12 @@ pub unsafe extern "C" fn long_double_test() {
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
     let mut is_inf: bool = if huge.is_infinite() {
         if huge.is_sign_positive() {
-            1
+            1 as ::core::ffi::c_int
         } else {
-            -1
+            -1 as ::core::ffi::c_int
         }
     } else {
-        0
+        0 as ::core::ffi::c_int
     } != 0;
     if one != ::f128::f128::ZERO {
         let mut dummy: ::core::ffi::c_int = 0;
@@ -48,12 +48,12 @@ pub unsafe extern "C" fn float128_test() {
     let mut ld_from_float128: ::f128::f128 = one;
     let mut is_inf: bool = if huge.is_infinite() {
         if huge.is_sign_positive() {
-            1
+            1 as ::core::ffi::c_int
         } else {
-            -1
+            -1 as ::core::ffi::c_int
         }
     } else {
-        0
+        0 as ::core::ffi::c_int
     } != 0;
     if one != ::f128::f128::ZERO {
         let mut dummy: ::core::ffi::c_int = 0;

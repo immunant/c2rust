@@ -393,7 +393,7 @@ impl<'c> Translation<'c> {
 
             // Builtin function call
             CExprKind::ImplicitCast(_, fexp, CastKind::BuiltinFnToFnPtr, _, _) => {
-                return self.convert_builtin(ctx, fexp, args);
+                return self.convert_builtin(ctx, override_ty, call_expr_ty, fexp, args);
             }
 
             // Function pointer call
