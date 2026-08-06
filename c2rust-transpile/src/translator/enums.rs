@@ -1,6 +1,6 @@
 use c2rust_ast_builder::mk;
 use proc_macro2::Span;
-use syn::Expr;
+use syn::{Expr, Pat};
 
 use crate::{
     diagnostics::TranslationResult,
@@ -198,6 +198,17 @@ impl<'c> Translation<'c> {
         self.add_import(enum_id, &enum_name);
 
         mk().call_expr(mk().ident_expr(enum_name), vec![value])
+    }
+
+    pub(crate) fn enum_constructor_pat(&self, enum_id: CEnumId, value: Pat) -> Pat {
+        let enum_name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(enum_id)
+            .unwrap();
+        self.add_import(enum_id, &enum_name);
+
+        mk().tuple_struct_pat(enum_name.as_str(), None, vec![value])
     }
 
     pub(crate) fn enum_constant_matches_type(

@@ -295,7 +295,7 @@ pub struct Translation<'c> {
     extern_crates: RefCell<CrateSet>,
 
     // Translation state and utilities
-    type_converter: RefCell<TypeConverter>,
+    pub(crate) type_converter: RefCell<TypeConverter>,
     renamer: Rc<RefCell<Renamer<CDeclId>>>,
     zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
