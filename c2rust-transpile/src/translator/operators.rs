@@ -87,30 +87,41 @@ impl<'c> Translation<'c> {
 
                 // If this operation will (in Rust) take args of the same type, then propagate our
                 // expected type down to the translation of our argument expressions.
-                let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
-                let expr_ty_kind = &self.ast_context.index(expr_type_id.ctype).kind;
+                let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+                let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
+                let expr_type_kind = &self.ast_context.index(expr_type_id.ctype).kind;
+
                 // Addition and subtraction can accept one pointer argument for .offset(), in which
                 // case we don't want to homogenize arg types.
-                if !lhs_resolved_ty.kind.is_pointer()
-                    && !rhs_resolved_ty.kind.is_pointer()
-                    && !expr_ty_kind.is_pointer()
+                if !lhs_type_kind.is_pointer()
+                    && !rhs_type_kind.is_pointer()
+                    && !expr_type_kind.is_pointer()
                 {
                     if op.all_types_same() {
                         // Ops like division and bitxor accept inputs of their expected result type.
                         lhs_type_id = expr_type_id;
                         rhs_type_id = expr_type_id;
-                    } else if op.input_types_same() && lhs_resolved_ty.kind != rhs_resolved_ty.kind
-                    {
+
+                        // For complex arithmetic, complex and real values can be mixed.
+                        if let &CTypeKind::Complex(result_scalar_type_id) = expr_type_kind {
+                            if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
+                                lhs_type_id.ctype = result_scalar_type_id;
+                            }
+
+                            if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                                rhs_type_id.ctype = result_scalar_type_id;
+                            }
+                        }
+                    } else if op.input_types_same() && lhs_type_kind != rhs_type_kind {
                         // Ops like comparisons require argument types to match, but the result type
                         // doesn't inform us what type to choose. Select a synthetic definition of a
                         // portable rust type (e.g. u64 or usize) if either arg is one.
                         trace!(
                             "Binary op arg types differ: {:?} vs {:?}",
-                            lhs_resolved_ty.kind,
-                            rhs_resolved_ty.kind
+                            lhs_type_kind,
+                            rhs_type_kind
                         );
-                        let ty = if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                        let ty = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
                             lhs_type_id
                         } else {
                             rhs_type_id
@@ -225,15 +236,15 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
-        // First, translate the rhs. Then, if it must match the lhs but doesn't, add a cast.
+        // First, translate the rhs.
         let mut rhs_translation = self.convert_expr(ctx.used(), rhs, Some(rhs_type_id))?;
+        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+        let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
+
         let lhs_rhs_types_must_match = {
-            let lhs_resolved_ty = &self.ast_context.resolve_type(lhs_type_id.ctype);
-            let rhs_resolved_ty = &self.ast_context.resolve_type(rhs_type_id.ctype);
             // Addition and subtraction can accept one pointer argument for .offset(), in which
             // case we don't want to homogenize arg types.
-            let neither_ptr =
-                !lhs_resolved_ty.kind.is_pointer() && !rhs_resolved_ty.kind.is_pointer();
+            let neither_ptr = !lhs_type_kind.is_pointer() && !rhs_type_kind.is_pointer();
 
             op.underlying_assignment().map_or(true, |op| {
                 if op.is_pointer_arithmetic() {
@@ -244,11 +255,19 @@ impl<'c> Translation<'c> {
             })
         };
         if lhs_rhs_types_must_match {
+            // If the rhs must match the lhs but doesn't, add a cast.
             // For compound assignment, use the compute type; for regular assignment, use lhs type
-            let effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
+            let mut effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
+
+            // For complex arithmetic, complex and real values can be mixed.
+            if let &CTypeKind::Complex(lhs_scalar_type_id) = lhs_type_kind {
+                if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                    effective_lhs_ty.ctype = lhs_scalar_type_id;
+                }
+            }
+
             if effective_lhs_ty.ctype != rhs_type_id.ctype {
-                let new_rhs_ty =
-                    self.convert_type(compute_lhs_type_id.unwrap_or(lhs_type_id).ctype)?;
+                let new_rhs_ty = self.convert_type(effective_lhs_ty.ctype)?;
                 rhs_translation = rhs_translation.map(|val| mk().cast_expr(val, new_rhs_ty));
             }
         }
