@@ -585,6 +585,16 @@ fn test_reorganize_non_ascii_ident() {
         .test();
 }
 
+/// `impl` blocks in header modules whose self type is defined outside the
+/// headers, or which contain a non-`const` item, must be reattached to
+/// their self type's destination module rather than dropped.
+#[test]
+fn test_reorganize_orphaned_impls() {
+    refactor("reorganize_definitions")
+        .named("reorganize_orphaned_impls.rs")
+        .test();
+}
+
 /// A definition that a header declaration is matched to has to be nameable
 /// from the modules whose paths are rewritten to point at it, even when it
 /// is only "exported" in the sense of carrying `#[no_mangle]`.
