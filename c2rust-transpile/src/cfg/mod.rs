@@ -448,7 +448,6 @@ impl GenTerminator<StructureLabel<StmtOrDecl>> {
 pub struct SwitchCases {
     cases: Vec<(Pat, Label)>,
     default: Option<Label>,
-    #[allow(unused)]
     expected_type_id: Option<CQualTypeId>,
 }
 
@@ -1936,8 +1935,19 @@ impl CfgBuilder {
                 self.add_wip_block(wip, Jump(this_label.clone()));
 
                 // Case
+                let switch_case = self.switch_expr_cases.last_mut().ok_or_else(|| {
+                    format_err!(
+                        "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
+                        stmt_id,
+                    )
+                })?;
+
                 let pat = translator
-                    .convert_expr(ctx.const_().pattern().used(), case_expr, None)
+                    .convert_expr_with_optional_cast(
+                        ctx.const_().pattern().used(),
+                        switch_case.expected_type_id,
+                        case_expr,
+                    )
                     .map_err(|err| ("convert_expr", err.to_string()))
                     .and_then(|val| {
                         val.to_pure_expr()
@@ -1954,22 +1964,25 @@ impl CfgBuilder {
                             err
                         );
 
-                        match cie {
+                        let mut pat = match cie {
                             ConstIntExpr::U(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
                             ConstIntExpr::I(n) => mk().lit_pat(mk().int_unsuffixed_lit(n)),
+                        };
+
+                        if let Some(expected_type_id) = switch_case.expected_type_id {
+                            if let CTypeKind::Enum(enum_id) = translator
+                                .ast_context
+                                .resolve_type(expected_type_id.ctype)
+                                .kind
+                            {
+                                pat = translator.enum_constructor_pat(enum_id, pat);
+                            }
                         }
+
+                        pat
                     });
 
-                self.switch_expr_cases
-                    .last_mut()
-                    .ok_or_else(|| {
-                        format_err!(
-                            "Cannot find the 'switch' wrapping this ({:?}) 'case' statement",
-                            stmt_id,
-                        )
-                    })?
-                    .cases
-                    .push((pat, this_label.clone()));
+                switch_case.cases.push((pat, this_label.clone()));
 
                 // Sub stmt
                 let sub_stmt_next = self.convert_stmt_help(
@@ -2038,7 +2051,7 @@ impl CfgBuilder {
                 }
 
                 let (stmts, val) = translator
-                    .convert_expr(ctx.used(), scrutinee, None)?
+                    .convert_expr_with_optional_cast(ctx.used(), expected_type_id, scrutinee)?
                     .discard_unsafe();
                 wip.extend(stmts);
 

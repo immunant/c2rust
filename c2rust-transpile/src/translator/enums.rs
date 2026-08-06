@@ -1,6 +1,6 @@
 use c2rust_ast_builder::mk;
 use proc_macro2::Span;
-use syn::Expr;
+use syn::{Expr, Pat};
 
 use crate::c_ast::iterators::SomeId;
 use crate::{
@@ -236,6 +236,17 @@ impl<'c> Translation<'c> {
         };
 
         mk().call_expr(func, vec![value])
+    }
+
+    pub(crate) fn enum_constructor_pat(&self, enum_id: CEnumId, value: Pat) -> Pat {
+        let enum_name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(enum_id)
+            .unwrap();
+        self.add_import(enum_id, &enum_name);
+
+        mk().tuple_struct_pat(enum_name.as_str(), None, vec![value])
     }
 
     pub(crate) fn enum_constant_matches_type(

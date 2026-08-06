@@ -295,7 +295,7 @@ pub struct Translation<'c> {
     extern_crates: RefCell<CrateSet>,
 
     // Translation state and utilities
-    type_converter: RefCell<TypeConverter>,
+    pub(crate) type_converter: RefCell<TypeConverter>,
     renamer: Rc<RefCell<Renamer<CDeclId>>>,
     zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
@@ -3619,6 +3619,19 @@ impl<'c> Translation<'c> {
         });
 
         self.convert_cast(ctx, None, target_type_id, expr_id, kind, None, false)
+    }
+
+    pub(crate) fn convert_expr_with_optional_cast(
+        &self,
+        ctx: ExprContext,
+        target_type_id: Option<CQualTypeId>,
+        expr_id: CExprId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if let Some(target_type_id) = target_type_id {
+            self.convert_expr_with_cast(ctx, target_type_id, expr_id)
+        } else {
+            self.convert_expr(ctx, expr_id, None)
+        }
     }
 
     fn convert_decl_ref(
