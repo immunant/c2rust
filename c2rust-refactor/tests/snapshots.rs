@@ -470,6 +470,20 @@ fn test_reorganize_bitfield_ty() {
         .test();
 }
 
+/// Foreign items are grouped into `extern` blocks by header and ABI, and the
+/// groups are emitted in the order they are first encountered rather than in
+/// `HashMap` iteration order, so the output is the same from run to run. The
+/// `BEGIN`/`END` header comments are assigned over the final item sequence, so
+/// they describe the layout that is actually emitted: `aa_h` is entered twice
+/// here, once for its `extern` blocks and again for its struct, because the
+/// blocks are hoisted ahead of every regular item.
+#[test]
+fn test_reorganize_extern_block_order() {
+    refactor("reorganize_definitions")
+        .named("reorganize_extern_block_order.rs")
+        .test();
+}
+
 /// Two foreign declarations of the same function that differ in the number
 /// of parameters are not interchangeable and must not be merged.
 #[test]
