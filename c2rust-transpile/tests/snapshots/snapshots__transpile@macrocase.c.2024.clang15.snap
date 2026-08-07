@@ -21,8 +21,8 @@ pub const ZSTD_d_format: ::core::ffi::c_uint = 1000 as ::core::ffi::c_uint;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ZSTD_dParam_getBounds(mut dParam: ZSTD_dParameter) -> ::core::ffi::c_int {
     let mut bounds: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
-    match ZSTD_dParameter(dParam.0) {
-        ZSTD_dParameter(100) => {
+    match dParam {
+        ZSTD_d_windowLogMax => {
             bounds = 1 as ::core::ffi::c_int;
             return bounds;
         }

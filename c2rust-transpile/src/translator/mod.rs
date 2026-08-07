@@ -3990,27 +3990,53 @@ impl<'c> Translation<'c> {
             }
         }
 
-        if let &CExprKind::DeclRef(_, decl_id, _) = expr_kind {
-            if let CDeclKind::EnumConstant { .. } = self.ast_context[decl_id].kind {
-                // In C, `EnumConstant`s have some integral type, _not_ the enum type.
-                // However, if we then immediately have a cast to convert this variable back into
-                // the enum type, we would like to produce Rust with _no_ casts.
-                if self.enum_constant_matches_type(target_type_id.ctype, decl_id) {
-                    return true;
-                }
+        match *expr_kind {
+            // The inner expression is also an implicit cast. See if we can combine the casts.
+            CExprKind::ImplicitCast(source_type_id, _, cast_kind, _, _) => {
+                let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
+                let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
 
-                let source_enum_id = self.ast_context.parents[&decl_id];
-                let source_integral_type_id = self.enum_integral_type(source_enum_id);
-                let target_type_resolved_id = self
-                    .ast_context
-                    .resolve_type_id_no_typedef(target_type_id.ctype);
+                if let CTypeKind::Enum(target_enum_id) = *target_type_kind {
+                    let target_integral_type_id = self.enum_integral_type(target_enum_id);
+                    let target_integral_type_kind = &self
+                        .ast_context
+                        .resolve_type(target_integral_type_id.ctype)
+                        .kind;
 
-                // Likewise, if we are casting to the inner integral type of the enum, then
-                // translate the enum constant directly as that.
-                if target_type_resolved_id == source_integral_type_id.ctype {
-                    return true;
+                    // We are casting to an enum type, from its underlying integral type.
+                    // Skip the cast to the integral type and cast to the enum type directly.
+                    if cast_kind == CastKind::IntegralCast
+                        && source_type_kind == target_integral_type_kind
+                    {
+                        return true;
+                    }
                 }
             }
+
+            CExprKind::DeclRef(_, decl_id, _) => {
+                if let CDeclKind::EnumConstant { .. } = self.ast_context[decl_id].kind {
+                    // In C, `EnumConstant`s have some integral type, _not_ the enum type.
+                    // However, if we then immediately have a cast to convert this variable back into
+                    // the enum type, we would like to produce Rust with _no_ casts.
+                    if self.enum_constant_matches_type(target_type_id.ctype, decl_id) {
+                        return true;
+                    }
+
+                    let source_enum_id = self.ast_context.parents[&decl_id];
+                    let source_integral_type_id = self.enum_integral_type(source_enum_id);
+                    let target_type_resolved_id = self
+                        .ast_context
+                        .resolve_type_id_no_typedef(target_type_id.ctype);
+
+                    // Likewise, if we are casting to the inner integral type of the enum, then
+                    // translate the enum constant directly as that.
+                    if target_type_resolved_id == source_integral_type_id.ctype {
+                        return true;
+                    }
+                }
+            }
+
+            _ => {}
         }
 
         let mut literal_expr_kind = expr_kind;
