@@ -247,7 +247,9 @@ impl<'c> Translation<'c> {
                 if let Some(cast_kind) = cast_kind {
                     val = match cast_kind {
                         VaArgCastKind::Cast(ty) => mk().cast_expr(val, ty),
-                        VaArgCastKind::Enum(enum_id) => self.enum_constructor_expr(enum_id, val),
+                        VaArgCastKind::Enum(enum_id) => {
+                            self.enum_constructor_expr(enum_id, val, false)
+                        }
                         VaArgCastKind::Transmute => {
                             transmute_expr(mk().infer_ty(), mk().infer_ty(), val)
                         }

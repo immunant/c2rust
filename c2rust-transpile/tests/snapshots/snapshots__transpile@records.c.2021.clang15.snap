@@ -17,8 +17,10 @@ pub struct AnonEnumInStruct {}
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed(pub ::core::ffi::c_uint);
-pub const VALUE2: C2Rust_Unnamed = C2Rust_Unnamed(1);
-pub const VALUE1: C2Rust_Unnamed = C2Rust_Unnamed(0);
+impl C2Rust_Unnamed {
+    pub const VALUE1: Self = Self(0);
+    pub const VALUE2: Self = Self(1);
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct AnonStructInStruct {
@@ -45,8 +47,10 @@ pub union AnonEnumInUnion {
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct C2Rust_Unnamed_1(pub ::core::ffi::c_uint);
-pub const VALUE4: C2Rust_Unnamed_1 = C2Rust_Unnamed_1(1);
-pub const VALUE3: C2Rust_Unnamed_1 = C2Rust_Unnamed_1(0);
+impl C2Rust_Unnamed_1 {
+    pub const VALUE3: Self = Self(0);
+    pub const VALUE4: Self = Self(1);
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union AnonStructInUnion {
@@ -70,7 +74,7 @@ pub struct InsideUnion {
 }
 #[no_mangle]
 pub unsafe extern "C" fn struct_declaration() {
-    let mut value: ::core::ffi::c_int = VALUE2.0 as ::core::ffi::c_int;
+    let mut value: ::core::ffi::c_int = C2Rust_Unnamed::VALUE2.0 as ::core::ffi::c_int;
     let mut a: AnonEnumInStruct = AnonEnumInStruct {};
     let mut b: AnonStructInStruct = AnonStructInStruct {
         c2rust_unnamed: C2Rust_Unnamed_0 { some_number: 0 },
@@ -81,7 +85,7 @@ pub unsafe extern "C" fn struct_declaration() {
 }
 #[no_mangle]
 pub unsafe extern "C" fn union_declaration() {
-    let mut value: ::core::ffi::c_int = VALUE4.0 as ::core::ffi::c_int;
+    let mut value: ::core::ffi::c_int = C2Rust_Unnamed_1::VALUE4.0 as ::core::ffi::c_int;
     let mut a: AnonEnumInUnion = AnonEnumInUnion { a: 0 };
     let mut b: AnonStructInUnion = AnonStructInUnion {
         c2rust_unnamed: C2Rust_Unnamed_2 { some_number: 0 },
