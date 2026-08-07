@@ -298,7 +298,7 @@ impl<'c> Translation<'c> {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
                 let offset_rs = self.convert_expr_with_cast(
                     ctx.used(),
-                    CQualTypeId::new(target_type_id),
+                    Some(CQualTypeId::new(target_type_id)),
                     offset_id,
                 )?;
                 array_rs.zip(offset_rs).and_then(|(array_rs, offset_rs)| {
@@ -308,7 +308,7 @@ impl<'c> Translation<'c> {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
                 let offset_rs = self.convert_expr_with_cast(
                     ctx.used(),
-                    CQualTypeId::new(target_type_id),
+                    Some(CQualTypeId::new(target_type_id)),
                     offset_id,
                 )?;
                 array_rs
@@ -335,7 +335,7 @@ impl<'c> Translation<'c> {
             let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
             let offset_rs = self.convert_expr_with_cast(
                 ctx.used(),
-                CQualTypeId::new(target_type_id),
+                Some(CQualTypeId::new(target_type_id)),
                 offset_id,
             )?;
 

@@ -188,7 +188,7 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to expand it yet.
             None => {
-                self.convert_decl(ctx, *macro_id)?;
+                self.convert_decl(ctx.not_pattern(), *macro_id)?;
                 if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
                     expansion.ty
                 } else {
@@ -204,7 +204,7 @@ impl<'c> Translation<'c> {
 
         self.add_import(*macro_id, &rust_name);
 
-        let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
+        let mut val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
         let expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
         // TODO We'd like to get rid of this cast eventually (see #1321).
@@ -214,14 +214,24 @@ impl<'c> Translation<'c> {
         // so we need to cast it to the `override_ty` here.
         let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
-            self.make_cast(ctx, CQualTypeId::new(macro_ty), expr_ty, val)
-                .map(Some)
-        } else {
-            Ok(Some(val))
+            match self.make_cast(ctx, CQualTypeId::new(macro_ty), expr_ty, val) {
+                Ok(new_val) => val = new_val,
+                Err(err) => {
+                    info!(
+                        "Could not convert cast of macro {} for {:?}: {}",
+                        self.renamer.borrow_mut().get(macro_id).unwrap(),
+                        expr_id,
+                        err
+                    );
+                    return Ok(None);
+                }
+            }
         }
 
         // TODO: May need to handle volatile reads here.
         // See `DeclRef` below.
+
+        Ok(Some(val))
     }
 
     /// Convert the expansion of a function-like macro.

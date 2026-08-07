@@ -1,10 +1,10 @@
 use c2rust_ast_builder::mk;
 use proc_macro2::Span;
-use syn::Expr;
+use syn::{Expr, Pat};
 
 use crate::{
     diagnostics::TranslationResult,
-    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation},
+    translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation, TranslationError},
     with_stmts::WithStmts,
     CDeclKind, CEnumConstantId, CEnumId, CQualTypeId, CTypeId, CTypeKind, ConstIntExpr,
 };
@@ -25,7 +25,7 @@ impl<'c> Translation<'c> {
         let field = mk().pub_().enum_field(integral_type_rs);
         let item = mk()
             .span(span)
-            .call_attr("derive", vec!["Clone", "Copy"])
+            .call_attr("derive", vec!["Clone", "Copy", "PartialEq", "Eq"])
             .call_attr("repr", vec!["transparent"])
             .pub_()
             .struct_item(enum_name, vec![field], true);
@@ -93,6 +93,12 @@ impl<'c> Translation<'c> {
         target_cty: CQualTypeId,
         mut val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if ctx.is_pattern {
+            return Err(TranslationError::generic(
+                "cast from enum is not supported in patterns",
+            ));
+        }
+
         // First extract the enum's inner type...
         val = self.integer_from_enum(val);
 
@@ -121,6 +127,12 @@ impl<'c> Translation<'c> {
             // Casting to ourselves, the audacity!
             if source_enum_id == enum_id {
                 return Ok(WithStmts::new_val(val));
+            }
+
+            if ctx.is_pattern {
+                return Err(TranslationError::generic(
+                    "cast from enum is not supported in patterns",
+                ));
             }
 
             // Enum-to-enum casts need to be translated via the inner value as an intermediate.
@@ -186,6 +198,17 @@ impl<'c> Translation<'c> {
         self.add_import(enum_id, &enum_name);
 
         mk().call_expr(mk().ident_expr(enum_name), vec![value])
+    }
+
+    pub(crate) fn enum_constructor_pat(&self, enum_id: CEnumId, value: Pat) -> Pat {
+        let enum_name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(enum_id)
+            .unwrap();
+        self.add_import(enum_id, &enum_name);
+
+        mk().tuple_struct_pat(enum_name.as_str(), None, vec![value])
     }
 
     pub(crate) fn enum_constant_matches_type(
