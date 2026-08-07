@@ -899,9 +899,7 @@ pub fn translate(
                 // Tuple structs are in both namespaces.
                 Enum { .. } => Namespaces::types() | Namespaces::values(),
                 Struct { .. } | Union { .. } | Typedef { .. } => Namespaces::types(),
-                Function { .. } | EnumConstant { .. } | Variable { .. } | MacroObject { .. } => {
-                    Namespaces::values()
-                }
+                Function { .. } | Variable { .. } | MacroObject { .. } => Namespaces::values(),
                 _ => Namespaces::none(),
             }
         }
@@ -997,7 +995,6 @@ pub fn translate(
                 let needs_export = match decl.kind {
                     Struct { .. } => true,
                     Enum { .. } => true,
-                    EnumConstant { .. } => true,
                     Union { .. } => true,
                     Typedef { .. } => {
                         // Only check the key as opposed to `contains`
@@ -3605,6 +3602,7 @@ impl<'c> Translation<'c> {
         }
 
         let varname = decl.get_name().expect("expected variable name").to_owned();
+
         let rustname = self
             .renamer
             .borrow_mut()
