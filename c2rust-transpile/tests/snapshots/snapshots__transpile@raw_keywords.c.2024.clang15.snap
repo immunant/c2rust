@@ -16,8 +16,10 @@ pub type r#type = ::core::ffi::c_int;
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct r#as(pub ::core::ffi::c_uint);
-pub const r#await: r#as = r#as(1);
-pub const r#async: r#as = r#as(0);
+impl r#as {
+    pub const r#async: Self = Self(0);
+    pub const r#await: Self = Self(1);
+}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct r#dyn {
@@ -36,7 +38,7 @@ pub unsafe extern "C" fn r#pub(mut r#ref: r#type) {}
 #[unsafe(export_name = "impl")]
 pub unsafe extern "C" fn r#impl(mut r#in: r#type) {
     let mut r#trait: r#type = super_0;
-    let mut r#let: r#as = r#async;
+    let mut r#let: r#as = r#as::r#async;
     let mut r#mod: r#dyn = r#dyn { r#false: 0 };
     r#mod.r#false = 0 as ::core::ffi::c_int as r#type;
     let mut r#mut: r#fn = r#fn { r#where: 0 };

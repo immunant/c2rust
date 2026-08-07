@@ -899,9 +899,7 @@ pub fn translate(
                 // Tuple structs are in both namespaces.
                 Enum { .. } => Namespaces::types() | Namespaces::values(),
                 Struct { .. } | Union { .. } | Typedef { .. } => Namespaces::types(),
-                Function { .. } | EnumConstant { .. } | Variable { .. } | MacroObject { .. } => {
-                    Namespaces::values()
-                }
+                Function { .. } | Variable { .. } | MacroObject { .. } => Namespaces::values(),
                 _ => Namespaces::none(),
             }
         }
@@ -997,7 +995,6 @@ pub fn translate(
                 let needs_export = match decl.kind {
                     Struct { .. } => true,
                     Enum { .. } => true,
-                    EnumConstant { .. } => true,
                     Union { .. } => true,
                     Typedef { .. } => {
                         // Only check the key as opposed to `contains`
@@ -2090,11 +2087,13 @@ impl<'c> Translation<'c> {
             )),
 
             Enum {
+                ref variants,
                 integral_type: Some(integral_type),
                 ..
-            } => self.convert_enum(decl_id, span, integral_type),
+            } => self.convert_enum(decl_id, span, integral_type, variants),
 
-            EnumConstant { value, .. } => self.convert_enum_constant(decl_id, span, value),
+            // EnumConstant is translated as part of Enum.
+            EnumConstant { .. } => Ok(ConvertedDecl::NoItem),
 
             // We can allow non top level function declarations (i.e. extern
             // declarations) without any problem. Clang doesn't support nested
@@ -3603,6 +3602,7 @@ impl<'c> Translation<'c> {
         }
 
         let varname = decl.get_name().expect("expected variable name").to_owned();
+
         let rustname = self
             .renamer
             .borrow_mut()
