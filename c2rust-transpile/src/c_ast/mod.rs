@@ -103,11 +103,11 @@ pub struct TypedAstContext {
     /// Names of the labels defined in the C source code.
     pub label_names: IndexMap<CLabelId, Rc<str>>,
 
-    /// map expressions to the stack of macros they were expanded from
-    pub macro_invocations: IndexMap<CExprId, Vec<CDeclId>>,
+    /// Maps expressions to the stack of macro invocations that expanded to them.
+    pub(crate) macro_invocations: IndexMap<CExprId, Vec<Rc<MacroInvocationInfo>>>,
 
-    /// map macro decls to the expressions they expand to
-    pub macro_expansions: IndexMap<CDeclId, Vec<CExprId>>,
+    /// Maps macro decls to the invocation sites that use them.
+    pub(crate) macro_expansions: IndexMap<CDeclId, Vec<Rc<MacroInvocationInfo>>>,
 
     /// map expressions to the text of the macro invocation they expanded from,
     /// if any
@@ -121,6 +121,21 @@ pub struct TypedAstContext {
 
     pub va_list_kind: BuiltinVaListKind,
     pub target: String,
+}
+
+/// Information about a single macro invocation.
+#[derive(Debug)]
+pub(crate) struct MacroInvocationInfo {
+    /// The expression that the invocation expanded into.
+    pub(crate) expr_id: CExprId,
+
+    /// The macro that was called.
+    pub(crate) macro_id: CDeclId,
+
+    /// If `macro_id` is a functional macro, the value of the known named arguments that were
+    /// passed to the macro. This is not guaranteed to hold every argument the macro needs, only
+    /// those that were found and exported by the C++ exporter.
+    pub(crate) arguments: HashMap<String, CExprId>,
 }
 
 /// Comments associated with a typed AST context
@@ -1251,9 +1266,9 @@ impl TypedAstContext {
                     Expr(expr_id) => {
                         let expr = self.index_unwrap_parens(expr_id);
                         if let Some(macs) = self.macro_invocations.get(&expr_id) {
-                            for mac_id in macs {
-                                if wanted.insert(*mac_id) {
-                                    to_walk.push(*mac_id);
+                            for info in macs {
+                                if wanted.insert(info.macro_id) {
+                                    to_walk.push(info.macro_id);
                                 }
                             }
                         }
