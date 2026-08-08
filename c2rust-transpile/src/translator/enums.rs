@@ -177,7 +177,7 @@ impl<'c> Translation<'c> {
         mk().ident_expr(name)
     }
 
-    fn enum_constructor_expr(&self, enum_id: CEnumId, value: Box<Expr>) -> Box<Expr> {
+    pub(crate) fn enum_constructor_expr(&self, enum_id: CEnumId, value: Box<Expr>) -> Box<Expr> {
         let enum_name = self
             .type_converter
             .borrow()
