@@ -25,29 +25,26 @@ impl<'c> Translation<'c> {
             self.ast_context[decl_id]
         );
 
-        self.recreate_const_macro_from_expansions(
-            ctx.const_().set_expanding_macro(decl_id),
-            &self.ast_context.macro_expansions[&decl_id],
-        )
-        .and_then(|(replacement, converted)| {
-            trace!("  to {:?}", replacement);
+        self.recreate_const_macro_from_expansions(ctx, decl_id)
+            .and_then(|(replacement, converted)| {
+                trace!("  to {:?}", replacement);
 
-            let ty = self.convert_type(converted.ty)?;
-            self.converted_macros
-                .borrow_mut()
-                .insert(decl_id, Some(Rc::new(converted)));
+                let ty = self.convert_type(converted.ty)?;
+                self.converted_macros
+                    .borrow_mut()
+                    .insert(decl_id, Some(Rc::new(converted)));
 
-            Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
-                name,
-                ty,
-                replacement,
-            )))
-        })
-        .unwrap_or_else(|e| {
-            self.converted_macros.borrow_mut().insert(decl_id, None);
-            info!("Could not expand macro {}: {}", name, e);
-            ConvertedDecl::NoItem
-        })
+                Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
+                    name,
+                    ty,
+                    replacement,
+                )))
+            })
+            .unwrap_or_else(|e| {
+                self.converted_macros.borrow_mut().insert(decl_id, None);
+                info!("Could not expand macro {}: {}", name, e);
+                ConvertedDecl::NoItem
+            })
     }
 
     /// Given all of the expansions of a const macro,
@@ -64,14 +61,15 @@ impl<'c> Translation<'c> {
     fn recreate_const_macro_from_expansions(
         &self,
         ctx: ExprContext,
-        expansions: &[CExprId],
+        macro_id: CDeclId,
     ) -> TranslationResult<(Box<Expr>, ConvertedMacro)> {
         struct ConvertedMacroExpr {
             val: WithStmts<Box<Expr>>,
             ty: CTypeId,
         }
 
-        let canonical = expansions
+        let ctx = ctx.const_().set_expanding_macro(macro_id);
+        let canonical = self.ast_context.macro_expansions[&macro_id]
             .iter()
             .try_fold::<Option<ConvertedMacroExpr>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
