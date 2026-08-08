@@ -24,10 +24,7 @@ impl<'c> Translation<'c> {
             self.ast_context[decl_id]
         );
 
-        let maybe_replacement = self.recreate_const_macro_from_expansions(
-            ctx.const_().set_expanding_macro(decl_id),
-            &self.ast_context.macro_expansions[&decl_id],
-        );
+        let maybe_replacement = self.recreate_const_macro_from_expansions(ctx, decl_id);
 
         match maybe_replacement {
             Ok((replacement, ty)) => {
@@ -67,9 +64,10 @@ impl<'c> Translation<'c> {
     fn recreate_const_macro_from_expansions(
         &self,
         ctx: ExprContext,
-        expansions: &[CExprId],
+        macro_id: CDeclId,
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        let (val, ty) = expansions
+        let ctx = ctx.const_().set_expanding_macro(macro_id);
+        let (val, ty) = self.ast_context.macro_expansions[&macro_id]
             .iter()
             .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
