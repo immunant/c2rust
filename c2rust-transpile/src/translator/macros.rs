@@ -186,10 +186,10 @@ impl<'c> Translation<'c> {
 
         trace!("  found macro expansion: {macro_id:?}");
         // Ensure that we've converted this macro and that it has a valid definition.
-        let converted = self.converted_macros.borrow().get(macro_id).cloned();
-        let macro_ty = match converted {
+        let maybe_converted = self.converted_macros.borrow().get(macro_id).cloned();
+        let converted = match maybe_converted {
             // Macro was converted previously.
-            Some(Some(converted)) => converted.ty,
+            Some(Some(converted)) => converted,
 
             // Macro failed to convert previously.
             Some(None) => return Ok(None),
@@ -197,8 +197,9 @@ impl<'c> Translation<'c> {
             // We haven't tried to convert it yet.
             None => {
                 self.convert_decl(ctx, *macro_id)?;
-                if let Some(Some(converted)) = self.converted_macros.borrow().get(macro_id) {
-                    converted.ty
+                let maybe_converted = self.converted_macros.borrow().get(macro_id).cloned();
+                if let Some(Some(converted)) = maybe_converted {
+                    converted
                 } else {
                     return Ok(None);
                 }
@@ -222,7 +223,7 @@ impl<'c> Translation<'c> {
         // so we need to cast it to the `override_ty` here.
         let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
-            self.make_cast(ctx, CQualTypeId::new(macro_ty), expr_ty, val)
+            self.make_cast(ctx, CQualTypeId::new(converted.ty), expr_ty, val)
                 .map(Some)
         } else {
             Ok(Some(val))
