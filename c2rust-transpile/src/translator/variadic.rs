@@ -183,42 +183,52 @@ impl<'c> Translation<'c> {
 
         enum VaArgCastKind {
             Cast(Box<Type>),
+            Enum(CDeclId),
             Transmute,
         }
 
         let mut arg_ty: Option<Box<Type>> = None;
         let mut cast_kind = None;
 
-        let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
-        if let CTypeKind::Pointer(p) = resolved_ctype.kind {
-            // ty is a pointer type
-            let resolved_ctype = self.ast_context.resolve_type(p.ctype);
-
-            // The current implementation of the C-variadics feature doesn't allow us to
-            // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
-            // and construct the corresponding unsafe type `* mut fn(...) -> _`.
-            if let CTypeKind::Function(ret, ref params, is_variadic, is_noreturn, _) =
-                resolved_ctype.kind
-            {
-                // ty is a function pointer type -> build Rust unsafe function pointer type
-                let opt_ret = if is_noreturn { None } else { Some(ret) };
-
-                let fn_ty = self.type_converter.borrow_mut().convert_function(
-                    &self.ast_context,
-                    opt_ret,
-                    params,
-                    is_variadic,
-                )?;
-
-                cast_kind = Some(VaArgCastKind::Transmute);
-                arg_ty = Some(mk().set_mutbl(p.mutability()).ptr_ty(fn_ty));
-            } else if self.ast_context.is_forward_declared_type(ty.ctype) {
-                cast_kind = Some(VaArgCastKind::Cast(self.convert_type(ty.ctype).unwrap()));
-                arg_ty = Some(
-                    mk().mutbl()
-                        .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"])),
-                );
+        match self.ast_context.resolve_type(ty.ctype).kind {
+            CTypeKind::Enum(enum_id) => {
+                let integral_type_id = self.enum_integral_type(enum_id);
+                cast_kind = Some(VaArgCastKind::Enum(enum_id));
+                arg_ty = Some(self.convert_type(integral_type_id.ctype).unwrap());
             }
+
+            CTypeKind::Pointer(p) => {
+                // ty is a pointer type
+                let resolved_ctype = self.ast_context.resolve_type(p.ctype);
+
+                // The current implementation of the C-variadics feature doesn't allow us to
+                // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
+                // and construct the corresponding unsafe type `* mut fn(...) -> _`.
+                if let CTypeKind::Function(ret, ref params, is_variadic, is_noreturn, _) =
+                    resolved_ctype.kind
+                {
+                    // ty is a function pointer type -> build Rust unsafe function pointer type
+                    let opt_ret = if is_noreturn { None } else { Some(ret) };
+
+                    let fn_ty = self.type_converter.borrow_mut().convert_function(
+                        &self.ast_context,
+                        opt_ret,
+                        params,
+                        is_variadic,
+                    )?;
+
+                    cast_kind = Some(VaArgCastKind::Transmute);
+                    arg_ty = Some(mk().set_mutbl(p.mutability()).ptr_ty(fn_ty));
+                } else if self.ast_context.is_forward_declared_type(ty.ctype) {
+                    cast_kind = Some(VaArgCastKind::Cast(self.convert_type(ty.ctype).unwrap()));
+                    arg_ty = Some(
+                        mk().mutbl()
+                            .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"])),
+                    );
+                }
+            }
+
+            _ => {}
         }
 
         let arg_ty = arg_ty.unwrap_or_else(|| self.convert_type(ty.ctype).unwrap());
@@ -237,6 +247,7 @@ impl<'c> Translation<'c> {
                 if let Some(cast_kind) = cast_kind {
                     val = match cast_kind {
                         VaArgCastKind::Cast(ty) => mk().cast_expr(val, ty),
+                        VaArgCastKind::Enum(enum_id) => self.enum_constructor_expr(enum_id, val),
                         VaArgCastKind::Transmute => {
                             transmute_expr(mk().infer_ty(), mk().infer_ty(), val)
                         }
