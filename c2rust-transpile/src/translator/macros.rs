@@ -2,11 +2,12 @@ use c2rust_ast_builder::mk;
 use failure::format_err;
 use log::{info, trace};
 use proc_macro2::{Span, TokenStream};
+use std::rc::Rc;
 use syn::{Expr, MacroDelimiter};
 
 use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
 use crate::diagnostics::{TranslationError, TranslationResult};
-use crate::translator::{ConvertedDecl, ExprContext, MacroExpansion, Translation};
+use crate::translator::{ConvertedDecl, ConvertedMacro, ExprContext, Translation};
 use crate::with_stmts::WithStmts;
 use crate::TranslateMacros;
 
@@ -30,14 +31,13 @@ impl<'c> Translation<'c> {
         );
 
         match maybe_replacement {
-            Ok((replacement, ty)) => {
+            Ok((replacement, converted)) => {
                 trace!("  to {:?}", replacement);
 
-                let expansion = MacroExpansion { ty };
-                self.macro_expansions
+                let ty = self.convert_type(converted.ty)?;
+                self.converted_macros
                     .borrow_mut()
-                    .insert(decl_id, Some(expansion));
-                let ty = self.convert_type(ty)?;
+                    .insert(decl_id, Some(Rc::new(converted)));
 
                 Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
                     name,
@@ -46,7 +46,7 @@ impl<'c> Translation<'c> {
                 )))
             }
             Err(e) => {
-                self.macro_expansions.borrow_mut().insert(decl_id, None);
+                self.converted_macros.borrow_mut().insert(decl_id, None);
                 info!("Could not expand macro {}: {}", name, e);
                 Ok(ConvertedDecl::NoItem)
             }
@@ -68,10 +68,15 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expansions: &[CExprId],
-    ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        let (val, ty) = expansions
+    ) -> TranslationResult<(Box<Expr>, ConvertedMacro)> {
+        struct ConvertedMacroExpr {
+            val: WithStmts<Box<Expr>>,
+            ty: CTypeId,
+        }
+
+        let canonical = expansions
             .iter()
-            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
+            .try_fold::<Option<ConvertedMacroExpr>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
 
                 let ty = self
@@ -80,33 +85,36 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let expr = self.convert_expr(ctx, id, None)?;
+                let val = self.convert_expr(ctx, id, None)?;
+                let new = ConvertedMacroExpr { val, ty };
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
-                let ty_kind = self.ast_context.resolve_type(ty).kind.clone();
-                if let Some((canon_val, canon_ty)) = canonical {
-                    let canon_ty_kind = self.ast_context.resolve_type(canon_ty).kind.clone();
+                let ty_kind = self.ast_context.resolve_type(new.ty).kind.clone();
+                if let Some(canonical) = canonical {
+                    let canon_ty_kind = self.ast_context.resolve_type(canonical.ty).kind.clone();
                     if let Some(smaller_ty) =
                         CTypeKind::smaller_compatible_type(canon_ty_kind.clone(), ty_kind)
                     {
                         if smaller_ty == canon_ty_kind {
-                            Ok(Some((canon_val, canon_ty)))
+                            Ok(Some(canonical))
                         } else {
-                            Ok(Some((expr, ty)))
+                            Ok(Some(new))
                         }
                     } else {
                         Err(format_err!("Not all macro expansions are compatible types"))
                     }
                 } else {
-                    Ok(Some((expr, ty)))
+                    Ok(Some(new))
                 }
             })?
             .ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
 
+        let ConvertedMacroExpr { val, ty } = canonical;
+        let converted = ConvertedMacro { ty };
         val.wrap_unsafe()
             .to_pure_expr()
-            .map(|val| (val, ty))
+            .map(|val| (val, converted))
             .ok_or_else(|| TranslationError::generic("Macro expansion is not a pure expression"))
 
         // TODO: Validate that all replacements are equivalent and pick the most
@@ -178,19 +186,20 @@ impl<'c> Translation<'c> {
 
         trace!("  found macro expansion: {macro_id:?}");
         // Ensure that we've converted this macro and that it has a valid definition.
-        let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
-        let macro_ty = match expansion {
-            // Expansion exists.
-            Some(Some(expansion)) => expansion.ty,
+        let maybe_converted = self.converted_macros.borrow().get(macro_id).cloned();
+        let converted = match maybe_converted {
+            // Macro was converted previously.
+            Some(Some(converted)) => converted,
 
-            // Expansion wasn't possible.
+            // Macro failed to convert previously.
             Some(None) => return Ok(None),
 
-            // We haven't tried to expand it yet.
+            // We haven't tried to convert it yet.
             None => {
                 self.convert_decl(ctx, *macro_id)?;
-                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
-                    expansion.ty
+                let maybe_converted = self.converted_macros.borrow().get(macro_id).cloned();
+                if let Some(Some(converted)) = maybe_converted {
+                    converted
                 } else {
                     return Ok(None);
                 }
@@ -214,7 +223,7 @@ impl<'c> Translation<'c> {
         // so we need to cast it to the `override_ty` here.
         let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
-            self.make_cast(ctx, CQualTypeId::new(macro_ty), expr_ty, val)
+            self.make_cast(ctx, CQualTypeId::new(converted.ty), expr_ty, val)
                 .map(Some)
         } else {
             Ok(Some(val))
