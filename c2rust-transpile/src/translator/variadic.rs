@@ -186,16 +186,17 @@ impl<'c> Translation<'c> {
             Transmute,
         }
 
-        // The current implementation of the C-variadics feature doesn't allow us to
-        // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
-        // and construct the corresponding unsafe type `* mut fn(...) -> _`.
-        let mut fn_ptr_ty: Option<Box<Type>> = None;
+        let mut arg_ty: Option<Box<Type>> = None;
         let mut cast_kind = None;
 
         let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
         if let CTypeKind::Pointer(p) = resolved_ctype.kind {
             // ty is a pointer type
             let resolved_ctype = self.ast_context.resolve_type(p.ctype);
+
+            // The current implementation of the C-variadics feature doesn't allow us to
+            // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
+            // and construct the corresponding unsafe type `* mut fn(...) -> _`.
             if let CTypeKind::Function(ret, ref params, is_variadic, is_noreturn, _) =
                 resolved_ctype.kind
             {
@@ -210,24 +211,17 @@ impl<'c> Translation<'c> {
                 )?;
 
                 cast_kind = Some(VaArgCastKind::Transmute);
-                fn_ptr_ty = Some(mk().set_mutbl(p.mutability()).ptr_ty(fn_ty));
+                arg_ty = Some(mk().set_mutbl(p.mutability()).ptr_ty(fn_ty));
+            } else if self.ast_context.is_forward_declared_type(ty.ctype) {
+                cast_kind = Some(VaArgCastKind::Cast(self.convert_type(ty.ctype).unwrap()));
+                arg_ty = Some(
+                    mk().mutbl()
+                        .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"])),
+                );
             }
         }
 
-        let mut arg_ty = fn_ptr_ty.unwrap_or_else(|| self.convert_type(ty.ctype).unwrap());
-
-        if self
-            .ast_context
-            .get_pointee_qual_type(ty.ctype)
-            .map_or(false, |ty| {
-                self.ast_context.is_forward_declared_type(ty.ctype)
-            })
-        {
-            cast_kind = Some(VaArgCastKind::Cast(arg_ty.clone()));
-            arg_ty = mk()
-                .mutbl()
-                .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"]));
-        }
+        let arg_ty = arg_ty.unwrap_or_else(|| self.convert_type(ty.ctype).unwrap());
 
         Ok(val.and_then(|val| {
             let path = mk()
