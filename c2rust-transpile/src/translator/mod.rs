@@ -279,7 +279,6 @@ impl FuncContext {
     }
 }
 
-#[derive(Clone)]
 struct ConvertedMacro {
     ty: CTypeId,
 }
@@ -305,7 +304,7 @@ pub struct Translation<'c> {
     zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
-    converted_macros: RefCell<IndexMap<CDeclId, Option<ConvertedMacro>>>,
+    converted_macros: RefCell<IndexMap<CDeclId, Option<Rc<ConvertedMacro>>>>,
     /// Sets of imports deferred while translating nested expressions for caching. Imports are
     /// deferred when caching translations to make them pure and thus cache the translation
     /// alongside its required imports. Each additional nested level of caching translation
