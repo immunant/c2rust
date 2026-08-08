@@ -51,6 +51,7 @@ mod node_types {
 
 type ClangId = u64;
 type ImporterId = u64;
+type MacroInvocationId = u32;
 
 /// Correspondence between old/new IDs.
 ///
@@ -244,6 +245,12 @@ pub struct ConversionContext {
     /// Typed context we are building up during the conversion
     typed_context: TypedAstContext,
 
+    /// Maps expressions to the stack of macro invocations that expanded to them.
+    macro_invocations: IndexMap<CExprId, Vec<MacroInvocationId>>,
+
+    /// Maps macro invocation IDs to information about the invocation (macro ID, arguments, etc).
+    macro_infos: HashMap<MacroInvocationId, MacroInvocationInfo>,
+
     pub invalid_clang_ast: bool,
 }
 
@@ -329,6 +336,8 @@ impl ConversionContext {
             processed_nodes: HashMap::new(),
             visit_as,
             typed_context: TypedAstContext::new(input_path, &untyped_context.files),
+            macro_invocations: IndexMap::new(),
+            macro_infos: HashMap::new(),
             invalid_clang_ast,
         };
 
@@ -554,30 +563,42 @@ impl ConversionContext {
             move |e| case_exprs.contains(&e)
         };
 
-        self.typed_context.macro_invocations = mem::take(&mut self.typed_context.macro_invocations)
+        let macro_invocations = mem::take(&mut self.macro_invocations);
+        let mut macro_infos = mem::take(&mut self.macro_infos);
+
+        self.typed_context.macro_invocations = macro_invocations
             .into_iter()
-            .map(|(expr_id, macro_ids)| {
-                (
-                    if is_case_expr(expr_id) {
-                        expr_id
-                    } else {
-                        self.typed_context.unwrap_implicit_cast_expr(expr_id)
-                    },
-                    macro_ids,
-                )
+            .map(|(expr_id, invocation_ids)| {
+                let expr_id = if is_case_expr(expr_id) {
+                    expr_id
+                } else {
+                    self.typed_context.unwrap_implicit_cast_expr(expr_id)
+                };
+
+                // For each invocation ID, retrieve its corresponding `MacroInvocationInfo`
+                // and wrap it in an `Rc`.
+                let infos = invocation_ids
+                    .into_iter()
+                    .map(|key| {
+                        let info = macro_infos
+                            .remove(&key)
+                            .expect("No macro_infos entry for key {key}");
+                        let info = Rc::new(MacroInvocationInfo { expr_id, ..info });
+
+                        // Invert the macro invocations to get a list of macro expansion expressions
+                        self.typed_context
+                            .macro_expansions
+                            .entry(info.macro_id)
+                            .or_default()
+                            .push(info.clone()); // Clone the `Rc`
+
+                        info
+                    })
+                    .collect();
+
+                (expr_id, infos)
             })
             .collect();
-
-        // Invert the macro invocations to get a list of macro expansion expressions
-        for (expr_id, macro_ids) in &self.typed_context.macro_invocations {
-            for mac_id in macro_ids {
-                self.typed_context
-                    .macro_expansions
-                    .entry(*mac_id)
-                    .or_default()
-                    .push(*expr_id);
-            }
-        }
 
         self.typed_context.va_list_kind = untyped_context.va_list_kind;
         self.typed_context.target = untyped_context.target.clone();
@@ -1047,13 +1068,38 @@ impl ConversionContext {
             };
 
             if expected_ty & EXPR != 0 {
+                let expr_id = CExprId(new_id);
+
                 for info in &node.macro_invocations {
-                    let mac = CDeclId(self.visit_node_type(info.macro_id, MACRO_DECL));
-                    self.typed_context
-                        .macro_invocations
-                        .entry(CExprId(new_id))
-                        .or_default()
-                        .push(mac);
+                    let &MacroInvocationInfoRaw {
+                        key,
+                        macro_id,
+                        ref parameter,
+                    } = info;
+
+                    let macro_id = CDeclId(self.visit_node_type(macro_id, MACRO_DECL));
+
+                    // Is this a macro invocation ID we've seen previously?
+                    let info = self
+                        .macro_infos
+                        .entry(key)
+                        // If not, create a dummy info entry.
+                        .or_insert_with(|| MacroInvocationInfo {
+                            expr_id: CExprId(u64::MAX),
+                            macro_id,
+                            arguments: HashMap::new(),
+                        });
+                    assert_eq!(macro_id, info.macro_id);
+
+                    // Fill in the values that were provided in the `MacroInvocationInfoRaw`.
+                    if let Some(parameter) = parameter {
+                        // This expression is an argument for a functional macro.
+                        info.arguments.insert(parameter.clone(), expr_id);
+                    } else {
+                        // This expression is the result of a macro expansion.
+                        info.expr_id = expr_id;
+                        self.macro_invocations.entry(expr_id).or_default().push(key);
+                    }
                 }
             }
 

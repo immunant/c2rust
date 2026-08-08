@@ -4,7 +4,7 @@ use log::{info, trace};
 use proc_macro2::{Span, TokenStream};
 use syn::{Expr, MacroDelimiter};
 
-use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind, MacroInvocationInfo};
 use crate::diagnostics::{TranslationError, TranslationResult};
 use crate::translator::{ConvertedDecl, ExprContext, MacroExpansion, Translation};
 use crate::with_stmts::WithStmts;
@@ -69,16 +69,17 @@ impl<'c> Translation<'c> {
         let ctx = ctx.const_().set_expanding_macro(macro_id);
         let (val, ty) = self.ast_context.macro_expansions[&macro_id]
             .iter()
-            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
-                self.can_convert_const_macro_expansion(id)?;
+            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, info| {
+                let &MacroInvocationInfo { expr_id, .. } = info.as_ref();
+                self.can_convert_const_macro_expansion(expr_id)?;
 
                 let ty = self
                     .ast_context
-                    .index_unwrap_parens(id)
+                    .index_unwrap_parens(expr_id)
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let expr = self.convert_expr(ctx, id, None)?;
+                let expr = self.convert_expr(ctx, expr_id, None)?;
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
@@ -165,18 +166,18 @@ impl<'c> Translation<'c> {
 
         // Find the first macro after the macro we're currently expanding, if any.
         let first_macro = macros
-            .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
+            .splitn(2, |info| ctx.expanding_macro(&info.macro_id))
             .last()
             .unwrap()
             .first();
-        let macro_id = match first_macro {
-            Some(macro_id) => macro_id,
+        let info = match first_macro {
+            Some(info) => info,
             None => return Ok(None),
         };
 
-        trace!("  found macro expansion: {macro_id:?}");
+        trace!("  found macro expansion: {:?}", info.macro_id);
         // Ensure that we've converted this macro and that it has a valid definition.
-        let expansion = self.macro_expansions.borrow().get(macro_id).cloned();
+        let expansion = self.macro_expansions.borrow().get(&info.macro_id).cloned();
         let macro_ty = match expansion {
             // Expansion exists.
             Some(Some(expansion)) => expansion.ty,
@@ -186,8 +187,8 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to expand it yet.
             None => {
-                self.convert_decl(ctx, *macro_id)?;
-                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
+                self.convert_decl(ctx, info.macro_id)?;
+                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(&info.macro_id) {
                     expansion.ty
                 } else {
                     return Ok(None);
@@ -197,10 +198,10 @@ impl<'c> Translation<'c> {
         let rust_name = self
             .renamer
             .borrow_mut()
-            .get(macro_id)
+            .get(&info.macro_id)
             .ok_or_else(|| format_err!("Macro name not declared"))?;
 
-        self.add_import(*macro_id, &rust_name);
+        self.add_import(info.macro_id, &rust_name);
 
         let val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
