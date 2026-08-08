@@ -181,10 +181,17 @@ impl<'c> Translation<'c> {
 
         let val = self.convert_expr(ctx.used(), val_id, None)?;
 
+        enum VaArgCastKind {
+            Cast(Box<Type>),
+            Transmute,
+        }
+
         // The current implementation of the C-variadics feature doesn't allow us to
         // return `Option<fn(...) -> _>` from `VaList::arg`, so we detect function pointers
         // and construct the corresponding unsafe type `* mut fn(...) -> _`.
         let mut fn_ptr_ty: Option<Box<Type>> = None;
+        let mut cast_kind = None;
+
         let resolved_ctype = self.ast_context.resolve_type(ty.ctype);
         if let CTypeKind::Pointer(p) = resolved_ctype.kind {
             // ty is a pointer type
@@ -202,14 +209,13 @@ impl<'c> Translation<'c> {
                     is_variadic,
                 )?;
 
+                cast_kind = Some(VaArgCastKind::Transmute);
                 fn_ptr_ty = Some(mk().set_mutbl(p.mutability()).ptr_ty(fn_ty));
             }
         }
 
-        let have_fn_ptr = fn_ptr_ty.is_some();
         let mut arg_ty = fn_ptr_ty.unwrap_or_else(|| self.convert_type(ty.ctype).unwrap());
 
-        let mut real_arg_ty = None;
         if self
             .ast_context
             .get_pointee_qual_type(ty.ctype)
@@ -217,7 +223,7 @@ impl<'c> Translation<'c> {
                 self.ast_context.is_forward_declared_type(ty.ctype)
             })
         {
-            real_arg_ty = Some(arg_ty.clone());
+            cast_kind = Some(VaArgCastKind::Cast(arg_ty.clone()));
             arg_ty = mk()
                 .mutbl()
                 .ptr_ty(mk().abs_path_ty(vec!["core", "ffi", "c_void"]));
@@ -227,9 +233,6 @@ impl<'c> Translation<'c> {
             let path = mk()
                 .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![arg_ty]));
             let mut val = mk().method_call_expr(val, path, vec![]);
-            if let Some(ty) = real_arg_ty {
-                val = mk().cast_expr(val, ty);
-            }
 
             if ctx.is_unused() {
                 WithStmts::new(
@@ -237,12 +240,14 @@ impl<'c> Translation<'c> {
                     self.panic_or_err("convert_vaarg unused"),
                 )
             } else {
-                let val = if have_fn_ptr {
-                    // transmute result of call to `arg` when expecting a function pointer
-                    transmute_expr(mk().infer_ty(), mk().infer_ty(), val)
-                } else {
-                    val
-                };
+                if let Some(cast_kind) = cast_kind {
+                    val = match cast_kind {
+                        VaArgCastKind::Cast(ty) => mk().cast_expr(val, ty),
+                        VaArgCastKind::Transmute => {
+                            transmute_expr(mk().infer_ty(), mk().infer_ty(), val)
+                        }
+                    };
+                }
 
                 WithStmts::new_val(val)
             }
