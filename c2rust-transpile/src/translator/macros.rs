@@ -69,9 +69,14 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         expansions: &[CExprId],
     ) -> TranslationResult<(Box<Expr>, CTypeId)> {
-        let (val, ty) = expansions
+        struct ConvertedMacroExpr {
+            val: WithStmts<Box<Expr>>,
+            ty: CTypeId,
+        }
+
+        let canonical = expansions
             .iter()
-            .try_fold::<Option<(WithStmts<Box<Expr>>, CTypeId)>, _, _>(None, |canonical, &id| {
+            .try_fold::<Option<ConvertedMacroExpr>, _, _>(None, |canonical, &id| {
                 self.can_convert_const_macro_expansion(id)?;
 
                 let ty = self
@@ -80,30 +85,32 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let expr = self.convert_expr(ctx, id, None)?;
+                let val = self.convert_expr(ctx, id, None)?;
+                let new = ConvertedMacroExpr { val, ty };
 
                 // Join ty and cur_ty to the smaller of the two types. If the
                 // types are not cast-compatible, abort the fold.
-                let ty_kind = self.ast_context.resolve_type(ty).kind.clone();
-                if let Some((canon_val, canon_ty)) = canonical {
-                    let canon_ty_kind = self.ast_context.resolve_type(canon_ty).kind.clone();
+                let ty_kind = self.ast_context.resolve_type(new.ty).kind.clone();
+                if let Some(canonical) = canonical {
+                    let canon_ty_kind = self.ast_context.resolve_type(canonical.ty).kind.clone();
                     if let Some(smaller_ty) =
                         CTypeKind::smaller_compatible_type(canon_ty_kind.clone(), ty_kind)
                     {
                         if smaller_ty == canon_ty_kind {
-                            Ok(Some((canon_val, canon_ty)))
+                            Ok(Some(canonical))
                         } else {
-                            Ok(Some((expr, ty)))
+                            Ok(Some(new))
                         }
                     } else {
                         Err(format_err!("Not all macro expansions are compatible types"))
                     }
                 } else {
-                    Ok(Some((expr, ty)))
+                    Ok(Some(new))
                 }
             })?
             .ok_or_else(|| format_err!("Could not find a valid type for macro"))?;
 
+        let ConvertedMacroExpr { val, ty } = canonical;
         val.wrap_unsafe()
             .to_pure_expr()
             .map(|val| (val, ty))
