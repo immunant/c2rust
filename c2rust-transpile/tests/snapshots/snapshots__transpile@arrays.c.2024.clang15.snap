@@ -12,6 +12,12 @@ expression: cat tests/snapshots/arrays.2024.clang15.rs
     unused_assignments,
     unused_mut
 )]
+unsafe extern "C" {
+    static mut my_array: [::core::ffi::c_int; 1];
+    static mut my_indexes: [::core::ffi::c_int; 1];
+    unsafe fn my_index() -> ::core::ffi::c_ulong;
+    static mut funcs: [Option<unsafe extern "C" fn() -> ()>; 1];
+}
 pub type ptrdiff_t = isize;
 pub type size_t = usize;
 pub type int_t = ::core::ffi::c_int;
@@ -160,4 +166,19 @@ pub unsafe extern "C" fn variable_length() {
     let mut second: *mut ::core::ffi::c_int =
         first.offset(1 as ::core::ffi::c_int as isize * vla_2 as isize) as *mut ::core::ffi::c_int;
     let mut diff: ptrdiff_t = second.offset_from(first) / vla_2 as isize;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn addr_of_subscript() {
+    let mut array: *mut ::core::ffi::c_int = (&raw mut my_array as *mut ::core::ffi::c_int)
+        .offset(*(&raw mut my_indexes as *mut ::core::ffi::c_int).offset(0isize) as isize);
+    let mut call: *mut ::core::ffi::c_int = (&raw mut my_array as *mut ::core::ffi::c_int)
+        .offset((my_index as unsafe extern "C" fn() -> ::core::ffi::c_ulong)() as isize);
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn func_ptr_array() {
+    Some(
+        (*(&raw mut funcs as *mut Option<unsafe extern "C" fn() -> ()>).offset(0isize))
+            .expect("non-null function pointer"),
+    )
+    .expect("non-null function pointer")();
 }

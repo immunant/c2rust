@@ -79,3 +79,18 @@ void variable_length(void) {
     int (*second)[length] = first + 1;
     ptrdiff_t diff = second - first;
 }
+
+extern int my_array[1];
+extern int my_indexes[1];
+unsigned long my_index(void);
+
+void addr_of_subscript(void) {
+    int *array = &my_array[my_indexes[0]];
+    int *call = &my_array[my_index()];
+}
+
+extern void (*funcs[1])(void);
+
+void func_ptr_array(void) {
+    (*funcs[0])();
+}
