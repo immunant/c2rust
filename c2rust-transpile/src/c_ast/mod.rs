@@ -1708,6 +1708,9 @@ pub enum CDeclKind {
         bitfield_width: Option<u64>,
         platform_bit_offset: u64,
         platform_type_bitwidth: u64,
+        /// Manually specified alignment in bytes, e.g. from
+        /// `__attribute__((aligned(N)))` on the field itself.
+        manual_alignment: Option<u64>,
     },
 
     MacroObject {

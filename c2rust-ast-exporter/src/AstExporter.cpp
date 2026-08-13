@@ -2569,6 +2569,15 @@ class TranslateASTVisitor final
                          // 4. Encode the type's full bit width (even if a
                          // bitfield)
                          cbor_encode_uint(array, bitWidth);
+
+                         // 5. Encode manually specified alignment
+                         // (e.g. `__attribute__((aligned(N)))` on the field)
+                         auto align = D->getMaxAlignment();
+                         if (align == 0) {
+                             cbor_encode_null(array);
+                         } else {
+                             cbor_encode_uint(array, align / 8);
+                         }
                      });
 
         // This might be the only occurrence of this type in the translation unit

@@ -2457,12 +2457,15 @@ impl ConversionContext {
                         from_value(node.extras[2].clone()).expect("Did not find field bit offset");
                     let platform_type_bitwidth =
                         from_value(node.extras[3].clone()).expect("Did not find field bitwidth");
+                    let manual_alignment =
+                        expect_opt_u64(&node.extras[4]).expect("Expected field alignment");
                     let field = CDeclKind::Field {
                         name,
                         typ,
                         bitfield_width,
                         platform_bit_offset,
                         platform_type_bitwidth,
+                        manual_alignment,
                     };
                     self.add_decl(new_id, located(node, field));
                     self.processed_nodes.insert(new_id, FIELD_DECL);

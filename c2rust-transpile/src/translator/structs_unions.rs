@@ -101,6 +101,28 @@ impl<'a> Translation<'a> {
             _ => {}
         }
 
+        // A field with its own `__attribute__((aligned(N)))` forces clang to
+        // raise the *whole record's* alignment to (at least) N, since every
+        // instance of the struct must be aligned enough for that field.
+        // Rust's automatic `repr(C)` layout only derives struct alignment
+        // from each field's natural type alignment, so make the requirement
+        // explicit; combined with `repr(C)`, `align(N)` sets a *minimum*
+        // alignment without disturbing fields that already need more.
+        // (The field's own byte offset is corrected separately, via explicit
+        // padding inserted in `get_field_types`.)
+        let field_manual_alignment = fields
+            .iter()
+            .filter_map(|field_id| match self.ast_context.index(*field_id).kind {
+                CDeclKind::Field {
+                    manual_alignment, ..
+                } => manual_alignment,
+                _ => None,
+            })
+            .max();
+        if let Some(alignment) = field_manual_alignment {
+            reprs.push(mk().meta_list("align", vec![alignment]));
+        }
+
         if let Some(alignment) = manual_alignment {
             // This is the most complicated case: we have `align(N)` which
             // might be mixed with or included into a `packed` structure,
@@ -117,6 +139,7 @@ impl<'a> Translation<'a> {
             // instead, we should only split when needed, but that
             // would significantly complicate the implementation
             assert!(self.ast_context.has_inner_struct_decl(decl_id));
+            let outer_alignment = alignment.max(field_manual_alignment.unwrap_or(0));
             let inner_name = self.resolve_decl_inner_name(decl_id);
             let inner_ty = mk().path_ty(vec![inner_name.clone()]);
             let inner_struct = mk()
@@ -136,7 +159,7 @@ impl<'a> Translation<'a> {
                     "repr",
                     vec![
                         mk().meta_path("C"),
-                        mk().meta_list("align", vec![alignment]),
+                        mk().meta_list("align", vec![outer_alignment]),
                         // TODO: copy others from `reprs` above
                     ],
                 )
@@ -322,6 +345,15 @@ impl<'a> Translation<'a> {
 
                     field_entries.push(field);
                 }
+                FieldType::AlignPadding { bytes } => {
+                    let field_name = next_padding_field();
+                    let ty = mk().array_ty(
+                        mk().ident_ty("u8"),
+                        mk().lit_expr(mk().int_unsuffixed_lit(bytes)),
+                    );
+
+                    field_entries.push(mk().pub_().struct_field(field_name, ty));
+                }
                 FieldType::ComputedPadding { ident } => {
                     let field_name = next_padding_field();
                     let ty = mk().array_ty(mk().ident_ty("u8"), mk().ident_expr(ident));
@@ -417,7 +449,7 @@ impl<'a> Translation<'a> {
 
                     fields.push(WithStmts::new_val(field));
                 }
-                FieldType::Padding { bytes } => {
+                FieldType::Padding { bytes } | FieldType::AlignPadding { bytes } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
@@ -646,7 +678,7 @@ impl<'a> Translation<'a> {
 
                     fields.push(WithStmts::new_val(field));
                 }
-                FieldType::Padding { bytes } => {
+                FieldType::Padding { bytes } | FieldType::AlignPadding { bytes } => {
                     let field_name = next_padding_field();
                     let array_expr = mk().repeat_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
@@ -812,6 +844,7 @@ impl<'a> Translation<'a> {
                 bitfield_width,
                 platform_bit_offset,
                 platform_type_bitwidth,
+                manual_alignment,
                 ..
             } = self.ast_context.index(*field_id).kind
             {
@@ -881,6 +914,20 @@ impl<'a> Translation<'a> {
                             extra_fields.push(FieldType::ComputedPadding {
                                 ident: padding_name,
                             })
+                        }
+
+                        if manual_alignment.is_some() && (platform_bit_offset / 8) > next_byte_pos {
+                            // A per-field `__attribute__((aligned(N)))` forced
+                            // clang to place this field further along than
+                            // Rust's automatic `repr(C)` layout would (which
+                            // only knows about the field's *natural*
+                            // alignment). Insert explicit padding so the
+                            // field lands at the same byte offset as in C;
+                            // `convert_struct` separately pushes `align(M)`
+                            // onto the struct's `repr` so that offset is
+                            // actually reachable at a valid address.
+                            let bytes = (platform_bit_offset / 8) - next_byte_pos;
+                            reorganized_fields.push(FieldType::AlignPadding { bytes });
                         }
 
                         let field = mk().pub_().struct_field(field_name.clone(), ty);
@@ -1106,6 +1153,13 @@ enum FieldType {
         attrs: Vec<(String, Box<Type>, String)>,
     }, // 64 bytes
     Padding {
+        bytes: u64,
+    },
+    /// Like [`FieldType::Padding`], but not tagged `#[bitfield(padding)]`:
+    /// used to reach the byte offset a manually `__attribute__((aligned(N)))`
+    /// field needs, in a struct that may have no real bitfields (and thus no
+    /// `#[derive(BitfieldStruct)]` to make that attribute meaningful).
+    AlignPadding {
         bytes: u64,
     },
     ComputedPadding {

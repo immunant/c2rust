@@ -1,13 +1,17 @@
-use crate::structs::{rust_alignment_entry, rust_entry, Aligned8Struct};
+use crate::structs::{rust_alignment_entry, rust_entry, Aligned8Struct, FieldAlignStruct};
 use libc::size_t;
 use std::ffi::{c_int, c_uint};
-use std::mem::align_of;
+use std::mem::{align_of, size_of};
 
 #[link(name = "test")]
 extern "C" {
     fn entry(_: c_uint, _: *mut c_int);
     fn alignment_of_aligned8_struct() -> size_t;
     fn alignment_entry(_: c_uint, _: *mut c_int);
+    fn alignment_of_field_align_struct_field() -> size_t;
+    fn offset_of_field_align_struct_field() -> size_t;
+    fn read_field_align_struct_field(_: *const FieldAlignStruct) -> c_int;
+    fn write_field_align_struct_field(_: *mut FieldAlignStruct, _: c_int);
 }
 
 const BUFFER_SIZE: usize = 9;
@@ -33,6 +37,41 @@ pub fn test_alignment() {
     let c_alignment = unsafe { alignment_of_aligned8_struct() };
 
     assert_eq!(align_of::<Aligned8Struct>(), c_alignment);
+}
+
+#[test]
+pub fn test_field_alignment() {
+    let c_alignment = unsafe { alignment_of_field_align_struct_field() };
+    let c_offset = unsafe { offset_of_field_align_struct_field() };
+
+    // `f`'s manual alignment is only reachable in Rust by forcing the whole
+    // struct's alignment up to it (Rust has no way to raise a single
+    // field's alignment without also inflating its size), so the field's
+    // required alignment shows up as the struct's alignment instead.
+    assert_eq!(align_of::<FieldAlignStruct>(), c_alignment);
+    assert_eq!(offset_of!(FieldAlignStruct, f), c_offset as usize);
+    assert_eq!(size_of::<FieldAlignStruct>() % c_alignment, 0);
+
+    let mut s = FieldAlignStruct {
+        before: 1,
+        c2rust_padding: [0; 15],
+        f: 0,
+        after: 2,
+    };
+
+    // The field's actual runtime address must be aligned to `c_alignment`,
+    // regardless of where `s` itself happens to live.
+    let field_addr = std::ptr::addr_of!(s.f) as usize;
+    assert_eq!(field_addr % c_alignment as usize, 0);
+
+    unsafe {
+        write_field_align_struct_field(&mut s, 42);
+    }
+    assert_eq!(s.f, 42);
+
+    s.f = 99;
+    let read_back = unsafe { read_field_align_struct_field(&s) };
+    assert_eq!(read_back, 99);
 }
 
 #[test]

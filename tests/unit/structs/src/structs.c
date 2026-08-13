@@ -59,6 +59,28 @@ size_t alignment_of_aligned8_struct(void) {
     return alignof(Aligned8Struct);
 }
 
+typedef struct {
+    char before;
+    int __attribute__((aligned(16))) f;
+    char after;
+} FieldAlignStruct;
+
+size_t alignment_of_field_align_struct_field(void) {
+    return __alignof__(((FieldAlignStruct *)0)->f);
+}
+
+size_t offset_of_field_align_struct_field(void) {
+    return offsetof(FieldAlignStruct, f);
+}
+
+int read_field_align_struct_field(const FieldAlignStruct *s) {
+    return s->f;
+}
+
+void write_field_align_struct_field(FieldAlignStruct *s, int v) {
+    s->f = v;
+}
+
 #define DEFINE_TEST_STRUCT(x) struct x { char c; short s; long long ll; }
 DEFINE_TEST_STRUCT(S1);
 

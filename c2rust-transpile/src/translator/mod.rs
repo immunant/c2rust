@@ -3225,6 +3225,31 @@ impl<'c> Translation<'c> {
             ConvertVector(..) => Err(TranslationError::generic("convert vector not supported")),
 
             UnaryType(result_type_id, kind, opt_expr, arg_ty) => {
+                // `__alignof__`/`_Alignof` applied directly to a struct
+                // field (e.g. `__alignof__(s->f)`) should reflect that
+                // field's own manual `__attribute__((aligned(N)))`, if any,
+                // rather than its type's natural alignment.
+                if matches!(kind, CUnTypeOp::AlignOf | CUnTypeOp::PreferredAlignOf) {
+                    if let Some(field_expr) = opt_expr {
+                        if let CExprKind::Member(_, _, decl_id, _, _) =
+                            self.ast_context.index_unwrap_parens(field_expr).kind
+                        {
+                            if let CDeclKind::Field {
+                                manual_alignment: Some(alignment),
+                                ..
+                            } = self.ast_context[decl_id].kind
+                            {
+                                let ty = self.convert_type(result_type_id.ctype)?;
+                                let val = mk().cast_expr(
+                                    mk().lit_expr(mk().int_unsuffixed_lit(alignment)),
+                                    ty,
+                                );
+                                return Ok(WithStmts::new_val(val));
+                            }
+                        }
+                    }
+                }
+
                 let result = match kind {
                     CUnTypeOp::SizeOf => match opt_expr {
                         None => self.compute_size_of_type(
