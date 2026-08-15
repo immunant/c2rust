@@ -113,7 +113,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     Ok(self
                         .convert_expr(ctx, lhs, Some(lhs_type_id))?
                         .and_then_try(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
@@ -318,7 +318,7 @@ impl<'c> Translation<'c> {
                 )
             });
 
-        let lhs_translation = if ctx.is_used() || compound_assignment_needs_desugaring {
+        let lhs_translation = if ctx.is_used || compound_assignment_needs_desugaring {
             self.name_reference_write_read(ctx, lhs)?
         } else {
             self.name_reference_write(ctx, lhs)?.map(|named_ref| {
@@ -416,7 +416,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        let assign_result = if ctx.is_used() {
+        let assign_result = if ctx.is_used {
             self.make_cast(
                 ctx,
                 result_type_id,
@@ -672,7 +672,7 @@ impl<'c> Translation<'c> {
         };
 
         // If we aren't going to be using the result, may as well do a simple pre-increment
-        let dont_yield_old_value = op.is_prefix() || ctx.is_unused();
+        let dont_yield_old_value = op.is_prefix() || !ctx.is_used;
         let op = op.underlying_compound_assignment().unwrap();
 
         if dont_yield_old_value {

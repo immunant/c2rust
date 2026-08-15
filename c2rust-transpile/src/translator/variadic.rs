@@ -238,7 +238,7 @@ impl<'c> Translation<'c> {
                 .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![arg_ty]));
             let mut val = mk().method_call_expr(val, path, vec![]);
 
-            if ctx.is_unused() {
+            if !ctx.is_used {
                 WithStmts::new(
                     vec![mk().semi_stmt(val)],
                     self.panic_or_err("convert_vaarg unused"),
