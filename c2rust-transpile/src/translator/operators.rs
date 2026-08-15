@@ -113,7 +113,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if ctx.is_unused() {
+                if !ctx.is_used() {
                     Ok(self
                         .convert_expr(ctx, lhs, Some(lhs_type_id))?
                         .and_then_try(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
@@ -672,7 +672,7 @@ impl<'c> Translation<'c> {
         };
 
         // If we aren't going to be using the result, may as well do a simple pre-increment
-        let dont_yield_old_value = op.is_prefix() || ctx.is_unused();
+        let dont_yield_old_value = op.is_prefix() || !ctx.is_used();
         let op = op.underlying_compound_assignment().unwrap();
 
         if dont_yield_old_value {
