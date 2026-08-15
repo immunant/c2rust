@@ -169,16 +169,12 @@ pub unsafe extern "C" fn variable_length() {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn addr_of_subscript() {
-    let mut array: *mut ::core::ffi::c_int = (&raw mut my_array as *mut ::core::ffi::c_int)
-        .offset(*(&raw mut my_indexes as *mut ::core::ffi::c_int).offset(0isize) as isize);
-    let mut call: *mut ::core::ffi::c_int = (&raw mut my_array as *mut ::core::ffi::c_int)
-        .offset((my_index as unsafe extern "C" fn() -> ::core::ffi::c_ulong)() as isize);
+    let mut array: *mut ::core::ffi::c_int =
+        (&raw mut my_array as *mut ::core::ffi::c_int).offset(my_indexes[0usize] as isize);
+    let mut call: *mut ::core::ffi::c_int =
+        (&raw mut my_array as *mut ::core::ffi::c_int).offset(my_index() as isize);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn func_ptr_array() {
-    Some(
-        (*(&raw mut funcs as *mut Option<unsafe extern "C" fn() -> ()>).offset(0isize))
-            .expect("non-null function pointer"),
-    )
-    .expect("non-null function pointer")();
+    Some(funcs[0usize].expect("non-null function pointer")).expect("non-null function pointer")();
 }
