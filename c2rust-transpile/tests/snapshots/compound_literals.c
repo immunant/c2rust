@@ -25,3 +25,7 @@ void local_compound_literals() {
     int (*macro_int_array_ptr)[2] = &INT_ARRAY;
     char (*macro_char_array_ptr)[6] = &CHAR_ARRAY;
 }
+
+void deref_addrof(void) {
+    int *p = *&(int[]){1, 2, 3};
+}

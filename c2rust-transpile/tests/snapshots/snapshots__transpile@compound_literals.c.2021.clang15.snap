@@ -74,3 +74,12 @@ pub unsafe extern "C" fn local_compound_literals() {
     let mut macro_char_array_ptr: *mut [::core::ffi::c_char; 6] =
         &mut CHAR_ARRAY as *mut [::core::ffi::c_char; 6];
 }
+#[no_mangle]
+pub unsafe extern "C" fn deref_addrof() {
+    let mut c2rust_lvalue_5: [::core::ffi::c_int; 3] = [
+        1 as ::core::ffi::c_int,
+        2 as ::core::ffi::c_int,
+        3 as ::core::ffi::c_int,
+    ];
+    let mut p: *mut ::core::ffi::c_int = &raw mut c2rust_lvalue_5 as *mut ::core::ffi::c_int;
+}
