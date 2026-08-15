@@ -330,7 +330,7 @@ impl<'c> Translation<'c> {
             }
 
             "__builtin_va_start" => {
-                if ctx.is_unused() && args.len() == 2 {
+                if !ctx.is_used && args.len() == 2 {
                     if let Some(va_id) = self.match_vastart(args[0]) {
                         if self.ast_context.get_decl(&va_id).is_some() {
                             let dst = self.convert_expr(ctx.used(), args[0], None)?;
@@ -352,7 +352,7 @@ impl<'c> Translation<'c> {
                 Err(TranslationError::generic("Unsupported va_start"))
             }
             "__builtin_va_copy" => {
-                if ctx.is_unused() && args.len() == 2 {
+                if !ctx.is_used && args.len() == 2 {
                     if let Some((_dst_va_id, _src_va_id)) = self.match_vacopy(args[0], args[1]) {
                         let dst = self.convert_expr(ctx.used(), args[0], None)?;
                         let src = self.convert_expr(ctx.used(), args[1], None)?;
@@ -370,7 +370,7 @@ impl<'c> Translation<'c> {
                 Err(TranslationError::generic("Unsupported va_copy"))
             }
             "__builtin_va_end" => {
-                if ctx.is_unused() && args.len() == 1 {
+                if !ctx.is_used && args.len() == 1 {
                     if let Some(_va_id) = self.match_vaend(args[0]) {
                         // nothing to do since the translated Rust `va_list` values get `Drop`'ed.
                         return Ok(WithStmts::new_val(self.panic("va_end stub")));
