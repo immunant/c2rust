@@ -122,7 +122,27 @@ pub enum ReplaceMode {
 /// Options that impact an expression and all of its subexpressions.
 #[derive(Copy, Clone, Debug)]
 pub struct ExprContext {
-    used: bool,
+    /// Whether the result value of the expression is used in a larger expression.
+    ///
+    /// When the result value is not used in a particular context, only the side effects of the
+    /// expression matter. The `stmts` field of `WithStmts` should hold any statements with side
+    /// effects, and the `val` field is expected to be discarded. It should not appear in the final
+    /// transpiler output, and may be an expression that panics when evaluated.
+    ///
+    /// - `.unused()` should be called for the top-level expression of an `ExprStmt`, the increment
+    /// expression of a `for` loop, the `lhs` of a comma operator expression, and other such cases.
+    ///
+    /// - `.used()` should be called if an expression is needed to evaluate the side effects of a
+    /// parent expression, such as the arguments of a function call (unless the function is known to
+    /// be pure), the operands of an assignment expression, the expression of a `return` statement,
+    /// etc. An expression that sets `.used()` for one of its subexpressions should handle the case
+    /// that its own context has `!is_used`, by moving its side effects into the `stmts` field;
+    /// the `convert_side_effects_expr` helper can be used for this purpose.
+    ///
+    /// - If an expression is pure (has no side effects), then it should inherit its `is_used` value
+    /// from its parent expression: if the parent expression is going to be discarded, then so are
+    /// all of its pure child expressions.
+    is_used: bool,
 
     /// In a Rust const context, for example in a static initializer or constant-like macro
     /// translation.
@@ -152,19 +172,22 @@ pub struct ExprContext {
 
 impl ExprContext {
     pub fn used(self) -> Self {
-        ExprContext { used: true, ..self }
+        ExprContext {
+            is_used: true,
+            ..self
+        }
     }
     pub fn unused(self) -> Self {
         ExprContext {
-            used: false,
+            is_used: false,
             ..self
         }
     }
     pub fn is_used(&self) -> bool {
-        self.used
+        self.is_used
     }
     pub fn is_unused(&self) -> bool {
-        !self.used
+        !self.is_used
     }
     pub fn decay_ref(self) -> Self {
         ExprContext {
@@ -876,7 +899,7 @@ pub fn translate(
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
-        used: true,
+        is_used: true,
         is_const: false,
         is_pattern: false,
         is_static: false,
@@ -3916,7 +3939,7 @@ impl<'c> Translation<'c> {
         panic_msg: &str,
     ) -> WithStmts<Box<Expr>> {
         if ctx.is_unused() {
-            // Recall that if `used` is false, the `stmts` field of the output must contain
+            // Recall that if `!is_used`, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
             expr.and_then(|expr| {
                 WithStmts::new(vec![mk().semi_stmt(expr)], self.panic_or_err(panic_msg))
