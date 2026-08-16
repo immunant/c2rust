@@ -27,8 +27,8 @@ impl<'c> Translation<'c> {
             }
 
             op if op.is_logical() => {
-                let lhs = self.convert_condition(ctx, true, lhs)?;
-                let rhs = self.convert_condition(ctx, true, rhs)?;
+                let lhs = self.convert_condition(ctx.used(), true, lhs)?;
+                let rhs = self.convert_condition(ctx.used(), true, rhs)?;
                 Ok(lhs
                     .map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
                     .and_then(|out| {
