@@ -319,12 +319,14 @@ impl<'c> Translation<'c> {
             });
 
         let lhs_translation = if ctx.is_used || compound_assignment_needs_desugaring {
-            self.name_reference_write_read(ctx, lhs)?
+            self.name_reference_write_read(ctx.used(), lhs)?
         } else {
-            self.name_reference_write(ctx, lhs)?.map(|named_ref| {
-                named_ref
-                    .map_rvalue(|()| self.panic_or_err("Volatile value is not supposed to be read"))
-            })
+            self.name_reference_write(ctx.used(), lhs)?
+                .map(|named_ref| {
+                    named_ref.map_rvalue(|()| {
+                        self.panic_or_err("Volatile value is not supposed to be read")
+                    })
+                })
         };
 
         rhs_translation
@@ -368,6 +370,7 @@ impl<'c> Translation<'c> {
         // Assignment expression itself
         let assign_stmt = if let Some(underlying_op) = op.underlying_assignment() {
             // Compound assignment
+            let ctx = ctx.used();
 
             if self.compound_assignment_needs_desugaring(
                 underlying_op,
@@ -377,7 +380,7 @@ impl<'c> Translation<'c> {
                 // Cast the lhs to the compute lhs type, do the compute, and then
                 // cast the compute result to the final lhs type.
                 let lhs = self.make_cast(
-                    ctx.used(),
+                    ctx,
                     lhs_type_id,
                     compute_lhs_type_id,
                     WithStmts::new_val(read.clone()),
@@ -688,7 +691,7 @@ impl<'c> Translation<'c> {
                 Some(compute_res_type_id),
             )
         } else {
-            self.name_reference_write_read(ctx, arg)?
+            self.name_reference_write_read(ctx.used(), arg)?
                 .and_then(|lhs| {
                     let val_name = self.renamer.borrow_mut().fresh(Namespaces::values());
                     let save_old_val = mk().local_stmt(Box::new(mk().local(
