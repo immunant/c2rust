@@ -3569,7 +3569,7 @@ impl<'c> Translation<'c> {
             }
 
             Conditional(ty, cond, lhs, rhs) => {
-                let cond = self.convert_condition(ctx, true, cond)?;
+                let cond = self.convert_condition(ctx.used(), true, cond)?;
 
                 let lhs = self.convert_expr(ctx, lhs, Some(override_ty.unwrap_or(ty)))?;
                 let rhs = self.convert_expr(ctx, rhs, Some(override_ty.unwrap_or(ty)))?;
@@ -3603,7 +3603,7 @@ impl<'c> Translation<'c> {
 
                 if !ctx.is_used() {
                     let lhs = self
-                        .convert_condition(ctx, false, lhs)?
+                        .convert_condition(ctx.used(), false, lhs)?
                         .merge_unsafe(rhs.is_unsafe());
 
                     Ok(lhs.and_then(|val| {
@@ -3631,8 +3631,12 @@ impl<'c> Translation<'c> {
                             Some(lhs),
                         )));
 
-                        let cond =
-                            self.match_bool(ctx, true, ty.ctype, mk().ident_expr(&fresh_name))?;
+                        let cond = self.match_bool(
+                            ctx.used(),
+                            true,
+                            ty.ctype,
+                            mk().ident_expr(&fresh_name),
+                        )?;
                         let ite = mk().ifte_expr(
                             cond,
                             mk().block(vec![mk().expr_stmt(mk().ident_expr(&fresh_name))]),
