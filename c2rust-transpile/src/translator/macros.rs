@@ -82,7 +82,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let val = self.convert_expr(ctx, id, None)?;
+                let val = self.convert_expr(ctx.used(), id, None)?;
                 let new = ConvertedMacroExpr { val, ty };
 
                 // Join ty and cur_ty to the smaller of the two types. If the
