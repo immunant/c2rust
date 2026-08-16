@@ -629,7 +629,7 @@ impl<'c> Translation<'c> {
                 ctx,
                 unary,
                 "Unary expression is not supposed to be used",
-            )?;
+            );
         }
         Ok(unary)
     }

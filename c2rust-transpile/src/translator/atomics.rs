@@ -170,7 +170,7 @@ impl<'c> Translation<'c> {
                 let call = mk().call_expr(atomic_load, vec![ptr]);
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
-                    ret.and_then_try(|ret| {
+                    Ok(ret.and_then(|ret| {
                         let assignment = mk().assign_expr(
                             mk().unary_expr(UnOp::Deref(Default::default()), ret),
                             call,
@@ -180,20 +180,20 @@ impl<'c> Translation<'c> {
                             WithStmts::new_val(assignment),
                             "Builtin is not supposed to be used",
                         )
-                    })
+                    }))
                 } else {
-                    self.convert_side_effects_expr(
+                    Ok(self.convert_side_effects_expr(
                         ctx,
                         WithStmts::new_val(call),
                         "Builtin is not supposed to be used",
-                    )
+                    ))
                 }
             }),
 
             "__atomic_store" | "__atomic_store_n" | "__c11_atomic_store" => {
                 let order = static_order(order);
                 let val = val1.expect("__atomic_store must have a val argument");
-                ptr.zip(val).and_then_try(|(ptr, val)| {
+                Ok(ptr.zip(val).and_then(|(ptr, val)| {
                     let atomic_store = self.atomic_intrinsic_expr("store", &[order]);
                     let val = if name == "__atomic_store" {
                         mk().unary_expr(UnOp::Deref(Default::default()), val)
@@ -206,13 +206,13 @@ impl<'c> Translation<'c> {
                         WithStmts::new_val(call),
                         "Builtin is not supposed to be used",
                     )
-                })
+                }))
             }
 
             // NOTE: there is no corresponding __atomic_init builtin in clang
             "__c11_atomic_init" => {
                 let val = val1.expect("__atomic_init must have a val argument");
-                ptr.zip(val).and_then_try(|(ptr, val)| {
+                Ok(ptr.zip(val).and_then(|(ptr, val)| {
                     let assignment = mk()
                         .assign_expr(mk().unary_expr(UnOp::Deref(Default::default()), ptr), val);
                     self.convert_side_effects_expr(
@@ -220,7 +220,7 @@ impl<'c> Translation<'c> {
                         WithStmts::new_val(assignment),
                         "Builtin is not supposed to be used",
                     )
-                })
+                }))
             }
 
             "__atomic_exchange" | "__atomic_exchange_n" | "__c11_atomic_exchange" => {
@@ -236,11 +236,11 @@ impl<'c> Translation<'c> {
                     let call = mk().call_expr(fn_path, vec![ptr, val]);
                     if name == "__atomic_exchange" {
                         // LLVM stores the ret pointer in the order_fail slot
-                        order_fail_id
+                        Ok(order_fail_id
                             .map(|x| self.convert_expr(ctx.used(), x, None))
                             .transpose()?
                             .expect("__atomic_exchange must have a ret pointer argument")
-                            .and_then_try(|ret| {
+                            .and_then(|ret| {
                                 let assignment = mk().assign_expr(
                                     mk().unary_expr(UnOp::Deref(Default::default()), ret),
                                     call,
@@ -250,13 +250,13 @@ impl<'c> Translation<'c> {
                                     WithStmts::new_val(assignment),
                                     "Builtin is not supposed to be used",
                                 )
-                            })
+                            }))
                     } else {
-                        self.convert_side_effects_expr(
+                        Ok(self.convert_side_effects_expr(
                             ctx,
                             WithStmts::new_val(call),
                             "Builtin is not supposed to be used",
-                        )
+                        ))
                     }
                 })
             }
@@ -331,11 +331,11 @@ impl<'c> Translation<'c> {
                             mk().anon_field_expr(mk().ident_expr(&res_name), 0),
                         ));
                         let return_value = mk().anon_field_expr(mk().ident_expr(&res_name), 1);
-                        self.convert_side_effects_expr(
+                        Ok(self.convert_side_effects_expr(
                             ctx,
                             WithStmts::new(vec![res_let, assignment], return_value),
                             "Builtin is not supposed to be used",
-                        )
+                        ))
                     })
             }
 
@@ -376,11 +376,11 @@ impl<'c> Translation<'c> {
         let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
         let field_idx = if returns_val { 0 } else { 1 };
         let call_expr = mk().anon_field_expr(call, field_idx);
-        self.convert_side_effects_expr(
+        Ok(self.convert_side_effects_expr(
             ctx,
             WithStmts::new_val(call_expr),
             "Builtin is not supposed to be used",
-        )
+        ))
     }
 
     pub(crate) fn convert_atomic_op(
@@ -398,11 +398,11 @@ impl<'c> Translation<'c> {
 
         if atomic_op.fetches_first() {
             let call_expr = mk().call_expr(atomic_func, vec![dst, src]);
-            self.convert_side_effects_expr(
+            Ok(self.convert_side_effects_expr(
                 ctx,
                 WithStmts::new_val(call_expr),
                 "Builtin is not supposed to be used",
-            )
+            ))
         } else {
             // Since the value of `arg1` is used twice, we need to copy
             // it into a local temporary so we don't duplicate any side-effects
@@ -449,11 +449,11 @@ impl<'c> Translation<'c> {
                 val = mk().unary_expr(UnOp::Not(Default::default()), val);
             }
 
-            self.convert_side_effects_expr(
+            Ok(self.convert_side_effects_expr(
                 ctx,
                 WithStmts::new(vec![arg0_let, arg1_let], val),
                 "Builtin is not supposed to be used",
-            )
+            ))
         }
     }
 }

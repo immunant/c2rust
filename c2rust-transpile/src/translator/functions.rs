@@ -457,11 +457,11 @@ impl<'c> Translation<'c> {
             )
         })?;
 
-        self.convert_side_effects_expr(
+        Ok(self.convert_side_effects_expr(
             ctx,
             call,
             "Function call expression is not supposed to be used",
-        )
+        ))
     }
 
     /// Variant of `convert_exprs` for the arguments of a function call.

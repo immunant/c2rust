@@ -3720,15 +3720,15 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         expr: WithStmts<Box<Expr>>,
         panic_msg: &str,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+    ) -> WithStmts<Box<Expr>> {
         if ctx.is_unused() {
             // Recall that if `used` is false, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
-            Ok(expr.and_then(|expr| {
+            expr.and_then(|expr| {
                 WithStmts::new(vec![mk().semi_stmt(expr)], self.panic_or_err(panic_msg))
-            }))
+            })
         } else {
-            Ok(expr)
+            expr
         }
     }
 
@@ -3798,11 +3798,11 @@ impl<'c> Translation<'c> {
                             // enclose block in parentheses to work around
                             // https://github.com/rust-lang/rust/issues/54482
                             let val = mk().paren_expr(block);
-                            return self.convert_side_effects_expr(
+                            return Ok(self.convert_side_effects_expr(
                                 ctx,
                                 WithStmts::new_val(val),
                                 "Compound statement expression is not supposed to be used",
-                            );
+                            ));
                         }
                         _ => {
                             self.use_feature("label_break_value");
@@ -3813,11 +3813,11 @@ impl<'c> Translation<'c> {
 
                 let block_body = mk().block(stmts);
                 let val: Box<Expr> = mk().labelled_block_expr(block_body, lbl.pretty_print());
-                self.convert_side_effects_expr(
+                Ok(self.convert_side_effects_expr(
                     ctx,
                     WithStmts::new_val(val),
                     "Compound statement expression is not supposed to be used",
-                )
+                ))
             }
             _ => {
                 if ctx.is_unused() {
