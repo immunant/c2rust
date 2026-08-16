@@ -2002,7 +2002,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
         init: &mut Box<Expr>,
     ) -> TranslationResult<()> {
-        let mut default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
+        let mut default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
 
         std::mem::swap(init, &mut default_init);
 
@@ -2694,7 +2694,7 @@ impl<'c> Translation<'c> {
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
                     self.convert_variable(ctx, initializer, typ)?;
-                let default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
+                let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2811,7 +2811,7 @@ impl<'c> Translation<'c> {
                     init.into_value()
                 };
 
-                let zeroed = self.implicit_default_expr(ctx, typ.ctype)?;
+                let zeroed = self.implicit_default_expr(ctx.used(), typ.ctype)?;
                 let zeroed = if ctx.is_const {
                     zeroed.wrap_unsafe().to_pure_expr()
                 } else {
@@ -3025,7 +3025,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
-            None => self.implicit_default_expr(ctx, typ.ctype),
+            None => self.implicit_default_expr(ctx.used(), typ.ctype),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
