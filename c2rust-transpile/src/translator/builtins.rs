@@ -825,14 +825,11 @@ impl<'c> Translation<'c> {
                 .collect::<Vec<_>>();
             let mem_expr = mk().call_expr(mem, args_casted);
 
-            if ctx.is_used() {
-                Ok(WithStmts::new_val(mem_expr))
-            } else {
-                Ok(WithStmts::new(
-                    vec![mk().semi_stmt(mem_expr)],
-                    self.panic_or_err(&format!("__builtin_{} not used", name)),
-                ))
-            }
+            Ok(self.convert_side_effects_expr(
+                ctx,
+                WithStmts::new_val(mem_expr),
+                &format!("__builtin_{} not used", name),
+            ))
         })
     }
 }

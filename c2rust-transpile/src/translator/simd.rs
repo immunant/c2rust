@@ -226,14 +226,11 @@ impl<'c> Translation<'c> {
         Ok(param_translation.and_then(|call_params| {
             let call = mk().call_expr(mk().ident_expr(fn_name), call_params);
 
-            if ctx.is_used() {
-                WithStmts::new_val(call)
-            } else {
-                WithStmts::new(
-                    vec![mk().semi_stmt(call)],
-                    self.panic_or_err("No value for unused shuffle vector return"),
-                )
-            }
+            self.convert_side_effects_expr(
+                ctx,
+                WithStmts::new_val(call),
+                "No value for unused shuffle vector return",
+            )
         }))
     }
 
@@ -333,16 +330,11 @@ impl<'c> Translation<'c> {
                 mk().call_expr(mk().ident_expr(fn_call_name), params)
             };
 
-            let val = if ctx.is_used() {
-                WithStmts::new_val(call)
-            } else {
-                WithStmts::new(
-                    vec![mk().expr_stmt(call)],
-                    self.panic_or_err("No value for unused shuffle vector return"),
-                )
-            };
-
-            Ok(val.merge_unsafe(is_unsafe))
+            Ok(self.convert_side_effects_expr(
+                ctx,
+                WithStmts::new_val(call).merge_unsafe(is_unsafe),
+                "No value for unused shuffle vector return",
+            ))
         })
     }
 
@@ -453,14 +445,11 @@ impl<'c> Translation<'c> {
 
             let call = mk().call_expr(mk().ident_expr(shuffle_fn_name), new_params);
 
-            if ctx.is_used() {
-                Ok(WithStmts::new_val(call))
-            } else {
-                Ok(WithStmts::new(
-                    vec![mk().expr_stmt(call)],
-                    self.panic_or_err("No value for unused shuffle vector return"),
-                ))
-            }
+            Ok(self.convert_side_effects_expr(
+                ctx,
+                WithStmts::new_val(call),
+                "No value for unused shuffle vector return",
+            ))
         })
     }
 

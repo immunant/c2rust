@@ -38,14 +38,11 @@ impl<'c> Translation<'c> {
                 Ok(lhs
                     .map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
                     .and_then(|out| {
-                        if ctx.is_unused() {
-                            WithStmts::new(
-                                vec![mk().semi_stmt(out)],
-                                self.panic_or_err("Binary expression is not supposed to be used"),
-                            )
-                        } else {
-                            WithStmts::new_val(out)
-                        }
+                        self.convert_side_effects_expr(
+                            ctx,
+                            WithStmts::new_val(out),
+                            "Binary expression is not supposed to be used",
+                        )
                     }))
             }
 
