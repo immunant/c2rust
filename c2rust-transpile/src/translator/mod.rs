@@ -894,7 +894,7 @@ pub fn translate(
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
-        is_used: true,
+        is_used: false,
         is_const: false,
         is_pattern: false,
         is_static: false,
