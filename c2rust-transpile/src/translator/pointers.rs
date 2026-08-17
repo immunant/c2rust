@@ -243,7 +243,7 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        let simple_index_array = if ctx.needs_address() {
+        let simple_index_array = if ctx.needs_address {
             // We can't necessarily index into an array if we're using
             // that element to compute an address.
             None

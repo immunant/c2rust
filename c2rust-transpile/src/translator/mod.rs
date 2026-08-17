@@ -209,18 +209,14 @@ impl ExprContext {
             ..self
         }
     }
-    pub fn is_bitfield_write(&self) -> bool {
-        self.is_bitfield_write
-    }
+
     pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
         ExprContext {
             is_bitfield_write,
             ..self
         }
     }
-    pub fn needs_address(&self) -> bool {
-        self.needs_address
-    }
+
     pub fn set_needs_address(self, needs_address: bool) -> Self {
         ExprContext {
             needs_address,
@@ -3824,7 +3820,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Function { parameters, .. } => {
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
-                if ctx.needs_address() {
+                if ctx.needs_address {
                     let ty = self.convert_type(result_type_id.ctype)?;
                     let actual_ty = self
                         .type_converter
@@ -3872,7 +3868,7 @@ impl<'c> Translation<'c> {
                 // but this requirement was removed in later versions of the
                 // `raw_ref_op` feature.
                 if (*has_static_duration || *has_thread_duration)
-                    && (self.tcfg.edition < Edition2024 || !ctx.needs_address())
+                    && (self.tcfg.edition < Edition2024 || !ctx.needs_address)
                 {
                     set_unsafe = true;
                 }
