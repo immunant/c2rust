@@ -3949,13 +3949,20 @@ impl<'c> Translation<'c> {
 
         match kind {
             CastKind::LValueToRValue => {
-                let val = self.convert_expr(ctx, expr, None)?;
                 let val = if source_ty.qualifiers.is_volatile {
                     // If the expression is volatile and used as something that isn't an LValue,
-                    // this constitutes a volatile read.
-                    val.try_map(|val| self.volatile_read(val, target_ty))?
+                    // this constitutes a volatile read. A volatile read is a side effect, so it
+                    // needs to be included even if the expression is unused.
+                    let val = self
+                        .convert_expr(ctx.used(), expr, None)?
+                        .try_map(|val| self.volatile_read(val, source_ty))?;
+                    self.convert_side_effects_expr(
+                        ctx,
+                        val,
+                        "LValueToRValue value is not supposed to be used",
+                    )
                 } else {
-                    val
+                    self.convert_expr(ctx, expr, None)?
                 };
 
                 // if the context wants a different type, add a cast

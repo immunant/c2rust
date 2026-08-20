@@ -34,7 +34,11 @@ pub unsafe extern "C" fn test_volatile() {
         ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(&raw const volatile_global_struct.p)
             .offset(-1),
     );
+    ::core::ptr::read_volatile::<::core::ffi::c_int>(&raw const vi);
     -::core::ptr::read_volatile::<::core::ffi::c_int>(&raw const vi);
-    *pvi;
+    ::core::ptr::read_volatile::<::core::ffi::c_int>(&raw const vi);
+    ::core::ptr::read_volatile::<::core::ffi::c_int>(pvi);
+    ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(&raw const volatile_global_struct.p);
+    ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(&raw const volatile_global_struct.p);
     *::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(&raw const volatile_global_struct.p);
 }
