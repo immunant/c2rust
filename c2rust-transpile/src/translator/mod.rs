@@ -3923,14 +3923,58 @@ impl<'c> Translation<'c> {
         opt_field_id: Option<CDeclId>,
         is_explicit: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if matches!(
-            kind,
-            CastKind::IntegralToBoolean | CastKind::FloatingToBoolean | CastKind::PointerToBoolean
-        ) {
-            return self.convert_condition(ctx, true, expr);
-        }
+        let source_ty = if let Some(func_decl) = self
+            .ast_context
+            .fn_declref_decl(expr)
+            .filter(|_| is_explicit)
+        {
+            // If we're casting a function, look for its declared ty to use as a more
+            // precise source type. The AST node's type will not preserve typedef arg types
+            // but the function's declaration will.
+            let kind_with_declared_args = self.ast_context.fn_decl_ty_with_declared_args(func_decl);
+            let func_ty = self.ast_context.type_for_kind(&kind_with_declared_args);
+            let func_ptr_ty = self
+                .ast_context
+                .type_for_kind(&CTypeKind::Pointer(CQualTypeId::new(func_ty)));
 
+            CQualTypeId::new(func_ptr_ty)
+        } else {
+            self.ast_context
+                .index_unwrap_parens(expr)
+                .kind
+                .get_qual_type()
+                .ok_or_else(|| format_err!("bad source type"))?
+        };
         let target_ty = override_ty.unwrap_or(ty);
+
+        match kind {
+            CastKind::LValueToRValue => {
+                let val = self.convert_expr(ctx, expr, None)?;
+                let mut val = if source_ty.qualifiers.is_volatile {
+                    // If the expression is volatile and used as something that isn't an LValue,
+                    // this constitutes a volatile read.
+                    val.try_map(|val| self.volatile_read(val, target_ty))?
+                } else {
+                    val
+                };
+
+                // if the context wants a different type, add a cast
+                if target_ty.ctype != source_ty.ctype {
+                    let ty = self.convert_type(target_ty.ctype)?;
+                    val = val.map(|val| mk().cast_expr(val, ty));
+                }
+
+                return Ok(val);
+            }
+
+            CastKind::IntegralToBoolean
+            | CastKind::FloatingToBoolean
+            | CastKind::PointerToBoolean => {
+                return self.convert_condition(ctx, true, expr);
+            }
+
+            _ => {}
+        }
 
         // In general, if we are casting the result of an expression, then the inner
         // expression should be translated to whatever type it normally would.
@@ -3967,29 +4011,6 @@ impl<'c> Translation<'c> {
         if self.casting_simd_builtin_call(expr, is_explicit, kind) {
             return Ok(val);
         }
-
-        let source_ty = if let Some(func_decl) = self
-            .ast_context
-            .fn_declref_decl(expr)
-            .filter(|_| is_explicit)
-        {
-            // If we're casting a function, look for its declared ty to use as a more
-            // precise source type. The AST node's type will not preserve typedef arg types
-            // but the function's declaration will.
-            let kind_with_declared_args = self.ast_context.fn_decl_ty_with_declared_args(func_decl);
-            let func_ty = self.ast_context.type_for_kind(&kind_with_declared_args);
-            let func_ptr_ty = self
-                .ast_context
-                .type_for_kind(&CTypeKind::Pointer(CQualTypeId::new(func_ty)));
-
-            CQualTypeId::new(func_ptr_ty)
-        } else {
-            self.ast_context
-                .index_unwrap_parens(expr)
-                .kind
-                .get_qual_type()
-                .ok_or_else(|| format_err!("bad source type"))?
-        };
 
         self.make_cast_full(
             ctx,
@@ -4206,21 +4227,7 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::LValueToRValue => {
-                let mut val = if source_cty.qualifiers.is_volatile {
-                    // If the expression is volatile and used as something that isn't an LValue,
-                    // this constitutes a volatile read.
-                    val.try_map(|val| self.volatile_read(val, target_cty))?
-                } else {
-                    val
-                };
-
-                // if the context wants a different type, add a cast
-                if target_cty.ctype != source_cty.ctype {
-                    let ty = self.convert_type(target_cty.ctype)?;
-                    val = val.map(|val| mk().cast_expr(val, ty));
-                }
-
-                Ok(val)
+                panic!("LValueToRValue casts must be handled in convert_cast")
             }
 
             CastKind::ToVoid | CastKind::ConstCast => Ok(val),
