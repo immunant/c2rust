@@ -23,8 +23,6 @@ pub unsafe extern "C" fn foo() -> ::core::ffi::c_int {
     let mut px: *mut ::core::ffi::c_int = &raw mut x;
     let mut sx: ::core::ffi::c_ulong =
         ::core::mem::size_of::<::core::ffi::c_int>() as ::core::ffi::c_ulong;
-    let mut y: bar = bar {
-        x: x as ::core::ffi::c_int,
-    } as bar;
+    let mut y: bar = bar { x: x };
     return y.x;
 }

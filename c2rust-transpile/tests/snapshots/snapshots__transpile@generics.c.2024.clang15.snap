@@ -36,5 +36,5 @@ pub unsafe extern "C" fn foo() {
     let mut t1: *mut t = p1 as *mut t;
     let mut t2: *const t = p2 as *const t;
     let cx: ::core::ffi::c_int = n;
-    let mut ut_y: ::core::ffi::c_int = cx as ::core::ffi::c_int;
+    let mut ut_y: ::core::ffi::c_int = cx;
 }

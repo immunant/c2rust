@@ -3950,7 +3950,7 @@ impl<'c> Translation<'c> {
         match kind {
             CastKind::LValueToRValue => {
                 let val = self.convert_expr(ctx, expr, None)?;
-                let mut val = if source_ty.qualifiers.is_volatile {
+                let val = if source_ty.qualifiers.is_volatile {
                     // If the expression is volatile and used as something that isn't an LValue,
                     // this constitutes a volatile read.
                     val.try_map(|val| self.volatile_read(val, target_ty))?
@@ -3959,12 +3959,7 @@ impl<'c> Translation<'c> {
                 };
 
                 // if the context wants a different type, add a cast
-                if target_ty.ctype != source_ty.ctype {
-                    let ty = self.convert_type(target_ty.ctype)?;
-                    val = val.map(|val| mk().cast_expr(val, ty));
-                }
-
-                return Ok(val);
+                return self.make_cast(ctx, source_ty.not_volatile(), target_ty, val);
             }
 
             CastKind::IntegralToBoolean

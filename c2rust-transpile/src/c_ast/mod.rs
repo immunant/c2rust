@@ -2565,6 +2565,13 @@ impl Qualifiers {
             false => Mutability::Mutable,
         }
     }
+
+    pub(crate) fn not_volatile(self) -> Self {
+        Self {
+            is_volatile: false,
+            ..self
+        }
+    }
 }
 
 /// Qualified type
@@ -2588,6 +2595,13 @@ impl CQualTypeId {
 
     pub fn mutability(self) -> Mutability {
         self.qualifiers.mutability()
+    }
+
+    pub(crate) fn not_volatile(self) -> Self {
+        Self {
+            qualifiers: self.qualifiers.not_volatile(),
+            ..self
+        }
     }
 }
 
