@@ -94,7 +94,7 @@ fn immediate_expr_children_all_types(kind: &CExprKind) -> Vec<SomeId> {
         }
         // We need to iterate the struct type if this offsetof is variable,
         // since it may not get instantiated
-        OffsetOf(_, OffsetOfKind::Variable(qty, _, _)) => intos![qty.ctype],
+        OffsetOf(_, OffsetOfKind::Variable(qty, _, index)) => intos![qty.ctype, index],
         OffsetOf(..) | Literal(..) | ImplicitValueInit(..) => vec![],
         DeclRef(..) => vec![], // don't follow references back!
         Unary(_, _, subexpr, _) | ConstantExpr(_, subexpr, _) => intos![subexpr],
