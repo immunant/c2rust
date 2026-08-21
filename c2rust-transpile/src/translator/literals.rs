@@ -199,8 +199,8 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // C compound literals are lvalues, but equivalent Rust expressions generally are not.
         // So if an address is needed, store it in an intermediate variable first.
-        if !ctx.needs_address || ctx.expanding_macro.is_some() {
-            return self.convert_expr(ctx, val, override_ty);
+        if !ctx.needs_address || !ctx.is_used || ctx.expanding_macro.is_some() {
+            return self.convert_expr(ctx.not_needs_address(), val, override_ty);
         }
 
         let fresh_name = self
