@@ -898,7 +898,7 @@ pub fn translate(
         // Headers often pull in declarations that are unused;
         // we simplify the translator output by omitting those.
         t.ast_context
-            .prune_unwanted_decls(tcfg.preserve_unused_functions);
+            .prune_unwanted_items(tcfg.preserve_unused_functions);
 
         // Normalize AST types between Clang < 16 and later versions. Ensures that
         // binary and unary operators' expr types agree with their argument types

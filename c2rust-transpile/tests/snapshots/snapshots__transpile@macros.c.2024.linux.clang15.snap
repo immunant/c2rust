@@ -45,8 +45,8 @@ pub unsafe extern "C" fn memcpy_str_literal(mut out: *mut ::core::ffi::c_char) {
             .wrapping_mul(::core::mem::size_of::<::core::ffi::c_char>()),
     );
 }
-pub const SIZE_OF_INT: ::core::ffi::c_ulong = ::core::mem::size_of::<::core::ffi::c_int>();
+pub const SIZE_OF_INT: usize = ::core::mem::size_of::<::core::ffi::c_int>();
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn live_use() -> size_t {
-    return SIZE_OF_INT as size_t;
+    return SIZE_OF_INT;
 }

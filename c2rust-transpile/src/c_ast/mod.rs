@@ -1177,14 +1177,15 @@ impl TypedAstContext {
         self.prenamed_decls = prenamed_decls;
     }
 
-    pub fn prune_unwanted_decls(&mut self, want_unused_functions: bool) {
+    pub fn prune_unwanted_items(&mut self, want_unused_functions: bool) {
         // Starting from a set of root declarations, walk each one to find declarations it
         // depends on. Then walk each of those, recursively.
 
         // Declarations we still need to walk.  Everything in here is also in `wanted`.
         let mut to_walk: Vec<CDeclId> = Vec::new();
-        // Declarations accessible from a root.
-        let mut wanted: HashSet<CDeclId> = HashSet::new();
+        // Items accessible from a root.
+        let mut wanted_decls: HashSet<CDeclId> = HashSet::new();
+        let mut wanted_exprs: HashSet<CExprId> = HashSet::new();
 
         // Mark all the roots as wanted.  Roots are all top-level functions and variables that might
         // be visible from another compilation unit.
@@ -1219,7 +1220,7 @@ impl TypedAstContext {
 
             if is_wanted {
                 to_walk.push(decl_id);
-                wanted.insert(decl_id);
+                wanted_decls.insert(decl_id);
             }
         }
 
@@ -1239,7 +1240,7 @@ impl TypedAstContext {
                                 .kind
                                 .as_decl_or_typedef()
                                 .expect("target of CTypeKind::Elaborated isn't a decl?");
-                            if wanted.insert(decl_id) {
+                            if wanted_decls.insert(decl_id) {
                                 to_walk.push(decl_id);
                             }
                         } else {
@@ -1249,23 +1250,25 @@ impl TypedAstContext {
                     }
 
                     Expr(expr_id) => {
+                        wanted_exprs.insert(expr_id);
+
                         let expr = self.index_unwrap_parens(expr_id);
                         if let Some(macs) = self.macro_invocations.get(&expr_id) {
                             for mac_id in macs {
-                                if wanted.insert(*mac_id) {
+                                if wanted_decls.insert(*mac_id) {
                                     to_walk.push(*mac_id);
                                 }
                             }
                         }
                         if let CExprKind::DeclRef(_, decl_id, _) = &expr.kind {
-                            if wanted.insert(*decl_id) {
+                            if wanted_decls.insert(*decl_id) {
                                 to_walk.push(*decl_id);
                             }
                         }
                     }
 
                     Decl(decl_id) => {
-                        if wanted.insert(decl_id) {
+                        if wanted_decls.insert(decl_id) {
                             to_walk.push(decl_id);
                         }
 
@@ -1273,7 +1276,7 @@ impl TypedAstContext {
                             // Special case for enums.  The enum constant is used, so the whole
                             // enum is also used.
                             let parent_id = self.parents[&decl_id];
-                            if wanted.insert(parent_id) {
+                            if wanted_decls.insert(parent_id) {
                                 to_walk.push(parent_id);
                             }
                         }
@@ -1285,7 +1288,7 @@ impl TypedAstContext {
                         if let CDeclKind::Variable { ref attrs, .. } = self.c_decls[&decl_id].kind {
                             for attr in attrs {
                                 if let Attribute::Cleanup(fn_id) = attr {
-                                    if wanted.insert(*fn_id) {
+                                    if wanted_decls.insert(*fn_id) {
                                         to_walk.push(*fn_id);
                                     }
                                 }
@@ -1300,14 +1303,22 @@ impl TypedAstContext {
             }
         }
 
-        // Prune any declaration that isn't considered live
+        // Prune anything that isn't considered live
         self.c_decls
-            .retain(|&decl_id, _decl| wanted.contains(&decl_id));
+            .retain(|&decl_id, _| wanted_decls.contains(&decl_id));
+        self.c_exprs
+            .retain(|&expr_id, _| wanted_exprs.contains(&expr_id));
 
-        // Remove references to removed decls that are held elsewhere.
+        // Remove references to removed items that are held elsewhere.
         self.c_decls_top.retain(|x| self.c_decls.contains_key(x));
         self.prenamed_decls
             .retain(|x, _| self.c_decls.contains_key(x));
+        self.macro_invocations
+            .retain(|&expr_id, _| self.c_exprs.contains_key(&expr_id));
+        self.macro_expansions.retain(|_, expr_ids| {
+            expr_ids.retain(|&expr_id| self.c_exprs.contains_key(&expr_id));
+            !expr_ids.is_empty()
+        });
 
         if let Some(main_id) = self.c_main {
             if !self.c_decls.contains_key(&main_id) {
