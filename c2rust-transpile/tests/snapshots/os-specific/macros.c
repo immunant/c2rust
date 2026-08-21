@@ -28,3 +28,14 @@ int size_of_dynamic(int n) {
 void memcpy_str_literal(char *out) {
   memcpy(out, POS, (LL(POS) + 1) * sizeof(char));
 }
+
+// Regression test for https://github.com/immunant/c2rust/issues/1977
+#define SIZE_OF_INT sizeof(int)
+
+static size_t unused_use(void) {
+    return SIZE_OF_INT;
+}
+
+size_t live_use(void) {
+    return SIZE_OF_INT;
+}

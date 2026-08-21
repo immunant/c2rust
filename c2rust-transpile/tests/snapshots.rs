@@ -540,7 +540,10 @@ fn test_f128() {
 
 #[test]
 fn test_macros_os_specific() {
-    transpile("macros.c").os_specific(true).run();
+    transpile("macros.c")
+        .os_specific(true)
+        .expect_compile_error(true)
+        .run();
 }
 
 #[test]
