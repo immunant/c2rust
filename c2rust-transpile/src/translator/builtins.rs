@@ -301,9 +301,25 @@ impl<'c> Translation<'c> {
             "__builtin_object_size" => {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
                 // (depending on the value of `type`), so we emit the following:
-                // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
+                //
+                // ```
+                // (if (type & 2) == 0 {
+                //     -1isize as libc::size_t
+                // } else {
+                //     0isize as libc::size_t
+                // })
+                // ```
                 let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
                 let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
+                self.use_crate(ExternCrate::Libc);
+                let size_t = mk().abs_path_ty(vec!["libc", "size_t"]);
+
+                let minus_one = mk().cast_expr(
+                    neg_expr(mk().lit_expr(mk().int_lit(1, "isize"))),
+                    size_t.clone(),
+                );
+                let zero = mk().cast_expr(mk().lit_expr(mk().int_lit(0, "isize")), size_t);
+
                 Ok(ptr_arg.and_then(|_| {
                     type_arg.map(|type_arg| {
                         let type_and_2 = mk().binary_expr(
@@ -316,15 +332,11 @@ impl<'c> Translation<'c> {
                             type_and_2,
                             mk().lit_expr(mk().int_lit(0, "")),
                         );
-                        let minus_one = neg_expr(mk().lit_expr(mk().int_lit(1, "isize")));
-                        let if_expr = mk().ifte_expr(
+                        mk().ifte_expr(
                             if_cond,
                             mk().block(vec![mk().expr_stmt(minus_one)]),
-                            Some(mk().lit_expr(mk().int_lit(0, "isize"))),
-                        );
-                        self.use_crate(ExternCrate::Libc);
-                        let size_t = mk().abs_path_ty(vec!["libc", "size_t"]);
-                        mk().cast_expr(if_expr, size_t)
+                            Some(zero),
+                        )
                     })
                 }))
             }
