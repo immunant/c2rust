@@ -1481,23 +1481,24 @@ impl TypedAstContext {
         }
     }
 
-    /// Bubble types of unary and binary operators up from their args into the expression type.
-    ///
-    /// In Clang 15 and below, the Clang AST resolves typedefs in the expression type of unary and
-    /// binary expressions. For example, a BinaryExpr node adding two `size_t` expressions will be
-    /// given an `unsigned long` type rather than the `size_t` typedef type. This behavior changed
-    /// in Clang 16. This method adjusts AST node types to match those produced by Clang 16 and
-    /// newer; on these later Clang versions, it should have no effect.
+    /// Overrides the result types of certain expressions to one of the `PULLBACK_KINDS` where
+    /// appropriate. Then bubbles those types up to the parent expressions.
     ///
     /// This pass is necessary because we reify some typedef types (such as `size_t`) into their own
     /// distinct Rust types. As such, we need to make sure we know the exact type to generate when
     /// we translate an expr, not just its resolved type (looking through typedefs).
-    pub fn bubble_expr_types(&mut self) {
-        struct BubbleExprTypes<'a> {
+    ///
+    /// Additionally, in Clang 15 and below, the Clang AST resolves typedefs in the expression type
+    /// of unary and binary expressions. For example, a BinaryExpr node adding two `size_t`
+    /// expressions will be given an `unsigned long` type rather than the `size_t` typedef type.
+    /// This behavior changed in Clang 16. This method adjusts AST node types to match those
+    /// produced by Clang 16 and newer.
+    pub fn override_expr_types(&mut self) {
+        struct OverrideExprTypes<'a> {
             ast_context: &'a mut TypedAstContext,
         }
 
-        impl<'a> NodeVisitor for BubbleExprTypes<'a> {
+        impl<'a> NodeVisitor for OverrideExprTypes<'a> {
             fn children(&mut self, id: SomeId) -> Vec<SomeId> {
                 immediate_children_all_types(self.ast_context, id)
             }
@@ -1588,7 +1589,7 @@ impl TypedAstContext {
         }
 
         for decl in self.c_decls_top.clone() {
-            BubbleExprTypes { ast_context: self }.visit_tree(SomeId::Decl(decl));
+            OverrideExprTypes { ast_context: self }.visit_tree(SomeId::Decl(decl));
         }
     }
 
