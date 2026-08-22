@@ -1,0 +1,63 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/builtin_types.2021.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(raw_ref_op)]
+pub type int32_t = i32;
+#[no_mangle]
+pub unsafe extern "C" fn test_builtin_expected_type(
+    mut d: ::core::ffi::c_double,
+    mut y: ::core::ffi::c_int,
+) {
+    let mut ffs: int32_t = if y == 0 {
+        0
+    } else {
+        y.trailing_zeros() as i32 + 1
+    };
+    let mut clz: int32_t = (y as ::core::ffi::c_uint).leading_zeros() as i32;
+    let mut isnan: int32_t = d.is_nan() as i32;
+    let mut isinf_sign: int32_t = if d.is_infinite() {
+        if d.is_sign_positive() {
+            1
+        } else {
+            -1
+        }
+    } else {
+        0
+    };
+    let mut constant_p: int32_t = 0;
+    let mut cond: int32_t = if y != 0 {
+        if y == 0 {
+            0
+        } else {
+            y.trailing_zeros() as i32 + 1
+        }
+    } else {
+        0 as int32_t
+    };
+}
+#[no_mangle]
+pub unsafe extern "C" fn test_builtin_object_size() {
+    let mut x: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    &raw mut x;
+    let mut n: ::core::ffi::c_ulong = (if 1 as ::core::ffi::c_int & 2 == 0 {
+        -1isize
+    } else {
+        0isize
+    }) as ::libc::size_t;
+    &raw mut x;
+    let mut n2: ::core::ffi::c_ulong = (if 1 as ::core::ffi::c_int & 2 == 0 {
+        -1isize
+    } else {
+        0isize
+    }) as ::libc::size_t;
+}
