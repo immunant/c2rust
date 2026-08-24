@@ -253,16 +253,6 @@ pub enum DecayRef {
 }
 
 impl DecayRef {
-    // Here we give intrinsic meaning to default to equate to yes/true
-    // when actually evaluated
-    pub(crate) fn is_yes(&self) -> bool {
-        match self {
-            DecayRef::Yes => true,
-            DecayRef::Default => true,
-            DecayRef::No => false,
-        }
-    }
-
     pub(crate) fn set_default_to_no(&mut self) {
         if *self == DecayRef::Default {
             *self = DecayRef::No;

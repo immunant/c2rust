@@ -106,7 +106,6 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
 
         let mut needs_cast = false;
-        let mut ref_cast_pointee_ty = None;
         let mutbl = if ctx.is_const() && !result_pointee_type_id.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
@@ -151,11 +150,9 @@ impl<'c> Translation<'c> {
             } else {
                 val = val.map(|val| mk().borrow_expr(val));
 
-                // Add an intermediate reference-to-pointer cast if the context needs
-                // reference-to-pointer decay, or if another cast follows.
-                if ctx.decay_ref.is_yes() || needs_cast {
-                    ref_cast_pointee_ty = Some(self.convert_pointee_type(expr_type_id.ctype)?);
-                }
+                self.use_feature("ptr_from_ref");
+                let func = mk().abs_path_expr(vec!["core", "ptr", "from_ref"]);
+                val = val.map(|val| mk().call_expr(func, vec![val]));
             }
         } else {
             self.use_feature("raw_ref_op");
@@ -166,12 +163,6 @@ impl<'c> Translation<'c> {
                 // (`array_ptr_get` feature added to nightly in January 2024)
                 needs_cast = true;
             }
-        }
-
-        // Perform an intermediate reference-to-pointer cast if needed.
-        // TODO: Rust 1.76: Use `ptr::from_ref`.
-        if let Some(pointee_ty) = ref_cast_pointee_ty {
-            val = val.map(|val| mk().cast_expr(val, mk().set_mutbl(mutbl).ptr_ty(pointee_ty)));
         }
 
         // Perform a final cast to the target type if needed.
