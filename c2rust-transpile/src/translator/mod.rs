@@ -1755,7 +1755,7 @@ impl<'c> Translation<'c> {
     pub fn use_feature(&self, feature: &'static str) {
         if matches!(
             feature,
-            "asm" | "inline_const" | "label_break_value" | "raw_ref_op"
+            "asm" | "inline_const" | "label_break_value" | "ptr_from_ref" | "raw_ref_op"
         ) && self.tcfg.edition >= Edition2024
         {
             return;

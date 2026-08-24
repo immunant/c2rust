@@ -64,44 +64,59 @@ pub const WSTR: [::core::ffi::c_int; 3] = unsafe {
 };
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn test_ptr(mut arg: ::core::ffi::c_int) {
-    let mut not_wstr: ::core::ffi::c_int = (&const {
-        unsafe {
-            ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(*b"a\0\0\0b\0\0\0\0\0\0\0")
-        }
-    } as *const [::core::ffi::c_int; 3])
-        .is_null() as ::core::ffi::c_int;
-    let mut conditional_wstr: ::core::ffi::c_int = if !(&const {
-        unsafe {
-            ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(*b"a\0\0\0b\0\0\0\0\0\0\0")
-        }
-    } as *const [::core::ffi::c_int; 3])
-        .is_null()
+    let mut not_wstr: ::core::ffi::c_int = ::core::ptr::from_ref(
+        &const {
+            unsafe {
+                ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(
+                    *b"a\0\0\0b\0\0\0\0\0\0\0",
+                )
+            }
+        },
+    )
+    .is_null() as ::core::ffi::c_int;
+    let mut conditional_wstr: ::core::ffi::c_int = if !::core::ptr::from_ref(
+        &const {
+            unsafe {
+                ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(
+                    *b"a\0\0\0b\0\0\0\0\0\0\0",
+                )
+            }
+        },
+    )
+    .is_null()
     {
         1 as ::core::ffi::c_int
     } else {
         2 as ::core::ffi::c_int
     };
-    let mut and_wstr: ::core::ffi::c_int = (!(&const {
-        unsafe {
-            ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(*b"a\0\0\0b\0\0\0\0\0\0\0")
-        }
-    } as *const [::core::ffi::c_int; 3])
-        .is_null()
+    let mut and_wstr: ::core::ffi::c_int = (!::core::ptr::from_ref(
+        &const {
+            unsafe {
+                ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(
+                    *b"a\0\0\0b\0\0\0\0\0\0\0",
+                )
+            }
+        },
+    )
+    .is_null()
         && arg != 0) as ::core::ffi::c_int;
-    let mut cast_wstr: ::core::ffi::c_int = !(&const {
-        unsafe {
-            ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(*b"a\0\0\0b\0\0\0\0\0\0\0")
-        }
-    } as *const [::core::ffi::c_int; 3])
-        .is_null() as ::core::ffi::c_int;
+    let mut cast_wstr: ::core::ffi::c_int = !::core::ptr::from_ref(
+        &const {
+            unsafe {
+                ::core::mem::transmute::<[u8; 12], [::core::ffi::c_int; 3]>(
+                    *b"a\0\0\0b\0\0\0\0\0\0\0",
+                )
+            }
+        },
+    )
+    .is_null() as ::core::ffi::c_int;
     let mut not_macro_str: ::core::ffi::c_int =
-        (&STR as *const [::core::ffi::c_char; 3]).is_null() as ::core::ffi::c_int;
+        ::core::ptr::from_ref(&STR).is_null() as ::core::ffi::c_int;
     let mut not_macro_wstr: ::core::ffi::c_int =
-        (&WSTR as *const [::core::ffi::c_int; 3]).is_null() as ::core::ffi::c_int;
-    let mut conditional_macro_str: ::core::ffi::c_int =
-        if !(&STR as *const [::core::ffi::c_char; 3]).is_null() {
-            1 as ::core::ffi::c_int
-        } else {
-            2 as ::core::ffi::c_int
-        };
+        ::core::ptr::from_ref(&WSTR).is_null() as ::core::ffi::c_int;
+    let mut conditional_macro_str: ::core::ffi::c_int = if !::core::ptr::from_ref(&STR).is_null() {
+        1 as ::core::ffi::c_int
+    } else {
+        2 as ::core::ffi::c_int
+    };
 }

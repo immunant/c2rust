@@ -110,7 +110,6 @@ impl<'c> Translation<'c> {
         let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
 
         let mut needs_cast = false;
-        let mut ref_cast_pointee_ty = None;
         let mutbl = if ctx.is_const && !pointee_cty.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
@@ -123,17 +122,17 @@ impl<'c> Translation<'c> {
 
         // Narrow string literals are translated directly as `[u8; N]` literals when their address
         // is taken, without the transmute. String/byte literals are already references in Rust.
-        if let (
-            Some(&CExprKind::Literal(literal_cty, CLiteral::String(_, element_size @ 1))),
-            false,
-        ) = (arg_expr_kind, arg_is_macro)
+        if matches!(
+            arg_expr_kind,
+            Some(&CExprKind::Literal(_, CLiteral::String(_, 1)))
+        ) && !arg_is_macro
         {
             if is_array_decay {
                 val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
             } else {
-                let size = self.ast_context.array_len(literal_cty.ctype) * element_size as usize;
-                ref_cast_pointee_ty =
-                    Some(mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(size as u128)));
+                self.use_feature("ptr_from_ref");
+                let func = mk().abs_path_expr(vec!["core", "ptr", "from_ref"]);
+                val = val.map(|val| mk().call_expr(func, vec![val]))
             }
             needs_cast = true;
         }
@@ -159,11 +158,9 @@ impl<'c> Translation<'c> {
             } else {
                 val = val.map(|val| mk().borrow_expr(val));
 
-                // Add an intermediate reference-to-pointer cast if the context needs
-                // reference-to-pointer decay, or if another cast follows.
-                if ctx.decay_ref.is_yes() || needs_cast {
-                    ref_cast_pointee_ty = Some(self.convert_pointee_type(arg_cty.ctype)?);
-                }
+                self.use_feature("ptr_from_ref");
+                let func = mk().abs_path_expr(vec!["core", "ptr", "from_ref"]);
+                val = val.map(|val| mk().call_expr(func, vec![val]));
             }
         } else {
             self.use_feature("raw_ref_op");
@@ -174,12 +171,6 @@ impl<'c> Translation<'c> {
                 // (`array_ptr_get` feature added to nightly in January 2024)
                 needs_cast = true;
             }
-        }
-
-        // Perform an intermediate reference-to-pointer cast if needed.
-        // TODO: Rust 1.76: Use `ptr::from_ref`.
-        if let Some(pointee_ty) = ref_cast_pointee_ty {
-            val = val.map(|val| mk().cast_expr(val, mk().set_mutbl(mutbl).ptr_ty(pointee_ty)));
         }
 
         // Perform a final cast to the target type if needed.

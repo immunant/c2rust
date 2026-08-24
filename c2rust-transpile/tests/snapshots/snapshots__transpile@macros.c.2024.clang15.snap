@@ -80,7 +80,7 @@ pub const REF_MACRO: *const ::core::ffi::c_char = unsafe {
         .as_ptr()
         .offset(LITERAL_FLOAT as ::core::ffi::c_int as isize)
 };
-pub const REF_LITERAL: *const S = &LITERAL_STRUCT as *const S;
+pub const REF_LITERAL: *const S = ::core::ptr::from_ref(&LITERAL_STRUCT);
 pub const TERNARY: ::core::ffi::c_int = if LITERAL_BOOL != 0 {
     1 as ::core::ffi::c_int
 } else {
