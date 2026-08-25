@@ -4435,7 +4435,7 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::ArrayToPointerDecay => {
-                self.convert_array_to_pointer_decay(ctx, source_cty, target_cty, val, expr)
+                self.make_address_of(ctx, target_cty, source_cty, expr, val, true)
             }
 
             CastKind::NullToPointer => {

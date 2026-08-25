@@ -58,45 +58,36 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad source type"))?;
 
-        self.convert_address_of_common(ctx, Some(arg), arg_cty, cqual_type, val, false)
+        self.make_address_of(ctx, cqual_type, arg_cty, Some(arg), val, false)
     }
 
-    pub fn convert_array_to_pointer_decay(
+    pub(crate) fn make_address_of(
         &self,
         ctx: ExprContext,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
-        expr: Option<CExprId>,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        // Because va_list is sometimes defined as a single-element
-        // array in order for it to allocate memory as a local variable
-        // and to be a pointer as a function argument we would get
-        // spurious casts when trying to treat it like a VaList which
-        // has reference semantics.
-        if self.ast_context.is_va_list(target_cty.ctype) {
-            return Ok(val);
-        }
-
-        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
-
-        // Variable length arrays are already represented as pointers.
-        if let CTypeKind::VariableArray(..) = source_ty_kind {
-            return Ok(val);
-        }
-
-        self.convert_address_of_common(ctx, expr, source_cty, target_cty, val, true)
-    }
-
-    fn convert_address_of_common(
-        &self,
-        ctx: ExprContext,
-        arg: Option<CExprId>,
-        arg_cty: CQualTypeId,
         pointer_cty: CQualTypeId,
+        arg_cty: CQualTypeId,
+        arg: Option<CExprId>,
         mut val: WithStmts<Box<Expr>>,
         is_array_decay: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if is_array_decay {
+            // Because va_list is sometimes defined as a single-element
+            // array in order for it to allocate memory as a local variable
+            // and to be a pointer as a function argument we would get
+            // spurious casts when trying to treat it like a VaList which
+            // has reference semantics.
+            if self.ast_context.is_va_list(pointer_cty.ctype) {
+                return Ok(val);
+            }
+
+            let source_ty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
+
+            // Variable length arrays are already represented as pointers.
+            if let CTypeKind::VariableArray(..) = source_ty_kind {
+                return Ok(val);
+            }
+        }
+
         let arg_expr_kind = arg.map(|arg| {
             let arg = self.ast_context.unwrap_predefined_ident(arg);
             &self.ast_context.index_unwrap_parens(arg).kind
