@@ -31,6 +31,16 @@ pub fn test_sectioned_statics() {
 }
 
 #[test]
+pub fn test_fn_scoped_static_hoisting() {
+    unsafe {
+        // Fails to compile unless the function-scoped statics referenced by
+        // these sectioned statics are hoisted to module scope
+        assert_eq!(rust_fn_scoped_static_hoist(), 4);
+        assert_eq!(rust_fn_scoped_static_chain(), 11);
+    }
+}
+
+#[test]
 pub fn test_sectioned_used_static() {
     if cfg!(not(target_os = "macos")) {
         // This static variable is private and unused (but with the used attribute)
