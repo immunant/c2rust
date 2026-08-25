@@ -4,7 +4,7 @@ use c2rust_rust_tools::RustEdition;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
-use crate::c_ast::CUnOp;
+use crate::c_ast::{CUnOp, TypedAstContext};
 use crate::translator::IdOrExpr;
 use crate::{
     diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
@@ -56,7 +56,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad source type"))?;
 
-        self.convert_address_of_common(ctx, cqual_type, Some(arg), arg_cty, val, false)
+        self.convert_address_of_common(ctx, cqual_type, Some(arg), arg_cty, val)
     }
 
     pub fn convert_array_to_pointer_decay(
@@ -83,7 +83,7 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        self.convert_address_of_common(ctx, target_cty, expr, source_cty, val, true)
+        self.convert_address_of_common(ctx, target_cty, expr, source_cty, val)
     }
 
     fn convert_address_of_common(
@@ -93,24 +93,26 @@ impl<'c> Translation<'c> {
         expr_id: Option<CExprId>,
         expr_type_id: CQualTypeId,
         mut val: WithStmts<Box<Expr>>,
-        is_array_decay: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let expr_type_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
         let result_pointee_type_id = self
             .ast_context
             .get_pointee_qual_type(result_type_id.ctype)
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
+        let result_pointee_type_kind = &self
+            .ast_context
+            .resolve_type(result_pointee_type_id.ctype)
+            .kind;
 
-        let mut needs_cast = false;
         let mutbl = if ctx.is_const() && !result_pointee_type_id.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
-            needs_cast = true;
             Mutability::Immutable
         } else {
             result_pointee_type_id.mutability()
         };
+        let mut source_pointee_type_kind = expr_type_kind;
 
         let expr_kind = expr_id.map(|expr_id| {
             let expr_id = self.ast_context.unwrap_predefined_ident(expr_id);
@@ -126,7 +128,7 @@ impl<'c> Translation<'c> {
             (expr_kind, expr_is_macro)
         {
             val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-            needs_cast = true;
+            source_pointee_type_kind = &CTypeKind::UInt8;
         }
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
@@ -137,12 +139,7 @@ impl<'c> Translation<'c> {
 
             if let Some(element_type_id) = expr_type_kind.array_element_type() {
                 val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-
-                // If the target pointee type is different from the source element type,
-                // then we need to cast the ptr type as well.
-                if !is_array_decay || element_type_id != result_pointee_type_id.ctype {
-                    needs_cast = true;
-                }
+                source_pointee_type_kind = &self.ast_context.resolve_type(element_type_id).kind;
             } else {
                 val = val.map(|val| mk().borrow_expr(val));
 
@@ -153,16 +150,16 @@ impl<'c> Translation<'c> {
         } else {
             self.use_feature("raw_ref_op");
             val = val.map(|val| mk().set_mutbl(mutbl).raw_borrow_expr(val));
-
-            if is_array_decay {
-                // TODO: Call `ptr::as_[mut]_ptr` instead once that is available.
-                // (`array_ptr_get` feature added to nightly in January 2024)
-                needs_cast = true;
-            }
         }
 
-        // Perform a final cast to the target type if needed.
-        if needs_cast {
+        // If the target pointee type is different from the source type,
+        // then we need to cast the pointer type.
+        if !self.ast_context.type_kinds_eq(
+            result_pointee_type_kind,
+            source_pointee_type_kind,
+            &TypedAstContext::resolve_type_id,
+        ) || result_pointee_type_id.mutability() != mutbl
+        {
             let result_type_rs = self.convert_type(result_type_id.ctype)?;
             val = val.map(|val| mk().cast_expr(val, result_type_rs));
         }
