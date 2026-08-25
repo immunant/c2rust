@@ -1,10 +1,12 @@
+use std::borrow::Cow;
+
 use c2rust_ast_builder::{mk, properties::Mutability};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use c2rust_rust_tools::RustEdition;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
-use crate::c_ast::CUnOp;
+use crate::c_ast::{CUnOp, TypedAstContext};
 use crate::translator::IdOrExpr;
 use crate::{
     diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
@@ -105,7 +107,6 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
         let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
 
-        let mut needs_cast = false;
         let mutbl = if self.tcfg.edition < RustEdition::Edition2024
             && ctx.is_const
             && !pointee_cty.qualifiers.is_const
@@ -113,11 +114,13 @@ impl<'c> Translation<'c> {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
-            needs_cast = true;
             Mutability::Immutable
         } else {
             pointee_cty.mutability()
         };
+
+        let mut cast_source_type_kind =
+            Cow::Borrowed(&self.ast_context.resolve_type(arg_cty.ctype).kind);
 
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
@@ -136,24 +139,28 @@ impl<'c> Translation<'c> {
 
             if is_array_decay {
                 if is_byte_string_literal {
-                    needs_cast = true;
+                    cast_source_type_kind = Cow::Borrowed(&CTypeKind::UInt8);
                 } else {
-                    let arg_type_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
-                    let arg_element_type_id = arg_type_kind.element_ty().ok_or_else(|| {
-                        TranslationError::generic("Array decay should have array argument")
-                    })?;
-
-                    // If the target pointee type is different from the source element type,
-                    // then we need to cast the ptr type as well.
-                    if arg_element_type_id != pointee_cty.ctype {
-                        needs_cast = true;
-                    }
+                    let Some(element_type_id) = cast_source_type_kind.array_element_type() else {
+                        return Err(TranslationError::generic(
+                            "Argument of array decay should have array type"
+                        ));
+                    };
+                    cast_source_type_kind =
+                        Cow::Borrowed(&self.ast_context.resolve_type(element_type_id).kind);
                 }
 
                 val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
             } else {
                 if is_byte_string_literal {
-                    needs_cast = true;
+                    let Some(element_type_id) =
+                        cast_source_type_kind.to_mut().array_element_type_mut()
+                    else {
+                        return Err(TranslationError::generic(
+                            "String literal should have array type",
+                        ));
+                    };
+                    *element_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
                 } else {
                     val = val.map(|val| mk().borrow_expr(val));
                 }
@@ -165,16 +172,18 @@ impl<'c> Translation<'c> {
         } else {
             self.use_feature("raw_ref_op");
             val = val.map(|val| mk().set_mutbl(mutbl).raw_borrow_expr(val));
-
-            if is_array_decay {
-                // TODO: Call `ptr::as_[mut]_ptr` instead once that is available.
-                // (`array_ptr_get` feature added to nightly in January 2024)
-                needs_cast = true;
-            }
         }
 
-        // Perform a final cast to the target type if needed.
-        if needs_cast {
+        let pointee_type_kind = &self.ast_context.resolve_type(pointee_cty.ctype).kind;
+
+        // If the target pointee type is different from the source type,
+        // then we need to cast the pointer type.
+        if !self.ast_context.type_kinds_eq(
+            pointee_type_kind,
+            &cast_source_type_kind,
+            &TypedAstContext::resolve_type_id,
+        ) || pointee_cty.mutability() != mutbl
+        {
             let pointer_ty = self.convert_type(pointer_cty.ctype)?;
             val = val.map(|val| mk().cast_expr(val, pointer_ty));
         }
