@@ -292,6 +292,9 @@ pub struct Translation<'c> {
     // Accumulated outputs
     pub features: RefCell<IndexSet<&'static str>>,
     sectioned_static_initializers: RefCell<Vec<Stmt>>,
+    /// Function-local statics that need hoisting to module scope because a
+    /// sectioned static's initializer references them.
+    function_statics_to_hoist: RefCell<IndexSet<CDeclId>>,
     extern_crates: RefCell<CrateSet>,
 
     // Translation state and utilities
@@ -1679,6 +1682,7 @@ impl<'c> Translation<'c> {
             comment_store: RefCell::new(CommentStore::new()),
             spans: HashMap::new(),
             sectioned_static_initializers: RefCell::new(Vec::new()),
+            function_statics_to_hoist: RefCell::new(IndexSet::new()),
             items: RefCell::new(items),
             mod_names: RefCell::new(IndexMap::new()),
             main_file,
@@ -2300,16 +2304,13 @@ impl<'c> Translation<'c> {
                         static_def.span(span).static_item(new_name, ty, init),
                     ))
                 } else {
-                    let ConvertedVariable { ty, mutbl: _, init } =
-                        self.convert_variable(ctx.const_(), initializer, typ)?;
-                    let mut init = init?;
-                    let mut items = init.stmts_to_items().ok_or_else(|| {
-                        format_err!("Expected only item statements in static initializer")
-                    })?;
-                    let init = init.wrap_unsafe().to_pure_expr().unwrap();
-                    let item = static_def.span(span).static_item(new_name, ty, init);
-                    items.push(item);
-
+                    let items = self.convert_compilable_static(
+                        ctx,
+                        static_def.span(span),
+                        new_name,
+                        initializer,
+                        typ,
+                    )?;
                     Ok(ConvertedDecl::Items(items))
                 }
             }
@@ -2557,6 +2558,89 @@ impl<'c> Translation<'c> {
         false
     }
 
+    /// Find function-local statics in `body` that must be hoisted to module
+    /// scope: those referenced, transitively, by the initializer of a sectioned
+    /// static. `c2rust_run_static_initializers` cannot see function-local names,
+    /// so everything a sectioned initializer references must be hoisted with it.
+    fn collect_function_statics_to_hoist(&self, body: CStmtId) {
+        // Entries are only consulted while converting the current function's
+        // body, so drop any left over from the previous function.
+        self.function_statics_to_hoist.borrow_mut().clear();
+
+        // Map each local static (in any nested block) to its initializer;
+        // seed the worklist with the ones that will get sectioned.
+        let mut local_statics: IndexMap<CDeclId, Option<CExprId>> = IndexMap::new();
+        let mut worklist: Vec<CDeclId> = Vec::new();
+        for id in DFExpr::new(&self.ast_context, body.into()) {
+            if let SomeId::Decl(decl_id) = id {
+                if let CDeclKind::Variable {
+                    has_static_duration: true,
+                    is_externally_visible: false,
+                    is_defn: true,
+                    initializer,
+                    typ,
+                    ..
+                } = self.ast_context[decl_id].kind
+                {
+                    local_statics.insert(decl_id, initializer);
+                    if self.static_initializer_is_uncompilable(initializer, typ) {
+                        worklist.push(decl_id);
+                    }
+                }
+            }
+        }
+        if worklist.is_empty() {
+            return;
+        }
+        // Transitively collect local statics referenced by the seeds'
+        // initializers. Hoisting too much is harmless, so unlike
+        // `has_decl_reference` we don't bother pruning sizeof/typeof subtrees.
+        let mut visited: IndexSet<CDeclId> = worklist.iter().copied().collect();
+        while let Some(decl_id) = worklist.pop() {
+            let init = match local_statics.get(&decl_id) {
+                Some(&Some(init)) => init,
+                _ => continue,
+            };
+            for i in DFExpr::new(&self.ast_context, init.into()) {
+                if let SomeId::Expr(e) = i {
+                    if let CExprKind::DeclRef(_, target, _) =
+                        self.ast_context.index_unwrap_parens(e).kind
+                    {
+                        if local_statics.contains_key(&target) && visited.insert(target) {
+                            self.function_statics_to_hoist.borrow_mut().insert(target);
+                            worklist.push(target);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Convert a static with a compilable initializer into its Rust items:
+    /// any auxiliary items produced while converting the initializer, followed
+    /// by the static item itself, built from `static_def`.
+    fn convert_compilable_static(
+        &self,
+        ctx: ExprContext,
+        static_def: Builder,
+        name: &str,
+        initializer: Option<CExprId>,
+        typ: CQualTypeId,
+    ) -> TranslationResult<Vec<Box<Item>>> {
+        let ConvertedVariable { ty, mutbl: _, init } =
+            self.convert_variable(ctx.const_(), initializer, typ)?;
+        let mut init = init?;
+        let mut items = init
+            .stmts_to_items()
+            .ok_or_else(|| format_err!("Expected only item statements in static initializer"))?;
+        let init = init
+            .wrap_unsafe()
+            .to_pure_expr()
+            .expect("no statements remain after stmts_to_items");
+        items.push(static_def.static_item(name, ty, init));
+        Ok(items)
+    }
+
     pub fn convert_decl_stmt_info(
         &self,
         ctx: ExprContext,
@@ -2602,6 +2686,36 @@ impl<'c> Translation<'c> {
 
                 self.add_static_initializer_to_section(ctx, &ident2, typ, &mut init)?;
                 self.items.borrow_mut()[&self.main_file].add_item(static_item);
+
+                return Ok(cfg::DeclStmtInfo::empty());
+            } else if self.function_statics_to_hoist.borrow().contains(&decl_id) {
+                // A sectioned static's initializer references this static, so
+                // hoist it to module scope too. Its own initializer is
+                // compilable and can be emitted as-is.
+                let ident2 = self
+                    .renamer
+                    .borrow_mut()
+                    .insert_root(decl_id, ident, Namespaces::values())
+                    .ok_or_else(|| {
+                        TranslationError::generic("Unable to rename hoisted function scoped static")
+                    })?;
+
+                let span = self
+                    .get_span(SomeId::Decl(decl_id))
+                    .unwrap_or_else(Span::call_site);
+                let items = self.convert_compilable_static(
+                    ctx.static_(),
+                    mk().span(span).mutbl(),
+                    &ident2,
+                    initializer,
+                    typ,
+                )?;
+
+                let mut item_stores = self.items.borrow_mut();
+                let store = &mut item_stores[&self.main_file];
+                for item in items {
+                    store.add_item(item);
+                }
 
                 return Ok(cfg::DeclStmtInfo::empty());
             }

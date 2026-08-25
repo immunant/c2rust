@@ -114,6 +114,10 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<ConvertedDecl> {
         self.function_context.borrow_mut().enter_new(name);
 
+        if let Some(body) = body {
+            self.collect_function_statics_to_hoist(body);
+        }
+
         self.with_scope(|| {
             let mut args: Vec<FnArg> = vec![];
 
