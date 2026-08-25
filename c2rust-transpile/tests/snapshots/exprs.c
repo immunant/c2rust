@@ -114,3 +114,27 @@ void assign_result(void) {
     size_t s1 = l = 1;
     size_t s2 = l += 2;
 }
+
+void bypass_cast_with_typedef(void) {
+    // Primitive
+    int i = 0;
+    int_t t_implicit = i;
+    int_t t_explicit = (int_t) i;
+
+    // Pointer
+    int *pi = 0;
+    int_t *pt_implicit = pi;
+    int_t *pt_explicit = (int_t *) pi;
+
+    // Pointer to array
+    int (*pai)[2] = 0;
+    int_t (*pat_implicit)[2] = pai;
+    int_t (*pat_explicit)[2] = (int_t (*)[2]) pai;
+
+    // Pointer to function
+    int (*pfi)(int) = 0;
+    int (*pftp_implicit)(int_t) = pfi;
+    int (*pftp_explicit)(int_t) = (int (*)(int_t)) pfi;
+    int_t (*pftr_implicit)(int) = pfi;
+    int_t (*pftr_explicit)(int) = (int_t (*)(int)) pfi;
+}

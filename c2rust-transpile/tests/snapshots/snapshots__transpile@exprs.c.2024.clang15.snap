@@ -152,3 +152,36 @@ pub unsafe extern "C" fn assign_result() {
     l = l.wrapping_add(2 as ::core::ffi::c_ulong);
     let mut s2: size_t = l as size_t;
 }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bypass_cast_with_typedef() {
+    let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
+    let mut t_implicit: int_t = i;
+    let mut t_explicit: int_t = i;
+    let mut pi: *mut ::core::ffi::c_int = ::core::ptr::null_mut::<::core::ffi::c_int>();
+    let mut pt_implicit: *mut int_t = pi as *mut int_t;
+    let mut pt_explicit: *mut int_t = pi as *mut int_t;
+    let mut pai: *mut [::core::ffi::c_int; 2] = ::core::ptr::null_mut::<[::core::ffi::c_int; 2]>();
+    let mut pat_implicit: *mut [int_t; 2] = pai as *mut [int_t; 2];
+    let mut pat_explicit: *mut [int_t; 2] = pai as *mut [int_t; 2];
+    let mut pfi: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ::core::ffi::c_int> = None;
+    let mut pftp_implicit: Option<unsafe extern "C" fn(int_t) -> ::core::ffi::c_int> =
+        ::core::mem::transmute::<
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ::core::ffi::c_int>,
+            Option<unsafe extern "C" fn(int_t) -> ::core::ffi::c_int>,
+        >(pfi);
+    let mut pftp_explicit: Option<unsafe extern "C" fn(int_t) -> ::core::ffi::c_int> =
+        ::core::mem::transmute::<
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ::core::ffi::c_int>,
+            Option<unsafe extern "C" fn(int_t) -> ::core::ffi::c_int>,
+        >(pfi);
+    let mut pftr_implicit: Option<unsafe extern "C" fn(::core::ffi::c_int) -> int_t> =
+        ::core::mem::transmute::<
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ::core::ffi::c_int>,
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> int_t>,
+        >(pfi);
+    let mut pftr_explicit: Option<unsafe extern "C" fn(::core::ffi::c_int) -> int_t> =
+        ::core::mem::transmute::<
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ::core::ffi::c_int>,
+            Option<unsafe extern "C" fn(::core::ffi::c_int) -> int_t>,
+        >(pfi);
+}
