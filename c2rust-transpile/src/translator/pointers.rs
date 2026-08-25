@@ -49,11 +49,6 @@ impl<'c> Translation<'c> {
 
         let val = self.convert_expr(ctx.needs_address(), arg, None)?;
 
-        // & becomes a no-op when applied to a function.
-        if self.ast_context.is_function_pointer(cqual_type.ctype) {
-            return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
-        }
-
         let arg_cty = arg_kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad source type"))?;
@@ -85,6 +80,11 @@ impl<'c> Translation<'c> {
             // Variable length arrays are already represented as pointers.
             if let CTypeKind::VariableArray(..) = source_ty_kind {
                 return Ok(val);
+            }
+        } else {
+            // & becomes a no-op when applied to a function.
+            if self.ast_context.is_function_pointer(pointer_cty.ctype) {
+                return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
             }
         }
 
