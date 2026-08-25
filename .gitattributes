@@ -2,5 +2,7 @@
 # but their bodies are Rust, and syntax highlighting them as Rust
 # makes them much easier to read and review diffs for.
 c2rust-transpile/tests/snapshots/*transpile*.c.snap linguist-language=Rust
-c2rust-transpile/tests/snapshots/*transpile*.c.snap diff=Rust
+c2rust-transpile/tests/snapshots/*transpile*.c.snap diff=rust
 c2rust-transpile/tests/snapshots/*transpile*.c.snap linguist-detectable
+# Convinces git to show method names rather than the impl line in diff context
+*.rs diff=rust
