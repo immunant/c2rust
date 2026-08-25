@@ -116,43 +116,44 @@ impl<'c> Translation<'c> {
             pointee_cty.mutability()
         };
 
-        // Narrow string literals are translated directly as `[u8; N]` literals when their address
-        // is taken, without the transmute. String/byte literals are already references in Rust.
-        if matches!(
-            arg_expr_kind,
-            Some(&CExprKind::Literal(_, CLiteral::String(_, 1)))
-        ) && !arg_is_macro
-        {
-            if is_array_decay {
-                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-            } else {
-                self.use_feature("ptr_from_ref");
-                let func = mk().abs_path_expr(vec!["core", "ptr", "from_ref"]);
-                val = val.map(|val| mk().call_expr(func, vec![val]))
-            }
-            needs_cast = true;
-        }
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
-        else if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
+        if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
             if !pointee_cty.qualifiers.is_const {
                 return Err("taking mutable address of string literal or macro".into());
             }
 
-            let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
+            // Narrow string literals are translated directly as `[u8; N]` literals
+            // when their address is taken, without the transmute.
+            // String/byte literals are already references in Rust.
+            let is_byte_string_literal = matches!(
+                arg_expr_kind,
+                Some(&CExprKind::Literal(_, CLiteral::String(_, 1)))
+            ) && !arg_is_macro;
 
             if is_array_decay {
-                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-
-                // If the target pointee type is different from the source element type,
-                // then we need to cast the ptr type as well.
-                if arg_cty_kind.element_ty().map_or(false, |arg_element_cty| {
-                    arg_element_cty != pointee_cty.ctype
-                }) {
+                if is_byte_string_literal {
                     needs_cast = true;
+                } else {
+                    let arg_type_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
+                    let arg_element_type_id = arg_type_kind.element_ty().ok_or_else(|| {
+                        TranslationError::generic("Array decay should have array argument")
+                    })?;
+
+                    // If the target pointee type is different from the source element type,
+                    // then we need to cast the ptr type as well.
+                    if arg_element_type_id != pointee_cty.ctype {
+                        needs_cast = true;
+                    }
                 }
+
+                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
             } else {
-                val = val.map(|val| mk().borrow_expr(val));
+                if is_byte_string_literal {
+                    needs_cast = true;
+                } else {
+                    val = val.map(|val| mk().borrow_expr(val));
+                }
 
                 self.use_feature("ptr_from_ref");
                 let func = mk().abs_path_expr(vec!["core", "ptr", "from_ref"]);
