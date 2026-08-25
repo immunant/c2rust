@@ -218,11 +218,6 @@ This allows emitting different code in such situations,
 to account for the different lifetimes of compound literals for example.
 `is_static` usually implies `is_const`, but not always.
 
-The `decay_ref` attribute keeps track of whether or not
-we're in a context in which Rust will infer that a reference can decay in to a pointer.
-This can happen at method calls, variable initializers, and possibly more locations.
-This allows the translation to omit some otherwise superfluous casts.
-
 The `va_decl` attribute indicates which, if any, declaration
 corresponds to the variable-argument list for the current variadic function.
 This enables us to drop the associated declaration,

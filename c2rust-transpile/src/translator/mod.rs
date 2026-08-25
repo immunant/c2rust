@@ -74,45 +74,6 @@ struct Import {
     ident_name: String,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum DecayRef {
-    Yes,
-    Default,
-    No,
-}
-
-impl DecayRef {
-    // Here we give intrinsic meaning to default to equate to yes/true
-    // when actually evaluated
-    pub fn is_yes(&self) -> bool {
-        match self {
-            DecayRef::Yes => true,
-            DecayRef::Default => true,
-            DecayRef::No => false,
-        }
-    }
-
-    #[inline]
-    pub fn is_no(&self) -> bool {
-        !self.is_yes()
-    }
-
-    pub fn set_default_to_no(&mut self) {
-        if *self == DecayRef::Default {
-            *self = DecayRef::No;
-        }
-    }
-}
-
-impl From<bool> for DecayRef {
-    fn from(b: bool) -> Self {
-        match b {
-            true => DecayRef::Yes,
-            false => DecayRef::No,
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone)]
 pub enum ReplaceMode {
     None,
@@ -158,7 +119,6 @@ pub struct ExprContext {
     #[allow(dead_code)]
     is_static: bool,
 
-    decay_ref: DecayRef,
     is_bitfield_write: bool,
 
     /// We will be referring to the expression by address. In this context we
@@ -187,12 +147,6 @@ impl ExprContext {
         self.is_used
     }
 
-    pub fn decay_ref(self) -> Self {
-        ExprContext {
-            decay_ref: DecayRef::Yes,
-            ..self
-        }
-    }
     pub fn const_(self) -> Self {
         ExprContext {
             is_const: true,
@@ -900,7 +854,6 @@ pub fn translate(
         is_const: false,
         is_pattern: false,
         is_static: false,
-        decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
         expanding_macro: None,
@@ -2497,25 +2450,25 @@ impl<'c> Translation<'c> {
                 CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
                     if self.ast_context.is_null_expr(null_expr) =>
                 {
-                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, target);
+                    return self.convert_pointer_is_null(ctx, ptr, target);
                 }
 
                 CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
                     if self.ast_context.is_null_expr(null_expr) =>
                 {
-                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, target);
+                    return self.convert_pointer_is_null(ctx, ptr, target);
                 }
 
                 CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
                     if self.ast_context.is_null_expr(null_expr) =>
                 {
-                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target);
+                    return self.convert_pointer_is_null(ctx, ptr, !target);
                 }
 
                 CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
                     if self.ast_context.is_null_expr(null_expr) =>
                 {
-                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target);
+                    return self.convert_pointer_is_null(ctx, ptr, !target);
                 }
 
                 CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
@@ -2546,11 +2499,7 @@ impl<'c> Translation<'c> {
             return self.convert_pointer_is_null(ctx, expr, !target);
         }
 
-        // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
-        // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
-        // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
-        // specify Yes for that particular case, given enough analysis.
-        let expr_rs = self.convert_expr(ctx.decay_ref(), expr, None)?;
+        let expr_rs = self.convert_expr(ctx, expr, None)?;
 
         Ok(expr_rs.map(|mut expr_rs| {
             if expr_type_kind.is_bool() {
@@ -3067,7 +3016,6 @@ impl<'c> Translation<'c> {
                             }
                         }
 
-                        // ref decayed ptrs generally need a type annotation
                         if let Some(CExprKind::Unary(_, CUnOp::AddressOf, _, _)) = initializer_kind
                         {
                             return true;
@@ -4211,11 +4159,6 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            // A reference must be decayed if a bitcast is required. Const casts in
-            // LLVM 8 are now NoOp casts, so we need to include it as well.
-            CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
-                ctx.decay_ref = DecayRef::Yes
-            }
             CastKind::ArrayToPointerDecay
             | CastKind::FunctionToPointerDecay
             | CastKind::BuiltinFnToFnPtr => {
