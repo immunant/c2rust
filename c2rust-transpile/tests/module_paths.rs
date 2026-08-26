@@ -21,7 +21,6 @@ fn config(output_dir: PathBuf) -> TranspilerConfig {
         incremental_relooper: true,
         fail_on_multiple: false,
         filter: None,
-        debug_relooper_labels: false,
         cross_checks: false,
         cross_check_backend: Default::default(),
         cross_check_configs: Default::default(),

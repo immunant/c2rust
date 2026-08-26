@@ -131,7 +131,11 @@ pub unsafe extern "C" fn nested_irreducible(
     mut x: ::core::ffi::c_int,
     mut start_with_error: ::core::ffi::c_int,
 ) -> ::core::ffi::c_int {
-    let mut c2rust_current_block: u64;
+    enum C2Rust_Block {
+        error,
+        next,
+    }
+    let mut c2rust_current_block: C2Rust_Block;
     '_exit: {
         if x < 0 as ::core::ffi::c_int {
             if start_with_error != 0 {
@@ -139,26 +143,26 @@ pub unsafe extern "C" fn nested_irreducible(
             }
         }
         if start_with_error != 0 {
-            c2rust_current_block = 11406321539332183563;
+            c2rust_current_block = C2Rust_Block::error;
         } else {
-            c2rust_current_block = 16095097497300269400;
+            c2rust_current_block = C2Rust_Block::next;
         }
         loop {
             match c2rust_current_block {
-                11406321539332183563 => {
+                C2Rust_Block::error => {
                     if x > 0 as ::core::ffi::c_int {
-                        c2rust_current_block = 16095097497300269400;
+                        c2rust_current_block = C2Rust_Block::next;
                     } else {
                         break '_exit;
                     }
                 }
                 _ => {
                     if x == 1 as ::core::ffi::c_int {
-                        c2rust_current_block = 11406321539332183563;
+                        c2rust_current_block = C2Rust_Block::error;
                         continue;
                     }
                     x -= 1 as ::core::ffi::c_int;
-                    c2rust_current_block = 11406321539332183563;
+                    c2rust_current_block = C2Rust_Block::error;
                 }
             }
         }

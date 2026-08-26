@@ -80,7 +80,6 @@ pub struct TranspilerConfig {
     pub incremental_relooper: bool,
     pub fail_on_multiple: bool,
     pub filter: Option<Regex>,
-    pub debug_relooper_labels: bool,
     pub cross_checks: bool,
     pub cross_check_backend: String,
     pub cross_check_configs: Vec<String>,

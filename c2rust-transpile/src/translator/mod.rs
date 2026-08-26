@@ -19,7 +19,7 @@ use serde_derive::Serialize;
 use syn::spanned::Spanned as _;
 use syn::{
     AttrStyle, BareVariadic, BinOp, Block, Expr, ExprBinary, ExprBlock, ExprBreak, ExprCast,
-    ExprParen, ExprReturn, ExprUnary, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
+    ExprParen, ExprReturn, ExprUnary, Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
     ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
     ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
     ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
@@ -2407,26 +2407,31 @@ impl<'c> Translation<'c> {
         let mut cfg_info = cfg::structures::CfgInfo::default();
         cfg::structures::gather_cfg_info(&relooped, &mut cfg_info);
 
-        let current_block_ident = self
+        let current_block_enum = self
+            .renamer
+            .borrow_mut()
+            .pick_name("C2Rust_Block", Namespaces::types());
+        let current_block_variable = self
             .renamer
             .borrow_mut()
             .pick_name("c2rust_current_block", Namespaces::values());
-        let current_block = mk().ident_expr(&current_block_ident);
         let mut stmts: Vec<Stmt> = lifted_stmts;
         if !cfg_info.checked_entries.is_empty() {
             if self.tcfg.fail_on_multiple {
                 panic!("Uses of `c2rust_current_block' are illegal with `--fail-on-multiple'.");
             }
 
-            let current_block_ty = if self.tcfg.debug_relooper_labels {
-                mk().ref_lt_ty("static", mk().path_ty(vec!["str"]))
-            } else {
-                mk().path_ty(vec!["u64"])
-            };
+            let variants = cfg_info
+                .checked_entries
+                .iter()
+                .map(|lbl| mk().variant(lbl.to_variant_ident(), Fields::Unit))
+                .collect();
+            let item = mk().enum_item(&current_block_enum, variants);
+            stmts.push(mk().item_stmt(item));
 
             let local = mk().local(
-                mk().mutbl().ident_pat(current_block_ident),
-                Some(current_block_ty),
+                mk().mutbl().ident_pat(&current_block_variable),
+                Some(mk().ident_ty(&current_block_enum)),
                 None,
             );
             stmts.push(mk().local_stmt(Box::new(local)))
@@ -2436,8 +2441,8 @@ impl<'c> Translation<'c> {
             &relooped,
             &cfg_info,
             &mut self.comment_store.borrow_mut(),
-            current_block,
-            self.tcfg.debug_relooper_labels,
+            mk().ident(current_block_enum),
+            mk().ident_expr(current_block_variable),
         )?);
         Ok(stmts)
     }
