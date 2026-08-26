@@ -126,3 +126,42 @@ pub unsafe extern "C" fn multi_goto_error_common(mut x: ::core::ffi::c_int) -> :
     }
     return x + 10 as ::core::ffi::c_int;
 }
+#[no_mangle]
+pub unsafe extern "C" fn nested_irreducible(
+    mut x: ::core::ffi::c_int,
+    mut start_with_error: ::core::ffi::c_int,
+) -> ::core::ffi::c_int {
+    let mut c2rust_current_block: u64;
+    '_exit: {
+        if x < 0 as ::core::ffi::c_int {
+            if start_with_error != 0 {
+                break '_exit;
+            }
+        }
+        if start_with_error != 0 {
+            c2rust_current_block = 11406321539332183563;
+        } else {
+            c2rust_current_block = 16095097497300269400;
+        }
+        loop {
+            match c2rust_current_block {
+                11406321539332183563 => {
+                    if x > 0 as ::core::ffi::c_int {
+                        c2rust_current_block = 16095097497300269400;
+                    } else {
+                        break '_exit;
+                    }
+                }
+                _ => {
+                    if x == 1 as ::core::ffi::c_int {
+                        c2rust_current_block = 11406321539332183563;
+                        continue;
+                    }
+                    x -= 1 as ::core::ffi::c_int;
+                    c2rust_current_block = 11406321539332183563;
+                }
+            }
+        }
+    }
+    return x;
+}

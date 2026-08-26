@@ -121,3 +121,26 @@ also_bad:
 common:
     return x + 10;
 }
+
+int nested_irreducible(int x, int start_with_error) {
+    if (x < 0) {
+        if (start_with_error)
+            goto exit;
+    }
+    if (start_with_error)
+        goto error;
+    goto next;
+
+next:
+    if (x == 1)
+        goto error;
+    x -= 1;
+
+error:
+    if (x > 0)
+        goto next;
+    goto exit;
+
+exit:
+    return x;
+}
