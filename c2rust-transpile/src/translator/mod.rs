@@ -4261,7 +4261,12 @@ impl<'c> Translation<'c> {
             })
         });
 
-        if source_ty_kind == target_ty_kind && kind != CastKind::LValueToRValue {
+        if self.ast_context.type_kinds_eq(
+            source_ty_kind,
+            target_ty_kind,
+            &TypedAstContext::resolve_type_id,
+        ) && kind != CastKind::LValueToRValue
+        {
             return Ok(val);
         }
 

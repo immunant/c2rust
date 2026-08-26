@@ -841,6 +841,160 @@ impl TypedAstContext {
         self.index(resolved_typ_id)
     }
 
+    /// Returns whether `qual_type_id1` and `qual_type_id2` describe the same type with the same
+    /// qualifiers. `resolver` is called on every `CTypeId` before recursing.
+    pub(crate) fn qual_types_eq(
+        &self,
+        qual_type_id1: CQualTypeId,
+        qual_type_id2: CQualTypeId,
+        resolver: &impl Fn(&Self, CTypeId) -> CTypeId,
+    ) -> bool {
+        qual_type_id1.qualifiers == qual_type_id2.qualifiers
+            && self.types_eq(qual_type_id1.ctype, qual_type_id2.ctype, resolver)
+    }
+
+    /// Returns whether `type_id1` and `type_id2` describe the same type.
+    /// `resolver` is called on every `CTypeId` before recursing.
+    pub(crate) fn types_eq(
+        &self,
+        mut type_id1: CTypeId,
+        mut type_id2: CTypeId,
+        resolver: &impl Fn(&Self, CTypeId) -> CTypeId,
+    ) -> bool {
+        if type_id1 == type_id2 {
+            return true;
+        }
+
+        type_id1 = resolver(self, type_id1);
+        type_id2 = resolver(self, type_id2);
+        type_id1 == type_id2
+            || self.type_kinds_eq(&self[type_id1].kind, &self[type_id2].kind, resolver)
+    }
+
+    /// Returns whether `kind1` and `kind2` describe the same type.
+    /// `resolver` is called on every `CTypeId` before recursing.
+    pub(crate) fn type_kinds_eq(
+        &self,
+        kind1: &CTypeKind,
+        kind2: &CTypeKind,
+        resolver: &impl Fn(&Self, CTypeId) -> CTypeId,
+    ) -> bool {
+        use CTypeKind::*;
+
+        match (kind1, kind2) {
+            (Void, Void)
+            | (Bool, Bool)
+            | (SChar, SChar)
+            | (Short, Short)
+            | (Int, Int)
+            | (Long, Long)
+            | (LongLong, LongLong)
+            | (Int8, Int8)
+            | (Int16, Int16)
+            | (Int32, Int32)
+            | (Int64, Int64)
+            | (Int128, Int128)
+            | (IntPtr, IntPtr)
+            | (IntMax, IntMax)
+            | (SSize, SSize)
+            | (UChar, UChar)
+            | (UShort, UShort)
+            | (UInt, UInt)
+            | (ULong, ULong)
+            | (ULongLong, ULongLong)
+            | (UInt8, UInt8)
+            | (UInt16, UInt16)
+            | (UInt32, UInt32)
+            | (UInt64, UInt64)
+            | (UInt128, UInt128)
+            | (UIntPtr, UIntPtr)
+            | (UIntMax, UIntMax)
+            | (Size, Size)
+            | (Char, Char)
+            | (WChar, WChar)
+            | (PtrDiff, PtrDiff)
+            | (Half, Half)
+            | (BFloat16, BFloat16)
+            | (Float, Float)
+            | (Double, Double)
+            | (LongDouble, LongDouble)
+            | (Float128, Float128)
+            | (BuiltinFn, BuiltinFn)
+            | (UnhandledSveType, UnhandledSveType) => true,
+
+            (Enum(decl_id1), Enum(decl_id2))
+            | (Struct(decl_id1), Struct(decl_id2))
+            | (Typedef(decl_id1), Typedef(decl_id2))
+            | (Union(decl_id1), Union(decl_id2)) => decl_id1 == decl_id2,
+
+            (Auto(type_id1), Auto(type_id2))
+            | (Complex(type_id1), Complex(type_id2))
+            | (Decayed(type_id1), Decayed(type_id2))
+            | (Elaborated(type_id1), Elaborated(type_id2))
+            | (Paren(type_id1), Paren(type_id2))
+            | (TypeOf(type_id1), TypeOf(type_id2))
+            | (IncompleteArray(type_id1), IncompleteArray(type_id2)) => {
+                self.types_eq(*type_id1, *type_id2, resolver)
+            }
+
+            (Atomic(type_id1), Atomic(type_id2))
+            | (BlockPointer(type_id1), BlockPointer(type_id2))
+            | (Pointer(type_id1), Pointer(type_id2))
+            | (Reference(type_id1), Reference(type_id2)) => {
+                self.qual_types_eq(*type_id1, *type_id2, resolver)
+            }
+
+            (ConstantArray(type_id1, len1), ConstantArray(type_id2, len2)) => {
+                self.types_eq(*type_id1, *type_id2, resolver) && len1 == len2
+            }
+
+            (VariableArray(type_id1, expr_id1), VariableArray(type_id2, expr_id2)) => {
+                self.types_eq(*type_id1, *type_id2, resolver) && expr_id1 == expr_id2
+            }
+
+            (Vector(type_id1, len1), Vector(type_id2, len2)) => {
+                self.qual_types_eq(*type_id1, *type_id2, resolver) && len1 == len2
+            }
+
+            (
+                Function(
+                    result_type_id1,
+                    ref argument_type_ids1,
+                    is_variable_argument1,
+                    is_noreturn1,
+                    has_prototype1,
+                ),
+                Function(
+                    result_type_id2,
+                    ref argument_type_ids2,
+                    is_variable_argument2,
+                    is_noreturn2,
+                    has_prototype2,
+                ),
+            ) => {
+                self.qual_types_eq(*result_type_id1, *result_type_id2, resolver)
+                    && argument_type_ids1.len() == argument_type_ids2.len()
+                    && argument_type_ids1
+                        .iter()
+                        .zip(argument_type_ids2.iter())
+                        .all(|(&type_id1, &type_id2)| {
+                            self.qual_types_eq(type_id1, type_id2, resolver)
+                        })
+                    && is_variable_argument1 == is_variable_argument2
+                    && is_noreturn1 == is_noreturn2
+                    && has_prototype1 == has_prototype2
+            }
+
+            (Attributed(type_id1, ref attribute1), Attributed(type_id2, ref attribute2)) => {
+                self.qual_types_eq(*type_id1, *type_id2, resolver) && attribute1 == attribute2
+            }
+
+            (TypeOfExpr(expr_id1), TypeOfExpr(expr_id2)) => expr_id1 == expr_id2,
+
+            _ => false,
+        }
+    }
+
     /// Extract decl of referenced function.
     /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
     pub fn fn_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
