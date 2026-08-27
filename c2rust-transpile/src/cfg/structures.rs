@@ -165,7 +165,10 @@ fn cleanup_labels(
             for (_, case) in cases {
                 cleanup_labels(case, current_loop, encountered_labels);
             }
-            cleanup_labels(then, current_loop, encountered_labels);
+
+            if let Some(then) = then {
+                cleanup_labels(then, current_loop, encountered_labels);
+            }
         }
         Empty | Singleton(_) | Goto(_) => {}
     }
@@ -208,7 +211,10 @@ fn merge_labels(ast: &mut StructuredAST<Box<Expr>, Pat, Label, Stmt>, old: &Labe
             for (_, case) in cases {
                 merge_labels(case, old, new);
             }
-            merge_labels(then, old, new);
+
+            if let Some(then) = then {
+                merge_labels(then, old, new);
+            }
         }
         Exit(_, None) | Empty | Singleton(_) | Goto(_) => {}
     }
@@ -262,7 +268,7 @@ pub trait StructuredStatement: Sized {
     /// Make a `goto` table
     fn mk_goto_table(
         cases: Vec<(Self::L, Self)>, // entries in the goto table
-        then: Self,                  // default case of the goto table
+        then: Option<Self>,          // default case of the goto table
     ) -> Self;
 
     /// Make some sort of loop
@@ -330,7 +336,7 @@ pub enum StructuredASTKind<E, P, L, S> {
     ),
     GotoTable(
         Vec<(L, StructuredAST<E, P, L, S>)>,
-        Box<StructuredAST<E, P, L, S>>,
+        Option<Box<StructuredAST<E, P, L, S>>>,
     ),
     Loop(Option<L>, Box<StructuredAST<E, P, L, S>>),
     Block(L, Box<StructuredAST<E, P, L, S>>),
@@ -374,8 +380,8 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
         dummy_spanned(StructuredASTKind::If(cond, Box::new(then), Box::new(else_)))
     }
 
-    fn mk_goto_table(cases: Vec<(Self::L, Self)>, then: Self) -> Self {
-        dummy_spanned(StructuredASTKind::GotoTable(cases, Box::new(then)))
+    fn mk_goto_table(cases: Vec<(Self::L, Self)>, then: Option<Self>) -> Self {
+        dummy_spanned(StructuredASTKind::GotoTable(cases, then.map(Box::new)))
     }
 
     fn mk_loop(lbl: Option<Self::L>, body: Self) -> Self {
@@ -677,7 +683,7 @@ fn process_cfg(
                     })
                     .collect::<TranslationResult<_>>()?;
 
-                S::mk_goto_table(cases, then)
+                S::mk_goto_table(cases, Some(then))
             }
         };
 
@@ -949,13 +955,15 @@ impl StructureState {
                     })
                     .collect();
 
-                let (then, then_span) = self.to_stmt(*then, comment_store);
+                if let Some(then) = then {
+                    let (then, then_span) = self.to_stmt(*then, comment_store);
 
-                arms.push(mk().arm(
-                    mk().wild_pat(),
-                    None,
-                    mk().block_expr(mk().span(then_span).block(then)),
-                ));
+                    arms.push(mk().arm(
+                        mk().wild_pat(),
+                        None,
+                        mk().block_expr(mk().span(then_span).block(then)),
+                    ));
+                }
 
                 let e = mk().match_expr(self.current_block_variable.clone(), arms);
 
