@@ -144,3 +144,35 @@ error:
 exit:
     return x;
 }
+
+int double_irreducible(int x) {
+    if (x % 2 == 0) {
+        goto l1;
+    } else {
+        goto l2;
+    }
+
+    while (x < 10) {
+l1:
+        x += 1;
+
+l2:
+        x += 1;
+    }
+
+    if (x % 2 == 0) {
+        goto a;
+    } else {
+        goto b;
+    }
+
+    while (x < 10) {
+a:
+        x += 1;
+
+b:
+        x += 1;
+    }
+
+    return x;
+}
