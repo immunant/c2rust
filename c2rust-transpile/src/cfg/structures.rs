@@ -2,7 +2,8 @@
 
 use super::*;
 use log::warn;
-use syn::{spanned::Spanned as _, ExprBinary, ExprBreak, ExprIf, ExprUnary, Stmt};
+use proc_macro2::TokenStream;
+use syn::{spanned::Spanned as _, ExprBinary, ExprBreak, ExprIf, ExprUnary, MacroDelimiter, Stmt};
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
@@ -649,28 +650,12 @@ fn process_cfg(
                 S::mk_loop(Some(label.clone()), body)
             }
 
-            Multiple { entries, branches } => {
-                // If we have entries that aren't one of our branches, our `then` case needs to
-                // be empty so that we fall through to the next structure. Otherwise we pull off
-                // the first branch as the `then` case in order to satisfy the exhaustiveness
-                // requirement for the generated `match`.
-                let mut branch_entries = branches.keys();
-                let then = if entries.iter().all(|entry| branches.contains_key(entry)) {
-                    let then_entry = branch_entries
-                        .next()
-                        .expect("There must be at least one branch");
-                    process_cfg(
-                        &branches[then_entry],
-                        cfg_info,
-                        &next_entries,
-                        loop_context,
-                        break_targets,
-                    )?
-                } else {
-                    S::empty()
-                };
-
-                let cases = branch_entries
+            Multiple {
+                entries: _,
+                branches,
+            } => {
+                let cases = branches
+                    .keys()
                     .map(|entry| {
                         let stmts = process_cfg(
                             &branches[entry],
@@ -683,7 +668,27 @@ fn process_cfg(
                     })
                     .collect::<TranslationResult<_>>()?;
 
-                S::mk_goto_table(cases, Some(then))
+                let then = if cfg_info
+                    .checked_entries
+                    .iter()
+                    .all(|entry| branches.contains_key(entry))
+                {
+                    // If the branches cover all the enum variants in `checked_entries`, then the
+                    // `match` is exhaustive and we don't need a "then" branch.
+                    None
+                } else {
+                    // Otherwise, the branches *should* at least cover all of our entries, so there
+                    // should be no other possible cases. Mark the "then" branch as unreachable.
+                    // See https://github.com/immunant/c2rust/pull/1556#discussion_r3874230125
+                    let unreachable_call = mk().mac_expr(mk().mac(
+                        mk().path(vec!["unreachable"]),
+                        TokenStream::new(),
+                        MacroDelimiter::Paren(Default::default()),
+                    ));
+                    Some(S::mk_singleton(mk().expr_stmt(unreachable_call)))
+                };
+
+                S::mk_goto_table(cases, then)
             }
         };
 

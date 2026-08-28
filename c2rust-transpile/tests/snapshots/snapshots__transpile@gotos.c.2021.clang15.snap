@@ -149,20 +149,20 @@ pub unsafe extern "C" fn nested_irreducible(
         }
         loop {
             match c2rust_current_block {
-                C2Rust_Block::error => {
-                    if x > 0 as ::core::ffi::c_int {
-                        c2rust_current_block = C2Rust_Block::next;
-                    } else {
-                        break '_exit;
-                    }
-                }
-                _ => {
+                C2Rust_Block::next => {
                     if x == 1 as ::core::ffi::c_int {
                         c2rust_current_block = C2Rust_Block::error;
                         continue;
                     }
                     x -= 1 as ::core::ffi::c_int;
                     c2rust_current_block = C2Rust_Block::error;
+                }
+                C2Rust_Block::error => {
+                    if x > 0 as ::core::ffi::c_int {
+                        c2rust_current_block = C2Rust_Block::next;
+                    } else {
+                        break '_exit;
+                    }
                 }
             }
         }
@@ -185,11 +185,7 @@ pub unsafe extern "C" fn double_irreducible(mut x: ::core::ffi::c_int) -> ::core
     }
     loop {
         match c2rust_current_block {
-            C2Rust_Block::l1 => {
-                x += 1 as ::core::ffi::c_int;
-                c2rust_current_block = C2Rust_Block::l2;
-            }
-            _ => {
+            C2Rust_Block::l2 => {
                 x += 1 as ::core::ffi::c_int;
                 if x < 10 as ::core::ffi::c_int {
                     c2rust_current_block = C2Rust_Block::l1;
@@ -197,6 +193,11 @@ pub unsafe extern "C" fn double_irreducible(mut x: ::core::ffi::c_int) -> ::core
                     break;
                 }
             }
+            C2Rust_Block::l1 => {
+                x += 1 as ::core::ffi::c_int;
+                c2rust_current_block = C2Rust_Block::l2;
+            }
+            _ => unreachable!(),
         }
     }
     if x % 2 as ::core::ffi::c_int == 0 as ::core::ffi::c_int {
@@ -206,11 +207,7 @@ pub unsafe extern "C" fn double_irreducible(mut x: ::core::ffi::c_int) -> ::core
     }
     loop {
         match c2rust_current_block {
-            C2Rust_Block::a => {
-                x += 1 as ::core::ffi::c_int;
-                c2rust_current_block = C2Rust_Block::b;
-            }
-            _ => {
+            C2Rust_Block::b => {
                 x += 1 as ::core::ffi::c_int;
                 if x < 10 as ::core::ffi::c_int {
                     c2rust_current_block = C2Rust_Block::a;
@@ -218,6 +215,11 @@ pub unsafe extern "C" fn double_irreducible(mut x: ::core::ffi::c_int) -> ::core
                     break;
                 }
             }
+            C2Rust_Block::a => {
+                x += 1 as ::core::ffi::c_int;
+                c2rust_current_block = C2Rust_Block::b;
+            }
+            _ => unreachable!(),
         }
     }
     return x;
