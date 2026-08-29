@@ -743,8 +743,7 @@ impl<'a> Translation<'a> {
         rhs_expr: Box<Expr>,
         field_id: CDeclId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let ctx = ctx.set_bitfield_write(true);
-        let named_reference = self.name_reference_write_read(ctx, lhs)?;
+        let named_reference = self.name_reference_write_read(ctx.bitfield_write(), lhs)?;
         named_reference.and_then_try(
             |NamedReference {
                  lvalue: lhs_expr, ..

@@ -211,7 +211,7 @@ impl<'c> Translation<'c> {
 
         // Translate the expression to be assigned to the fresh variable.
         // It will be assigned by value, so we don't need its address anymore.
-        let val = self.convert_expr(ctx.set_needs_address(false), val, override_ty)?;
+        let val = self.convert_expr(ctx.not_needs_address(), val, override_ty)?;
 
         // If we are translating a static variable,
         // then the fresh variable should also be static.

@@ -210,16 +210,23 @@ impl ExprContext {
         }
     }
 
-    pub fn set_bitfield_write(self, is_bitfield_write: bool) -> Self {
+    pub fn bitfield_write(self) -> Self {
         ExprContext {
-            is_bitfield_write,
+            is_bitfield_write: true,
             ..self
         }
     }
 
-    pub fn set_needs_address(self, needs_address: bool) -> Self {
+    pub fn needs_address(self) -> Self {
         ExprContext {
-            needs_address,
+            needs_address: true,
+            ..self
+        }
+    }
+
+    pub fn not_needs_address(self) -> Self {
+        ExprContext {
+            needs_address: false,
             ..self
         }
     }
