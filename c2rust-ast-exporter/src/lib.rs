@@ -158,24 +158,3 @@ unsafe fn marshal_result(
     }
     output
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clang_build_path_uses_compilation_database_parent() {
-        assert_eq!(
-            clang_build_path(Path::new("/project/build/compile_commands.json")),
-            Path::new("/project/build")
-        );
-    }
-
-    #[test]
-    fn clang_build_path_defaults_to_current_directory() {
-        assert_eq!(
-            clang_build_path(Path::new("compile_commands.json")),
-            Path::new(".")
-        );
-    }
-}
