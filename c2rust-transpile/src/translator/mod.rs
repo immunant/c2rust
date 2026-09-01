@@ -74,9 +74,10 @@ struct Import {
     ident_name: String,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum DecayRef {
     Yes,
+    #[default]
     Default,
     No,
 }
@@ -120,7 +121,7 @@ pub enum ReplaceMode {
 }
 
 /// Options that impact an expression and all of its subexpressions.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ExprContext {
     /// Whether the result value of the expression is used in a larger expression.
     ///
@@ -893,16 +894,7 @@ pub fn translate(
     preprocessed_definitions: &IndexMap<CDeclId, String>,
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
-    let ctx = ExprContext {
-        is_used: false,
-        is_const: false,
-        is_pattern: false,
-        is_static: false,
-        decay_ref: DecayRef::Default,
-        is_bitfield_write: false,
-        needs_address: false,
-        expanding_macro: None,
-    };
+    let ctx = ExprContext::default();
 
     {
         t.locate_comments();
