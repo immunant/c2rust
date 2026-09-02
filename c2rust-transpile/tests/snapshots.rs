@@ -319,9 +319,7 @@ fn test_bool() {
 
 #[test]
 fn test_builtin_types() {
-    transpile("builtin_types.c")
-        .expect_compile_error(true)
-        .run();
+    transpile("builtin_types.c").run();
 }
 
 #[test]
