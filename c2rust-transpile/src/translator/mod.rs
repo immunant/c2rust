@@ -1987,24 +1987,13 @@ impl<'c> Translation<'c> {
         false
     }
 
-    fn add_static_initializer_to_section(
-        &self,
-        ctx: ExprContext,
-        name: &str,
-        typ: CQualTypeId,
-        init: &mut Box<Expr>,
-    ) -> TranslationResult<()> {
-        let mut default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
-
-        std::mem::swap(init, &mut default_init);
-
+    fn add_static_initializer_to_section(&self, name: &str, init: WithStmts<Box<Expr>>) {
+        let init = init.to_expr();
         let root_lhs_expr = mk().path_expr(vec![name]);
-        let assign_expr = mk().assign_expr(root_lhs_expr, default_init);
+        let assign_expr = mk().assign_expr(root_lhs_expr, init);
         let stmt = mk().expr_stmt(assign_expr);
 
         self.sectioned_static_initializers.borrow_mut().push(stmt);
-
-        Ok(())
     }
 
     fn generate_global_static_init(&mut self) -> (Box<Item>, Box<Item>) {
@@ -2288,9 +2277,9 @@ impl<'c> Translation<'c> {
 
                     let ConvertedVariable { ty, mutbl: _, init } =
                         self.convert_variable(ctx, initializer, typ)?;
+                    self.add_static_initializer_to_section(new_name, init?);
 
-                    let mut init = init?.to_expr();
-
+                    let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
                     let comment = String::from("// Initialized in c2rust_run_static_initializers");
                     let comment_pos = if span.is_dummy() {
                         None
@@ -2307,12 +2296,11 @@ impl<'c> Translation<'c> {
                         )
                         .map(pos_to_span)
                         .unwrap_or(span);
+                    let static_item = static_def
+                        .span(span)
+                        .static_item(new_name, ty, default_init);
 
-                    self.add_static_initializer_to_section(ctx, new_name, typ, &mut init)?;
-
-                    Ok(ConvertedDecl::Item(
-                        static_def.span(span).static_item(new_name, ty, init),
-                    ))
+                    Ok(ConvertedDecl::Item(static_item))
                 } else {
                     let items = self.convert_compilable_static(
                         ctx,
@@ -2685,6 +2673,8 @@ impl<'c> Translation<'c> {
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
                     self.convert_variable(ctx, initializer, typ)?;
+                self.add_static_initializer_to_section(&ident2, init?.set_unsafe());
+
                 let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
@@ -2697,9 +2687,6 @@ impl<'c> Translation<'c> {
                     .span(span)
                     .mutbl()
                     .static_item(&ident2, ty, default_init);
-                let mut init = init?.set_unsafe().to_expr();
-
-                self.add_static_initializer_to_section(ctx, &ident2, typ, &mut init)?;
                 self.items.borrow_mut()[&self.main_file].add_item(static_item);
 
                 return Ok(cfg::DeclStmtInfo::empty());
