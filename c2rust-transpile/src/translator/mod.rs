@@ -2191,7 +2191,7 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
                 let ConvertedVariable { ty, mutbl, init: _ } =
-                    self.convert_variable(ctx.static_().const_(), None, typ)?;
+                    self.convert_variable(ExprContext::default().static_().const_(), None, typ)?;
                 let mut extern_item = mk_linkage(true, &new_name, ident, self.tcfg.edition)
                     .span(span)
                     .set_mutbl(mutbl);
@@ -2266,20 +2266,18 @@ impl<'c> Translation<'c> {
                     };
                 }
 
-                let ctx = ctx.static_();
-
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if self.static_initializer_is_uncompilable(initializer, typ) {
-                    // Note: We don't pass `is_const` through here. Extracted initializers are run
+                    // Note: We don't pass the outer context here. Extracted initializers are run
                     // outside of the static initializer, in a non-const context.
-                    let ctx = ctx.not_const();
-
                     let ConvertedVariable { ty, mutbl: _, init } =
-                        self.convert_variable(ctx, initializer, typ)?;
+                        self.convert_variable(ExprContext::default().static_(), initializer, typ)?;
                     self.add_static_initializer_to_section(new_name, init?);
 
-                    let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
+                    let default_init = self
+                        .implicit_default_expr(ctx.static_().const_().used(), typ.ctype)?
+                        .to_expr();
                     let comment = String::from("// Initialized in c2rust_run_static_initializers");
                     let comment_pos = if span.is_dummy() {
                         None
@@ -2631,7 +2629,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
     ) -> TranslationResult<Vec<Box<Item>>> {
         let ConvertedVariable { ty, mutbl: _, init } =
-            self.convert_variable(ctx.const_(), initializer, typ)?;
+            self.convert_variable(ctx.static_().const_(), initializer, typ)?;
         let mut init = init?;
         let mut items = init
             .stmts_to_items()
@@ -2660,8 +2658,6 @@ impl<'c> Translation<'c> {
         } = self.ast_context.index(decl_id).kind
         {
             if self.static_initializer_is_uncompilable(initializer, typ) {
-                let ctx = ctx.static_().not_const();
-
                 let ident2 = self
                     .renamer
                     .borrow_mut()
@@ -2672,10 +2668,12 @@ impl<'c> Translation<'c> {
                         )
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
-                    self.convert_variable(ctx, initializer, typ)?;
+                    self.convert_variable(ExprContext::default().static_(), initializer, typ)?;
                 self.add_static_initializer_to_section(&ident2, init?.set_unsafe());
 
-                let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
+                let default_init = self
+                    .implicit_default_expr(ctx.static_().const_().used(), typ.ctype)?
+                    .to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2706,7 +2704,7 @@ impl<'c> Translation<'c> {
                     .get_span(SomeId::Decl(decl_id))
                     .unwrap_or_else(Span::call_site);
                 let items = self.convert_compilable_static(
-                    ctx.static_(),
+                    ctx,
                     mk().span(span).mutbl(),
                     &ident2,
                     initializer,
