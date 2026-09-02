@@ -216,9 +216,14 @@ impl<'c> Translation<'c> {
                 let n_stmts = self.convert_expr(ctx.used(), args[1], None)?;
                 let write_bytes = mk().abs_path_expr(vec!["core", "ptr", "write_bytes"]);
                 let zero = mk().lit_expr(mk().int_lit(0, "u8"));
-                Ok(ptr_stmts.and_then(|ptr| {
+                let call = ptr_stmts.and_then(|ptr| {
                     n_stmts.map(|n| mk().call_expr(write_bytes, vec![ptr, zero, n]))
-                }))
+                });
+                Ok(self.convert_side_effects_expr(
+                    ctx,
+                    call,
+                    "__builtin_bzero value is not supposed to be used",
+                ))
             }
 
             // If the target does not support data prefetch, the address expression is evaluated if
