@@ -5,7 +5,6 @@ c2rust-postprocess: Transfer comments from C functions to Rust functions using L
 import argparse
 import logging
 import os
-from argparse import BooleanOptionalAction
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -104,10 +103,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--update-rust",
-        required=False,
-        default=True,
-        action=BooleanOptionalAction,
+        "--no-update-rust",
+        action=argparse.BooleanOptionalAction,
+        default=False,
         help="Update the Rust in-place",
+    )
+
+    parser.add_argument(
+        "--validate-cmd",
+        action="append",
+        default=[],
+        metavar="CMD",
+        help=(
+            "Extra shell command to validate the crate (run in the crate's "
+            "root after cargo check); pass multiple times for multiple "
+            "commands; every command must exit 0"
+        ),
     )
 
     parser.add_argument(
@@ -202,11 +213,13 @@ def main(argv: Sequence[str] | None = None):
             for transform_id in transform_ids
         ]
 
-        # Validate the baseline before applying any rewrites so a broken
-        # crate is never misattributed to them.
-        validator = (
-            make_validator(args.root_rust_source_file) if args.update_rust else None
-        )
+        # Validate the baseline before doing anything else so a broken
+        # crate is never misattributed to the rewrites.
+        try:
+            validator = make_validator(args.root_rust_source_file, args.validate_cmd)
+        except BaselineError as e:
+            logging.error("%s", e)
+            return 1
 
         result = TransformResult()
         failure_log_level = (
