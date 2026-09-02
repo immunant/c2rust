@@ -7,13 +7,16 @@ use syn::{spanned::Spanned as _, ExprBinary, ExprBreak, ExprIf, ExprUnary, Macro
 
 use crate::rust_ast::{comment_store, set_span::SetSpan, BytePos, SpanExt};
 
+/// Maps the entry labels of each `Multiple` structure to the names of the
+/// enum and `c2rust_current_block` variable generated for that group (#1986).
+pub type BlockNames = IndexMap<Label, (Ident, Box<Expr>)>;
+
 /// Convert a sequence of structures produced by Relooper back into Rust statements
 pub fn structured_cfg(
     root: &[Structure<Stmt>],
     cfg_info: &CfgInfo,
     comment_store: &mut comment_store::CommentStore,
-    current_block_enum: Ident,
-    current_block_variable: Box<Expr>,
+    block_names: BlockNames,
 ) -> TranslationResult<Vec<Stmt>> {
     let loop_context = LoopContext::default();
     let mut ast = process_cfg(
@@ -23,6 +26,17 @@ pub fn structured_cfg(
         &loop_context,
         &mut IndexSet::new(),
     )?;
+
+    // TODO: It would be good to be able to spit out the AST before label cleanup
+    // for debugging purposes.
+    cleanup_labels(&mut ast, &None, &mut IndexSet::new());
+
+    let s = StructureState { block_names };
+    let (stmts, _span) = s.to_stmt(ast, comment_store);
+
+    Ok(stmts)
+}
+
 
     // TODO: It would be good to be able to spit out the AST before label cleanup
     // for debugging purposes.
@@ -413,6 +427,7 @@ impl<E, P, L, S> StructuredStatement for StructuredAST<E, P, L, S> {
 type Exit = (Label, IndexMap<Label, (IndexSet<Label>, ExitStyle)>);
 
 /// Information gathered from the structured CFG needed for AST generation.
+/// Information gathered from the structured CFG needed for AST generation.
 #[derive(Debug, Default)]
 pub struct CfgInfo {
     /// Labels that require `current_block` to be set before traveling to them.
@@ -422,7 +437,17 @@ pub struct CfgInfo {
     /// Maps loop entries to their canonical loop label (i.e., `entries.first()`).
     /// Used to determine which label to use for `continue` statements.
     pub entry_to_loop: IndexMap<Label, Label>,
+
+    /// One set of entry labels per `Multiple` structure (irreducible control
+    /// flow region), in order of appearance. The sets are disjoint: a label
+    /// can only be an entry of a single `Multiple`. See c2rust#1986.
+    pub block_groups: Vec<IndexSet<Label>>,
+
+    /// Maps each label of a `Multiple` group to that group's index in
+    /// `block_groups`.
+    pub block_group_of_label: IndexMap<Label, usize>,
 }
+
 
 /// Searches the structured CFG for loops and gathers information needed for AST
 /// generation.
@@ -443,16 +468,23 @@ pub fn gather_cfg_info(structures: &[Structure<Stmt>], info: &mut CfgInfo) {
 
                 gather_cfg_info(body, info);
             }
-            Structure::Multiple { branches, .. } => {
+            Structure::Multiple { entries, branches } => {
+                // Record this `Multiple`'s entry labels as a block group. Each
+                // group gets its own `C2Rust_Block` enum. (#1986)
+                let group_index = info.block_groups.len();
+                for entry in entries {
+                    debug_assert!(
+                        !info.block_group_of_label.contains_key(entry),
+                        "label {entry:?} is an entry of two `Multiple` \
+                         structures; block groups must be disjoint"
+                    );
+                    info.block_group_of_label
+                        .insert(entry.clone(), group_index);
+                }
+                info.block_groups.push(entries.clone());
+
                 for branch in branches.values() {
                     gather_cfg_info(branch, info);
-                }
-            }
-            Structure::Simple { terminator, .. } => {
-                for label in terminator.get_labels() {
-                    if let StructureLabel::Nested(nested) = label {
-                        gather_cfg_info(nested, info);
-                    }
                 }
             }
         }
@@ -651,7 +683,7 @@ fn process_cfg(
             }
 
             Multiple {
-                entries: _,
+                entries,
                 branches,
             } => {
                 let cases = branches
@@ -668,13 +700,11 @@ fn process_cfg(
                     })
                     .collect::<TranslationResult<_>>()?;
 
-                let then = if cfg_info
-                    .checked_entries
-                    .iter()
-                    .all(|entry| branches.contains_key(entry))
-                {
-                    // If the branches cover all the enum variants in `checked_entries`, then the
-                    // `match` is exhaustive and we don't need a "then" branch.
+                let then = if entries.iter().all(|entry| branches.contains_key(entry)) {
+                    // If the branches cover all the entries of this `Multiple`,
+                    // then the enum generated for this group (#1986) contains
+                    // exactly these variants, so the `match` is exhaustive and
+                    // we don't need a "then" branch.
                     None
                 } else {
                     // Otherwise, the branches *should* at least cover all of our entries, so there
@@ -690,7 +720,7 @@ fn process_cfg(
 
                 S::mk_goto_table(cases, then)
             }
-        };
+
 
         i += 1;
 
@@ -751,9 +781,11 @@ fn process_cfg(
 }
 
 struct StructureState {
-    current_block_enum: Ident,
-    current_block_variable: Box<Expr>,
+    /// Maps each label that needs a `current_block` assignment to the enum
+    /// and variable generated for its `Multiple` group (#1986).
+    block_names: BlockNames,
 }
+
 
 /// Returns a `Span` between the beginning of `span` or `other`, whichever is
 /// non-zero, and the end of `span`. If both `span` and `other` have non-zero
@@ -852,12 +884,17 @@ impl StructureState {
             }
 
             Goto(to) => {
-                // Assign to `c2rust_current_block` the next label we want to go to.
-                let path = vec![self.current_block_enum.clone(), to.to_variant_ident()];
-                let expr =
-                    mk().assign_expr(self.current_block_variable.clone(), mk().path_expr(path));
+                // Assign to the `c2rust_current_block` variable of the group
+                // that owns this label (#1986).
+                let (current_block_enum, current_block_variable) = self
+                    .block_names
+                    .get(&to)
+                    .expect("goto target has no associated current_block enum");
+                let path = vec![current_block_enum.clone(), to.to_variant_ident()];
+                let expr = mk().assign_expr(current_block_variable.clone(), mk().path_expr(path));
                 mk().span(span).semi_stmt(expr)
             }
+
 
             Match(cond, cases) => {
                 // Make a `match`.
@@ -942,7 +979,14 @@ impl StructureState {
             }
 
             GotoTable(cases, then) => {
-                // Dispatch based on the next `c2rust_current_block` value.
+                // Dispatch based on the next `c2rust_current_block` value. All
+                // cases belong to the same `Multiple` group, so use the enum
+                // and variable generated for that group (#1986).
+                let first_label = cases.keys().next().expect("GotoTable with no cases");
+                let (current_block_enum, current_block_variable) = self
+                    .block_names
+                    .get(first_label)
+                    .expect("goto table label has no associated current_block enum");
 
                 let mut arms: Vec<Arm> = cases
                     .into_iter()
@@ -950,7 +994,7 @@ impl StructureState {
                         let (stmts, stmts_span) = self.to_stmt(stmts, comment_store);
                         let pat = {
                             let path = mk().path(vec![
-                                self.current_block_enum.clone(),
+                                current_block_enum.clone(),
                                 lbl.to_variant_ident(),
                             ]);
                             mk().path_pat(path, None)
@@ -970,10 +1014,11 @@ impl StructureState {
                     ));
                 }
 
-                let e = mk().match_expr(self.current_block_variable.clone(), arms);
+                let e = mk().match_expr(current_block_variable.clone(), arms);
 
                 mk().span(span).expr_stmt(e)
             }
+
 
             Loop(lbl, body) => {
                 // Make (possibly labelled) `loop`.
