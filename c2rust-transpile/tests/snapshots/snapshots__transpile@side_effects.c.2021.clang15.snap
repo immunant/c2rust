@@ -16,6 +16,12 @@ extern "C" {
     fn side_effect() -> ::core::ffi::c_int;
     fn lvalue_side_effect() -> *mut ::core::ffi::c_int;
 }
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct S {
+    pub x: ::core::ffi::c_int,
+    pub y: ::core::ffi::c_int,
+}
 #[no_mangle]
 pub unsafe extern "C" fn pure() {
     let mut i: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
@@ -25,6 +31,18 @@ pub unsafe extern "C" fn pure() {
     (i == 0) as ::core::ffi::c_int;
     &raw mut i;
     i;
+    let mut c2rust_lvalue: S = S {
+        x: 0 as ::core::ffi::c_int,
+        y: 2 as ::core::ffi::c_int,
+    };
+    &raw mut c2rust_lvalue;
+    -S {
+        x: 0 as ::core::ffi::c_int,
+        y: 2 as ::core::ffi::c_int,
+    }
+    .x;
+    (1 as ::core::ffi::c_uint).swap_bytes().wrapping_neg();
+    (0 as ::core::ffi::c_long == 0) as ::core::ffi::c_int;
 }
 #[no_mangle]
 pub unsafe extern "C" fn pure_with_side_effect() {
@@ -34,6 +52,20 @@ pub unsafe extern "C" fn pure_with_side_effect() {
     !side_effect();
     (side_effect() == 0) as ::core::ffi::c_int;
     (b"\0".as_ptr() as *const ::core::ffi::c_char).offset(side_effect() as isize);
+    let mut c2rust_lvalue: S = S {
+        x: side_effect(),
+        y: 2 as ::core::ffi::c_int,
+    };
+    &raw mut c2rust_lvalue;
+    -S {
+        x: side_effect(),
+        y: 2 as ::core::ffi::c_int,
+    }
+    .x;
+    (side_effect() as ::core::ffi::c_uint)
+        .swap_bytes()
+        .wrapping_neg();
+    (side_effect() as ::core::ffi::c_long == 0) as ::core::ffi::c_int;
 }
 #[no_mangle]
 pub unsafe extern "C" fn impure() {
