@@ -18,29 +18,21 @@ pub unsafe extern "C" fn test_builtin_expected_type(
     mut d: ::core::ffi::c_double,
     mut y: ::core::ffi::c_int,
 ) {
-    let mut ffs: int32_t = if y == 0 {
-        0
-    } else {
-        y.trailing_zeros() as ::core::ffi::c_int + 1
-    };
-    let mut clz: int32_t = (y as ::core::ffi::c_uint).leading_zeros() as ::core::ffi::c_int;
-    let mut isnan: int32_t = d.is_nan() as ::core::ffi::c_int;
+    let mut ffs: int32_t = (if y == 0 { 0 } else { y.trailing_zeros() + 1 }) as int32_t;
+    let mut clz: int32_t = (y as ::core::ffi::c_uint).leading_zeros() as int32_t;
+    let mut isnan: int32_t = d.is_nan() as int32_t;
     let mut isinf_sign: int32_t = if d.is_infinite() {
         if d.is_sign_positive() {
-            1 as ::core::ffi::c_int
+            1 as int32_t
         } else {
-            -1 as ::core::ffi::c_int
+            -1 as int32_t
         }
     } else {
-        0 as ::core::ffi::c_int
+        0 as int32_t
     };
-    let mut constant_p: int32_t = 0 as ::core::ffi::c_int;
+    let mut constant_p: int32_t = 0 as int32_t;
     let mut cond: int32_t = if y != 0 {
-        if y == 0 {
-            0
-        } else {
-            y.trailing_zeros() as ::core::ffi::c_int + 1
-        }
+        (if y == 0 { 0 } else { y.trailing_zeros() + 1 }) as int32_t
     } else {
         0 as int32_t
     };
@@ -49,11 +41,11 @@ pub unsafe extern "C" fn test_builtin_expected_type(
 pub unsafe extern "C" fn test_builtin_object_size() {
     let mut x: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
     &raw mut x;
-    let mut n: ::core::ffi::c_ulong = if 1 as ::core::ffi::c_int & 2 == 0 {
+    let mut n: ::core::ffi::c_ulong = (if 1 as ::core::ffi::c_int & 2 == 0 {
         -1isize as usize
     } else {
         0usize
-    };
+    }) as ::core::ffi::c_ulong;
     &raw mut x;
     let mut n2: ::core::ffi::c_ulong = (if 1 as ::core::ffi::c_int & 2 == 0 {
         -1isize as usize

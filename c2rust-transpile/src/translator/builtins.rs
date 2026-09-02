@@ -50,6 +50,7 @@ impl<'c> Translation<'c> {
     pub fn convert_builtin(
         &self,
         ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
         result_type_id: CQualTypeId,
         fexp: CExprId,
         args: &[CExprId],
@@ -74,6 +75,8 @@ impl<'c> Translation<'c> {
             }
         };
 
+        let mut source_type_id = result_type_id;
+        let target_type_id = expected_type_id.unwrap_or(result_type_id);
         let val = match builtin_name {
             "__builtin_huge_valf" => {
                 WithStmts::new_val(mk().abs_path_expr(vec!["core", "f32", "INFINITY"]))
@@ -108,17 +111,13 @@ impl<'c> Translation<'c> {
                 self.import_num_traits(args[0])?;
 
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+                source_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
 
-                val.map(|v| {
-                    let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
-
-                    mk().cast_expr(val, result_type_rs)
-                })
+                val.map(|v| mk().method_call_expr(v, "is_sign_negative", vec![]))
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+                source_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::UInt32);
 
                 val.map(|x| {
                     let add = BinOp::Add(Default::default());
@@ -126,8 +125,7 @@ impl<'c> Translation<'c> {
                     let one = mk().lit_expr(mk().int_lit(1, ""));
                     let cmp = BinOp::Eq(Default::default());
                     let zeros = mk().method_call_expr(x.clone(), "trailing_zeros", vec![]);
-                    let zeros_cast = mk().cast_expr(zeros, result_type_rs);
-                    let zeros_plus1 = mk().binary_expr(add, zeros_cast, one);
+                    let zeros_plus1 = mk().binary_expr(add, zeros, one);
                     let block = mk().block(vec![mk().expr_stmt(zero.clone())]);
                     let cond = mk().binary_expr(cmp, x, zero);
 
@@ -136,21 +134,15 @@ impl<'c> Translation<'c> {
             }
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+                source_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::UInt32);
 
-                val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "leading_zeros", vec![]);
-                    mk().cast_expr(zeros, result_type_rs)
-                })
+                val.map(|x| mk().method_call_expr(x, "leading_zeros", vec![]))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+                source_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::UInt32);
 
-                val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "trailing_zeros", vec![]);
-                    mk().cast_expr(zeros, result_type_rs)
-                })
+                val.map(|x| mk().method_call_expr(x, "trailing_zeros", vec![]))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
@@ -172,19 +164,17 @@ impl<'c> Translation<'c> {
                     "__builtin_isnan" => "is_nan",
                     _ => panic!(),
                 };
-                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+                source_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
 
-                val.map(|x| {
-                    let call = mk().method_call_expr(x, seg, vec![]);
-                    mk().cast_expr(call, result_type_rs)
-                })
+                val.map(|x| mk().method_call_expr(x, seg, vec![]))
             }
             "__builtin_isinf_sign" => {
-                let zero = self.mk_int_lit(ctx.used(), result_type_id, 0, IntBase::Dec, false)?;
-                let one = self.mk_int_lit(ctx.used(), result_type_id, 1, IntBase::Dec, false)?;
+                let zero = self.mk_int_lit(ctx.used(), target_type_id, 0, IntBase::Dec, false)?;
+                let one = self.mk_int_lit(ctx.used(), target_type_id, 1, IntBase::Dec, false)?;
                 let minus_one =
-                    self.mk_int_lit(ctx.used(), result_type_id, 1, IntBase::Dec, true)?;
+                    self.mk_int_lit(ctx.used(), target_type_id, 1, IntBase::Dec, true)?;
                 self.import_num_traits(args[0])?;
+                source_type_id = target_type_id;
 
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
@@ -201,18 +191,16 @@ impl<'c> Translation<'c> {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
-                WithStmts::new_val(self.mk_int_lit(ctx, result_type_id, 1, IntBase::Dec, false)?)
+                source_type_id = target_type_id;
+                WithStmts::new_val(self.mk_int_lit(ctx, target_type_id, 1, IntBase::Dec, false)?)
             }
             "__builtin_expect" => self.convert_expr(ctx.used(), args[0], None)?,
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
                 let val = self.convert_expr(ctx.used(), args[0], None)?;
-                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+                source_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::UInt32);
 
-                val.map(|x| {
-                    let zeros = mk().method_call_expr(x, "count_ones", vec![]);
-                    mk().cast_expr(zeros, result_type_rs)
-                })
+                val.map(|x| mk().method_call_expr(x, "count_ones", vec![]))
             }
             "__builtin_bzero" => {
                 let ptr_stmts = self.convert_expr(ctx.used(), args[0], None)?;
@@ -300,7 +288,8 @@ impl<'c> Translation<'c> {
             // value is *not* a constant, but merely that GCC cannot prove it is a constant with
             // the specified value of the -O option. "
             "__builtin_constant_p" => {
-                WithStmts::new_val(self.mk_int_lit(ctx, result_type_id, 0, IntBase::Dec, false)?)
+                source_type_id = target_type_id;
+                WithStmts::new_val(self.mk_int_lit(ctx, target_type_id, 0, IntBase::Dec, false)?)
             }
 
             "__builtin_object_size" => {
@@ -389,18 +378,43 @@ impl<'c> Translation<'c> {
 
             "__builtin_alloca" => {
                 let count = self.convert_expr(ctx.used(), args[0], None)?;
-                let result_type_rs = self.convert_type(result_type_id.ctype)?;
+
+                // Get `alloca` allocation storage.
+                let mut fn_ctx = self.function_context.borrow_mut();
+                let alloca_allocations_name =
+                    &*fn_ctx.alloca_allocations_name.get_or_insert_with(|| {
+                        self.renamer
+                            .borrow_mut()
+                            .pick_name("c2rust_alloca_allocations", Namespaces::values())
+                    });
+
+                // c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr()
+                let mut expr = mk().method_chain_expr(
+                    mk().ident_expr(alloca_allocations_name.as_str()),
+                    vec![
+                        (mk().path_segment("last_mut"), vec![]),
+                        (mk().path_segment("unwrap"), vec![]),
+                        (mk().path_segment("as_mut_ptr"), vec![]),
+                    ],
+                );
+
+                source_type_id = target_type_id;
+                let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
+                let needs_cast = match target_type_kind {
+                    &CTypeKind::Pointer(pointee_type_id) => {
+                        let pointee_type_kind =
+                            &self.ast_context.resolve_type(pointee_type_id.ctype).kind;
+                        !matches!(pointee_type_kind, CTypeKind::UInt8)
+                    }
+                    _ => true,
+                };
+
+                if needs_cast {
+                    let target_type_rs = self.convert_type(target_type_id.ctype)?;
+                    expr = mk().cast_expr(expr, target_type_rs);
+                }
 
                 count.and_then(|count| {
-                    // Get `alloca` allocation storage.
-                    let mut fn_ctx = self.function_context.borrow_mut();
-                    let alloca_allocations_name =
-                        &*fn_ctx.alloca_allocations_name.get_or_insert_with(|| {
-                            self.renamer
-                                .borrow_mut()
-                                .pick_name("c2rust_alloca_allocations", Namespaces::values())
-                        });
-
                     // c2rust_alloca_allocations.push(std::vec::from_elem(0, count));
                     let init_expr = vec_expr(
                         mk().lit_expr(mk().int_unsuffixed_lit(0)),
@@ -411,14 +425,6 @@ impl<'c> Translation<'c> {
                         "push",
                         vec![init_expr],
                     ));
-
-                    // c2rust_alloca_allocations.last_mut().unwrap().as_mut_ptr() as *mut ::core::ffi::c_void
-                    let expr = mk().ident_expr(alloca_allocations_name);
-                    let expr = mk().method_call_expr(expr, "last_mut", vec![]);
-                    let expr = mk().method_call_expr(expr, "unwrap", vec![]);
-                    let expr = mk().method_call_expr(expr, "as_mut_ptr", vec![]);
-                    let expr = mk().cast_expr(expr, result_type_rs);
-
                     WithStmts::new(vec![push_stmt], expr)
                 })
             }
@@ -665,7 +671,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        Ok(val)
+        self.make_cast(ctx, source_type_id, target_type_id, val)
     }
 
     fn import_num_traits(&self, arg_id: CExprId) -> TranslationResult<()> {
