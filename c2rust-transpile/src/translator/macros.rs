@@ -13,7 +13,6 @@ use crate::TranslateMacros;
 impl<'c> Translation<'c> {
     pub fn convert_macro(
         &self,
-        ctx: ExprContext,
         decl_id: CDeclId,
         span: Span,
         name: &str,
@@ -25,7 +24,7 @@ impl<'c> Translation<'c> {
         );
 
         let maybe_replacement = self.recreate_const_macro_from_expansions(
-            ctx.const_().set_expanding_macro(decl_id),
+            ExprContext::default().const_().set_expanding_macro(decl_id),
             &self.ast_context.macro_expansions[&decl_id],
         );
 
@@ -188,7 +187,7 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to expand it yet.
             None => {
-                self.convert_decl(ctx.not_pattern(), *macro_id)?;
+                self.convert_decl(ctx, *macro_id)?;
                 if let Some(Some(expansion)) = self.macro_expansions.borrow().get(macro_id) {
                     expansion.ty
                 } else {
