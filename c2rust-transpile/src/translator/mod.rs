@@ -2335,7 +2335,7 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Macro object not named");
 
-                Ok(self.convert_macro(ctx, decl_id, span, &name))
+                Ok(self.convert_macro(decl_id, span, &name))
             }
 
             // We aren't doing anything with the definitions of function-like
