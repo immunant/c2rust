@@ -2141,8 +2141,7 @@ impl<'c> Translation<'c> {
                 ref attrs,
                 ..
             } => self.convert_function(
-                ctx, decl_id, span, is_global, is_inline, is_extern, typ, name, parameters, body,
-                attrs,
+                decl_id, span, is_global, is_inline, is_extern, typ, name, parameters, body, attrs,
             ),
 
             Typedef { ref typ, .. } => {
