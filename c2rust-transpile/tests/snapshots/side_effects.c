@@ -1,6 +1,11 @@
 int side_effect(void);
 int *lvalue_side_effect(void);
 
+struct S {
+    int x;
+    int y;
+};
+
 void pure(void) {
     int i = 5;
 
@@ -10,6 +15,14 @@ void pure(void) {
     !i;
     &i;
     *&i;
+
+    // Compound literals
+    &(struct S){0, 2};
+    -(struct S){0, 2}.x;
+
+    // Builtins known to have no side effects
+    -__builtin_bswap32(1);
+    !__builtin_expect(0, 0);
 }
 
 void pure_with_side_effect(){
@@ -20,6 +33,12 @@ void pure_with_side_effect(){
     ~side_effect();
     !side_effect();
     &""[side_effect()];
+
+    &(struct S){side_effect(), 2};
+    -(struct S){side_effect(), 2}.x;
+
+    -__builtin_bswap32(side_effect());
+    !__builtin_expect(side_effect(), 0);
 }
 
 void impure(void) {
