@@ -128,7 +128,7 @@ static mut global_static_const_ref_indexing: *const ::core::ffi::c_char =
     ::core::ptr::null::<::core::ffi::c_char>();
 static mut global_static_const_ref_struct: *const S = REF_LITERAL;
 static mut c2rust_lvalue: S = S { i: 5 };
-static mut global_static_const_ref_struct_mut: *mut S = &raw const c2rust_lvalue as *mut S;
+static mut global_static_const_ref_struct_mut: *mut S = &raw mut c2rust_lvalue;
 static mut global_static_const_ternary: ::core::ffi::c_int = 0;
 static mut global_static_const_member: ::core::ffi::c_int = 0;
 static mut global_static_const_member_mut: ::core::ffi::c_int = 0;
@@ -205,7 +205,7 @@ pub static mut global_const_ref_indexing: *const ::core::ffi::c_char =
 pub static mut global_const_ref_struct: *const S = REF_LITERAL;
 static mut c2rust_lvalue_0: S = S { i: 5 };
 #[unsafe(no_mangle)]
-pub static mut global_const_ref_struct_mut: *mut S = &raw const c2rust_lvalue_0 as *mut S;
+pub static mut global_const_ref_struct_mut: *mut S = &raw mut c2rust_lvalue_0;
 #[unsafe(no_mangle)]
 pub static mut global_const_ternary: ::core::ffi::c_int = 0;
 #[unsafe(no_mangle)]

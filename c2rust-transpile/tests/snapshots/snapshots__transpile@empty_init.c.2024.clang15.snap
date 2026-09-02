@@ -27,7 +27,7 @@ static mut c2rust_lvalue: Scope = Scope {
     next: ::core::ptr::null_mut::<Scope>(),
 };
 #[unsafe(no_mangle)]
-pub static mut scope: *mut Scope = &raw const c2rust_lvalue as *mut Scope;
+pub static mut scope: *mut Scope = &raw mut c2rust_lvalue;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn foo() {
     let mut f: Foo_t = Foo_t { x: 0 };

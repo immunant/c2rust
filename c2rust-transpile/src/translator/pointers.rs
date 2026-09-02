@@ -106,7 +106,10 @@ impl<'c> Translation<'c> {
         let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
 
         let mut needs_cast = false;
-        let mutbl = if ctx.is_const && !pointee_cty.qualifiers.is_const {
+        let mutbl = if self.tcfg.edition < RustEdition::Edition2024
+            && ctx.is_const
+            && !pointee_cty.qualifiers.is_const
+        {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
