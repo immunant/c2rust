@@ -460,6 +460,11 @@ fn test_scalar_init() {
 }
 
 #[test]
+fn test_side_effects() {
+    transpile("side_effects.c").run();
+}
+
+#[test]
 fn test_static_assert() {
     transpile("static_assert.c").run();
 }

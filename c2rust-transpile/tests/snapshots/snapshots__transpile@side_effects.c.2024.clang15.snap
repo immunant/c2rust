@@ -1,0 +1,88 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/side_effects.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+unsafe extern "C" {
+    unsafe fn side_effect() -> ::core::ffi::c_int;
+    unsafe fn lvalue_side_effect() -> *mut ::core::ffi::c_int;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pure() {
+    let mut i: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
+    -i;
+    i;
+    !i;
+    (i == 0) as ::core::ffi::c_int;
+    &raw mut i;
+    i;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pure_with_side_effect() {
+    let mut arr: [*mut ::core::ffi::c_char; 1] = [::core::ptr::null_mut::<::core::ffi::c_char>()];
+    -side_effect();
+    side_effect();
+    !side_effect();
+    (side_effect() == 0) as ::core::ffi::c_int;
+    (b"\0".as_ptr() as *const ::core::ffi::c_char).offset(side_effect() as isize);
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn impure() {
+    let mut i: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
+    i += 1;
+    i -= 1;
+    i -= 1;
+    i += 1;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn impure_with_side_effect() {
+    let mut arr: [::core::ffi::c_int; 1] = [0 as ::core::ffi::c_int];
+    arr[side_effect() as usize] += 1;
+    arr[side_effect() as usize] -= 1;
+    arr[side_effect() as usize] += 1;
+    arr[side_effect() as usize] -= 1;
+    let c2rust_lvalue_ptr = &raw mut arr[side_effect() as usize];
+    *c2rust_lvalue_ptr += 1;
+    let mut pre_inc: ::core::ffi::c_int = *c2rust_lvalue_ptr;
+    let c2rust_lvalue_ptr_0 = &raw mut arr[side_effect() as usize];
+    *c2rust_lvalue_ptr_0 -= 1;
+    let mut pre_dec: ::core::ffi::c_int = *c2rust_lvalue_ptr_0;
+    let c2rust_lvalue_ptr_1 = &raw mut arr[side_effect() as usize];
+    let c2rust_fresh0 = *c2rust_lvalue_ptr_1;
+    *c2rust_lvalue_ptr_1 += 1;
+    let mut post_inc: ::core::ffi::c_int = c2rust_fresh0;
+    let c2rust_lvalue_ptr_2 = &raw mut arr[side_effect() as usize];
+    let c2rust_fresh1 = *c2rust_lvalue_ptr_2;
+    *c2rust_lvalue_ptr_2 -= 1;
+    let mut post_dec: ::core::ffi::c_int = c2rust_fresh1;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn impure_with_lvalue_side_effect() {
+    *lvalue_side_effect() += 1;
+    *lvalue_side_effect() -= 1;
+    *lvalue_side_effect() += 1;
+    *lvalue_side_effect() -= 1;
+    let c2rust_lvalue_ptr = &raw mut *lvalue_side_effect();
+    *c2rust_lvalue_ptr += 1;
+    let mut pre_inc: ::core::ffi::c_int = *c2rust_lvalue_ptr;
+    let c2rust_lvalue_ptr_0 = &raw mut *lvalue_side_effect();
+    *c2rust_lvalue_ptr_0 -= 1;
+    let mut pre_dec: ::core::ffi::c_int = *c2rust_lvalue_ptr_0;
+    let c2rust_lvalue_ptr_1 = &raw mut *lvalue_side_effect();
+    let c2rust_fresh2 = *c2rust_lvalue_ptr_1;
+    *c2rust_lvalue_ptr_1 += 1;
+    let mut post_inc: ::core::ffi::c_int = c2rust_fresh2;
+    let c2rust_lvalue_ptr_2 = &raw mut *lvalue_side_effect();
+    let c2rust_fresh3 = *c2rust_lvalue_ptr_2;
+    *c2rust_lvalue_ptr_2 -= 1;
+    let mut post_dec: ::core::ffi::c_int = c2rust_fresh3;
+}
