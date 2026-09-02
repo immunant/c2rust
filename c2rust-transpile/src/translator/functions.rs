@@ -8,7 +8,6 @@ use proc_macro2::{TokenStream, TokenTree};
 impl<'c> Translation<'c> {
     pub fn convert_function(
         &self,
-        ctx: ExprContext,
         decl_id: CDeclId,
         span: Span,
         is_global: bool,
@@ -61,7 +60,6 @@ impl<'c> Translation<'c> {
         let is_main = self.ast_context.c_main == Some(decl_id);
 
         let converted_function = self.convert_function_inner(
-            ctx,
             span,
             is_global,
             is_inline,
@@ -78,7 +76,6 @@ impl<'c> Translation<'c> {
 
         converted_function.or_else(|e| match self.tcfg.replace_unsupported_decls {
             ReplaceMode::Extern if body.is_none() => self.convert_function_inner(
-                ctx,
                 span,
                 is_global,
                 false,
@@ -98,7 +95,6 @@ impl<'c> Translation<'c> {
 
     fn convert_function_inner(
         &self,
-        ctx: ExprContext,
         span: Span,
         is_global: bool,
         is_inline: bool,
@@ -123,7 +119,7 @@ impl<'c> Translation<'c> {
 
             // handle regular (non-variadic) arguments
             for &(decl_id, ref var, typ) in arguments {
-                let ConvertedFunctionParam { ty, mutbl } = self.convert_function_param(ctx, typ)?;
+                let ConvertedFunctionParam { ty, mutbl } = self.convert_function_param(typ)?;
 
                 let pat = if var.is_empty() {
                     mk().wild_pat()
@@ -206,6 +202,8 @@ impl<'c> Translation<'c> {
                 };
 
                 let mut body_stmts = vec![];
+                let ctx = ExprContext::default();
+
                 for &(_, _, typ) in arguments {
                     body_stmts.append(&mut self.compute_variable_array_sizes(ctx, typ.ctype)?);
                 }
@@ -341,7 +339,6 @@ impl<'c> Translation<'c> {
 
     fn convert_function_param(
         &self,
-        ctx: ExprContext,
         typ: CQualTypeId,
     ) -> TranslationResult<ConvertedFunctionParam> {
         if self.ast_context.is_va_list(typ.ctype) {
@@ -350,7 +347,7 @@ impl<'c> Translation<'c> {
             return Ok(ConvertedFunctionParam { mutbl, ty });
         }
 
-        self.convert_variable(ctx, None, typ)
+        self.convert_variable(ExprContext::default(), None, typ)
             .map(|ConvertedVariable { ty, mutbl, .. }| ConvertedFunctionParam { ty, mutbl })
     }
 
