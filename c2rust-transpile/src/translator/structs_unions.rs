@@ -1054,6 +1054,13 @@ impl<'a> Translation<'a> {
         lrvalue: LRValue,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if matches!(lrvalue, LRValue::LValue)
+            && !qual_ty.qualifiers.is_const
+            && ctx.converting_macro().is_some()
+        {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         if !ctx.is_used() {
             return self.convert_expr(ctx, expr, None);
         }
