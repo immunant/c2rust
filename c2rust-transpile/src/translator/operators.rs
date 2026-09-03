@@ -570,6 +570,7 @@ impl<'c> Translation<'c> {
         result_type_id: CQualTypeId,
         op: CUnOp,
         arg: CExprId,
+        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let expr_type_id = expected_type_id.unwrap_or(result_type_id);
         let mut unary = match op {
@@ -582,7 +583,7 @@ impl<'c> Translation<'c> {
                 self.convert_indecrement_operator(ctx, expected_type_id, result_type_id, op, arg)
             }
 
-            CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg),
+            CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg, lrvalue),
             CUnOp::Plus => self.convert_expr(ctx.used(), arg, expected_type_id), // promotion is explicit in the clang AST
 
             CUnOp::Negate => self.convert_negate_operator(ctx, expr_type_id, arg),
