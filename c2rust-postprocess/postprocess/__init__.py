@@ -103,23 +103,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--update-rust",
-        "--no-update-rust",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Update the Rust in-place",
     )
 
-    parser.add_argument(
-        "--validate-cmd",
-        action="append",
-        default=[],
-        metavar="CMD",
-        help=(
-            "Extra shell command to validate the crate (run in the crate's "
-            "root after cargo check); pass multiple times for multiple "
-            "commands; every command must exit 0"
-        ),
-    )
 
     parser.add_argument(
         "--on-error",
@@ -213,13 +201,11 @@ def main(argv: Sequence[str] | None = None):
             for transform_id in transform_ids
         ]
 
-        # Validate the baseline before doing anything else so a broken
-        # crate is never misattributed to the rewrites.
-        try:
-            validator = make_validator(args.root_rust_source_file, args.validate_cmd)
-        except BaselineError as e:
-            logging.error("%s", e)
-            return 1
+        # Validate the baseline before applying any rewrites so a broken
+        # crate is never misattributed to them.
+        validator = (
+            make_validator(args.root_rust_source_file) if args.update_rust else None
+        )
 
         result = TransformResult()
         failure_log_level = (
