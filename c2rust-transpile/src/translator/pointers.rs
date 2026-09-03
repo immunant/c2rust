@@ -30,10 +30,11 @@ impl<'c> Translation<'c> {
                 return self.convert_expr(ctx, *target, None)
             }
             // Array subscript functions as a deref too.
-            &CExprKind::ArraySubscript(_, lhs, rhs, _) => {
+            &CExprKind::ArraySubscript(result_type_id, lhs, rhs, _) => {
                 return self.convert_array_subscript(
                     ctx.used().needs_address(),
                     Some(cqual_type),
+                    result_type_id,
                     lhs,
                     rhs,
                     LRValue::RValue, // if we bypass the deref, we stay an RValue
@@ -194,7 +195,15 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         cqual_type: CQualTypeId,
         arg: CExprId,
+        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if matches!(lrvalue, LRValue::LValue)
+            && !cqual_type.qualifiers.is_const
+            && ctx.expanding_macro.is_some()
+        {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         let arg_expr_kind = &self.ast_context.index_unwrap_parens(arg).kind;
 
         if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
@@ -219,11 +228,19 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         lhs: CExprId,
         rhs: CExprId,
         lrvalue: LRValue,
         deref: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if matches!(lrvalue, LRValue::LValue)
+            && !result_type_id.qualifiers.is_const
+            && ctx.expanding_macro.is_some()
+        {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         let (pointer_id, offset_id) = if self.ast_context.expr_is_indexable(lhs) {
             (lhs, rhs)
         } else {

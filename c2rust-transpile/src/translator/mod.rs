@@ -3544,8 +3544,8 @@ impl<'c> Translation<'c> {
                 matches!(expr_kind, CExprKind::ExplicitCast(..)),
             ),
 
-            Unary(result_type_id, op, arg, _lrvalue) => {
-                self.convert_unary_operator(ctx, override_ty, result_type_id, op, arg)
+            Unary(result_type_id, op, arg, lrvalue) => {
+                self.convert_unary_operator(ctx, override_ty, result_type_id, op, arg, lrvalue)
             }
 
             Conditional(ty, cond, lhs, rhs) => {
@@ -3637,8 +3637,8 @@ impl<'c> Translation<'c> {
                 )
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
-            ArraySubscript(_, lhs, rhs, lrvalue) => self
-                .convert_array_subscript(ctx, override_ty, lhs, rhs, lrvalue, true)
+            ArraySubscript(result_type_id, lhs, rhs, lrvalue) => self
+                .convert_array_subscript(ctx, override_ty, result_type_id, lhs, rhs, lrvalue, true)
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             Call(call_expr_ty, func, ref args) => {
@@ -3759,6 +3759,8 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
             .kind;
+
+        #[allow(unreachable_code)] // TODO temporary (see below).
         if ctx.expanding_macro.is_some() {
             // TODO Determining which declarations have been declared within the scope of the const macro expr
             // vs. which are out-of-scope of the const macro is non-trivial,
@@ -3768,7 +3770,10 @@ impl<'c> Translation<'c> {
                 "Cannot yet refer to declarations in a const expr",
             ));
 
-            #[allow(unreachable_code)] // TODO temporary (see above).
+            if matches!(lrvalue, LRValue::LValue) && !result_type_id.qualifiers.is_const {
+                return Err("mutable lvalues are not supported inside macros".into());
+            }
+
             if let CDeclKind::Variable {
                 has_static_duration: true,
                 ..
