@@ -147,7 +147,6 @@ pub struct ExprContext {
     /// address in function pointer literals.
     needs_address: bool,
 
-    ternary_needs_parens: bool,
     expanding_macro: Option<CDeclId>,
 }
 
@@ -884,7 +883,6 @@ pub fn translate(
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
-        ternary_needs_parens: false,
         expanding_macro: None,
     };
 
@@ -3576,15 +3574,7 @@ impl<'c> Translation<'c> {
                     let then = lhs.to_block();
                     let else_ = rhs.to_expr();
 
-                    Ok(cond.map(|c| {
-                        let ifte_expr = mk().ifte_expr(c, then, Some(else_));
-
-                        if ctx.ternary_needs_parens {
-                            mk().paren_expr(ifte_expr)
-                        } else {
-                            ifte_expr
-                        }
-                    }))
+                    Ok(cond.map(|c| mk().ifte_expr(c, then, Some(else_))))
                 }
             }
 
