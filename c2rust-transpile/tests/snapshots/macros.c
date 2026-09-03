@@ -52,131 +52,6 @@ struct S {
         mixed;                                                                 \
     })
 
-void local_muts() {
-    int literal_int = LITERAL_INT;
-    bool literal_bool = LITERAL_BOOL;
-    float literal_float = LITERAL_FLOAT;
-    char literal_char = LITERAL_CHAR;
-    const char *literal_str_ptr = LITERAL_STR;
-    char literal_str[] = LITERAL_STR;
-    int literal_array[] = LITERAL_ARRAY;
-    struct S literal_struct = LITERAL_STRUCT;
-    struct S literal_struct_mut = LITERAL_STRUCT_MUT;
-
-    int nested_int = NESTED_INT;
-    bool nested_bool = NESTED_BOOL;
-    float nested_float = NESTED_FLOAT;
-    char nested_char = NESTED_CHAR;
-    const char *nested_str_ptr = NESTED_STR;
-    char nested_str[] = NESTED_STR;
-    int nested_array[] = NESTED_ARRAY;
-    struct S nested_struct = NESTED_STRUCT;
-
-    int negative_int = NEGATIVE_INT;
-    int int_arithmetic = INT_ARITHMETIC;
-    float mixed_arithmetic = MIXED_ARITHMETIC;
-    int parens = PARENS;
-    const char *ptr_arithmetic = PTR_ARITHMETIC;
-    unsigned long long widening_cast = WIDENING_CAST;
-    char narrowing_cast = NARROWING_CAST;
-    double conversion_cast = CONVERSION_CAST;
-    char indexing = INDEXING;
-    const char *str_concatenation_ptr = STR_CONCATENATION;
-    char str_concatenation[] = STR_CONCATENATION;
-    int builtin = BUILTIN;
-    const char *ref_indexing = REF_MACRO;
-    const struct S *ref_struct = REF_LITERAL;
-    struct S *ref_struct_mut = REF_LITERAL_MUT;
-    int ternary = TERNARY;
-    int member = MEMBER;
-    int member_mut = MEMBER_MUT;
-    float stmt_expr = STMT_EXPR;
-}
-
-void local_consts() {
-    const int literal_int = LITERAL_INT;
-    const bool literal_bool = LITERAL_BOOL;
-    const float literal_float = LITERAL_FLOAT;
-    const char literal_char = LITERAL_CHAR;
-    const char *const literal_str_ptr = LITERAL_STR;
-    const char literal_str[] = LITERAL_STR;
-    const int literal_array[] = LITERAL_ARRAY;
-    const struct S literal_struct = LITERAL_STRUCT;
-    const struct S literal_struct_mut = LITERAL_STRUCT_MUT;
-
-    const int nested_int = NESTED_INT;
-    const bool nested_bool = NESTED_BOOL;
-    const float nested_float = NESTED_FLOAT;
-    const char nested_char = NESTED_CHAR;
-    const char *const nested_str_ptr = NESTED_STR;
-    const char nested_str[] = NESTED_STR;
-    const int nested_array[] = NESTED_ARRAY;
-    const struct S nested_struct = NESTED_STRUCT;
-
-    const int negative_int = NEGATIVE_INT;
-    const int int_arithmetic = INT_ARITHMETIC;
-    const float mixed_arithmetic = MIXED_ARITHMETIC;
-    const int parens = PARENS;
-    const char *const ptr_arithmetic = PTR_ARITHMETIC;
-    const unsigned long long widening_cast = WIDENING_CAST;
-    const char narrowing_cast = NARROWING_CAST;
-    const double conversion_cast = CONVERSION_CAST;
-    const char indexing = INDEXING;
-    const char *const str_concatenation_ptr = STR_CONCATENATION;
-    const char str_concatenation[] = STR_CONCATENATION;
-    const int builtin = BUILTIN;
-    const char *const ref_indexing = REF_MACRO;
-    const struct S *const ref_struct = REF_LITERAL;
-    struct S *const ref_struct_mut = REF_LITERAL_MUT;
-    const int ternary = TERNARY;
-    const int member = MEMBER;
-    const int member_mut = MEMBER_MUT;
-    const float stmt_expr = STMT_EXPR;
-}
-
-// TODO These are declared in the global scope and thus clash,
-// which is an error for statics.
-#if 0
-void local_static_consts() {
-    static const int literal_int = LITERAL_INT;
-    static const bool literal_bool = LITERAL_BOOL;
-    static const float literal_float = LITERAL_FLOAT;
-    static const char literal_char = LITERAL_CHAR;
-    static const char *const literal_str_ptr = LITERAL_STR;
-    static const char literal_str[] = LITERAL_STR;
-    static const int literal_array[] = LITERAL_ARRAY;
-    static const struct S literal_struct = LITERAL_STRUCT;
-    static const struct S literal_struct_mut = LITERAL_STRUCT_MUT;
-
-    static const int nested_int = NESTED_INT;
-    static const bool nested_bool = NESTED_BOOL;
-    static const float nested_float = NESTED_FLOAT;
-    static const char nested_char = NESTED_CHAR;
-    static const char *const nested_str_ptr = NESTED_STR;
-    static const char nested_str[] = NESTED_STR;
-    static const int nested_array[] = NESTED_ARRAY;
-    static const struct S nested_struct = NESTED_STRUCT;
-
-    static const int int_arithmetic = INT_ARITHMETIC;
-    static const float mixed_arithmetic = MIXED_ARITHMETIC;
-    static const int parens = PARENS;
-    static const char *const ptr_arithmetic = PTR_ARITHMETIC;
-    static const unsigned long long widening_cast = WIDENING_CAST;
-    static const char narrowing_cast = NARROWING_CAST;
-    static const double conversion_cast = CONVERSION_CAST;
-    static const char indexing = INDEXING;
-    static const char *const str_concatenation_ptr = STR_CONCATENATION;
-    static const char str_concatenation[] = STR_CONCATENATION;
-    static const int builtin = BUILTIN;
-    static const char *const ref_indexing = REF_MACRO;
-    static const struct S *const ref_struct = REF_LITERAL;
-    static struct S *const ref_struct_mut = REF_LITERAL_MUT;
-    static const int ternary = TERNARY;
-    static const int member = MEMBER;
-    static const float stmt_expr = STMT_EXPR;
-}
-#endif
-
 // global static consts
 
 static const int global_static_const_literal_int = LITERAL_INT;
@@ -302,6 +177,131 @@ const int global_const_ternary = TERNARY;
 const int global_const_member = MEMBER;
 const int global_const_member_mut = MEMBER_MUT;
 // const float global_const_stmt_expr = STMT_EXPR; // Statement expression not allowed at file scope.
+
+void local_muts() {
+    int literal_int = LITERAL_INT;
+    bool literal_bool = LITERAL_BOOL;
+    float literal_float = LITERAL_FLOAT;
+    char literal_char = LITERAL_CHAR;
+    const char *literal_str_ptr = LITERAL_STR;
+    char literal_str[] = LITERAL_STR;
+    int literal_array[] = LITERAL_ARRAY;
+    struct S literal_struct = LITERAL_STRUCT;
+    struct S literal_struct_mut = LITERAL_STRUCT_MUT;
+
+    int nested_int = NESTED_INT;
+    bool nested_bool = NESTED_BOOL;
+    float nested_float = NESTED_FLOAT;
+    char nested_char = NESTED_CHAR;
+    const char *nested_str_ptr = NESTED_STR;
+    char nested_str[] = NESTED_STR;
+    int nested_array[] = NESTED_ARRAY;
+    struct S nested_struct = NESTED_STRUCT;
+
+    int negative_int = NEGATIVE_INT;
+    int int_arithmetic = INT_ARITHMETIC;
+    float mixed_arithmetic = MIXED_ARITHMETIC;
+    int parens = PARENS;
+    const char *ptr_arithmetic = PTR_ARITHMETIC;
+    unsigned long long widening_cast = WIDENING_CAST;
+    char narrowing_cast = NARROWING_CAST;
+    double conversion_cast = CONVERSION_CAST;
+    char indexing = INDEXING;
+    const char *str_concatenation_ptr = STR_CONCATENATION;
+    char str_concatenation[] = STR_CONCATENATION;
+    int builtin = BUILTIN;
+    const char *ref_indexing = REF_MACRO;
+    const struct S *ref_struct = REF_LITERAL;
+    struct S *ref_struct_mut = REF_LITERAL_MUT;
+    int ternary = TERNARY;
+    int member = MEMBER;
+    int member_mut = MEMBER_MUT;
+    float stmt_expr = STMT_EXPR;
+}
+
+void local_consts() {
+    const int literal_int = LITERAL_INT;
+    const bool literal_bool = LITERAL_BOOL;
+    const float literal_float = LITERAL_FLOAT;
+    const char literal_char = LITERAL_CHAR;
+    const char *const literal_str_ptr = LITERAL_STR;
+    const char literal_str[] = LITERAL_STR;
+    const int literal_array[] = LITERAL_ARRAY;
+    const struct S literal_struct = LITERAL_STRUCT;
+    const struct S literal_struct_mut = LITERAL_STRUCT_MUT;
+
+    const int nested_int = NESTED_INT;
+    const bool nested_bool = NESTED_BOOL;
+    const float nested_float = NESTED_FLOAT;
+    const char nested_char = NESTED_CHAR;
+    const char *const nested_str_ptr = NESTED_STR;
+    const char nested_str[] = NESTED_STR;
+    const int nested_array[] = NESTED_ARRAY;
+    const struct S nested_struct = NESTED_STRUCT;
+
+    const int negative_int = NEGATIVE_INT;
+    const int int_arithmetic = INT_ARITHMETIC;
+    const float mixed_arithmetic = MIXED_ARITHMETIC;
+    const int parens = PARENS;
+    const char *const ptr_arithmetic = PTR_ARITHMETIC;
+    const unsigned long long widening_cast = WIDENING_CAST;
+    const char narrowing_cast = NARROWING_CAST;
+    const double conversion_cast = CONVERSION_CAST;
+    const char indexing = INDEXING;
+    const char *const str_concatenation_ptr = STR_CONCATENATION;
+    const char str_concatenation[] = STR_CONCATENATION;
+    const int builtin = BUILTIN;
+    const char *const ref_indexing = REF_MACRO;
+    const struct S *const ref_struct = REF_LITERAL;
+    struct S *const ref_struct_mut = REF_LITERAL_MUT;
+    const int ternary = TERNARY;
+    const int member = MEMBER;
+    const int member_mut = MEMBER_MUT;
+    const float stmt_expr = STMT_EXPR;
+}
+
+// TODO These are declared in the global scope and thus clash,
+// which is an error for statics.
+#if 0
+void local_static_consts() {
+    static const int literal_int = LITERAL_INT;
+    static const bool literal_bool = LITERAL_BOOL;
+    static const float literal_float = LITERAL_FLOAT;
+    static const char literal_char = LITERAL_CHAR;
+    static const char *const literal_str_ptr = LITERAL_STR;
+    static const char literal_str[] = LITERAL_STR;
+    static const int literal_array[] = LITERAL_ARRAY;
+    static const struct S literal_struct = LITERAL_STRUCT;
+    static const struct S literal_struct_mut = LITERAL_STRUCT_MUT;
+
+    static const int nested_int = NESTED_INT;
+    static const bool nested_bool = NESTED_BOOL;
+    static const float nested_float = NESTED_FLOAT;
+    static const char nested_char = NESTED_CHAR;
+    static const char *const nested_str_ptr = NESTED_STR;
+    static const char nested_str[] = NESTED_STR;
+    static const int nested_array[] = NESTED_ARRAY;
+    static const struct S nested_struct = NESTED_STRUCT;
+
+    static const int int_arithmetic = INT_ARITHMETIC;
+    static const float mixed_arithmetic = MIXED_ARITHMETIC;
+    static const int parens = PARENS;
+    static const char *const ptr_arithmetic = PTR_ARITHMETIC;
+    static const unsigned long long widening_cast = WIDENING_CAST;
+    static const char narrowing_cast = NARROWING_CAST;
+    static const double conversion_cast = CONVERSION_CAST;
+    static const char indexing = INDEXING;
+    static const char *const str_concatenation_ptr = STR_CONCATENATION;
+    static const char str_concatenation[] = STR_CONCATENATION;
+    static const int builtin = BUILTIN;
+    static const char *const ref_indexing = REF_MACRO;
+    static const struct S *const ref_struct = REF_LITERAL;
+    static struct S *const ref_struct_mut = REF_LITERAL_MUT;
+    static const int ternary = TERNARY;
+    static const int member = MEMBER;
+    static const float stmt_expr = STMT_EXPR;
+}
+#endif
 
 typedef unsigned long long U64;
 
