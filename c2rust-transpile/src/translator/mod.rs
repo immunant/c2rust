@@ -74,45 +74,6 @@ struct Import {
     ident_name: String,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum DecayRef {
-    Yes,
-    Default,
-    No,
-}
-
-impl DecayRef {
-    // Here we give intrinsic meaning to default to equate to yes/true
-    // when actually evaluated
-    pub fn is_yes(&self) -> bool {
-        match self {
-            DecayRef::Yes => true,
-            DecayRef::Default => true,
-            DecayRef::No => false,
-        }
-    }
-
-    #[inline]
-    pub fn is_no(&self) -> bool {
-        !self.is_yes()
-    }
-
-    pub fn set_default_to_no(&mut self) {
-        if *self == DecayRef::Default {
-            *self = DecayRef::No;
-        }
-    }
-}
-
-impl From<bool> for DecayRef {
-    fn from(b: bool) -> Self {
-        match b {
-            true => DecayRef::Yes,
-            false => DecayRef::No,
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone)]
 pub enum ReplaceMode {
     None,
@@ -138,7 +99,6 @@ pub struct ExprContext {
     #[allow(dead_code)]
     is_static: bool,
 
-    decay_ref: DecayRef,
     is_bitfield_write: bool,
 
     /// We will be referring to the expression by address. In this context we
@@ -166,12 +126,7 @@ impl ExprContext {
     pub fn is_unused(&self) -> bool {
         !self.used
     }
-    pub fn decay_ref(self) -> Self {
-        ExprContext {
-            decay_ref: DecayRef::Yes,
-            ..self
-        }
-    }
+
     pub fn const_(self) -> Self {
         ExprContext {
             is_const: true,
@@ -880,7 +835,6 @@ pub fn translate(
         is_const: false,
         is_pattern: false,
         is_static: false,
-        decay_ref: DecayRef::Default,
         is_bitfield_write: false,
         needs_address: false,
         expanding_macro: None,
@@ -1735,7 +1689,7 @@ impl<'c> Translation<'c> {
     pub fn use_feature(&self, feature: &'static str) {
         if matches!(
             feature,
-            "asm" | "inline_const" | "label_break_value" | "raw_ref_op"
+            "asm" | "inline_const" | "label_break_value" | "ptr_from_ref" | "raw_ref_op"
         ) && self.tcfg.edition >= Edition2024
         {
             return;
@@ -2479,7 +2433,7 @@ impl<'c> Translation<'c> {
 
         let null_pointer_case =
             |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
-                let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
+                let val = self.convert_expr(ctx.used(), ptr, None)?;
                 let ptr_type = self
                     .ast_context
                     .index_unwrap_parens(ptr)
@@ -2530,11 +2484,7 @@ impl<'c> Translation<'c> {
             }
 
             _ => {
-                // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
-                // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
-                // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
-                // specify Yes for that particular case, given enough analysis.
-                let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
+                let val = self.convert_expr(ctx.used(), cond_id, None)?;
                 val.try_map(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
@@ -2976,7 +2926,6 @@ impl<'c> Translation<'c> {
                             };
                         }
 
-                        // ref decayed ptrs generally need a type annotation
                         if let Some(CExprKind::Unary(_, CUnOp::AddressOf, _, _)) = initializer_kind
                         {
                             return true;
@@ -3544,8 +3493,8 @@ impl<'c> Translation<'c> {
                 matches!(expr_kind, CExprKind::ExplicitCast(..)),
             ),
 
-            Unary(result_type_id, op, arg, _lrvalue) => {
-                self.convert_unary_operator(ctx, override_ty, result_type_id, op, arg)
+            Unary(result_type_id, op, arg, lrvalue) => {
+                self.convert_unary_operator(ctx, override_ty, result_type_id, op, arg, lrvalue)
             }
 
             Conditional(ty, cond, lhs, rhs) => {
@@ -3637,8 +3586,8 @@ impl<'c> Translation<'c> {
                 )
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
-            ArraySubscript(_, lhs, rhs, lrvalue) => self
-                .convert_array_subscript(ctx, override_ty, lhs, rhs, lrvalue, true)
+            ArraySubscript(result_type_id, lhs, rhs, lrvalue) => self
+                .convert_array_subscript(ctx, override_ty, result_type_id, lhs, rhs, lrvalue, true)
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             Call(call_expr_ty, func, ref args) => {
@@ -3759,6 +3708,8 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
             .kind;
+
+        #[allow(unreachable_code)] // TODO temporary (see below).
         if ctx.expanding_macro.is_some() {
             // TODO Determining which declarations have been declared within the scope of the const macro expr
             // vs. which are out-of-scope of the const macro is non-trivial,
@@ -3768,7 +3719,10 @@ impl<'c> Translation<'c> {
                 "Cannot yet refer to declarations in a const expr",
             ));
 
-            #[allow(unreachable_code)] // TODO temporary (see above).
+            if matches!(lrvalue, LRValue::LValue) && !result_type_id.qualifiers.is_const {
+                return Err("mutable lvalues are not supported inside macros".into());
+            }
+
             if let CDeclKind::Variable {
                 has_static_duration: true,
                 ..
@@ -4100,11 +4054,6 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            // A reference must be decayed if a bitcast is required. Const casts in
-            // LLVM 8 are now NoOp casts, so we need to include it as well.
-            CastKind::BitCast | CastKind::PointerToIntegral | CastKind::NoOp => {
-                ctx.decay_ref = DecayRef::Yes
-            }
             CastKind::ArrayToPointerDecay
             | CastKind::FunctionToPointerDecay
             | CastKind::BuiltinFnToFnPtr => {
@@ -4356,7 +4305,7 @@ impl<'c> Translation<'c> {
             }
 
             CastKind::ArrayToPointerDecay => {
-                self.convert_array_to_pointer_decay(ctx, source_cty, target_cty, val, expr)
+                self.make_address_of(ctx, target_cty, source_cty, expr, val, true)
             }
 
             CastKind::NullToPointer => {

@@ -356,7 +356,7 @@ impl<'c> Translation<'c> {
 
     pub fn convert_function_call(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         func: CExprId,
         args: &[CExprId],
         call_expr_ty: CQualTypeId,
@@ -447,9 +447,6 @@ impl<'c> Translation<'c> {
         };
 
         let call = func.and_then_try(|func| {
-            // We want to decay refs only when function is variadic
-            ctx.decay_ref = DecayRef::from(is_variadic);
-
             let args = self.convert_call_args(ctx.used(), args, arg_tys.as_deref(), is_variadic)?;
 
             let call_expr = args.map(|args| mk().call_expr(func, args));

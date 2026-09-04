@@ -5,7 +5,7 @@ use super::*;
 impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
         result_type_id: CQualTypeId,
         op: CBinOp,
@@ -53,14 +53,6 @@ impl<'c> Translation<'c> {
             ),
 
             _ => {
-                // Comparing references to pointers isn't consistently supported by rust
-                // and so we need to decay references to pointers to do so. See
-                // https://github.com/rust-lang/rust/issues/53772. This might be removable
-                // once the above issue is resolved.
-                if op == CBinOp::EqualEqual || op == CBinOp::NotEqual {
-                    ctx = ctx.decay_ref();
-                }
-
                 let lhs_kind = &self.ast_context.index_unwrap_parens(lhs).kind;
                 let mut lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
@@ -119,26 +111,13 @@ impl<'c> Translation<'c> {
                         .and_then_try(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
                         .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
                 } else {
-                    let rhs_ctx = ctx;
-
-                    // When we use methods on pointers (ie wrapping_offset_from or offset)
-                    // we must ensure we have an explicit raw ptr for the self param, as
-                    // self references do not decay
-                    if op.is_pointer_arithmetic() {
-                        let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-
-                        if let CTypeKind::Pointer(_) = ty_kind {
-                            ctx = ctx.decay_ref();
-                        }
-                    }
-
                     // Using `.is_none()` and `.is_some()` for null comparison means we don't
                     // have to rely on `trait PartialEq` as much and it is also more idiomatic.
                     if matches!(op, CBinOp::EqualEqual | CBinOp::NotEqual) {
                         let is_null = op == CBinOp::EqualEqual;
 
                         if self.ast_context.is_null_expr(lhs) {
-                            let val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
+                            let val = self.convert_expr(ctx, rhs, Some(rhs_type_id))?;
                             let val = val.try_map(|rhs_rs| {
                                 self.convert_pointer_is_null(
                                     ctx,
@@ -163,7 +142,7 @@ impl<'c> Translation<'c> {
                     }
 
                     let lhs_val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                    let rhs_val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
+                    let rhs_val = self.convert_expr(ctx, rhs, Some(rhs_type_id))?;
 
                     lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
                         self.convert_binary_operator(
@@ -570,6 +549,7 @@ impl<'c> Translation<'c> {
         result_type_id: CQualTypeId,
         op: CUnOp,
         arg: CExprId,
+        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let expr_type_id = expected_type_id.unwrap_or(result_type_id);
         let mut unary = match op {
@@ -582,7 +562,7 @@ impl<'c> Translation<'c> {
                 self.convert_indecrement_operator(ctx, expected_type_id, result_type_id, op, arg)
             }
 
-            CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg),
+            CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg, lrvalue),
             CUnOp::Plus => self.convert_expr(ctx.used(), arg, expected_type_id), // promotion is explicit in the clang AST
 
             CUnOp::Negate => self.convert_negate_operator(ctx, expr_type_id, arg),

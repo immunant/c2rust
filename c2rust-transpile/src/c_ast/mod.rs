@@ -3360,9 +3360,17 @@ impl CTypeKind {
     }
 
     /// Return the element type of a pointer or array
-    pub fn element_ty(&self) -> Option<CTypeId> {
+    pub(crate) fn array_element_type(&self) -> Option<CTypeId> {
         Some(match *self {
-            Self::Pointer(ty) => ty.ctype,
+            Self::ConstantArray(ty, _) => ty,
+            Self::IncompleteArray(ty) => ty,
+            Self::VariableArray(ty, _) => ty,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn array_element_type_mut(&mut self) -> Option<&mut CTypeId> {
+        Some(match self {
             Self::ConstantArray(ty, _) => ty,
             Self::IncompleteArray(ty) => ty,
             Self::VariableArray(ty, _) => ty,

@@ -1,10 +1,12 @@
+use std::borrow::Cow;
+
 use c2rust_ast_builder::{mk, properties::Mutability};
 use c2rust_ast_exporter::clang_ast::LRValue;
 use c2rust_rust_tools::RustEdition;
 use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
-use crate::c_ast::CUnOp;
+use crate::c_ast::{CUnOp, TypedAstContext};
 use crate::{
     diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
     format_translation_err,
@@ -18,7 +20,7 @@ use crate::{
 impl<'c> Translation<'c> {
     pub fn convert_address_of(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         cqual_type: CQualTypeId,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -30,73 +32,61 @@ impl<'c> Translation<'c> {
                 return self.convert_expr(ctx, *target, None)
             }
             // Array subscript functions as a deref too.
-            &CExprKind::ArraySubscript(_, lhs, rhs, _) => {
+            &CExprKind::ArraySubscript(result_type_id, lhs, rhs, _) => {
                 return self.convert_array_subscript(
                     ctx.used().needs_address(),
                     Some(cqual_type),
+                    result_type_id,
                     lhs,
                     rhs,
                     LRValue::RValue, // if we bypass the deref, we stay an RValue
                     false,           // don't deref, keep as pointer
                 );
             }
-            // An AddrOf DeclRef/Member is safe to not decay
-            // if the translator isn't already giving a hard yes to decaying (ie, BitCasts).
-            // So we only convert default to no decay.
-            CExprKind::DeclRef(..) | CExprKind::Member(..) => ctx.decay_ref.set_default_to_no(),
             _ => (),
         }
 
         let val = self.convert_expr(ctx.used().needs_address(), arg, None)?;
 
-        // & becomes a no-op when applied to a function.
-        if self.ast_context.is_function_pointer(cqual_type.ctype) {
-            return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
-        }
-
         let arg_cty = arg_kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad source type"))?;
 
-        self.convert_address_of_common(ctx, Some(arg), arg_cty, cqual_type, val, false)
+        self.make_address_of(ctx, cqual_type, arg_cty, Some(arg), val, false)
     }
 
-    pub fn convert_array_to_pointer_decay(
+    pub(crate) fn make_address_of(
         &self,
         ctx: ExprContext,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
-        expr: Option<CExprId>,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        // Because va_list is sometimes defined as a single-element
-        // array in order for it to allocate memory as a local variable
-        // and to be a pointer as a function argument we would get
-        // spurious casts when trying to treat it like a VaList which
-        // has reference semantics.
-        if self.ast_context.is_va_list(target_cty.ctype) {
-            return Ok(val);
-        }
-
-        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
-
-        // Variable length arrays are already represented as pointers.
-        if let CTypeKind::VariableArray(..) = source_ty_kind {
-            return Ok(val);
-        }
-
-        self.convert_address_of_common(ctx, expr, source_cty, target_cty, val, true)
-    }
-
-    fn convert_address_of_common(
-        &self,
-        ctx: ExprContext,
-        arg: Option<CExprId>,
-        arg_cty: CQualTypeId,
         pointer_cty: CQualTypeId,
+        arg_cty: CQualTypeId,
+        arg: Option<CExprId>,
         mut val: WithStmts<Box<Expr>>,
         is_array_decay: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if is_array_decay {
+            // Because va_list is sometimes defined as a single-element
+            // array in order for it to allocate memory as a local variable
+            // and to be a pointer as a function argument we would get
+            // spurious casts when trying to treat it like a VaList which
+            // has reference semantics.
+            if self.ast_context.is_va_list(pointer_cty.ctype) {
+                return Ok(val);
+            }
+
+            let source_ty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
+
+            // Variable length arrays are already represented as pointers.
+            if let CTypeKind::VariableArray(..) = source_ty_kind {
+                return Ok(val);
+            }
+        } else {
+            // & becomes a no-op when applied to a function.
+            if self.ast_context.is_function_pointer(pointer_cty.ctype) {
+                return Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])));
+            }
+        }
+
         let arg_expr_kind = arg.map(|arg| {
             let arg = self.ast_context.unwrap_predefined_ident(arg);
             &self.ast_context.index_unwrap_parens(arg).kind
@@ -107,81 +97,83 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
         let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
 
-        let mut needs_cast = false;
-        let mut ref_cast_pointee_ty = None;
-        let mutbl = if ctx.is_const && !pointee_cty.qualifiers.is_const {
+        let mutbl = if self.tcfg.edition < RustEdition::Edition2024
+            && ctx.is_const
+            && !pointee_cty.qualifiers.is_const
+        {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
-            needs_cast = true;
             Mutability::Immutable
         } else {
             pointee_cty.mutability()
         };
 
-        // Narrow string literals are translated directly as `[u8; N]` literals when their address
-        // is taken, without the transmute. String/byte literals are already references in Rust.
-        if let (
-            Some(&CExprKind::Literal(literal_cty, CLiteral::String(_, element_size @ 1))),
-            false,
-        ) = (arg_expr_kind, arg_is_macro)
-        {
-            if is_array_decay {
-                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-            } else {
-                let size = self.ast_context.array_len(literal_cty.ctype) * element_size as usize;
-                ref_cast_pointee_ty =
-                    Some(mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(size as u128)));
-            }
-            needs_cast = true;
-        }
+        let mut cast_source_type_kind =
+            Cow::Borrowed(&self.ast_context.resolve_type(arg_cty.ctype).kind);
+
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
-        else if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
-            let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
+        if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
+            if !pointee_cty.qualifiers.is_const {
+                return Err("taking mutable address of string literal or macro".into());
+            }
+
+            // Narrow string literals are translated directly as `[u8; N]` literals
+            // when their address is taken, without the transmute.
+            // String/byte literals are already references in Rust.
+            let is_byte_string_literal = matches!(
+                arg_expr_kind,
+                Some(&CExprKind::Literal(_, CLiteral::String(_, 1)))
+            ) && !arg_is_macro;
 
             if is_array_decay {
-                let method = match mutbl {
-                    Mutability::Mutable => "as_mut_ptr",
-                    Mutability::Immutable => "as_ptr",
-                };
-                val = val.map(|val| mk().method_call_expr(val, method, vec![]));
-
-                // If the target pointee type is different from the source element type,
-                // then we need to cast the ptr type as well.
-                if arg_cty_kind.element_ty().map_or(false, |arg_element_cty| {
-                    arg_element_cty != pointee_cty.ctype
-                }) {
-                    needs_cast = true;
+                if is_byte_string_literal {
+                    cast_source_type_kind = Cow::Borrowed(&CTypeKind::UInt8);
+                } else {
+                    let Some(element_type_id) = cast_source_type_kind.array_element_type() else {
+                        return Err(TranslationError::generic(
+                            "Argument of array decay should have array type"
+                        ));
+                    };
+                    cast_source_type_kind =
+                        Cow::Borrowed(&self.ast_context.resolve_type(element_type_id).kind);
                 }
+
+                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
             } else {
-                val = val.map(|val| mk().set_mutbl(mutbl).borrow_expr(val));
-
-                // Add an intermediate reference-to-pointer cast if the context needs
-                // reference-to-pointer decay, or if another cast follows.
-                if ctx.decay_ref.is_yes() || needs_cast {
-                    ref_cast_pointee_ty = Some(self.convert_pointee_type(arg_cty.ctype)?);
+                if is_byte_string_literal {
+                    let Some(element_type_id) =
+                        cast_source_type_kind.to_mut().array_element_type_mut()
+                    else {
+                        return Err(TranslationError::generic(
+                            "String literal should have array type",
+                        ));
+                    };
+                    *element_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
+                } else {
+                    val = val.map(|val| mk().borrow_expr(val));
                 }
+
+                self.use_feature("ptr_from_ref");
+                let func = mk().abs_path_expr(vec!["core", "ptr", "from_ref"]);
+                val = val.map(|val| mk().call_expr(func, vec![val]));
             }
         } else {
             self.use_feature("raw_ref_op");
             val = val.map(|val| mk().set_mutbl(mutbl).raw_borrow_expr(val));
-
-            if is_array_decay {
-                // TODO: Call `ptr::as_[mut]_ptr` instead once that is available.
-                // (`array_ptr_get` feature added to nightly in January 2024)
-                needs_cast = true;
-            }
         }
 
-        // Perform an intermediate reference-to-pointer cast if needed.
-        // TODO: Rust 1.76: Use `ptr::from_ref`.
-        if let Some(pointee_ty) = ref_cast_pointee_ty {
-            val = val.map(|val| mk().cast_expr(val, mk().set_mutbl(mutbl).ptr_ty(pointee_ty)));
-        }
+        let pointee_type_kind = &self.ast_context.resolve_type(pointee_cty.ctype).kind;
 
-        // Perform a final cast to the target type if needed.
-        if needs_cast {
+        // If the target pointee type is different from the source type,
+        // then we need to cast the pointer type.
+        if !self.ast_context.type_kinds_eq(
+            pointee_type_kind,
+            &cast_source_type_kind,
+            &TypedAstContext::resolve_type_id,
+        ) || pointee_cty.mutability() != mutbl
+        {
             let pointer_ty = self.convert_type(pointer_cty.ctype)?;
             val = val.map(|val| mk().cast_expr(val, pointer_ty));
         }
@@ -194,7 +186,15 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         cqual_type: CQualTypeId,
         arg: CExprId,
+        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if matches!(lrvalue, LRValue::LValue)
+            && !cqual_type.qualifiers.is_const
+            && ctx.expanding_macro.is_some()
+        {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         let arg_expr_kind = &self.ast_context.index_unwrap_parens(arg).kind;
 
         if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
@@ -219,11 +219,19 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         lhs: CExprId,
         rhs: CExprId,
         lrvalue: LRValue,
         deref: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if matches!(lrvalue, LRValue::LValue)
+            && !result_type_id.qualifiers.is_const
+            && ctx.expanding_macro.is_some()
+        {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         let (pointer_id, offset_id) = if self.ast_context.expr_is_indexable(lhs) {
             (lhs, rhs)
         } else {
@@ -331,8 +339,7 @@ impl<'c> Translation<'c> {
             };
 
             // LHS must be ref decayed for the offset method call's self param
-            let pointer_rs =
-                self.convert_expr(ctx.used().not_needs_address().decay_ref(), pointer_id, None)?;
+            let pointer_rs = self.convert_expr(ctx.used().not_needs_address(), pointer_id, None)?;
             let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
             let offset_rs = self.convert_expr_with_cast(
                 ctx.used().not_needs_address(),
