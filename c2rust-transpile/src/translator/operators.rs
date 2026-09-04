@@ -16,12 +16,6 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let expr_type_id = expected_type_id.unwrap_or(result_type_id);
 
-        // If we're not making an assignment, a binop will require parens
-        // applied to ternary conditionals
-        if !op.is_assignment() {
-            ctx.ternary_needs_parens = true;
-        }
-
         let lhs_loc = &self.ast_context.index_unwrap_parens(lhs).loc;
         let rhs_loc = &self.ast_context.index_unwrap_parens(rhs).loc;
         use CBinOp::*;
