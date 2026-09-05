@@ -49,7 +49,6 @@ pub fn structured_cfg(
     let (stmts, _span) = s.to_stmt(ast, comment_store);
 
     Ok(stmts)
-}
 
 /// Simplifies the relooped AST by removing labels from exits and moving block
 /// labels to loop labels.
