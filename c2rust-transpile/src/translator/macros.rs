@@ -18,39 +18,36 @@ impl<'c> Translation<'c> {
         decl_id: CDeclId,
         span: Span,
         name: &str,
-    ) -> TranslationResult<ConvertedDecl> {
+    ) -> ConvertedDecl {
         trace!(
             "Expanding macro {:?}: {:?}",
             decl_id,
             self.ast_context[decl_id]
         );
 
-        let maybe_replacement = self.recreate_const_macro_from_expansions(
+        self.recreate_const_macro_from_expansions(
             ctx.const_().set_expanding_macro(decl_id),
             &self.ast_context.macro_expansions[&decl_id],
-        );
+        )
+        .and_then(|(replacement, converted)| {
+            trace!("  to {:?}", replacement);
 
-        match maybe_replacement {
-            Ok((replacement, converted)) => {
-                trace!("  to {:?}", replacement);
+            let ty = self.convert_type(converted.ty)?;
+            self.converted_macros
+                .borrow_mut()
+                .insert(decl_id, Some(Rc::new(converted)));
 
-                let ty = self.convert_type(converted.ty)?;
-                self.converted_macros
-                    .borrow_mut()
-                    .insert(decl_id, Some(Rc::new(converted)));
-
-                Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
-                    name,
-                    ty,
-                    replacement,
-                )))
-            }
-            Err(e) => {
-                self.converted_macros.borrow_mut().insert(decl_id, None);
-                info!("Could not expand macro {}: {}", name, e);
-                Ok(ConvertedDecl::NoItem)
-            }
-        }
+            Ok(ConvertedDecl::Item(mk().span(span).pub_().const_item(
+                name,
+                ty,
+                replacement,
+            )))
+        })
+        .unwrap_or_else(|e| {
+            self.converted_macros.borrow_mut().insert(decl_id, None);
+            info!("Could not expand macro {}: {}", name, e);
+            ConvertedDecl::NoItem
+        })
     }
 
     /// Given all of the expansions of a const macro,
