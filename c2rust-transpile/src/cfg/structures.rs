@@ -1,4 +1,4 @@
-//! This modules handles converting `Vec<Structure>` into `Vec<Stmt>`.
+// This modules handles converting `Vec<Structure>` into `Vec<Stmt>`.
 
 use super::*;
 use log::warn;
@@ -36,19 +36,6 @@ pub fn structured_cfg(
 
     Ok(stmts)
 }
-
-
-    // TODO: It would be good to be able to spit out the AST before label cleanup
-    // for debugging purposes.
-    cleanup_labels(&mut ast, &None, &mut IndexSet::new());
-
-    let s = StructureState {
-        current_block_enum,
-        current_block_variable,
-    };
-    let (stmts, _span) = s.to_stmt(ast, comment_store);
-
-    Ok(stmts)
 
 /// Simplifies the relooped AST by removing labels from exits and moving block
 /// labels to loop labels.
@@ -467,6 +454,10 @@ pub fn gather_cfg_info(structures: &[Structure<Stmt>], info: &mut CfgInfo) {
 
                 gather_cfg_info(body, info);
             }
+            Structure::Simple { .. } => {
+                // Simple blocks contribute nothing to CfgInfo: no loop entries
+                // and no Multiple group membership.
+            }
             Structure::Multiple { entries, branches } => {
                 // Record this `Multiple`'s entry labels as a block group. Each
                 // group gets its own `C2Rust_Block` enum. (#1986)
@@ -719,7 +710,7 @@ fn process_cfg(
 
                 S::mk_goto_table(cases, then)
             }
-
+        };
 
         i += 1;
 
@@ -981,7 +972,7 @@ impl StructureState {
                 // Dispatch based on the next `c2rust_current_block` value. All
                 // cases belong to the same `Multiple` group, so use the enum
                 // and variable generated for that group (#1986).
-                let first_label = cases.keys().next().expect("GotoTable with no cases");
+                let (first_label, _) = cases.first().expect("GotoTable with no cases");
                 let (current_block_enum, current_block_variable) = self
                     .block_names
                     .get(first_label)
