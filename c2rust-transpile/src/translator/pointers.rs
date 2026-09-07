@@ -569,6 +569,14 @@ impl<'c> Translation<'c> {
                 val.map(|val| mk().cast_expr(val, size_type_rs))
             };
 
+            // The old from_exposed_addr[_mut] APIs were removed before the
+            // workspace compiler. An `as` cast has exactly their exposed-
+            // provenance semantics and works on both the generated edition
+            // 2021 toolchain and the workspace refactorer's toolchain.
+            if self.tcfg.edition == RustEdition::Edition2021 {
+                return Ok(val.map(|val| mk().cast_expr(val, target_ty)));
+            }
+
             // Then convert the `usize` into a pointer.
             let pointee_type_id = self
                 .ast_context
@@ -576,22 +584,9 @@ impl<'c> Translation<'c> {
                 .expect("target type must be a pointer");
             let mutability = pointee_type_id.mutability();
 
-            let fn_name = match self.tcfg.edition {
-                RustEdition::Edition2021 => {
-                    // Rust 1.76: feature name changed to `exposed_provenance[_mut]`
-                    // Rust 1.84: stabilized
-                    self.use_feature("strict_provenance");
-
-                    // Rust 1.79: method name changed to `with_exposed_provenance[_mut]`
-                    match mutability {
-                        Mutability::Immutable => "from_exposed_addr",
-                        Mutability::Mutable => "from_exposed_addr_mut",
-                    }
-                }
-                RustEdition::Edition2024 => match mutability {
-                    Mutability::Immutable => "with_exposed_provenance",
-                    Mutability::Mutable => "with_exposed_provenance_mut",
-                },
+            let fn_name = match mutability {
+                Mutability::Immutable => "with_exposed_provenance",
+                Mutability::Mutable => "with_exposed_provenance_mut",
             };
             let pointee_type_rs = self.convert_pointee_type(pointee_type_id.ctype)?;
             let type_args = mk().angle_bracketed_args(vec![pointee_type_rs]);
@@ -630,19 +625,12 @@ impl<'c> Translation<'c> {
             }))
         } else {
             // First convert the pointer to `usize`.
-            let method_name = match self.tcfg.edition {
-                RustEdition::Edition2021 => {
-                    // Rust 1.76: feature name changed to `exposed_provenance`
-                    // Rust 1.84: stabilized
-                    self.use_feature("strict_provenance");
-
-                    // Rust 1.79: method name changed to `expose_provenance`
-                    "expose_addr"
-                }
-                RustEdition::Edition2024 => "expose_provenance",
-            };
-
-            let val = val.map(|val| mk().method_call_expr(val, method_name, vec![]));
+            let val = val.map(|val| match self.tcfg.edition {
+                // expose_addr, now removed, is equivalent to this cast. Keep
+                // the usize intermediate before converting to the C target type.
+                RustEdition::Edition2021 => mk().cast_expr(val, mk().ident_ty("usize")),
+                RustEdition::Edition2024 => mk().method_call_expr(val, "expose_provenance", vec![]),
+            });
 
             // Then cast the `usize` to the target type.
             let size_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
