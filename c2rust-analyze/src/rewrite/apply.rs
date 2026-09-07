@@ -413,6 +413,15 @@ impl<S: Sink> Emitter<'_, S> {
                 self.emit(rw, 0)
             }
 
+            Rewrite::LetTyped(ref name, ref ty, ref rw) => {
+                self.emit_str("let ")?;
+                self.emit_str(name)?;
+                self.emit_str(": ")?;
+                self.emit(ty, 0)?;
+                self.emit_str(" = ")?;
+                self.emit(rw, 0)
+            }
+
             Rewrite::Closure1(ref name, ref rw) => {
                 self.emit_str("|")?;
                 self.emit_str(name)?;
