@@ -19,10 +19,10 @@ impl Source for Operand<'_> {
     }
 }
 
-impl Source for Vec<Operand<'_>> {
+impl Source for Box<[rustc_span::source_map::Spanned<Operand<'_>>]> {
     fn source(&self) -> Option<MirPlace> {
         // TODO: have hook-specific sources
-        self.first().and_then(Operand::source)
+        self.first().and_then(|arg| arg.node.source())
     }
 }
 

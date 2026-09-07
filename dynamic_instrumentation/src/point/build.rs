@@ -1,6 +1,6 @@
 use c2rust_analysis_rt::mir_loc::{EventMetadata, TransferKind};
 use itertools::Itertools;
-use rustc_index::vec::Idx;
+use rustc_index::Idx;
 use rustc_middle::{
     mir::{Body, Location, Place, TerminatorKind},
     ty::{self, TyCtxt},
@@ -125,7 +125,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
     /// but we eventually want to be able to pass other serializable types as well.
     pub fn arg_index_of(self, arg: impl Idx) -> Self {
         let index: u32 = arg.index().try_into()
-                .expect("`rustc_index::vec::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
+                .expect("`rustc_index::newtype_index!` should use `u32` as the underlying index type, so this shouldn't fail unless that changes");
         self.arg_var(index)
     }
 
@@ -198,7 +198,7 @@ impl<'tcx> InstrumentationBuilder<'_, 'tcx> {
                 } else {
                     format!("{func:?}")
                 };
-                let args = args.iter().format(", ");
+                let args = args.iter().map(|arg| &arg.node).format(", ");
                 format!("{destination:?} = {func_name}({args:?})")
             }
             _ => "".into(),
