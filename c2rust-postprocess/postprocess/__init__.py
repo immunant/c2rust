@@ -21,7 +21,7 @@ from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
 from postprocess.transforms.base import TransformError, TransformResult
-from postprocess.utils import existing_file
+from postprocess.utils import existing_file, positive_int
 from postprocess.validate import BaselineError, make_validator
 
 DEFAULT_LLM_MODEL = "gpt-5.6-luna"
@@ -36,6 +36,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "root_rust_source_file",
         type=existing_file,
         help="Path to Rust source file referenced by Cargo.toml",
+    )
+
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=positive_int,
+        default=4,
+        help="Maximum concurrent function transformations per file (default: 4)",
     )
 
     parser.add_argument(
@@ -237,6 +245,7 @@ async def _main(argv: Sequence[str] | None = None) -> int:
                     keep_going=args.on_error != "abort",
                     failure_log_level=failure_log_level,
                     validator=validator,
+                    jobs=args.jobs,
                 )
             )
 

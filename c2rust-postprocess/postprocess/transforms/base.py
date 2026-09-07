@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from collections.abc import Callable
@@ -190,6 +191,7 @@ class AbstractTransform:
         keep_going: bool = False,
         failure_log_level: int = logging.ERROR,
         validator: BatchValidator | None = None,
+        jobs: int = 1,
     ) -> TransformResult:
         """
         Run `self.apply_file` on each `*.rs` in `dir`
@@ -200,7 +202,7 @@ class AbstractTransform:
         result = TransformResult()
         root_dir = root_rust_source_file.parent
         c_decls_json_suffix = ".c_decls.json"
-        for c_decls_path in root_dir.glob(f"**/*{c_decls_json_suffix}"):
+        for c_decls_path in sorted(root_dir.glob(f"**/*{c_decls_json_suffix}")):
             rs_path = c_decls_path.with_name(
                 c_decls_path.name.removesuffix(c_decls_json_suffix) + ".rs"
             )
@@ -214,6 +216,7 @@ class AbstractTransform:
                     keep_going=keep_going,
                     failure_log_level=failure_log_level,
                     validator=validator,
+                    jobs=jobs,
                 )
             )
         return result
@@ -227,7 +230,10 @@ class AbstractTransform:
         keep_going: bool = False,
         failure_log_level: int = logging.ERROR,
         validator: BatchValidator | None = None,
+        jobs: int = 1,
     ) -> TransformResult:
+        if jobs < 1:
+            raise ValueError("jobs must be at least 1")
         ident_regex = re.compile(ident_filter) if ident_filter else None
         result = TransformResult()
 
@@ -237,58 +243,95 @@ class AbstractTransform:
         logging.info(f"Loaded {len(rust_definitions)} Rust definitions")
         logging.info(f"Loaded {len(c_definitions)} C definitions")
 
-        # Collect candidates without touching the file; application and
-        # validation happen per batch below.
+        # Each worker completes a function's trim/retry sequence before taking
+        # another one. Cache operations stay on this event loop; no file writes
+        # or cargo checks run until all workers finish.
+        definitions = iter(rust_definitions.items())
+        new_definitions: dict[str, str] = {}
+        failures: dict[str, TransformFailure] = {}
+
+        async def worker() -> None:
+            for identifier, rust_definition in definitions:
+                if exclude_list.contains(path=rust_source_file, identifier=identifier):
+                    logging.info(
+                        f"Skipping Rust fn {identifier} in {rust_source_file} "
+                        f"due to exclude file {exclude_list.src_path}"
+                    )
+                    continue
+
+                if ident_regex and not ident_regex.search(identifier):
+                    logging.info(
+                        f"Skipping Rust fn {identifier} in {rust_source_file} "
+                        f"due to ident filter {ident_filter}"
+                    )
+                    continue
+
+                if identifier not in c_definitions:
+                    logging.warning(
+                        f"No corresponding C definition found for {identifier}"
+                    )
+                    continue
+
+                c_definition = c_definitions[identifier]
+
+                highlighted_c_definition = get_highlighted_c(c_definition.effective)
+                logging.debug(
+                    f"C function {identifier} definition:\n{highlighted_c_definition}\n"
+                )
+
+                try:
+                    new_definition = await self.apply_ident(
+                        rust_source_file=rust_source_file,
+                        rust_definition=rust_definition,
+                        c_definition=c_definition,
+                        identifier=identifier,
+                        update_rust=False,
+                    )
+                except TransformError as error:
+                    if not keep_going:
+                        raise
+                    logging.log(
+                        failure_log_level,
+                        f"Transform failed for {identifier} "
+                        f"in {rust_source_file}: {error}",
+                    )
+                    failures[identifier] = (
+                        rust_source_file,
+                        identifier,
+                        "failed to transform",
+                    )
+                    continue
+
+                if new_definition is None:
+                    continue
+
+                new_definitions[identifier] = new_definition
+
+        workers = [
+            asyncio.create_task(worker())
+            for _ in range(min(jobs, len(rust_definitions)))
+        ]
+        try:
+            await asyncio.gather(*workers)
+        except BaseException:
+            # Abort and interruption must cancel pending model calls before
+            # returning or closing the shared client.
+            for task in workers:
+                task.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            raise
+
+        # Apply and report in source order, independent of response timing.
+        result.failed = [
+            failures[identifier]
+            for identifier in rust_definitions
+            if identifier in failures
+        ]
         candidates: list[Candidate] = []
-        for identifier, rust_definition in rust_definitions.items():
-            if exclude_list.contains(path=rust_source_file, identifier=identifier):
-                logging.info(
-                    f"Skipping Rust fn {identifier} in {rust_source_file} "
-                    f"due to exclude file {exclude_list.src_path}"
-                )
+        for identifier in rust_definitions:
+            if identifier not in new_definitions:
                 continue
-
-            if ident_regex and not ident_regex.search(identifier):
-                logging.info(
-                    f"Skipping Rust fn {identifier} in {rust_source_file} "
-                    f"due to ident filter {ident_filter}"
-                )
-                continue
-
-            if identifier not in c_definitions:
-                logging.warning(f"No corresponding C definition found for {identifier}")
-                continue
-
-            c_definition = c_definitions[identifier]
-
-            highlighted_c_definition = get_highlighted_c(c_definition.effective)
-            logging.debug(
-                f"C function {identifier} definition:\n{highlighted_c_definition}\n"
-            )
-
-            try:
-                new_definition = await self.apply_ident(
-                    rust_source_file=rust_source_file,
-                    rust_definition=rust_definition,
-                    c_definition=c_definition,
-                    identifier=identifier,
-                    update_rust=False,
-                )
-            except TransformError as error:
-                if not keep_going:
-                    raise
-                logging.log(
-                    failure_log_level,
-                    f"Transform failed for {identifier} in {rust_source_file}: {error}",
-                )
-                result.failed.append(
-                    (rust_source_file, identifier, "failed to transform")
-                )
-                continue
-
-            if new_definition is None:
-                continue
-
+            new_definition = new_definitions[identifier]
             candidates.append(
                 Candidate(
                     identifier=identifier,
