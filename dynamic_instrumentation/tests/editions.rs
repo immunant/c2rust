@@ -46,7 +46,12 @@ fn main() {
     )
     .unwrap();
 
-    for edition in ["2015", "2018", "2021", "2024"] {
+    for (edition, validation) in [
+        ("2015", ""),
+        ("2018", " -Zvalidate-mir=no"),
+        ("2021", " -Zvalidate-mir=yes"),
+        ("2024", " -Zvalidate-mir=no"),
+    ] {
         fs::write(
             &manifest,
             format!(
@@ -67,13 +72,30 @@ c2rust-analysis-rt = {{ path = {:?}, optional = true }}
         fs::copy(repo.join("Cargo.lock"), temp.path().join("Cargo.lock")).unwrap();
         let metadata_path = temp.path().join(format!("metadata-{edition}.bc"));
         let events_path = temp.path().join(format!("events-{edition}.bc"));
+        let check_metadata_path = temp.path().join(format!("check-metadata-{edition}.bc"));
+        let output = Command::new(env!("CARGO_BIN_EXE_c2rust-instrument"))
+            .current_dir(temp.path())
+            .arg("--metadata")
+            .arg(&check_metadata_path)
+            .arg(format!("--rustflags=-Zmir-opt-level=0{validation}"))
+            .args(["--", "check", "--offline", "--manifest-path"])
+            .arg(&manifest)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "edition {edition}:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let metadata = Metadata::read(&fs::read(check_metadata_path).unwrap()).unwrap();
+        assert!(metadata.functions.values().any(|name| name == "round_trip"));
         let output = Command::new(env!("CARGO_BIN_EXE_c2rust-instrument"))
             .current_dir(temp.path())
             .arg("--metadata")
             .arg(&metadata_path)
-            // Mandatory MIR cleanup must normalize injected pointer coercions
-            // even when optional MIR optimizations are disabled.
-            .arg("--rustflags=-Zmir-opt-level=0")
+            // Instrumented MIR must be validated even at optimization level
+            // zero and when the caller supplies -Zvalidate-mir=no.
+            .arg(format!("--rustflags=-Zmir-opt-level=0{validation}"))
             .args(["--", "run", "--offline", "--manifest-path"])
             .arg(&manifest)
             .env("INSTRUMENT_RUNTIME", "fg")
@@ -122,7 +144,7 @@ c2rust-analysis-rt = {{ path = {:?}, optional = true }}
             .current_dir(temp.path())
             .arg("--metadata")
             .arg(&metadata_path)
-            .arg("--rustflags=-Zmir-opt-level=0")
+            .arg(format!("--rustflags=-Zmir-opt-level=0{validation}"))
             .args(["--", "run", "--offline", "--manifest-path"])
             .arg(&manifest)
             .env("INSTRUMENT_RUNTIME", "bg")
@@ -171,5 +193,55 @@ c2rust-analysis-rt = {{ path = {:?}, optional = true }}
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("mismatched types"), "{stderr}");
-    assert_eq!(fs::read(metadata_path).unwrap(), original_metadata);
+    assert_eq!(fs::read(&metadata_path).unwrap(), original_metadata);
+
+    for source in [
+        r#"
+fn identity(p: *mut i32) -> *mut i32 { p }
+fn forward(p: *mut i32) -> *mut i32 { become identity(p); }
+fn main() {
+    let mut value = 7;
+    assert_eq!(forward(&raw mut value), &raw mut value);
+}
+"#,
+        "fn finish() {} fn main() { become finish(); }",
+    ] {
+        let source_path = temp.path().join("src/main.rs");
+        fs::write(
+            &source_path,
+            format!("#![feature(explicit_tail_calls)]\n#![allow(incomplete_features)]\n{source}"),
+        )
+        .unwrap();
+        // Both pointer-returning tail calls and a tail-calling entrypoint are
+        // valid Rust, but must not silently produce incomplete traces.
+        let output = Command::new("rustc")
+            .arg(&source_path)
+            .args(["--edition=2024", "--emit=metadata", "-o"])
+            .arg(temp.path().join("tail-call"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        for action in ["check", "build"] {
+            let output = Command::new(env!("CARGO_BIN_EXE_c2rust-instrument"))
+                .current_dir(temp.path())
+                .arg("--metadata")
+                .arg(&metadata_path)
+                .args(["--", action, "--offline", "--manifest-path"])
+                .arg(&manifest)
+                .output()
+                .unwrap();
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(!output.status.success(), "tail call was silently accepted");
+            assert!(
+                stderr.contains("c2rust-instrument does not support explicit tail calls"),
+                "{stderr}"
+            );
+            assert!(!stderr.contains("internal compiler error"), "{stderr}");
+            assert_eq!(fs::read(&metadata_path).unwrap(), original_metadata);
+        }
+    }
 }
