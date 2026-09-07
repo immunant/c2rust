@@ -1,5 +1,5 @@
 //! `fold_output_exprs` function, for visiting return-value expressions.
-use rustc_ast::mut_visit::{self, visit_opt, MutVisitor};
+use crate::ast_manip::mut_visit::{self, visit_opt, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
 use smallvec::SmallVec;
@@ -29,26 +29,22 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         // The expr within the fn is always trailing
         match i.kind {
-            ItemKind::Fn(..) => self.with_trailing(true, |f| mut_visit::noop_flat_map_item(i, f)),
-            _ => mut_visit::noop_flat_map_item(i, self),
+            ItemKind::Fn(..) => self.with_trailing(true, |f| mut_visit::walk_flat_map_item(f, i)),
+            _ => mut_visit::walk_flat_map_item(self, i),
         }
     }
 
-    fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
+    fn flat_map_assoc_item(
+        &mut self,
+        item: P<AssocItem>,
+        ctxt: rustc_ast::visit::AssocCtxt,
+    ) -> SmallVec<[P<AssocItem>; 1]> {
+        let i = item;
         match i.kind {
             AssocItemKind::Fn(..) => {
-                self.with_trailing(true, |f| mut_visit::noop_flat_map_assoc_item(i, f))
+                self.with_trailing(true, |f| mut_visit::walk_flat_map_assoc_item(f, i, ctxt))
             }
-            _ => mut_visit::noop_flat_map_assoc_item(i, self),
-        }
-    }
-
-    fn flat_map_trait_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
-        match i.kind {
-            AssocItemKind::Fn(..) => {
-                self.with_trailing(true, |f| mut_visit::noop_flat_map_assoc_item(i, f))
-            }
-            _ => mut_visit::noop_flat_map_assoc_item(i, self),
+            _ => mut_visit::walk_flat_map_assoc_item(self, i, ctxt),
         }
     }
 
@@ -72,8 +68,8 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
         match s.kind {
-            StmtKind::Expr(..) => mut_visit::noop_flat_map_stmt(s, self),
-            _ => self.with_trailing(false, |f| mut_visit::noop_flat_map_stmt(s, f)),
+            StmtKind::Expr(..) => mut_visit::walk_flat_map_stmt(self, s),
+            _ => self.with_trailing(false, |f| mut_visit::walk_flat_map_stmt(f, s)),
         }
     }
 
@@ -85,7 +81,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
                 visit_opt(rest, |rest| self.visit_expr(rest));
             }
 
-            ExprKind::Let(pat, expr, _) => {
+            ExprKind::Let(pat, expr, ..) => {
                 self.visit_pat(pat);
                 self.with_trailing(false, |f| f.visit_expr(expr));
             }
@@ -94,7 +90,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
             // expression, then a `break` targeting its label should be treated as a return
             // expression.
             //ExprKind::Loop(body) => { TODO },
-            ExprKind::Match(target, arms) => {
+            ExprKind::Match(target, arms, _) => {
                 self.with_trailing(false, |f| f.visit_expr(target));
                 *arms = std::mem::take(arms)
                     .into_iter()
@@ -122,7 +118,7 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
             // Not sure what to do with ExprKind::Try.  It can return (on error), but doesn't
             // have an actual output expression.
             _ => {
-                self.with_trailing(false, |f| mut_visit::noop_visit_expr(e, f));
+                self.with_trailing(false, |f| mut_visit::walk_expr(f, e));
                 if self.trailing {
                     (self.callback)(e);
                 }

@@ -1,4 +1,4 @@
-use rustc_span::symbol::Symbol;
+use rustc_span::Symbol;
 
 /// Conversion of string-like values into interned `Symbol`s.
 pub trait IntoSymbol {

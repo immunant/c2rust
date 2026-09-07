@@ -26,12 +26,15 @@ impl VisitorImpls {
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
         if !walk.stmts.is_empty() {
-            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn_name = format!(
+                "walk_{}",
+                method_name.to_string().trim_start_matches("visit_")
+            );
             let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
             self.tokens.extend(quote! {
                 impl WalkAst for #ty {
                     fn walk<T: MutVisitor>(&mut self, v: &mut T) {
-                        rustc_ast::mut_visit::#noop_fn(self, v);
+                        crate::ast_manip::mut_visit::#noop_fn(v, self);
                     }
                 }
             });
@@ -84,12 +87,12 @@ impl VisitorImpls {
         let folder_ident = Ident::new(&folder_name, Span::call_site());
 
         if !walk.stmts.is_empty() {
-            let noop_fn_name = format!("noop_{}", method_name);
+            let noop_fn_name = format!("walk_{}", method_name);
             let noop_fn = Ident::new(&noop_fn_name, Span::call_site());
             self.tokens.extend(quote! {
                 impl WalkAst for #ty {
                     fn walk<T: MutVisitor>(&mut self, v: &mut T) {
-                        *self = rustc_ast::mut_visit::#noop_fn(self.clone(), v).lone();
+                        *self = crate::ast_manip::mut_visit::#noop_fn(v, self.clone()).lone();
                     }
                 }
             })

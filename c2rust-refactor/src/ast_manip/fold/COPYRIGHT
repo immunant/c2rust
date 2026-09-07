@@ -1,0 +1,10 @@
+walk.rs contains code derived from compiler/rustc_ast/src/mut_visit.rs
+in the Rust project at commit d117b7f211835282b3b177dc64245fff0327c04c.
+
+Copyrights in the Rust project are retained by their contributors.
+For authorship information, see the upstream version control history:
+https://github.com/rust-lang/rust/tree/d117b7f211835282b3b177dc64245fff0327c04c
+
+The upstream code is available under the Apache License, Version 2.0 or
+the MIT license, at your option. This copy is distributed under the MIT
+license; see LICENSE-MIT in this directory.

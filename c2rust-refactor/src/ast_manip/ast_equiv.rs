@@ -4,13 +4,19 @@ use rustc_ast::format::{
     FormatPlaceholder,
 };
 use rustc_ast::ptr::P;
-use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
-use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
-use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
+use rustc_ast::token::{
+    BinOpToken, CommentKind, Delimiter, IdentIsRaw, InvisibleOrigin, Lit as TokenLit,
+    LitKind as TokenLitKind, MetaVarKind, Nonterminal, NtExprKind, NtPatKind, Token, TokenKind,
+};
+use rustc_ast::tokenstream::{
+    DelimSpacing, DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree,
+};
 use rustc_ast::*;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_span::source_map::{Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_data_structures::packed::Pu128;
+use rustc_data_structures::sync::Lrc;
+use rustc_errors::ErrorGuaranteed;
+use rustc_span::source_map::Spanned;
+use rustc_span::{Ident, Span, Symbol, SyntaxContext};
 use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
 use thin_vec::ThinVec;
@@ -257,6 +263,25 @@ impl<A: AstEquiv, B: AstEquiv, C: AstEquiv> AstEquiv for (A, B, C) {
 }
 
 // Implementations for specific AST types are auto-generated.
+impl AstEquiv for std::borrow::Cow<'_, str> {
+    fn ast_equiv(&self, other: &Self) -> bool {
+        self == other
+    }
+    fn unnamed_equiv(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+// Module parse recovery carries no syntax, but success and failure remain distinct.
+impl AstEquiv for Result<(), ErrorGuaranteed> {
+    fn ast_equiv(&self, other: &Self) -> bool {
+        self.is_ok() == other.is_ok()
+    }
+    fn unnamed_equiv(&self, other: &Self) -> bool {
+        self.ast_equiv(other)
+    }
+}
+
 include!(concat!(env!("OUT_DIR"), "/ast_equiv_gen.inc.rs"));
 
 impl AstEquiv for Ident {
@@ -287,5 +312,14 @@ impl AstEquiv for Ident {
     fn unnamed_equiv(&self, other: &Self) -> bool {
         (self.as_str().contains("C2Rust_Unnamed") && other.as_str().contains("C2Rust_Unnamed"))
             || self.ast_equiv(other)
+    }
+}
+
+impl<T: AstEquiv + ?Sized> AstEquiv for Lrc<T> {
+    fn ast_equiv(&self, other: &Lrc<T>) -> bool {
+        <T as AstEquiv>::ast_equiv(self, other)
+    }
+    fn unnamed_equiv(&self, other: &Lrc<T>) -> bool {
+        <T as AstEquiv>::unnamed_equiv(self, other)
     }
 }
