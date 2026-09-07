@@ -1620,12 +1620,11 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
             dest.push(')');
         }
 
-        // Types that aren't actually supported by this code yet
-        // These new constructors retain their recursive labels; the diagnostic
-        // printer falls back to rustc for their syntax.
-        Pat(..) | UnsafeBinder(..) | CoroutineClosure(..) => write!(dest, "{:?}", lty.ty).unwrap(),
-        Dynamic(..) | Closure(..) | Coroutine(..) | CoroutineWitness(..) | Alias(..)
-        | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
+        // These constructors have no labeled rendering yet. Mark rustc's
+        // fallback explicitly: it does not display labels from `lty.args`.
+        Pat(..) | UnsafeBinder(..) | CoroutineClosure(..) | Dynamic(..) | Closure(..)
+        | Coroutine(..) | CoroutineWitness(..) | Alias(..) | Param(..) | Bound(..)
+        | Placeholder(..) | Infer(..) | Error(..) => {
             write!(dest, "unknown:{:?}", lty.ty).unwrap();
         }
     }

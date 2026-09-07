@@ -751,14 +751,18 @@ fn reborrow_pin(mutbl: hir::Mutability, rw: Rewrite) -> Rewrite {
     // An annotated initializer requests exactly the same pin_ergonomics
     // coercion without moving `p` or naming its private field. The binding is
     // scoped after its initializer, so it cannot shadow names inside `rw`.
-    let mutability = if mutbl == hir::Mutability::Mut {
-        "mut "
-    } else {
-        ""
-    };
+    let pin_ty = Rewrite::TyCtor(
+        "::core::pin::Pin".into(),
+        vec![Rewrite::TyRef(
+            LifetimeName::Elided,
+            Box::new(Rewrite::Print("_".into())),
+            mutbl,
+        )],
+    );
     Rewrite::Block(
-        vec![Rewrite::Let1(
-            format!("__c2rust_pin: ::core::pin::Pin<&{mutability}_>"),
+        vec![Rewrite::LetTyped(
+            "__c2rust_pin".into(),
+            Box::new(pin_ty),
             Box::new(rw),
         )],
         Some(Box::new(Rewrite::Text("__c2rust_pin".into()))),
@@ -1094,8 +1098,14 @@ mod tests {
 
     #[test]
     fn pin_adjustment_reborrows_an_immutable_binding() {
-        let mutable = reborrow_pin(hir::Mutability::Mut, Rewrite::Text("p".into()));
-        let shared = reborrow_pin(hir::Mutability::Not, Rewrite::Text("p".into()));
+        // Exercise rewrite composition as well as printing: the typed binding
+        // must retain its annotation while substituting its initializer.
+        let mutable = reborrow_pin(hir::Mutability::Mut, Rewrite::Identity)
+            .try_subst(&Rewrite::Text("p".into()))
+            .unwrap();
+        let shared = reborrow_pin(hir::Mutability::Not, Rewrite::Identity)
+            .try_subst(&Rewrite::Text("p".into()))
+            .unwrap();
         let source = format!(
             r#"
 #![feature(pin_ergonomics)]

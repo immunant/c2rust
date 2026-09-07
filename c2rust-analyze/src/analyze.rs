@@ -598,6 +598,12 @@ struct FuncInfo<'tcx> {
     last_use: MaybeUnset<LastUse>,
 }
 
+fn sorted_def_ids(it: impl IntoIterator<Item = DefId>) -> Vec<DefId> {
+    let mut v = it.into_iter().collect::<Vec<_>>();
+    v.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
+    v
+}
+
 fn run(tcx: TyCtxt) {
     debug!("all defs:");
     for ldid in tcx.hir_crate_items(()).definitions() {
@@ -631,9 +637,7 @@ fn run(tcx: TyCtxt) {
 
     gacx.force_rewrite = get_force_rewrite_defs().unwrap();
     eprintln!("{} force_rewrite defs", gacx.force_rewrite.len());
-    let mut xs = gacx.force_rewrite.iter().copied().collect::<Vec<_>>();
-    xs.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
-    for x in xs {
+    for x in sorted_def_ids(gacx.force_rewrite.iter().copied()) {
         eprintln!("{:?}", x);
     }
 
@@ -1539,9 +1543,7 @@ fn run2<'tcx>(
     debug!("\nfinal labeling for static items:");
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
-    let mut static_dids = gacx.static_tys.keys().cloned().collect::<Vec<_>>();
-    static_dids.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
-    for did in static_dids {
+    for did in sorted_def_ids(gacx.static_tys.keys().copied()) {
         let lty = gacx.static_tys[&did];
         let name = tcx.item_name(did);
         print_labeling_for_var(
@@ -1558,9 +1560,7 @@ fn run2<'tcx>(
 
     // Print results for ADTs and fields
     debug!("\nfinal labeling for fields:");
-    let mut field_dids = gacx.field_ltys.keys().cloned().collect::<Vec<_>>();
-    field_dids.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
-    for did in field_dids {
+    for did in sorted_def_ids(gacx.field_ltys.keys().copied()) {
         let field_lty = gacx.field_ltys[&did];
         let name = tcx.item_name(did);
         let pid = field_lty.label;
@@ -1598,9 +1598,7 @@ fn run2<'tcx>(
         }
     }
 
-    let mut adt_dids = gacx.adt_metadata.table.keys().cloned().collect::<Vec<_>>();
-    adt_dids.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
-    for did in adt_dids {
+    for did in sorted_def_ids(gacx.adt_metadata.table.keys().copied()) {
         if let Some(report) = adt_reports.remove(&did) {
             debug!("\n{}", report);
         }
@@ -1632,11 +1630,6 @@ fn run2<'tcx>(
     }
 
     debug!("\nerror summary:");
-    fn sorted_def_ids(it: impl IntoIterator<Item = DefId>) -> Vec<DefId> {
-        let mut v = it.into_iter().collect::<Vec<_>>();
-        v.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
-        v
-    }
     for def_id in sorted_def_ids(gacx.dont_rewrite_fns.keys()) {
         let opt_detail = gacx.fns_failed.get(&def_id);
         let flags = gacx.dont_rewrite_fns.get(def_id);

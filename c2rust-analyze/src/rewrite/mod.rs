@@ -99,6 +99,9 @@ pub enum Rewrite<S = Span> {
     /// Single-variable `let` binding.  This has the same scoping issues as multi-variable `Let`;
     /// because of this, `Let` should generally be used instead of multiple `Let1`s.
     Let1(String, Box<Rewrite>),
+    /// Single-variable `let` binding with an explicit type: `let name: ty = expr`.
+    /// This has the same scoping issues as `Let1` and omits the trailing semicolon.
+    LetTyped(String, Box<Rewrite>, Box<Rewrite>),
     /// Single-argument closure.  As with `Let` and `Let1`, the body must be carefully constructed
     /// to avoid potential shadowing.
     Closure1(String, Box<Rewrite>),
@@ -203,6 +206,9 @@ impl Rewrite {
                 Let(new_vars)
             }
             Let1(ref name, ref rw) => Let1(String::clone(name), try_subst(rw)?),
+            LetTyped(ref name, ref ty, ref rw) => {
+                LetTyped(String::clone(name), try_subst(ty)?, try_subst(rw)?)
+            }
             Closure1(ref name, ref rw) => Closure1(String::clone(name), try_subst(rw)?),
             Match(ref expr, ref cases) => {
                 let mut new_cases = Vec::with_capacity(cases.len());

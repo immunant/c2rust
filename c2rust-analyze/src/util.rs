@@ -17,7 +17,6 @@ use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
 #[derive(Debug)]
-#[allow(dead_code)] // Keep full type/mutability information in debug diagnostics.
 pub enum RvalueDesc<'tcx> {
     /// A pointer projection, such as `&(*x.y).z`.  The rvalue is split into a base pointer
     /// expression (in this case `x.y`) and a projection (`.z`).  The `&` and `*` are implicit.
@@ -41,6 +40,7 @@ pub enum RvalueDesc<'tcx> {
         /// The projection applied to the local.  This contains no `Deref` projections.
         proj: &'tcx [PlaceElem<'tcx>],
         /// Mutability of the resulting reference.
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
         mutbl: Mutability,
     },
 }
@@ -101,10 +101,10 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 ///
 /// See [`Callee::UnknownDef`] for more.
 #[derive(Debug)]
-#[allow(dead_code)] // Keep full type/mutability information in debug diagnostics.
 pub enum UnknownDefCallee<'tcx> {
     /// A direct (i.e. non-`fn` ptr) call.
     Direct {
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
         ty: Ty<'tcx>,
         def_id: DefId,
         substs: &'tcx List<GenericArg<'tcx>>,
@@ -112,14 +112,21 @@ pub enum UnknownDefCallee<'tcx> {
     },
 
     /// An indirect (i.e. `fn` ptr) call.
-    Indirect { ty: Ty<'tcx>, fn_sig: FnSig<'tcx> },
+    Indirect {
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
+        ty: Ty<'tcx>,
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
+        fn_sig: FnSig<'tcx>,
+    },
 
     /// Some other unanticipated [`Ty`] that is called.
-    Unknown { ty: Ty<'tcx> },
+    Unknown {
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
+        ty: Ty<'tcx>,
+    },
 }
 
 #[derive(Debug)]
-#[allow(dead_code)] // Keep full type/mutability information in debug diagnostics.
 pub enum Callee<'tcx> {
     /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
     ///
@@ -172,19 +179,23 @@ pub enum Callee<'tcx> {
 
     /// `<*mut T>::offset` or `<*const T>::offset`.
     PtrOffset {
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
         pointee_ty: Ty<'tcx>,
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
         mutbl: Mutability,
     },
 
     /// `<[T]>::as_ptr` and `<[T]>::as_mut_ptr` methods.  Also covers the array and str versions.
     SliceAsPtr {
         /// The pointee type.  This is either `TyKind::Slice`, `TyKind::Array`, or `TyKind::Str`.
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
         pointee_ty: Ty<'tcx>,
 
         /// The slice element type.  For `str`, this is `u8`.
         elem_ty: Ty<'tcx>,
 
         /// Mutability of the output pointer.
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
         mutbl: Mutability,
     },
 
@@ -210,7 +221,10 @@ pub enum Callee<'tcx> {
     IsNull,
 
     /// core::ptr::null or core::ptr::null_mut
-    Null { mutbl: Mutability },
+    Null {
+        #[expect(dead_code, reason = "Retained for Debug diagnostics.")]
+        mutbl: Mutability,
+    },
 
     /// `core::mem::size_of<T>`
     SizeOf { ty: Ty<'tcx> },
