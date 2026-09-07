@@ -16,8 +16,8 @@ use crate::RustEdition::Edition2024;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Debug)]
 pub enum RustEdition {
-    /// The default is edition 2021 because `c2rust-refactor`,
-    /// based on `nightly-2023-04-15`, only understands up to edition 2021.
+    /// The default remains edition 2021 for compatibility with existing generated code.
+    /// The workspace refactorer also supports edition 2024.
     #[default]
     Edition2021,
     Edition2024,
@@ -40,7 +40,8 @@ impl RustEdition {
         match self {
             // 1.70 (1.68 for syn v2.0, 1.70 for sparse registry)
             Edition2021 => "+nightly-2023-04-15",
-            // This doesn't really need to be pinned, but pin it for stability.
+            // Generated 2024 code uses newer VaList APIs. Its compiler pin is
+            // independent of the workspace compiler used by rustc_private tools.
             Edition2024 => "+nightly-2026-03-03",
         }
     }
@@ -71,6 +72,7 @@ pub struct Rustfmt<'a> {
     edition: RustEdition,
     check: bool,
     expect_error: bool,
+    current_toolchain: bool,
 }
 
 pub fn rustfmt(rs_path: &Path) -> Rustfmt {
@@ -79,10 +81,20 @@ pub fn rustfmt(rs_path: &Path) -> Rustfmt {
         edition: Default::default(),
         check: false,
         expect_error: false,
+        current_toolchain: false,
     }
 }
 
 impl<'a> Rustfmt<'a> {
+    /// Use the toolchain selected by the caller's environment and directory.
+    /// Generated C translations retain the edition-specific pin by default.
+    pub fn current_toolchain(self) -> Self {
+        Self {
+            current_toolchain: true,
+            ..self
+        }
+    }
+
     pub fn edition(self, edition: RustEdition) -> Self {
         Self { edition, ..self }
     }
@@ -104,17 +116,27 @@ impl<'a> Rustfmt<'a> {
             edition,
             check,
             expect_error,
+            current_toolchain,
         } = self;
         let check = if expect_error { true } else { check };
-        run_rustfmt(rs_path, edition, check, expect_error)
+        run_rustfmt(rs_path, edition, check, expect_error, current_toolchain)
     }
 }
 
-fn run_rustfmt(rs_path: &Path, edition: RustEdition, check: bool, expect_error: bool) {
+fn run_rustfmt(
+    rs_path: &Path,
+    edition: RustEdition,
+    check: bool,
+    expect_error: bool,
+    current_toolchain: bool,
+) {
     assert!(!expect_error || check);
 
     let mut cmd = Command::new("rustfmt");
-    cmd.args([edition.toolchain(), "--edition", edition.as_str()]);
+    if !current_toolchain {
+        cmd.arg(edition.toolchain());
+    }
+    cmd.args(["--edition", edition.as_str()]);
     cmd.arg(rs_path);
     if check {
         cmd.arg("--check");
@@ -151,6 +173,7 @@ pub struct Rustc<'a> {
     crate_name: Option<&'a str>,
     expect_error: bool,
     imported_crates: &'a [&'a str],
+    current_toolchain: bool,
 }
 
 pub fn rustc(rs_path: &Path) -> Rustc {
@@ -160,10 +183,20 @@ pub fn rustc(rs_path: &Path) -> Rustc {
         crate_name: None,
         expect_error: false,
         imported_crates: Default::default(),
+        current_toolchain: false,
     }
 }
 
 impl<'a> Rustc<'a> {
+    /// Use the toolchain selected by the caller's environment and directory.
+    /// Generated C translations retain the edition-specific pin by default.
+    pub fn current_toolchain(self) -> Self {
+        Self {
+            current_toolchain: true,
+            ..self
+        }
+    }
+
     pub fn edition(self, edition: RustEdition) -> Self {
         Self { edition, ..self }
     }
@@ -196,10 +229,18 @@ impl<'a> Rustc<'a> {
             crate_name,
             expect_error,
             imported_crates,
+            current_toolchain,
         } = self;
         let crate_name =
             crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
-        run_rustc(rs_path, edition, crate_name, expect_error, &imported_crates);
+        run_rustc(
+            rs_path,
+            edition,
+            crate_name,
+            expect_error,
+            &imported_crates,
+            current_toolchain,
+        );
     }
 }
 
@@ -209,6 +250,7 @@ fn run_rustc(
     crate_name: &str,
     expect_error: bool,
     imported_crates: &[&str],
+    current_toolchain: bool,
 ) {
     let rs = fs_err::read_to_string(rs_path).unwrap();
     for imported_crate in imported_crates {
@@ -219,8 +261,10 @@ fn run_rustc(
     // so just create an `.rlib` and then delete it immediately.
     let rlib_path = rs_path.with_file_name(format!("lib{crate_name}.rlib"));
     let mut cmd = Command::new("rustc");
+    if !current_toolchain {
+        cmd.arg(edition.toolchain());
+    }
     cmd.args([
-        edition.toolchain(),
         "--crate-type",
         "lib",
         "--edition",
