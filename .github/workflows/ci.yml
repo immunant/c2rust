@@ -83,7 +83,8 @@ jobs:
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
-          # Bypass empty caches saved after failed package downloads.
+          # One-time cache key change to bypass empty caches saved by failed installs.
+          # This versions the cache, not the action; later runs reuse the new cache.
           version: 2
           packages: |
             clang
