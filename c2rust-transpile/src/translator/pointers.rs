@@ -139,14 +139,14 @@ impl<'c> Translation<'c> {
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
         else if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
+            if !pointee_cty.qualifiers.is_const {
+                return Err("taking mutable address of string literal or macro".into());
+            }
+
             let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
 
             if is_array_decay {
-                let method = match mutbl {
-                    Mutability::Mutable => "as_mut_ptr",
-                    Mutability::Immutable => "as_ptr",
-                };
-                val = val.map(|val| mk().method_call_expr(val, method, vec![]));
+                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
 
                 // If the target pointee type is different from the source element type,
                 // then we need to cast the ptr type as well.
@@ -156,7 +156,7 @@ impl<'c> Translation<'c> {
                     needs_cast = true;
                 }
             } else {
-                val = val.map(|val| mk().set_mutbl(mutbl).borrow_expr(val));
+                val = val.map(|val| mk().borrow_expr(val));
 
                 // Add an intermediate reference-to-pointer cast if the context needs
                 // reference-to-pointer decay, or if another cast follows.
