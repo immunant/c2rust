@@ -1,4 +1,4 @@
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 
 use super::constraint::{ConstraintSet, Perm};
 use super::context::{Ctxt, FuncSumm};

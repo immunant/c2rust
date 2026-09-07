@@ -1,5 +1,5 @@
 use rustc_ast::Crate;
-use rustc_span::symbol::Symbol;
+use rustc_span::Symbol;
 
 use crate::ast_builder::IntoSymbol;
 use crate::command::{CommandState, Registry};

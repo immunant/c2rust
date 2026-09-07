@@ -2,16 +2,16 @@ use log::debug;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_arena::DroplessArena;
-use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{self, Delimiter, Token, TokenKind};
 use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
 use rustc_hir::def_id::DefId;
-use rustc_index::vec::IndexVec;
-use rustc_span::source_map::DUMMY_SP;
-use rustc_span::symbol::Symbol;
+use rustc_index::IndexVec;
+use rustc_span::Symbol;
+use rustc_span::DUMMY_SP;
 use smallvec::{smallvec, SmallVec};
 use thin_vec::ThinVec;
 
@@ -121,10 +121,11 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
     impl<'lty, 'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
         fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             if !self.st.marked(i.id, self.label) {
-                return mut_visit::noop_flat_map_item(i, self);
+                return mut_visit::walk_flat_map_item(self, i);
             }
 
-            mut_visit::noop_flat_map_item(
+            mut_visit::walk_flat_map_item(
+                self,
                 i.map(|mut i| {
                     match i.kind {
                         ItemKind::Static(..) | ItemKind::Const(..) => {
@@ -147,21 +148,32 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
 
                     i
                 }),
-                self,
             )
         }
 
-        fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
-            if !self.st.marked(i.id, self.label) {
-                return mut_visit::noop_flat_map_assoc_item(i, self);
-            }
+        fn flat_map_assoc_item(
+            &mut self,
+            item: P<AssocItem>,
+            ctxt: rustc_ast::visit::AssocCtxt,
+        ) -> SmallVec<[P<AssocItem>; 1]> {
+            match ctxt {
+                rustc_ast::visit::AssocCtxt::Impl => {
+                    let i = item;
+                    if !self.st.marked(i.id, self.label) {
+                        return mut_visit::walk_flat_map_assoc_item(self, i, ctxt);
+                    }
 
-            mut_visit::noop_flat_map_assoc_item(i, self)
+                    mut_visit::walk_flat_map_assoc_item(self, i, ctxt)
+                }
+                rustc_ast::visit::AssocCtxt::Trait => {
+                    mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
+                }
+            }
         }
 
         fn flat_map_field_def(&mut self, mut fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
             if !self.st.marked(fd.id, self.label) {
-                return mut_visit::noop_flat_map_field_def(fd, self);
+                return mut_visit::walk_flat_map_field_def(self, fd);
             }
 
             let mut attrs = std::mem::take(&mut fd.attrs);
@@ -171,7 +183,7 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
             }
             fd.attrs = attrs;
 
-            mut_visit::noop_flat_map_field_def(fd, self)
+            mut_visit::walk_flat_map_field_def(self, fd)
         }
     }
 
@@ -257,7 +269,10 @@ fn perm_token(p: ConcretePerm) -> TokenTree {
 }
 
 fn ident_token(name: &str) -> TokenTree {
-    token(TokenKind::Ident(Symbol::intern(name), false))
+    token(TokenKind::Ident(
+        Symbol::intern(name),
+        rustc_ast::token::IdentIsRaw::No,
+    ))
 }
 
 fn str_token(s: &str) -> TokenTree {
@@ -281,6 +296,7 @@ fn token(kind: TokenKind) -> TokenTree {
 fn parens(ts: Vec<TokenTree>) -> TokenTree {
     TokenTree::Delimited(
         DelimSpan::dummy(),
+        rustc_ast::tokenstream::DelimSpacing::new(Spacing::Alone, Spacing::Alone),
         Delimiter::Parenthesis,
         ts.into_iter().collect::<TokenStream>(),
     )
@@ -289,7 +305,7 @@ fn parens(ts: Vec<TokenTree>) -> TokenTree {
 fn delimited(ts: Vec<TokenTree>) -> AttrArgs {
     AttrArgs::Delimited(DelimArgs {
         dspan: DelimSpan::dummy(),
-        delim: MacDelimiter::Parenthesis,
+        delim: Delimiter::Parenthesis,
         tokens: ts.into_iter().collect::<TokenStream>(),
     })
 }
@@ -300,6 +316,7 @@ fn make_attr(name: &str, args: AttrArgs) -> Attribute {
         style: AttrStyle::Outer,
         kind: AttrKind::Normal(P(NormalAttr {
             item: AttrItem {
+                unsafety: Safety::Default,
                 path: mk().path(vec![name]),
                 args: args,
                 tokens: None,

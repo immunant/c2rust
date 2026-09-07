@@ -4,7 +4,7 @@ use rustc_ast::*;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{Instance, Ty, TyCtxt, TyKind};
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
 use std::collections::{HashMap, HashSet};
 
 use crate::ast_builder::mk;
@@ -59,8 +59,8 @@ pub fn fix_users(
         }
 
         // This is a fn replacement.  Look up sigs and compare arg and return types.
-        let old_sig = tcx.fn_sig(old_did).subst_identity();
-        let new_sig = tcx.fn_sig(new_did).subst_identity();
+        let old_sig = tcx.fn_sig(old_did).instantiate_identity();
+        let new_sig = tcx.fn_sig(new_did).instantiate_identity();
 
         macro_rules! bail {
             ($msg:expr) => {{
@@ -112,7 +112,7 @@ pub fn fix_users(
         }
 
         let mut stuff = ty_replace_map.iter().collect::<Vec<_>>();
-        stuff.sort_by_key(|&(&a, _)| a);
+        stuff.sort_by_key(|&(&(did, loc), _)| (did.krate.as_u32(), did.index.as_u32(), loc));
         for (&(did, loc), &(old, new)) in stuff {
             info!(
                 "TYPE CHANGE: {:?}  @{:?}:  {:?} -> {:?}",
@@ -240,7 +240,8 @@ pub struct CanonicalizeExterns {
 }
 
 fn is_foreign_symbol(tcx: TyCtxt, did: DefId) -> bool {
-    tcx.is_foreign_item(did) && crate::matches!([tcx.def_kind(did)] DefKind::Fn, DefKind::Static(_))
+    tcx.is_foreign_item(did)
+        && crate::matches!([tcx.def_kind(did)] DefKind::Fn, DefKind::Static { .. })
 }
 
 impl Transform for CanonicalizeExterns {
@@ -261,7 +262,7 @@ impl Transform for CanonicalizeExterns {
             let did = def.def_id();
             if is_foreign_symbol(tcx, did) {
                 // Foreign fns can't have region or type params, so empty substs should be fine.
-                let inst = Instance::new(did, tcx.mk_substs(&[]));
+                let inst = Instance::new(did, tcx.mk_args(&[]));
                 // Get the actual linker symbol for this extern item, considering both the item's
                 // name and its attributes.  This is distinct from the `ast::symbol::Symbol`
                 // produced by `module_children`, which is simply the name of the item.
@@ -289,7 +290,7 @@ impl Transform for CanonicalizeExterns {
                 return;
             }
 
-            let inst = Instance::new(did, tcx.mk_substs(&[]));
+            let inst = Instance::new(did, tcx.mk_args(&[]));
             let sym = tcx.symbol_name(inst).name;
             if let Some(&repl_did) = symbol_map.get(&sym) {
                 replace_map.insert(did, repl_did);

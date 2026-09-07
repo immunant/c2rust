@@ -2,7 +2,7 @@ use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir::def_id::DefId;
 use rustc_span::sym;
-use rustc_span::symbol::Symbol;
+use rustc_span::Symbol;
 use smallvec::smallvec;
 use std::collections::HashMap;
 

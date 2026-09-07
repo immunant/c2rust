@@ -10,8 +10,8 @@ use rustc_arena::DroplessArena;
 use rustc_ast::ast;
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_hir::def_id::DefId;
-use rustc_index::vec::IndexVec;
-use rustc_span::symbol::Symbol;
+use rustc_index::IndexVec;
+use rustc_span::Symbol;
 
 use crate::ast_manip::Visit;
 use crate::command::CommandState;
@@ -165,7 +165,7 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
             _ => {}
         }
 
-        visit::walk_foreign_item(self, i);
+        visit::walk_item(self, i);
     }
 
     fn visit_field_def(&mut self, fd: &'ast ast::FieldDef) {
@@ -294,7 +294,7 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
     }
 }
 
-fn meta_item_list(meta: &ast::MetaItem) -> Result<&[ast::NestedMetaItem], &'static str> {
+fn meta_item_list(meta: &ast::MetaItem) -> Result<&[ast::MetaItemInner], &'static str> {
     match meta.kind {
         ast::MetaItemKind::List(ref xs) => Ok(xs),
         _ => Err("expected MetaItemKind::List"),
@@ -308,16 +308,16 @@ fn meta_item_word(meta: &ast::MetaItem) -> Result<(), &'static str> {
     }
 }
 
-fn nested_meta_item(nmeta: &ast::NestedMetaItem) -> Result<&ast::MetaItem, &'static str> {
+fn nested_meta_item(nmeta: &ast::MetaItemInner) -> Result<&ast::MetaItem, &'static str> {
     match nmeta {
-        ast::NestedMetaItem::MetaItem(ref m) => Ok(m),
-        _ => Err("expected NestedMetaItem::MetaItem"),
+        ast::MetaItemInner::MetaItem(ref m) => Ok(m),
+        _ => Err("expected MetaItemInner::MetaItem"),
     }
 }
 
-fn nested_str(nmeta: &ast::NestedMetaItem) -> Result<Symbol, &'static str> {
+fn nested_str(nmeta: &ast::MetaItemInner) -> Result<Symbol, &'static str> {
     match nmeta {
-        ast::NestedMetaItem::Lit(ref lit) => match lit.kind {
+        ast::MetaItemInner::Lit(ref lit) => match lit.kind {
             ast::LitKind::Str(s, _) => Ok(s),
             _ => Err("expected str"),
         },

@@ -1,7 +1,7 @@
 use rustc_ast::ptr::P;
 use rustc_ast::{BorrowKind, Crate, Expr, ExprKind, Mutability, UnOp};
 use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
-use rustc_type_ir::sty;
+use rustc_type_ir as sty;
 
 use crate::ast_builder::mk;
 use crate::ast_manip::MutVisitNodes;
@@ -37,7 +37,7 @@ impl Transform for CanonicalizeRefs {
                     Adjust::Deref(_) => {
                         *expr = mk().unary_expr(UnOp::Deref, expr.clone());
                     }
-                    Adjust::Borrow(AutoBorrow::Ref(_, ref mutability)) => {
+                    Adjust::Borrow(AutoBorrow::Ref(ref mutability)) => {
                         let mutability = match mutability {
                             AutoBorrowMutability::Mut { .. } => Mutability::Mut,
                             AutoBorrowMutability::Not => Mutability::Not,
