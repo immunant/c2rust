@@ -63,6 +63,18 @@ impl Instrumenter {
 
     /// Instrument memory operations in-place in the function `body`.
     pub fn instrument_fn<'tcx>(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>, body_did: DefId) {
+        for block in body.basic_blocks.iter() {
+            let terminator = block.terminator();
+            if matches!(terminator.kind, TerminatorKind::TailCall { .. }) {
+                // There is no return edge on which to record the result or
+                // finalize main. Lowering this to Call + Return would lose the
+                // bounded-stack guarantee of explicit tail calls.
+                tcx.dcx().span_fatal(
+                    terminator.source_info.span,
+                    "c2rust-instrument does not support explicit tail calls",
+                );
+            }
+        }
         let function_name = tcx.item_name(body_did);
         debug!("Instrumenting function {}", function_name);
 
