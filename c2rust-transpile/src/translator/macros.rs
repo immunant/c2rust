@@ -5,7 +5,7 @@ use proc_macro2::{Span, TokenStream};
 use std::rc::Rc;
 use syn::{Expr, MacroDelimiter};
 
-use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind};
+use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind, MacroInvocationInfo};
 use crate::diagnostics::{TranslationError, TranslationResult};
 use crate::translator::{ConvertedDecl, ConvertedMacro, ExprContext, Translation};
 use crate::with_stmts::WithStmts;
@@ -71,16 +71,17 @@ impl<'c> Translation<'c> {
         let ctx = ctx.const_().set_expanding_macro(macro_id);
         let canonical = self.ast_context.macro_expansions[&macro_id]
             .iter()
-            .try_fold::<Option<ConvertedMacroExpr>, _, _>(None, |canonical, &id| {
-                self.can_convert_const_macro_expansion(id)?;
+            .try_fold::<Option<ConvertedMacroExpr>, _, _>(None, |canonical, info| {
+                let &MacroInvocationInfo { expr_id, .. } = info.as_ref();
+                self.can_convert_const_macro_expansion(expr_id)?;
 
                 let ty = self
                     .ast_context
-                    .index_unwrap_parens(id)
+                    .index_unwrap_parens(expr_id)
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let val = self.convert_expr(ctx, id, None)?;
+                let val = self.convert_expr(ctx, expr_id, None)?;
                 let new = ConvertedMacroExpr { val, ty };
 
                 // Join ty and cur_ty to the smaller of the two types. If the
@@ -170,18 +171,18 @@ impl<'c> Translation<'c> {
 
         // Find the first macro after the macro we're currently expanding, if any.
         let first_macro = macros
-            .splitn(2, |macro_id| ctx.expanding_macro(macro_id))
+            .splitn(2, |info| ctx.expanding_macro(&info.macro_id))
             .last()
             .unwrap()
             .first();
-        let macro_id = match first_macro {
-            Some(macro_id) => macro_id,
+        let info = match first_macro {
+            Some(info) => info,
             None => return Ok(None),
         };
 
-        trace!("  found macro expansion: {macro_id:?}");
+        trace!("  found macro expansion: {:?}", info.macro_id);
         // Ensure that we've converted this macro and that it has a valid definition.
-        let maybe_converted = self.converted_macros.borrow().get(macro_id).cloned();
+        let maybe_converted = self.converted_macros.borrow().get(&info.macro_id).cloned();
         let converted = match maybe_converted {
             // Macro was converted previously.
             Some(Some(converted)) => converted,
@@ -191,8 +192,8 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to convert it yet.
             None => {
-                self.convert_decl(ctx.not_pattern(), *macro_id)?;
-                let maybe_converted = self.converted_macros.borrow().get(macro_id).cloned();
+                self.convert_decl(ctx.not_pattern(), info.macro_id)?;
+                let maybe_converted = self.converted_macros.borrow().get(&info.macro_id).cloned();
                 if let Some(Some(converted)) = maybe_converted {
                     converted
                 } else {
@@ -203,10 +204,10 @@ impl<'c> Translation<'c> {
         let rust_name = self
             .renamer
             .borrow_mut()
-            .get(macro_id)
+            .get(&info.macro_id)
             .ok_or_else(|| format_err!("Macro name not declared"))?;
 
-        self.add_import(*macro_id, &rust_name);
+        self.add_import(info.macro_id, &rust_name);
 
         let mut val = WithStmts::new_val(mk().path_expr(vec![rust_name]));
 
@@ -223,7 +224,7 @@ impl<'c> Translation<'c> {
                 Err(err) => {
                     info!(
                         "Could not convert cast of macro {} for {:?}: {}",
-                        self.renamer.borrow_mut().get(macro_id).unwrap(),
+                        self.renamer.borrow_mut().get(&info.macro_id).unwrap(),
                         expr_id,
                         err
                     );
