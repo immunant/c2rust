@@ -33,16 +33,12 @@ impl<'c> Translation<'c> {
         rotate_method_name: &'static str,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Emit `arg0.{method_name}(arg1)`
-        let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
-        let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
+        let arg0 = self.convert_expr(ctx, args[0], None)?;
+        let arg1 = self.convert_expr(ctx, args[1], None)?;
         Ok(arg0.zip(arg1).and_then(|(arg0, arg1)| {
             let arg1 = mk().cast_expr(arg1, mk().path_ty(vec!["u32"]));
             let method_call_expr = mk().method_call_expr(arg0, rotate_method_name, vec![arg1]);
-            self.convert_side_effects_expr(
-                ctx,
-                WithStmts::new_val(method_call_expr),
-                "Builtin is not supposed to be used",
-            )
+            WithStmts::new_val(method_call_expr)
         }))
     }
 
@@ -116,7 +112,7 @@ impl<'c> Translation<'c> {
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 self.import_num_traits(args[0])?;
 
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
                 Ok(val.map(|v| {
                     let val = mk().method_call_expr(v, "is_sign_negative", vec![]);
 
@@ -124,7 +120,7 @@ impl<'c> Translation<'c> {
                 }))
             }
             "__builtin_ffs" | "__builtin_ffsl" | "__builtin_ffsll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
 
                 Ok(val.map(|x| {
                     let add = BinOp::Add(Default::default());
@@ -141,33 +137,33 @@ impl<'c> Translation<'c> {
                 }))
             }
             "__builtin_clz" | "__builtin_clzl" | "__builtin_clzll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "leading_zeros", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_ctz" | "__builtin_ctzl" | "__builtin_ctzll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "trailing_zeros", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
                 }))
             }
             "__builtin_bswap16" | "__builtin_bswap32" | "__builtin_bswap64" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
                 Ok(val.map(|x| mk().method_call_expr(x, "swap_bytes", vec![])))
             }
             "__builtin_fabs" | "__builtin_fabsf" | "__builtin_fabsl" => {
                 self.import_num_traits(args[0])?;
 
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
                 Ok(val.map(|x| mk().method_call_expr(x, "abs", vec![])))
             }
             "__builtin_isfinite" | "__builtin_isnan" => {
                 self.import_num_traits(args[0])?;
 
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
 
                 let seg = match builtin_name {
                     "__builtin_isfinite" => "is_finite",
@@ -183,7 +179,7 @@ impl<'c> Translation<'c> {
                 self.import_num_traits(args[0])?;
 
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
                 Ok(val.map(|x| {
                     let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
                     let one = mk().lit_expr(mk().int_lit(1, ""));
@@ -202,10 +198,10 @@ impl<'c> Translation<'c> {
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
                 Ok(WithStmts::new_val(mk().lit_expr(mk().int_lit(1, "i32"))))
             }
-            "__builtin_expect" => self.convert_expr(ctx.used(), args[0], None),
+            "__builtin_expect" => self.convert_expr(ctx, args[0], None),
 
             "__builtin_popcount" | "__builtin_popcountl" | "__builtin_popcountll" => {
-                let val = self.convert_expr(ctx.used(), args[0], None)?;
+                let val = self.convert_expr(ctx, args[0], None)?;
                 Ok(val.map(|x| {
                     let zeros = mk().method_call_expr(x, "count_ones", vec![]);
                     mk().cast_expr(zeros, mk().path_ty(vec!["i32"]))
@@ -307,8 +303,8 @@ impl<'c> Translation<'c> {
                 // We can't convert this to Rust, but it should be safe to always return -1/0
                 // (depending on the value of `type`), so we emit the following:
                 // `(if (type & 2) == 0 { -1isize } else { 0isize }) as libc::size_t`
-                let ptr_arg = self.convert_expr(ctx.unused(), args[0], None)?;
-                let type_arg = self.convert_expr(ctx.used(), args[1], None)?;
+                let ptr_arg = self.convert_expr(ctx, args[0], None)?;
+                let type_arg = self.convert_expr(ctx, args[1], None)?;
                 Ok(ptr_arg.and_then(|_| {
                     type_arg.map(|type_arg| {
                         let type_and_2 = mk().binary_expr(
@@ -607,7 +603,7 @@ impl<'c> Translation<'c> {
             }
             // There's currently no way to replicate this functionality in Rust, so we just
             // pass the ptr input param in its place.
-            "__builtin_assume_aligned" => Ok(self.convert_expr(ctx.used(), args[0], None)?),
+            "__builtin_assume_aligned" => self.convert_expr(ctx, args[0], None),
             // Skip over, there's no way to implement it in Rust
             "__builtin_unwind_init" => Ok(WithStmts::new_val(self.panic_or_err("no value"))),
             "__builtin_unreachable" => Ok(WithStmts::new(

@@ -2497,7 +2497,7 @@ impl<'c> Translation<'c> {
 
         let null_pointer_case =
             |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
-                let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
+                let val = self.convert_expr(ctx.decay_ref(), ptr, None)?;
                 let ptr_type = self
                     .ast_context
                     .index_unwrap_parens(ptr)
@@ -2552,7 +2552,7 @@ impl<'c> Translation<'c> {
                 // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
                 // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
                 // specify Yes for that particular case, given enough analysis.
-                let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
+                let val = self.convert_expr(ctx.decay_ref(), cond_id, None)?;
                 val.try_map(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
@@ -3221,7 +3221,7 @@ impl<'c> Translation<'c> {
 
             let elts = self.compute_size_of_type(ctx, expected_type_id, result_type_id, elts)?;
             return elts.and_then_try(|lhs| {
-                let len = self.convert_expr(ctx.used().not_static(), len, expected_type_id)?;
+                let len = self.convert_expr(ctx.not_static(), len, expected_type_id)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)

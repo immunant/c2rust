@@ -527,7 +527,7 @@ impl<'a> Translation<'a> {
                     fields.push(field);
                 }
                 Both(field_id, (field_name, ty, bitfield_width, use_inner_type)) => {
-                    let mut expr = self.convert_expr(ctx.used(), *field_id, Some(ty))?;
+                    let mut expr = self.convert_expr(ctx, *field_id, Some(ty))?;
 
                     if use_inner_type {
                         // See comment above
@@ -620,7 +620,7 @@ impl<'a> Translation<'a> {
                         let val = if ids.is_empty() {
                             self.implicit_default_expr(ctx, field_ty.ctype)?
                         } else {
-                            self.convert_expr(ctx.used(), ids[0], None)?
+                            self.convert_expr(ctx, ids[0], None)?
                         };
 
                         Ok(val.map(|v| {
