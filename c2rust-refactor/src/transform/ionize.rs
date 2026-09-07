@@ -1,11 +1,11 @@
 use rustc_hir::def_id::DefId;
-use rustc_type_ir::sty::TyKind;
+use rustc_type_ir::TyKind;
 use std::collections::HashSet;
 use std::fmt::Display;
 use rustc_ast::*;
-use rustc_ast::mut_visit::MutVisitor;
+use crate::ast_manip::mut_visit::MutVisitor;
 use rustc_ast::ptr::P;
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
 use smallvec::smallvec;
 
 use crate::ast_builder::mk;
@@ -91,7 +91,7 @@ impl Transform for Ionize {
         // Find marked unions
         visit_nodes(krate, |i: &Item| {
             if st.marked(i.id, "target") {
-                if let ItemKind::Union(VariantData::Struct(ref _fields, _), _) = i.kind {
+                if let ItemKind::Union(VariantData::Struct { fields: ref _fields, .. }, _) = i.kind {
                     if let Some(def_id) = cx.hir_map().opt_local_def_id_from_node_id(i.id) {
                         targets.insert(def_id.to_def_id());
                     } else {
@@ -159,7 +159,7 @@ impl Transform for Ionize {
                 _ => return smallvec![i]
             }
 
-            if let ItemKind::Union(VariantData::Struct(ref fields, _), _) = i.kind {
+            if let ItemKind::Union(VariantData::Struct { ref fields, .. }, _) = i.kind {
                 let impl_items = fields.iter().flat_map(|x| {
                     let mut bnd = Bindings::new();
                     let fieldname = x.ident.expect("missing union field");

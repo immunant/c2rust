@@ -12,12 +12,10 @@ use rustc_hir::{self, HirId, DUMMY_HIR_ID};
 use rustc_errors::Level;
 use smallvec::SmallVec;
 use rustc_ast::{ast, entry};
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_span::symbol::{kw, Ident, Symbol};
+use rustc_span::{kw, BytePos, FileName, Ident, Pos, Span, Symbol, SyntaxContext, DUMMY_SP};
 use rustc_middle::ty;
-use rustc_span::{Span, FileName, BytePos, Pos, DUMMY_SP};
-use rustc_span::hygiene::SyntaxContext;
 
 use indexmap::IndexSet;
 use failure::{Error, ResultExt};
@@ -129,7 +127,7 @@ fn get_ptr_expr(expr: &ast::Expr) -> &ast::Expr {
 
 fn instrumented_inner_value(expr: &ast::Expr) -> &ast::Expr {
     if let ast::ExprKind::Block(block, _) = &expr.kind {
-        if let ast::StmtKind::Local(local) = &block.stmts[0].kind {
+        if let ast::StmtKind::Let(local) = &block.stmts[0].kind {
             if let Some(init) = &local.init {
                 return init;
             }
@@ -398,7 +396,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
     //         }
     //     }
     //     self.depth += 1;
-    //     let folded = mut_visit::noop_flat_map_foreign_item(item, self);
+    //     let folded = mut_visit::walk_flat_map_foreign_item(self, item);
     //     self.depth -= 1;
     //     folded
     // }
@@ -406,7 +404,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
     fn visit_expr(&mut self, expr: &mut P<ast::Expr>) {
         // Post-order traversal so we instrument any arguments before processing
         // the expr.
-        mut_visit::noop_visit_expr(expr, self);
+        mut_visit::walk_expr(self, expr);
 
         // Don't re-instrument a value
         if expr.span == DUMMY_SP {
@@ -486,7 +484,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
 
     fn flat_map_stmt(&mut self, mut stmt: ast::Stmt) -> SmallVec<[ast::Stmt; 1]> {
         match &mut stmt.kind {
-            ast::StmtKind::Local(local) => {
+            ast::StmtKind::Let(local) => {
                 // TODO: We don't handle @ subpattern patterns or let binding
                 // decomposition yet.
                 if let ast::PatKind::Ident(binding, _local_ident, None) = local.pat.kind {
@@ -494,7 +492,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                         .map_or(false, |ty| ty.is_unsafe_ptr());
                     if let Some(init) = &mut local.init {
                         if is_unsafe_ptr {
-                            if let ast::BindingAnnotation(ast::ByRef::Yes, _) = binding {
+                            if let ast::BindingMode(ast::ByRef::Yes(_), _) = binding {
                                 // We can only handle taking a reference to a
                                 // directly dereferenced value for now. As this
                                 // is the only kind of reference the translator
@@ -516,7 +514,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
 
         // We do pre-order traversal because we want let ref mut x = *foo to be
         // a pointer assignment rather than a deref.
-        mut_visit::noop_flat_map_stmt(stmt, self)
+        mut_visit::walk_flat_map_stmt(self, stmt)
     }
 
     fn flat_map_item(&mut self, item: P<ast::Item>) -> SmallVec<[P<ast::Item>; 1]> {
@@ -529,7 +527,7 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
         }
 
         self.depth += 1;
-        let mut item: P<ast::Item> = mut_visit::noop_flat_map_item(item, self).lone();
+        let mut item: P<ast::Item> = mut_visit::walk_flat_map_item(self, item).lone();
         self.depth -= 1;
 
         // Instrument entry point if found
@@ -778,7 +776,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
         // we visit statements before expressions, as we want the expression for
         // most statements.
         visit_nodes(krate, |e: &ast::Stmt| {
-            if let ast::StmtKind::Local(..) = e.kind {
+            if let ast::StmtKind::Let(..) = e.kind {
                 if let Some(id) = self.span_ids.get(&e.span) {
                     if self.span_to_node_id.insert(*id, e.id).is_some() {
                         warn!("Duplicate node for span {:?}", e.span);
@@ -1002,7 +1000,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                         }
                         sources.insert(dest_id, dest);
                     } else if let Some(stmt) = ast_map.get_ast::<ast::Stmt>(&node_id) {
-                        let local = expect!([&stmt.kind] ast::StmtKind::Local(local) => local);
+                        let local = expect!([&stmt.kind] ast::StmtKind::Let(local) => local);
                         let id = self.cx.hir_map().node_to_hir_id(local.pat.id);
                         let dest = self.data_flow.get_node(id, DataFlowNodeKind::Local);
                         if let Some(source) = source {
