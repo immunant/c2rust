@@ -135,9 +135,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    # TODO: add option to select model
-    # TODO: add option to configure cache
-
     return parser
 
 

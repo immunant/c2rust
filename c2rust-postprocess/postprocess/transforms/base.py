@@ -337,13 +337,3 @@ class AbstractTransform:
             )
 
         return result
-
-
-# TODO: We probably want a an interface that generates validators specialized to
-#       each individual prompt so maybe this should take in some transform-
-#       specific parameters and return a callable that only takes the LLM
-#       response as input.
-# class AbstractValidator(ABC):
-#     @abstractmethod
-#     def validate_response(self, response: str) -> str:
-#         pass
