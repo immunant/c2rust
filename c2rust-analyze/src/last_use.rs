@@ -18,7 +18,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use rustc_index::bit_set::BitSet;
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 use rustc_middle::mir::traversal;
 use rustc_middle::mir::{
     BasicBlock, BasicBlockData, Body, Local, Location, NonDivergingIntrinsic, Operand, Place,
@@ -140,16 +140,13 @@ impl ActionsBuilder {
                 self.push_place_use(pl, loc, WhichPlace::Operand(0));
             }
             Rvalue::ThreadLocalRef(_) => {}
-            Rvalue::AddressOf(_mutbl, pl) => {
-                self.push_place_use(pl, loc, WhichPlace::Operand(0));
-            }
-            Rvalue::Len(pl) => {
+            Rvalue::RawPtr(_mutbl, pl) => {
                 self.push_place_use(pl, loc, WhichPlace::Operand(0));
             }
             Rvalue::Cast(_kind, ref op, _ty) => {
                 self.push_operand(op, loc, WhichPlace::Operand(0));
             }
-            Rvalue::BinaryOp(_bin_op, ref x) | Rvalue::CheckedBinaryOp(_bin_op, ref x) => {
+            Rvalue::BinaryOp(_bin_op, ref x) => {
                 let (ref a, ref b) = **x;
                 self.push_operand(a, loc, WhichPlace::Operand(0));
                 self.push_operand(b, loc, WhichPlace::Operand(1));
@@ -212,7 +209,9 @@ impl ActionsBuilder {
                     self.push_operand(&cno.count, loc, WhichPlace::Operand(2));
                 }
             },
-            StatementKind::Nop => {}
+            // This marker only drives the Rust-2024 temporary lifetime lint;
+            // the compiler specifies that it has no runtime effect.
+            StatementKind::BackwardIncompatibleDropHint { .. } | StatementKind::Nop => {}
         }
     }
 
@@ -222,8 +221,8 @@ impl ActionsBuilder {
             TerminatorKind::SwitchInt { ref discr, .. } => {
                 self.push_operand(discr, loc, WhichPlace::Operand(0));
             }
-            TerminatorKind::Resume => {}
-            TerminatorKind::Terminate => {}
+            TerminatorKind::UnwindResume => {}
+            TerminatorKind::UnwindTerminate(_) => {}
             TerminatorKind::Return => {}
             TerminatorKind::Unreachable => {}
             // We ignore automatically-inserted `Drop`s, since the `Drop` may be eliminated if a
@@ -233,10 +232,13 @@ impl ActionsBuilder {
             // assignment is handled by `push_statement` above.
             TerminatorKind::Call {
                 ref func, ref args, ..
+            }
+            | TerminatorKind::TailCall {
+                ref func, ref args, ..
             } => {
                 self.push_operand(func, loc, WhichPlace::Operand(0));
                 for (i, op) in args.iter().enumerate() {
-                    self.push_operand(op, loc, WhichPlace::Operand(i + 1));
+                    self.push_operand(&op.node, loc, WhichPlace::Operand(i + 1));
                 }
             }
             // TODO: Handle `Assert`.  For now We ignore it because it isn't generated for any
@@ -244,7 +246,7 @@ impl ActionsBuilder {
             // non-pointers.
             TerminatorKind::Assert { .. } => {}
             TerminatorKind::Yield { .. } => panic!("unsupported TerminatorKind::Yield"),
-            TerminatorKind::GeneratorDrop => {}
+            TerminatorKind::CoroutineDrop => {}
             TerminatorKind::FalseEdge { .. } => {}
             TerminatorKind::FalseUnwind { .. } => {}
             TerminatorKind::InlineAsm { .. } => panic!("unsupported TerminatorKind::InlineAsm"),

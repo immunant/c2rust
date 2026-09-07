@@ -18,7 +18,8 @@ use crate::pointer_id::{GlobalPointerTable, PointerId, PointerTable};
 use crate::rewrite::Rewrite;
 use crate::type_desc::{self, Ownership, PtrDesc, Quantity, TypeDesc};
 use hir::{
-    FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData, WherePredicate,
+    FnRetTy, GenericParamKind, Generics, ItemKind, Path, PathSegment, VariantData,
+    WherePredicateKind,
 };
 use log::{debug, warn};
 use rustc_ast::ast;
@@ -30,8 +31,8 @@ use rustc_hir::{Mutability, Node};
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalDecl};
 use rustc_middle::ty::print::{FmtPrinter, Print};
-use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, ReErased, TyCtxt};
-use rustc_middle::ty::{Ty, TyKind, TypeAndMut};
+use rustc_middle::ty::{self, AdtDef, GenericArg, GenericArgKind, List, TyCtxt};
+use rustc_middle::ty::{Ty, TyKind};
 use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 
@@ -225,8 +226,8 @@ fn deconstruct_hir_ty<'a, 'tcx>(
         // Types with arguments
         (&ty::TyKind::Array(_, _), &hir::TyKind::Array(arg_ty, _)) => Some(vec![arg_ty]),
         (&ty::TyKind::Slice(_), &hir::TyKind::Slice(arg_ty)) => Some(vec![arg_ty]),
-        (&ty::TyKind::RawPtr(tm), &hir::TyKind::Ptr(ref hir_mt)) => {
-            if hir_mt.mutbl == tm.mutbl.convert() {
+        (&ty::TyKind::RawPtr(_, mutbl), &hir::TyKind::Ptr(ref hir_mt)) => {
+            if hir_mt.mutbl == mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
                 None
@@ -264,7 +265,7 @@ fn deconstruct_hir_ty<'a, 'tcx>(
                 type_args
             })
         }
-        (&ty::TyKind::FnPtr(sig), &hir::TyKind::BareFn(bfnty)) => {
+        (&ty::TyKind::FnPtr(sig, _), &hir::TyKind::BareFn(bfnty)) => {
             let args = sig.skip_binder().inputs_and_output;
             if args.len() != bfnty.decl.inputs.len() + 1 {
                 panic!("mismatched number of function inputs for {sig:?} and {bfnty:?}");
@@ -317,8 +318,10 @@ impl Convert<ast::UintTy> for ty::UintTy {
 impl Convert<ast::FloatTy> for ty::FloatTy {
     fn convert(self) -> ast::FloatTy {
         match self {
+            ty::FloatTy::F16 => ast::FloatTy::F16,
             ty::FloatTy::F32 => ast::FloatTy::F32,
             ty::FloatTy::F64 => ast::FloatTy::F64,
+            ty::FloatTy::F128 => ast::FloatTy::F128,
         }
     }
 }
@@ -368,8 +371,8 @@ fn mk_adt_with_generic_args<'tcx>(
 
     let adt = tcx.adt_def(cur_did);
     let args = args.into_iter().collect::<Vec<_>>();
-    let substs = tcx.mk_substs(&args);
-    tcx.mk_adt(adt, substs)
+    let substs = tcx.mk_args(&args);
+    Ty::new_adt(tcx, adt, substs)
 }
 
 fn mk_adt_with_arg<'tcx>(tcx: TyCtxt<'tcx>, path: &str, arg_ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
@@ -385,7 +388,7 @@ fn mk_option<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
 }
 
 fn mk_dyn_owned<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
-    let args = [GenericArg::from(ty), GenericArg::from(tcx.mk_unit())];
+    let args = [GenericArg::from(ty), GenericArg::from(tcx.types.unit)];
     mk_adt_with_generic_args(tcx, "core::result::Result", args)
 }
 
@@ -408,10 +411,7 @@ fn mk_rewritten_ty<'tcx>(
                     TyKind::Ref(rg, _ty, mutbl) => {
                         tcx.mk_ty_from_kind(TyKind::Ref(rg, pointee_ty, mutbl))
                     }
-                    TyKind::RawPtr(tm) => tcx.mk_ty_from_kind(TyKind::RawPtr(TypeAndMut {
-                        ty: pointee_ty,
-                        mutbl: tm.mutbl,
-                    })),
+                    TyKind::RawPtr(_, mutbl) => Ty::new_ptr(tcx, pointee_ty, mutbl),
                     _ => panic!("expected Ref or RawPtr, but got {:?}", ptr_ty),
                 };
                 return new_ty;
@@ -450,20 +450,20 @@ pub fn desc_parts_to_ty<'tcx>(
 
     ty = match qty {
         Quantity::Single => ty,
-        Quantity::Slice => tcx.mk_slice(ty),
+        Quantity::Slice => Ty::new_slice(tcx, ty),
         // TODO: This should generate `OffsetPtr<T>` rather than `&[T]`, but `OffsetPtr` is NYI
-        Quantity::OffsetPtr => tcx.mk_slice(ty),
+        Quantity::OffsetPtr => Ty::new_slice(tcx, ty),
         Quantity::Array => panic!("can't mk_rewritten_ty with Quantity::Array"),
     };
 
     ty = match own {
-        Ownership::Raw => tcx.mk_imm_ptr(ty),
-        Ownership::RawMut => tcx.mk_mut_ptr(ty),
-        Ownership::Imm => tcx.mk_imm_ref(tcx.mk_region_from_kind(ReErased), ty),
-        Ownership::Cell => tcx.mk_imm_ref(tcx.mk_region_from_kind(ReErased), ty),
-        Ownership::Mut => tcx.mk_mut_ref(tcx.mk_region_from_kind(ReErased), ty),
+        Ownership::Raw => Ty::new_imm_ptr(tcx, ty),
+        Ownership::RawMut => Ty::new_mut_ptr(tcx, ty),
+        Ownership::Imm => Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty),
+        Ownership::Cell => Ty::new_imm_ref(tcx, tcx.lifetimes.re_erased, ty),
+        Ownership::Mut => Ty::new_mut_ref(tcx, tcx.lifetimes.re_erased, ty),
         Ownership::Rc => todo!(),
-        Ownership::Box => tcx.mk_box(ty),
+        Ownership::Box => Ty::new_box(tcx, ty),
     };
 
     if dyn_owned {
@@ -535,8 +535,9 @@ fn rewrite_ty<'tcx>(
             // it.  Instead, we discard it completely and pretty-print `rw_lty` (with rewrites
             // applied).
             let ty = mk_rewritten_ty(rw_lcx, rw_lty);
-            let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
-            let s = ty.print(printer).unwrap().into_buffer();
+            let mut printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
+            ty.print(&mut printer).unwrap();
+            let s = printer.into_buffer();
             hir_rewrites.push((hir_ty.span, Rewrite::Print(s)));
             return;
         }
@@ -554,8 +555,9 @@ fn rewrite_ty<'tcx>(
         };
 
         let mut rw = if let Some(pointee_ty) = rw_lty.label.pointee_ty {
-            let printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
-            let s = pointee_ty.print(printer).unwrap().into_buffer();
+            let mut printer = FmtPrinter::new(*rw_lcx, Namespace::TypeNS);
+            pointee_ty.print(&mut printer).unwrap();
+            let s = printer.into_buffer();
             Rewrite::Print(s)
         } else {
             Rewrite::Sub(0, hir_args[0].span)
@@ -612,7 +614,7 @@ fn rewrite_ty<'tcx>(
         } else {
             rw = match *rw_lty.ty.kind() {
                 TyKind::Ref(_rg, _ty, mutbl) => Rewrite::TyRef(lifetime_type, Box::new(rw), mutbl),
-                TyKind::RawPtr(tm) => Rewrite::TyPtr(Box::new(rw), tm.mutbl),
+                TyKind::RawPtr(_, mutbl) => Rewrite::TyPtr(Box::new(rw), mutbl),
                 _ => unreachable!(),
             };
         }
@@ -665,7 +667,7 @@ impl<'tcx, 'a> intravisit::Visitor<'tcx> for HirTyVisitor<'a, 'tcx> {
     fn visit_stmt(&mut self, s: &'tcx hir::Stmt<'tcx>) {
         match s.kind {
             // A local with a user type annotation
-            hir::StmtKind::Local(hir_local) if hir_local.ty.is_some() => {
+            hir::StmtKind::Let(hir_local) if hir_local.ty.is_some() => {
                 if let Some(mir_local) = self.hir_span_to_mir_local.get(&hir_local.pat.span) {
                     let mir_local_decl = &self.mir.local_decls[*mir_local];
                     assert_eq!(mir_local_decl.source_info.span, hir_local.pat.span);
@@ -712,7 +714,7 @@ pub fn gen_ty_rewrites<'tcx>(
     };
 
     // Update function signature
-    let hir_id = acx.tcx().hir().local_def_id_to_hir_id(ldid);
+    let hir_id = acx.tcx().local_def_id_to_hir_id(ldid);
     let hir_sig = acx
         .tcx()
         .hir()
@@ -773,7 +775,7 @@ pub fn gen_ty_rewrites<'tcx>(
         v.handle_ty(output_rw_lty, hir_ty);
     }
 
-    let hir_body_id = acx.tcx().hir().body_owned_by(ldid);
+    let hir_body_id = acx.tcx().hir().body_owned_by(ldid).id();
     let body = acx.tcx().hir().body(hir_body_id);
     intravisit::Visitor::visit_body(&mut v, body);
 
@@ -792,9 +794,9 @@ pub fn gen_generics_rws<'p, 'tcx>(
     let mut first_generic_const_span: Option<Span> = None;
 
     for predicate in generics.predicates {
-        let predicate_span = predicate.span();
-        if matches!(predicate, WherePredicate::RegionPredicate(_))
-            && !predicate.in_where_clause()
+        let predicate_span = predicate.span;
+        if matches!(predicate.kind, WherePredicateKind::RegionPredicate(_))
+            && !predicate.kind.in_where_clause()
             && (last_lifetime_span.is_none()
                 || last_lifetime_span.unwrap().hi() < predicate_span.hi())
         {
@@ -877,8 +879,8 @@ pub fn gen_adt_ty_rewrites<'tcx>(
     let field_ltys = &gacx.field_ltys;
 
     let (field_defs, generics) = match item.kind {
-        ItemKind::Struct(VariantData::Struct(ref fd, _), ref g) => (fd, g),
-        ItemKind::Union(VariantData::Struct(ref fd, _), ref g) => (fd, g),
+        ItemKind::Struct(VariantData::Struct { fields: ref fd, .. }, ref g) => (fd, g),
+        ItemKind::Union(VariantData::Struct { fields: ref fd, .. }, ref g) => (fd, g),
         ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Union(..) => {
             warn!("unsupported item kind {:?}", item.kind);
             return Vec::new();
@@ -963,11 +965,6 @@ pub fn dump_rewritten_local_tys<'tcx>(
             &acx.gacx.adt_metadata,
         );
         let ty = mk_rewritten_ty(rw_lcx, rw_lty);
-        debug!(
-            "{:?} ({}): {:?}",
-            local,
-            describe_local(acx.tcx(), decl),
-            ty
-        );
+        debug!("{:?} ({}): {}", local, describe_local(acx.tcx(), decl), ty);
     }
 }

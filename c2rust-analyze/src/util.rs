@@ -1,22 +1,23 @@
 use crate::labeled_ty::LabeledTy;
 use crate::trivial::IsTrivial;
 use log::debug;
-use rustc_ast::ast::AttrKind;
+use rustc_abi::FieldIdx;
 use rustc_const_eval::interpret::Scalar;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX};
+use rustc_hir::AttrKind;
 use rustc_middle::mir::{
-    Body, Constant, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
+    Body, ConstOperand, Local, Mutability, Operand, PlaceElem, PlaceRef, ProjectionElem, Rvalue,
 };
 use rustc_middle::ty::{
-    self, AdtDef, FnSig, GenericArg, List, SubstsRef, Ty, TyCtxt, TyKind, UintTy,
+    self, AdtDef, FnSig, GenericArg, GenericArgsRef, List, Ty, TyCtxt, TyKind, UintTy,
 };
 use rustc_span::symbol::{sym, Symbol};
-use rustc_target::abi::FieldIdx;
 use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
 #[derive(Debug)]
+#[allow(dead_code)] // Keep full type/mutability information in debug diagnostics.
 pub enum RvalueDesc<'tcx> {
     /// A pointer projection, such as `&(*x.y).z`.  The rvalue is split into a base pointer
     /// expression (in this case `x.y`) and a projection (`.z`).  The `&` and `*` are implicit.
@@ -56,10 +57,10 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
             },
             Operand::Constant(_) => return None,
         },
-        Rvalue::Ref(_, _, pl) | Rvalue::AddressOf(_, pl) => {
+        Rvalue::Ref(_, _, pl) | Rvalue::RawPtr(_, pl) => {
             let mutbl = match *rv {
                 Rvalue::Ref(_, kind, _) => kind.to_mutbl_lossy(),
-                Rvalue::AddressOf(mutbl, _) => mutbl,
+                Rvalue::RawPtr(mutbl, _) => mutbl,
                 _ => unreachable!(),
             };
             let projection = &pl.projection[..];
@@ -100,6 +101,7 @@ pub fn describe_rvalue<'tcx>(rv: &Rvalue<'tcx>) -> Option<RvalueDesc<'tcx>> {
 ///
 /// See [`Callee::UnknownDef`] for more.
 #[derive(Debug)]
+#[allow(dead_code)] // Keep full type/mutability information in debug diagnostics.
 pub enum UnknownDefCallee<'tcx> {
     /// A direct (i.e. non-`fn` ptr) call.
     Direct {
@@ -117,6 +119,7 @@ pub enum UnknownDefCallee<'tcx> {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)] // Keep full type/mutability information in debug diagnostics.
 pub enum Callee<'tcx> {
     /// A [`Trivial`] library function is one that has no effect on pointer permissions in its caller.
     ///
@@ -164,7 +167,7 @@ pub enum Callee<'tcx> {
     /// * is non-builtin
     LocalDef {
         def_id: DefId,
-        substs: SubstsRef<'tcx>,
+        substs: GenericArgsRef<'tcx>,
     },
 
     /// `<*mut T>::offset` or `<*const T>::offset`.
@@ -216,7 +219,7 @@ pub enum Callee<'tcx> {
 pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
     let is_trivial = || {
         let is_trivial = ty.fn_sig(tcx).is_trivial(tcx);
-        debug!("{ty:?} is trivial: {is_trivial}");
+        debug!("{ty} is trivial: {is_trivial}");
         is_trivial
     };
 
@@ -240,11 +243,11 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
                 }
             }
         }
-        ty::FnPtr(fn_sig) => {
+        ty::FnPtr(fn_sig, header) => {
             if is_trivial() {
                 Callee::Trivial
             } else {
-                let fn_sig = fn_sig.skip_binder();
+                let fn_sig = fn_sig.with(header).skip_binder();
                 Callee::UnknownDef(UnknownDefCallee::Indirect { ty, fn_sig })
             }
         }
@@ -255,7 +258,7 @@ pub fn ty_callee<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> Callee<'tcx> {
 fn builtin_callee<'tcx>(
     tcx: TyCtxt<'tcx>,
     did: DefId,
-    substs: SubstsRef<'tcx>,
+    substs: GenericArgsRef<'tcx>,
 ) -> Option<Callee<'tcx>> {
     let name = tcx.item_name(did);
 
@@ -269,9 +272,9 @@ fn builtin_callee<'tcx>(
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = tcx.type_of(parent_did).subst(tcx, substs);
+            let parent_impl_ty = tcx.type_of(parent_did).instantiate(tcx, substs);
             let (pointee_ty, mutbl) = match parent_impl_ty.kind() {
-                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
+                TyKind::RawPtr(ty, mutbl) => (*ty, *mutbl),
                 _ => return None,
             };
             Some(Callee::PtrOffset { pointee_ty, mutbl })
@@ -286,11 +289,11 @@ fn builtin_callee<'tcx>(
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = tcx.type_of(parent_did).subst(tcx, substs);
+            let parent_impl_ty = tcx.type_of(parent_did).instantiate(tcx, substs);
             let elem_ty = match *parent_impl_ty.kind() {
                 TyKind::Array(ty, _) => ty,
                 TyKind::Slice(ty) => ty,
-                TyKind::Str => tcx.mk_mach_uint(UintTy::U8),
+                TyKind::Str => tcx.types.u8,
                 _ => return None,
             };
             let mutbl = match name {
@@ -356,9 +359,9 @@ fn builtin_callee<'tcx>(
             if tcx.impl_trait_ref(parent_did).is_some() {
                 return None;
             }
-            let parent_impl_ty = tcx.type_of(parent_did).subst(tcx, substs);
+            let parent_impl_ty = tcx.type_of(parent_did).instantiate(tcx, substs);
             let (_pointee_ty, _mutbl) = match parent_impl_ty.kind() {
-                TyKind::RawPtr(tm) => (tm.ty, tm.mutbl),
+                TyKind::RawPtr(ty, mutbl) => (ty, mutbl),
                 _ => return None,
             };
             Some(Callee::IsNull)
@@ -439,12 +442,15 @@ pub fn lty_project<'tcx, L: Debug>(
         ProjectionElem::Subslice { .. } => todo!("type_of Subslice"),
         ProjectionElem::Downcast(..) => todo!("type_of Downcast"),
         ProjectionElem::OpaqueCast(_) => todo!("type_of OpaqueCast"),
+        ProjectionElem::Subtype(_) => {
+            unreachable!("Subtype is introduced after borrow checking; analysis consumes built MIR")
+        }
     }
 }
 
-/// Check if a [`Constant`] is an integer constant that can be casted to a null pointer.
-pub fn is_null_const(constant: Constant) -> bool {
-    match constant.literal.try_to_scalar() {
+/// Check if a [`ConstOperand`] is an integer constant that can be casted to a null pointer.
+pub fn is_null_const(constant: ConstOperand) -> bool {
+    match constant.const_.try_to_scalar() {
         Some(Scalar::Int(i)) => i.is_null(),
         _ => false,
     }
@@ -515,7 +521,13 @@ pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
     let one_way_transmutable = || match *from.kind() {
         ty::Array(from, n) => {
             is_transmutable_to(from, to) && {
-                let is_zero = n.kind().try_to_scalar_int().unwrap().is_null();
+                let is_zero = n
+                    .try_to_valtree()
+                    .unwrap()
+                    .0
+                    .try_to_scalar_int()
+                    .unwrap()
+                    .is_null();
                 !is_zero
             }
         }
@@ -536,8 +548,8 @@ pub fn is_transmutable_to<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> bool {
 ///
 /// See [`is_transmutable_to`] for the definition of safe transmutability.
 pub fn is_transmutable_ptr_cast<'tcx>(from: Ty<'tcx>, to: Ty<'tcx>) -> Option<bool> {
-    let from = from.builtin_deref(true)?.ty;
-    let to = to.builtin_deref(true)?.ty;
+    let from = from.builtin_deref(true)?;
+    let to = to.builtin_deref(true)?;
     Some(is_transmutable_to(from, to))
 }
 
@@ -581,14 +593,14 @@ pub fn has_test_attr(tcx: TyCtxt, ldid: LocalDefId, attr: TestAttr) -> bool {
 
     for attr in tcx.get_attrs_unchecked(ldid.to_def_id()) {
         let path = match attr.kind {
-            AttrKind::Normal(ref item) => &item.item.path,
+            AttrKind::Normal(ref item) => &item.path,
             AttrKind::DocComment(..) => continue,
         };
         let (a, b) = match &path.segments[..] {
             &[ref a, ref b] => (a, b),
             _ => continue,
         };
-        if a.ident.name == tool_sym && b.ident.name == name_sym {
+        if a.name == tool_sym && b.name == name_sym {
             return true;
         }
     }
@@ -601,4 +613,28 @@ pub fn is_automatically_derived<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> b
     tcx.opt_parent(body.source.def_id())
         .map(|parent_def_id| tcx.has_attr(parent_def_id, sym::automatically_derived))
         .unwrap_or(false)
+}
+
+/// The destination of a tail call is the enclosing function's return place:
+/// its arguments and return value have the same dataflow as a final call.
+pub fn call_parts<'a, 'tcx>(
+    kind: &'a rustc_middle::mir::TerminatorKind<'tcx>,
+) -> Option<(
+    &'a Operand<'tcx>,
+    &'a [rustc_span::source_map::Spanned<Operand<'tcx>>],
+    rustc_middle::mir::Place<'tcx>,
+)> {
+    use rustc_middle::mir::{Place, TerminatorKind, RETURN_PLACE};
+    match kind {
+        TerminatorKind::Call {
+            func,
+            args,
+            destination,
+            ..
+        } => Some((func, args, *destination)),
+        TerminatorKind::TailCall { func, args, .. } => {
+            Some((func, args, Place::from(RETURN_PLACE)))
+        }
+        _ => None,
+    }
 }

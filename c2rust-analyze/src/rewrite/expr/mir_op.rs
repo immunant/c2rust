@@ -401,8 +401,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
     fn lty_to_rewritten_str(&self, lty: LTy<'tcx>) -> (Ty<'tcx>, String) {
         let rewritten_ty = self.rewrite_lty(lty);
         let tcx = self.acx.tcx();
-        let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
-        let s = rewritten_ty.print(printer).unwrap().into_buffer();
+        let mut printer = FmtPrinter::new(tcx, Namespace::TypeNS);
+        rewritten_ty.print(&mut printer).unwrap();
+        let s = printer.into_buffer();
         (rewritten_ty, s)
     }
 
@@ -600,7 +601,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             StatementKind::Coverage(..) => {}
             StatementKind::ConstEvalCounter => {}
             StatementKind::Intrinsic(..) => todo!("statement {:?}", stmt),
-            StatementKind::Nop => {}
+            // This marker only drives the Rust-2024 temporary lifetime lint;
+            // the compiler specifies that it has no runtime effect.
+            StatementKind::BackwardIncompatibleDropHint { .. } | StatementKind::Nop => {}
         }
     }
 
@@ -613,9 +616,14 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
         match term.kind {
             TerminatorKind::Goto { .. } => {}
             TerminatorKind::SwitchInt { .. } => {}
-            TerminatorKind::Resume => {}
-            TerminatorKind::Terminate => {}
+            TerminatorKind::UnwindResume => {}
+            TerminatorKind::UnwindTerminate(_) => {}
             TerminatorKind::Return => {}
+            TerminatorKind::TailCall { .. } => {
+                // Return casts and shims cannot preserve an explicit tail call.
+                // Mark the function fixed using the normal propagation path.
+                self.err(DontRewriteFnReason::EXPLICIT_TAIL_CALL);
+            }
             TerminatorKind::Unreachable => {}
             TerminatorKind::Drop { .. } => {}
             // Former `DropAndReplace` assignments are visited as ordinary statements.
@@ -632,10 +640,10 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 // Special cases for particular functions.
                 match ty_callee(tcx, func_ty) {
                     Callee::PtrOffset { .. } => {
-                        self.visit_ptr_offset(&args[0], pl_ty);
+                        self.visit_ptr_offset(&args[0].node, pl_ty);
                     }
                     Callee::SliceAsPtr { elem_ty, .. } => {
-                        self.visit_slice_as_ptr(elem_ty, &args[0], pl_ty);
+                        self.visit_slice_as_ptr(elem_ty, &args[0].node, pl_ty);
                     }
 
                     Callee::LocalDef { def_id, substs: _ } => {
@@ -644,7 +652,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             self.enter_rvalue(|v| {
                                 for (i, op) in args.iter().enumerate() {
                                     if let Some(&lty) = lsig.inputs.get(i) {
-                                        v.enter_call_arg(i, |v| v.visit_operand(op, Some(lty)));
+                                        v.enter_call_arg(i, |v| {
+                                            v.visit_operand(&op.node, Some(lty))
+                                        });
                                     } else {
                                         // This is a call to a variadic function, and we've gone
                                         // past the end of the declared arguments.
@@ -672,9 +682,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             // be the same, and the pointee type must implement `Copy`.  If these
                             // conditions don't hold, leave the `memcpy` call intact and emit casts
                             // back to `void*` on the `dest` and `src` arguments.
-                            let dest_lty = v.acx.type_of(&args[0]);
+                            let dest_lty = v.acx.type_of(&args[0].node);
                             let dest_pointee = v.pointee_lty(dest_lty);
-                            let src_lty = v.acx.type_of(&args[1]);
+                            let src_lty = v.acx.type_of(&args[1].node);
                             let src_pointee = v.pointee_lty(src_lty);
                             let common_pointee = dest_pointee.filter(|&x| Some(x) == src_pointee);
                             let pointee_lty = match common_pointee {
@@ -703,7 +713,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             if !pl_ty.label.is_none()
                                 && v.perms[pl_ty.label].intersects(PermissionSet::USED)
                             {
-                                let dest_lty = v.acx.type_of(&args[0]);
+                                let dest_lty = v.acx.type_of(&args[0].node);
                                 // TODO: The result of `MemcpySafe` is always a slice, so this cast
                                 // may be using an incorrect input type.  See the comment on the
                                 // `MemcpySafe` case of `rewrite::expr::convert` for details.
@@ -719,7 +729,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             // rewritten to a safe reference type.  If these conditions don't hold,
                             // leave the `memset` call intact and emit casts back to `void*` on the
                             // `dest` argument.
-                            let dest_lty = v.acx.type_of(&args[0]);
+                            let dest_lty = v.acx.type_of(&args[0].node);
                             let dest_pointee = v.pointee_lty(dest_lty);
                             let pointee_lty = match dest_pointee {
                                 Some(x) => x,
@@ -746,7 +756,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                             if !pl_ty.label.is_none()
                                 && v.perms[pl_ty.label].intersects(PermissionSet::USED)
                             {
-                                let dest_lty = v.acx.type_of(&args[0]);
+                                let dest_lty = v.acx.type_of(&args[0].node);
                                 v.emit_cast_lty_lty(dest_lty, pl_ty, true);
                             }
                         });
@@ -754,7 +764,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                     Callee::IsNull => {
                         self.enter_rvalue(|v| {
-                            let arg_lty = v.acx.type_of(&args[0]);
+                            let arg_lty = v.acx.type_of(&args[0].node);
                             if !v.flags[arg_lty.label].contains(FlagSet::FIXED) {
                                 let arg_non_null =
                                     v.perms[arg_lty.label].contains(PermissionSet::NON_NULL);
@@ -846,7 +856,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                     Callee::Free => {
                         self.enter_rvalue(|v| {
-                            let src_lty = v.acx.type_of(&args[0]);
+                            let src_lty = v.acx.type_of(&args[0].node);
                             let src_pointee = v.pointee_lty(src_lty);
                             if src_pointee.is_none() {
                                 // TODO: emit void* cast before bailing out
@@ -879,7 +889,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
 
                     ref callee @ Callee::Realloc => {
                         self.enter_rvalue(|v| {
-                            let src_lty = v.acx.type_of(&args[0]);
+                            let src_lty = v.acx.type_of(&args[0].node);
                             let src_pointee = v.pointee_lty(src_lty);
                             let dest_lty = v.acx.type_of(destination);
                             let dest_pointee = v.pointee_lty(dest_lty);
@@ -972,7 +982,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             }
             TerminatorKind::Assert { .. } => {}
             TerminatorKind::Yield { .. } => {}
-            TerminatorKind::GeneratorDrop => {}
+            TerminatorKind::CoroutineDrop => {}
             TerminatorKind::FalseEdge { .. } => {}
             TerminatorKind::FalseUnwind { .. } => {}
             TerminatorKind::InlineAsm { .. } => todo!("terminator {:?}", term),
@@ -992,8 +1002,12 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             }
             Rvalue::Ref(_rg, kind, pl) => {
                 let mutbl = match kind {
+                    BorrowKind::Shared
+                    | BorrowKind::Fake(_)
+                    | BorrowKind::Mut {
+                        kind: rustc_middle::mir::MutBorrowKind::ClosureCapture,
+                    } => false,
                     BorrowKind::Mut { .. } => true,
-                    BorrowKind::Shared | BorrowKind::Shallow | BorrowKind::Unique => false,
                 };
                 self.enter_rvalue_place(0, |v| {
                     v.visit_place(pl, PlaceAccess::from_bool(mutbl), RequireSinglePointer::No)
@@ -1010,7 +1024,7 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             Rvalue::ThreadLocalRef(_def_id) => {
                 // TODO
             }
-            Rvalue::AddressOf(mutbl, pl) => {
+            Rvalue::RawPtr(mutbl, pl) => {
                 self.enter_rvalue_place(0, |v| {
                     v.visit_place(pl, PlaceAccess::from_mutbl(mutbl), RequireSinglePointer::No)
                 });
@@ -1033,11 +1047,6 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                         self.emit(RewriteKind::OptionSome);
                     }
                 }
-            }
-            Rvalue::Len(pl) => {
-                self.enter_rvalue_place(0, |v| {
-                    v.visit_place(pl, PlaceAccess::Imm, RequireSinglePointer::No)
-                });
             }
             Rvalue::Cast(_kind, ref op, ty) => {
                 if util::is_null_const_operand(op) && ty.is_unsafe_ptr() {
@@ -1084,10 +1093,6 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
                 }
             }
             Rvalue::BinaryOp(_bop, ref ops) => {
-                self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
-                self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1, None));
-            }
-            Rvalue::CheckedBinaryOp(_bop, ref ops) => {
                 self.enter_rvalue_operand(0, |v| v.visit_operand(&ops.0, None));
                 self.enter_rvalue_operand(1, |v| v.visit_operand(&ops.1, None));
             }
@@ -1271,6 +1276,9 @@ impl<'a, 'tcx> ExprRewriteVisitor<'a, 'tcx> {
             }
             PlaceElem::Downcast(_, _) => {}
             PlaceElem::OpaqueCast(_) => {}
+            PlaceElem::Subtype(_) => unreachable!(
+                "Subtype is introduced after borrow checking; rewriting consumes built MIR"
+            ),
         }
     }
 
@@ -1441,11 +1449,9 @@ impl ZeroizeType {
                     fields.push((name, zero));
                 }
 
-                let name_printer = FmtPrinter::new(tcx, Namespace::ValueNS);
-                let name = name_printer
-                    .print_value_path(adt_def.did(), &[])
-                    .unwrap()
-                    .into_buffer();
+                let mut name_printer = FmtPrinter::new(tcx, Namespace::ValueNS);
+                name_printer.print_value_path(adt_def.did(), &[]).unwrap();
+                let name = name_printer.into_buffer();
 
                 ZeroizeType::Struct(name, fields)
             }
@@ -1481,11 +1487,9 @@ impl ZeroizeType {
                     fields.push((name, zero));
                 }
 
-                let name_printer = FmtPrinter::new(acx.tcx(), Namespace::ValueNS);
-                let name = name_printer
-                    .print_value_path(adt_def.did(), &[])
-                    .unwrap()
-                    .into_buffer();
+                let mut name_printer = FmtPrinter::new(acx.tcx(), Namespace::ValueNS);
+                name_printer.print_value_path(adt_def.did(), &[]).unwrap();
+                let name = name_printer.into_buffer();
 
                 ZeroizeType::Struct(name, fields)
             }
@@ -1899,8 +1903,9 @@ where
                     Some(Ownership::Mut)
                 }
                 Ownership::Cell if !early => {
-                    let printer = FmtPrinter::new(self.tcx, Namespace::TypeNS);
-                    let ty = to.pointee_ty.print(printer).unwrap().into_buffer();
+                    let mut printer = FmtPrinter::new(self.tcx, Namespace::TypeNS);
+                    to.pointee_ty.print(&mut printer).unwrap();
+                    let ty = printer.into_buffer();
                     (self.emit)(RewriteKind::CastRawMutToCellPtr { ty });
                     (self.emit)(RewriteKind::UnsafeCastRawToRef { mutbl: false });
                     Some(Ownership::Cell)

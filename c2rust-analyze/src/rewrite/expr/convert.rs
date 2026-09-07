@@ -10,7 +10,7 @@ use rustc_hir::def::Namespace;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{ExprKind, HirId};
 use rustc_middle::hir::nested_filter;
-use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCast};
+use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, PointerCoercion};
 use rustc_middle::ty::print::{FmtPrinter, Print};
 use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeckResults};
 use rustc_span::Span;
@@ -93,14 +93,19 @@ impl<'tcx> ConvertVisitor<'tcx> {
             (&AssignOp(_, l, _), 0) => l,
             (&AssignOp(_, _, r), 1) => r,
             (&Field(e, _), 0) => e,
-            (&Index(arr, _), 0) => arr,
-            (&Index(_, e_idx), 1) => e_idx,
+            (&Index(arr, _, _), 0) => arr,
+            (&Index(_, e_idx, _), 1) => e_idx,
             (&AddrOf(_, _, e), 0) => e,
             (&Break(_, Some(e)), 0) => e,
             (&Ret(Some(e)), 0) => e,
             (&Struct(_, flds, base), i) => {
                 if i == flds.len() {
-                    base.unwrap()
+                    match base {
+                        hir::StructTailExpr::Base(base) => base,
+                        hir::StructTailExpr::None | hir::StructTailExpr::DefaultFields(_) => {
+                            panic!("struct expression has no base subexpression")
+                        }
+                    }
                 } else {
                     flds[i].expr
                 }
@@ -708,20 +713,23 @@ fn apply_adjustment<'tcx>(
 ) -> Rewrite {
     match adjustment.kind {
         Adjust::NeverToAny => rw,
+        Adjust::ReborrowPin(mutbl) => reborrow_pin(mutbl, rw),
         Adjust::Deref(_) => Rewrite::Deref(Box::new(rw)),
-        Adjust::Borrow(AutoBorrow::Ref(_, mutbl)) => Rewrite::Ref(Box::new(rw), mutbl.into()),
+        Adjust::Borrow(AutoBorrow::Ref(mutbl)) => Rewrite::Ref(Box::new(rw), mutbl.into()),
         Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => Rewrite::AddrOf(Box::new(rw), mutbl),
-        Adjust::Pointer(PointerCast::Unsize) | Adjust::Pointer(PointerCast::MutToConstPointer) => {
+        Adjust::Pointer(PointerCoercion::Unsize)
+        | Adjust::Pointer(PointerCoercion::MutToConstPointer) => {
             let target_ty = adjustment.target;
             let print_ty = |ty: Ty<'tcx>| -> String {
-                let printer = FmtPrinter::new(tcx, Namespace::TypeNS);
-                ty.print(printer).unwrap().into_buffer()
+                let mut printer = FmtPrinter::new(tcx, Namespace::TypeNS);
+                ty.print(&mut printer).unwrap();
+                printer.into_buffer()
             };
             // Use structured rewrites where possible.
             // TODO: this should operate recursively and handle more cases
             let ty_rw = match *target_ty.kind() {
-                TyKind::RawPtr(tm) => {
-                    Rewrite::TyPtr(Box::new(Rewrite::Print(print_ty(tm.ty))), tm.mutbl)
+                TyKind::RawPtr(pointee, mutbl) => {
+                    Rewrite::TyPtr(Box::new(Rewrite::Print(print_ty(pointee))), mutbl)
                 }
                 TyKind::Ref(_, ty, mutbl) => Rewrite::TyRef(
                     LifetimeName::Elided,
@@ -733,8 +741,28 @@ fn apply_adjustment<'tcx>(
             Rewrite::Cast(Box::new(rw), Box::new(ty_rw))
         }
         Adjust::Pointer(cast) => todo!("Adjust::Pointer({:?})", cast),
-        Adjust::DynStar => todo!("Adjust::DynStar"),
     }
+}
+
+fn reborrow_pin(mutbl: hir::Mutability, rw: Rewrite) -> Rewrite {
+    // Keep a coercion site after enclosing expressions are rewritten. The
+    // compiler reborrows Pin's reference field directly, even through an
+    // immutable binding; `p.as_mut()` would instead require `p` to be mutable.
+    // An annotated initializer requests exactly the same pin_ergonomics
+    // coercion without moving `p` or naming its private field. The binding is
+    // scoped after its initializer, so it cannot shadow names inside `rw`.
+    let mutability = if mutbl == hir::Mutability::Mut {
+        "mut "
+    } else {
+        ""
+    };
+    Rewrite::Block(
+        vec![Rewrite::Let1(
+            format!("__c2rust_pin: ::core::pin::Pin<&{mutability}_>"),
+            Box::new(rw),
+        )],
+        Some(Box::new(Rewrite::Text("__c2rust_pin".into()))),
+    )
 }
 
 enum AdjustmentStep {
@@ -754,7 +782,7 @@ fn materialize_adjustments<'tcx>(
         // reference type appropriate for the pointer's uses.  However, we still want to give
         // `callback` a chance to remove the cast itself so that if there's a `RemoveCast` rewrite
         // on this adjustment, we don't get an error about it failing to apply.
-        (mut hir_rw, &[Adjust::Pointer(PointerCast::MutToConstPointer)]) => {
+        (mut hir_rw, &[Adjust::Pointer(PointerCoercion::MutToConstPointer)]) => {
             hir_rw = callback(AdjustmentStep::Before(0), hir_rw);
             hir_rw = Rewrite::RemovedCast(Box::new(hir_rw));
             hir_rw = callback(AdjustmentStep::After(0), hir_rw);
@@ -1058,4 +1086,68 @@ pub fn convert_rewrites(
         .filter(|&(hir_id, _)| !subsumed.contains(&hir_id))
         .map(|(_, (span, rw))| (span, rw))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pin_adjustment_reborrows_an_immutable_binding() {
+        let mutable = reborrow_pin(hir::Mutability::Mut, Rewrite::Text("p".into()));
+        let shared = reborrow_pin(hir::Mutability::Not, Rewrite::Text("p".into()));
+        let source = format!(
+            r#"
+#![feature(pin_ergonomics)]
+#![allow(incomplete_features)]
+use std::pin::Pin;
+fn update(mut p: Pin<&mut i32>) {{ *p += 1; }}
+fn read(p: Pin<&i32>) -> i32 {{ *p }}
+fn exercise(p: Pin<&mut i32>) -> i32 {{
+    update({mutable});
+    update({mutable});
+    read({shared})
+}}
+fn main() {{
+    let mut value = 7;
+    assert_eq!(exercise(Pin::new(&mut value)), 9);
+    assert_eq!(value, 9);
+}}
+"#
+        );
+        struct Scratch(std::path::PathBuf);
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let dir = Scratch(
+            std::env::temp_dir().join(format!("c2rust-pin-adjustment-{}", std::process::id())),
+        );
+        std::fs::create_dir_all(&dir.0).unwrap();
+        let path = dir.0.join("pin.rs");
+        std::fs::write(&path, &source).unwrap();
+        let compiler = c2rust_build_paths::SysRoot::resolve()
+            .sysroot()
+            .join("bin/rustc");
+        for edition in [2021, 2024] {
+            let binary = dir.0.join(format!("pin-{edition}"));
+            let output = std::process::Command::new(&compiler)
+                .arg(&path)
+                .arg(format!("--edition={edition}"))
+                .args(["-D", "warnings", "-o"])
+                .arg(&binary)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{source}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(std::process::Command::new(binary)
+                .status()
+                .unwrap()
+                .success());
+        }
+    }
 }

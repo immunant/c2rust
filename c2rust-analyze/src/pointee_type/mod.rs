@@ -5,7 +5,7 @@ mod constraint_set;
 mod solve;
 mod type_check;
 
-pub use self::constraint_set::{CTy, Constraint, ConstraintSet, VarTable};
+pub use self::constraint_set::{ConstraintSet, VarTable};
 pub use self::solve::{solve_constraints, PointeeTypes};
 
 pub fn generate_constraints<'tcx>(

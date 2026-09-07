@@ -39,7 +39,7 @@ impl<'tcx> AnnotationBuffer<'tcx> {
         let pos = span.lo();
         let file_idx = sm.lookup_source_file_idx(pos);
         let sf = &sm.files()[file_idx];
-        let line = sf.lookup_line(pos).unwrap_or(0);
+        let line = sf.lookup_line(sf.relative_position(pos)).unwrap_or(0);
 
         let src = sm
             .span_to_snippet(span)
