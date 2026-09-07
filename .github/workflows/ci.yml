@@ -73,10 +73,18 @@ jobs:
           export RUSTDOCFLAGS="-D warnings"
           cargo fmt --check
 
+      # The cache action skips refreshing APT indexes on GitHub runners.
+      # Refresh before it resolves package versions to avoid stale download URLs.
+      - name: Update APT package indexes
+        if: runner.os == 'Linux'
+        run: sudo apt-get update
+
       - name: Install packages (Ubuntu)
         if: runner.os == 'Linux'
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
+          # Bypass empty caches saved after failed package downloads.
+          version: 2
           packages: |
             clang
             clang-tools
