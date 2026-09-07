@@ -342,7 +342,6 @@ pub unsafe extern "C" fn stmt_expr_inc() -> ::core::ffi::c_int {
     let mut b: *mut ::core::ffi::c_int = &raw mut a;
     ({
         *b += 1;
-        *b;
     });
     return ({
         *b += 1;
