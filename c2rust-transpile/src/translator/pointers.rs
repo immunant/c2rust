@@ -32,7 +32,7 @@ impl<'c> Translation<'c> {
             // Array subscript functions as a deref too.
             &CExprKind::ArraySubscript(_, lhs, rhs, _) => {
                 return self.convert_array_subscript(
-                    ctx.used().needs_address(),
+                    ctx.needs_address(),
                     Some(cqual_type),
                     lhs,
                     rhs,
@@ -47,7 +47,7 @@ impl<'c> Translation<'c> {
             _ => (),
         }
 
-        let val = self.convert_expr(ctx.used().needs_address(), arg, None)?;
+        let val = self.convert_expr(ctx.needs_address(), arg, None)?;
 
         // & becomes a no-op when applied to a function.
         if self.ast_context.is_function_pointer(cqual_type.ctype) {
@@ -198,10 +198,10 @@ impl<'c> Translation<'c> {
         let arg_expr_kind = &self.ast_context.index_unwrap_parens(arg).kind;
 
         if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
-            return self.convert_expr(ctx.used(), arg, None);
+            return self.convert_expr(ctx, arg, None);
         }
 
-        self.convert_expr(ctx.used().not_needs_address(), arg, None)?
+        self.convert_expr(ctx.not_needs_address(), arg, None)?
             .try_map(|val: Box<Expr>| {
                 if let CTypeKind::Function(..) =
                     self.ast_context.resolve_type(cqual_type.ctype).kind
@@ -291,13 +291,13 @@ impl<'c> Translation<'c> {
                 ref other => panic!("Unexpected array type {:?}", other),
             };
 
-            let array_rs = self.convert_expr(ctx.used().not_needs_address(), array_id, None)?;
+            let array_rs = self.convert_expr(ctx.not_needs_address(), array_id, None)?;
 
             // Don't dereference the offset if we're still within the variable portion
             let val = if let Some(elt_type_id) = var_elt_type_id {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
                 let offset_rs = self.convert_expr_with_cast(
-                    ctx.used().not_needs_address(),
+                    ctx.not_needs_address(),
                     CQualTypeId::new(target_type_id),
                     offset_id,
                 )?;
@@ -307,7 +307,7 @@ impl<'c> Translation<'c> {
             } else {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
                 let offset_rs = self.convert_expr_with_cast(
-                    ctx.used().not_needs_address(),
+                    ctx.not_needs_address(),
                     CQualTypeId::new(target_type_id),
                     offset_id,
                 )?;
@@ -332,10 +332,10 @@ impl<'c> Translation<'c> {
 
             // LHS must be ref decayed for the offset method call's self param
             let pointer_rs =
-                self.convert_expr(ctx.used().not_needs_address().decay_ref(), pointer_id, None)?;
+                self.convert_expr(ctx.not_needs_address().decay_ref(), pointer_id, None)?;
             let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
             let offset_rs = self.convert_expr_with_cast(
-                ctx.used().not_needs_address(),
+                ctx.not_needs_address(),
                 CQualTypeId::new(target_type_id),
                 offset_id,
             )?;

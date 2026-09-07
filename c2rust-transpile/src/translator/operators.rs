@@ -575,7 +575,7 @@ impl<'c> Translation<'c> {
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let expr_type_id = expected_type_id.unwrap_or(result_type_id);
-        let mut unary = match op {
+        match op {
             CUnOp::AddressOf => self.convert_address_of(ctx, expr_type_id, arg),
 
             CUnOp::PreIncrement
@@ -586,46 +586,22 @@ impl<'c> Translation<'c> {
             }
 
             CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg),
-            CUnOp::Plus => self.convert_expr(ctx.used(), arg, expected_type_id), // promotion is explicit in the clang AST
+            CUnOp::Plus => self.convert_expr(ctx, arg, expected_type_id), // promotion is explicit in the clang AST
 
             CUnOp::Negate => self.convert_negate_operator(ctx, expr_type_id, arg),
             CUnOp::Complement => Ok(self
-                .convert_expr(ctx.used(), arg, expected_type_id)?
+                .convert_expr(ctx, arg, expected_type_id)?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
             CUnOp::Not => {
-                let val = self.convert_condition(ctx.used(), false, arg)?;
+                let val = self.convert_condition(ctx, false, arg)?;
                 Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
             }
-            CUnOp::Extension => {
-                let arg = self.convert_expr(ctx, arg, expected_type_id)?;
-                Ok(arg)
-            }
+            CUnOp::Extension => self.convert_expr(ctx, arg, expected_type_id),
             CUnOp::Real | CUnOp::Imag | CUnOp::Coawait => {
                 panic!("Unsupported extension operator")
             }
-        }?;
-
-        // Some unused unary operators (`-foo()`) may have side effects, so we need
-        // to add them to stmts when name is not increment/decrement operator.
-        //
-        // `UnOp::Extension` (`__extension__`) is another exception since
-        // it's a no-op around the inner expression.
-        if !matches!(
-            op,
-            CUnOp::PreDecrement
-                | CUnOp::PreIncrement
-                | CUnOp::PostDecrement
-                | CUnOp::PostIncrement
-                | CUnOp::Extension
-        ) {
-            unary = self.convert_side_effects_expr(
-                ctx,
-                unary,
-                "Unary expression is not supposed to be used",
-            );
         }
-        Ok(unary)
     }
 
     fn convert_indecrement_operator(
@@ -745,7 +721,7 @@ impl<'c> Translation<'c> {
             let val = self.mk_int_lit(ctx, expr_type_id, val, base, true)?;
             Ok(WithStmts::new_val(val))
         } else {
-            let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
+            let val = self.convert_expr(ctx, arg_id, Some(expr_type_id))?;
             let val = val.map(|val| {
                 if is_unsigned_integral_type {
                     wrapping_neg_expr(val)
