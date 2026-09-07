@@ -29,7 +29,7 @@ pub fn token_to_string(token: &Token) -> String {
 // The compiler's AST printer recursively prints macro and attribute token streams.
 // Materialize interpolations in a print-only copy, including nested macro calls.
 // The real AST keeps its spans, hygiene, NodeIds, and interpolated fragments.
-fn printable_tokens(tokens: &TokenStream) -> TokenStream {
+fn printable_tokens(tokens: &TokenStream, prepare: &mut Prepare) -> TokenStream {
     tokens
         .iter()
         .map(|tree| match tree {
@@ -37,10 +37,15 @@ fn printable_tokens(tokens: &TokenStream) -> TokenStream {
                 // ParseSess inherits the root expansion's edition. The span
                 // override below keeps the fragment's original span; this
                 // temporary SourceMap is used only to lex print-only tokens.
-                let session = ParseSess::new(vec![]);
-                let source = token_to_string(token);
+                let source = match &token.kind {
+                    TokenKind::Interpolated(nt) => print_nonterminal(nt.as_ref().clone(), prepare),
+                    _ => pprust::token_to_string(token).into_owned(),
+                };
+                let session = prepare
+                    .session
+                    .get_or_insert_with(|| ParseSess::new(vec![]));
                 let parsed = rustc_parse::unwrap_or_emit_fatal(rustc_parse::source_str_to_stream(
-                    &session,
+                    session,
                     FileName::macro_expansion_source_code(&source),
                     source,
                     Some(token.span),
@@ -58,49 +63,74 @@ fn printable_tokens(tokens: &TokenStream) -> TokenStream {
             }
             TokenTree::Token(..) => tree.clone(),
             TokenTree::Delimited(span, spacing, delim, inner) => {
-                TokenTree::Delimited(*span, *spacing, *delim, printable_tokens(inner))
+                TokenTree::Delimited(*span, *spacing, *delim, printable_tokens(inner, prepare))
             }
         })
         .collect()
 }
 
-struct Prepare;
+#[derive(Default)]
+struct Prepare {
+    // Allocate only when a fragment needs lexing, and share it across all
+    // nested token streams and interpolations in this print operation.
+    session: Option<ParseSess>,
+    has_empty_binders: bool,
+}
 
 impl MutVisitor for Prepare {
+    fn visit_ty(&mut self, ty: &mut P<Ty>) {
+        self.has_empty_binders |= matches!(
+            &ty.kind,
+            TyKind::UnsafeBinder(binder) if binder.generic_params.is_empty()
+        );
+        mut_visit::walk_ty(self, ty);
+    }
+
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mut_visit::walk_mac(self, mac);
-        mac.args.tokens = printable_tokens(&mac.args.tokens);
+        mac.args.tokens = printable_tokens(&mac.args.tokens, self);
     }
 
     fn visit_macro_def(&mut self, def: &mut MacroDef) {
         mut_visit::walk_macro_def(self, def);
-        def.body.tokens = printable_tokens(&def.body.tokens);
+        def.body.tokens = printable_tokens(&def.body.tokens, self);
     }
 
     fn visit_attribute(&mut self, attr: &mut Attribute) {
         mut_visit::walk_attribute(self, attr);
         if let AttrKind::Normal(normal) = &mut attr.kind {
-            prepare_attr_args(&mut normal.item.args);
+            prepare_attr_args(&mut normal.item.args, self);
         }
     }
 }
 
-fn prepare_attr_args(args: &mut AttrArgs) {
+fn prepare_attr_args(args: &mut AttrArgs, prepare: &mut Prepare) {
     if let AttrArgs::Delimited(args) = args {
-        args.tokens = printable_tokens(&args.tokens);
+        args.tokens = printable_tokens(&args.tokens, prepare);
     }
 }
 
 pub fn nonterminal_to_string(nt: &Nonterminal) -> String {
+    nonterminal_to_string_owned(nt.clone())
+}
+
+pub fn nonterminal_to_string_owned(nt: Nonterminal) -> String {
+    print_nonterminal(nt, &mut Prepare::default())
+}
+
+fn print_nonterminal(nt: Nonterminal, prepare: &mut Prepare) -> String {
     let mut token = Token::new(
-        TokenKind::Interpolated(rustc_data_structures::sync::Lrc::new(nt.clone())),
+        TokenKind::Interpolated(rustc_data_structures::sync::Lrc::new(nt)),
         rustc_span::DUMMY_SP,
     );
-    mut_visit::visit_token(&mut Prepare, &mut token);
+    mut_visit::visit_token(prepare, &mut token);
     let TokenKind::Interpolated(nt) = &token.kind else {
         unreachable!()
     };
-    let original = render_nonterminal(nt);
+    let original = render_nonterminal(nt, prepare);
+    if !prepare.has_empty_binders {
+        return original;
+    }
     // This compiler's print_type calls print_generic_params for UnsafeBinder,
     // which omits empty parameters and produces `unsafe T` instead of
     // `unsafe<> T`. There is no type annotation hook. Adapt only the print copy
@@ -117,7 +147,7 @@ pub fn nonterminal_to_string(nt: &Nonterminal) -> String {
     let TokenKind::Interpolated(nt) = token.kind else {
         unreachable!()
     };
-    let mut rendered = render_nonterminal(&nt);
+    let mut rendered = render_nonterminal(&nt, prepare);
     // Outer binder text may contain markers for previously visited inner
     // binders, so expand the outer markers first.
     for (marker, replacement) in binders.replacements.into_iter().rev() {
@@ -160,7 +190,7 @@ impl MutVisitor for EmptyBinders<'_> {
     }
 }
 
-fn render_nonterminal(nt: &Nonterminal) -> String {
+fn render_nonterminal(nt: &Nonterminal, prepare: &mut Prepare) -> String {
     let printer = pprust::State::new();
     match nt {
         Nonterminal::NtItem(item) => printer.item_to_string(item),
@@ -173,19 +203,19 @@ fn render_nonterminal(nt: &Nonterminal) -> String {
         Nonterminal::NtVis(vis) => printer.vis_to_string(vis),
         Nonterminal::NtMeta(meta) => {
             let mut meta = meta.clone();
-            prepare_attr_args(&mut meta.args);
+            prepare_attr_args(&mut meta.args, prepare);
             printer.attr_item_to_string(&meta)
         }
     }
 }
 
 pub fn tokens_to_string(tokens: &TokenStream) -> String {
-    pprust::tts_to_string(&printable_tokens(tokens))
+    pprust::tts_to_string(&printable_tokens(tokens, &mut Prepare::default()))
 }
 
 pub fn attribute_to_string(attr: &Attribute) -> String {
     let mut attr = attr.clone();
-    Prepare.visit_attribute(&mut attr);
+    Prepare::default().visit_attribute(&mut attr);
     pprust::attribute_to_string(&attr)
 }
 
@@ -194,7 +224,7 @@ pub fn foreign_item_to_string(item: &ForeignItem) -> String {
     // extern wrapper uses its exact foreign-item printer (including `safe`
     // statics); its first and last braces delimit the wrapper alone.
     let wrapper = crate::ast_builder::mk().foreign_items(vec![P(item.clone())]);
-    let text = nonterminal_to_string(&Nonterminal::NtItem(wrapper));
+    let text = nonterminal_to_string_owned(Nonterminal::NtItem(wrapper));
     text[text.find('{').unwrap() + 1..text.rfind('}').unwrap()]
         .trim()
         .into()
@@ -206,7 +236,7 @@ pub fn param_to_string(param: &Param) -> String {
     let decl = crate::ast_builder::mk()
         .fn_decl(vec![param.clone()], FnRetTy::Default(rustc_span::DUMMY_SP));
     let wrapper = crate::ast_builder::mk().fn_item("__c2rust_print_param", decl, None::<P<Block>>);
-    let text = nonterminal_to_string(&Nonterminal::NtItem(wrapper));
+    let text = nonterminal_to_string_owned(Nonterminal::NtItem(wrapper));
     text[text.find('(').unwrap() + 1..text.rfind(')').unwrap()]
         .trim()
         .into()

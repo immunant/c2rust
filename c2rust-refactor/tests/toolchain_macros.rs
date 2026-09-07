@@ -5,6 +5,49 @@ use common::{command, compile_and_run, refactor, Fixture, COMPILER};
 use std::fs;
 
 #[test]
+fn transformed_associated_item_macros_preserve_impl_and_trait_contexts() {
+    let _compiler = COMPILER.lock().unwrap();
+    let source = r#"
+macro_rules! methods {
+    ($value:expr) => {
+        #[cfg_attr(not(any()), inline)]
+        fn first() -> i32 { $value }
+        fn second() -> i32 { $value * 2 }
+    };
+}
+trait Values { methods!(10 + 20); }
+struct Value;
+impl Values for Value {}
+impl Value { methods!(10 + 20); }
+fn main() {
+    println!("{} {} {} {}", Value::first(), Value::second(),
+             <Value as Values>::first(), <Value as Values>::second());
+}
+"#;
+    for edition in ["2021", "2024"] {
+        let fixture = Fixture::new();
+        let original = fixture.write("associated.rs", source);
+        assert_eq!(compile_and_run(&original, edition), "30 60 30 60\n");
+        refactor(
+            &original,
+            edition,
+            vec![command("rewrite_expr", &["10 + 20", "3 + 4"])],
+        );
+        let text = fs::read_to_string(&original).unwrap();
+        // The baseline preserves the impl invocation but prints the expanded
+        // default trait methods. Keep that established shape in both contexts.
+        assert_eq!(text.matches("methods!(3 + 4)").count(), 1, "{text}");
+        assert!(text.contains("impl Value { methods!(3 + 4); }"), "{text}");
+        assert!(text.contains("fn first() -> i32 { 3 + 4 }"), "{text}");
+        assert!(
+            text.contains("fn second() -> i32 { (3 + 4) * 2 }"),
+            "{text}"
+        );
+        assert_eq!(compile_and_run(&original, edition), "7 14 7 14\n");
+    }
+}
+
+#[test]
 fn transformed_nested_macro_fragments_preserve_precedence_and_raw_identifiers() {
     let _compiler = COMPILER.lock().unwrap();
     let source = r#"

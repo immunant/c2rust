@@ -316,25 +316,16 @@ impl Transform for SetVisibility {
 
             fn flat_map_assoc_item(
                 &mut self,
-                item: P<AssocItem>,
+                mut item: P<AssocItem>,
                 ctxt: rustc_ast::visit::AssocCtxt,
             ) -> SmallVec<[P<AssocItem>; 1]> {
-                match ctxt {
-                    rustc_ast::visit::AssocCtxt::Impl => {
-                        let mut i = item;
-                        if self.in_trait_impl {
-                            return mut_visit::walk_flat_map_assoc_item(self, i, ctxt);
-                        }
-
-                        if self.st.marked(i.id, "target") {
-                            i.vis = self.vis.clone();
-                        }
-                        mut_visit::walk_flat_map_assoc_item(self, i, ctxt)
-                    }
-                    rustc_ast::visit::AssocCtxt::Trait => {
-                        mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
-                    }
+                if ctxt == rustc_ast::visit::AssocCtxt::Impl
+                    && !self.in_trait_impl
+                    && self.st.marked(item.id, "target")
+                {
+                    item.vis = self.vis.clone();
                 }
+                mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
             }
 
             fn flat_map_foreign_item(
@@ -451,26 +442,15 @@ impl Transform for SetUnsafety {
 
             fn flat_map_assoc_item(
                 &mut self,
-                item: P<AssocItem>,
+                mut item: P<AssocItem>,
                 ctxt: rustc_ast::visit::AssocCtxt,
             ) -> SmallVec<[P<AssocItem>; 1]> {
-                match ctxt {
-                    rustc_ast::visit::AssocCtxt::Trait => {
-                        let mut i = item;
-                        if self.st.marked(i.id, "target") {
-                            match i.kind {
-                                AssocItemKind::Fn(box Fn { ref mut sig, .. }) => {
-                                    sig.header.safety = self.unsafety
-                                }
-                                _ => {}
-                            }
-                        }
-                        mut_visit::walk_flat_map_assoc_item(self, i, ctxt)
-                    }
-                    rustc_ast::visit::AssocCtxt::Impl => {
-                        mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
+                if ctxt == rustc_ast::visit::AssocCtxt::Trait && self.st.marked(item.id, "target") {
+                    if let AssocItemKind::Fn(box Fn { ref mut sig, .. }) = item.kind {
+                        sig.header.safety = self.unsafety;
                     }
                 }
+                mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
             }
         }
 

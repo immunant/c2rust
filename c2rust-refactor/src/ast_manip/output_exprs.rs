@@ -36,10 +36,9 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for OutputFolder<F> {
 
     fn flat_map_assoc_item(
         &mut self,
-        item: P<AssocItem>,
+        i: P<AssocItem>,
         ctxt: rustc_ast::visit::AssocCtxt,
     ) -> SmallVec<[P<AssocItem>; 1]> {
-        let i = item;
         match i.kind {
             AssocItemKind::Fn(..) => {
                 self.with_trailing(true, |f| mut_visit::walk_flat_map_assoc_item(f, i, ctxt))

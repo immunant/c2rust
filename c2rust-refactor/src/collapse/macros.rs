@@ -231,70 +231,39 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
         item: P<AssocItem>,
         ctxt: rustc_ast::visit::AssocCtxt,
     ) -> SmallVec<[P<AssocItem>; 1]> {
-        match ctxt {
-            rustc_ast::visit::AssocCtxt::Impl => {
-                let ii = item;
-                if let Some(info) = self.mac_table.get(ii.id) {
-                    if let InvocKind::Mac(mac) = info.invoc {
-                        let old = info.expanded.as_assoc_item().unwrap_or_else(|| {
-                            panic!(
-                                "replaced {:?} with {:?} which is a different type?",
-                                ii, info.expanded,
-                            )
-                        });
-                        self.collect_token_rewrites(info.id, old, &ii as &AssocItem);
+        if let Some(info) = self.mac_table.get(item.id) {
+            if let InvocKind::Mac(mac) = info.invoc {
+                let old = info.expanded.as_assoc_item().unwrap_or_else(|| {
+                    panic!(
+                        "replaced {:?} with {:?} which is a different type?",
+                        item, info.expanded,
+                    )
+                });
+                self.collect_token_rewrites(info.id, old, &item as &AssocItem);
 
-                        if !self.seen_invocs.contains(&info.id) {
-                            self.seen_invocs.insert(info.id);
-                            let new_ii = mk()
-                                .id(ii.id)
-                                .span(root_callsite_span(ii.span))
-                                .mac_impl_item(mac);
-                            trace!("collapse: {:?} -> {:?}", ii, new_ii);
-                            self.record_matched_ids(ii.id, new_ii.id);
-                            return smallvec![new_ii];
-                        } else {
-                            trace!("collapse (duplicate): {:?} -> /**/", ii);
-                            return smallvec![];
-                        }
-                    } else {
-                        warn!("bad macro kind for assoc item: {:?}", info.invoc);
-                    }
+                if !self.seen_invocs.contains(&info.id) {
+                    self.seen_invocs.insert(info.id);
+                    let builder = mk().id(item.id).span(root_callsite_span(item.span));
+                    let new_item = match ctxt {
+                        rustc_ast::visit::AssocCtxt::Impl => builder.mac_impl_item(mac),
+                        rustc_ast::visit::AssocCtxt::Trait => builder.mac_trait_item(mac),
+                    };
+                    trace!("collapse: {:?} -> {:?}", item, new_item);
+                    self.record_matched_ids(item.id, new_item.id);
+                    return smallvec![new_item];
+                } else {
+                    trace!("collapse (duplicate): {:?} -> /**/", item);
+                    return smallvec![];
                 }
-                mut_visit::walk_flat_map_assoc_item(self, ii, ctxt)
-            }
-            rustc_ast::visit::AssocCtxt::Trait => {
-                let ti = item;
-                if let Some(info) = self.mac_table.get(ti.id) {
-                    if let InvocKind::Mac(mac) = info.invoc {
-                        let old = info.expanded.as_assoc_item().unwrap_or_else(|| {
-                            panic!(
-                                "replaced {:?} with {:?} which is a different type?",
-                                ti, info.expanded,
-                            )
-                        });
-                        self.collect_token_rewrites(info.id, old, &ti as &AssocItem);
-
-                        if !self.seen_invocs.contains(&info.id) {
-                            self.seen_invocs.insert(info.id);
-                            let new_ti = mk()
-                                .id(ti.id)
-                                .span(root_callsite_span(ti.span))
-                                .mac_trait_item(mac);
-                            trace!("collapse: {:?} -> {:?}", ti, new_ti);
-                            self.record_matched_ids(ti.id, new_ti.id);
-                            return smallvec![new_ti];
-                        } else {
-                            trace!("collapse (duplicate): {:?} -> /**/", ti);
-                            return smallvec![];
-                        }
-                    } else {
-                        warn!("bad macro kind for trait item: {:?}", info.invoc);
-                    }
-                }
-                mut_visit::walk_flat_map_assoc_item(self, ti, ctxt)
+            } else {
+                let kind = match ctxt {
+                    rustc_ast::visit::AssocCtxt::Impl => "assoc",
+                    rustc_ast::visit::AssocCtxt::Trait => "trait",
+                };
+                warn!("bad macro kind for {} item: {:?}", kind, info.invoc);
             }
         }
+        mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
     }
 
     fn flat_map_foreign_item(&mut self, fi: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
@@ -366,18 +335,21 @@ fn restore_attrs(new_attrs: &mut AttrVec, old_attrs: &[Attribute]) {
         }
     }
 
-    fn same_attr(a: &Attribute, b: &Attribute) -> bool {
-        let a = a.token_trees();
-        let b = b.token_trees();
-        a.len() == b.len() && a.iter().zip(&b).all(|(a, b)| same_tree(a, b))
-    }
-
     // If the original item had `#[derive]` or `#[cfg]` attrs, transfer them to the new one.
+    // Materialize each attribute's tokens once, only when restoration is needed.
+    let mut existing_tokens: Option<Vec<Vec<TokenTree>>> = None;
     for old_attr in old_attrs.iter().rev() {
         if old_attr.has_name(sym::derive) || old_attr.has_name(sym::cfg) {
+            let existing_tokens = existing_tokens
+                .get_or_insert_with(|| new_attrs.iter().map(|attr| attr.token_trees()).collect());
+            let old_tokens = old_attr.token_trees();
             // Only copy the attr if an identical one is not already present.
-            if !new_attrs.iter().any(|a| same_attr(a, old_attr)) {
+            if !existing_tokens.iter().any(|tokens| {
+                tokens.len() == old_tokens.len()
+                    && tokens.iter().zip(&old_tokens).all(|(a, b)| same_tree(a, b))
+            }) {
                 new_attrs.push(old_attr.clone());
+                existing_tokens.push(old_tokens);
             }
         }
     }
@@ -441,6 +413,18 @@ mod attribute_tests {
             assert_eq!(restored.len(), 2);
             assert_eq!(
                 restored.iter().map(|a| a.span).collect::<Vec<_>>(),
+                attrs.iter().map(|a| a.span).collect::<Vec<_>>()
+            );
+            // Newly restored attributes must also participate in subsequent
+            // comparisons within the same call.
+            let mut empty = AttrVec::new();
+            restore_attrs(
+                &mut empty,
+                &[attrs[0].clone(), attrs[1].clone(), attrs[0].clone()],
+            );
+            assert_eq!(empty.len(), 2);
+            assert_eq!(
+                empty.iter().map(|a| a.span).collect::<Vec<_>>(),
                 attrs.iter().map(|a| a.span).collect::<Vec<_>>()
             );
         });
@@ -671,33 +655,16 @@ impl<'a> MutVisitor for ReplaceTokens<'a> {
 
     fn flat_map_assoc_item(
         &mut self,
-        item: P<AssocItem>,
+        mut item: P<AssocItem>,
         ctxt: rustc_ast::visit::AssocCtxt,
     ) -> SmallVec<[P<AssocItem>; 1]> {
-        match ctxt {
-            rustc_ast::visit::AssocCtxt::Impl => {
-                let ii = item;
-                if let Some(invoc_id) = self.mac_table.get(ii.id).map(|m| m.id) {
-                    if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
-                        let mut ii = ii;
-                        expect!([ii.kind] AssocItemKind::MacCall(ref mut mac) => mac.args = new_args);
-                        return smallvec![ii];
-                    }
-                }
-                mut_visit::walk_flat_map_assoc_item(self, ii, ctxt)
-            }
-            rustc_ast::visit::AssocCtxt::Trait => {
-                let ti = item;
-                if let Some(invoc_id) = self.mac_table.get(ti.id).map(|m| m.id) {
-                    if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
-                        let mut ti = ti;
-                        expect!([ti.kind] AssocItemKind::MacCall(ref mut mac) => mac.args = new_args);
-                        return smallvec![ti];
-                    }
-                }
-                mut_visit::walk_flat_map_assoc_item(self, ti, ctxt)
+        if let Some(invoc_id) = self.mac_table.get(item.id).map(|m| m.id) {
+            if let Some(new_args) = self.new_args.get(&invoc_id).cloned() {
+                expect!([item.kind] AssocItemKind::MacCall(ref mut mac) => mac.args = new_args);
+                return smallvec![item];
             }
         }
+        mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
     }
 
     fn flat_map_foreign_item(&mut self, fi: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {

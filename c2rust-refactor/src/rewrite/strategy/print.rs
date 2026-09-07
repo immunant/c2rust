@@ -70,7 +70,7 @@ pub trait PrintParse {
 
 impl PrintParse for Expr {
     fn to_string(&self) -> String {
-        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtExpr(P(self.clone())))
+        crate::ast_manip::print::nonterminal_to_string_owned(Nonterminal::NtExpr(P(self.clone())))
     }
 
     type Parsed = P<Expr>;
@@ -81,7 +81,7 @@ impl PrintParse for Expr {
 
 impl PrintParse for Pat {
     fn to_string(&self) -> String {
-        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtPat(P(self.clone())))
+        crate::ast_manip::print::nonterminal_to_string_owned(Nonterminal::NtPat(P(self.clone())))
     }
 
     type Parsed = P<Pat>;
@@ -92,7 +92,7 @@ impl PrintParse for Pat {
 
 impl PrintParse for Ty {
     fn to_string(&self) -> String {
-        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtTy(P(self.clone())))
+        crate::ast_manip::print::nonterminal_to_string_owned(Nonterminal::NtTy(P(self.clone())))
     }
 
     type Parsed = P<Ty>;
@@ -107,10 +107,10 @@ impl PrintParse for Stmt {
         // not just to Semi kind statements. We want to differentiate these
         // nodes.
         match self.kind {
-            StmtKind::Expr(ref expr) => {
-                crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtExpr(expr.clone()))
-            }
-            _ => crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtStmt(P(
+            StmtKind::Expr(ref expr) => crate::ast_manip::print::nonterminal_to_string_owned(
+                Nonterminal::NtExpr(expr.clone()),
+            ),
+            _ => crate::ast_manip::print::nonterminal_to_string_owned(Nonterminal::NtStmt(P(
                 self.clone()
             ))),
         }
@@ -124,7 +124,7 @@ impl PrintParse for Stmt {
 
 impl PrintParse for Item {
     fn to_string(&self) -> String {
-        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtItem(P(self.clone())))
+        crate::ast_manip::print::nonterminal_to_string_owned(Nonterminal::NtItem(P(self.clone())))
     }
 
     type Parsed = P<Item>;
@@ -148,7 +148,7 @@ impl PrintParse for ForeignItem {
 
 impl PrintParse for Block {
     fn to_string(&self) -> String {
-        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtBlock(P(self.clone())))
+        crate::ast_manip::print::nonterminal_to_string_owned(Nonterminal::NtBlock(P(self.clone())))
     }
 
     type Parsed = P<Block>;

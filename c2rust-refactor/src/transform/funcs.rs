@@ -510,31 +510,20 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
 
     fn flat_map_assoc_item(
         &mut self,
-        item: P<AssocItem>,
+        mut item: P<AssocItem>,
         ctxt: rustc_ast::visit::AssocCtxt,
     ) -> SmallVec<[P<AssocItem>; 1]> {
-        match ctxt {
-            rustc_ast::visit::AssocCtxt::Impl => {
-                let mut i = item;
-                if self.st.marked(i.id, "target") {
-                    match i.kind {
-                        AssocItemKind::Fn(box Fn {
-                            sig: FnSig { ref mut header, .. },
-                            body: Some(ref mut body),
-                            ..
-                        }) => {
-                            sink_unsafe(&mut header.safety, body);
-                        }
-                        _ => {}
-                    }
-                }
-
-                mut_visit::walk_flat_map_assoc_item(self, i, ctxt)
-            }
-            rustc_ast::visit::AssocCtxt::Trait => {
-                mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
+        if ctxt == rustc_ast::visit::AssocCtxt::Impl && self.st.marked(item.id, "target") {
+            if let AssocItemKind::Fn(box Fn {
+                sig: FnSig { ref mut header, .. },
+                body: Some(ref mut body),
+                ..
+            }) = item.kind
+            {
+                sink_unsafe(&mut header.safety, body);
             }
         }
+        mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
     }
 }
 
