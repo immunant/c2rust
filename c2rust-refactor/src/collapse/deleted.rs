@@ -1,4 +1,4 @@
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, Visitor};
 use rustc_ast::*;
@@ -94,7 +94,9 @@ impl<'a, 'ast> Visitor<'ast> for CollectDeletedNodes<'a, 'ast> {
 
     fn visit_item(&mut self, x: &'ast Item) {
         match x.kind {
-            ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _)) => self.handle_seq(x.id, m_items),
+            ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _, _)) => {
+                self.handle_seq(x.id, m_items)
+            }
             ItemKind::ForeignMod(ref fm) => self.handle_seq(x.id, &fm.items),
             ItemKind::Trait(box Trait { ref items, .. }) => self.handle_seq(x.id, items),
             ItemKind::Impl(box Impl { ref items, .. }) => self.handle_seq(x.id, items),
@@ -234,13 +236,13 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
 impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
     fn visit_crate(&mut self, x: &mut Crate) {
         self.restore_seq(CRATE_NODE_ID, &mut x.items);
-        mut_visit::noop_visit_crate(x, self)
+        mut_visit::walk_crate(self, x)
     }
 
     fn flat_map_item(&mut self, mut x: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let id = x.id;
         match x.kind {
-            ItemKind::Mod(_, ModKind::Loaded(ref mut m_items, _, _)) => {
+            ItemKind::Mod(_, ModKind::Loaded(ref mut m_items, _, _, _)) => {
                 self.restore_seq(id, m_items)
             }
             ItemKind::ForeignMod(ref mut fm) => self.restore_seq(id, &mut fm.items),
@@ -252,7 +254,7 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
             //ItemKind::Impl(box Impl { ref mut items, .. }) => self.restore_seq(id, items),
             _ => {}
         }
-        mut_visit::noop_flat_map_item(x, self)
+        mut_visit::walk_flat_map_item(self, x)
     }
 
     fn visit_expr(&mut self, expr: &mut P<Expr>) {
@@ -275,16 +277,16 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
             }
             _ => {}
         }
-        mut_visit::noop_visit_expr(expr, self)
+        mut_visit::walk_expr(self, expr)
     }
 
     fn visit_block(&mut self, block: &mut P<Block>) {
         self.restore_seq(block.id, &mut block.stmts);
-        mut_visit::noop_visit_block(block, self)
+        mut_visit::walk_block(self, block)
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
-        mut_visit::noop_visit_mac(mac, self)
+        mut_visit::walk_mac(self, mac)
     }
 }
 

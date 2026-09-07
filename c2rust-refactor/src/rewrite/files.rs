@@ -1,7 +1,8 @@
 //! Code for applying `TextRewrite`s to the actual source files.
 use diff;
 use log::{info, warn};
-use rustc_span::source_map::{SourceFile, SourceMap};
+use rustc_span::source_map::SourceMap;
+use rustc_span::SourceFile;
 use rustc_span::{BytePos, FileName};
 use std::collections::{HashMap, VecDeque};
 use std::io;
@@ -52,7 +53,7 @@ pub fn rewrite_files_with(cm: &SourceMap, rw: &TextRewrite, io: &dyn FileIO) -> 
         io.save_rewrites(cm, &sf, &rewrites, &nodes)?;
         let mut buf = String::new();
         let rewrites = cleanup_rewrites(cm, rewrites);
-        rewrite_range(cm, sf.start_pos, sf.end_pos, &rewrites, &mut |s| {
+        rewrite_range(cm, sf.start_pos, sf.end_position(), &rewrites, &mut |s| {
             buf.push_str(s)
         });
         io.write_file(path, &buf)?;

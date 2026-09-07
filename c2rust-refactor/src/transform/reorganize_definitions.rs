@@ -513,7 +513,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
             let decl_ids = declarations.remove_matching_defs(ns, item.ident, |decl| match decl {
                 DeclKind::Item(decl) => self.cx.compatible_types(&decl, item, true),
-                DeclKind::ForeignItem(foreign, _) => foreign_equiv(&foreign, item),
+                DeclKind::ForeignItem(foreign, ..) => foreign_equiv(&foreign, item),
             });
             if !decl_ids.is_empty() {
                 let def_id = self.cx.node_def_id(item.id);
@@ -626,7 +626,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     // should resolve to it.
                     // TODO: Refactor foreign_equiv to be able to use it
                     // without an Item
-                    DeclKind::ForeignItem(foreign, _abi) => match &foreign.kind {
+                    DeclKind::ForeignItem(foreign, ..) => match &foreign.kind {
                         ForeignItemKind::Fn { .. } => {
                             if let Res::Def(DefKind::Fn, def_id) = item.res {
                                 let export_fn_sig =
@@ -844,7 +844,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                     .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
                                     .unwrap_or(Abi::Rust);
                                 m.items.retain(|item| {
-                                    match declarations.find_foreign_item(item, abi) {
+                                    match declarations.find_foreign_item(item, abi, m.safety) {
                                         ContainsDecl::NotContained => true,
                                         ContainsDecl::Equivalent(_) => false,
                                         ContainsDecl::Definition(_) => false,
@@ -1567,21 +1567,21 @@ impl MovedDecl {
 
     fn visibility(&self) -> &Visibility {
         match &self.kind {
-            DeclKind::ForeignItem(item, _) => &item.vis,
+            DeclKind::ForeignItem(item, ..) => &item.vis,
             DeclKind::Item(item) => &item.vis,
         }
     }
 
     fn join_visibility(&mut self, vis: &VisibilityKind) {
         match &mut self.kind {
-            DeclKind::ForeignItem(item, _) => item.vis.kind = join_visibility(&item.vis.kind, vis),
+            DeclKind::ForeignItem(item, ..) => item.vis.kind = join_visibility(&item.vis.kind, vis),
             DeclKind::Item(item) => item.vis.kind = join_visibility(&item.vis.kind, vis),
         }
     }
 
     fn ident(&self) -> Ident {
         match &self.kind {
-            DeclKind::ForeignItem(item, _) => item.ident,
+            DeclKind::ForeignItem(item, ..) => item.ident,
             DeclKind::Item(item) => {
                 if let ItemKind::Use(tree) = &item.kind {
                     tree.ident()
@@ -1594,7 +1594,7 @@ impl MovedDecl {
 
     fn preserve_link_name(&mut self, orig: Ident) {
         let item = match &mut self.kind {
-            DeclKind::ForeignItem(item, _) => item,
+            DeclKind::ForeignItem(item, ..) => item,
             // A regular item is mangled under its own path, so renaming it
             // does not change what it exports.
             DeclKind::Item(_) => return,
@@ -1628,7 +1628,7 @@ impl MovedDecl {
 
     fn ident_mut(&mut self) -> &mut Ident {
         match &mut self.kind {
-            DeclKind::ForeignItem(item, _) => &mut item.ident,
+            DeclKind::ForeignItem(item, ..) => &mut item.ident,
             DeclKind::Item(item) => {
                 // Reborrow the item inside the P<Item> so we can
                 // sub-borrow different fields from it
@@ -1650,7 +1650,7 @@ impl MovedDecl {
 impl ToString for MovedDecl {
     fn to_string(&self) -> String {
         match &self.kind {
-            DeclKind::ForeignItem(item, _) => pprust::State::new().foreign_item_to_string(item),
+            DeclKind::ForeignItem(item, ..) => pprust::State::new().foreign_item_to_string(item),
             DeclKind::Item(item) => item_to_string(item),
         }
     }
@@ -1659,7 +1659,7 @@ impl ToString for MovedDecl {
 #[derive(Clone, Debug, From)]
 enum DeclKind {
     Item(P<Item>),
-    ForeignItem(P<ForeignItem>, Abi),
+    ForeignItem(P<ForeignItem>, Abi, Safety),
 }
 
 impl HasAttrs for DeclKind {
@@ -1668,14 +1668,14 @@ impl HasAttrs for DeclKind {
     fn attrs(&self) -> &[Attribute] {
         match self {
             DeclKind::Item(i) => i.attrs(),
-            DeclKind::ForeignItem(i, _) => i.attrs(),
+            DeclKind::ForeignItem(i, ..) => i.attrs(),
         }
     }
 
     fn visit_attrs(&mut self, f: impl FnOnce(&mut ThinVec<Attribute>)) {
         match self {
             DeclKind::Item(i) => i.visit_attrs(f),
-            DeclKind::ForeignItem(i, _) => i.visit_attrs(f),
+            DeclKind::ForeignItem(i, ..) => i.visit_attrs(f),
         }
     }
 }
@@ -1812,7 +1812,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         .abi
                         .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
                         .unwrap_or(Abi::Rust);
-                    self.insert_foreign_item(item.clone(), abi, parent_header.clone());
+                    self.insert_foreign_item(item.clone(), abi, f.safety, parent_header.clone());
                 }
                 true
             }
@@ -1884,15 +1884,21 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         }
     }
 
-    fn insert_foreign_item(&mut self, item: P<ForeignItem>, abi: Abi, parent_header: HeaderInfo) {
+    fn insert_foreign_item(
+        &mut self,
+        item: P<ForeignItem>,
+        abi: Abi,
+        safety: Safety,
+        parent_header: HeaderInfo,
+    ) {
         let new_def_id = self.cx.node_def_id(item.id);
         let ident = item.ident;
         let namespace = self.cx.foreign_item_namespace(&item).unwrap();
         let unnamed = ident.as_str().contains("C2Rust_Unnamed");
-        let def_id_mapping = match self.find_foreign_item(&item, abi) {
+        let def_id_mapping = match self.find_foreign_item(&item, abi, safety) {
             ContainsDecl::NotContained => {
                 let new_item = MovedDecl::new(
-                    (item.clone(), abi),
+                    (item.clone(), abi, safety),
                     new_def_id,
                     smallvec![namespace],
                     parent_header.clone(),
@@ -1909,7 +1915,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
             ContainsDecl::Definition(existing) => {
                 let existing_def_id = existing.def_id;
                 *existing = MovedDecl::new(
-                    (item.clone(), abi),
+                    (item.clone(), abi, safety),
                     new_def_id,
                     smallvec![namespace],
                     parent_header.clone(),
@@ -1980,7 +1986,8 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         });
 
         let mut items: Vec<P<Item>> = Vec::new();
-        let mut foreign_items: HashMap<Abi, Vec<P<ForeignItem>>> = HashMap::new();
+        // Preserve the sorted declarations' first-seen block order.
+        let mut foreign_items = IndexMap::new();
         let mut last_item_mod = None;
         let mut last_foreign_item_mod = None;
         for item in all_items {
@@ -1993,7 +2000,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     }
                     items.push(i);
                 }
-                DeclKind::ForeignItem(fi, abi) => {
+                DeclKind::ForeignItem(fi, abi, safety) => {
                     if last_foreign_item_mod != Some(cur_mod_name) {
                         st.add_comment(
                             fi.id,
@@ -2001,7 +2008,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         );
                         last_foreign_item_mod = Some(cur_mod_name);
                     }
-                    foreign_items.entry(abi).or_default().push(fi);
+                    // Group by qualifier, not its source span, so separate unsafe
+                    // blocks can merge without absorbing plain extern blocks.
+                    let (_, items) = foreign_items
+                        .entry((abi, mem::discriminant(&safety)))
+                        .or_insert_with(|| (safety, Vec::new()));
+                    items.push(fi);
                 }
             }
 
@@ -2019,7 +2031,9 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
         let foreign_mods = foreign_items
             .into_iter()
-            .map(|(abi, items)| mk().extern_(abi).foreign_items(items));
+            .map(|((abi, _), (safety, items))| {
+                mk().extern_(abi).unsafety(safety).foreign_items(items)
+            });
 
         foreign_mods.chain(items.into_iter()).collect()
     }
@@ -2072,7 +2086,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         _ => {}
                     },
 
-                    DeclKind::ForeignItem(existing_foreign, _) => {
+                    DeclKind::ForeignItem(existing_foreign, ..) => {
                         if let ForeignItemKind::TyAlias(_) = &existing_foreign.kind {
                             if foreign_equiv(&existing_foreign, &item) {
                                 // This item is equivalent to an existing foreign item,
@@ -2119,7 +2133,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         }
                     },
 
-                    DeclKind::ForeignItem(existing_foreign, _) => {
+                    DeclKind::ForeignItem(existing_foreign, ..) => {
                         if let ItemKind::Use(..) = item.kind {
                             // If the import refers to an existing foreign item, do
                             // not replace it.
@@ -2144,7 +2158,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
         ContainsDecl::NotContained
     }
 
-    fn find_foreign_item<'b>(&'b mut self, item: &P<ForeignItem>, abi: Abi) -> ContainsDecl<'b> {
+    fn find_foreign_item<'b>(
+        &'b mut self,
+        item: &P<ForeignItem>,
+        abi: Abi,
+        safety: Safety,
+    ) -> ContainsDecl<'b> {
         let ns = match &item.kind {
             ForeignItemKind::Fn { .. } | ForeignItemKind::Static(..) => Namespace::ValueNS,
             ForeignItemKind::TyAlias(..) => Namespace::TypeNS,
@@ -2172,8 +2191,10 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         }
                     }
 
-                    DeclKind::ForeignItem(existing_foreign, existing_abi) => {
-                        if *existing_abi != abi {
+                    DeclKind::ForeignItem(existing_foreign, existing_abi, existing_safety) => {
+                        if *existing_abi != abi
+                            || mem::discriminant(existing_safety) != mem::discriminant(&safety)
+                        {
                             continue;
                         }
                         let matches_existing = match (&existing_foreign.kind, &item.kind) {

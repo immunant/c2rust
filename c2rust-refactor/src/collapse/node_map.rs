@@ -4,7 +4,7 @@ use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::visit::{self, Visitor};
 use rustc_ast::*;
 use rustc_data_structures::sync::Lrc;
-use rustc_span::source_map::Span;
+use rustc_span::Span;
 use std::collections::HashMap;
 
 use crate::ast_manip::{AstEquiv, ListNodeIds, Visit};
@@ -59,7 +59,7 @@ fn nt_span(nt: &Nonterminal) -> Option<Span> {
 }
 
 fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonterminal>>) {
-    for tt in ts.into_trees() {
+    for tt in ts.iter().cloned() {
         match tt {
             TokenTree::Token(
                 Token {
@@ -73,7 +73,7 @@ fn collect_nonterminals(ts: TokenStream, span_map: &mut HashMap<Span, Lrc<Nonter
                 }
             }
             TokenTree::Token(..) => {}
-            TokenTree::Delimited(_, _, tts) => {
+            TokenTree::Delimited(_, _, _, tts) => {
                 collect_nonterminals(tts, span_map);
             }
         }

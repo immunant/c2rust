@@ -4,7 +4,7 @@
 //! the syn crate while this copy uses the old internal rustc AST.
 use rustc_ast::ptr::P;
 use rustc_ast::token::{self, Lit, Token, TokenKind};
-use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenStream, TokenTree};
+use rustc_ast::tokenstream::{DelimSpacing, DelimSpan, Spacing, TokenStream, TokenTree};
 use rustc_ast::util::literal::{escape_byte_str_symbol, escape_char_symbol, escape_string_symbol};
 use rustc_ast::*;
 use rustc_middle::ty;
@@ -106,11 +106,12 @@ impl<'a> Make<Mutability> for &'a str {
     }
 }
 
-impl<'a> Make<Unsafe> for &'a str {
-    fn make(self, _mk: &Builder) -> Unsafe {
+impl<'a> Make<Safety> for &'a str {
+    fn make(self, _mk: &Builder) -> Safety {
         match self {
-            "" | "safe" | "normal" => Unsafe::No,
-            "unsafe" => Unsafe::Yes(DUMMY_SP),
+            "" | "normal" => Safety::Default,
+            "safe" => Safety::Safe(DUMMY_SP),
+            "unsafe" => Safety::Unsafe(DUMMY_SP),
             _ => panic!("unrecognized string for Unsafe: {:?}", self),
         }
     }
@@ -197,6 +198,8 @@ impl Make<LitIntType> for ty::UintTy {
 impl Make<FloatTy> for ty::FloatTy {
     fn make(self, _mk: &Builder) -> FloatTy {
         match self {
+            ty::FloatTy::F16 => FloatTy::F16,
+            ty::FloatTy::F128 => FloatTy::F128,
             ty::FloatTy::F32 => FloatTy::F32,
             ty::FloatTy::F64 => FloatTy::F64,
         }
@@ -216,6 +219,18 @@ fn token_lit_from_kind(kind: &LitKind) -> Lit {
         LitKind::ByteStr(bytes, StrStyle::Raw(n)) => (
             token::ByteStrRaw(*n),
             Symbol::intern(str::from_utf8(bytes).unwrap()),
+            None,
+        ),
+        // Semantic C strings include their final NUL; the source literal must
+        // omit it because the lexer supplies it when constructing LitKind::CStr.
+        LitKind::CStr(bytes, StrStyle::Cooked) => (
+            token::CStr,
+            escape_byte_str_symbol(&bytes[..bytes.len() - 1]),
+            None,
+        ),
+        LitKind::CStr(bytes, StrStyle::Raw(n)) => (
+            token::CStrRaw(*n),
+            Symbol::intern(str::from_utf8(&bytes[..bytes.len() - 1]).unwrap()),
             None,
         ),
         LitKind::Byte(byte) => {
@@ -241,7 +256,7 @@ fn token_lit_from_kind(kind: &LitKind) -> Lit {
             (token::Float, *symbol, suffix)
         }
         LitKind::Bool(value) => (token::Bool, if *value { kw::True } else { kw::False }, None),
-        LitKind::Err => (token::Err, Symbol::intern("<bad-literal>"), None),
+        LitKind::Err(error) => (token::Err(*error), Symbol::intern("<bad-literal>"), None),
     };
     Lit::new(kind, symbol, suffix)
 }
@@ -259,7 +274,7 @@ fn meta_item_lit_from_kind(kind: LitKind, span: Span) -> MetaItemLit {
 fn meta_item_lit_token(lit: &MetaItemLit) -> Token {
     let lit = lit.as_token_lit();
     let kind = if lit.kind == token::LitKind::Bool {
-        TokenKind::Ident(lit.symbol, false)
+        TokenKind::Ident(lit.symbol, token::IdentIsRaw::No)
     } else {
         TokenKind::Literal(lit)
     };
@@ -270,7 +285,7 @@ fn meta_item_token_trees(item: &MetaItem) -> Vec<TokenTree> {
     let mut tokens = Vec::new();
     for (i, segment) in item.path.segments.iter().enumerate() {
         if i > 0 {
-            tokens.push(TokenTree::token_alone(TokenKind::ModSep, DUMMY_SP));
+            tokens.push(TokenTree::token_alone(TokenKind::PathSep, DUMMY_SP));
         }
         tokens.push(TokenTree::Token(
             Token::from_ast_ident(segment.ident),
@@ -281,10 +296,10 @@ fn meta_item_token_trees(item: &MetaItem) -> Vec<TokenTree> {
     tokens
 }
 
-fn nested_meta_item_token_trees(item: &NestedMetaItem) -> Vec<TokenTree> {
+fn nested_meta_item_token_trees(item: &MetaItemInner) -> Vec<TokenTree> {
     match item {
-        NestedMetaItem::MetaItem(item) => meta_item_token_trees(item),
-        NestedMetaItem::Lit(lit) => {
+        MetaItemInner::MetaItem(item) => meta_item_token_trees(item),
+        MetaItemInner::Lit(lit) => {
             vec![TokenTree::Token(meta_item_lit_token(lit), Spacing::Alone)]
         }
     }
@@ -307,6 +322,7 @@ fn meta_item_kind_token_trees(kind: &MetaItemKind, span: Span) -> Vec<TokenTree>
             }
             vec![TokenTree::Delimited(
                 DelimSpan::from_single(span),
+                DelimSpacing::new(Spacing::Alone, Spacing::Alone),
                 token::Delimiter::Parenthesis,
                 TokenStream::new(tokens),
             )]
@@ -317,10 +333,10 @@ fn meta_item_kind_token_trees(kind: &MetaItemKind, span: Span) -> Vec<TokenTree>
 fn meta_item_kind_attr_args(kind: &MetaItemKind, span: Span) -> AttrArgs {
     match kind {
         MetaItemKind::Word => AttrArgs::Empty,
-        MetaItemKind::NameValue(lit) => AttrArgs::Eq(
-            span,
-            AttrArgsEq::Ast(mk().span(lit.span).lit_expr(lit.as_token_lit())),
-        ),
+        MetaItemKind::NameValue(lit) => AttrArgs::Eq {
+            eq_span: span,
+            expr: mk().span(lit.span).lit_expr(lit.as_token_lit()),
+        },
         MetaItemKind::List(list) => {
             let mut tokens = Vec::new();
             for (i, item) in list.iter().enumerate() {
@@ -331,10 +347,16 @@ fn meta_item_kind_attr_args(kind: &MetaItemKind, span: Span) -> AttrArgs {
             }
             AttrArgs::Delimited(DelimArgs {
                 dspan: DelimSpan::from_single(span),
-                delim: MacDelimiter::Parenthesis,
+                delim: token::Delimiter::Parenthesis,
                 tokens: TokenStream::new(tokens),
             })
         }
+    }
+}
+
+impl Make<Lit> for &LitKind {
+    fn make(self, _mk: &Builder) -> Lit {
+        token_lit_from_kind(self)
     }
 }
 
@@ -411,15 +433,15 @@ impl Make<GenericArg> for Lifetime {
     }
 }
 
-impl Make<NestedMetaItem> for MetaItem {
-    fn make(self, _mk: &Builder) -> NestedMetaItem {
-        NestedMetaItem::MetaItem(self)
+impl Make<MetaItemInner> for MetaItem {
+    fn make(self, _mk: &Builder) -> MetaItemInner {
+        MetaItemInner::MetaItem(self)
     }
 }
 
-impl Make<NestedMetaItem> for MetaItemLit {
-    fn make(self, _mk: &Builder) -> NestedMetaItem {
-        NestedMetaItem::Lit(self)
+impl Make<MetaItemInner> for MetaItemLit {
+    fn make(self, _mk: &Builder) -> MetaItemInner {
+        MetaItemInner::Lit(self)
     }
 }
 
@@ -492,7 +514,7 @@ impl Make<MetaItemLit> for char {
 
 impl Make<MetaItemLit> for u128 {
     fn make(self, mk: &Builder) -> MetaItemLit {
-        meta_item_lit_from_kind(LitKind::Int(self, LitIntType::Unsuffixed), mk.span)
+        meta_item_lit_from_kind(LitKind::Int(self.into(), LitIntType::Unsuffixed), mk.span)
     }
 }
 
@@ -500,8 +522,8 @@ impl Make<FnSig> for P<FnDecl> {
     fn make(self, mk: &Builder) -> FnSig {
         FnSig {
             header: FnHeader {
-                unsafety: mk.unsafety,
-                asyncness: Async::No,
+                safety: mk.unsafety,
+                coroutine_kind: None,
                 constness: mk.constness,
                 ext: mk.ext,
             },
@@ -519,7 +541,7 @@ pub struct Builder {
     vis: Visibility,
     mutbl: Mutability,
     generics: Generics,
-    unsafety: Unsafe,
+    unsafety: Safety,
     constness: Const,
     ext: Extern,
     inline: Inline,
@@ -539,7 +561,7 @@ impl Builder {
             },
             mutbl: Mutability::Not,
             generics: Generics::default(),
-            unsafety: Unsafe::No,
+            unsafety: Safety::Default,
             constness: Const::No,
             ext: Extern::None,
             inline: Inline::No,
@@ -579,7 +601,7 @@ impl Builder {
         self.set_mutbl(Mutability::Mut)
     }
 
-    pub fn unsafety<U: Make<Unsafe>>(self, unsafety: U) -> Self {
+    pub fn unsafety<U: Make<Safety>>(self, unsafety: U) -> Self {
         let unsafety = unsafety.make(&self);
         Builder {
             unsafety: unsafety,
@@ -588,7 +610,7 @@ impl Builder {
     }
 
     pub fn unsafe_(self) -> Self {
-        self.unsafety(Unsafe::Yes(DUMMY_SP))
+        self.unsafety(Safety::Unsafe(DUMMY_SP))
     }
 
     pub fn constness<C: Make<Const>>(self, constness: C) -> Self {
@@ -635,11 +657,12 @@ impl Builder {
             style: AttrStyle::Outer,
             kind: AttrKind::Normal(P(NormalAttr {
                 item: AttrItem {
+                    unsafety: Safety::Default,
                     path: key,
-                    args: AttrArgs::Eq(
-                        DUMMY_SP,
-                        AttrArgsEq::Ast(mk().lit_expr(mk().str_lit(value).as_token_lit())),
-                    ),
+                    args: AttrArgs::Eq {
+                        eq_span: DUMMY_SP,
+                        expr: mk().lit_expr(mk().str_lit(value).as_token_lit()),
+                    },
                     tokens: None,
                 },
                 tokens: None,
@@ -664,6 +687,7 @@ impl Builder {
             style: AttrStyle::Outer,
             kind: AttrKind::Normal(P(NormalAttr {
                 item: AttrItem {
+                    unsafety: Safety::Default,
                     path: key,
                     args: AttrArgs::Empty,
                     tokens: None,
@@ -687,7 +711,7 @@ impl Builder {
 
         let args = AttrArgs::Delimited(DelimArgs {
             dspan: DelimSpan::dummy(),
-            delim: MacDelimiter::Parenthesis,
+            delim: token::Delimiter::Parenthesis,
             tokens: {
                 let mut tokens = Vec::new();
 
@@ -706,7 +730,8 @@ impl Builder {
                     }
 
                     let argument: Ident = argument.make(&self);
-                    let token_kind = TokenKind::Ident(argument.name, argument.is_raw_guess());
+                    let token_kind =
+                        TokenKind::Ident(argument.name, argument.is_raw_guess().into());
                     tokens.push(TokenTree::Token(
                         Token {
                             kind: token_kind,
@@ -726,6 +751,7 @@ impl Builder {
             style: AttrStyle::Outer,
             kind: AttrKind::Normal(P(NormalAttr {
                 item: AttrItem {
+                    unsafety: Safety::Default,
                     path: func,
                     args,
                     tokens: None,
@@ -1092,7 +1118,7 @@ impl Builder {
         let rhs = rhs.make(&self);
         P(Expr {
             id: self.id,
-            kind: ExprKind::Index(lhs, rhs),
+            kind: ExprKind::Index(lhs, rhs, self.span),
             span: self.span,
             attrs: self.attrs.into(),
             tokens: None,
@@ -1279,7 +1305,7 @@ impl Builder {
         let arms = arms.into_iter().map(|arm| arm.make(&self)).collect();
         P(Expr {
             id: self.id,
-            kind: ExprKind::Match(cond, arms),
+            kind: ExprKind::Match(cond, arms, MatchKind::Prefix),
             span: self.span,
             attrs: self.attrs.into(),
             tokens: None,
@@ -1299,7 +1325,7 @@ impl Builder {
             attrs: self.attrs,
             pat,
             guard,
-            body,
+            body: Some(body),
             span: DUMMY_SP,
             is_placeholder: false,
         }
@@ -1326,7 +1352,7 @@ impl Builder {
         T: Make<LitIntType>,
     {
         let ty = ty.make(&self);
-        token_lit_from_kind(&LitKind::Int(i, ty))
+        token_lit_from_kind(&LitKind::Int(i.into(), ty))
     }
 
     pub fn float_lit<S, T>(self, s: S, ty: T) -> Lit
@@ -1435,7 +1461,13 @@ impl Builder {
 
         P(Expr {
             id: self.id,
-            kind: ExprKind::ForLoop(pat, expr, body, label),
+            kind: ExprKind::ForLoop {
+                pat,
+                iter: expr,
+                body,
+                label,
+                kind: ForLoopKind::For,
+            },
             span: self.span,
             attrs: self.attrs.into(),
             tokens: None,
@@ -1443,9 +1475,11 @@ impl Builder {
     }
 
     pub fn err_expr(self) -> P<Expr> {
+        // This value is a temporary replacement while moving an expression
+        // out of the AST, not a recovered parser error with a diagnostic.
         P(Expr {
             id: self.id,
-            kind: ExprKind::Err,
+            kind: ExprKind::Dummy,
             span: self.span,
             attrs: self.attrs.into(),
             tokens: None,
@@ -1461,7 +1495,7 @@ impl Builder {
         let name = name.make(&self);
         P(Pat {
             id: self.id,
-            kind: PatKind::Ident(BindingAnnotation(ByRef::No, self.mutbl), name, None),
+            kind: PatKind::Ident(BindingMode(ByRef::No, self.mutbl), name, None),
             span: self.span,
             tokens: None,
         })
@@ -1535,7 +1569,11 @@ impl Builder {
         let name = name.make(&self);
         P(Pat {
             id: self.id,
-            kind: PatKind::Ident(BindingAnnotation(ByRef::Yes, self.mutbl), name, None),
+            kind: PatKind::Ident(
+                BindingMode(ByRef::Yes(self.mutbl), Mutability::Not),
+                name,
+                None,
+            ),
             span: self.span,
             tokens: None,
         })
@@ -1563,7 +1601,7 @@ impl Builder {
         let decl = decl.make(&self);
 
         let barefn = BareFnTy {
-            unsafety: self.unsafety,
+            safety: self.unsafety,
             ext: self.ext,
             generic_params: ThinVec::new(),
             decl,
@@ -1751,7 +1789,7 @@ impl Builder {
         let local = local.make(&self);
         Stmt {
             id: self.id,
-            kind: StmtKind::Local(local),
+            kind: StmtKind::Let(local),
             span: self.span,
         }
     }
@@ -1846,6 +1884,7 @@ impl Builder {
             self.span,
             self.id,
             ItemKind::Static(Box::new(StaticItem {
+                safety: self.unsafety,
                 ty,
                 mutability: self.mutbl,
                 expr: Some(init),
@@ -1870,6 +1909,7 @@ impl Builder {
             self.id,
             ItemKind::Const(Box::new(ConstItem {
                 defaultness: Defaultness::Final,
+                generics: self.generics,
                 ty,
                 expr: init,
             })),
@@ -1915,7 +1955,10 @@ impl Builder {
         let variant_data = if tuple {
             VariantData::Tuple(fields.into(), DUMMY_NODE_ID)
         } else {
-            VariantData::Struct(fields.into(), false)
+            VariantData::Struct {
+                fields: fields.into(),
+                recovered: Recovered::No,
+            }
         };
         Self::item(
             name,
@@ -1938,7 +1981,13 @@ impl Builder {
             self.vis,
             self.span,
             self.id,
-            ItemKind::Union(VariantData::Struct(fields.into(), false), self.generics),
+            ItemKind::Union(
+                VariantData::Struct {
+                    fields: fields.into(),
+                    recovered: Recovered::No,
+                },
+                self.generics,
+            ),
         )
     }
 
@@ -1972,8 +2021,7 @@ impl Builder {
         let kind = ItemKind::TyAlias(Box::new(TyAlias {
             defaultness: Defaultness::Final,
             generics: self.generics,
-            where_clauses: (TyAliasWhereClause::default(), TyAliasWhereClause::default()),
-            where_predicates_split: 0,
+            where_clauses: TyAliasWhereClauses::default(),
             bounds: vec![],
             ty,
         }));
@@ -1998,7 +2046,7 @@ impl Builder {
             inner_span: self.span,
             inject_use_span: DUMMY_SP,
         };
-        ModKind::Loaded(items, self.inline, spans)
+        ModKind::Loaded(items, self.inline, spans, Ok(()))
     }
 
     pub fn mac_item<M>(self, mac: M) -> P<Item>
@@ -2069,7 +2117,7 @@ impl Builder {
             self.id,
             ItemKind::Impl(Box::new(Impl {
                 defaultness: Defaultness::Final,
-                unsafety: self.unsafety,
+                safety: self.unsafety,
                 generics: self.generics,
                 constness: self.constness,
                 polarity: ImplPolarity::Positive,
@@ -2156,7 +2204,10 @@ impl Builder {
         let use_tree = UseTree {
             span: DUMMY_SP,
             prefix: path,
-            kind: UseTreeKind::Nested(inner_trees),
+            kind: UseTreeKind::Nested {
+                items: inner_trees,
+                span: self.span,
+            },
         };
         Self::item(
             Ident::empty(),
@@ -2170,7 +2221,8 @@ impl Builder {
 
     pub fn foreign_items(self, items: Vec<P<ForeignItem>>) -> P<Item> {
         let fgn_mod = ForeignMod {
-            unsafety: self.unsafety,
+            extern_span: self.span,
+            safety: self.unsafety,
             abi: match self.ext {
                 Extern::None | Extern::Implicit(_) => None,
                 Extern::Explicit(s, _) => Some(s),
@@ -2319,7 +2371,12 @@ impl Builder {
             self.vis,
             self.span,
             self.id,
-            ForeignItemKind::Static(ty, self.mutbl, None),
+            ForeignItemKind::Static(Box::new(StaticItem {
+                ty,
+                safety: self.unsafety,
+                mutability: self.mutbl,
+                expr: None,
+            })),
         )
     }
 
@@ -2349,6 +2406,8 @@ impl Builder {
         let ident = ident.make(&self);
         let ty = ty.make(&self);
         FieldDef {
+            safety: Safety::Default,
+            default: None,
             span: self.span,
             ident: Some(ident),
             vis: self.vis,
@@ -2365,6 +2424,8 @@ impl Builder {
     {
         let ty = ty.make(&self);
         FieldDef {
+            safety: Safety::Default,
+            default: None,
             span: self.span,
             ident: None,
             vis: self.vis,
@@ -2386,8 +2447,8 @@ impl Builder {
             stmts: stmts,
             id: self.id,
             rules: match self.unsafety {
-                Unsafe::Yes(_) => BlockCheckMode::Unsafe(UnsafeSource::UserProvided),
-                Unsafe::No => BlockCheckMode::Default,
+                Safety::Unsafe(_) => BlockCheckMode::Unsafe(UnsafeSource::UserProvided),
+                Safety::Default | Safety::Safe(_) => BlockCheckMode::Default,
             },
             span: self.span,
             tokens: None,
@@ -2482,6 +2543,7 @@ impl Builder {
             style,
             kind: AttrKind::Normal(P(NormalAttr {
                 item: AttrItem {
+                    unsafety: Safety::Default,
                     path,
                     args,
                     tokens: None,
@@ -2498,6 +2560,7 @@ impl Builder {
             style,
             kind: AttrKind::Normal(P(NormalAttr {
                 item: AttrItem {
+                    unsafety: meta_item.unsafety,
                     path: meta_item.path,
                     args: meta_item_kind_attr_args(&meta_item.kind, meta_item.span),
                     tokens: None,
@@ -2517,15 +2580,16 @@ impl Builder {
         let path = path.make(&self);
         let kind = kind.make(&self);
         MetaItem {
+            unsafety: Safety::Default,
             path: path,
             kind: kind,
             span: DUMMY_SP,
         }
     }
 
-    pub fn nested_meta_item<K>(self, kind: K) -> NestedMetaItem
+    pub fn nested_meta_item<K>(self, kind: K) -> MetaItemInner
     where
-        K: Make<NestedMetaItem>,
+        K: Make<MetaItemInner>,
     {
         kind.make(&self)
     }
@@ -2556,14 +2620,13 @@ impl Builder {
             path: path,
             args: P(DelimArgs {
                 dspan: DelimSpan::dummy(),
-                delim: MacDelimiter::Parenthesis,
+                delim: token::Delimiter::Parenthesis,
                 tokens: TokenStream::default(),
             }),
-            prior_type_ascription: None,
         }
     }
 
-    pub fn mac<Pa, Ts>(self, func: Pa, arguments: Ts, delim: MacDelimiter) -> MacCall
+    pub fn mac<Pa, Ts>(self, func: Pa, arguments: Ts, delim: token::Delimiter) -> MacCall
     where
         Pa: Make<Path>,
         Ts: Make<TokenStream>,
@@ -2579,7 +2642,6 @@ impl Builder {
         MacCall {
             path: func,
             args: P(args),
-            prior_type_ascription: None,
         }
     }
 
@@ -2597,6 +2659,7 @@ impl Builder {
             None => LocalKind::Decl,
         };
         Local {
+            colon_sp: None,
             id: self.id,
             pat,
             ty,
@@ -2674,7 +2737,7 @@ impl Builder {
                 binder: ClosureBinder::NotPresent,
                 capture_clause: capture,
                 constness: Const::No,
-                asyncness: Async::No,
+                coroutine_kind: None,
                 movability: mov,
                 fn_decl: decl,
                 body,
@@ -2701,5 +2764,42 @@ fn has_rightmost_cast(expr: &Expr) -> bool {
         &ExprKind::Unary(_, ref arg) => has_rightmost_cast(&**arg),
         &ExprKind::Binary(_, _, ref rhs) => has_rightmost_cast(&**rhs),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn c_string_literal_reflection_preserves_bytes() {
+        rustc_span::create_default_session_globals_then(|| {
+            for (bytes, style) in [
+                (b"\0".as_slice(), StrStyle::Cooked),
+                (b"a\"\n\xff\0".as_slice(), StrStyle::Cooked),
+                ("caf\u{00e9}\0".as_bytes(), StrStyle::Raw(1)),
+            ] {
+                let literal = LitKind::CStr(bytes.into(), style);
+                let token = token_lit_from_kind(&literal);
+                let round_tripped = LitKind::from_token_lit(token).unwrap();
+                assert_eq!(round_tripped, literal);
+            }
+        });
+    }
+
+    #[test]
+    fn reference_binding_mutability_keeps_its_meaning() {
+        rustc_span::create_default_session_globals_then(|| {
+            let shared = mk().ident_ref_pat("value");
+            let mutable = mk().mutbl().ident_ref_pat("value");
+            assert_eq!(
+                rustc_ast_pretty::pprust::pat_to_string(&shared),
+                "ref value"
+            );
+            assert_eq!(
+                rustc_ast_pretty::pprust::pat_to_string(&mutable),
+                "ref mut value"
+            );
+        });
     }
 }

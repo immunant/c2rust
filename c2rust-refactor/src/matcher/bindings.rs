@@ -6,10 +6,10 @@ use derive_more::{From, TryInto};
 use rustc_ast::ptr::P;
 use rustc_ast::token::Lit;
 use rustc_ast::token::{LitKind as TokenLitKind, Token, TokenKind};
-use rustc_ast::tokenstream::{Spacing, TokenStream, TokenTree, TokenTreeCursor};
+use rustc_ast::tokenstream::{Spacing, TokenStream, TokenTree};
 use rustc_ast::{Expr, Item, Pat, Path, Stmt, Ty};
-use rustc_span::source_map::DUMMY_SP;
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::DUMMY_SP;
+use rustc_span::{Ident, Symbol};
 
 use crate::ast_builder::IntoSymbol;
 use crate::ast_manip::AstEquiv;
@@ -292,7 +292,7 @@ impl Type {
     }
 }
 
-fn maybe_get_type(c: &mut TokenTreeCursor) -> Type {
+fn maybe_get_type(c: &mut std::iter::Cloned<rustc_ast::tokenstream::TokenStreamIter<'_>>) -> Type {
     let mut c_idx = 0;
     if let Some(TokenTree::Token(
         Token {
@@ -300,10 +300,10 @@ fn maybe_get_type(c: &mut TokenTreeCursor) -> Type {
             ..
         },
         _,
-    )) = c.look_ahead(c_idx)
+    )) = c.clone().nth(c_idx)
     {
         c_idx += 1;
-        let is_optional = match c.look_ahead(c_idx) {
+        let is_optional = match c.clone().nth(c_idx) {
             Some(TokenTree::Token(
                 Token {
                     kind: TokenKind::Question,
@@ -316,7 +316,7 @@ fn maybe_get_type(c: &mut TokenTreeCursor) -> Type {
             }
             _ => false,
         };
-        match c.look_ahead(c_idx) {
+        match c.clone().nth(c_idx) {
             Some(TokenTree::Token(
                 Token {
                     kind: TokenKind::Ident(ty_ident, _),
@@ -324,7 +324,7 @@ fn maybe_get_type(c: &mut TokenTreeCursor) -> Type {
                 },
                 _,
             )) => {
-                if let Some(ty) = Type::from_ast_ident(*ty_ident) {
+                if let Some(ty) = Type::from_ast_ident(ty_ident) {
                     c.nth(c_idx);
                     if is_optional {
                         return Type::Optional(ty.interned());
@@ -342,7 +342,7 @@ fn maybe_get_type(c: &mut TokenTreeCursor) -> Type {
 /// Rewrite tokens like `$foo:ty` into `$foo` and extract the types
 fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
     let mut tokens = Vec::new();
-    let mut c = ts.into_trees();
+    let mut c = ts.iter().cloned();
     while let Some(tt) = c.next() {
         let new_tt = match tt {
             TokenTree::Token(
@@ -351,7 +351,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     ..
                 },
                 _,
-            ) => match c.look_ahead(0) {
+            ) => match c.clone().next() {
                 Some(TokenTree::Token(
                     Token {
                         kind: TokenKind::Ident(ident, is_raw),
@@ -360,7 +360,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     spacing,
                 )) => {
                     // Copy the fields out of the borrowed cursor so we can call c.next()
-                    let (ident, is_raw, span, spacing) = (*ident, *is_raw, *span, *spacing);
+
                     c.next();
 
                     let dollar_sym = Symbol::intern(&format!("${}", ident));
@@ -369,9 +369,14 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
 
                     let token_kind = match ident_ty {
                         Type::Lit | Type::Optional(Type::Lit) => {
-                            // Lit nodes don't have an Ident, so we stick the name
-                            // inside a LitKind::Err
-                            TokenKind::lit(TokenLitKind::Err, dollar_sym, None)
+                            // Keep a valid literal token while carrying a matcher-only name.
+                            // The suffix cannot be written as a Rust identifier, so
+                            // ordinary string literals cannot collide with this marker.
+                            TokenKind::lit(
+                                TokenLitKind::Str,
+                                dollar_sym,
+                                Some(Symbol::intern("$c2rust_pattern")),
+                            )
                         }
                         _ => TokenKind::Ident(dollar_sym, is_raw),
                     };
@@ -386,13 +391,13 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
 
                 Some(TokenTree::Token(
                     Token {
-                        kind: TokenKind::Lifetime(ident),
+                        kind: TokenKind::Lifetime(ident, is_raw),
                         span,
                     },
                     spacing,
                 )) => {
                     // Copy the fields out of the borrowed cursor so we can call c.next()
-                    let (ident, span, spacing) = (*ident, *span, *spacing);
+
                     c.next();
 
                     let (prefix, label) = ident.as_str().split_at(1);
@@ -406,7 +411,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                     bt.set_type(dollar_sym, label_ty);
                     TokenTree::Token(
                         Token {
-                            kind: TokenKind::Lifetime(dollar_sym),
+                            kind: TokenKind::Lifetime(dollar_sym, is_raw),
                             span,
                         },
                         spacing,
@@ -422,9 +427,9 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                 ),
             },
 
-            TokenTree::Delimited(sp, delim, tts) => {
+            TokenTree::Delimited(sp, spacing, delim, tts) => {
                 let dts = rewrite_token_stream(tts, bt);
-                TokenTree::Delimited(sp, delim, dts)
+                TokenTree::Delimited(sp, spacing, delim, dts)
             }
 
             tt @ _ => tt,

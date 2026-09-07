@@ -33,7 +33,7 @@ impl Transform for CharLits {
                 if let Ok(LitKind::Int(i, _)) = LitKind::from_token_lit(*l) {
                     if i < 256 {
                         let mut bnd = Bindings::new();
-                        bnd.add("__number", mk().lit_expr(i as u8 as char));
+                        bnd.add("__number", mk().lit_expr(i.get() as u8 as char));
                         *e = pattern.clone().subst(st, cx, &bnd);
                     }
                 }

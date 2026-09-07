@@ -56,7 +56,8 @@
 
 use rustc_ast::*;
 use rustc_session::Session;
-use rustc_span::source_map::{Span, DUMMY_SP};
+use rustc_span::{Span, DUMMY_SP};
+
 use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};

@@ -1,26 +1,32 @@
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
+use rustc_ast::tokenstream::DelimSpacing;
+use rustc_data_structures::packed::Pu128;
+use rustc_errors::ErrorGuaranteed;
 use std::collections::HashMap;
 
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::source_map::{Span, Spanned, SyntaxContext};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::source_map::Spanned;
+use rustc_span::{Ident, Symbol};
+use rustc_span::{Span, SyntaxContext};
 use rustc_target::spec::abi::Abi;
 use thin_vec::ThinVec;
 
 use crate::ast_builder::mk;
 use rustc_ast::ptr::P;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast_manip::{GetSpan, MaybeGetNodeId};
 
 pub struct Ctxt {
-    nts: Vec<(Span, Nonterminal)>,
+    nts: Vec<(Span, TokenKind)>,
 }
 
 impl Ctxt {
-    fn record(&mut self, span: Span, nt: Nonterminal) {
+    fn record(&mut self, span: Span, nt: TokenKind) {
         self.nts.push((span, nt));
     }
 }
@@ -50,6 +56,14 @@ impl NtMatch for FormatArgs {
             NtMatch::nt_match(&old.expr, &new.expr, cx);
         }
     }
+}
+
+impl NtMatch for std::borrow::Cow<'_, str> {
+    fn nt_match(_old: &Self, _new: &Self, _cx: &mut Ctxt) {}
+}
+
+impl NtMatch for Result<(), ErrorGuaranteed> {
+    fn nt_match(_old: &Self, _new: &Self, _cx: &mut Ctxt) {}
 }
 
 include!(concat!(env!("OUT_DIR"), "/nt_match_gen.inc.rs"));
@@ -142,22 +156,22 @@ impl<T: NtMatch + MaybeGetNodeId> NtMatch for ThinVec<T> {
 }
 
 trait AsNonterminal {
-    fn as_nonterminal(&self) -> Nonterminal;
+    fn as_nonterminal(&self) -> TokenKind;
 }
 
 macro_rules! as_nonterminal_impl {
     ($Ty:ty, $Variant:ident) => {
         impl AsNonterminal for $Ty {
-            fn as_nonterminal(&self) -> Nonterminal {
-                Nonterminal::$Variant(self.clone())
+            fn as_nonterminal(&self) -> TokenKind {
+                TokenKind::Interpolated(Arc::new(Nonterminal::$Variant(self.clone())))
             }
         }
     };
 
     ($Ty:ty, $Variant:ident, P) => {
         impl AsNonterminal for $Ty {
-            fn as_nonterminal(&self) -> Nonterminal {
-                Nonterminal::$Variant(P(self.clone()))
+            fn as_nonterminal(&self) -> TokenKind {
+                TokenKind::Interpolated(Arc::new(Nonterminal::$Variant(P(self.clone()))))
             }
         }
     };
@@ -177,20 +191,29 @@ as_nonterminal_impl!(Path, NtPath, P);
 as_nonterminal_impl!(Visibility, NtVis, P);
 
 impl AsNonterminal for Ident {
-    fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtIdent(*self, false)
+    fn as_nonterminal(&self) -> TokenKind {
+        TokenKind::NtIdent(*self, self.is_raw_guess().into())
     }
 }
 
 impl AsNonterminal for Lifetime {
-    fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtLifetime(self.ident)
+    fn as_nonterminal(&self) -> TokenKind {
+        let name = self.ident.name.as_str();
+        let bare_name = Symbol::intern(
+            name.strip_prefix("'")
+                .expect("lifetime name lacks apostrophe"),
+        );
+        let raw = bare_name != rustc_span::kw::Static
+            && Ident::new(bare_name, self.ident.span).is_raw_guess();
+        TokenKind::NtLifetime(self.ident, raw.into())
     }
 }
 
 impl AsNonterminal for TokenLit {
-    fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtLiteral(mk().lit_expr(self.clone()))
+    fn as_nonterminal(&self) -> TokenKind {
+        TokenKind::Interpolated(Arc::new(Nonterminal::NtLiteral(
+            mk().lit_expr(self.clone()),
+        )))
     }
 }
 
@@ -205,8 +228,14 @@ where
     empty_ctxt
 }
 
-pub fn match_nonterminals<T: NtMatch>(old: &T, new: &T) -> Vec<(Span, Nonterminal)> {
+pub fn match_nonterminals<T: NtMatch>(old: &T, new: &T) -> Vec<(Span, TokenKind)> {
     let mut cx = Ctxt { nts: Vec::new() };
     NtMatch::nt_match(old, new, &mut cx);
     cx.nts
+}
+
+impl<T: NtMatch + ?Sized> NtMatch for Arc<T> {
+    fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
+        <T as NtMatch>::nt_match(old, new, cx);
+    }
 }

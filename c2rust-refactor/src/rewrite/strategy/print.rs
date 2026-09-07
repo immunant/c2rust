@@ -13,24 +13,30 @@ use log::{info, warn};
 use rustc_ast::attr;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::DelimSpacing;
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::util::comments::CommentStyle;
 use rustc_ast::util::parser;
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, PrintState};
+use rustc_data_structures::packed::Pu128;
 use rustc_data_structures::sync::Lrc;
+use rustc_errors::ErrorGuaranteed;
 use rustc_parse::parser::attr::InnerAttrPolicy;
 use rustc_session::Session;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_span::source_map::{BytePos, FileName, RealFileName, SourceFile, Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::source_map::Spanned;
+use rustc_span::SyntaxContext;
 use rustc_span::DUMMY_SP;
+use rustc_span::{BytePos, FileName, RealFileName, SourceFile, Span};
+use rustc_span::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::fmt::Debug;
 use std::fs;
 use std::path;
 use std::rc::Rc;
+use std::sync::Arc;
 use thin_vec::ThinVec;
 
 use crate::ast_manip::util::extend_span_attrs;
@@ -64,7 +70,7 @@ pub trait PrintParse {
 
 impl PrintParse for Expr {
     fn to_string(&self) -> String {
-        pprust::expr_to_string(self)
+        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtExpr(P(self.clone())))
     }
 
     type Parsed = P<Expr>;
@@ -75,7 +81,7 @@ impl PrintParse for Expr {
 
 impl PrintParse for Pat {
     fn to_string(&self) -> String {
-        pprust::pat_to_string(self)
+        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtPat(P(self.clone())))
     }
 
     type Parsed = P<Pat>;
@@ -86,7 +92,7 @@ impl PrintParse for Pat {
 
 impl PrintParse for Ty {
     fn to_string(&self) -> String {
-        pprust::ty_to_string(self)
+        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtTy(P(self.clone())))
     }
 
     type Parsed = P<Ty>;
@@ -101,8 +107,12 @@ impl PrintParse for Stmt {
         // not just to Semi kind statements. We want to differentiate these
         // nodes.
         match self.kind {
-            StmtKind::Expr(ref expr) => pprust::expr_to_string(expr),
-            _ => pprust::State::new().stmt_to_string(self),
+            StmtKind::Expr(ref expr) => {
+                crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtExpr(expr.clone()))
+            }
+            _ => crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtStmt(P(
+                self.clone()
+            ))),
         }
     }
 
@@ -114,7 +124,7 @@ impl PrintParse for Stmt {
 
 impl PrintParse for Item {
     fn to_string(&self) -> String {
-        pprust::item_to_string(self)
+        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtItem(P(self.clone())))
     }
 
     type Parsed = P<Item>;
@@ -127,7 +137,7 @@ impl PrintParse for Item {
 
 impl PrintParse for ForeignItem {
     fn to_string(&self) -> String {
-        pprust::State::new().foreign_item_to_string(self)
+        crate::ast_manip::print::foreign_item_to_string(self)
     }
 
     type Parsed = P<ForeignItem>;
@@ -138,7 +148,7 @@ impl PrintParse for ForeignItem {
 
 impl PrintParse for Block {
     fn to_string(&self) -> String {
-        pprust::State::new().block_to_string(self)
+        crate::ast_manip::print::nonterminal_to_string(&Nonterminal::NtBlock(P(self.clone())))
     }
 
     type Parsed = P<Block>;
@@ -149,7 +159,7 @@ impl PrintParse for Block {
 
 impl PrintParse for Param {
     fn to_string(&self) -> String {
-        pprust::State::new().param_to_string(self)
+        crate::ast_manip::print::param_to_string(self)
     }
 
     type Parsed = Param;
@@ -160,7 +170,7 @@ impl PrintParse for Param {
 
 impl PrintParse for Attribute {
     fn to_string(&self) -> String {
-        pprust::attribute_to_string(self)
+        crate::ast_manip::print::attribute_to_string(self)
     }
 
     type Parsed = Attribute;
@@ -173,13 +183,8 @@ impl PrintParse for Attribute {
                     // Expand the `span` to include the trailing \n.  Otherwise multiple spliced
                     // doc comments will run together into a single line.
                     let span = p.token.span.with_hi(p.token.span.hi() + BytePos(1));
-                    let attr = attr::mk_doc_comment(
-                        &sess.parse_sess.attr_id_generator,
-                        kind,
-                        style,
-                        s,
-                        span,
-                    );
+                    let attr =
+                        attr::mk_doc_comment(&sess.psess.attr_id_generator, kind, style, s, span);
                     p.bump();
                     return Ok(attr);
                 }
@@ -214,17 +219,17 @@ impl Splice for Expr {
         // Check for cases where we can safely omit parentheses.
         let prec = self.precedence();
         let need_parens = match rcx.expr_prec() {
-            ExprPrec::Normal(min_prec) => prec.order() < min_prec,
+            ExprPrec::Normal(min_prec) => (prec as i8) < min_prec,
             ExprPrec::Cond(min_prec) => {
-                prec.order() < min_prec || parser::contains_exterior_struct_lit(self)
+                (prec as i8) < min_prec || parser::contains_exterior_struct_lit(self)
             }
             ExprPrec::Callee(min_prec) => match self.kind {
                 ExprKind::Field(..) => true,
-                _ => prec.order() < min_prec,
+                _ => (prec as i8) < min_prec,
             },
             ExprPrec::LeftLess(min_prec) => match self.kind {
-                ExprKind::Cast(..) | ExprKind::Type(..) => true,
-                _ => prec.order() < min_prec,
+                ExprKind::Cast(..) => true,
+                _ => (prec as i8) < min_prec,
             },
         };
 
@@ -365,6 +370,18 @@ impl<T: RecoverChildren + ?Sized> RecoverChildren for P<T> {
 
     fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         <T as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
+    }
+}
+
+impl RecoverChildren for std::borrow::Cow<'_, str> {
+    fn recover_children(_reparsed: &Self, _new: &Self, _rcx: RewriteCtxtRef) {}
+    fn recover_node_and_children(_reparsed: &Self, _new: &Self, _rcx: RewriteCtxtRef) {}
+    fn recover_node_restricted(
+        _old_span: Span,
+        _reparsed: &Self,
+        _new: &Self,
+        _rcx: RewriteCtxtRef,
+    ) {
     }
 }
 
@@ -738,7 +755,7 @@ fn create_file_for_module(
                 if sess
                     .local_crate_source_file()
                     .as_ref()
-                    .map_or(false, |f| *f == path)
+                    .map_or(false, |f| f.local_path() == Some(path.as_path()))
                 {
                     path.pop();
                     if path.file_name().map_or(true, |path| path != "src") {
@@ -750,8 +767,9 @@ fn create_file_for_module(
 
                         // Add a #[path = "..."] attribute
                         path_attr = Some(attr::mk_attr_name_value_str(
-                            &sess.parse_sess.attr_id_generator,
+                            &sess.psess.attr_id_generator,
                             AttrStyle::Outer,
+                            Safety::Default,
                             Symbol::intern("path"),
                             Symbol::intern(&format!(
                                 "src{}{}",
@@ -788,7 +806,7 @@ fn create_file_for_module(
 
 impl RewriteAt for Item {
     fn rewrite_at(&self, old_span: Span, mut rcx: RewriteCtxtRef) -> bool {
-        if let ItemKind::Mod(_, ModKind::Loaded(m_items, m_inline, m_spans)) = &self.kind {
+        if let ItemKind::Mod(_, ModKind::Loaded(m_items, m_inline, m_spans, _)) = &self.kind {
             if *m_inline == Inline::No {
                 // We need to print the `mod name;` in the parent and the module
                 // contents in its own file. If there are no items, delete the
@@ -811,7 +829,7 @@ impl RewriteAt for Item {
                     if let Some(attr) = path_attr {
                         item.attrs.push(attr);
                     }
-                    Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root(), None)
+                    Span::new(sf.start_pos, sf.end_position(), SyntaxContext::root(), None)
                 } else {
                     m_spans.inner_span
                 };
@@ -867,5 +885,19 @@ impl RewriteAt for Item {
 
         // Default to rewrite_at_impl for inline modules and other items
         rewrite_at_impl(old_span, self, rcx)
+    }
+}
+
+impl<T: RecoverChildren + ?Sized> RecoverChildren for Arc<T> {
+    fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_children(reparsed, new, rcx)
+    }
+
+    fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_and_children(reparsed, new, rcx)
+    }
+
+    fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
+        <T as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
     }
 }

@@ -5,7 +5,7 @@ use rustc_ast::tokenstream::{Spacing, TokenTree};
 use rustc_ast::*;
 use rustc_data_structures::sync::Lrc;
 use rustc_hir::def_id::DefId;
-use rustc_span::source_map::DUMMY_SP;
+use rustc_span::DUMMY_SP;
 use rustc_span::{sym, Span};
 use smallvec::smallvec;
 use std::collections::{HashMap, HashSet};
@@ -215,7 +215,11 @@ fn build_format_macro(
     } else {
         mk()
     };
-    b.mac(vec![macro_name], macro_tts, MacDelimiter::Parenthesis)
+    b.mac(
+        vec![macro_name],
+        macro_tts,
+        rustc_ast::token::Delimiter::Parenthesis,
+    )
 }
 
 /// # `convert_printfs` Command
@@ -258,7 +262,7 @@ impl Transform for ConvertPrintfs {
                     ("fprintf", ForeignItemKind::Fn(_)) => {
                         fprintf_defs.insert(cx.node_def_id(fi.id));
                     }
-                    ("stderr", ForeignItemKind::Static(_, _, _)) => {
+                    ("stderr", ForeignItemKind::Static(_)) => {
                         stderr_defs.insert(cx.node_def_id(fi.id));
                     }
                     _ => {}

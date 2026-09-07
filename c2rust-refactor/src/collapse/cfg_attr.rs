@@ -1,5 +1,5 @@
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use log::info;
-use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::*;
@@ -51,7 +51,7 @@ macro_rules! collect_cfg_attrs {
 
 collect_cfg_attrs! {
     visit_item(Item), walk_item;
-    visit_foreign_item(ForeignItem), walk_foreign_item;
+    visit_foreign_item(ForeignItem), walk_item;
     visit_stmt(Stmt), walk_stmt;
     visit_expr(Expr), walk_expr;
     // TODO: extend this list with the remaining node types
@@ -103,36 +103,36 @@ impl RestoreCfgAttrs {
 impl MutVisitor for RestoreCfgAttrs {
     fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         self.restore(&mut i);
-        mut_visit::noop_flat_map_item(i, self)
+        mut_visit::walk_flat_map_item(self, i)
     }
 
-    fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
+    fn flat_map_assoc_item(
+        &mut self,
+        item: P<AssocItem>,
+        ctxt: rustc_ast::visit::AssocCtxt,
+    ) -> SmallVec<[P<AssocItem>; 1]> {
+        let mut i = item;
         self.restore(&mut i);
-        mut_visit::noop_flat_map_assoc_item(i, self)
-    }
-
-    fn flat_map_trait_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
-        self.restore(&mut i);
-        mut_visit::noop_flat_map_assoc_item(i, self)
+        mut_visit::walk_flat_map_assoc_item(self, i, ctxt)
     }
 
     fn flat_map_foreign_item(&mut self, mut i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         self.restore(&mut i);
-        mut_visit::noop_flat_map_foreign_item(i, self)
+        mut_visit::walk_flat_map_foreign_item(self, i)
     }
 
     fn flat_map_stmt(&mut self, mut s: Stmt) -> SmallVec<[Stmt; 1]> {
         self.restore(&mut s);
-        mut_visit::noop_flat_map_stmt(s, self)
+        mut_visit::walk_flat_map_stmt(self, s)
     }
 
     fn visit_expr(&mut self, e: &mut P<Expr>) {
         self.restore(e);
-        mut_visit::noop_visit_expr(e, self)
+        mut_visit::walk_expr(self, e)
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
-        mut_visit::noop_visit_mac(mac, self)
+        mut_visit::walk_mac(self, mac)
     }
 
     // TODO: extend this impl with the remaining node types

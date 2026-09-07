@@ -1,9 +1,11 @@
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::DelimSpacing;
 use rustc_ast::tokenstream::{DelimSpan, Spacing, TokenTree};
 use rustc_ast::util::parser;
 use rustc_ast::*;
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
 
 use crate::ast_manip::{GetNodeId, GetSpan};
 use crate::rewrite::base::{binop_left_prec, binop_right_prec, calc_outer_span, rewrite_seq};

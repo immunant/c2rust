@@ -1,8 +1,9 @@
 use json::{self, object, JsonValue};
 use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
-use rustc_span::source_map::{SourceMap, Span};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::source_map::SourceMap;
+use rustc_span::Span;
+use rustc_span::{Ident, Symbol};
 use std::collections::{HashMap, HashSet};
 
 use crate::rewrite::{TextAdjust, TextRewrite};
@@ -121,7 +122,7 @@ impl<'a, 'ast> Visitor<'ast> for MarkVisitor<'a> {
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
         self.encode_named("foreign item", x.id, x.ident);
-        visit::walk_foreign_item(self, x);
+        visit::walk_item(self, x);
     }
 
     fn visit_stmt(&mut self, x: &'ast Stmt) {

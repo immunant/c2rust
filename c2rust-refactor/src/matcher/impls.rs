@@ -1,15 +1,21 @@
 //! `TryMatch` impls, to support the `matcher` module.
 use rustc_ast::ptr::P;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::DelimSpacing;
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_span::source_map::{Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_data_structures::packed::Pu128;
+use rustc_errors::ErrorGuaranteed;
+use rustc_span::source_map::Spanned;
+use rustc_span::Span;
+use rustc_span::SyntaxContext;
+use rustc_span::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::convert::TryInto;
 use std::rc::Rc;
+use std::sync::Arc;
 use thin_vec::ThinVec;
 
 use crate::ast_manip::util::{macro_name, PatternSymbol};
@@ -119,12 +125,12 @@ impl TryMatch for Pat {
             return match &name.as_str() as &str {
                 "marked" => mcx.do_marked(
                     &mac.args,
-                    |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
+                    |p| p.parse_pat_no_top_alt(None, None).map(|p| p.into_inner()),
                     target,
                 ),
                 "typed" => mcx.do_typed(
                     &mac.args,
-                    |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
+                    |p| p.parse_pat_no_top_alt(None, None).map(|p| p.into_inner()),
                     target,
                 ),
                 _ => Err(matcher::Error::BadSpecialPattern(name)),
@@ -286,4 +292,20 @@ impl<A: TryMatch, B: TryMatch, C: TryMatch> TryMatch for (A, B, C) {
     }
 }
 
+impl TryMatch for std::borrow::Cow<'_, str> {
+    fn try_match(&self, target: &Self, _mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        if self == target {
+            Ok(())
+        } else {
+            Err(matcher::Error::VariantMismatch)
+        }
+    }
+}
+
 include!(concat!(env!("OUT_DIR"), "/matcher_impls_gen.inc.rs"));
+
+impl<T: TryMatch + ?Sized> TryMatch for Arc<T> {
+    fn try_match(&self, target: &Self, mcx: &mut MatchCtxt) -> matcher::Result<()> {
+        <T as TryMatch>::try_match(self, target, mcx)
+    }
+}
