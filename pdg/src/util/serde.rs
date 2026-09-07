@@ -55,7 +55,7 @@ impl From<BasicBlockDef> for BasicBlock {
 }
 
 pub mod index_vec {
-    use rustc_index::vec::{Idx, IndexVec};
+    use rustc_index::{Idx, IndexVec};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S, I, T>(iv: &IndexVec<I, T>, serializer: S) -> Result<S::Ok, S::Error>

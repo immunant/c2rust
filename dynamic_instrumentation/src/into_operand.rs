@@ -1,8 +1,5 @@
 use rustc_middle::{
-    mir::{
-        interpret::{ConstValue, Scalar},
-        Constant, ConstantKind, Local, Operand, Place, PlaceRef,
-    },
+    mir::{interpret::Scalar, Const, ConstOperand, ConstValue, Local, Operand, Place, PlaceRef},
     ty::TyCtxt,
 };
 use rustc_span::DUMMY_SP;
@@ -36,10 +33,10 @@ impl<'tcx> IntoOperand<'tcx> for u32 {
 
 impl<'tcx> IntoOperand<'tcx> for usize {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
-        Operand::Constant(Box::new(Constant {
+        Operand::Constant(Box::new(ConstOperand {
             span: DUMMY_SP,
             user_ty: None,
-            literal: ConstantKind::Val(
+            const_: Const::Val(
                 ConstValue::Scalar(Scalar::from_u64(self.try_into().unwrap())),
                 tcx.types.usize,
             ),
@@ -49,10 +46,10 @@ impl<'tcx> IntoOperand<'tcx> for usize {
 
 impl<'tcx> IntoOperand<'tcx> for u64 {
     fn op(self, tcx: TyCtxt<'tcx>) -> Operand<'tcx> {
-        Operand::Constant(Box::new(Constant {
+        Operand::Constant(Box::new(ConstOperand {
             span: DUMMY_SP,
             user_ty: None,
-            literal: ConstantKind::Val(ConstValue::Scalar(Scalar::from_u64(self)), tcx.types.u64),
+            const_: Const::Val(ConstValue::Scalar(Scalar::from_u64(self)), tcx.types.u64),
         }))
     }
 }
@@ -70,9 +67,9 @@ impl<'tcx> IntoOperand<'tcx> for Operand<'tcx> {
 }
 
 fn make_const(tcx: TyCtxt, idx: u32) -> Operand {
-    Operand::Constant(Box::new(Constant {
+    Operand::Constant(Box::new(ConstOperand {
         span: DUMMY_SP,
         user_ty: None,
-        literal: ConstantKind::Val(ConstValue::Scalar(Scalar::from_u32(idx)), tcx.types.u32),
+        const_: Const::Val(ConstValue::Scalar(Scalar::from_u32(idx)), tcx.types.u32),
     }))
 }

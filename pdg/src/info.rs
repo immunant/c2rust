@@ -61,7 +61,7 @@ fn set_flow_info(g: &mut Graph) {
             .iter_enumerated()
             .map(|(idx, node)| (idx, FlowInfo::new(idx, node.kind.clone()))),
     );
-    for (n_id, mut node) in g.nodes.iter_enumerated_mut().rev() {
+    for (n_id, node) in g.nodes.iter_enumerated_mut().rev() {
         let cur_node_flow_info: FlowInfo = flow_map.remove(&n_id).unwrap();
         if let Some(p_id) = node.source {
             let parent = flow_map.get_mut(&p_id).unwrap();
