@@ -108,10 +108,9 @@ impl MutVisitor for RestoreCfgAttrs {
 
     fn flat_map_assoc_item(
         &mut self,
-        item: P<AssocItem>,
+        mut i: P<AssocItem>,
         ctxt: rustc_ast::visit::AssocCtxt,
     ) -> SmallVec<[P<AssocItem>; 1]> {
-        let mut i = item;
         self.restore(&mut i);
         mut_visit::walk_flat_map_assoc_item(self, i, ctxt)
     }
