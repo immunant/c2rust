@@ -134,7 +134,7 @@ gen_visit_node_impl! {
     visitor = ForeignItemNodeVisitor;
     visitor_post = ForeignItemNodeVisitorPost;
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem);
-    walk = visit::walk_foreign_item(self, i);
+    walk = visit::walk_item(self, i);
 }
 
 gen_visit_node_impl! {

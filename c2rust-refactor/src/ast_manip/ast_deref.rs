@@ -1,11 +1,14 @@
 use rustc_ast::ptr::P;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::DelimSpacing;
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_span::source_map::{Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_data_structures::packed::Pu128;
+use rustc_errors::ErrorGuaranteed;
+use rustc_span::source_map::Spanned;
+use rustc_span::{Ident, Span, Symbol, SyntaxContext};
 use rustc_target::spec::abi::Abi;
 use thin_vec::ThinVec;
 

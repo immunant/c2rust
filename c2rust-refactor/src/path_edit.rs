@@ -1,6 +1,6 @@
 //! `fold_resolved_paths` function, for rewriting paths based on their resolved `DefId`.
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use log::debug;
-use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir as hir;
@@ -54,7 +54,7 @@ where
 
             hir::PatKind::Path(ref qpath) => {
                 let (qself, path) = match &mut p.kind {
-                    PatKind::Ident(BindingAnnotation(ByRef::No, _), ident, None) => {
+                    PatKind::Ident(BindingMode(ByRef::No, _), ident, None) => {
                         (None, Path::from_ident(*ident))
                     }
                     PatKind::Path(qself, path) => (qself.clone(), path.clone()),
@@ -67,7 +67,7 @@ where
                 // instead, we run into "new and reparsed ASTs don't match" during rewriting.
                 if new_qself.is_none() && new_path.segments.len() == 1 {
                     p.kind = PatKind::Ident(
-                        BindingAnnotation(ByRef::No, Mutability::Not),
+                        BindingMode(ByRef::No, Mutability::Not),
                         new_path.segments[0].ident,
                         None,
                     );
@@ -234,7 +234,7 @@ where
             self.alter_pat_path(p, hir);
         }
 
-        mut_visit::noop_visit_pat(p, self)
+        mut_visit::walk_pat(self, p)
     }
 
     fn visit_expr(&mut self, e: &mut P<Expr>) {
@@ -245,7 +245,7 @@ where
             self.alter_expr_path(e, hir);
         }
 
-        mut_visit::noop_visit_expr(e, self)
+        mut_visit::walk_expr(self, e)
     }
 
     fn visit_ty(&mut self, t: &mut P<Ty>) {
@@ -256,7 +256,7 @@ where
             self.alter_ty_path(t, hir);
         }
 
-        mut_visit::noop_visit_ty(t, self)
+        mut_visit::walk_ty(self, t)
     }
 
     fn flat_map_item(&mut self, item: P<Item>) -> SmallVec<[P<Item>; 1]> {
@@ -276,7 +276,7 @@ where
         };
 
         v.into_iter()
-            .flat_map(|item| mut_visit::noop_flat_map_item(item, self))
+            .flat_map(|item| mut_visit::walk_flat_map_item(self, item))
             .collect()
     }
 }

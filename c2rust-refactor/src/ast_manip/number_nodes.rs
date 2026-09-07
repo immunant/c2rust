@@ -1,4 +1,4 @@
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::token::{Nonterminal, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{MacCall, NodeId, DUMMY_NODE_ID};
@@ -32,7 +32,7 @@ impl<'a> MutVisitor for NumberNodes<'a> {
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
-        mut_visit::noop_visit_mac(mac, self);
+        mut_visit::walk_mac(self, mac);
     }
 }
 
@@ -59,13 +59,14 @@ fn reset_nonterminal_node_ids(nt: &mut Nonterminal, visitor: &mut ResetNodeIds) 
         Nonterminal::NtPath(path) => path.visit(visitor),
         Nonterminal::NtTy(ty) => ty.visit(visitor),
         Nonterminal::NtVis(vis) => vis.visit(visitor),
-        Nonterminal::NtIdent(..) | Nonterminal::NtLifetime(..) | Nonterminal::NtMeta(..) => {}
+        Nonterminal::NtMeta(..) => {}
     }
 }
 
 fn reset_interpolated_node_ids(tokens: TokenStream, visitor: &mut ResetNodeIds) -> TokenStream {
     tokens
-        .into_trees()
+        .iter()
+        .cloned()
         .map(|tree| match tree {
             TokenTree::Token(mut token, spacing) => {
                 if let TokenKind::Interpolated(nt) = &token.kind {
@@ -75,8 +76,9 @@ fn reset_interpolated_node_ids(tokens: TokenStream, visitor: &mut ResetNodeIds) 
                 }
                 TokenTree::Token(token, spacing)
             }
-            TokenTree::Delimited(span, delimiter, tokens) => TokenTree::Delimited(
+            TokenTree::Delimited(span, spacing, delimiter, tokens) => TokenTree::Delimited(
                 span,
+                spacing,
                 delimiter,
                 reset_interpolated_node_ids(tokens, visitor),
             ),
@@ -90,7 +92,7 @@ impl MutVisitor for ResetNodeIds {
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
-        mut_visit::noop_visit_mac(mac, self);
+        mut_visit::walk_mac(self, mac);
         // Macro collapsing preserves transformed arguments as interpolated
         // nonterminals. They are not visited by rustc's token-stream walker,
         // but their IDs must be reset along with the surrounding AST before

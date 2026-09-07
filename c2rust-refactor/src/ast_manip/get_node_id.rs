@@ -1,14 +1,20 @@
 //! `GetNodeId` trait for obtaining the `NodeId` of a generic AST node.
 use rustc_ast::ptr::P;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::DelimSpacing;
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_span::source_map::{Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_data_structures::packed::Pu128;
+use rustc_errors::ErrorGuaranteed;
+use rustc_span::source_map::Spanned;
+use rustc_span::Span;
+use rustc_span::SyntaxContext;
+use rustc_span::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use std::rc::Rc;
+use std::sync::Arc;
 use thin_vec::ThinVec;
 
 /// Trait for obtaining the `NodeId` of a generic AST node.
@@ -59,3 +65,12 @@ impl<T> MaybeGetNodeId for Vec<T> {}
 impl<T> MaybeGetNodeId for ThinVec<T> {}
 
 include!(concat!(env!("OUT_DIR"), "/get_node_id_gen.inc.rs"));
+
+impl<T: MaybeGetNodeId + ?Sized> MaybeGetNodeId for Arc<T> {
+    fn supported() -> bool {
+        <T as MaybeGetNodeId>::supported()
+    }
+    fn get_node_id(&self) -> NodeId {
+        <T as MaybeGetNodeId>::get_node_id(self)
+    }
+}

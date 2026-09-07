@@ -1,9 +1,13 @@
 //! `MutVisit` trait for AST types that can be modified.
-use rustc_ast::mut_visit::*;
+#[cfg(test)]
+mod tests;
+pub mod walk;
+use self::walk::*;
 use rustc_ast::ptr::P;
+use rustc_ast::visit::BoundKind;
 use rustc_ast::*;
-use rustc_span::source_map::Span;
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
+use rustc_span::Span;
 
 use smallvec::{smallvec, SmallVec};
 
@@ -34,6 +38,10 @@ pub trait MutVisit: Sized {
     fn flat_map<F: MutVisitor>(mut self, f: &mut F) -> SmallVec<[Self; 1]> {
         self.visit(f);
         smallvec![self]
+    }
+
+    fn visit_item_kinds<F: FnMut(&mut ItemKind)>(&mut self, callback: &mut F) {
+        self.visit(&mut ItemKindFolder { callback });
     }
 }
 
@@ -72,6 +80,12 @@ where
             elem.visit(f);
         }
     }
+
+    fn visit_item_kinds<F: FnMut(&mut ItemKind)>(&mut self, callback: &mut F) {
+        for elem in self {
+            elem.visit_item_kinds(callback);
+        }
+    }
 }
 
 impl<T> MutVisit for Option<T>
@@ -82,6 +96,86 @@ where
         if let Some(elem) = self {
             elem.visit(f)
         }
+    }
+
+    fn visit_item_kinds<F: FnMut(&mut ItemKind)>(&mut self, callback: &mut F) {
+        if let Some(elem) = self {
+            elem.visit_item_kinds(callback);
+        }
+    }
+}
+
+impl MutVisit for GenericBound {
+    fn visit<F: MutVisitor>(&mut self, visitor: &mut F) {
+        visitor.visit_param_bound(self, BoundKind::Bound);
+    }
+}
+
+impl WalkAst for GenericBound {
+    fn walk<F: MutVisitor>(&mut self, visitor: &mut F) {
+        walk_param_bound(visitor, self);
+    }
+}
+
+impl MutVisitNodes for GenericBound {
+    fn visit<T: MutVisit, F: FnMut(&mut Self)>(target: &mut T, callback: F) {
+        struct Folder<F>(F);
+        impl<F: FnMut(&mut GenericBound)> MutVisitor for Folder<F> {
+            fn visit_param_bound(&mut self, bound: &mut GenericBound, _ctxt: BoundKind) {
+                walk_param_bound(self, bound);
+                (self.0)(bound);
+            }
+        }
+        target.visit(&mut Folder(callback));
+    }
+}
+
+impl MutVisit for ItemKind {
+    fn visit<F: MutVisitor>(&mut self, visitor: &mut F) {
+        WalkAst::walk(self, visitor);
+    }
+
+    fn visit_item_kinds<F: FnMut(&mut ItemKind)>(&mut self, callback: &mut F) {
+        WalkAst::walk(self, &mut ItemKindFolder { callback });
+        callback(self);
+    }
+}
+
+impl WalkAst for ItemKind {
+    fn walk<F: MutVisitor>(&mut self, visitor: &mut F) {
+        // A standalone kind has no owning item's identity or visibility. As in
+        // the old visit_item_kind API, walk its children without visiting a
+        // fabricated Item. Normal Item traversal supplies the real metadata.
+        walk_item_kind(
+            self,
+            rustc_span::DUMMY_SP,
+            DUMMY_NODE_ID,
+            &mut Ident::empty(),
+            &mut Visibility {
+                kind: VisibilityKind::Inherited,
+                span: rustc_span::DUMMY_SP,
+                tokens: None,
+            },
+            (),
+            visitor,
+        );
+    }
+}
+
+struct ItemKindFolder<'a, F> {
+    callback: &'a mut F,
+}
+
+impl<F: FnMut(&mut ItemKind)> MutVisitor for ItemKindFolder<'_, F> {
+    fn visit_item(&mut self, item: &mut P<Item>) {
+        walk_item(self, item);
+        (self.callback)(&mut item.kind);
+    }
+}
+
+impl MutVisitNodes for ItemKind {
+    fn visit<T: MutVisit, F: FnMut(&mut Self)>(target: &mut T, mut callback: F) {
+        target.visit_item_kinds(&mut callback);
     }
 }
 
@@ -121,75 +215,71 @@ pub trait MutVisitor: Sized {
     // forget to add handling for it.
 
     fn visit_crate(&mut self, c: &mut Crate) {
-        noop_visit_crate(c, self)
+        walk_crate(self, c)
     }
 
-    fn visit_meta_list_item(&mut self, list_item: &mut NestedMetaItem) {
-        noop_visit_meta_list_item(list_item, self);
+    fn visit_meta_list_item(&mut self, list_item: &mut MetaItemInner) {
+        walk_meta_list_item(self, list_item);
     }
 
     fn visit_meta_item(&mut self, meta_item: &mut MetaItem) {
-        noop_visit_meta_item(meta_item, self);
+        walk_meta_item(self, meta_item);
     }
 
     fn visit_use_tree(&mut self, use_tree: &mut UseTree) {
-        noop_visit_use_tree(use_tree, self);
+        walk_use_tree(self, use_tree);
     }
 
     fn flat_map_foreign_item(&mut self, ni: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
-        noop_flat_map_foreign_item(ni, self)
+        walk_flat_map_foreign_item(self, ni)
     }
 
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        noop_flat_map_item(i, self)
+        walk_flat_map_item(self, i)
     }
 
     fn visit_fn_header(&mut self, header: &mut FnHeader) {
-        noop_visit_fn_header(header, self);
+        walk_fn_header(self, header);
     }
 
     fn flat_map_field_def(&mut self, fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
-        noop_flat_map_field_def(fd, self)
-    }
-
-    fn visit_item_kind(&mut self, i: &mut ItemKind) {
-        noop_visit_item_kind(i, self);
+        walk_flat_map_field_def(self, fd)
     }
 
     fn visit_fn_decl(&mut self, d: &mut P<FnDecl>) {
-        noop_visit_fn_decl(d, self);
+        walk_fn_decl(self, d);
     }
 
-    fn visit_asyncness(&mut self, a: &mut Async) {
-        noop_visit_asyncness(a, self);
+    fn visit_coroutine_kind(&mut self, a: &mut CoroutineKind) {
+        walk_coroutine_kind(self, a);
     }
 
     fn visit_closure_binder(&mut self, b: &mut ClosureBinder) {
-        noop_visit_closure_binder(b, self);
+        walk_closure_binder(self, b);
     }
 
     fn visit_block(&mut self, b: &mut P<Block>) {
-        noop_visit_block(b, self);
+        walk_block(self, b);
     }
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
-        noop_flat_map_stmt(s, self)
+        walk_flat_map_stmt(self, s)
     }
 
     fn flat_map_arm(&mut self, arm: Arm) -> SmallVec<[Arm; 1]> {
-        noop_flat_map_arm(arm, self)
+        walk_flat_map_arm(self, arm)
     }
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
-        noop_visit_pat(p, self);
+        walk_pat(self, p);
     }
 
     fn visit_anon_const(&mut self, c: &mut AnonConst) {
-        noop_visit_anon_const(c, self);
+        walk_anon_const(self, c);
     }
 
     fn visit_expr(&mut self, e: &mut P<Expr>) {
-        noop_visit_expr(e, self);
+        walk_expr(self, e);
     }
 
     // fn filter_map_expr(&mut self, e: P<Expr>) -> Option<P<Expr>> {
@@ -197,123 +287,119 @@ pub trait MutVisitor: Sized {
     // }
 
     fn visit_generic_arg(&mut self, arg: &mut GenericArg) {
-        noop_visit_generic_arg(arg, self);
+        walk_generic_arg(self, arg);
     }
 
     fn visit_ty(&mut self, t: &mut P<Ty>) {
-        noop_visit_ty(t, self);
+        walk_ty(self, t);
     }
 
     // noop_visit_lifetime is private, so we can't walk lifetimes
     // fn visit_lifetime(&mut self, l: &mut Lifetime) {
-    //     noop_visit_lifetime(l, self);
+    //     walk_lifetime(self, l);
     // }
 
-    fn visit_constraint(&mut self, t: &mut AssocConstraint) {
-        noop_visit_constraint(t, self);
+    fn visit_assoc_item_constraint(&mut self, t: &mut AssocItemConstraint) {
+        walk_assoc_item_constraint(self, t);
     }
 
     fn visit_foreign_mod(&mut self, nm: &mut ForeignMod) {
-        noop_visit_foreign_mod(nm, self);
+        walk_foreign_mod(self, nm);
     }
 
     fn flat_map_variant(&mut self, v: Variant) -> SmallVec<[Variant; 1]>  {
-        noop_flat_map_variant(v, self)
+        walk_flat_map_variant(self, v)
     }
 
     fn visit_ident(&mut self, i: &mut Ident) {
-        noop_visit_ident(i, self);
+        walk_ident(self, i);
     }
 
     fn visit_path(&mut self, p: &mut Path) {
-        noop_visit_path(p, self);
+        walk_path(self, p);
     }
 
     fn visit_qself(&mut self, qs: &mut Option<P<QSelf>>) {
-        noop_visit_qself(qs, self);
+        walk_qself(self, qs);
     }
 
     fn visit_generic_args(&mut self, p: &mut GenericArgs) {
-        noop_visit_generic_args(p, self);
+        walk_generic_args(self, p);
     }
 
     fn visit_angle_bracketed_parameter_data(&mut self, p: &mut AngleBracketedArgs) {
-        noop_visit_angle_bracketed_parameter_data(p, self);
+        walk_angle_bracketed_parameter_data(self, p);
     }
 
     fn visit_parenthesized_parameter_data(&mut self, p: &mut ParenthesizedArgs) {
-        noop_visit_parenthesized_parameter_data(p, self);
+        walk_parenthesized_parameter_data(self, p);
     }
 
     fn visit_local(&mut self, l: &mut P<Local>) {
-        noop_visit_local(l, self);
+        walk_local(self, l);
     }
 
     // fn visit_mac_call(&mut self, _mac: &mut MacCall) {
     //     panic!("visit_mac disabled by default");
     //     // N.B., see note about macros above. If you really want a visitor that
     //     // works on macros, use this definition in your trait impl:
-    //     //   mut_visit::noop_visit_mac(_mac, self);
+    //     //   mut_visit::walk_mac_call(self, _mac);
     // }
 
     fn visit_macro_def(&mut self, def: &mut MacroDef) {
-        noop_visit_macro_def(def, self);
+        walk_macro_def(self, def);
     }
 
     fn visit_label(&mut self, label: &mut Label) {
-        noop_visit_label(label, self);
+        walk_label(self, label);
     }
 
     fn visit_attribute(&mut self, at: &mut Attribute) {
-        noop_visit_attribute(at, self);
+        walk_attribute(self, at);
     }
 
     fn flat_map_param(&mut self, param: Param) -> SmallVec<[Param; 1]> {
-        noop_flat_map_param(param, self)
+        walk_flat_map_param(self, param)
     }
 
     fn visit_generics(&mut self, generics: &mut Generics) {
-        noop_visit_generics(generics, self);
+        walk_generics(self, generics);
     }
 
     fn visit_trait_ref(&mut self, tr: &mut TraitRef) {
-        noop_visit_trait_ref(tr, self);
+        walk_trait_ref(self, tr);
     }
 
     fn visit_poly_trait_ref(&mut self, p: &mut PolyTraitRef) {
-        noop_visit_poly_trait_ref(p, self);
+        walk_poly_trait_ref(self, p);
     }
 
     fn visit_variant_data(&mut self, vdata: &mut VariantData) {
-        noop_visit_variant_data(vdata, self);
+        walk_variant_data(self, vdata);
     }
 
     fn flat_map_generic_param(&mut self, param: GenericParam) -> SmallVec<[GenericParam; 1]> {
-        noop_flat_map_generic_param(param, self)
-    }
-
-    fn visit_param_bound(&mut self, tpb: &mut GenericBound) {
-        noop_visit_param_bound(tpb, self);
+        walk_flat_map_generic_param(self, param)
     }
 
     fn visit_mt(&mut self, mt: &mut MutTy) {
-        noop_visit_mt(mt, self);
+        walk_mt(self, mt);
     }
 
     fn flat_map_expr_field(&mut self, f: ExprField) -> SmallVec<[ExprField; 1]> {
-        noop_flat_map_expr_field(f, self)
+        walk_flat_map_expr_field(self, f)
     }
 
     fn visit_where_clause(&mut self, where_clause: &mut WhereClause) {
-        noop_visit_where_clause(where_clause, self);
+        walk_where_clause(self, where_clause);
     }
 
     fn visit_where_predicate(&mut self, where_predicate: &mut WherePredicate) {
-        noop_visit_where_predicate(where_predicate, self);
+        walk_where_predicate(self, where_predicate);
     }
 
     fn visit_vis(&mut self, vis: &mut Visibility) {
-        noop_visit_vis(vis, self);
+        walk_vis(self, vis);
     }
 
     fn visit_id(&mut self, _id: &mut NodeId) {
@@ -325,7 +411,7 @@ pub trait MutVisitor: Sized {
     }
 
     fn flat_map_pat_field(&mut self, pf: PatField) -> SmallVec<[PatField; 1]> {
-        noop_flat_map_pat_field(pf, self)
+        walk_flat_map_pat_field(self, pf)
     }
 }
 }

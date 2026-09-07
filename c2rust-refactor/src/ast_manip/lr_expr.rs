@@ -1,14 +1,19 @@
 //! `fold_expr_with_context` function, for rewriting exprs with knowledge of their contexts (rvalue
 //! / lvalue / mut lvalue).
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::DelimSpacing;
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_span::source_map::{Span, Spanned};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_data_structures::packed::Pu128;
+use rustc_errors::ErrorGuaranteed;
+use rustc_span::source_map::Spanned;
+use rustc_span::Span;
+use rustc_span::SyntaxContext;
+use rustc_span::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use smallvec::SmallVec;
 use std::rc::Rc;
@@ -29,10 +34,22 @@ trait LRExpr {
     fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR);
 }
 
-impl LRExpr for [u8] {
-    fn fold_rvalue<LR: LRRewrites>(&mut self, _lr: &mut LR) {}
-    fn fold_lvalue<LR: LRRewrites>(&mut self, _lr: &mut LR) {}
-    fn fold_lvalue_mut<LR: LRRewrites>(&mut self, _lr: &mut LR) {}
+impl<T: LRExpr> LRExpr for [T] {
+    fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        for item in self {
+            item.fold_rvalue(lr);
+        }
+    }
+    fn fold_lvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        for item in self {
+            item.fold_lvalue(lr);
+        }
+    }
+    fn fold_lvalue_mut<LR: LRRewrites>(&mut self, lr: &mut LR) {
+        for item in self {
+            item.fold_lvalue_mut(lr);
+        }
+    }
 }
 
 /// A set of expr rewrites, one for each kind of context where an expr may appear.
@@ -237,7 +254,7 @@ impl<F> TopExprFolder<F> {
 
 impl<F: FnMut(&mut P<Expr>)> MutVisitor for TopExprFolder<F> {
     fn visit_expr(&mut self, e: &mut P<Expr>) {
-        self.in_expr(true, |this| mut_visit::noop_visit_expr(e, this));
+        self.in_expr(true, |this| mut_visit::walk_expr(this, e));
         if !self.in_expr {
             (self.callback)(e);
         }
@@ -245,15 +262,15 @@ impl<F: FnMut(&mut P<Expr>)> MutVisitor for TopExprFolder<F> {
 
     // Clear the `in_expr` flag upon entry to a non-expr node that may contain exprs.
     fn visit_ty(&mut self, ty: &mut P<Ty>) {
-        self.in_expr(false, |this| mut_visit::noop_visit_ty(ty, this))
+        self.in_expr(false, |this| mut_visit::walk_ty(this, ty))
     }
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
-        self.in_expr(false, |this| mut_visit::noop_visit_pat(p, this))
+        self.in_expr(false, |this| mut_visit::walk_pat(this, p))
     }
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
-        self.in_expr(false, |this| mut_visit::noop_flat_map_stmt(s, this))
+        self.in_expr(false, |this| mut_visit::walk_flat_map_stmt(this, s))
     }
 }
 
