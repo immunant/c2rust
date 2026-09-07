@@ -14,7 +14,8 @@ from postprocess.definitions import (
     update_rust_definition,
 )
 from postprocess.exclude_list import IdentifierExcludeList
-from postprocess.models import AbstractGenerativeModel, api_key_from_env
+from postprocess.models import AbstractGenerativeModel
+from postprocess.models.mock import MockGenerativeModel
 from postprocess.utils import get_highlighted_c
 from postprocess.validate import BatchValidator, Candidate
 
@@ -143,7 +144,7 @@ class AbstractTransform:
                     f"failed validation: {stale}"
                 )
 
-        if api_key_from_env(self.model.id) is None:
+        if isinstance(self.model, MockGenerativeModel):
             if error is not None:
                 # Can't regenerate the invalid cached response without a key.
                 raise error
