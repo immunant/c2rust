@@ -149,7 +149,7 @@ pub fn perms_to_desc(ptr_ty: Ty, perms: PermissionSet, flags: FlagSet) -> TypeDe
 
     let pointee_ty = match *ptr_ty.kind() {
         TyKind::Ref(_, ty, _) => ty,
-        TyKind::RawPtr(mt) => mt.ty,
+        TyKind::RawPtr(ty, _) => ty,
         TyKind::Adt(adt_def, substs) if adt_def.is_box() => substs.type_at(0),
         // TODO: other ADTs, e.g. `Rc`
         _ => panic!("expected a pointer type, but got {:?}", ptr_ty),
@@ -204,7 +204,7 @@ pub fn unpack_pointer_type<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, pointee_ty: Ty
     while cur_ty != pointee_ty {
         let (step, new_ty) = match *cur_ty.kind() {
             TyKind::Ref(_, inner_ty, mutbl) => (Step::Ref(mutbl), inner_ty),
-            TyKind::RawPtr(tm) => (Step::RawPtr(tm.mutbl), tm.ty),
+            TyKind::RawPtr(ty, mutbl) => (Step::RawPtr(mutbl), ty),
             TyKind::Adt(adt_def, substs) if adt_def.is_box() => (Step::Box, substs.type_at(0)),
             TyKind::Adt(adt_def, substs) if is_rc(tcx, adt_def) => (Step::Rc, substs.type_at(0)),
             TyKind::Adt(adt_def, substs) if is_cell(tcx, adt_def) => {

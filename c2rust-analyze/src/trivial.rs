@@ -75,7 +75,15 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             ty::Foreign(..) => false, // no introspection into a foreign, extern type, but as it's extern, it likely contains raw pointers
 
             // delegate to the inner type
-            ty::Ref(_, ty, _) | ty::Slice(ty) | ty::Array(ty, _) => ty.is_trivial(tcx),
+            ty::Ref(_, ty, _) | ty::Slice(ty) | ty::Array(ty, _) | ty::Pat(ty, _) => {
+                ty.is_trivial(tcx)
+            }
+            ty::UnsafeBinder(binder) => binder.skip_binder().is_trivial(tcx),
+            ty::CoroutineClosure(_, args) => not_sure_yet(
+                args.as_coroutine_closure()
+                    .tupled_upvars_ty()
+                    .is_trivial(tcx),
+            ),
 
             // delegate to all inner types
             ty::Tuple(tys) => are_all_trivial(tcx, tys),
@@ -108,8 +116,8 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             }
 
             // similar to closures, check all possible types created by the generator
-            ty::Generator(_, substs, _) => not_sure_yet({
-                let generator = substs.as_generator();
+            ty::Coroutine(_, substs) => not_sure_yet({
+                let generator = substs.as_coroutine();
                 let GenSig {
                     resume_ty,
                     yield_ty,
@@ -128,16 +136,15 @@ impl<'tcx> IsTrivial<'tcx> for Ty<'tcx> {
             }),
 
             // try to get the actual type and delegate to it
-            ty::Alias(ty::Opaque, alias_ty) => not_sure_yet(
+            ty::Alias(ty::Opaque | ty::Weak, alias_ty) => not_sure_yet(
                 tcx.type_of(alias_ty.def_id)
-                    .subst(tcx, alias_ty.substs)
+                    .instantiate(tcx, alias_ty.args)
                     .is_trivial(tcx),
             ),
 
             // not sure how to handle yet, and may never come up anyways
-            ty::GeneratorWitness(..)
-            | ty::GeneratorWitnessMIR(..)
-            | ty::Alias(ty::Projection, ..)
+            ty::CoroutineWitness(..)
+            | ty::Alias(ty::Projection | ty::Inherent, ..)
             | ty::Error(_)
             | ty::Infer(_)
             | ty::Placeholder(..)

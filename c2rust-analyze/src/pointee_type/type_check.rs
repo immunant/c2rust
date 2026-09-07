@@ -5,7 +5,7 @@ use crate::util::{describe_rvalue, ty_callee, Callee, RvalueDesc, UnknownDefCall
 use log::*;
 use rustc_middle::mir::{
     BinOp, Body, Location, Operand, Place, PlaceRef, ProjectionElem, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+    StatementKind, Terminator,
 };
 use rustc_middle::ty::{Ty, TyKind};
 
@@ -114,14 +114,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.define_pointer_with_type(lty.label, lty.args[0]);
             }
             Rvalue::ThreadLocalRef(_) => {}
-            Rvalue::AddressOf(_mutbl, pl) => {
+            Rvalue::RawPtr(_mutbl, pl) => {
                 self.visit_place(pl);
                 debug_assert!(matches!(lty.ty.kind(), TyKind::RawPtr(..)));
                 debug_assert_eq!(lty.args.len(), 1);
                 self.define_pointer_with_type(lty.label, lty.args[0]);
-            }
-            Rvalue::Len(pl) => {
-                self.visit_place(pl);
             }
             Rvalue::Cast(_kind, ref op, _ty) => {
                 self.visit_operand(op);
@@ -129,7 +126,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let op_lty = self.acx.type_of(op);
                 self.assign(lty.label, op_lty.label);
             }
-            Rvalue::BinaryOp(bin_op, ref ops) | Rvalue::CheckedBinaryOp(bin_op, ref ops) => {
+            Rvalue::BinaryOp(bin_op, ref ops) => {
                 assert_ne!(bin_op, BinOp::Offset, "BinOp::Offset special case NYI");
                 let (ref op1, ref op2) = **ops;
                 self.visit_operand(op1);
@@ -194,16 +191,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let _g = panic_detail::set_current_span(term.source_info.span);
         let tcx = self.acx.tcx();
 
-        if let TerminatorKind::Call {
-            ref func,
-            ref args,
-            destination,
-            target: _,
-            ..
-        } = term.kind
-        {
+        if let Some((func, args, destination)) = crate::util::call_parts(&term.kind) {
             for op in args {
-                self.visit_operand(op);
+                self.visit_operand(&op.node);
             }
             let dest_lty = self.visit_place(destination);
 
@@ -212,7 +202,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
     }
 
-    pub fn visit_call(&mut self, func: Ty<'tcx>, args: &[Operand<'tcx>], dest_lty: LTy<'tcx>) {
+    pub fn visit_call(
+        &mut self,
+        func: Ty<'tcx>,
+        args: &[rustc_span::source_map::Spanned<Operand<'tcx>>],
+        dest_lty: LTy<'tcx>,
+    ) {
         let tcx = self.acx.tcx();
         let callee = ty_callee(tcx, func);
         debug!("callee = {callee:?}");
@@ -230,7 +225,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 }
 
                 // Process pseudo-assignments from `args` to the types declared in `sig`.
-                for (arg_op, &input_lty) in args.iter().zip(sig.inputs.iter()) {
+                for (arg, &input_lty) in args.iter().zip(sig.inputs.iter()) {
+                    let arg_op = &arg.node;
                     let arg_lty = self.acx.type_of(arg_op);
                     self.assign(input_lty.label, arg_lty.label);
                 }
@@ -263,14 +259,14 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // ordinary "step through the array" case or whether it's doing something unusual
                 // like stepping from a struct to a specific field within the struct.
                 assert_eq!(args.len(), 2);
-                let arg_lty = self.acx.type_of(&args[0]);
+                let arg_lty = self.acx.type_of(&args[0].node);
                 self.assign(dest_lty.label, arg_lty.label);
             }
 
             Callee::SliceAsPtr { .. } => {
                 // The input is a `Ref`, so its underlying type is known precisely.
                 assert_eq!(args.len(), 1);
-                let arg_lty = self.acx.type_of(&args[0]);
+                let arg_lty = self.acx.type_of(&args[0].node);
                 assert!(matches!(arg_lty.ty.kind(), TyKind::Ref(..)));
                 assert_eq!(arg_lty.args.len(), 1);
                 let slice_lty = arg_lty.args[0];
@@ -291,7 +287,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 //
                 // In the future, we might check the new size as described for `malloc`.
                 assert_eq!(args.len(), 2);
-                let arg_lty = self.acx.type_of(&args[0]);
+                let arg_lty = self.acx.type_of(&args[0].node);
                 self.assign(dest_lty.label, arg_lty.label);
             }
             Callee::Free => {
@@ -302,7 +298,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // allocation, which lets us remove a `void*` cast during rewriting.
                 let var = self.vars.fresh();
                 assert_eq!(args.len(), 1);
-                let arg_lty = self.acx.type_of(&args[0]);
+                let arg_lty = self.acx.type_of(&args[0].node);
                 self.use_pointer_at_type(arg_lty.label, var);
             }
 
@@ -315,8 +311,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // In the future, we might check the copy length as described for `malloc`.
                 let var = self.vars.fresh();
                 assert_eq!(args.len(), 3);
-                let dest_arg_lty = self.acx.type_of(&args[0]);
-                let src_arg_lty = self.acx.type_of(&args[1]);
+                let dest_arg_lty = self.acx.type_of(&args[0].node);
+                let src_arg_lty = self.acx.type_of(&args[1].node);
                 self.use_pointer_at_type(dest_arg_lty.label, var);
                 self.use_pointer_at_type(src_arg_lty.label, var);
                 self.assign(dest_lty.label, dest_arg_lty.label);
@@ -327,7 +323,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // In the future, we might check the length as described for `malloc`.
                 let var = self.vars.fresh();
                 assert_eq!(args.len(), 3);
-                let dest_arg_lty = self.acx.type_of(&args[0]);
+                let dest_arg_lty = self.acx.type_of(&args[0].node);
                 self.use_pointer_at_type(dest_lty.label, var);
                 self.assign(dest_lty.label, dest_arg_lty.label);
             }

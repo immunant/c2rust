@@ -11,10 +11,9 @@ use log::{debug, info, warn};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{Body, LocalKind, Place, StatementKind, START_BLOCK};
 use rustc_middle::ty::{
-    Clause, EarlyBoundRegion, GenericParamDefKind, List, OutlivesPredicate, PredicateKind, Region,
-    Ty, TyKind,
+    ClauseKind, EarlyParamRegion, GenericParamDefKind, List, OutlivesPredicate, Region, Ty, TyKind,
 };
-use rustc_type_ir::RegionKind::ReEarlyBound;
+use rustc_type_ir::RegionKind::ReEarlyParam;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Write as _};
@@ -67,8 +66,8 @@ pub struct AdtMetadata<'tcx> {
 /// that will get mapped to a concrete [`Origin`] to provide to polonius.
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub enum OriginParam {
-    /// An existing [`EarlyBoundRegion`], i.e. `'a` in `struct A<'a>`
-    Actual(EarlyBoundRegion),
+    /// An existing [`EarlyParamRegion`], i.e. `'a` in `struct A<'a>`
+    Actual(EarlyParamRegion),
     /// A hypothesized region derived from a pointer type,
     /// e.g. `'h0` derived from the pointer in `*mut foo`
     Hypothetical(i64),
@@ -79,7 +78,7 @@ pub enum OriginParam {
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub enum OriginArg<'tcx> {
     /// An existing [`Region`], i.e. `'a` in `&'a foo`.
-    /// Can be [RegionKind::ReEarlyBound](`rustc_type_ir::RegionKind::ReEarlyBound`)
+    /// Can be [RegionKind::ReEarlyParam](`rustc_type_ir::RegionKind::ReEarlyParam`)
     /// or [RegionKind::ReStatic](`rustc_type_ir::RegionKind::ReStatic`)
     Actual(Region<'tcx>),
     /// A hypothesized region derived from a pointer type
@@ -102,7 +101,7 @@ impl TryFrom<&OriginArg<'_>> for OriginParam {
         Ok(match value {
             OriginArg::Hypothetical(h) => OriginParam::Hypothetical(*h),
             OriginArg::Actual(r) => match r.kind() {
-                ReEarlyBound(eb) => OriginParam::Actual(eb),
+                ReEarlyParam(eb) => OriginParam::Actual(eb),
                 _ => return Err(()),
             },
         })
@@ -226,7 +225,7 @@ fn run_polonius<'tcx>(
 
     let mut origin_map = HashMap::new();
 
-    for generic in tcx.generics_of(mir.source.def_id()).params.iter() {
+    for generic in tcx.generics_of(mir.source.def_id()).own_params.iter() {
         if matches!(generic.kind, GenericParamDefKind::Lifetime) {
             let param_origin = maps.origin();
 
@@ -237,19 +236,19 @@ fn run_polonius<'tcx>(
                 .push((static_origin, param_origin));
 
             func_lifetime_origins.push(param_origin);
-            origin_map.insert(generic.def_id, param_origin);
+            origin_map.insert(generic.index, param_origin);
         }
     }
 
     for constraint in tcx.predicates_of(mir.source.def_id()).predicates {
         // FIXME: there should be a subset relation generated for function arguments
         // such as `arg: &'a &'b &'c`, i.e. 'c: 'b, 'b: 'a, and 'c: 'a
-        if let PredicateKind::Clause(Clause::RegionOutlives(OutlivesPredicate(a, b))) =
+        if let ClauseKind::RegionOutlives(OutlivesPredicate(a, b)) =
             &constraint.0.kind().skip_binder()
         {
-            if let (ReEarlyBound(eba), ReEarlyBound(ebb)) = (a.kind(), b.kind()) {
+            if let (ReEarlyParam(eba), ReEarlyParam(ebb)) = (a.kind(), b.kind()) {
                 if let (Some(origin_a), Some(origin_b)) =
-                    (origin_map.get(&eba.def_id), origin_map.get(&ebb.def_id))
+                    (origin_map.get(&eba.index), origin_map.get(&ebb.index))
                 {
                     facts.known_placeholder_subset.push((*origin_a, *origin_b));
                 }
@@ -634,7 +633,7 @@ fn assign_origins<'tcx>(
         };
 
         match lty.ty.kind() {
-            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+            TyKind::Ref(_, _, _) | TyKind::RawPtr(..) => {
                 let origin = Some(maps.origin());
                 Label {
                     origin,

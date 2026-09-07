@@ -34,17 +34,16 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::DefIndex;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::definitions::DefPathData;
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 use rustc_middle::mir::visit::{PlaceContext, Visitor};
 use rustc_middle::mir::{
-    AggregateKind, BindingForm, Body, Constant, Local, LocalDecl, LocalInfo, LocalKind, Location,
-    Operand, Place, PlaceElem, PlaceRef, Rvalue, StatementKind,
+    AggregateKind, BindingForm, Body, ConstOperand, Local, LocalDecl, LocalInfo, LocalKind,
+    Location, Operand, Place, PlaceElem, PlaceRef, Rvalue, StatementKind,
 };
 use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
-use rustc_middle::ty::WithOptConstParam;
 use rustc_span::{Span, Symbol};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -127,14 +126,14 @@ impl<T> DerefMut for MaybeUnset<T> {
     }
 }
 
-/// Determine if a [`Constant`] is a (byte-)string literal.
+/// Determine if a [`ConstOperand`] is a (byte-)string literal.
 ///
-/// The current implementation is super hacky and just uses [`Constant`]'s [`Display`] `impl`,
+/// The current implementation is super hacky and just uses [`ConstOperand`]'s [`Display`] `impl`,
 /// but I'll soon replace it with a more robust (but complex) version
 /// using pretty much the same way the [`Display`] `impl` does it.
 ///
 /// [`Display`]: std::fmt::Display
-fn is_string_literal(c: &Constant) -> bool {
+fn is_string_literal(c: &ConstOperand) -> bool {
     let s = c.to_string();
     s.ends_with('"') && {
         let s = match s.strip_prefix("const ") {
@@ -159,7 +158,7 @@ fn is_string_literal(c: &Constant) -> bool {
 /// and their permissions are predetermined (see [`PermissionSet::STRING_LITERAL`]).
 fn label_string_literals<'tcx>(
     acx: &mut AnalysisCtxt<'_, 'tcx>,
-    c: &Constant<'tcx>,
+    c: &ConstOperand<'tcx>,
     loc: Location,
 ) -> Option<LTy<'tcx>> {
     let ty = c.ty();
@@ -190,7 +189,7 @@ fn label_rvalue_tys<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>) {
             let _g = panic_detail::set_current_span(stmt.source_info.span);
 
             let lty = match rv {
-                Rvalue::Ref(..) | Rvalue::AddressOf(..) => {
+                Rvalue::Ref(..) | Rvalue::RawPtr(..) => {
                     let ty = rv.ty(acx, acx.tcx());
                     acx.assign_pointer_ids(ty)
                 }
@@ -264,7 +263,7 @@ fn update_pointer_info<'tcx>(acx: &mut AnalysisCtxt<'_, 'tcx>, mir: &Body<'tcx>)
 
             let ref_pl = match *rv {
                 Rvalue::Ref(_rg, _kind, pl) => Some(pl),
-                Rvalue::AddressOf(_mutbl, pl) => Some(pl),
+                Rvalue::RawPtr(_mutbl, pl) => Some(pl),
                 _ => None,
             };
             if let Some(ref_pl) = ref_pl {
@@ -306,8 +305,10 @@ fn foreign_mentioned_tys(tcx: TyCtxt) -> HashSet<DefId> {
         .foreign_items()
         .map(|item| item.owner_id.def_id.to_def_id())
         .filter_map(|did| match tcx.def_kind(did) {
-            DefKind::Fn | DefKind::AssocFn => Some(tcx.mk_fn_ptr(tcx.fn_sig(did).subst_identity())),
-            DefKind::Static(_) => Some(tcx.type_of(did).subst_identity()),
+            DefKind::Fn | DefKind::AssocFn => {
+                Some(Ty::new_fn_ptr(tcx, tcx.fn_sig(did).instantiate_identity()))
+            }
+            DefKind::Static { .. } => Some(tcx.type_of(did).instantiate_identity()),
             _ => None,
         })
     {
@@ -334,7 +335,7 @@ where
                     continue;
                 }
                 for field in adt_def.all_fields() {
-                    let field_ty = tcx.type_of(field.did).subst_identity();
+                    let field_ty = tcx.type_of(field.did).instantiate_identity();
                     walk_adts(tcx, field_ty, f);
                 }
             }
@@ -349,14 +350,14 @@ fn mark_foreign_fixed<'tcx>(
 ) {
     // FIX the inputs and outputs of function declarations in extern blocks
     for (did, lsig) in gacx.fn_sigs.iter() {
-        if tcx.is_foreign_item(did) {
+        if tcx.is_foreign_item(*did) {
             make_sig_fixed(asn, lsig);
         }
     }
 
     // FIX the types of static declarations in extern blocks
     for (did, lty) in gacx.static_tys.iter() {
-        if tcx.is_foreign_item(did) {
+        if tcx.is_foreign_item(*did) {
             make_ty_fixed(asn, lty);
 
             // Also fix the `addr_of_static` permissions.
@@ -492,11 +493,10 @@ fn check_rewrite_path_prefixes(tcx: TyCtxt, fixed_defs: &mut HashSet<DefId>, pre
                 | DefPathData::ForeignMod
                 | DefPathData::Use
                 | DefPathData::GlobalAsm
-                | DefPathData::ClosureExpr
+                | DefPathData::Closure
                 | DefPathData::Ctor
                 | DefPathData::AnonConst
-                | DefPathData::ImplTrait
-                | DefPathData::ImplTraitAssocTy => continue,
+                | DefPathData::OpaqueTy => continue,
                 DefPathData::TypeNs(sym)
                 | DefPathData::ValueNs(sym)
                 | DefPathData::MacroNs(sym)
@@ -632,7 +632,7 @@ fn run(tcx: TyCtxt) {
     gacx.force_rewrite = get_force_rewrite_defs().unwrap();
     eprintln!("{} force_rewrite defs", gacx.force_rewrite.len());
     let mut xs = gacx.force_rewrite.iter().copied().collect::<Vec<_>>();
-    xs.sort();
+    xs.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
     for x in xs {
         eprintln!("{:?}", x);
     }
@@ -857,7 +857,7 @@ fn run(tcx: TyCtxt) {
                 }
             }
 
-            DefKind::Static(_) if def_fixed => {
+            DefKind::Static { .. } if def_fixed => {
                 let lty = match gacx.static_tys.get(&ldid.to_def_id()) {
                     Some(&x) => x,
                     None => panic!("missing static_ty for {:?}", ldid),
@@ -907,9 +907,8 @@ fn run(tcx: TyCtxt) {
                 skip_borrowck_everywhere || util::has_test_attr(tcx, ldid, TestAttr::SkipBorrowck);
 
             let info = func_info.get_mut(&ldid).unwrap();
-            let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
-            let mir = tcx.mir_built(ldid_const);
+            let mir = tcx.mir_built(ldid);
             let mir = mir.borrow();
 
             let field_ltys = gacx.field_ltys.clone();
@@ -986,8 +985,7 @@ fn run(tcx: TyCtxt) {
         }
 
         let info = func_info.get_mut(&ldid).unwrap();
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
@@ -1081,9 +1079,7 @@ fn run(tcx: TyCtxt) {
             if !info.acx_data.is_set() {
                 continue;
             }
-
-            let ldid_const = WithOptConstParam::unknown(ldid);
-            let mir = tcx.mir_built(ldid_const);
+            let mir = tcx.mir_built(ldid);
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
@@ -1283,9 +1279,8 @@ fn run2<'tcx>(
             }
 
             let info = func_info.get_mut(&ldid).unwrap();
-            let ldid_const = WithOptConstParam::unknown(ldid);
             let name = tcx.item_name(ldid.to_def_id());
-            let mir = tcx.mir_built(ldid_const);
+            let mir = tcx.mir_built(ldid);
             let mir = mir.borrow();
             let mut acx = gacx.function_context_with_data(&mir, info.acx_data.take());
             let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
@@ -1298,7 +1293,7 @@ fn run2<'tcx>(
                     return;
                 }
 
-                let hir_body_id = tcx.hir().body_owned_by(ldid);
+                let hir_body_id = tcx.hir().body_owned_by(ldid).id();
                 let expr_rewrites = rewrite::gen_expr_rewrites(
                     &mut acx,
                     &asn,
@@ -1441,10 +1436,8 @@ fn run2<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
         let name = tcx.item_name(ldid.to_def_id());
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
         let pointee_types = global_pointee_types.and(info.local_pointee_types.get());
@@ -1487,9 +1480,7 @@ fn run2<'tcx>(
         if !info.acx_data.is_set() {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
@@ -1549,7 +1540,7 @@ fn run2<'tcx>(
     let lcx1 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     let lcx2 = crate::labeled_ty::LabeledTyCtxt::new(tcx);
     let mut static_dids = gacx.static_tys.keys().cloned().collect::<Vec<_>>();
-    static_dids.sort();
+    static_dids.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
     for did in static_dids {
         let lty = gacx.static_tys[&did];
         let name = tcx.item_name(did);
@@ -1568,7 +1559,7 @@ fn run2<'tcx>(
     // Print results for ADTs and fields
     debug!("\nfinal labeling for fields:");
     let mut field_dids = gacx.field_ltys.keys().cloned().collect::<Vec<_>>();
-    field_dids.sort();
+    field_dids.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
     for did in field_dids {
         let field_lty = gacx.field_ltys[&did];
         let name = tcx.item_name(did);
@@ -1608,7 +1599,7 @@ fn run2<'tcx>(
     }
 
     let mut adt_dids = gacx.adt_metadata.table.keys().cloned().collect::<Vec<_>>();
-    adt_dids.sort();
+    adt_dids.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
     for did in adt_dids {
         if let Some(report) = adt_reports.remove(&did) {
             debug!("\n{}", report);
@@ -1643,7 +1634,7 @@ fn run2<'tcx>(
     debug!("\nerror summary:");
     fn sorted_def_ids(it: impl IntoIterator<Item = DefId>) -> Vec<DefId> {
         let mut v = it.into_iter().collect::<Vec<_>>();
-        v.sort();
+        v.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
         v
     }
     for def_id in sorted_def_ids(gacx.dont_rewrite_fns.keys()) {
@@ -1692,8 +1683,8 @@ fn assign_pointer_ids<'tcx>(
 
     // Assign global `PointerId`s for all pointers that appear in function signatures.
     for &ldid in all_fn_ldids {
-        let sig = tcx.fn_sig(ldid.to_def_id()).subst_identity();
-        let sig = tcx.erase_late_bound_regions(sig);
+        let sig = tcx.fn_sig(ldid.to_def_id()).instantiate_identity();
+        let sig = tcx.instantiate_bound_regions_with_erased(sig);
 
         // All function signatures are fully annotated.
         let inputs = sig
@@ -1720,7 +1711,7 @@ fn assign_pointer_ids<'tcx>(
         .map(|item| item.owner_id.def_id.to_def_id())
         .filter(|did| matches!(tcx.def_kind(did), DefKind::Fn | DefKind::AssocFn))
     {
-        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(did).subst_identity());
+        let sig = tcx.instantiate_bound_regions_with_erased(tcx.fn_sig(did).instantiate_identity());
         let inputs = sig
             .inputs()
             .iter()
@@ -1775,9 +1766,7 @@ fn assign_pointer_ids<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
         let lsig = *gacx.fn_sigs.get(&ldid.to_def_id()).unwrap();
 
@@ -1860,7 +1849,7 @@ pub trait AssignPointerIds<'tcx> {
     ) -> LTy<'tcx> {
         self.lcx().label(ty, &mut |ty| match ty.kind() {
             TyKind::Ref(_, _, _) => self.new_pointer(base_ptr_info | PointerInfo::REF),
-            TyKind::RawPtr(_) => self.new_pointer(base_ptr_info),
+            TyKind::RawPtr(..) => self.new_pointer(base_ptr_info),
             _ => PointerId::NONE,
         })
     }
@@ -1900,10 +1889,8 @@ fn do_recent_writes<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
 
         // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
@@ -1921,10 +1908,8 @@ fn do_last_use<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
 
         // This is very straightforward because it doesn't need an `AnalysisCtxt` and never fails.
@@ -1940,12 +1925,11 @@ fn debug_annotate_last_use<'tcx>(
 ) {
     let tcx = gacx.tcx;
     for &ldid in all_fn_ldids {
-        let ldid_const = WithOptConstParam::unknown(ldid);
         let info = match func_info.get(&ldid) {
             Some(x) => x,
             None => continue,
         };
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
 
         if !info.last_use.is_set() {
@@ -1993,10 +1977,8 @@ fn do_pointee_type<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
@@ -2069,10 +2051,8 @@ fn debug_print_pointee_types<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
 
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
@@ -2105,9 +2085,7 @@ fn build_equiv_constraints<'tcx>(
             info.local_equiv.set(local_equiv);
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
 
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
@@ -2155,10 +2133,8 @@ fn build_dataflow_constraints<'tcx>(
         if gacx.fn_analysis_invalid(ldid.to_def_id()) {
             continue;
         }
-
-        let ldid_const = WithOptConstParam::unknown(ldid);
         let info = func_info.get_mut(&ldid).unwrap();
-        let mir = tcx.mir_built(ldid_const);
+        let mir = tcx.mir_built(ldid);
         let mir = mir.borrow();
 
         let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
@@ -2361,7 +2337,8 @@ fn pdg_update_permissions_with_callback<'tcx>(
 
     let mut func_def_path_hash_to_ldid = HashMap::new();
     for &ldid in all_fn_ldids {
-        let def_path_hash: (u64, u64) = tcx.def_path_hash(ldid.to_def_id()).0.as_value();
+        let (crate_hash, local_hash) = tcx.def_path_hash(ldid.to_def_id()).0.split();
+        let def_path_hash = (crate_hash.as_u64(), local_hash.as_u64());
         eprintln!("def_path_hash {:?} = {:?}", def_path_hash, ldid);
         func_def_path_hash_to_ldid.insert(def_path_hash, ldid);
     }
@@ -2380,8 +2357,7 @@ fn pdg_update_permissions_with_callback<'tcx>(
                 }
             };
             let info = func_info.get_mut(&ldid).unwrap();
-            let ldid_const = WithOptConstParam::unknown(ldid);
-            let mir = tcx.mir_built(ldid_const);
+            let mir = tcx.mir_built(ldid);
             let mir = mir.borrow();
             let acx = gacx.function_context_with_data(&mir, info.acx_data.take());
 
@@ -2555,7 +2531,7 @@ fn all_static_items(tcx: TyCtxt) -> Vec<DefId> {
 
     for root_ldid in tcx.hir_crate_items(()).definitions() {
         match tcx.def_kind(root_ldid) {
-            DefKind::Static(_) => {}
+            DefKind::Static { .. } => {}
             _ => continue,
         }
         order.push(root_ldid.to_def_id())
@@ -2571,7 +2547,7 @@ fn is_impl_clone(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     };
     if let Some(impl_def_id) = tcx.impl_of_method(def_id) {
         if let Some(trait_ref) = tcx.impl_trait_ref(impl_def_id) {
-            let trait_ref = trait_ref.subst_identity();
+            let trait_ref = trait_ref.instantiate_identity();
             return trait_ref.def_id == clone_trait_def_id;
         }
     }
@@ -2601,7 +2577,9 @@ pub(super) fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
                     continue;
                 }
             }
-            DefKind::AnonConst | DefKind::Closure | DefKind::Const | DefKind::Static(_) => continue,
+            DefKind::AnonConst | DefKind::Closure | DefKind::Const | DefKind::Static { .. } => {
+                continue
+            }
             dk => panic!(
                 "unexpected def_kind {:?} for body_owner {:?}",
                 dk, root_ldid
@@ -2630,8 +2608,7 @@ pub(super) fn fn_body_owners_postorder(tcx: TyCtxt) -> Vec<LocalDefId> {
 }
 
 fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
-    let ldid_const = WithOptConstParam::unknown(ldid);
-    let mir = tcx.mir_built(ldid_const);
+    let mir = tcx.mir_built(ldid);
     let mir = mir.borrow();
     let mir: &Body = &mir;
 
@@ -2667,8 +2644,7 @@ fn for_each_callee(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(LocalDefId)) {
 
 /// Call `f` for each field mentioned in a place projection within the body of `ldid`.
 fn for_each_field_use(tcx: TyCtxt, ldid: LocalDefId, f: impl FnMut(DefId)) {
-    let ldid_const = WithOptConstParam::unknown(ldid);
-    let mir = tcx.mir_built(ldid_const);
+    let mir = tcx.mir_built(ldid);
     let mir = mir.borrow();
     let mir: &Body = &mir;
 
@@ -2827,12 +2803,9 @@ impl rustc_driver::Callbacks for AnalysisCallbacks {
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
-        let mut global_ctxt = queries.global_ctxt().unwrap();
-        global_ctxt.enter(|tcx| {
-            run(tcx);
-        });
+        run(tcx);
         rustc_driver::Compilation::Continue
     }
 }

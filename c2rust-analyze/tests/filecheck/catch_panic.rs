@@ -33,10 +33,10 @@ unsafe fn bad_call_good(p: NonNull<u8>) {
 
 // CHECK: analysis of DefId({{.*}}::bad) failed:
 // CHECK-SAME: UnknownDef
-// CHECK-SAME: NonNull::<u8>::as_ptr
+// CHECK-SAME: core{{.*}}::ptr::non_null::{{.*}}::as_ptr), [u8]
 
 // CHECK: analysis of DefId({{.*}}::bad_call_good) failed:
 // CHECK-SAME: UnknownDef
-// CHECK-SAME: NonNull::<u8>::as_ptr
+// CHECK-SAME: core{{.*}}::ptr::non_null::{{.*}}::as_ptr), [u8]
 
 // CHECK: saw errors in 2 / 4 functions

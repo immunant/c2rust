@@ -1,6 +1,9 @@
 pub mod common;
 
 use crate::common::{check_for_missing_tests_for, test_dir_for, Analyze, FileCheck};
+use std::env;
+use std::process;
+use fs_err as fs;
 
 #[test]
 fn check_for_missing_tests() {
@@ -76,4 +79,25 @@ define_tests! {
     type_annotation_rewrite,
     unrewritten_calls,
     unrewritten_calls_shim_fail,
+}
+
+#[test]
+fn tail_call() {
+    let path = test_dir_for(file!(), true).join("tail_call.rs");
+    let metadata = env::temp_dir().join(format!(
+        "c2rust-analyze-tail-call-{}.rmeta",
+        process::id()
+    ));
+    // The candidate compiler lowers explicit tail calls but its code generator
+    // does not implement them yet. Check that analysis preserves the tail call
+    // and fixes its signature, without asking rustc to generate machine code.
+    let output = Analyze::resolve().run_with(
+        &path,
+        |cmd| {
+            cmd.arg("--emit=metadata").arg("-o").arg(&metadata);
+        },
+        None,
+    );
+    FileCheck::resolve().run(&path, &output);
+    fs::remove_file(metadata).unwrap();
 }
