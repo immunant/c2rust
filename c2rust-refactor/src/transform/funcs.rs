@@ -1,12 +1,12 @@
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use log::{info, warn};
 use rustc_ast::ast;
-use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir::def_id::DefId;
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
 use rustc_span::{sym, DUMMY_SP};
-use rustc_type_ir::sty::TyKind;
+use rustc_type_ir::TyKind;
 use smallvec::{smallvec, SmallVec};
 use std::collections::{HashMap, HashSet};
 use std::mem;
@@ -154,8 +154,8 @@ impl Transform for ToMethod {
             let self_kind = {
                 if pat_ty == self_ty {
                     match mode {
-                        BindingAnnotation(ByRef::No, mutbl) => Some(SelfKind::Value(mutbl)),
-                        BindingAnnotation(ByRef::Yes, mutbl) => Some(SelfKind::Region(None, mutbl)),
+                        BindingMode(ByRef::No, mutbl) => Some(SelfKind::Value(mutbl)),
+                        BindingMode(ByRef::Yes(mutbl), _) => Some(SelfKind::Region(None, mutbl)),
                     }
                 } else {
                     match pat_ty.kind() {
@@ -216,9 +216,16 @@ impl Transform for ToMethod {
 
             smallvec![i.map(|i| {
                 let ItemKind::Impl(box Impl {
-                    unsafety, polarity, generics, constness,
-                    defaultness, of_trait, self_ty, mut items
-                }) = i.kind else {
+                    safety,
+                    polarity,
+                    generics,
+                    constness,
+                    defaultness,
+                    of_trait,
+                    self_ty,
+                    mut items,
+                }) = i.kind
+                else {
                     panic!("expected ItemKind::Impl, got {:?}", i.kind);
                 };
 
@@ -241,7 +248,7 @@ impl Transform for ToMethod {
                 }));
                 Item {
                     kind: ItemKind::Impl(Box::new(Impl {
-                        unsafety,
+                        safety,
                         polarity,
                         generics,
                         constness,
@@ -324,13 +331,12 @@ impl Transform for FixUnusedUnsafe {
         // operations as "unused". This would cause us to remove the `unsafe`
         // keyword from blocks that still need it, so we bail out in that case
         // instead of corrupting the code.
-        if cx.session().diagnostic().has_errors().is_some() {
+        if cx.session().dcx().has_errors().is_some() {
             warn!("Skipping fix_unused_unsafe transform due to compilation errors");
             return;
         }
 
-        let comment_map =
-            collect_comments(krate, cx.session().source_map(), &cx.session().parse_sess);
+        let comment_map = collect_comments(krate, cx.session().source_map(), &cx.session().psess);
 
         krate.visit(&mut FixUnusedUnsafeFolder {
             cx,
@@ -355,14 +361,7 @@ impl<'a, 'tcx> FixUnusedUnsafeFolder<'a, 'tcx> {
         };
 
         let hir_id = self.cx.hir_map().node_to_hir_id(b.id);
-        let parent = self.cx.hir_map().get_parent_item(hir_id);
-        let result = self.cx.ty_ctxt().unsafety_check_result(parent);
-        result
-            .unused_unsafes
-            .as_deref()
-            .unwrap_or_default()
-            .iter()
-            .any(|&(id, _)| id == self.cx.hir_map().node_to_hir_id(b.id))
+        self.cx.is_unused_unsafe_block(hir_id)
     }
 }
 
@@ -385,7 +384,8 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             let block_id = block.id;
             let hir_id = self.cx.hir_map().node_to_hir_id(block.id);
             let parent = self.cx.hir_map().get_parent_item(hir_id);
-            let param_env = self.cx.ty_ctxt().param_env(parent);
+            let typing_env =
+                rustc_middle::ty::TypingEnv::non_body_analysis(self.cx.ty_ctxt(), parent);
 
             let has_comments = [stmt.id, expr_id, block_id].iter().any(|id| {
                 self.comment_map
@@ -394,12 +394,12 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             });
 
             let has_drop = block.stmts.iter().any(|stmt| match stmt.kind {
-                StmtKind::Local(ref local) => {
+                StmtKind::Let(ref local) => {
                     let ty = self
                         .cx
                         .opt_node_type(local.id)
                         .or_else(|| self.cx.opt_node_type(local.pat.id));
-                    ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), param_env))
+                    ty.map_or(false, |ty| ty.needs_drop(self.cx.ty_ctxt(), typing_env))
                 }
                 _ => false,
             });
@@ -412,7 +412,9 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
                 // because this is a block statement, which means that the tail expr isn't
                 // being used as part of an expression and so can (and must be) turned into
                 // a statement.
-                if let Some(last) = stmts.last_mut() && let StmtKind::Expr(expr) = &mut last.kind {
+                if let Some(last) = stmts.last_mut()
+                    && let StmtKind::Expr(expr) = &mut last.kind
+                {
                     let expr = std::mem::replace(expr, mk().tuple_expr(Vec::<P<Expr>>::new()));
                     last.kind = StmtKind::Semi(expr);
                 }
@@ -421,7 +423,7 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             }
         }
 
-        mut_visit::noop_flat_map_stmt(stmt, self)
+        mut_visit::walk_flat_map_stmt(self, stmt)
     }
 
     fn visit_expr(&mut self, expr: &mut P<Expr>) {
@@ -456,7 +458,7 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             *expr = std::mem::replace(inner, mk().tuple_expr(Vec::<P<Expr>>::new()));
         }
 
-        mut_visit::noop_visit_expr(expr, self)
+        mut_visit::walk_expr(self, expr)
     }
 
     fn visit_block(&mut self, b: &mut P<Block>) {
@@ -464,7 +466,7 @@ impl<'a, 'tcx> MutVisitor for FixUnusedUnsafeFolder<'a, 'tcx> {
             b.rules = BlockCheckMode::Default;
         }
 
-        mut_visit::noop_visit_block(b, self)
+        mut_visit::walk_block(self, b)
     }
 }
 
@@ -493,7 +495,7 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
                         body: Some(ref mut body),
                         ..
                     }) => {
-                        sink_unsafe(&mut sig.header.unsafety, body);
+                        sink_unsafe(&mut sig.header.safety, body);
                     }
                     _ => {}
                 }
@@ -503,30 +505,42 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
             i
         };
 
-        mut_visit::noop_flat_map_item(i, self)
+        mut_visit::walk_flat_map_item(self, i)
     }
 
-    fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
-        if self.st.marked(i.id, "target") {
-            match i.kind {
-                AssocItemKind::Fn(box Fn {
-                    sig: FnSig { ref mut header, .. },
-                    body: Some(ref mut body),
-                    ..
-                }) => {
-                    sink_unsafe(&mut header.unsafety, body);
+    fn flat_map_assoc_item(
+        &mut self,
+        item: P<AssocItem>,
+        ctxt: rustc_ast::visit::AssocCtxt,
+    ) -> SmallVec<[P<AssocItem>; 1]> {
+        match ctxt {
+            rustc_ast::visit::AssocCtxt::Impl => {
+                let mut i = item;
+                if self.st.marked(i.id, "target") {
+                    match i.kind {
+                        AssocItemKind::Fn(box Fn {
+                            sig: FnSig { ref mut header, .. },
+                            body: Some(ref mut body),
+                            ..
+                        }) => {
+                            sink_unsafe(&mut header.safety, body);
+                        }
+                        _ => {}
+                    }
                 }
-                _ => {}
+
+                mut_visit::walk_flat_map_assoc_item(self, i, ctxt)
+            }
+            rustc_ast::visit::AssocCtxt::Trait => {
+                mut_visit::walk_flat_map_assoc_item(self, item, ctxt)
             }
         }
-
-        mut_visit::noop_flat_map_assoc_item(i, self)
     }
 }
 
-fn sink_unsafe(unsafety: &mut Unsafe, block: &mut P<Block>) {
-    if let Unsafe::Yes(_) = *unsafety {
-        *unsafety = Unsafe::No;
+fn sink_unsafe(unsafety: &mut Safety, block: &mut P<Block>) {
+    if let Safety::Unsafe(_) = *unsafety {
+        *unsafety = Safety::Default;
         *block =
             mk().block(vec![mk().expr_stmt(
                 mk().block_expr(mk().unsafe_().block(block.stmts.to_vec())),
@@ -642,7 +656,7 @@ impl Transform for WrapExtern {
 
             smallvec![i.map(|i| {
                 unpack!([i.kind] ItemKind::Mod(unsafety, m_kind));
-                unpack!([m_kind] ModKind::Loaded(m_items, m_inline, m_spans));
+                unpack!([m_kind] ModKind::Loaded(m_items, m_inline, m_spans, m_recovered));
                 let mut m_items = m_items;
 
                 for f in &fns {
@@ -656,7 +670,7 @@ impl Transform for WrapExtern {
                             // TODO: match_arg("__i: __t", arg).ident("__i")
                             match arg.pat.kind {
                                 PatKind::Ident(
-                                    BindingAnnotation(ByRef::No, Mutability::Not),
+                                    BindingMode(ByRef::No, Mutability::Not),
                                     ident,
                                     None,
                                 ) => ident,
@@ -688,7 +702,7 @@ impl Transform for WrapExtern {
                     m_items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, Some(body)));
                 }
 
-                let m_kind = ModKind::Loaded(m_items, m_inline, m_spans);
+                let m_kind = ModKind::Loaded(m_items, m_inline, m_spans, m_recovered);
                 Item {
                     kind: ItemKind::Mod(unsafety, m_kind),
                     ..i

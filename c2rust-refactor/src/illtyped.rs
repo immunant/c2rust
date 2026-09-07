@@ -4,10 +4,11 @@ use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
-use rustc_middle::ty::{self, ParamEnv, TyCtxt};
+use rustc_middle::ty::{self, TyCtxt};
 use smallvec::SmallVec;
 
 use crate::ast_manip::MutVisit;
+use crate::context::empty_typing_env;
 use crate::RefactorCtxt;
 use crate::{expect, match_or};
 
@@ -22,8 +23,9 @@ fn types_approx_equal<'tcx>(tcx: TyCtxt<'tcx>, ty1: ty::Ty<'tcx>, ty2: ty::Ty<'t
     //  - On array expressions, often one side has the length expression fully evaluated, while the
     //    other does not.  Normalizing makes sure both sides are evaluated, so no error is reported
     //    (assuming the lengths do, in fact, match).
-    let ty1 = tcx.normalize_erasing_regions(ParamEnv::empty(), ty1);
-    let ty2 = tcx.normalize_erasing_regions(ParamEnv::empty(), ty2);
+    let typing_env = empty_typing_env();
+    let ty1 = tcx.normalize_erasing_regions(typing_env, ty1);
+    let ty2 = tcx.normalize_erasing_regions(typing_env, ty2);
     ty1 == ty2
 }
 
@@ -109,7 +111,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
     fn visit_expr(&mut self, e: &mut P<Expr>) {
         let mut illtyped = false;
 
-        mut_visit::noop_visit_expr(e, self);
+        mut_visit::walk_expr(self, e);
 
         let ty = match self.cx.opt_node_type(e.id) {
             Some(x) => x,
@@ -223,7 +225,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 // TODO: do something clever with tr + fl
                 illtyped |= self.ensure(cond, tcx.types.bool);
             }
-            ExprKind::Let(pat, expr, _) => {
+            ExprKind::Let(pat, expr, _, _) => {
                 if let Some(pat_ty) = self.cx.opt_node_type(pat.id) {
                     illtyped |= self.ensure(expr, pat_ty);
                 }
@@ -231,7 +233,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
             ExprKind::While(cond, _body, _opt_label) => {
                 illtyped |= self.ensure(cond, tcx.types.bool);
             }
-            ExprKind::Match(expr, arms) => {
+            ExprKind::Match(expr, arms, _) => {
                 if let Some(pat_ty) = arms
                     .get(0)
                     .and_then(|arm| self.cx.opt_node_type(arm.pat.id))
@@ -253,7 +255,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                 let lhs_ty = self.cx.node_type(el.id);
                 illtyped |= self.ensure(er, lhs_ty);
             }
-            ExprKind::Index(_el, er) => {
+            ExprKind::Index(_el, er, _) => {
                 // TODO: check for overloads
                 illtyped |= self.ensure(er, tcx.types.usize);
             }
@@ -274,7 +276,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
     }
 
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
-        let mut items = mut_visit::noop_flat_map_item(i, self);
+        let mut items = mut_visit::walk_flat_map_item(self, i);
         for i in items.iter_mut() {
             let id = i.id;
             match &mut i.kind {
@@ -283,7 +285,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                         continue;
                     };
                     let did = self.cx.node_def_id(id);
-                    let expected_ty = self.cx.ty_ctxt().type_of(did).subst_identity();
+                    let expected_ty = self.cx.ty_ctxt().type_of(did).instantiate_identity();
                     info!("STATIC: expected ty {:?}, expr {:?}", expected_ty, expr);
 
                     let tcx = self.cx.ty_ctxt();
@@ -302,7 +304,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
                         continue;
                     };
                     let did = self.cx.node_def_id(id);
-                    let expected_ty = self.cx.ty_ctxt().type_of(did).subst_identity();
+                    let expected_ty = self.cx.ty_ctxt().type_of(did).instantiate_identity();
                     self.ensure(expr, expected_ty);
                 }
                 _ => {}

@@ -3,7 +3,7 @@
 
 use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
-use rustc_span::source_map::Span;
+use rustc_span::Span;
 use std::collections::HashSet;
 
 use crate::command::CommandState;
@@ -84,7 +84,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for ChildMatchVisitor<'a, 'tcx> {
             if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
-            visit::walk_foreign_item(v, x)
+            visit::walk_item(v, x)
         });
     }
 
@@ -221,7 +221,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for DescMatchVisitor<'a, 'tcx> {
             if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
                 v.walk_args(&sig.decl.inputs);
             }
-            visit::walk_foreign_item(v, x)
+            visit::walk_item(v, x)
         });
     }
 
@@ -331,7 +331,7 @@ impl<'ast, 'a, 'tcx> Visitor<'ast> for FilterVisitor<'a, 'tcx> {
         if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = x.kind {
             self.walk_args(&sig.decl.inputs);
         }
-        visit::walk_foreign_item(self, x);
+        visit::walk_item(self, x);
     }
 
     fn visit_stmt(&mut self, x: &'ast Stmt) {
