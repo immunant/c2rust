@@ -8,7 +8,7 @@
 use regex::Regex;
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_span::symbol::Symbol;
+use rustc_span::Symbol;
 use std::collections::HashSet;
 
 use crate::ast_builder::IntoSymbol;
