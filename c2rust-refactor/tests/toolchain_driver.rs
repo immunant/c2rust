@@ -41,6 +41,66 @@ fn cargo_derived_rustc_arguments_preserve_the_input_and_sysroot() {
 }
 
 #[test]
+fn cargo_unused_unsafe_preserves_warning_flags() {
+    for (flags, remove) in [("", false), ("--force-warn unused_unsafe", true)] {
+        let fixture = Fixture::new();
+        fixture.write(
+            "Cargo.toml",
+            "[package]\nname=\"unsafe_fixture\"\nversion=\"0.0.0\"\nedition=\"2021\"\n[[bin]]\nname=\"unsafe_fixture\"\npath=\"main.rs\"\n",
+        );
+        let main = fixture.write(
+            "main.rs",
+            "fn required(p: *const i32) -> i32 { unsafe { *p } }\nfn main() { let value = unsafe { 42 }; println!(\"{}\", required(&value)); }\n",
+        );
+        let output = Process::new(env!("CARGO_BIN_EXE_c2rust-refactor"))
+            .current_dir(&fixture.0)
+            .env("RUSTFLAGS", flags)
+            .args([
+                "--cargo",
+                "--bin",
+                "unsafe_fixture",
+                "-r",
+                "inplace",
+                "fix_unused_unsafe",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let rewritten = fs::read_to_string(&main).unwrap();
+        // Cargo's historical -Awarnings suppresses this transform too. A user
+        // can request the lint explicitly; required unsafe must always survive.
+        assert_eq!(!rewritten.contains("unsafe { 42 }"), remove, "{rewritten}");
+        assert!(rewritten.contains("unsafe { *p }"), "{rewritten}");
+        assert_eq!(compile_and_run(&main, "2021"), "42\n");
+    }
+}
+
+#[test]
+fn omitted_edition_defaults_to_2021_and_explicit_2015_is_respected() {
+    for (edition, source, compile_edition) in [
+        (None, "fn main() { let value: u32 = 42i32.try_into().unwrap(); let value = unsafe { value }; println!(\"{}\", value); }\n", "2021"),
+        (Some("2015"), "fn async() -> i32 { 42 } fn main() { let value = unsafe { async() }; println!(\"{}\", value); }\n", "2015"),
+    ] {
+        let fixture = Fixture::new();
+        let main = fixture.write("main.rs", source);
+        let mut process = Process::new(env!("CARGO_BIN_EXE_c2rust-refactor"));
+        process.args(["-r", "inplace", "fix_unused_unsafe", "--"]).arg(&main);
+        if let Some(edition) = edition {
+            process.args(["--edition", edition]);
+        }
+        let output = process.output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        let rewritten = fs::read_to_string(&main).unwrap();
+        assert!(!rewritten.contains("unsafe"), "{rewritten}");
+        assert_eq!(compile_and_run(&main, compile_edition), "42\n");
+    }
+}
+
+#[test]
 fn rust_2024_prelude_is_used_during_typed_refactoring() {
     let _compiler = COMPILER.lock().unwrap();
     let fixture = Fixture::new();
@@ -158,9 +218,19 @@ fn accepted_preexisting_errors_do_not_abort_compiler_callback_exit() {
     let fixture = Fixture::new();
     let main = fixture.write(
         "main.rs",
-        "fn broken() { missing_function(); }\nfn main() {}\n",
+        "fn broken() { missing_function(); }\nfn required(p: *const i32) -> i32 { unsafe { *p } }\nfn main() {}\n",
     );
-    refactor(&main, "2024", vec![command("autoretype", &[])]);
+    refactor(
+        &main,
+        "2024",
+        vec![
+            command("autoretype", &[]),
+            command("fix_unused_unsafe", &[]),
+        ],
+    );
+    // The next typed command must observe its own compilation errors and skip
+    // unsafe removal; resetting an accepted previous attempt cannot hide them.
+    assert!(fs::read_to_string(&main).unwrap().contains("unsafe { *p }"));
     // Acceptance is specific to refactoring preexisting errors: the output is
     // deliberately still ill-typed and must not be represented as compilable.
     let output = Process::new("rustc")

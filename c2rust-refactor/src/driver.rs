@@ -143,6 +143,11 @@ pub fn create_config(args: &[String]) -> interface::Config {
     let matches =
         rustc_driver::handle_options(&early_dcx, &args[1..]).expect("rustc arg parsing failed");
     let mut sopts = rustc_session::config::build_session_options(&mut early_dcx, &matches);
+    // Preserve the refactorer's historical default without overriding an
+    // explicit edition supplied directly or by Cargo.
+    if !matches.opt_present("edition") {
+        sopts.edition = rustc_span::edition::Edition::Edition2021;
+    }
     // Print human readable error (the default).
     sopts.error_format = Default::default();
     let cfg = matches.opt_strs("cfg");

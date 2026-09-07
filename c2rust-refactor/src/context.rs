@@ -8,7 +8,7 @@ use rustc_ast::{
     AssocItem, Expr, ExprKind, FnDecl, FnRetTy, ForeignItem, ForeignItemKind, Item, ItemKind,
     NodeId, Path, QSelf, UseTreeKind, VariantData, DUMMY_NODE_ID,
 };
-use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::unord::UnordMap;
 use rustc_errors::{Diag, Level};
 use rustc_hir::def::{DefKind, Namespace, PartialRes, PerNS, Res};
@@ -38,7 +38,7 @@ use rustc_span::sym;
 #[derive(Clone)]
 pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
-    unused_unsafe_spans: Vec<Span>,
+    unused_unsafe_spans: FxHashSet<Span>,
 
     map: Option<HirMap<'tcx>>,
     tcx: Option<GenerationalTyCtxt<'tcx>>,
@@ -54,14 +54,14 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             sess,
             map,
             tcx,
-            unused_unsafe_spans: Vec::new(),
+            unused_unsafe_spans: FxHashSet::default(),
         }
     }
 }
 
 impl RefactorCtxt<'_, '_> {
     pub(crate) fn with_unused_unsafe_spans(mut self, spans: Vec<Span>) -> Self {
-        self.unused_unsafe_spans = spans;
+        self.unused_unsafe_spans = spans.into_iter().collect();
         self
     }
 
