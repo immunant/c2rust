@@ -319,7 +319,7 @@ class AbstractTransform:
             f"Validating {len(candidates)} rewrite(s) in {rust_source_file} "
             "with cargo check"
         )
-        _, rejected = validator.validate(candidates)
+        _, rejected = await validator.validate(candidates)
         for candidate, error in rejected:
             candidate.invalidate()
             result.failed.append(
