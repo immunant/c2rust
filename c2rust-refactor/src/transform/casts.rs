@@ -431,8 +431,14 @@ enum ConstantValue {
 }
 
 impl ConstantValue {
-    fn cast(self, ty: SimpleTy) -> Self {
+    fn cast(self, ty: SimpleTy, pointer_bits: u64) -> Self {
         use ConstantValue::*;
+        // Evaluate pointer-sized integers for the compilation target, which
+        // can differ from the host running the refactorer.
+        let ty = match ty {
+            SimpleTy::Size(signed) => SimpleTy::Int(pointer_bits, signed),
+            ty => ty,
+        };
         macro_rules! match_ty {
             ($($pat:pat => $const_ty:ident[$($as_ty:ty),*]),*) => {
                 match (self, &ty) {
@@ -457,8 +463,6 @@ impl ConstantValue {
             SimpleTy::Int(32, true) => Int[i32, i128],
             SimpleTy::Int(64, true) => Int[i64, i128],
             SimpleTy::Int(128, true) => Int[i128],
-            SimpleTy::Size(false) => Uint[usize, u128],
-            SimpleTy::Size(true) => Int[isize, i128],
             SimpleTy::Float32 => Float32[f32],
             SimpleTy::Float64 => Float64[f64]
         }
@@ -472,7 +476,10 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
                 LitKind::Int(i, LitIntType::Unsuffixed) => Some(ConstantValue::Uint(i.get())),
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::Isize)) => {
-                    Some(ConstantValue::Int(i.get() as i16 as i128))
+                    Some(ConstantValue::Uint(i.get()).cast(
+                        SimpleTy::Size(true),
+                        cx.ty_ctxt().data_layout.pointer_size.bits(),
+                    ))
                 }
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::I8)) => {
@@ -496,7 +503,10 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::Usize)) => {
-                    Some(ConstantValue::Uint(i.get() as u16 as u128))
+                    Some(ConstantValue::Uint(i.get()).cast(
+                        SimpleTy::Size(false),
+                        cx.ty_ctxt().data_layout.pointer_size.bits(),
+                    ))
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::U8)) => {
@@ -555,7 +565,7 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
             let ty_ty = cx.node_type(ty.id);
             let ty_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), ty_ty);
             let ic = eval_const(ie.clone(), cx)?;
-            Some(ic.cast(SimpleTy::from(ty_ty)))
+            Some(ic.cast(SimpleTy::from(ty_ty), tcx.data_layout.pointer_size.bits()))
         }
 
         _ => unreachable!("Unexpected ExprKind"),
