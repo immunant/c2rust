@@ -62,7 +62,7 @@ class AbstractTransform:
     def system_instruction(self) -> str:
         return self._system_instruction
 
-    def apply_ident(
+    async def apply_ident(
         self,
         rust_source_file: Path,
         rust_definition: str,
@@ -74,7 +74,7 @@ class AbstractTransform:
         Apply the transform to one Rust definition and commit it through
         merge_rust.
         """
-        new_definition = self.try_apply_ident(
+        new_definition = await self.try_apply_ident(
             rust_source_file=rust_source_file,
             rust_definition=rust_definition,
             c_definition=c_definition,
@@ -99,7 +99,7 @@ class AbstractTransform:
         logging.info(f"{self.__class__.__name__}: Transformed Rust fn {identifier}")
         return new_definition
 
-    def try_apply_ident(
+    async def try_apply_ident(
         self,
         rust_source_file: Path,
         rust_definition: str,
@@ -115,7 +115,7 @@ class AbstractTransform:
             "or override apply_ident directly"
         )
 
-    def generate(
+    async def generate(
         self,
         identifier: str,
         messages: list[dict[str, Any]],
@@ -155,7 +155,7 @@ class AbstractTransform:
 
         for attempt in range(self.max_attempts):
             try:
-                response = self.model.generate_with_tools(messages)
+                response = await self.model.generate_with_tools(messages)
                 if response is None:
                     raise TransformError(f"model returned no response for {identifier}")
                 result = validate(response)
@@ -181,7 +181,7 @@ class AbstractTransform:
             f"for {identifier}: {error}"
         ) from error
 
-    def apply_dir(
+    async def apply_dir(
         self,
         root_rust_source_file: Path,
         exclude_list: IdentifierExcludeList,
@@ -206,7 +206,7 @@ class AbstractTransform:
             )
             assert rs_path.exists()
             result.extend(
-                self.apply_file(
+                await self.apply_file(
                     rust_source_file=rs_path,
                     exclude_list=exclude_list,
                     ident_filter=ident_filter,
@@ -218,7 +218,7 @@ class AbstractTransform:
             )
         return result
 
-    def apply_file(
+    async def apply_file(
         self,
         rust_source_file: Path,
         exclude_list: IdentifierExcludeList,
@@ -267,7 +267,7 @@ class AbstractTransform:
             )
 
             try:
-                new_definition = self.apply_ident(
+                new_definition = await self.apply_ident(
                     rust_source_file=rust_source_file,
                     rust_definition=rust_definition,
                     c_definition=c_definition,
