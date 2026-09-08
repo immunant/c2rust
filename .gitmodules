@@ -106,3 +106,8 @@
 	url = https://github.com/libgit2/libgit2
 	ignore = all
 	update = none
+[submodule "tests/integration/tests/sqlite/repo"]
+	path = tests/integration/tests/sqlite/repo
+	url = https://github.com/sqlite/sqlite.git
+	update = none
+	ignore = all
