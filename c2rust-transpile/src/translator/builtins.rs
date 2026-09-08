@@ -508,6 +508,7 @@ impl<'c> Translation<'c> {
                             false,
                             SeqCst,
                             SeqCst,
+                            args[0],
                             arg0,
                             arg1,
                             arg2,
@@ -570,10 +571,13 @@ impl<'c> Translation<'c> {
             | "__sync_lock_test_and_set_16" => {
                 // Emit `atomic_xchg_acquire(arg0, arg1)`
                 let atomic_func = self.atomic_intrinsic_expr("xchg", &[Acquire]);
+                let value = self.atomic_value(args[0])?;
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 Ok(arg0.zip(arg1).and_then(|(arg0, arg1)| {
-                    let call_expr = mk().call_expr(atomic_func, vec![arg0, arg1]);
+                    let call_expr = value.restore(
+                        mk().call_expr(atomic_func, vec![value.storage(arg0), value.lower(arg1)]),
+                    );
                     self.convert_side_effects_expr(
                         ctx,
                         WithStmts::new_val(call_expr),
@@ -589,10 +593,11 @@ impl<'c> Translation<'c> {
             | "__sync_lock_release_16" => {
                 // Emit `atomic_store_release(arg0, 0)`
                 let atomic_func = self.atomic_intrinsic_expr("store", &[Release]);
+                let value = self.atomic_value(args[0])?;
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 Ok(arg0.and_then(|arg0| {
-                    let zero = mk().lit_expr(mk().int_lit(0, ""));
-                    let call_expr = mk().call_expr(atomic_func, vec![arg0, zero]);
+                    let call_expr =
+                        mk().call_expr(atomic_func, vec![value.storage(arg0), value.zero()]);
                     self.convert_side_effects_expr(
                         ctx,
                         WithStmts::new_val(call_expr),

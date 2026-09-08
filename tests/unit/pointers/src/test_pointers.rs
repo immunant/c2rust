@@ -1,4 +1,4 @@
-//! feature_c_variadic, feature_raw_ref_op, feature_strict_provenance
+//! feature_c_variadic, feature_raw_ref_op, feature_strict_provenance, feature_core_intrinsics
 
 use crate::function_pointers::rust_entry3;
 use crate::pointer_arith::rust_entry2;
@@ -10,6 +10,8 @@ use std::ffi::{c_int, c_uint};
 
 #[link(name = "test")]
 extern "C" {
+    fn atomic_function_pointers() -> c_int;
+    fn sync_function_pointers() -> c_int;
     fn entry(_: c_uint, _: *mut c_int);
 
     fn entry2(_: c_uint, _: *mut c_int);
@@ -18,6 +20,28 @@ extern "C" {
 
     #[cfg(not(target_arch = "aarch64"))]
     fn varargs_fp_field_test() -> c_int;
+}
+
+#[test]
+pub fn test_sync_function_pointers() {
+    unsafe {
+        assert_eq!(sync_function_pointers(), 0);
+        assert_eq!(
+            crate::sync_function_pointers::rust_sync_function_pointers(),
+            0
+        );
+    }
+}
+
+#[test]
+pub fn test_atomic_function_pointers() {
+    unsafe {
+        assert_eq!(atomic_function_pointers(), 0);
+        assert_eq!(
+            crate::atomic_function_pointers::rust_atomic_function_pointers(),
+            0
+        );
+    }
 }
 
 #[test]
