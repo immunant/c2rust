@@ -313,6 +313,11 @@ fn test_bool() {
 }
 
 #[test]
+fn test_builtin_types() {
+    transpile("builtin_types.c").run();
+}
+
+#[test]
 fn test_compound_literals() {
     transpile("compound_literals.c").run();
 }
