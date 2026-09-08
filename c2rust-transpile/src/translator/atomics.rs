@@ -34,7 +34,67 @@ pub(crate) fn order_ty_name(order: Ordering) -> &'static str {
     }
 }
 
+// Rust represents nullable C function pointers as Option<fn>, which atomic
+// intrinsics reject. Both AtomicExpr and legacy builtin calls must operate on
+// the raw pointer representation, restoring the function pointer on results.
+pub(crate) struct AtomicValue {
+    function_pointer: Option<Box<Type>>,
+}
+
+impl AtomicValue {
+    fn raw_pointer_type() -> Box<Type> {
+        mk().mutbl().ptr_ty(mk().tuple_ty(vec![]))
+    }
+
+    pub(crate) fn storage(&self, ptr: Box<Expr>) -> Box<Expr> {
+        if self.function_pointer.is_some() {
+            mk().cast_expr(ptr, mk().mutbl().ptr_ty(Self::raw_pointer_type()))
+        } else {
+            ptr
+        }
+    }
+
+    pub(crate) fn lower(&self, val: Box<Expr>) -> Box<Expr> {
+        match &self.function_pointer {
+            Some(ty) => transmute_expr(ty.clone(), Self::raw_pointer_type(), val),
+            None => val,
+        }
+    }
+
+    pub(crate) fn restore(&self, val: Box<Expr>) -> Box<Expr> {
+        match &self.function_pointer {
+            Some(ty) => transmute_expr(Self::raw_pointer_type(), ty.clone(), val),
+            None => val,
+        }
+    }
+
+    pub(crate) fn zero(&self) -> Box<Expr> {
+        if self.function_pointer.is_some() {
+            mk().call_expr(mk().abs_path_expr(vec!["core", "ptr", "null_mut"]), vec![])
+        } else {
+            mk().lit_expr(mk().int_lit(0, ""))
+        }
+    }
+}
+
 impl<'c> Translation<'c> {
+    pub(crate) fn atomic_value(&self, ptr_id: CExprId) -> TranslationResult<AtomicValue> {
+        let ptr_ty = self.ast_context[ptr_id].kind.get_qual_type().unwrap();
+        let mut value_ty = self
+            .ast_context
+            .get_pointee_qual_type(ptr_ty.ctype)
+            .unwrap();
+        if let CTypeKind::Atomic(inner) = self.ast_context.resolve_type(value_ty.ctype).kind {
+            value_ty = inner;
+        }
+        let function_pointer = if self.ast_context.is_function_pointer(value_ty.ctype) {
+            Some(self.convert_type(value_ty.ctype)?)
+        } else {
+            None
+        };
+        Ok(AtomicValue { function_pointer })
+    }
+
     fn atomic_intrinsic_expr_edition_2021(
         &self,
         base_name: &str,
@@ -155,6 +215,13 @@ impl<'c> Translation<'c> {
             .transpose()?;
         let weak = weak_id.and_then(|x| self.convert_constant_bool(x));
 
+        let value = self.atomic_value(ptr_id)?;
+        let ptr = if name != "__c11_atomic_init" {
+            ptr.map(|ptr| value.storage(ptr))
+        } else {
+            ptr
+        };
+
         fn static_order<T>(order: Option<T>) -> T {
             order.unwrap_or_else(|| {
                 // We have to select which intrinsic to use at runtime
@@ -167,7 +234,7 @@ impl<'c> Translation<'c> {
                 let order = static_order(order);
 
                 let atomic_load = self.atomic_intrinsic_expr("load", &[order]);
-                let call = mk().call_expr(atomic_load, vec![ptr]);
+                let call = value.restore(mk().call_expr(atomic_load, vec![ptr]));
                 if name == "__atomic_load" {
                     let ret = val1.expect("__atomic_load should have a ret argument");
                     Ok(ret.and_then(|ret| {
@@ -200,7 +267,7 @@ impl<'c> Translation<'c> {
                     } else {
                         val
                     };
-                    let call = mk().call_expr(atomic_store, vec![ptr, val]);
+                    let call = mk().call_expr(atomic_store, vec![ptr, value.lower(val)]);
                     self.convert_side_effects_expr(
                         ctx,
                         WithStmts::new_val(call),
@@ -233,7 +300,7 @@ impl<'c> Translation<'c> {
                     } else {
                         val
                     };
-                    let call = mk().call_expr(fn_path, vec![ptr, val]);
+                    let call = value.restore(mk().call_expr(fn_path, vec![ptr, value.lower(val)]));
                     if name == "__atomic_exchange" {
                         // LLVM stores the ret pointer in the order_fail slot
                         Ok(order_fail_id
@@ -315,8 +382,10 @@ impl<'c> Translation<'c> {
 
                         let atomic_cxchg =
                             self.atomic_intrinsic_cxchg_expr(weak, order, order_fail);
-                        let call =
-                            mk().call_expr(atomic_cxchg, vec![ptr, expected.clone(), desired]);
+                        let call = mk().call_expr(
+                            atomic_cxchg,
+                            vec![ptr, value.lower(expected.clone()), value.lower(desired)],
+                        );
                         let res_name = self
                             .renamer
                             .borrow_mut()
@@ -328,7 +397,7 @@ impl<'c> Translation<'c> {
                         )));
                         let assignment = mk().semi_stmt(mk().assign_expr(
                             expected,
-                            mk().anon_field_expr(mk().ident_expr(&res_name), 0),
+                            value.restore(mk().anon_field_expr(mk().ident_expr(&res_name), 0)),
                         ));
                         let return_value = mk().anon_field_expr(mk().ident_expr(&res_name), 1);
                         Ok(self.convert_side_effects_expr(
@@ -366,6 +435,7 @@ impl<'c> Translation<'c> {
         weak: bool,
         order_succ: Ordering,
         order_fail: Ordering,
+        ptr_id: CExprId,
         dst: Box<Expr>,
         old_val: Box<Expr>,
         src_val: Box<Expr>,
@@ -373,9 +443,22 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // Emit `atomic_cxchg(a0, a1, a2).idx`
         let atomic_cxchg = self.atomic_intrinsic_cxchg_expr(weak, order_succ, order_fail);
-        let call = mk().call_expr(atomic_cxchg, vec![dst, old_val, src_val]);
+        let value = self.atomic_value(ptr_id)?;
+        let call = mk().call_expr(
+            atomic_cxchg,
+            vec![
+                value.storage(dst),
+                value.lower(old_val),
+                value.lower(src_val),
+            ],
+        );
         let field_idx = if returns_val { 0 } else { 1 };
         let call_expr = mk().anon_field_expr(call, field_idx);
+        let call_expr = if returns_val {
+            value.restore(call_expr)
+        } else {
+            call_expr
+        };
         Ok(self.convert_side_effects_expr(
             ctx,
             WithStmts::new_val(call_expr),
