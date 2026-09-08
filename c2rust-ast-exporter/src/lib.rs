@@ -58,6 +58,13 @@ pub fn get_untyped_ast(
 /// libClangTooling is not thread-safe, so we must not allow concurrent calls to `ast_exporter`.
 static CLANG_MUTEX: Mutex<()> = Mutex::new(());
 
+fn clang_build_path(cc_db: &Path) -> &Path {
+    cc_db
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
 fn get_ast_cbors(
     file_path: &Path,
     cc_db: &Path,
@@ -68,7 +75,7 @@ fn get_ast_cbors(
     let mut args_owned = vec![CString::new("ast_exporter").unwrap()];
     args_owned.push(CString::new(file_path.to_str().unwrap()).unwrap());
     args_owned.push(CString::new("-p").unwrap());
-    args_owned.push(CString::new(cc_db.to_str().unwrap()).unwrap());
+    args_owned.push(CString::new(clang_build_path(cc_db).to_str().unwrap()).unwrap());
 
     for &arg in extra_args {
         args_owned.push(CString::new(["-extra-arg=", arg].join("")).unwrap())
