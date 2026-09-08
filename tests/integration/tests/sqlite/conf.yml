@@ -1,0 +1,6 @@
+transpile:
+  autogen: true
+  tflags: --reorganize-definitions --disable-refactoring
+
+cargo.transpile:
+  autogen: true
