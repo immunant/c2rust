@@ -416,6 +416,11 @@ fn test_main_fn() {
 }
 
 #[test]
+fn test_opaque_pointer_casts() {
+    transpile("opaque_pointer_casts.c").run();
+}
+
+#[test]
 fn test_out_of_range_lit() {
     transpile("out_of_range_lit.c").run();
 }
