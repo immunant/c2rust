@@ -15,6 +15,18 @@ extern "C" {
     fn entry2(_: c_uint, _: *mut c_int);
 
     fn entry3(_: c_uint, _: *mut c_int);
+
+    #[cfg(not(target_arch = "aarch64"))]
+    fn varargs_fp_field_test() -> c_int;
+}
+
+#[test]
+#[cfg(not(target_arch = "aarch64"))]
+pub fn test_varargs_fp_field() {
+    unsafe {
+        assert_eq!(varargs_fp_field_test(), 1);
+        assert_eq!(crate::function_pointers::rust_varargs_fp_field_test(), 1);
+    }
 }
 
 const BUFFER_SIZE: usize = 5;
