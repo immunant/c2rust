@@ -3084,6 +3084,11 @@ class TranslateConsumer : public clang::ASTConsumer {
             cbor_encoder_close_container(&outer, &array);
 
             // 3. Encode all of the visited file names
+            // A file containing only comments has no AST nodes to register its
+            // file ID. Register it before emitting the table, since encoding
+            // comments below must not introduce file IDs missing from it.
+            const SourceManager& sourceMgr = Context.getSourceManager();
+            visitor.getExporterFileId(sourceMgr.getMainFileID(), false);
             auto files = visitor.getFiles();
             cbor_encoder_create_array(&outer, &array, files.size());
             for (auto const &file : files) {
@@ -3107,7 +3112,6 @@ class TranslateConsumer : public clang::ASTConsumer {
             //
             // Getting all comments requires -fparse-all-comments (see
             // augment_argv())!
-            const SourceManager& sourceMgr = Context.getSourceManager();
 #if CLANG_VERSION_MAJOR < 10
             auto comments = Context.getRawCommentList().getComments();
             cbor_encoder_create_array(&outer, &array, comments.size());
