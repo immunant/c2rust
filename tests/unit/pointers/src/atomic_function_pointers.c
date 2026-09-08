@@ -37,5 +37,19 @@ int atomic_function_pointers(void) {
     __atomic_load(&ptr, &result, __ATOMIC_RELAXED);
     if (result) return 12;
 
+    _Atomic(callback) c11_ptr = (callback)0;
+    __c11_atomic_init(&c11_ptr, (callback)0);
+    __c11_atomic_store(&c11_ptr, increment, __ATOMIC_RELEASE);
+    result = __c11_atomic_load(&c11_ptr, __ATOMIC_ACQUIRE);
+    if (!result || result(10) != 11) return 13;
+    result = __c11_atomic_exchange(&c11_ptr, decrement, __ATOMIC_ACQ_REL);
+    if (result != increment) return 14;
+    expected = increment;
+    if (__c11_atomic_compare_exchange_strong(&c11_ptr, &expected, (callback)0,
+                                            __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return 15;
+    if (expected != decrement) return 16;
+    if (!__c11_atomic_compare_exchange_strong(&c11_ptr, &expected, (callback)0,
+                                             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return 17;
+    if (__c11_atomic_load(&c11_ptr, __ATOMIC_RELAXED)) return 18;
     return 0;
 }
