@@ -74,9 +74,10 @@ struct Import {
     ident_name: String,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum DecayRef {
     Yes,
+    #[default]
     Default,
     No,
 }
@@ -120,9 +121,29 @@ pub enum ReplaceMode {
 }
 
 /// Options that impact an expression and all of its subexpressions.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ExprContext {
-    used: bool,
+    /// Whether the result value of the expression is used in a larger expression.
+    ///
+    /// When the result value is not used in a particular context, only the side effects of the
+    /// expression matter. The `stmts` field of `WithStmts` should hold any statements with side
+    /// effects, and the `val` field is expected to be discarded. It should not appear in the final
+    /// transpiler output, and may be an expression that panics when evaluated.
+    ///
+    /// - `.unused()` should be called for the top-level expression of an `ExprStmt`, the increment
+    /// expression of a `for` loop, the `lhs` of a comma operator expression, and other such cases.
+    ///
+    /// - `.used()` should be called if an expression is needed to evaluate the side effects of a
+    /// parent expression, such as the arguments of a function call (unless the function is known to
+    /// be pure), the operands of an assignment expression, the expression of a `return` statement,
+    /// etc. An expression that sets `.used()` for one of its subexpressions should handle the case
+    /// that its own context has `!is_used`, by moving its side effects into the `stmts` field;
+    /// the `convert_side_effects_expr` helper can be used for this purpose.
+    ///
+    /// - If an expression is pure (has no side effects), then it should inherit its `is_used` value
+    /// from its parent expression: if the parent expression is going to be discarded, then so are
+    /// all of its pure child expressions.
+    is_used: bool,
 
     /// In a Rust const context, for example in a static initializer or constant-like macro
     /// translation.
@@ -152,20 +173,18 @@ pub struct ExprContext {
 
 impl ExprContext {
     pub fn used(self) -> Self {
-        ExprContext { used: true, ..self }
-    }
-    pub fn unused(self) -> Self {
         ExprContext {
-            used: false,
+            is_used: true,
             ..self
         }
     }
-    pub fn is_used(&self) -> bool {
-        self.used
+    pub fn unused(self) -> Self {
+        ExprContext {
+            is_used: false,
+            ..self
+        }
     }
-    pub fn is_unused(&self) -> bool {
-        !self.used
-    }
+
     pub fn decay_ref(self) -> Self {
         ExprContext {
             decay_ref: DecayRef::Yes,
@@ -875,16 +894,7 @@ pub fn translate(
     preprocessed_definitions: &IndexMap<CDeclId, String>,
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
-    let ctx = ExprContext {
-        used: true,
-        is_const: false,
-        is_pattern: false,
-        is_static: false,
-        decay_ref: DecayRef::Default,
-        is_bitfield_write: false,
-        needs_address: false,
-        expanding_macro: None,
-    };
+    let ctx = ExprContext::default();
 
     {
         t.locate_comments();
@@ -1977,24 +1987,13 @@ impl<'c> Translation<'c> {
         false
     }
 
-    fn add_static_initializer_to_section(
-        &self,
-        ctx: ExprContext,
-        name: &str,
-        typ: CQualTypeId,
-        init: &mut Box<Expr>,
-    ) -> TranslationResult<()> {
-        let mut default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
-
-        std::mem::swap(init, &mut default_init);
-
+    fn add_static_initializer_to_section(&self, name: &str, init: WithStmts<Box<Expr>>) {
+        let init = init.to_expr();
         let root_lhs_expr = mk().path_expr(vec![name]);
-        let assign_expr = mk().assign_expr(root_lhs_expr, default_init);
+        let assign_expr = mk().assign_expr(root_lhs_expr, init);
         let stmt = mk().expr_stmt(assign_expr);
 
         self.sectioned_static_initializers.borrow_mut().push(stmt);
-
-        Ok(())
     }
 
     fn generate_global_static_init(&mut self) -> (Box<Item>, Box<Item>) {
@@ -2131,8 +2130,7 @@ impl<'c> Translation<'c> {
                 ref attrs,
                 ..
             } => self.convert_function(
-                ctx, decl_id, span, is_global, is_inline, is_extern, typ, name, parameters, body,
-                attrs,
+                decl_id, span, is_global, is_inline, is_extern, typ, name, parameters, body, attrs,
             ),
 
             Typedef { ref typ, .. } => {
@@ -2193,7 +2191,7 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
                 let ConvertedVariable { ty, mutbl, init: _ } =
-                    self.convert_variable(ctx.static_().const_(), None, typ)?;
+                    self.convert_variable(ExprContext::default().static_().const_(), None, typ)?;
                 let mut extern_item = mk_linkage(true, &new_name, ident, self.tcfg.edition)
                     .span(span)
                     .set_mutbl(mutbl);
@@ -2268,20 +2266,18 @@ impl<'c> Translation<'c> {
                     };
                 }
 
-                let ctx = ctx.static_();
-
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if self.static_initializer_is_uncompilable(initializer, typ) {
-                    // Note: We don't pass `is_const` through here. Extracted initializers are run
+                    // Note: We don't pass the outer context here. Extracted initializers are run
                     // outside of the static initializer, in a non-const context.
-                    let ctx = ctx.not_const();
-
                     let ConvertedVariable { ty, mutbl: _, init } =
-                        self.convert_variable(ctx, initializer, typ)?;
+                        self.convert_variable(ExprContext::default().static_(), initializer, typ)?;
+                    self.add_static_initializer_to_section(new_name, init?);
 
-                    let mut init = init?.to_expr();
-
+                    let default_init = self
+                        .implicit_default_expr(ctx.static_().const_().used(), typ.ctype)?
+                        .to_expr();
                     let comment = String::from("// Initialized in c2rust_run_static_initializers");
                     let comment_pos = if span.is_dummy() {
                         None
@@ -2298,12 +2294,11 @@ impl<'c> Translation<'c> {
                         )
                         .map(pos_to_span)
                         .unwrap_or(span);
+                    let static_item = static_def
+                        .span(span)
+                        .static_item(new_name, ty, default_init);
 
-                    self.add_static_initializer_to_section(ctx, new_name, typ, &mut init)?;
-
-                    Ok(ConvertedDecl::Item(
-                        static_def.span(span).static_item(new_name, ty, init),
-                    ))
+                    Ok(ConvertedDecl::Item(static_item))
                 } else {
                     let items = self.convert_compilable_static(
                         ctx,
@@ -2327,7 +2322,7 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Macro object not named");
 
-                self.convert_macro(ctx, decl_id, span, &name)
+                self.convert_macro(decl_id, span, &name)
             }
 
             // We aren't doing anything with the definitions of function-like
@@ -2479,7 +2474,7 @@ impl<'c> Translation<'c> {
 
         let null_pointer_case =
             |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
-                let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
+                let val = self.convert_expr(ctx.decay_ref(), ptr, None)?;
                 let ptr_type = self
                     .ast_context
                     .index_unwrap_parens(ptr)
@@ -2534,7 +2529,7 @@ impl<'c> Translation<'c> {
                 // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
                 // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
                 // specify Yes for that particular case, given enough analysis.
-                let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
+                let val = self.convert_expr(ctx.decay_ref(), cond_id, None)?;
                 val.try_map(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
@@ -2634,7 +2629,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
     ) -> TranslationResult<Vec<Box<Item>>> {
         let ConvertedVariable { ty, mutbl: _, init } =
-            self.convert_variable(ctx.const_(), initializer, typ)?;
+            self.convert_variable(ctx.static_().const_(), initializer, typ)?;
         let mut init = init?;
         let mut items = init
             .stmts_to_items()
@@ -2663,8 +2658,6 @@ impl<'c> Translation<'c> {
         } = self.ast_context.index(decl_id).kind
         {
             if self.static_initializer_is_uncompilable(initializer, typ) {
-                let ctx = ctx.static_().not_const();
-
                 let ident2 = self
                     .renamer
                     .borrow_mut()
@@ -2675,8 +2668,12 @@ impl<'c> Translation<'c> {
                         )
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
-                    self.convert_variable(ctx, initializer, typ)?;
-                let default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
+                    self.convert_variable(ExprContext::default().static_(), initializer, typ)?;
+                self.add_static_initializer_to_section(&ident2, init?.set_unsafe());
+
+                let default_init = self
+                    .implicit_default_expr(ctx.static_().const_().used(), typ.ctype)?
+                    .to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2688,9 +2685,6 @@ impl<'c> Translation<'c> {
                     .span(span)
                     .mutbl()
                     .static_item(&ident2, ty, default_init);
-                let mut init = init?.set_unsafe().to_expr();
-
-                self.add_static_initializer_to_section(ctx, &ident2, typ, &mut init)?;
                 self.items.borrow_mut()[&self.main_file].add_item(static_item);
 
                 return Ok(cfg::DeclStmtInfo::empty());
@@ -2710,7 +2704,7 @@ impl<'c> Translation<'c> {
                     .get_span(SomeId::Decl(decl_id))
                     .unwrap_or_else(Span::call_site);
                 let items = self.convert_compilable_static(
-                    ctx.static_(),
+                    ctx,
                     mk().span(span).mutbl(),
                     &ident2,
                     initializer,
@@ -2793,7 +2787,7 @@ impl<'c> Translation<'c> {
                     init.into_value()
                 };
 
-                let zeroed = self.implicit_default_expr(ctx, typ.ctype)?;
+                let zeroed = self.implicit_default_expr(ctx.used(), typ.ctype)?;
                 let zeroed = if ctx.is_const {
                     zeroed.wrap_unsafe().to_pure_expr()
                 } else {
@@ -3007,7 +3001,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
-            None => self.implicit_default_expr(ctx, typ.ctype),
+            None => self.implicit_default_expr(ctx.used(), typ.ctype),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
@@ -3203,7 +3197,7 @@ impl<'c> Translation<'c> {
 
             let elts = self.compute_size_of_type(ctx, expected_type_id, result_type_id, elts)?;
             return elts.and_then_try(|lhs| {
-                let len = self.convert_expr(ctx.used().not_static(), len, expected_type_id)?;
+                let len = self.convert_expr(ctx.not_static(), len, expected_type_id)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
@@ -3303,10 +3297,10 @@ impl<'c> Translation<'c> {
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
-    /// `ctx.is_used()` informs us how the C expression we are translating is used in the C
+    /// `ctx.is_used` informs us how the C expression we are translating is used in the C
     /// program.
     ///
-    /// In the case that `ctx.is_unused()`, all side-effecting components will be in the
+    /// In the case that `!ctx.is_used`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
     ///
@@ -3549,12 +3543,12 @@ impl<'c> Translation<'c> {
             }
 
             Conditional(ty, cond, lhs, rhs) => {
-                let cond = self.convert_condition(ctx, true, cond)?;
+                let cond = self.convert_condition(ctx.used(), true, cond)?;
 
                 let lhs = self.convert_expr(ctx, lhs, Some(override_ty.unwrap_or(ty)))?;
                 let rhs = self.convert_expr(ctx, rhs, Some(override_ty.unwrap_or(ty)))?;
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let is_unsafe = lhs.is_unsafe() || rhs.is_unsafe();
                     let then = mk().block(lhs.into_stmts());
                     let else_ = mk().block_expr(mk().block(rhs.into_stmts()));
@@ -3581,9 +3575,9 @@ impl<'c> Translation<'c> {
             BinaryConditional(ty, lhs, rhs) => {
                 let rhs = self.convert_expr(ctx, rhs, None)?;
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let lhs = self
-                        .convert_condition(ctx, false, lhs)?
+                        .convert_condition(ctx.used(), false, lhs)?
                         .merge_unsafe(rhs.is_unsafe());
 
                     Ok(lhs.and_then(|val| {
@@ -3915,8 +3909,8 @@ impl<'c> Translation<'c> {
         expr: WithStmts<Box<Expr>>,
         panic_msg: &str,
     ) -> WithStmts<Box<Expr>> {
-        if ctx.is_unused() {
-            // Recall that if `used` is false, the `stmts` field of the output must contain
+        if !ctx.is_used {
+            // Recall that if `!is_used`, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
             expr.and_then(|expr| {
                 WithStmts::new(vec![mk().semi_stmt(expr)], self.panic_or_err(panic_msg))
@@ -3985,7 +3979,7 @@ impl<'c> Translation<'c> {
                     match as_semi_break_stmt(&stmt, &lbl) {
                         Some(val) => {
                             let block = mk().block_expr(match val {
-                                Some(val) if ctx.is_used() => WithStmts::new(stmts, val).to_block(),
+                                Some(val) if ctx.is_used => WithStmts::new(stmts, val).to_block(),
                                 _ => mk().block(stmts),
                             });
 
@@ -4014,7 +4008,7 @@ impl<'c> Translation<'c> {
                 ))
             }
             _ => {
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let val =
                         self.panic_or_err("Empty statement expression is not supposed to be used");
                     Ok(WithStmts::new_val(val))

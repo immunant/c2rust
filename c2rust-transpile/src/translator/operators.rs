@@ -27,8 +27,8 @@ impl<'c> Translation<'c> {
             }
 
             op if op.is_logical() => {
-                let lhs = self.convert_condition(ctx, true, lhs)?;
-                let rhs = self.convert_condition(ctx, true, rhs)?;
+                let lhs = self.convert_condition(ctx.used(), true, lhs)?;
+                let rhs = self.convert_condition(ctx.used(), true, rhs)?;
                 Ok(lhs
                     .map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
                     .and_then(|out| {
@@ -113,7 +113,7 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     Ok(self
                         .convert_expr(ctx, lhs, Some(lhs_type_id))?
                         .and_then_try(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
@@ -318,13 +318,15 @@ impl<'c> Translation<'c> {
                 )
             });
 
-        let lhs_translation = if ctx.is_used() || compound_assignment_needs_desugaring {
-            self.name_reference_write_read(ctx, lhs)?
+        let lhs_translation = if ctx.is_used || compound_assignment_needs_desugaring {
+            self.name_reference_write_read(ctx.used(), lhs)?
         } else {
-            self.name_reference_write(ctx, lhs)?.map(|named_ref| {
-                named_ref
-                    .map_rvalue(|()| self.panic_or_err("Volatile value is not supposed to be read"))
-            })
+            self.name_reference_write(ctx.used(), lhs)?
+                .map(|named_ref| {
+                    named_ref.map_rvalue(|()| {
+                        self.panic_or_err("Volatile value is not supposed to be read")
+                    })
+                })
         };
 
         rhs_translation
@@ -368,6 +370,7 @@ impl<'c> Translation<'c> {
         // Assignment expression itself
         let assign_stmt = if let Some(underlying_op) = op.underlying_assignment() {
             // Compound assignment
+            let ctx = ctx.used();
 
             if self.compound_assignment_needs_desugaring(
                 underlying_op,
@@ -377,7 +380,7 @@ impl<'c> Translation<'c> {
                 // Cast the lhs to the compute lhs type, do the compute, and then
                 // cast the compute result to the final lhs type.
                 let lhs = self.make_cast(
-                    ctx.used(),
+                    ctx,
                     lhs_type_id,
                     compute_lhs_type_id,
                     WithStmts::new_val(read.clone()),
@@ -416,7 +419,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        let assign_result = if ctx.is_used() {
+        let assign_result = if ctx.is_used {
             self.make_cast(
                 ctx,
                 result_type_id,
@@ -572,7 +575,7 @@ impl<'c> Translation<'c> {
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let expr_type_id = expected_type_id.unwrap_or(result_type_id);
-        let mut unary = match op {
+        match op {
             CUnOp::AddressOf => self.convert_address_of(ctx, expr_type_id, arg),
 
             CUnOp::PreIncrement
@@ -583,46 +586,22 @@ impl<'c> Translation<'c> {
             }
 
             CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg),
-            CUnOp::Plus => self.convert_expr(ctx.used(), arg, expected_type_id), // promotion is explicit in the clang AST
+            CUnOp::Plus => self.convert_expr(ctx, arg, expected_type_id), // promotion is explicit in the clang AST
 
             CUnOp::Negate => self.convert_negate_operator(ctx, expr_type_id, arg),
             CUnOp::Complement => Ok(self
-                .convert_expr(ctx.used(), arg, expected_type_id)?
+                .convert_expr(ctx, arg, expected_type_id)?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
             CUnOp::Not => {
-                let val = self.convert_condition(ctx.used(), false, arg)?;
+                let val = self.convert_condition(ctx, false, arg)?;
                 Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
             }
-            CUnOp::Extension => {
-                let arg = self.convert_expr(ctx, arg, expected_type_id)?;
-                Ok(arg)
-            }
+            CUnOp::Extension => self.convert_expr(ctx, arg, expected_type_id),
             CUnOp::Real | CUnOp::Imag | CUnOp::Coawait => {
                 panic!("Unsupported extension operator")
             }
-        }?;
-
-        // Some unused unary operators (`-foo()`) may have side effects, so we need
-        // to add them to stmts when name is not increment/decrement operator.
-        //
-        // `UnOp::Extension` (`__extension__`) is another exception since
-        // it's a no-op around the inner expression.
-        if !matches!(
-            op,
-            CUnOp::PreDecrement
-                | CUnOp::PreIncrement
-                | CUnOp::PostDecrement
-                | CUnOp::PostIncrement
-                | CUnOp::Extension
-        ) {
-            unary = self.convert_side_effects_expr(
-                ctx,
-                unary,
-                "Unary expression is not supposed to be used",
-            );
         }
-        Ok(unary)
     }
 
     fn convert_indecrement_operator(
@@ -672,7 +651,7 @@ impl<'c> Translation<'c> {
         };
 
         // If we aren't going to be using the result, may as well do a simple pre-increment
-        let dont_yield_old_value = op.is_prefix() || ctx.is_unused();
+        let dont_yield_old_value = op.is_prefix() || !ctx.is_used;
         let op = op.underlying_compound_assignment().unwrap();
 
         if dont_yield_old_value {
@@ -688,7 +667,7 @@ impl<'c> Translation<'c> {
                 Some(compute_res_type_id),
             )
         } else {
-            self.name_reference_write_read(ctx, arg)?
+            self.name_reference_write_read(ctx.used(), arg)?
                 .and_then(|lhs| {
                     let val_name = self.renamer.borrow_mut().fresh(Namespaces::values());
                     let save_old_val = mk().local_stmt(Box::new(mk().local(
@@ -742,7 +721,7 @@ impl<'c> Translation<'c> {
             let val = self.mk_int_lit(ctx, expr_type_id, val, base, true)?;
             Ok(WithStmts::new_val(val))
         } else {
-            let val = self.convert_expr(ctx.used(), arg_id, Some(expr_type_id))?;
+            let val = self.convert_expr(ctx, arg_id, Some(expr_type_id))?;
             let val = val.map(|val| {
                 if is_unsigned_integral_type {
                     wrapping_neg_expr(val)
