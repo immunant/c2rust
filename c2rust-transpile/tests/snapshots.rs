@@ -298,6 +298,11 @@ fn test_atomics() {
 }
 
 #[test]
+fn test_atomic_function_pointers() {
+    transpile("atomic_function_pointers.c").run();
+}
+
+#[test]
 fn test_auto_type() {
     transpile("auto_type.c").run();
 }
