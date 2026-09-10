@@ -1,0 +1,162 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/atomic_function_pointers.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(core_intrinsics)]
+pub type callback = Option<unsafe extern "C" fn(::core::ffi::c_int) -> ::core::ffi::c_int>;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn atomic_function_pointers(mut desired: callback) {
+    let mut ptr: callback = None;
+    let mut expected: callback = None;
+    let mut result: callback = None;
+    ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::Release }>(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(desired),
+    );
+    result = ::core::mem::transmute::<*mut (), callback>(::core::intrinsics::atomic_load::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::Acquire },
+    >(&raw mut ptr as *mut *mut ()));
+    result = ::core::mem::transmute::<*mut (), callback>(::core::intrinsics::atomic_xchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::AcqRel },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(None),
+    ));
+    let c2rust_result = ::core::intrinsics::atomic_cxchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(*&raw mut expected),
+        ::core::mem::transmute::<callback, *mut ()>(desired),
+    );
+    *&raw mut expected = ::core::mem::transmute::<*mut (), callback>(c2rust_result.0);
+    c2rust_result.1;
+    ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::Release }>(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(*&raw mut desired),
+    );
+    *&raw mut result =
+        ::core::mem::transmute::<*mut (), callback>(::core::intrinsics::atomic_load::<
+            _,
+            { ::core::intrinsics::AtomicOrdering::Acquire },
+        >(&raw mut ptr as *mut *mut ()));
+    *&raw mut result =
+        ::core::mem::transmute::<*mut (), callback>(::core::intrinsics::atomic_xchg::<
+            _,
+            { ::core::intrinsics::AtomicOrdering::AcqRel },
+        >(
+            &raw mut ptr as *mut *mut (),
+            ::core::mem::transmute::<callback, *mut ()>(*&raw mut desired),
+        ));
+    let c2rust_result_0 = ::core::intrinsics::atomic_cxchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(*&raw mut expected),
+        ::core::mem::transmute::<callback, *mut ()>(*&raw mut desired),
+    );
+    *&raw mut expected = ::core::mem::transmute::<*mut (), callback>(c2rust_result_0.0);
+    c2rust_result_0.1;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn c11_atomic_function_pointers(mut desired: callback) {
+    let mut ptr: callback = None;
+    let mut expected: callback = None;
+    let mut result: callback = None;
+    *&raw mut ptr = None;
+    ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::Release }>(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(desired),
+    );
+    result = ::core::mem::transmute::<*mut (), callback>(::core::intrinsics::atomic_load::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::Acquire },
+    >(&raw mut ptr as *mut *mut ()));
+    result = ::core::mem::transmute::<*mut (), callback>(::core::intrinsics::atomic_xchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::AcqRel },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(None),
+    ));
+    let c2rust_result = ::core::intrinsics::atomic_cxchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(*&raw mut expected),
+        ::core::mem::transmute::<callback, *mut ()>(desired),
+    );
+    *&raw mut expected = ::core::mem::transmute::<*mut (), callback>(c2rust_result.0);
+    c2rust_result.1;
+    let c2rust_result_0 = ::core::intrinsics::atomic_cxchgweak::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(*&raw mut expected),
+        ::core::mem::transmute::<callback, *mut ()>(None),
+    );
+    *&raw mut expected = ::core::mem::transmute::<*mut (), callback>(c2rust_result_0.0);
+    c2rust_result_0.1;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sync_function_pointers(mut desired: callback) {
+    let mut ptr: callback = None;
+    let mut result: callback = None;
+    result = ::core::mem::transmute::<*mut (), callback>(::core::intrinsics::atomic_xchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::Acquire },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(desired),
+    ));
+    result = ::core::mem::transmute::<*mut (), callback>(
+        ::core::intrinsics::atomic_cxchg::<
+            _,
+            { ::core::intrinsics::AtomicOrdering::SeqCst },
+            { ::core::intrinsics::AtomicOrdering::SeqCst },
+        >(
+            &raw mut ptr as *mut *mut (),
+            ::core::mem::transmute::<callback, *mut ()>(desired),
+            ::core::mem::transmute::<callback, *mut ()>(None),
+        )
+        .0,
+    );
+    ::core::intrinsics::atomic_cxchg::<
+        _,
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+        { ::core::intrinsics::AtomicOrdering::SeqCst },
+    >(
+        &raw mut ptr as *mut *mut (),
+        ::core::mem::transmute::<callback, *mut ()>(None),
+        ::core::mem::transmute::<callback, *mut ()>(desired),
+    )
+    .1;
+    ::core::intrinsics::atomic_store::<_, { ::core::intrinsics::AtomicOrdering::Release }>(
+        &raw mut ptr as *mut *mut (),
+        ::core::ptr::null_mut(),
+    );
+}
+pub const __ATOMIC_ACQUIRE: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
+pub const __ATOMIC_RELEASE: ::core::ffi::c_int = 3 as ::core::ffi::c_int;
+pub const __ATOMIC_ACQ_REL: ::core::ffi::c_int = 4 as ::core::ffi::c_int;
+pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;
