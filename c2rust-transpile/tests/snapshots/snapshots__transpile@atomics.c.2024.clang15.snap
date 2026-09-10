@@ -13,6 +13,7 @@ expression: cat tests/snapshots/atomics.2024.clang15.rs
     unused_mut
 )]
 #![feature(core_intrinsics)]
+pub type atomic_int = ::core::ffi::c_int;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn c11_atomics(mut x: ::core::ffi::c_int) -> ::core::ffi::c_int {
     *&raw mut x = 0 as ::core::ffi::c_int;
@@ -138,5 +139,12 @@ pub unsafe extern "C" fn fetch_after_atomics_unsigned(
         c2rust_rhs_3,
     ) & c2rust_rhs_3);
     return x;
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn initialized_atomic() -> ::core::ffi::c_int {
+    let mut value: atomic_int = 5 as ::core::ffi::c_int;
+    return ::core::intrinsics::atomic_load::<_, { ::core::intrinsics::AtomicOrdering::SeqCst }>(
+        &raw mut value,
+    );
 }
 pub const __ATOMIC_SEQ_CST: ::core::ffi::c_int = 5 as ::core::ffi::c_int;

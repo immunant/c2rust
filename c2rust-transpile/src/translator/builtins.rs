@@ -532,7 +532,7 @@ impl<'c> Translation<'c> {
             // (`compiler_fence`). The order picks the intrinsic at
             // compile time, so we only support a constant one. A relaxed fence
             // is a no-op (and Rust has no relaxed fence intrinsic), so we drop it.
-            "__atomic_thread_fence" | "__atomic_signal_fence" => {
+            "__atomic_thread_fence" | "__atomic_signal_fence" | "__c11_atomic_signal_fence" => {
                 let order = self.convert_memordering(args[0]).ok_or_else(|| {
                     format_translation_err!(
                         self.ast_context.display_loc(src_loc),

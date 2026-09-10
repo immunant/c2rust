@@ -25,6 +25,7 @@ pub unsafe extern "C" fn fences() {
     ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::Release);
     ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::AcqRel);
     ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::SeqCst);
+    ::core::sync::atomic::compiler_fence(::core::sync::atomic::Ordering::SeqCst);
 }
 pub const __ATOMIC_RELAXED: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
 pub const __ATOMIC_ACQUIRE: ::core::ffi::c_int = 2 as ::core::ffi::c_int;
