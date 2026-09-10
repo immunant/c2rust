@@ -2917,44 +2917,16 @@ impl CTypeKind {
         match self {
             Void => "void",
             Bool => "_Bool",
-            Char => "char",
-            SChar => "signed char",
-            Short => "signed short",
-            Int => "int",
-            Long => "long",
-            LongLong => "long long",
-            UChar => "unsigned char",
-            UShort => "unsigned short",
-            UInt => "unsigned int",
-            ULong => "unsigned long",
-            ULongLong => "unsigned long long",
-            Float => "float",
-            Double => "double",
-            LongDouble => "long double",
-            Int128 => "__int128",
-            UInt128 => "unsigned __int128",
-            Half => "half",
-            BFloat16 => "bfloat16",
-            Float128 => "__float128",
 
-            Int8 => "int8_t",
-            Int16 => "int16_t",
-            Int32 => "int32_t",
-            Int64 => "int64_t",
-            IntPtr => "intptr_t",
-            UInt8 => "uint8_t",
-            UInt16 => "uint16_t",
-            UInt32 => "uint32_t",
-            UInt64 => "uint64_t",
-            UIntPtr => "uintptr_t",
-            IntMax => "intmax_t",
-            UIntMax => "uintmax_t",
-            Size => "size_t",
-            SSize => "ssize_t",
-            PtrDiff => "ptrdiff_t",
-            WChar => "wchar_t",
-
-            _ => unimplemented!("Printer::print_type({:?})", self),
+            _ => {
+                if let Some(integer_kind) = self.integer_kind() {
+                    integer_kind.as_str()
+                } else if let Some(floating_kind) = self.floating_kind() {
+                    floating_kind.as_str()
+                } else {
+                    unimplemented!("Printer::print_type({:?})", self)
+                }
+            }
         }
     }
 
@@ -2962,59 +2934,78 @@ impl CTypeKind {
         matches!(*self, Self::Bool)
     }
 
+    pub(crate) fn integer_kind(&self) -> Option<CIntegerKind> {
+        Some(match self {
+            CTypeKind::Char => CIntegerKind::Char,
+            CTypeKind::SChar => CIntegerKind::SChar,
+            CTypeKind::Short => CIntegerKind::Short,
+            CTypeKind::Int => CIntegerKind::Int,
+            CTypeKind::Long => CIntegerKind::Long,
+            CTypeKind::LongLong => CIntegerKind::LongLong,
+
+            CTypeKind::UChar => CIntegerKind::UChar,
+            CTypeKind::UShort => CIntegerKind::UShort,
+            CTypeKind::UInt => CIntegerKind::UInt,
+            CTypeKind::ULong => CIntegerKind::ULong,
+            CTypeKind::ULongLong => CIntegerKind::ULongLong,
+
+            CTypeKind::Int8 => CIntegerKind::Int8,
+            CTypeKind::Int16 => CIntegerKind::Int16,
+            CTypeKind::Int32 => CIntegerKind::Int32,
+            CTypeKind::Int64 => CIntegerKind::Int64,
+            CTypeKind::Int128 => CIntegerKind::Int128,
+
+            CTypeKind::UInt8 => CIntegerKind::UInt8,
+            CTypeKind::UInt16 => CIntegerKind::UInt16,
+            CTypeKind::UInt32 => CIntegerKind::UInt32,
+            CTypeKind::UInt64 => CIntegerKind::UInt64,
+            CTypeKind::UInt128 => CIntegerKind::UInt128,
+
+            CTypeKind::IntMax => CIntegerKind::IntMax,
+            CTypeKind::UIntMax => CIntegerKind::UIntMax,
+
+            CTypeKind::IntPtr => CIntegerKind::IntPtr,
+            CTypeKind::UIntPtr => CIntegerKind::UIntPtr,
+            CTypeKind::Size => CIntegerKind::Size,
+            CTypeKind::SSize => CIntegerKind::SSize,
+            CTypeKind::PtrDiff => CIntegerKind::PtrDiff,
+
+            CTypeKind::WChar => CIntegerKind::WChar,
+
+            _ => return None,
+        })
+    }
+
     pub fn is_integral_type(&self) -> bool {
-        self.is_unsigned_integral_type() || self.is_signed_integral_type()
+        self.integer_kind().is_some()
     }
 
     pub fn is_unsigned_integral_type(&self) -> bool {
-        use CTypeKind::*;
-        matches!(
-            self,
-            UChar
-                | UInt
-                | UShort
-                | ULong
-                | ULongLong
-                | UInt128
-                | UInt8
-                | UInt16
-                | UInt32
-                | UInt64
-                | UIntPtr
-                | UIntMax
-                | Size
-                | WChar
-        )
+        self.integer_kind()
+            .is_some_and(|integer_kind| !integer_kind.is_signed())
     }
 
     pub fn is_signed_integral_type(&self) -> bool {
-        use CTypeKind::*;
-        // `Char` is true on the platforms we handle
-        matches!(
-            self,
-            Char | SChar
-                | Int
-                | Short
-                | Long
-                | LongLong
-                | Int128
-                | Int8
-                | Int16
-                | Int32
-                | Int64
-                | IntPtr
-                | IntMax
-                | SSize
-                | PtrDiff
-        )
+        self.integer_kind()
+            .is_some_and(|integer_kind| integer_kind.is_signed())
+    }
+
+    pub(crate) fn floating_kind(&self) -> Option<CFloatingKind> {
+        Some(match self {
+            CTypeKind::Float => CFloatingKind::Float,
+            CTypeKind::Double => CFloatingKind::Double,
+            CTypeKind::LongDouble => CFloatingKind::LongDouble,
+
+            CTypeKind::Half => CFloatingKind::Half,
+            CTypeKind::BFloat16 => CFloatingKind::BFloat16,
+            CTypeKind::Float128 => CFloatingKind::Float128,
+
+            _ => return None,
+        })
     }
 
     pub fn is_floating_type(&self) -> bool {
-        use CTypeKind::*;
-        matches!(
-            self,
-            Float | Double | LongDouble | Float128 | Half | BFloat16
-        )
+        self.floating_kind().is_some()
     }
 
     pub fn is_enum(&self) -> bool {
@@ -3131,6 +3122,141 @@ impl CTypeKind {
         };
         Some(ty)
     }
+}
+
+impl Display for CTypeKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CIntegerKind {
+    // Character type (6.2.5.3)
+    Char,
+
+    // Signed types (6.2.5.4)
+    SChar,
+    Short,
+    Int,
+    Long,
+    LongLong,
+
+    // Unsigned types (6.2.5.6)
+    UChar,
+    UShort,
+    UInt,
+    ULong,
+    ULongLong,
+
+    // Exact-sized types. Except for 128-bit types, which are a Clang extension, these do not exist
+    // in C. They are pullback'd into the C AST so that we can treat uint16_t, etc. as real types.
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+
+    // Largest-sized integers, pullback'd.
+    IntMax,
+    UIntMax,
+
+    // Pointer-sized integers, pullback'd.
+    IntPtr,
+    UIntPtr,
+    Size,
+    SSize,
+    PtrDiff,
+
+    // Wide character, pullback'd.
+    WChar,
+}
+
+impl CIntegerKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        use CIntegerKind::*;
+        match self {
+            Char => "char",
+
+            SChar => "signed char",
+            Short => "signed short",
+            Int => "int",
+            Long => "long",
+            LongLong => "long long",
+
+            UChar => "unsigned char",
+            UShort => "unsigned short",
+            UInt => "unsigned int",
+            ULong => "unsigned long",
+            ULongLong => "unsigned long long",
+
+            Int8 => "int8_t",
+            Int16 => "int16_t",
+            Int32 => "int32_t",
+            Int64 => "int64_t",
+            Int128 => "__int128",
+
+            UInt8 => "uint8_t",
+            UInt16 => "uint16_t",
+            UInt32 => "uint32_t",
+            UInt64 => "uint64_t",
+            UInt128 => "unsigned __int128",
+
+            IntMax => "intmax_t",
+            UIntMax => "uintmax_t",
+
+            IntPtr => "intptr_t",
+            UIntPtr => "uintptr_t",
+            Size => "size_t",
+            SSize => "ssize_t",
+            PtrDiff => "ptrdiff_t",
+
+            WChar => "wchar_t",
+        }
+    }
+
+    pub(crate) const fn is_signed(self) -> bool {
+        use CIntegerKind::*;
+
+        match self {
+            Char => true, // signed on the platforms we handle
+            SChar => true,
+            Short => true,
+            Int => true,
+            Long => true,
+            LongLong => true,
+            Int8 => true,
+            Int16 => true,
+            Int32 => true,
+            Int64 => true,
+            Int128 => true,
+            IntMax => true,
+            IntPtr => true,
+            SSize => true,
+            PtrDiff => true,
+
+            UChar => false,
+            UShort => false,
+            UInt => false,
+            ULong => false,
+            ULongLong => false,
+            UInt8 => false,
+            UInt16 => false,
+            UInt32 => false,
+            UInt64 => false,
+            UInt128 => false,
+            UIntMax => false,
+            UIntPtr => false,
+            Size => false,
+            WChar => false,
+        }
+    }
 
     /// Whether `value` is guaranteed to be in this integer type's range.
     /// Thus, the narrowest possible range is used.
@@ -3138,24 +3264,15 @@ impl CTypeKind {
     /// For example, for [`Self::Long`], [`i32`]'s range is used,
     /// as on Linux and macOS (LP64), it's an [`i64`],
     /// but on Windows (LLP64), it's only an [`i32`].
-    ///
-    /// This should only be called on integer types.
-    /// Other types will return `false`.
-    pub fn guaranteed_integer_in_range(&self, value: u64) -> bool {
+    pub(crate) fn is_guaranteed_in_range(self, value: u64) -> bool {
         fn in_range<T: TryFrom<u64>>(value: u64) -> bool {
             T::try_from(value).is_ok()
         }
 
-        use CTypeKind::*;
-        match *self {
-            Void => false,
-
-            // Kind of an integer type, but would definitely need an explicit cast.
-            Bool => false,
-
+        use CIntegerKind::*;
+        match self {
             // Can be signed or unsigned, so choose the minimum range of each.
             Char => (u8::MIN as u64..=i8::MAX as u64).contains(&value),
-            WChar => in_range::<i32>(value),
 
             // `int` is at least `i16` and `long` is at least `i32`.
             SChar => in_range::<i8>(value),
@@ -3183,67 +3300,65 @@ impl CTypeKind {
             UInt64 => in_range::<u64>(value),
             UInt128 => in_range::<u128>(value),
 
+            IntMax => in_range::<i64>(value),
+            UIntMax => in_range::<u64>(value),
+
             // There's no guarantee on pointer size, but `NULL` should work.
             IntPtr => value == 0,
             UIntPtr => value == 0,
-
-            IntMax => in_range::<i64>(value),
-            UIntMax => in_range::<u64>(value),
 
             // `size_t` is at least a `u16`, and similar for `ssize_t` and `ptrdiff_t`.
             Size => in_range::<u16>(value),
             SSize => in_range::<i16>(value),
             PtrDiff => in_range::<i16>(value),
 
-            // Floats, see `Self::guaranteed_float_in_range`.
-            Float => false,
-            Double => false,
-            LongDouble => false,
-            Half => false,
-            BFloat16 => false,
-            Float128 => false,
+            WChar => in_range::<i32>(value),
+        }
+    }
+}
 
-            // Non-scalars.
-            // TODO: we should investigate if all of these are dead code,
-            // and replace them with panics in that case.
-            Complex(_) => false,
-            Pointer(_) => false,
-            Reference(_) => false,
-            ConstantArray(_, _) => false,
-            IncompleteArray(_) => false,
-            VariableArray(_, _) => false,
-            TypeOf(_) => false,
-            TypeOfExpr(_) => false,
-            Function(_, _, _, _, _) => false,
-            Typedef(_) => false,
-            Decayed(_) => false,
-            Elaborated(_) => false,
-            Paren(_) => false,
-            Struct(_) => false,
-            Union(_) => false,
-            Enum(_) => false,
-            BuiltinFn => false,
-            Attributed(_, _) => false,
-            BlockPointer(_) => false,
-            Vector(_, _) => false,
-            UnhandledSveType => false,
-            Atomic(_) => false,
-            Auto(_) => false,
+impl Display for CIntegerKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Real floating types (6.2.5.10). Ex: `double`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CFloatingKind {
+    Float,
+    Double,
+    LongDouble,
+
+    Half,
+    BFloat16,
+    Float128,
+}
+
+impl CFloatingKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        use CFloatingKind::*;
+        match self {
+            Float => "float",
+            Double => "double",
+            LongDouble => "long double",
+            Half => "half",
+            BFloat16 => "bfloat16",
+            Float128 => "__float128",
         }
     }
 
-    /// See [`Self::guaranteed_integer_in_range`].
-    /// This is the same, but for floats.
+    /// Whether `value` is guaranteed to be in this floating-point type's range.
+    /// Thus, the narrowest possible range is used.
     ///
-    /// This should only be called on float types.
-    /// Other types will return `false`.
-    pub fn guaranteed_float_in_range(&self, value: f64) -> bool {
+    /// For example, for [`Self::LongDouble`], [`f64`]'s range is used.
+    pub(crate) fn is_guaranteed_in_range(self, value: f64) -> bool {
         fn in_range<T: TryFrom<f64>>(value: f64) -> bool {
             T::try_from(value).is_ok()
         }
 
-        use CTypeKind::*;
-        match *self {
+        use CFloatingKind::*;
+        match self {
             // `f32: TryFrom<f64>` is not implemented.
             // C `float`s are not guaranteed to be `f32`,
             // but Rust (namely `libc`) doesn't support any platform where this isn't the case.
@@ -3262,66 +3377,11 @@ impl CTypeKind {
             // TODO Would like to depend on `half`.
             Half => todo!("f16 range"),
             BFloat16 => todo!("bf16 range"),
-
-            Void => false,
-            Bool => false,
-            Char => false,
-            SChar => false,
-            Short => false,
-            Int => false,
-            Long => false,
-            LongLong => false,
-            UChar => false,
-            UShort => false,
-            UInt => false,
-            ULong => false,
-            ULongLong => false,
-            Int128 => false,
-            UInt128 => false,
-            Complex(_) => false,
-            Pointer(_) => false,
-            Reference(_) => false,
-            ConstantArray(_, _) => false,
-            IncompleteArray(_) => false,
-            VariableArray(_, _) => false,
-            TypeOf(_) => false,
-            TypeOfExpr(_) => false,
-            Function(_, _, _, _, _) => false,
-            Typedef(_) => false,
-            Decayed(_) => false,
-            Elaborated(_) => false,
-            Paren(_) => false,
-            Struct(_) => false,
-            Union(_) => false,
-            Enum(_) => false,
-            BuiltinFn => false,
-            Attributed(_, _) => false,
-            BlockPointer(_) => false,
-            Vector(_, _) => false,
-            UnhandledSveType => false,
-            Atomic(_) => false,
-            Int8 => false,
-            Int16 => false,
-            Int32 => false,
-            Int64 => false,
-            IntPtr => false,
-            UInt8 => false,
-            UInt16 => false,
-            UInt32 => false,
-            UInt64 => false,
-            UIntPtr => false,
-            IntMax => false,
-            UIntMax => false,
-            Size => false,
-            SSize => false,
-            PtrDiff => false,
-            WChar => false,
-            Auto(_) => false,
         }
     }
 }
 
-impl Display for CTypeKind {
+impl Display for CFloatingKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_str())
     }
