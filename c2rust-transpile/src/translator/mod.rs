@@ -2408,44 +2408,79 @@ impl<'c> Translation<'c> {
         let mut cfg_info = cfg::structures::CfgInfo::default();
         cfg::structures::gather_cfg_info(&relooped, &mut cfg_info);
 
-        let current_block_enum = self
-            .renamer
-            .borrow_mut()
-            .pick_name("C2Rust_Block", Namespaces::types());
-        let current_block_variable = self
-            .renamer
-            .borrow_mut()
-            .pick_name("c2rust_current_block", Namespaces::values());
         let mut stmts: Vec<Stmt> = lifted_stmts;
         if !cfg_info.checked_entries.is_empty() {
             if self.tcfg.fail_on_multiple {
                 panic!("Uses of `c2rust_current_block' are illegal with `--fail-on-multiple'.");
             }
 
-            let variants = cfg_info
-                .checked_entries
-                .iter()
-                .map(|lbl| mk().variant(lbl.to_variant_ident(), Fields::Unit))
-                .collect();
-            let item = mk().enum_item(&current_block_enum, variants);
-            stmts.push(mk().item_stmt(item));
+            // Generate a separate `C2Rust_Block` enum and `c2rust_current_block`
+            // variable for each `Multiple` structure (irreducible control flow
+            // region). Each enum only contains the variants for its own region,
+            // so the dispatching `match`es are exhaustive. See c2rust#1986.
+            let mut block_names: cfg::structures::BlockNames = Default::default();
+            for (i, labels) in cfg_info.block_groups.iter().enumerate() {
+                let base_enum = if i == 0 {
+                    "C2Rust_Block".to_string()
+                } else {
+                    format!("C2Rust_Block{}", i + 1)
+                };
+                let base_var = if i == 0 {
+                    "c2rust_current_block".to_string()
+                } else {
+                    format!("c2rust_current_block{}", i + 1)
+                };
 
-            let local = mk().local(
-                mk().mutbl().ident_pat(&current_block_variable),
-                Some(mk().ident_ty(&current_block_enum)),
-                None,
-            );
-            stmts.push(mk().local_stmt(Box::new(local)))
+                let current_block_enum = self
+                    .renamer
+                    .borrow_mut()
+                    .pick_name(&base_enum, Namespaces::types());
+                let current_block_variable = self
+                    .renamer
+                    .borrow_mut()
+                    .pick_name(&base_var, Namespaces::values());
+
+                let variants = labels
+                    .iter()
+                    .map(|lbl| mk().variant(lbl.to_variant_ident(), Fields::Unit))
+                    .collect();
+                let item = mk().enum_item(&current_block_enum, variants);
+                stmts.push(mk().item_stmt(item));
+
+                let local = mk().local(
+                    mk().mutbl().ident_pat(&current_block_variable),
+                    Some(mk().ident_ty(&current_block_enum)),
+                    None,
+                );
+                stmts.push(mk().local_stmt(Box::new(local)));
+
+                for lbl in labels {
+                    block_names.insert(
+                        lbl.clone(),
+                        (
+                            mk().ident(current_block_enum.clone()),
+                            mk().ident_expr(current_block_variable.clone()),
+                        ),
+                    );
+                }
+            }
+
+            stmts.extend(cfg::structures::structured_cfg(
+                &relooped,
+                &cfg_info,
+                &mut self.comment_store.borrow_mut(),
+                block_names,
+            )?);
+        } else {
+            stmts.extend(cfg::structures::structured_cfg(
+                &relooped,
+                &cfg_info,
+                &mut self.comment_store.borrow_mut(),
+                Default::default(),
+            )?);
         }
-
-        stmts.extend(cfg::structures::structured_cfg(
-            &relooped,
-            &cfg_info,
-            &mut self.comment_store.borrow_mut(),
-            mk().ident(current_block_enum),
-            mk().ident_expr(current_block_variable),
-        )?);
         Ok(stmts)
+
     }
 
     fn convert_block_with_scope(
