@@ -513,6 +513,7 @@ impl<'c> Translation<'c> {
         }
     }
 
+    /// Makes a cast from an integer, enum or boolean type to a pointer.
     pub fn convert_integral_to_pointer_cast(
         &self,
         ctx: ExprContext,
