@@ -30,10 +30,11 @@ impl<'c> Translation<'c> {
                 return self.convert_expr(ctx, *target, None)
             }
             // Array subscript functions as a deref too.
-            &CExprKind::ArraySubscript(_, lhs, rhs, _) => {
+            &CExprKind::ArraySubscript(result_type_id, lhs, rhs, _) => {
                 return self.convert_array_subscript(
                     ctx.used().needs_address(),
                     Some(cqual_type),
+                    result_type_id,
                     lhs,
                     rhs,
                     LRValue::RValue, // if we bypass the deref, we stay an RValue
@@ -138,14 +139,14 @@ impl<'c> Translation<'c> {
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
         else if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
+            if !pointee_cty.qualifiers.is_const {
+                return Err("taking mutable address of string literal or macro".into());
+            }
+
             let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
 
             if is_array_decay {
-                let method = match mutbl {
-                    Mutability::Mutable => "as_mut_ptr",
-                    Mutability::Immutable => "as_ptr",
-                };
-                val = val.map(|val| mk().method_call_expr(val, method, vec![]));
+                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
 
                 // If the target pointee type is different from the source element type,
                 // then we need to cast the ptr type as well.
@@ -155,7 +156,7 @@ impl<'c> Translation<'c> {
                     needs_cast = true;
                 }
             } else {
-                val = val.map(|val| mk().set_mutbl(mutbl).borrow_expr(val));
+                val = val.map(|val| mk().borrow_expr(val));
 
                 // Add an intermediate reference-to-pointer cast if the context needs
                 // reference-to-pointer decay, or if another cast follows.
@@ -194,7 +195,15 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         cqual_type: CQualTypeId,
         arg: CExprId,
+        lrvalue: LRValue,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if matches!(lrvalue, LRValue::LValue)
+            && !cqual_type.qualifiers.is_const
+            && ctx.expanding_macro.is_some()
+        {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         let arg_expr_kind = &self.ast_context.index_unwrap_parens(arg).kind;
 
         if let &CExprKind::Unary(_, CUnOp::AddressOf, arg, _) = arg_expr_kind {
@@ -219,11 +228,19 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         lhs: CExprId,
         rhs: CExprId,
         lrvalue: LRValue,
         deref: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if matches!(lrvalue, LRValue::LValue)
+            && !result_type_id.qualifiers.is_const
+            && ctx.expanding_macro.is_some()
+        {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         let (pointer_id, offset_id) = if self.ast_context.expr_is_indexable(lhs) {
             (lhs, rhs)
         } else {
