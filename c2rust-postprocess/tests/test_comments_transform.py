@@ -5,6 +5,7 @@ import pytest
 
 from postprocess.cache import AbstractCache
 from postprocess.definitions import CDefinition
+from postprocess.models import AbstractGenerativeModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import base
 from postprocess.transforms.base import TransformError
@@ -237,11 +238,11 @@ class RecordingCache(AbstractCache):
         raise AssertionError("no invalidation expected")
 
 
-class QueuedModel(MockGenerativeModel):
+class QueuedModel(AbstractGenerativeModel):
     """Mock model that returns queued responses."""
 
     def __init__(self, responses: list[str]):
-        super().__init__()
+        super().__init__("test-model")
         self.responses = responses
         self.calls = 0
 
@@ -269,7 +270,7 @@ pub unsafe extern "C" fn f() -> libc::c_int {
 
 
 def apply_to_body_comment_fn(
-    cache: AbstractCache, model: MockGenerativeModel
+    cache: AbstractCache, model: AbstractGenerativeModel
 ) -> str | None:
     transform = CommentsTransform(cache=cache, model=model)
     return transform.apply_ident(
@@ -281,8 +282,7 @@ def apply_to_body_comment_fn(
     )
 
 
-def test_rejected_response_is_regenerated(monkeypatch) -> None:
-    monkeypatch.setattr(base, "api_key_from_env", lambda model_id: "test-key")
+def test_rejected_response_is_regenerated() -> None:
     cache = RecordingCache(None)
     model = QueuedModel([BAD_RESPONSE, GOOD_RESPONSE])
 
@@ -297,8 +297,7 @@ def test_rejected_response_is_regenerated(monkeypatch) -> None:
     assert response == GOOD_RESPONSE
 
 
-def test_invalid_cached_response_is_regenerated(monkeypatch) -> None:
-    monkeypatch.setattr(base, "api_key_from_env", lambda model_id: "test-key")
+def test_invalid_cached_response_is_regenerated() -> None:
     cache = RecordingCache(BAD_RESPONSE)
     model = QueuedModel([GOOD_RESPONSE])
 
@@ -312,8 +311,7 @@ def test_invalid_cached_response_is_regenerated(monkeypatch) -> None:
     assert response == GOOD_RESPONSE
 
 
-def test_code_changing_cached_response_is_regenerated(monkeypatch) -> None:
-    monkeypatch.setattr(base, "api_key_from_env", lambda model_id: "test-key")
+def test_code_changing_cached_response_is_regenerated() -> None:
     cache = RecordingCache(BAD_CODE_RESPONSE)
     model = QueuedModel([GOOD_RESPONSE])
 
