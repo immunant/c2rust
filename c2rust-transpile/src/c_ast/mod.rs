@@ -497,7 +497,7 @@ impl TypedAstContext {
     /// applied to it.
     pub(crate) fn expr_is_indexable(&self, expr_id: CExprId) -> bool {
         let Some(type_id) = self[expr_id].kind.get_type() else {
-            return false
+            return false;
         };
         let type_kind = &self.resolve_type(type_id).kind;
         type_kind.is_pointer() || type_kind.is_vector()
@@ -1265,8 +1265,9 @@ impl TypedAstContext {
                 typ,
                 is_implicit,
                 ref target_dependent_macro,
-            } = decl.kind else {
-                continue
+            } = decl.kind
+            else {
+                continue;
             };
             let resolved_type_id = self.resolve_type_id(typ.ctype);
             let resolved_type_kind = &self[resolved_type_id].kind;

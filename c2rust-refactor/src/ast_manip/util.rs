@@ -3,9 +3,10 @@ use rustc_ast::ptr::P;
 use rustc_ast::token::{self, Lit};
 use rustc_ast::*;
 use rustc_hir::def::{self, Namespace, Res};
-use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
+use rustc_span::source_map::SourceMap;
 use rustc_span::sym;
-use rustc_span::symbol::{kw, Ident, Symbol};
+use rustc_span::{kw, Ident, Symbol};
+use rustc_span::{Span, DUMMY_SP};
 use smallvec::smallvec;
 use smallvec::SmallVec;
 
@@ -30,7 +31,8 @@ impl PatternSymbol for Ident {
 
 impl PatternSymbol for Lit {
     fn pattern_symbol(&self) -> Option<Symbol> {
-        (self.kind == token::LitKind::Err).then_some(self.symbol)
+        (self.kind == token::LitKind::Str && self.suffix == Some(Symbol::intern("$c2rust_pattern")))
+            .then_some(self.symbol)
     }
 }
 
@@ -74,7 +76,7 @@ impl PatternSymbol for Stmt {
 impl PatternSymbol for Pat {
     fn pattern_symbol(&self) -> Option<Symbol> {
         match self.kind {
-            PatKind::Ident(BindingAnnotation(ByRef::No, _), ref i, None) => i.pattern_symbol(),
+            PatKind::Ident(BindingMode(ByRef::No, _), ref i, None) => i.pattern_symbol(),
             _ => None,
         }
     }
@@ -166,7 +168,9 @@ pub fn use_idents(tree: &UseTree) -> Vec<Ident> {
     match &tree.kind {
         UseTreeKind::Simple(..) => vec![tree.ident()],
         UseTreeKind::Glob => unimplemented!(),
-        UseTreeKind::Nested(children) => children
+        UseTreeKind::Nested {
+            items: children, ..
+        } => children
             .iter()
             .flat_map(|(tree, _)| use_idents(tree))
             .collect(),
@@ -193,7 +197,9 @@ impl UseInfo {
             // TODO: support globs but the AST doesn't tell us
             // which identifiers are imported right now
             UseTreeKind::Glob => vec![],
-            UseTreeKind::Nested(children) => children
+            UseTreeKind::Nested {
+                items: children, ..
+            } => children
                 .iter()
                 .flat_map(|(tree, id)| Self::from_use_tree(tree, *id))
                 .collect(),
@@ -219,7 +225,9 @@ fn split_uses_impl(
             });
             out.push(item);
         }
-        UseTreeKind::Nested(children) => {
+        UseTreeKind::Nested {
+            items: children, ..
+        } => {
             for (u, id) in children.into_iter() {
                 split_uses_impl(item.clone(), path.clone(), id, u, out);
             }
@@ -257,7 +265,7 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
         Res::Def(kind, _) => match kind {
             Mod | Struct | Union | Enum | Variant | Trait | TyAlias | ForeignTy | TraitAlias
             | AssocTy | TyParam => Some(Namespace::TypeNS),
-            Fn | Const | ConstParam | Static(_) | Ctor(..) | AssocFn | AssocConst => {
+            Fn | Const | ConstParam | Static { .. } | Ctor(..) | AssocFn | AssocConst => {
                 Some(Namespace::ValueNS)
             }
             Macro(..) => Some(Namespace::MacroNS),
@@ -272,9 +280,8 @@ pub fn namespace<T>(res: &def::Res<T>) -> Option<Namespace> {
             | LifetimeParam
             | GlobalAsm
             | Closure
-            | Generator
-            | Impl { .. }
-            | ImplTraitPlaceholder => None,
+            | SyntheticCoroutineBody
+            | Impl { .. } => None,
         },
 
         Res::PrimTy(..) | Res::SelfTyParam { .. } | Res::SelfTyAlias { .. } | Res::ToolMod => {

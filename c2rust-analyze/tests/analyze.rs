@@ -93,3 +93,68 @@ fn with_pdg_file() {
         Some(crate_options),
     );
 }
+
+#[test]
+fn mir_lowering() {
+    let analyze = Analyze::resolve();
+    let fixture = test_dir_for(file!(), true).join("mir_lowering.rs");
+    let test_dir = std::env::temp_dir().join(format!(
+        "c2rust-analyze-mir-lowering-{}",
+        std::process::id()
+    ));
+    for edition in [2021, 2024] {
+        let dir = test_dir.join(edition.to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mir_lowering.rs");
+        std::fs::copy(&fixture, &path).unwrap();
+        let output = analyze.run_with(
+            &path,
+            |cmd| {
+                cmd.env("C2RUST_ANALYZE_REWRITE_MODE", "inplace")
+                    .arg("--out-dir")
+                    .arg(&dir);
+            },
+            Some(CrateOptions {
+                edition,
+                crate_type: CrateType::Bin,
+            }),
+        );
+        let diagnostics = std::fs::read_to_string(output).unwrap();
+        assert!(!diagnostics.contains("[ERROR"), "{diagnostics}");
+        let rewritten = std::fs::read_to_string(&path).unwrap();
+        let code = rewritten
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!code.contains("p: *"), "{rewritten}");
+        assert!(code.contains("let element: &(i32)"), "{rewritten}");
+        assert!(
+            code.contains("p: core::option::Option<&'h0 (i32)>"),
+            "{rewritten}"
+        );
+        assert!(code.contains("p: &'h0 (i32)"), "{rewritten}");
+        assert!(code.contains(".is_none()"), "{rewritten}");
+        assert!(!code.contains("p as *const"), "{rewritten}");
+        let binary = dir.join("mir_lowering");
+        let compile = Command::new(
+            c2rust_build_paths::SysRoot::resolve()
+                .sysroot()
+                .join("bin/rustc"),
+        )
+        .arg(&path)
+        .arg("--edition")
+        .arg(edition.to_string())
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .unwrap();
+        assert!(
+            compile.status.success(),
+            "{}\n{rewritten}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        assert!(Command::new(binary).status().unwrap().success());
+    }
+    std::fs::remove_dir_all(test_dir).unwrap();
+}

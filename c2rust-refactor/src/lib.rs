@@ -8,8 +8,6 @@
     trace_macros,
     specialization,
     box_patterns,
-    generator_trait,
-    drain_filter,
     let_chains,
     never_type
 )]
@@ -99,8 +97,6 @@ use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Mutex;
 use std::sync::{Arc, Once};
-
-use crate::ast_builder::IntoSymbol;
 
 pub use crate::context::RefactorCtxt;
 
@@ -418,14 +414,16 @@ fn init() {
     rustflags.push(" -Awarnings");
     env::set_var("RUSTFLAGS", rustflags);
 
-    rustc_driver::install_ice_hook();
+    rustc_driver::install_ice_hook(rustc_driver::DEFAULT_BUG_REPORT_URL, |_| ());
 }
 
 static INIT: Once = Once::new();
 
-pub fn lib_main(opts: Options) -> interface::Result<()> {
+pub fn lib_main(opts: Options) -> Result<(), ()> {
     INIT.call_once(init);
-    rustc_driver::catch_fatal_errors(move || main_impl(opts)).and_then(|x| x)
+    rustc_driver::catch_fatal_errors(move || main_impl(opts))
+        .map_err(|_| ())
+        .and_then(|result| result.map_err(|_| ()))
 }
 
 fn main_impl(opts: Options) -> interface::Result<()> {
@@ -437,7 +435,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
     for rustc_args in target_args {
         let mut marks = HashSet::new();
         for m in &opts.marks {
-            let label = m.label.as_ref().map_or("target", |s| s).into_symbol();
+            let label = m.label.as_ref().map_or("target", |s| s).to_owned();
             marks.insert((NodeId::from_usize(m.id), label));
         }
 
@@ -445,18 +443,12 @@ fn main_impl(opts: Options) -> interface::Result<()> {
             env::set_current_dir(cwd).expect("Error changing current directory");
         }
 
-        // TODO: interface::run_compiler() here and create a RefactorState with the
-        // callback. RefactorState should know how to reset the compiler when needed
-        // and can handle querying the compiler.
-
         if !opts.cursors.is_empty() {
             let config = driver::create_config(&rustc_args.args);
             driver::run_compiler(config, None, |compiler| {
-                compiler.enter(|queries| {
-                    let expanded_crate = queries
-                        .global_ctxt()
-                        .unwrap()
-                        .enter(|tcx| tcx.resolver_for_lowering(()).borrow().1.clone());
+                let parsed = rustc_interface::passes::parse(&compiler.sess);
+                rustc_interface::passes::create_and_enter_global_ctxt(compiler, parsed, |tcx| {
+                    let expanded_crate = tcx.resolver_for_lowering().borrow().1.clone();
                     for c in &opts.cursors {
                         let kind_result =
                             c.kind.clone().map_or(Ok(pick_node::NodeKind::Any), |s| {
@@ -472,7 +464,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
 
                         let id = match pick_node::pick_node_at_loc(
                             &expanded_crate,
-                            compiler.session(),
+                            &compiler.sess,
                             kind,
                             &c.file,
                             c.line,
@@ -488,7 +480,7 @@ fn main_impl(opts: Options) -> interface::Result<()> {
                             }
                         };
 
-                        let label = c.label.as_ref().map_or("target", |s| s).into_symbol();
+                        let label = c.label.as_ref().map_or("target", |s| s).to_owned();
 
                         info!("label {:?} as {:?}", id, label);
 
@@ -516,23 +508,41 @@ fn main_impl(opts: Options) -> interface::Result<()> {
             interact::interact_command(&opts.commands[0].args, config, cmd_reg);
         } else {
             let file_io = Arc::new(file_io::RealFileIO::new(opts.rewrite_modes.clone()));
-            driver::run_refactoring(config, cmd_reg, file_io, marks, |mut state| {
-                for cmd in opts.commands.clone() {
-                    if &cmd.name == "interact" {
-                        panic!("`interact` must be the only command");
-                    } else {
-                        match state.run(&cmd.name, &cmd.args) {
-                            Ok(_) => {}
-                            Err(e) => {
+            let mut commands = opts.commands.clone().into_iter().peekable();
+            loop {
+                let (registry, remaining) = driver::run_refactoring(
+                    driver::clone_config(&config),
+                    cmd_reg,
+                    file_io.clone(),
+                    marks,
+                    move |mut state| {
+                        for cmd in commands.by_ref() {
+                            if cmd.name == "interact" {
+                                panic!("`interact` must be the only command");
+                            }
+                            if let Err(e) = state.run(&cmd.name, &cmd.args) {
                                 eprintln!("{e}");
                                 std::process::exit(1);
                             }
+                            if state.reload_requested() {
+                                // `commit` already saved the crate. Drop all AST,
+                                // source-map and symbol state before reloading.
+                                break;
+                            }
                         }
-                    }
+                        if !state.reload_requested() {
+                            state.save_crate();
+                        }
+                        (state.into_registry(), commands)
+                    },
+                );
+                cmd_reg = registry;
+                commands = remaining;
+                marks = HashSet::new();
+                if commands.peek().is_none() {
+                    break;
                 }
-
-                state.save_crate();
-            });
+            }
         }
 
         // We need to rebuild the crate metadata if this was a library and we

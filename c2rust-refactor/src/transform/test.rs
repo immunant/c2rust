@@ -4,8 +4,8 @@ use log::info;
 use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir as hir;
-use rustc_middle::ty::subst::InternalSubsts;
-use rustc_middle::ty::{self, ParamEnv, TyCtxt};
+use rustc_middle::ty::GenericArgs;
+use rustc_middle::ty::{self, TyCtxt};
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
@@ -180,13 +180,17 @@ impl Transform for TestDebugCallees {
                 tcx: TyCtxt<'tcx>,
                 desc: &str,
                 ty: ty::Ty<'tcx>,
-                substs: Option<&'tcx InternalSubsts<'tcx>>,
+                substs: Option<&'tcx GenericArgs<'tcx>>,
             ) {
                 info!("    {}: {:?}", desc, ty);
                 if let Some(substs) = substs {
                     info!(
                         "      subst: {:?}",
-                        tcx.subst_and_normalize_erasing_regions(substs, ParamEnv::empty(), ty)
+                        tcx.instantiate_and_normalize_erasing_regions(
+                            substs,
+                            crate::context::empty_typing_env(),
+                            rustc_middle::ty::EarlyBinder::bind(ty)
+                        )
                     );
                 }
                 if ty.is_fn() {
@@ -194,13 +198,21 @@ impl Transform for TestDebugCallees {
                     info!("      fn sig: {:?}", sig);
                     info!("      input tys: {:?}", sig.inputs());
                     info!("      input tys (skip): {:?}", sig.skip_binder().inputs());
-                    info!("      anonymized: {:?}", tcx.erase_late_bound_regions(sig));
-                    info!("      erased: {:?}", tcx.erase_late_bound_regions(sig));
+                    info!(
+                        "      anonymized: {:?}",
+                        tcx.instantiate_bound_regions_with_erased(sig)
+                    );
+                    info!(
+                        "      erased: {:?}",
+                        tcx.instantiate_bound_regions_with_erased(sig)
+                    );
                     if let Some(substs) = substs {
-                        let sig2 = tcx.subst_and_normalize_erasing_regions(
+                        let sig2 = tcx.instantiate_and_normalize_erasing_regions(
                             substs,
-                            ParamEnv::empty(),
-                            tcx.erase_late_bound_regions(sig),
+                            crate::context::empty_typing_env(),
+                            rustc_middle::ty::EarlyBinder::bind(
+                                tcx.instantiate_bound_regions_with_erased(sig),
+                            ),
                         );
                         info!("      sig + erase + subst: {:?}", sig2);
                         info!("      input tys: {:?}", sig2.inputs());
@@ -219,7 +231,7 @@ impl Transform for TestDebugCallees {
                     maybe_info("adj ty", tables.expr_ty_adjusted_opt(hir_expr));
                 }
 
-                let opt_substs = tables.node_substs_opt(hir_id);
+                let opt_substs = tables.node_args_opt(hir_id);
                 maybe_info("substs", opt_substs);
 
                 if let Some(did) = cx.try_resolve_expr(e) {
@@ -227,7 +239,7 @@ impl Transform for TestDebugCallees {
                     describe_ty(
                         tcx,
                         "resolved ty",
-                        tcx.type_of(did).subst_identity(),
+                        tcx.type_of(did).instantiate_identity(),
                         opt_substs,
                     );
                 }
@@ -239,7 +251,7 @@ impl Transform for TestDebugCallees {
                         describe_ty(
                             tcx,
                             "tdd ty",
-                            tcx.type_of(*did).subst_identity(),
+                            tcx.type_of(*did).instantiate_identity(),
                             opt_substs,
                         );
                     }

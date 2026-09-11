@@ -1,8 +1,8 @@
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::*;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_span::source_map::symbol::Symbol;
 use rustc_span::Span;
+use rustc_span::Symbol;
 use smallvec::SmallVec;
 
 /// Shared enumeration of child positions within a parent node.
@@ -157,7 +157,7 @@ pub enum SpanNodeKind {
     Arm,
     ExprField,
     Expr,
-    AssocConstraint,
+    AssocItemConstraint,
     Ty,
     Param,
     Variant,
@@ -559,9 +559,9 @@ impl Visitor<'_> for AstSpanMapper {
         }
     }
 
-    fn visit_assoc_constraint(&mut self, ac: &AssocConstraint) {
-        self.insert_mapping(ac.id, ac.span, SpanNodeKind::AssocConstraint);
-        visit::walk_assoc_constraint(self, ac);
+    fn visit_assoc_item_constraint(&mut self, ac: &AssocItemConstraint) {
+        self.insert_mapping(ac.id, ac.span, SpanNodeKind::AssocItemConstraint);
+        visit::walk_assoc_item_constraint(self, ac);
     }
 
     fn visit_ty(&mut self, ty: &Ty) {
@@ -597,7 +597,7 @@ impl Visitor<'_> for AstSpanMapper {
     fn visit_foreign_item(&mut self, i: &ForeignItem) {
         self.insert_mapping(i.id, i.span, SpanNodeKind::ForeignItem);
         self.ctx.push_owner(i.id);
-        visit::walk_foreign_item(self, i);
+        visit::walk_item(self, i);
         self.ctx.pop_owner();
     }
 

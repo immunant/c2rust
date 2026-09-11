@@ -45,15 +45,15 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::*;
 use rustc_middle::hir::nested_filter;
-use rustc_middle::ty::adjustment::{Adjust, PointerCast};
+use rustc_middle::ty::adjustment::{Adjust, PointerCoercion};
 use rustc_middle::ty::{self, TyCtxt, TypeckResults};
 // use rustc_ast::abi::Abi;
 use rustc_ast::ast;
 use rustc_ast::NodeId;
-use rustc_span::source_map::Span;
-use rustc_span::symbol::Symbol;
+use rustc_span::Span;
+use rustc_span::Symbol;
 use rustc_target::spec::abi::Abi;
-use rustc_type_ir::sty::TyKind as IrTyKind;
+use rustc_type_ir::TyKind as IrTyKind;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::context::{HirMap, RefactorCtxt};
@@ -213,7 +213,7 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
                 self.adjusted.insert(id, self.ltt.label(adj.target));
             }
 
-            if let Some(substs) = tables.node_substs_opt(id) {
+            if let Some(substs) = tables.node_args_opt(id) {
                 let labeled = self.ltt.label_slice(&substs.types().collect::<Vec<_>>());
                 self.substs.insert(id, labeled);
             }
@@ -227,7 +227,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     fn visit_item(&mut self, item: &'hir Item) {
         let body_id = match item.kind {
             ItemKind::Static(_, _, body_id) => body_id,
-            ItemKind::Const(_, body_id) => body_id,
+            ItemKind::Const(_, _, body_id) => body_id,
             ItemKind::Fn(_, _, body_id) => body_id,
             _ => return,
         };
@@ -268,7 +268,7 @@ impl<'lty, 'tcx> LabelTysSource<'lty, 'tcx> {
             .hir()
             .get_parent_item(self.hir_map.node_to_hir_id(id));
         let parent_body = self.tcx.hir().body_owned_by(parent.def_id);
-        self.tcx.typeck_body(parent_body)
+        self.tcx.typeck_body(parent_body.id())
     }
 
     fn node_lty(&self, id: NodeId) -> LTy<'lty, 'tcx> {
@@ -292,12 +292,12 @@ impl<'lty, 'tcx> type_map::TypeSource for LabelTysSource<'lty, 'tcx> {
     }
 
     fn def_type(&mut self, did: DefId) -> Option<LTy<'lty, 'tcx>> {
-        let ty = self.tcx.type_of(did).subst_identity();
+        let ty = self.tcx.type_of(did).instantiate_identity();
         Some(self.ltt.label(ty))
     }
 
     fn fn_sig(&mut self, did: DefId) -> Option<LFnSig<'lty, 'tcx>> {
-        let sig = self.tcx.fn_sig(did).subst_identity();
+        let sig = self.tcx.fn_sig(did).instantiate_identity();
         Some(self.ltt.label_sig(sig.skip_binder()))
     }
 
@@ -355,7 +355,7 @@ fn prim_tys<'lty, 'tcx>(
     let mut map = HashMap::new();
 
     map.insert("bool", ltt.label(tcx.types.bool));
-    map.insert("()", ltt.label(tcx.mk_unit()));
+    map.insert("()", ltt.label(tcx.types.unit));
     map.insert("usize", ltt.label(tcx.types.usize));
 
     map
@@ -458,7 +458,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
             _ => {}
         }
 
-        self.ltt.label(self.tcx.type_of(id).subst_identity())
+        self.ltt.label(self.tcx.type_of(id).instantiate_identity())
     }
 
     fn def_lty(&self, id: DefId) -> LTy<'lty, 'tcx> {
@@ -470,7 +470,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn compute_def_sig(&self, id: DefId) -> LFnSig<'lty, 'tcx> {
-        let sig = self.tcx.fn_sig(id).subst_identity();
+        let sig = self.tcx.fn_sig(id).instantiate_identity();
         let is_extern = match sig.skip_binder().abi {
             Abi::Rust | Abi::RustIntrinsic | Abi::RustCall => false,
             _ => true,
@@ -496,7 +496,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     fn fn_num_inputs(&self, lty: LTy<'lty, 'tcx>) -> usize {
         match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => self.def_sig(*id).inputs.len(),
-            IrTyKind::FnPtr(_) => lty.args.len() - 1,
+            IrTyKind::FnPtr(..) => lty.args.len() - 1,
             // TODO: Handle Closure.  This should be similar to FnDef, but the substs are a bit
             // more complicated.
             _ => panic!("fn_num_inputs: not a fn type"),
@@ -512,7 +512,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
                 let sig = self.def_sig(*id);
                 self.ltt.subst(sig.inputs[idx], &lty.args)
             }
-            IrTyKind::FnPtr(_) => {
+            IrTyKind::FnPtr(..) => {
                 // For a `FnPtr`, `lty.args` records the labeled input and output types.
                 &lty.args[idx]
             }
@@ -528,7 +528,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
                 let sig = self.def_sig(*id);
                 self.ltt.subst(sig.output, &lty.args)
             }
-            IrTyKind::FnPtr(_) => &lty.args[lty.args.len() - 1],
+            IrTyKind::FnPtr(..) => &lty.args[lty.args.len() - 1],
             // TODO: Closure
             _ => panic!("fn_output: not a fn type"),
         }
@@ -537,7 +537,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     fn fn_is_variadic(&self, lty: LTy<'lty, 'tcx>) -> bool {
         match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => self.def_sig(*id).c_variadic,
-            IrTyKind::FnPtr(ty_sig) => ty_sig.skip_binder().c_variadic,
+            IrTyKind::FnPtr(_, header) => header.c_variadic,
             // TODO: Closure
             _ => panic!("fn_is_variadic: not a fn type"),
         }
@@ -546,7 +546,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     fn get_tables(&self, id: HirId) -> &'tcx TypeckResults<'tcx> {
         let parent = self.tcx.hir().get_parent_item(id);
         let parent_body = self.tcx.hir().body_owned_by(parent.def_id);
-        self.tcx.typeck_body(parent_body)
+        self.tcx.typeck_body(parent_body.id())
     }
 
     /// Get the signature of the method being called by an expression.  This includes substituting
@@ -727,7 +727,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                     .unify(rty, self.field_lty(self.expr_lty(e), field.name));
             }
 
-            ExprKind::Index(ref _arr, ref _idx) => {} // TODO
+            ExprKind::Index(ref _arr, ref _idx, _) => {} // TODO
 
             ExprKind::Path(ref path) => {
                 // TODO: many more subcases need handling here
@@ -772,7 +772,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                     );
                 }
 
-                if let Some(ref base) = *base {
+                if let StructTailExpr::Base(ref base) = *base {
                     self.ltt.unify(rty, self.expr_lty(base));
                 }
             }
@@ -811,20 +811,25 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                         // rty is the same.
                         self.ltt.unify(rty.args[0], prev_ty);
                     }
-                    Adjust::Pointer(PointerCast::ReifyFnPointer) => {} // TODO - need to unify the fn sigs
-                    Adjust::Pointer(PointerCast::UnsafeFnPointer) => {
+                    Adjust::Pointer(PointerCoercion::ReifyFnPointer) => {} // TODO - need to unify the fn sigs
+                    Adjust::Pointer(PointerCoercion::UnsafeFnPointer) => {
                         // prev and result ty shapes should be the same, only change is the
                         // "unsafe" tag on the function pointer.
                         self.ltt.unify(rty, prev_ty);
                     }
-                    Adjust::Pointer(PointerCast::ClosureFnPointer(_)) => {} // unsupported
-                    Adjust::Pointer(PointerCast::MutToConstPointer) => {
+                    Adjust::Pointer(PointerCoercion::ClosureFnPointer(_)) => {} // unsupported
+                    Adjust::Pointer(PointerCoercion::MutToConstPointer) => {
                         // Only the mutability tag changes
                         self.ltt.unify(rty, prev_ty);
                     }
-                    Adjust::Pointer(PointerCast::Unsize) => {} // TODO
-                    Adjust::Pointer(PointerCast::ArrayToPointer) => {} // TODO
-                    Adjust::DynStar => {}                      // TODO
+                    Adjust::Pointer(PointerCoercion::Unsize) => {} // TODO
+                    Adjust::Pointer(PointerCoercion::ArrayToPointer) => {} // TODO
+                    Adjust::Pointer(PointerCoercion::DynStar) => {} // TODO
+                    Adjust::ReborrowPin(_) => {
+                        // Pin<&mut T> -> Pin<&T>/Pin<&mut T> preserves the
+                        // labeled pointee tree; only borrow mutability changes.
+                        self.ltt.unify(rty, prev_ty);
+                    }
                 }
 
                 prev_ty = rty;
@@ -838,7 +843,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         let rty = self.pat_lty(p);
 
         match p.kind {
-            PatKind::Wild => {}
+            PatKind::Wild | PatKind::Never | PatKind::Err(_) => {}
 
             PatKind::Binding(_, node_id, _, ref opt_pat) => {
                 let lty = self.node_lty(self.hir_map.hir_to_node_id(node_id));
@@ -866,6 +871,14 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             PatKind::Box(ref p) => {
                 self.ltt.unify(rty.args[0], self.pat_lty(p));
             }
+            PatKind::Deref(ref p) => {
+                // Builtin dereference targets have a direct labeled child.
+                // Custom Deref::Target is a trait projection, just like the
+                // existing overloaded-deref adjustment handled above.
+                if matches!(rty.ty.kind(), IrTyKind::Ref(..)) || rty.ty.is_box() {
+                    self.ltt.unify(rty.args[0], self.pat_lty(p));
+                }
+            }
 
             PatKind::Ref(ref p, _) => {
                 self.ltt.unify(rty.args[0], self.pat_lty(p));
@@ -881,7 +894,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         intravisit::walk_pat(self, p);
     }
 
-    fn visit_local(&mut self, l: &'hir Local) {
+    fn visit_local(&mut self, l: &'hir LetStmt) {
         if let Some(ref ty) = l.ty {
             self.ltt.unify(self.pat_lty(&l.pat), self.ty_lty(ty));
         }
@@ -944,6 +957,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         let def_id = i.hir_id().owner.def_id.to_def_id();
         match i.kind {
             ForeignItemKind::Fn(ref decl, _, _) => {
+                let decl = decl.decl;
                 let sig = self.def_sig(def_id);
 
                 for (i, ast_ty) in decl.inputs.iter().enumerate() {
@@ -958,7 +972,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 self.ltt.unify(out_lty, sig.output);
             }
 
-            ForeignItemKind::Static(ref ty, _) => {
+            ForeignItemKind::Static(ref ty, _, _) => {
                 self.ltt.unify(self.ty_lty(ty), self.def_lty(def_id));
             }
 

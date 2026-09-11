@@ -36,7 +36,7 @@
 //!
 //!  * `cast!(x)`: Matches the `Expr`s `x`, `x as __t`, `x as __t as __u`, etc.
 
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{self, Lit, TokenKind};
 use rustc_ast::{
@@ -44,10 +44,11 @@ use rustc_ast::{
 };
 use rustc_errors::PResult;
 use rustc_hir::def_id::DefId;
+use rustc_parse::exp;
 use rustc_parse::parser::{AttemptLocalParseRecovery, ForceCollect, Parser};
 use rustc_session::Session;
-use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::FileName;
+use rustc_span::{Ident, Symbol};
 use smallvec::SmallVec;
 use std::cmp;
 use std::result;
@@ -139,7 +140,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
     pub fn parse_pat(&mut self, src: &str) -> P<Pat> {
         let (mut p, bt) = make_bindings_parser(self.cx.session(), src);
         // TODO: do we want to allow top-level or-patterns here?
-        match p.parse_pat_no_top_alt(None) {
+        match p.parse_pat_no_top_alt(None, None) {
             Ok(mut pat) => {
                 self.types.merge(bt);
                 remove_paren(&mut pat);
@@ -486,15 +487,10 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
-        let mut p = Parser::new(
-            &self.cx.session().parse_sess,
-            args.tokens.clone(),
-            false,
-            None,
-        );
+        let mut p = Parser::new(&self.cx.session().psess, args.tokens.clone(), None);
         let pattern = func(&mut p).unwrap();
 
-        let label = if p.eat(&TokenKind::Comma) {
+        let label = if p.eat(exp!(Comma)) {
             match p.token.kind {
                 TokenKind::Ident(name, _) => name,
                 _ => return Err(Error::InvalidParse),
@@ -517,12 +513,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         opt_def_id: Option<DefId>,
         parse_path: impl FnOnce(&mut Parser) -> Option<(Option<P<QSelf>>, Path)>,
     ) -> Result<()> {
-        let mut p = Parser::new(
-            &self.cx.session().parse_sess,
-            args.tokens.clone(),
-            false,
-            None,
-        );
+        let mut p = Parser::new(&self.cx.session().psess, args.tokens.clone(), None);
         let (path_qself, path_pattern) = parse_path(&mut p).ok_or(Error::DefMismatch)?;
 
         let def_id = match_or!([opt_def_id] Some(x) => x;
@@ -571,14 +562,9 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         T: TryMatch + GetNodeId,
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, T>,
     {
-        let mut p = Parser::new(
-            &self.cx.session().parse_sess,
-            args.tokens.clone(),
-            false,
-            None,
-        );
+        let mut p = Parser::new(&self.cx.session().psess, args.tokens.clone(), None);
         let pattern = func(&mut p).unwrap();
-        p.expect(&TokenKind::Comma).unwrap();
+        p.expect(exp!(Comma)).unwrap();
         let ty_pattern = p.parse_ty().unwrap();
 
         let tcx_ty = self
@@ -605,7 +591,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         F: for<'b> FnOnce(&mut Parser<'b>) -> PResult<'b, P<Expr>>,
     {
         let ts = args.tokens.clone();
-        let pattern = driver::run_parser_tts(self.cx.session(), ts.into_trees().collect(), func);
+        let pattern = driver::run_parser_tts(self.cx.session(), ts.iter().cloned().collect(), func);
 
         let mut target = target;
         loop {
@@ -627,17 +613,14 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 }
 
 fn make_bindings_parser<'a>(sess: &'a Session, src: &str) -> (Parser<'a>, BindingTypes) {
-    let ts = rustc_parse::parse_stream_from_source_str(
+    let ts = rustc_parse::unwrap_or_emit_fatal(rustc_parse::source_str_to_stream(
+        &sess.psess,
         FileName::anon_source_code(src),
         src.to_owned(),
-        &sess.parse_sess,
         None,
-    );
+    ));
     let (ts, bt) = parse_bindings(ts);
-    (
-        rustc_parse::stream_to_parser(&sess.parse_sess, ts, None),
-        bt,
-    )
+    (Parser::new(&sess.psess, ts, None), bt)
 }
 
 pub trait TryMatch {
@@ -775,7 +758,7 @@ gen_pattern_impl! {
     fn visit_expr(&mut self, e: &mut P<Expr>);
     // Expr that runs the default `Folder` action for this node type.  Can refer to the argument of
     // the `Folder` method using the name that appears in the signature above.
-    walk = mut_visit::noop_visit_expr(e, self);
+    walk = mut_visit::walk_expr(self, e);
     // Expr that runs the callback on the result of the `walk` expression.  This is parameterized
     // by the `match_one` closure.
     map(match_one) = match_one(e);
@@ -786,7 +769,7 @@ gen_pattern_impl! {
     folder = TyPatternFolder;
 
     fn visit_ty(&mut self, t: &mut P<Ty>);
-    walk = mut_visit::noop_visit_ty(t, self);
+    walk = mut_visit::walk_ty(self, t);
     map(match_one) = match_one(t);
 }
 
@@ -795,7 +778,7 @@ gen_pattern_impl! {
     folder = StmtPatternFolder;
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]>;
-    walk = mut_visit::noop_flat_map_stmt(s, self);
+    walk = mut_visit::walk_flat_map_stmt(self, s);
     map(match_one) = { let mut s = s; s.iter_mut().for_each(match_one); s };
 }
 
@@ -818,7 +801,7 @@ where
     fn visit_block(&mut self, b: &mut P<Block>) {
         assert!(!self.pattern.is_empty());
 
-        mut_visit::noop_visit_block(b, self);
+        mut_visit::walk_block(self, b);
 
         let mut new_stmts = Vec::with_capacity(b.stmts.len());
         let mut last = 0;

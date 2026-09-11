@@ -3,8 +3,8 @@
 use std::fmt;
 
 use rustc_ast::Mutability;
-use rustc_index::vec::Idx;
-use rustc_type_ir::sty::TyKind;
+use rustc_index::Idx;
+use rustc_type_ir::TyKind;
 
 use crate::analysis::labeled_ty::LabeledTy;
 
@@ -110,10 +110,10 @@ where
                 PrettyLabel(self.0.label),
                 Pretty(self.0.args[0])
             ),
-            TyKind::RawPtr(mty) => write!(
+            TyKind::RawPtr(_, mutbl) => write!(
                 fmt,
                 "*{} {:?} {:?}",
-                if mty.mutbl == Mutability::Not {
+                if *mutbl == Mutability::Not {
                     "const"
                 } else {
                     "mut"

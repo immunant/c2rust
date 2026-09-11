@@ -63,9 +63,9 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
         let mut args = args.clone();
 
         if let TransferKind::Arg(func_id) = metadata.transfer_kind {
-            let callee_id = tcx.def_path_hash_to_def_id(func_id.0.convert(), &mut || {
-                panic!("cannot find DefId of callee func hash")
-            });
+            let callee_id = tcx
+                .def_path_hash_to_def_id(func_id.0.convert())
+                .expect("cannot find DefId of callee func hash");
             state.add_fn(callee_id, tcx);
         }
 
@@ -91,7 +91,8 @@ impl<'tcx, 'a> InstrumentationApplier<'tcx, 'a> {
             } = &mut call.kind
             {
                 // Make the call operands copies so we don't reuse a moved value
-                args.iter_mut().for_each(|arg| *arg = arg.to_copy());
+                args.iter_mut()
+                    .for_each(|arg| arg.node = arg.node.to_copy());
 
                 let place_ty = &place.ty(locals, tcx).ty;
                 // The return type of a hooked fn is always a raw ptr, reference, or unit

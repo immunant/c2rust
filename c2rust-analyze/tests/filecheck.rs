@@ -77,3 +77,24 @@ define_tests! {
     unrewritten_calls,
     unrewritten_calls_shim_fail,
 }
+
+#[test]
+fn tail_call() {
+    let path = test_dir_for(file!(), true).join("tail_call.rs");
+    let metadata = std::env::temp_dir().join(format!(
+        "c2rust-analyze-tail-call-{}.rmeta",
+        std::process::id()
+    ));
+    // The candidate compiler lowers explicit tail calls but its code generator
+    // does not implement them yet. Check that analysis preserves the tail call
+    // and fixes its signature, without asking rustc to generate machine code.
+    let output = Analyze::resolve().run_with(
+        &path,
+        |cmd| {
+            cmd.arg("--emit=metadata").arg("-o").arg(&metadata);
+        },
+        None,
+    );
+    FileCheck::resolve().run(&path, &output);
+    std::fs::remove_file(metadata).unwrap();
+}

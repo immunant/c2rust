@@ -3,8 +3,8 @@
 //! data is manipulated by reference, the same as with `Ty`s, and the data is stored in the same
 //! arena as the underlying `Ty`s.
 use rustc_arena::DroplessArena;
-use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
-use rustc_middle::ty::{Ty, TyCtxt, TyKind, TypeAndMut};
+use rustc_middle::ty::{GenericArg, GenericArgKind};
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use std::convert::TryInto;
 use std::fmt;
 use std::marker::PhantomData;
@@ -43,7 +43,7 @@ pub type LabeledTy<'tcx, L> = &'tcx LabeledTyS<'tcx, L>;
 
 impl<'tcx, L: fmt::Debug> fmt::Debug for LabeledTyS<'tcx, L> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}#{:?}{:?}", self.label, self.ty, self.args)
+        write!(f, "{:?}#{}{:?}", self.label, self.ty, self.args)
     }
 }
 
@@ -162,8 +162,16 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
 
             // Types with arguments
-            Adt(_, substs) => {
+            Adt(_, substs) | CoroutineClosure(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
+                self.mk(ty, self.mk_slice(&args), label)
+            }
+            &Pat(elem, _) => {
+                let args = [self.label(elem, f)];
+                self.mk(ty, self.mk_slice(&args), label)
+            }
+            UnsafeBinder(binder) => {
+                let args = [self.label(binder.skip_binder(), f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
             &Array(elem, _) => {
@@ -174,8 +182,8 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                 let args = [self.label(elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            RawPtr(mty) => {
-                let args = [self.label(mty.ty, f)];
+            RawPtr(pointee, _) => {
+                let args = [self.label(*pointee, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
             &Ref(_, mty, _) => {
@@ -189,7 +197,7 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            FnPtr(ref sig) => {
+            FnPtr(ref sig, _) => {
                 let args = sig
                     .skip_binder()
                     .inputs_and_output
@@ -204,17 +212,10 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..)
-            | Closure(..)
-            | Generator(..)
-            | GeneratorWitness(..)
-            | GeneratorWitnessMIR(..)
-            | Alias(..)
-            | Param(..)
-            | Bound(..)
-            | Placeholder(..)
-            | Infer(..)
-            | Error(..) => self.mk(ty, &[], label),
+            Dynamic(..) | Closure(..) | Coroutine(..) | CoroutineWitness(..) | Alias(..)
+            | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => {
+                self.mk(ty, &[], label)
+            }
         }
     }
 
@@ -372,9 +373,28 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                         GenericArgKind::Const(cn) => GenericArg::from(cn),
                     })
                     .collect::<Vec<_>>();
-                let substs = self.tcx.mk_substs(&substs);
+                let substs = self.tcx.mk_args(&substs);
                 assert!(it.next().is_none());
-                self.tcx.mk_adt(adt, substs)
+                Ty::new_adt(self.tcx, adt, substs)
+            }
+            CoroutineClosure(def_id, substs) => {
+                let mut types = args.iter().copied();
+                let substs =
+                    self.tcx
+                        .mk_args_from_iter(substs.iter().map(|arg| match arg.unpack() {
+                            GenericArgKind::Type(_) => types.next().unwrap().into(),
+                            _ => arg,
+                        }));
+                assert!(types.next().is_none());
+                Ty::new_coroutine_closure(self.tcx, def_id, substs)
+            }
+            Pat(_, pat) => {
+                let &[inner]: &[_; 1] = args[..].try_into().unwrap();
+                Ty::new_pat(self.tcx, inner, pat)
+            }
+            UnsafeBinder(binder) => {
+                let &[inner]: &[_; 1] = args[..].try_into().unwrap();
+                Ty::new_unsafe_binder(self.tcx, binder.rebind(inner))
             }
             Array(_, len) => {
                 let &[elem]: &[_; 1] = args[..].try_into().unwrap();
@@ -382,18 +402,15 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
             }
             Slice(_) => {
                 let &[elem]: &[_; 1] = args[..].try_into().unwrap();
-                self.tcx.mk_slice(elem)
+                Ty::new_slice(self.tcx, elem)
             }
-            RawPtr(mty) => {
+            RawPtr(_, mutbl) => {
                 let &[target]: &[_; 1] = args[..].try_into().unwrap();
-                self.tcx.mk_ptr(TypeAndMut {
-                    ty: target,
-                    mutbl: mty.mutbl,
-                })
+                Ty::new_ptr(self.tcx, target, mutbl)
             }
             Ref(rg, _, mutbl) => {
                 let &[target]: &[_; 1] = args[..].try_into().unwrap();
-                self.tcx.mk_ref(rg, TypeAndMut { ty: target, mutbl })
+                Ty::new_ref(self.tcx, rg, target, mutbl)
             }
             FnDef(def_id, substs) => {
                 // Copy `substs`, but replace all types with those from `args`.
@@ -406,28 +423,19 @@ impl<'tcx, L: Copy> LabeledTyCtxt<'tcx, L> {
                         GenericArgKind::Const(cn) => GenericArg::from(cn),
                     })
                     .collect::<Vec<_>>();
-                let substs = self.tcx.mk_substs(&substs);
+                let substs = self.tcx.mk_args(&substs);
                 assert!(it.next().is_none());
-                self.tcx.mk_fn_def(def_id, substs)
+                Ty::new_fn_def(self.tcx, def_id, substs)
             }
-            FnPtr(ref _sig) => {
+            FnPtr(ref _sig, _) => {
                 // FIXME: replace all the types under the binder
                 lty.ty
             }
-            Tuple(_) => self.tcx.mk_tup(&args),
+            Tuple(_) => Ty::new_tup(self.tcx, &args),
 
             // Types that aren't actually supported by this code yet
-            Dynamic(..)
-            | Closure(..)
-            | Generator(..)
-            | GeneratorWitness(..)
-            | GeneratorWitnessMIR(..)
-            | Alias(..)
-            | Param(..)
-            | Bound(..)
-            | Placeholder(..)
-            | Infer(..)
-            | Error(..) => lty.ty,
+            Dynamic(..) | Closure(..) | Coroutine(..) | CoroutineWitness(..) | Alias(..)
+            | Param(..) | Bound(..) | Placeholder(..) | Infer(..) | Error(..) => lty.ty,
         };
 
         func(ty, &args, lty.label)

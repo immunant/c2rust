@@ -2,7 +2,7 @@ use log::info;
 use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir::def_id::DefId;
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::{Ident, Symbol};
 use smallvec::smallvec;
 use std::collections::{HashMap, HashSet};
 use std::mem;
@@ -345,7 +345,7 @@ impl Transform for Localize {
             .into_iter()
             .map(|(k, v)| {
                 let mut statics = v.static_refs.into_iter().collect::<Vec<_>>();
-                statics.sort();
+                statics.sort_by_key(|did| (did.krate.as_u32(), did.index.as_u32()));
                 (k, statics)
             })
             .collect::<HashMap<_, _>>();

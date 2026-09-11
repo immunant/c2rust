@@ -1,9 +1,9 @@
 //! Helpers for rewriting all `fn` itemlikes, regardless of item kind.
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, AssocCtxt, Visitor};
 use rustc_ast::*;
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
 use rustc_span::Span;
 use smallvec::smallvec;
 use smallvec::SmallVec;
@@ -74,7 +74,7 @@ where
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         match i.kind {
             ItemKind::Fn(..) => {}
-            _ => return mut_visit::noop_flat_map_item(i, self),
+            _ => return mut_visit::walk_flat_map_item(self, i),
         }
 
         let i = i.into_inner();
@@ -117,14 +117,23 @@ where
                     tokens: None,
                 })
             })
-            .flat_map(|i| mut_visit::noop_flat_map_item(i, self))
+            .flat_map(|i| mut_visit::walk_flat_map_item(self, i))
             .collect()
     }
 
-    fn flat_map_impl_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
+    fn flat_map_assoc_item(
+        &mut self,
+        item: P<AssocItem>,
+        ctxt: rustc_ast::visit::AssocCtxt,
+    ) -> SmallVec<[P<AssocItem>; 1]> {
+        let fn_kind = match ctxt {
+            rustc_ast::visit::AssocCtxt::Impl => FnKind::ImplMethod,
+            rustc_ast::visit::AssocCtxt::Trait => FnKind::TraitMethod,
+        };
+        let i = item;
         match i.kind {
             AssocItemKind::Fn(..) => {}
-            _ => return mut_visit::noop_flat_map_assoc_item(i, self),
+            _ => return mut_visit::walk_flat_map_assoc_item(self, i, ctxt),
         }
 
         let AssocItem {
@@ -146,7 +155,7 @@ where
         } = sig;
 
         let fl = FnLike {
-            kind: FnKind::ImplMethod,
+            kind: fn_kind,
             id,
             ident,
             span,
@@ -178,68 +187,7 @@ where
                     tokens: None,
                 })
             })
-            .flat_map(|i| mut_visit::noop_flat_map_assoc_item(i, self))
-            .collect()
-    }
-
-    fn flat_map_trait_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
-        match i.kind {
-            AssocItemKind::Fn(..) => {}
-            _ => return mut_visit::noop_flat_map_assoc_item(i, self),
-        }
-
-        let AssocItem {
-            attrs,
-            id,
-            span,
-            vis,
-            ident,
-            kind,
-            tokens: _,
-        } = i.into_inner();
-        let (defaultness, generics, sig, body) = expect!([kind]
-            AssocItemKind::Fn(box Fn { defaultness, generics, sig, body })
-            => (defaultness, generics, sig, body));
-        let FnSig {
-            header,
-            decl,
-            span: sig_span,
-        } = sig;
-
-        let fl = FnLike {
-            kind: FnKind::TraitMethod,
-            id,
-            ident,
-            span,
-            decl,
-            body,
-            attrs,
-        };
-        let fls = (self.callback)(fl);
-
-        fls.into_iter()
-            .map(|fl| {
-                let sig = FnSig {
-                    header,
-                    decl: fl.decl,
-                    span: sig_span,
-                };
-                P(AssocItem {
-                    id: fl.id,
-                    ident: fl.ident,
-                    span: fl.span,
-                    vis: vis.clone(),
-                    kind: AssocItemKind::Fn(Box::new(Fn {
-                        defaultness,
-                        generics: generics.clone(),
-                        sig,
-                        body: fl.body,
-                    })),
-                    attrs: fl.attrs,
-                    tokens: None,
-                })
-            })
-            .flat_map(|i| mut_visit::noop_flat_map_assoc_item(i, self))
+            .flat_map(|i| mut_visit::walk_flat_map_assoc_item(self, i, ctxt))
             .collect()
     }
 
@@ -253,7 +201,7 @@ where
     fn flat_map_foreign_item(&mut self, i: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         match i.kind {
             ForeignItemKind::Fn(..) => {}
-            _ => return mut_visit::noop_flat_map_foreign_item(i, self),
+            _ => return mut_visit::walk_flat_map_foreign_item(self, i),
         }
 
         let ForeignItem {
@@ -307,7 +255,7 @@ where
                     tokens: None,
                 })
             })
-            .flat_map(|i| mut_visit::noop_flat_map_foreign_item(i, self))
+            .flat_map(|i| mut_visit::walk_flat_map_foreign_item(self, i))
             .collect()
     }
 }
@@ -393,7 +341,7 @@ where
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
-        visit::walk_foreign_item(self, i);
+        visit::walk_item(self, i);
         match i.kind {
             ForeignItemKind::Fn(..) => {}
             _ => return,

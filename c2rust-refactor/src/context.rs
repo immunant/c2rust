@@ -8,29 +8,29 @@ use rustc_ast::{
     AssocItem, Expr, ExprKind, FnDecl, FnRetTy, ForeignItem, ForeignItemKind, Item, ItemKind,
     NodeId, Path, QSelf, UseTreeKind, VariantData, DUMMY_NODE_ID,
 };
-use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::unord::UnordMap;
-use rustc_errors::{DiagnosticBuilder, Level};
+use rustc_errors::{Diag, Level};
 use rustc_hir::def::{DefKind, Namespace, PartialRes, PerNS, Res};
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::{self as hir, BodyId, HirId, Node};
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 use rustc_middle::hir::{map as hir_map, nested_filter};
-use rustc_middle::ty::subst::InternalSubsts;
-use rustc_middle::ty::{EarlyBinder, FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::GenericArgs;
+use rustc_middle::ty::{EarlyBinder, FnSig, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_session::config::CrateType;
 use rustc_session::Session;
 use rustc_span::Span;
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_builder::mk;
-use crate::ast_manip::util::is_export_attr;
 use crate::ast_manip::{
     child_slot, AstEquiv, AstSpanMaps, NodeContextKey, NodeSpan, SpanNodeKind, StructuralContext,
 };
 use crate::command::{GenerationalTyCtxt, TyCtxtGeneration};
 use crate::reflect;
 use crate::{expect, match_or};
+use rustc_span::sym;
 
 /// Driver context.  Contains all available analysis results as of the current compiler phase.
 ///
@@ -38,6 +38,7 @@ use crate::{expect, match_or};
 #[derive(Clone)]
 pub struct RefactorCtxt<'a, 'tcx: 'a> {
     sess: &'a Session,
+    unused_unsafe_spans: FxHashSet<Span>,
 
     map: Option<HirMap<'tcx>>,
     tcx: Option<GenerationalTyCtxt<'tcx>>,
@@ -49,7 +50,27 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         map: Option<HirMap<'tcx>>,
         tcx: Option<GenerationalTyCtxt<'tcx>>,
     ) -> Self {
-        Self { sess, map, tcx }
+        Self {
+            sess,
+            map,
+            tcx,
+            unused_unsafe_spans: FxHashSet::default(),
+        }
+    }
+}
+
+impl RefactorCtxt<'_, '_> {
+    pub(crate) fn with_unused_unsafe_spans(mut self, spans: Vec<Span>) -> Self {
+        self.unused_unsafe_spans = spans.into_iter().collect();
+        self
+    }
+
+    pub fn is_unused_unsafe_block(&self, hir_id: HirId) -> bool {
+        let hir::Node::Block(block) = self.ty_ctxt().hir_node(hir_id) else {
+            return false;
+        };
+        let head = self.sess.source_map().guess_head_span(block.span);
+        self.unused_unsafe_spans.contains(&head)
     }
 }
 
@@ -57,7 +78,7 @@ type SpanToHirMap = FxHashMap<NodeSpan, HirId>;
 type ContextToHirMap = FxHashMap<(NodeSpan, NodeContextKey), HirId>;
 
 struct SpanToHirMapper<'def, 'hir> {
-    hir_map: hir_map::Map<'hir>,
+    tcx: TyCtxt<'hir>,
     def_id_to_node_id: &'def IndexVec<LocalDefId, NodeId>,
     span_to_hir_map: SpanToHirMap,
     /// Secondary lookup keyed by (span, structural context) for span-colliding nodes
@@ -66,9 +87,26 @@ struct SpanToHirMapper<'def, 'hir> {
     ctx: StructuralContext<HirId>,
 }
 
-fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
+/// The old callers used an empty, user-facing ParamEnv: retain opaque types
+/// rather than revealing their hidden representations during refactoring.
+pub(crate) fn empty_typing_env<'tcx>() -> rustc_middle::ty::TypingEnv<'tcx> {
+    rustc_middle::ty::TypingEnv {
+        typing_mode: rustc_middle::ty::TypingMode::non_body_analysis(),
+        param_env: rustc_middle::ty::ParamEnv::empty(),
+    }
+}
+
+/// Preserve fallible lookups for AST nodes that were not lowered into HIR.
+fn find_hir_node(tcx: TyCtxt<'_>, id: HirId) -> Option<Node<'_>> {
+    tcx.opt_hir_owner_nodes(id.owner.def_id)?
+        .nodes
+        .get(id.local_id)
+        .map(|entry| entry.node)
+}
+
+fn hir_id_to_span(id: HirId, tcx: TyCtxt) -> Option<NodeSpan> {
     use SpanNodeKind::*;
-    let ns = match hir_map.find(id) {
+    let ns = match find_hir_node(tcx, id) {
         Some(Node::Param(param)) => Some(NodeSpan::new(param.span, Param)),
         Some(Node::Item(item)) => Some(NodeSpan::new(item.span, Item)),
         Some(Node::ForeignItem(foreign_item)) => {
@@ -91,19 +129,30 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
         Some(Node::PathSegment(_)) => None,
         Some(Node::Ty(ty)) => Some(NodeSpan::new(ty.span, Ty)),
         // We do not have a SpanNodeKind for certain nodes
-        Some(Node::TypeBinding(_)) => None,
+        Some(Node::AssocItemConstraint(_)) => None,
         Some(Node::TraitRef(_)) => None,
         Some(Node::ExprField(field)) => Some(NodeSpan::new(field.span, ExprField)),
         Some(Node::PatField(field)) => Some(NodeSpan::new(field.span, PatField)),
         Some(Node::Pat(pat)) => Some(NodeSpan::new(pat.span, Pat)),
         Some(Node::Arm(arm)) => Some(NodeSpan::new(arm.span, Arm)),
         Some(Node::Block(block)) => Some(NodeSpan::new(block.span, Block)),
-        Some(Node::Local(local)) => Some(NodeSpan::new(local.span, Local)),
+        Some(Node::LetStmt(local)) => Some(NodeSpan::new(local.span, Local)),
         Some(Node::Ctor(_)) => None,
         Some(Node::Lifetime(_)) => None,
         Some(Node::GenericParam(_)) => None,
         Some(Node::Crate(item)) => Some(NodeSpan::new(item.spans.inner_span, Crate)),
         Some(Node::Infer(_)) => None,
+        // These HIR-only nodes have no counterpart in the AST span-key schema.
+        // Descendants are still visited and retain their own mappings.
+        Some(
+            Node::ConstBlock(_)
+            | Node::ConstArg(_)
+            | Node::OpaqueTy(_)
+            | Node::WherePredicate(_)
+            | Node::PreciseCapturingNonLifetimeArg(_)
+            | Node::Synthetic
+            | Node::Err(_),
+        ) => None,
         None => None,
     };
 
@@ -112,8 +161,8 @@ fn hir_id_to_span(id: HirId, hir_map: hir_map::Map) -> Option<NodeSpan> {
 }
 
 /// Extract identifier symbol from HIR nodes for additional disambiguation
-fn hir_id_to_symbol(id: HirId, hir_map: hir_map::Map) -> Option<rustc_span::Symbol> {
-    match hir_map.find(id) {
+fn hir_id_to_symbol(id: HirId, tcx: TyCtxt) -> Option<rustc_span::Symbol> {
+    match find_hir_node(tcx, id) {
         Some(Node::Expr(expr)) => match &expr.kind {
             hir::ExprKind::Path(hir::QPath::Resolved(_, path)) => {
                 path.segments.last().map(|seg| seg.ident.name)
@@ -129,12 +178,9 @@ fn hir_id_to_symbol(id: HirId, hir_map: hir_map::Map) -> Option<rustc_span::Symb
 }
 
 impl<'def, 'hir> SpanToHirMapper<'def, 'hir> {
-    fn new(
-        hir_map: hir_map::Map<'hir>,
-        def_id_to_node_id: &'def IndexVec<LocalDefId, NodeId>,
-    ) -> Self {
+    fn new(tcx: TyCtxt<'hir>, def_id_to_node_id: &'def IndexVec<LocalDefId, NodeId>) -> Self {
         Self {
-            hir_map,
+            tcx,
             def_id_to_node_id,
             span_to_hir_map: Default::default(),
             context_to_hir_map: Default::default(),
@@ -162,11 +208,11 @@ impl<'def, 'hir> SpanToHirMapper<'def, 'hir> {
     }
 
     fn insert_mapping(&mut self, id: HirId) {
-        if let Some(ns) = hir_id_to_span(id, self.hir_map) {
+        if let Some(ns) = hir_id_to_span(id, self.tcx) {
             let _old_id = self.span_to_hir_map.insert(ns, id);
 
             // Rebuild the context fingerprint that the AST side recorded for the matching NodeId
-            let symbol = hir_id_to_symbol(id, self.hir_map);
+            let symbol = hir_id_to_symbol(id, self.tcx);
 
             let mut context = self.ctx.current_context();
             if let Some(stmt_idx) = self.ctx.current_stmt_index() {
@@ -190,7 +236,7 @@ impl<'def, 'hir> hir::intravisit::Visitor<'hir> for SpanToHirMapper<'def, 'hir> 
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
-        self.hir_map
+        self.tcx.hir()
     }
 
     fn visit_id(&mut self, id: HirId) {
@@ -323,6 +369,7 @@ impl<'def, 'hir> hir::intravisit::Visitor<'hir> for SpanToHirMapper<'def, 'hir> 
 
 #[derive(Clone)]
 pub struct HirMap<'hir> {
+    tcx: TyCtxt<'hir>,
     map: hir_map::Map<'hir>,
 
     /// Next NodeId after the crate. Needed to validate NodeIds used with the
@@ -344,13 +391,14 @@ pub struct HirMap<'hir> {
 impl<'hir> HirMap<'hir> {
     pub fn new(
         max_node_id: NodeId,
-        map: hir_map::Map<'hir>,
+        tcx: TyCtxt<'hir>,
         partial_res_map: UnordMap<NodeId, PartialRes>,
         node_id_to_def_id: FxHashMap<NodeId, LocalDefId>,
         def_id_to_node_id: IndexVec<LocalDefId, NodeId>,
         import_res_map: NodeMap<PerNS<Option<Res<NodeId>>>>,
         ast_span_maps: AstSpanMaps,
     ) -> Self {
+        let map = tcx.hir();
         // `hir::Map::opt_local_def_id` used to provide this reverse lookup.  In
         // the current HIR representation, owner and non-owner definitions are
         // both recorded in the crate's `owners` table, so rebuild the complete
@@ -368,11 +416,12 @@ impl<'hir> HirMap<'hir> {
             debug_assert!(old.is_none(), "multiple definitions for {hir_id:?}");
         }
 
-        let mut mapper = SpanToHirMapper::new(map, &def_id_to_node_id);
+        let mut mapper = SpanToHirMapper::new(tcx, &def_id_to_node_id);
         map.visit_all_item_likes_in_crate(&mut mapper);
         let (span_to_hir_map, context_to_hir_map) = mapper.into_maps();
 
         Self {
+            tcx,
             map,
             max_node_id,
             partial_res_map,
@@ -425,15 +474,11 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
 // Other context API methods
 impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
-    pub fn make_diagnostic(&self, level: Level, message: &str) -> DiagnosticBuilder<'a, ()> {
+    pub fn make_diagnostic(&self, level: Level, message: &str) -> Diag<'a, ()> {
         match level {
-            Level::Warning(..) => self.sess.diagnostic().struct_warn(message),
-            Level::Error { .. } => self
-                .sess
-                .diagnostic()
-                .struct_err(message)
-                .forget_guarantee(),
-            Level::Note => self.sess.diagnostic().struct_note_without_error(message),
+            Level::Warning => self.sess.dcx().struct_warn(message.to_owned()),
+            Level::Error => Diag::new(self.sess.dcx(), Level::Error, message.to_owned()),
+            Level::Note => self.sess.dcx().struct_note(message.to_owned()),
             _ => panic!("Cannot construct diagnostic for level {:?}", level),
         }
     }
@@ -455,7 +500,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             return Some(self.def_type(def_id.to_def_id()));
         }
         let parent = self.hir_map().get_parent_item(hir_id);
-        if !self.ty_ctxt().has_typeck_results(parent.to_def_id()) {
+        if !self.ty_ctxt().has_typeck_results(parent) {
             return None;
         }
         let tables = self.ty_ctxt().typeck(parent);
@@ -476,7 +521,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             return Some(self.def_type(def_id.to_def_id()));
         }
         let parent = self.hir_map().get_parent_item(hir_id);
-        if !self.ty_ctxt().has_typeck_results(parent.to_def_id()) {
+        if !self.ty_ctxt().has_typeck_results(parent) {
             return None;
         }
         let tables = self.ty_ctxt().typeck(parent);
@@ -492,7 +537,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
     }
 
     pub fn def_type(&self, id: DefId) -> Ty<'tcx> {
-        self.ty_ctxt().type_of(id).subst_identity()
+        self.ty_ctxt().type_of(id).instantiate_identity()
     }
 
     /// Build a `Path` referring to a particular def.  This method returns an
@@ -653,7 +698,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     }
                     def_id = Some(*func_def_id);
                     poly_sig = tcx.fn_sig(*func_def_id);
-                    substs = tables.node_substs_opt(call_hir_id);
+                    substs = tables.node_args_opt(call_hir_id);
                 // TODO: adjust for rust-call ABI
                 } else {
                     let func_hir = expect!([hir_map.find(func.id)] Some(hir::Node::Expr(e)) => e);
@@ -664,10 +709,10 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     //
                     // We use the adjusted type here in case an `&fn()` got auto-derefed in order
                     // to make the call.
-                    if let Some(&TyKind::FnPtr(sig)) =
+                    if let Some(&TyKind::FnPtr(sig, hdr)) =
                         tables.expr_ty_adjusted_opt(func_hir).map(|ty| ty.kind())
                     {
-                        poly_sig = EarlyBinder(sig);
+                        poly_sig = EarlyBinder::bind(sig.with(hdr));
                     // No substs.  fn ptrs can't be generic over anything but late-bound
                     // regions, and late-bound regions don't show up in the substs.
 
@@ -682,13 +727,13 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                         }
                         def_id = Some(*func_def_id);
                         poly_sig = tcx.fn_sig(*func_def_id);
-                        substs = tables.node_substs_opt(func_hir_id);
+                        substs = tables.node_args_opt(func_hir_id);
 
                     // (4) Ordinary function call (`f()`).
                     } else if let Some(func_def_id) = self.try_resolve_expr(func) {
                         def_id = Some(func_def_id);
                         poly_sig = tcx.fn_sig(func_def_id);
-                        substs = tables.node_substs_opt(func_hir_id);
+                        substs = tables.node_args_opt(func_hir_id);
                     } else {
                         // Failed to resolve.  Probably a really bad type error somewhere.
                         warn!("failed to resolve call expr {:?}", e);
@@ -708,7 +753,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                     }
                     def_id = Some(*func_def_id);
                     poly_sig = tcx.fn_sig(*func_def_id);
-                    substs = tables.node_substs_opt(hir_id);
+                    substs = tables.node_args_opt(hir_id);
                 } else {
                     return None;
                 }
@@ -717,12 +762,16 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             _ => return None,
         }
 
-        let poly_sig = poly_sig.subst_identity();
-        let unsubst_fn_sig = tcx.erase_late_bound_regions(poly_sig);
+        let poly_sig = poly_sig.instantiate_identity();
+        let unsubst_fn_sig = tcx.instantiate_bound_regions_with_erased(poly_sig);
         let fn_sig = if let Some(substs) = substs {
-            tcx.subst_and_normalize_erasing_regions(substs, ParamEnv::empty(), unsubst_fn_sig)
+            tcx.instantiate_and_normalize_erasing_regions(
+                substs,
+                empty_typing_env(),
+                EarlyBinder::bind(unsubst_fn_sig),
+            )
         } else {
-            tcx.normalize_erasing_regions(ParamEnv::empty(), unsubst_fn_sig)
+            tcx.normalize_erasing_regions(empty_typing_env(), unsubst_fn_sig)
         };
 
         Some(CalleeInfo {
@@ -907,7 +956,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 
     /// Are we refactoring an executable crate?
     pub fn is_executable(&self) -> bool {
-        self.sess.crate_types().contains(&CrateType::Executable)
+        self.ty_ctxt()
+            .crate_types()
+            .contains(&CrateType::Executable)
     }
 
     /// Return every namespace the given item occupies.
@@ -920,7 +971,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
         match &item.kind {
             ItemKind::Use(tree) => {
                 // Nested uses should be already split apart
-                if let UseTreeKind::Nested(..) = &tree.kind {
+                if let UseTreeKind::Nested { .. } = &tree.kind {
                     smallvec![]
                 } else {
                     self.resolved_imports_for_item(item)
@@ -965,7 +1016,9 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
                         .hir()
                         .attrs(item.hir_id())
                         .iter()
-                        .any(is_export_attr)
+                        .any(|attr| {
+                            attr.has_name(sym::no_mangle) || attr.has_name(sym::export_name)
+                        })
                 }
                 _ => true,
             },
@@ -1006,7 +1059,7 @@ impl<'hir> HirMap<'hir> {
         }
 
         if let Some(ldid) = self.node_id_to_def_id.get(&id) {
-            return Some(self.map.local_def_id_to_hir_id(*ldid));
+            return Some(self.tcx.local_def_id_to_hir_id(*ldid));
         }
 
         if let Some(node_span) = self.ast_span_maps.node_id_to_span_map.get(&id) {
@@ -1048,11 +1101,11 @@ impl<'hir> HirMap<'hir> {
     /// Retrieves the `Node` corresponding to `id`, returning `None` if cannot be found.
     pub fn find(&self, id: NodeId) -> Option<Node<'hir>> {
         self.opt_node_to_hir_id(id)
-            .and_then(|hir_id| self.map.find(hir_id))
+            .and_then(|hir_id| find_hir_node(self.tcx, hir_id))
     }
 
     pub fn find_by_hir_id(&self, id: HirId) -> Option<Node<'hir>> {
-        self.map.find(id)
+        find_hir_node(self.tcx, id)
     }
 
     pub fn opt_local_def_id_from_node_id(&self, id: NodeId) -> Option<LocalDefId> {
@@ -1065,7 +1118,7 @@ impl<'hir> HirMap<'hir> {
     }
 
     pub fn hir_to_node_id(&self, id: HirId) -> NodeId {
-        let ns = hir_id_to_span(id, self.map);
+        let ns = hir_id_to_span(id, self.tcx);
         if let Some(id) = ns.and_then(|ns| self.ast_span_maps.span_to_node_id_map.get(&ns)) {
             return *id;
         }
@@ -1101,7 +1154,7 @@ impl<'hir> HirMap<'hir> {
     }
 
     pub fn body_owned_by(&self, id: LocalDefId) -> BodyId {
-        self.map.body_owned_by(id)
+        self.map.body_owned_by(id).id()
     }
 
     pub fn span(&self, id: HirId) -> Span {
@@ -1113,7 +1166,7 @@ impl<'hir> HirMap<'hir> {
     }
 
     pub fn get_parent_node(&self, id: HirId) -> HirId {
-        self.map.parent_id(id)
+        self.tcx.parent_hir_id(id)
     }
 
     pub fn opt_local_def_id(&self, id: HirId) -> Option<LocalDefId> {
@@ -1121,7 +1174,7 @@ impl<'hir> HirMap<'hir> {
     }
 
     pub fn maybe_body_owned_by(&self, id: LocalDefId) -> Option<BodyId> {
-        self.map.maybe_body_owned_by(id)
+        self.map.maybe_body_owned_by(id).map(|body| body.id())
     }
 
     pub fn body(&self, id: BodyId) -> &'hir hir::Body<'hir> {
@@ -1134,7 +1187,7 @@ impl<'hir> HirMap<'hir> {
     }
 
     pub fn local_def_id_to_hir_id(&self, def_id: LocalDefId) -> HirId {
-        self.map.local_def_id_to_hir_id(def_id)
+        self.tcx.local_def_id_to_hir_id(def_id)
     }
 }
 
@@ -1151,7 +1204,7 @@ pub struct CalleeInfo<'tcx> {
     pub def_id: Option<DefId>,
 
     /// The type and region arguments that were substituted in at the call site.
-    pub substs: Option<&'tcx InternalSubsts<'tcx>>,
+    pub substs: Option<&'tcx GenericArgs<'tcx>>,
 }
 
 type DefMapping = HashMap<DefId, DefId>;
@@ -1561,8 +1614,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             }
 
             (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
-                let len1 = n1.try_eval_target_usize(tcx, ParamEnv::empty());
-                let len2 = n2.try_eval_target_usize(tcx, ParamEnv::empty());
+                let len1 = try_eval_array_len(tcx, *n1);
+                let len2 = try_eval_array_len(tcx, *n2);
                 // We allow 0 length arrays to match any length arrays. This
                 // isn't exactly the C definition of compatible extern global
                 // array types with global array definitions, but it should be
@@ -1579,12 +1632,11 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 self.structural_eq_tys_impl(*ty1, *ty2, match_vis, seen)
             }
 
-            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
-                if ty1.mutbl != ty2.mutbl {
+            (TyKind::RawPtr(ty1, mutbl1), TyKind::RawPtr(ty2, mutbl2)) => {
+                if mutbl1 != mutbl2 {
                     trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2);
                 }
-                ty1.mutbl == ty2.mutbl
-                    && self.structural_eq_tys_impl(ty1.ty, ty2.ty, match_vis, seen)
+                mutbl1 == mutbl2 && self.structural_eq_tys_impl(*ty1, *ty2, match_vis, seen)
             }
 
             (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
@@ -1618,7 +1670,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 self.structural_eq_defs(*fn1, *fn2, match_vis)
             }
 
-            (TyKind::FnPtr(fn1), TyKind::FnPtr(fn2)) => {
+            (TyKind::FnPtr(sig1, hdr1), TyKind::FnPtr(sig2, hdr2)) => {
+                let (fn1, fn2) = (sig1.with(*hdr1), sig2.with(*hdr2));
                 let (fn1, fn2) = match (fn1.no_bound_vars(), fn2.no_bound_vars()) {
                     (Some(x), Some(y)) => (x, y),
                     _ => {
@@ -1777,8 +1830,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             }
 
             (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
-                let len1 = n1.try_eval_target_usize(tcx, ParamEnv::empty());
-                let len2 = n2.try_eval_target_usize(tcx, ParamEnv::empty());
+                let len1 = try_eval_array_len(tcx, *n1);
+                let len2 = try_eval_array_len(tcx, *n2);
                 // We allow 0 length arrays to match any length arrays. This
                 // isn't exactly the C definition of compatible extern global
                 // array types with global array definitions, but it should be
@@ -1793,11 +1846,11 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
 
             (TyKind::Slice(ty1), TyKind::Slice(ty2)) => self.eq_tys(*ty1, *ty2),
 
-            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) => {
-                if ty1.mutbl != ty2.mutbl {
+            (TyKind::RawPtr(ty1, mutbl1), TyKind::RawPtr(ty2, mutbl2)) => {
+                if mutbl1 != mutbl2 {
                     trace!("Mutability doesn't match: {:?} and {:?}", ty1, ty2);
                 }
-                ty1.mutbl == ty2.mutbl && self.eq_tys(ty1.ty, ty2.ty)
+                mutbl1 == mutbl2 && self.eq_tys(*ty1, *ty2)
             }
 
             (TyKind::Ref(region1, ty1, mutbl1), TyKind::Ref(region2, ty2, mutbl2)) => {
@@ -1831,7 +1884,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 def1 == def2
             }
 
-            (TyKind::FnPtr(fn1), TyKind::FnPtr(fn2)) => {
+            (TyKind::FnPtr(sig1, hdr1), TyKind::FnPtr(sig2, hdr2)) => {
+                let (fn1, fn2) = (sig1.with(*hdr1), sig2.with(*hdr2));
                 let (fn1, fn2) = match (fn1.no_bound_vars(), fn2.no_bound_vars()) {
                     (Some(x), Some(y)) => (x, y),
                     _ => {
@@ -1925,4 +1979,15 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         let out_ty2 = sig2.output();
         self.eq_tys(out_ty1, out_ty2)
     }
+}
+
+/// Evaluate an array length without changing opacity or turning unevaluated
+/// generic constants into a panic.
+pub(crate) fn try_eval_array_len<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    value: rustc_middle::ty::Const<'tcx>,
+) -> Option<u64> {
+    tcx.try_normalize_erasing_regions(empty_typing_env(), value)
+        .ok()
+        .and_then(|value| value.try_to_target_usize(tcx))
 }

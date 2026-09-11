@@ -8,15 +8,15 @@ use crate::util::{self, ty_callee, Callee};
 use assert_matches::assert_matches;
 use indexmap::IndexMap;
 use log::debug;
+use rustc_abi::FieldIdx;
 use rustc_hir::def_id::DefId;
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 use rustc_middle::mir::{
     AggregateKind, BinOp, Body, BorrowKind, CastKind, Local, LocalDecl, Location, Operand, Place,
-    Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
+    Rvalue, Statement, StatementKind, Terminator,
 };
-use rustc_middle::ty::adjustment::PointerCast;
+use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::{AdtDef, FieldDef, RegionKind, TyKind};
-use rustc_target::abi::FieldIdx;
 use std::collections::HashMap;
 
 use super::OriginArg;
@@ -256,7 +256,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         self.ltcx.relabel(expect_ty, &mut |lty| {
             let perm = lty.label.perm;
             match lty.ty.kind() {
-                TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                TyKind::Ref(_, _, _) | TyKind::RawPtr(..) => {
                     let origin = Some(self.maps.origin());
                     Label {
                         origin,
@@ -290,12 +290,12 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let tcx = self.acx.tcx();
 
         match *rv {
-            Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(_)) => {
+            Rvalue::Use(Operand::Copy(pl)) if matches!(expect_ty.ty.kind(), TyKind::RawPtr(..)) => {
                 // Copy of a raw pointer.  We treat this as a reborrow.
                 let perm = expect_ty.label.perm;
                 let borrow_kind = if perm.contains(PermissionSet::UNIQUE) {
                     BorrowKind::Mut {
-                        allow_two_phase_borrow: false,
+                        kind: rustc_middle::mir::MutBorrowKind::Default,
                     }
                 } else {
                     BorrowKind::Shared
@@ -333,11 +333,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 lty
             }
 
-            Rvalue::AddressOf(_, pl) => {
+            Rvalue::RawPtr(_, pl) => {
                 let perm = expect_ty.label.perm;
                 let borrow_kind = if perm.contains(PermissionSet::UNIQUE) {
                     BorrowKind::Mut {
-                        allow_two_phase_borrow: false,
+                        kind: rustc_middle::mir::MutBorrowKind::Default,
                     }
                 } else {
                     BorrowKind::Shared
@@ -357,10 +357,10 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 lty
             }
 
-            Rvalue::BinaryOp(BinOp::Offset, _) | Rvalue::CheckedBinaryOp(BinOp::Offset, _) => {
+            Rvalue::BinaryOp(BinOp::Offset, _) => {
                 todo!("visit_rvalue BinOp::Offset")
             }
-            Rvalue::BinaryOp(_, ref _ab) | Rvalue::CheckedBinaryOp(_, ref _ab) => {
+            Rvalue::BinaryOp(_, ref _ab) => {
                 let ty = rv.ty(self.local_decls, *self.ltcx);
                 self.ltcx.label(ty, &mut |ty| {
                     assert!(
@@ -370,7 +370,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     Label::default()
                 })
             }
-            Rvalue::Cast(CastKind::PointerFromExposedAddress, ref op, _ty) => {
+            Rvalue::Cast(CastKind::PointerWithExposedProvenance, ref op, _ty) => {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
                 if let Some(true) = op.constant().cloned().map(util::is_null_const) {
@@ -384,7 +384,11 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                     panic!("Creating non-null pointers from exposed addresses not supported");
                 }
             }
-            Rvalue::Cast(CastKind::Pointer(PointerCast::MutToConstPointer), ref op, _ty) => {
+            Rvalue::Cast(
+                CastKind::PointerCoercion(PointerCoercion::MutToConstPointer, _),
+                ref op,
+                _ty,
+            ) => {
                 let op_lty = self.visit_operand(op);
                 // Here we relabel `expect_ty` to utilize the permissions it carries
                 // but substitute the rest of its `Label`s' parts with fresh origins
@@ -467,7 +471,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 _ => panic!("unsupported rvalue AggregateKind {:?}", kind),
             },
 
-            Rvalue::Len(..) => {
+            Rvalue::UnaryOp(rustc_middle::mir::UnOp::PtrMetadata, ref op) => {
+                self.visit_operand(op);
                 let ty = rv.ty(self.local_decls, *self.ltcx);
                 self.ltcx.label(ty, &mut |_| Label::default())
             }
@@ -491,8 +496,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         debug!("assign {:?} = {:?}", pl_lty, rv_lty);
 
         match (pl_lty.ty.kind(), rv_lty.ty.kind()) {
-            // exempt pointer casts such as `PointerCast::MutToConstPointer`
-            (TyKind::RawPtr(ty1), TyKind::RawPtr(ty2)) if ty1.ty == ty2.ty => {}
+            // exempt pointer casts such as `PointerCoercion::MutToConstPointer`
+            (TyKind::RawPtr(ty1, _), TyKind::RawPtr(ty2, _)) if ty1 == ty2 => {}
             _ => assert_eq!(
                 self.acx.tcx().erase_regions(pl_lty.ty),
                 self.acx.tcx().erase_regions(rv_lty.ty)
@@ -543,84 +548,74 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let _g = panic_detail::set_current_span(term.source_info.span);
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
         #[allow(clippy::single_match)]
-        match term.kind {
-            TerminatorKind::Call {
-                ref func,
-                ref args,
-                destination,
-                target: _,
-                ..
-            } => {
-                let func_ty = func.ty(self.local_decls, *self.ltcx);
-                let callee = ty_callee(*self.ltcx, func_ty);
-                debug!("callee = {callee:?}");
-                match callee {
-                    Callee::Trivial => {}
-                    Callee::UnknownDef { .. } => {
-                        // TODO
-                    }
-                    Callee::LocalDef { .. } => {
-                        // TODO
-                    }
-                    Callee::PtrOffset { .. } => {
-                        // We handle this like a pointer assignment.
-                        let pl_lty = self.visit_place(destination);
-                        assert!(args.len() == 2);
-                        let rv_lty = self.visit_operand(&args[0]);
-                        self.do_assign(pl_lty, rv_lty);
-                    }
-                    Callee::SliceAsPtr { .. } => {
-                        // TODO: handle this like a cast
-                    }
-                    Callee::Malloc => {
-                        // TODO
-                    }
-                    Callee::Calloc => {
-                        // TODO
-                    }
-                    Callee::Realloc => {
-                        // We handle this like a pointer assignment.
-                        let pl_lty = self.visit_place(destination);
-                        let rv_lty = assert_matches!(&args[..], [p, _] => {
-                            self.visit_operand(p)
-                        });
+        if let Some((func, args, destination)) = crate::util::call_parts(&term.kind) {
+            let func_ty = func.ty(self.local_decls, *self.ltcx);
+            let callee = ty_callee(*self.ltcx, func_ty);
+            debug!("callee = {callee:?}");
+            match callee {
+                Callee::Trivial => {}
+                Callee::UnknownDef { .. } => {
+                    // TODO
+                }
+                Callee::LocalDef { .. } => {
+                    // TODO
+                }
+                Callee::PtrOffset { .. } => {
+                    // We handle this like a pointer assignment.
+                    let pl_lty = self.visit_place(destination);
+                    assert!(args.len() == 2);
+                    let rv_lty = self.visit_operand(&args[0].node);
+                    self.do_assign(pl_lty, rv_lty);
+                }
+                Callee::SliceAsPtr { .. } => {
+                    // TODO: handle this like a cast
+                }
+                Callee::Malloc => {
+                    // TODO
+                }
+                Callee::Calloc => {
+                    // TODO
+                }
+                Callee::Realloc => {
+                    // We handle this like a pointer assignment.
+                    let pl_lty = self.visit_place(destination);
+                    let rv_lty = assert_matches!(&args[..], [p, _] => {
+                        self.visit_operand(&p.node)
+                    });
 
-                        self.do_assign(pl_lty, rv_lty);
-                    }
-                    Callee::Free => {
-                        let _pl_lty = self.visit_place(destination);
-                        let _rv_lty = assert_matches!(&args[..], [p] => {
-                            self.visit_operand(p)
-                        });
-                    }
-                    Callee::Memcpy => {
-                        let _pl_lty = self.visit_place(destination);
-                        assert_matches!(&args[..], [dest, src, _] => {
-                            self.visit_operand(dest);
-                            self.visit_operand(src);
-                        });
-                    }
-                    Callee::Memset => {
-                        let _pl_lty = self.visit_place(destination);
-                        let _rv_lty = assert_matches!(&args[..], [dest, ..] => {
-                            self.visit_operand(dest)
-                        });
-                    }
-                    Callee::SizeOf { .. } => {}
-                    Callee::IsNull => {
-                        let _rv_lty = assert_matches!(&args[..], [p] => {
-                            self.visit_operand(p)
-                        });
-                    }
-                    Callee::Null { .. } => {
-                        // Just visit the place.  The null pointer returned here has no origin, so
-                        // there's no need to call `do_assign` to set up subset relations.
-                        let _pl_lty = self.visit_place(destination);
-                    }
+                    self.do_assign(pl_lty, rv_lty);
+                }
+                Callee::Free => {
+                    let _pl_lty = self.visit_place(destination);
+                    let _rv_lty = assert_matches!(&args[..], [p] => {
+                        self.visit_operand(&p.node)
+                    });
+                }
+                Callee::Memcpy => {
+                    let _pl_lty = self.visit_place(destination);
+                    assert_matches!(&args[..], [dest, src, _] => {
+                        self.visit_operand(&dest.node);
+                        self.visit_operand(&src.node);
+                    });
+                }
+                Callee::Memset => {
+                    let _pl_lty = self.visit_place(destination);
+                    let _rv_lty = assert_matches!(&args[..], [dest, ..] => {
+                        self.visit_operand(&dest.node)
+                    });
+                }
+                Callee::SizeOf { .. } => {}
+                Callee::IsNull => {
+                    let _rv_lty = assert_matches!(&args[..], [p] => {
+                        self.visit_operand(&p.node)
+                    });
+                }
+                Callee::Null { .. } => {
+                    // Just visit the place.  The null pointer returned here has no origin, so
+                    // there's no need to call `do_assign` to set up subset relations.
+                    let _pl_lty = self.visit_place(destination);
                 }
             }
-            // TODO(spernsteiner): handle other `TerminatorKind`s
-            _ => (),
         }
     }
 }

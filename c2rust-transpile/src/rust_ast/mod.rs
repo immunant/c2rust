@@ -326,7 +326,8 @@ pub(crate) fn expr_to_pat(expr: Expr) -> Result<Pat, String> {
             let Expr::Lit(ExprLit {
                 attrs: _,
                 lit: Lit::Int(lit_int),
-            }) = *expr else {
+            }) = *expr
+            else {
                 return Err("`ExprUnary::expr` is not an `ExprLit` with `lit: Lit::Int`".into());
             };
             let digits = lit_int.base10_digits();

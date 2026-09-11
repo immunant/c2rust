@@ -273,6 +273,7 @@ mod tests {
     /// # Args
     /// * `test_crate_dir` is the directory of the test crate.
     ///   It must contain a `Cargo.toml`.
+    /// * `test_package` is its Cargo package name.
     ///
     /// * `profile` is the [`Profile`] the test crate is compiled and run as.
     ///
@@ -305,6 +306,7 @@ mod tests {
     /// so appending is not yet necessary.
     fn pdg_snapshot(
         test_crate_dir: &Path,
+        test_package: &str,
         profile: Profile,
         args: impl IntoIterator<Item = impl AsRef<OsStr>>,
         to_print: &[ToPrint],
@@ -325,6 +327,18 @@ mod tests {
         static CARGO_RUN_C2RUST_INSTRUMENT: Mutex<()> = Mutex::new(());
 
         let guard = CARGO_RUN_C2RUST_INSTRUMENT.lock().unwrap();
+        // Cargo does not fingerprint the contents of RUSTC_WRAPPER. Rebuild the
+        // fixture so a changed instrumenter cannot silently reuse old metadata
+        // and an old instrumented executable. Keep dependency artifacts cached.
+        let mut clean = Command::new("cargo");
+        clean
+            .args(["clean", "--manifest-path"])
+            .arg(&manifest_path)
+            .arg("--target-dir")
+            .arg(&target_dir)
+            .args(["--profile", profile.name(), "--package", test_package]);
+        let status = clean.status()?;
+        ensure!(status.success(), eyre!("{clean:?} failed: {status}"));
         let mut cmd = Command::new("cargo");
         cmd.current_dir(repo_dir()?)
             .args(&[
@@ -367,6 +381,7 @@ mod tests {
     ) -> eyre::Result<impl Display> {
         pdg_snapshot(
             repo_dir()?.join("analysis/tests/misc").as_path(),
+            "c2rust-analysis-tests-misc",
             profile,
             &[] as &[&OsStr],
             {

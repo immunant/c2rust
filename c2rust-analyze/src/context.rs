@@ -10,13 +10,15 @@ use assert_matches::assert_matches;
 use bitflags::bitflags;
 use indexmap::IndexSet;
 use log::*;
+use rustc_abi::FieldIdx;
 use rustc_ast::Mutability;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_index::vec::IndexVec;
-use rustc_middle::mir::interpret::{self, AllocId, ConstValue, GlobalAlloc};
+use rustc_index::IndexVec;
+use rustc_middle::mir::interpret::{self, AllocId, GlobalAlloc};
+use rustc_middle::mir::ConstValue;
 use rustc_middle::mir::{
-    Body, Constant, ConstantKind, HasLocalDecls, Local, LocalDecls, Location, Operand, Place,
+    Body, Const, ConstOperand, HasLocalDecls, Local, LocalDecls, Location, Operand, Place,
     PlaceElem, PlaceRef, Rvalue,
 };
 use rustc_middle::ty::tls;
@@ -29,8 +31,7 @@ use rustc_middle::ty::RegionKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TyKind;
-use rustc_target::abi::FieldIdx;
-use rustc_type_ir::RegionKind::{ReEarlyBound, ReStatic};
+use rustc_type_ir::RegionKind::{ReEarlyParam, ReStatic};
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::fmt::{Debug, Write as _};
@@ -88,7 +89,7 @@ bitflags! {
         /// and it flows forward along dataflow edges.
         ///
         /// The following should be set to [`NON_NULL`]:
-        /// * the results of [`Rvalue::Ref`] and [`Rvalue::AddressOf`]
+        /// * the results of [`Rvalue::Ref`] and [`Rvalue::RawPtr`]
         /// * the result of a known function like [`_.offset`] that never returns null pointers
         ///
         /// The following should not be set to [`NON_NULL`]:
@@ -227,6 +228,9 @@ bitflags! {
         /// failed.
         const SHIM_GENERATION_FAILED = 1 << 7;
 
+        /// An explicit tail call cannot accommodate the casts introduced by rewriting.
+        const EXPLICIT_TAIL_CALL = 1 << 8;
+
         /// Pointee analysis results for this function are invalid.
         const POINTEE_INVALID = 1 << 10;
         /// Dataflow analysis results for this function are invalid.
@@ -360,7 +364,7 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
             let tcx = tcx.unwrap();
             for k in &self.struct_dids {
                 let adt = &self.table[k];
-                let other_param_names = tcx.generics_of(k).params.iter().filter_map(|p| {
+                let other_param_names = tcx.generics_of(*k).own_params.iter().filter_map(|p| {
                     if !matches!(p.kind, GenericParamDefKind::Lifetime) {
                         Some(p.name.to_ident_string())
                     } else {
@@ -525,14 +529,14 @@ fn fn_origin_args_params<'tcx>(
     let mut fn_info = HashMap::new();
 
     for fn_did in fn_dids {
-        let fn_ty = tcx.type_of(fn_did).subst_identity();
+        let fn_ty = tcx.type_of(fn_did).instantiate_identity();
 
         // gather existing OriginParams
         let mut origin_params = vec![];
         if let TyKind::FnDef(_, substs) = fn_ty.kind() {
             for sub in substs.iter() {
                 if let GenericArgKind::Lifetime(re) = sub.unpack() {
-                    if let RegionKind::ReEarlyBound(eb) = re.kind() {
+                    if let RegionKind::ReEarlyParam(eb) = re.kind() {
                         origin_params.push(OriginParam::Actual(eb))
                     }
                 }
@@ -542,14 +546,15 @@ fn fn_origin_args_params<'tcx>(
         let mut arg_origin_args = vec![];
 
         // gather new and existing OriginArgs and push new OriginParams
-        let sig = tcx.erase_late_bound_regions(tcx.fn_sig(fn_did).subst_identity());
+        let sig =
+            tcx.instantiate_bound_regions_with_erased(tcx.fn_sig(fn_did).instantiate_identity());
         let ltcx = LabeledTyCtxt::<'tcx, &[OriginArg<'tcx>]>::new(tcx);
         let mut next_hypo_origin_id = 0;
         let mut origin_lty = |ty: Ty<'tcx>| {
             ltcx.label(ty, &mut |ty| {
                 let mut origin_args = vec![];
                 match ty.kind() {
-                    TyKind::RawPtr(_ty) => {
+                    TyKind::RawPtr(..) => {
                         origin_args.push(OriginArg::Hypothetical(next_hypo_origin_id));
                         origin_params.push(OriginParam::Hypothetical(next_hypo_origin_id));
                         next_hypo_origin_id += 1;
@@ -635,7 +640,7 @@ fn construct_adt_metadata<'tcx>(
 
     // Gather existing lifetime parameters for each struct
     for struct_did in &adt_metadata_table.struct_dids {
-        let struct_ty = tcx.type_of(struct_did).subst_identity();
+        let struct_ty = tcx.type_of(struct_did).instantiate_identity();
         if let TyKind::Adt(adt_def, substs) = struct_ty.kind() {
             adt_metadata_table
                 .table
@@ -645,7 +650,7 @@ fn construct_adt_metadata<'tcx>(
             for sub in substs.iter() {
                 if let GenericArgKind::Lifetime(r) = sub.unpack() {
                     debug!("\nfound lifetime {r:?} in {adt_def:?}");
-                    assert_matches!(r.kind(), ReEarlyBound(eb) => {
+                    assert_matches!(r.kind(), ReEarlyParam(eb) => {
                         metadata.lifetime_params.insert(OriginParam::Actual(eb));
                     });
                 }
@@ -692,11 +697,11 @@ fn construct_adt_metadata<'tcx>(
                 let field_origin_args = ltcx.relabel(field_lty, &mut |lty| {
                     let mut field_origin_args = IndexSet::new();
                     match lty.kind() {
-                        TyKind::RawPtr(ty) => {
+                        TyKind::RawPtr(_, mutbl) => {
                             if needs_region(lty) {
                                 debug!(
                                     "\t\tfound pointer that requires hypothetical lifetime: *{:}",
-                                    if let Mutability::Mut = ty.mutbl {
+                                    if let Mutability::Mut = mutbl {
                                         "mut"
                                     } else {
                                         "const"
@@ -721,13 +726,13 @@ fn construct_adt_metadata<'tcx>(
                         }
                         TyKind::Ref(reg, _ty, _mutability) => {
                             debug!("\t\tfound reference field lifetime: {reg:}");
-                            assert_matches!(reg.kind(), ReEarlyBound(..) | ReStatic);
+                            assert_matches!(reg.kind(), ReEarlyParam(..) | ReStatic);
                             let origin_arg = OriginArg::Actual(*reg);
                             adt_metadata_table
                                 .table
                                 .entry(*struct_did)
                                 .and_modify(|adt| {
-                                    if let ReEarlyBound(eb) = reg.kind() {
+                                    if let ReEarlyParam(eb) = reg.kind() {
                                         debug!("\t\tinserting origin {eb:?} into {adt_def:?}");
                                         adt.lifetime_params.insert(OriginParam::Actual(eb));
                                     }
@@ -741,7 +746,7 @@ fn construct_adt_metadata<'tcx>(
                                 if let GenericArgKind::Lifetime(r) = sub.unpack() {
                                     debug!("\tfound field lifetime {r:?} in {adt_def:?}.{adt_field:?}");
                                     debug!("\t\tinserting {adt_field:?} lifetime param {r:?} into {adt_def:?}.{:} lifetime parameters", field.name);
-                                    assert_matches!(r.kind(), ReEarlyBound(..) | ReStatic);
+                                    assert_matches!(r.kind(), ReEarlyParam(..) | ReStatic);
                                     field_origin_args.insert(OriginArg::Actual(r));
                                 }
                             }
@@ -932,7 +937,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
         trace!("assign_pointer_to_static({:?})", did);
         // Statics always have full type annotations.
         let lty = self.assign_pointer_ids_with_info(
-            self.tcx.type_of(did).subst_identity(),
+            self.tcx.type_of(did).instantiate_identity(),
             PointerInfo::ANNOTATED,
         );
         let ptr = self.new_pointer(PointerInfo::empty());
@@ -942,7 +947,7 @@ impl<'tcx> GlobalAnalysisCtxt<'tcx> {
 
     pub fn assign_pointer_to_field(&mut self, field: &FieldDef) {
         let lty = self.assign_pointer_ids_with_info(
-            self.tcx.type_of(field.did).subst_identity(),
+            self.tcx.type_of(field.did).instantiate_identity(),
             PointerInfo::ANNOTATED,
         );
         self.field_ltys.insert(field.did, lty);
@@ -1190,7 +1195,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 let ty = rv.ty(self, self.tcx());
                 let pointee_ty = match *ty.kind() {
                     TyKind::Ref(_, ty, _) => ty,
-                    TyKind::RawPtr(tm) => tm.ty,
+                    TyKind::RawPtr(ty, _) => ty,
                     _ => unreachable!(
                         "got RvalueDesc for non-pointer Rvalue {:?} (of type {:?})",
                         rv, ty,
@@ -1216,14 +1221,12 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
                 let args = self.lcx().mk_slice(&[op_lty]);
                 self.lcx().mk(ty, args, PointerId::NONE)
             }
-            Rvalue::Ref(..) | Rvalue::AddressOf(..) => {
+            Rvalue::Ref(..) | Rvalue::RawPtr(..) => {
                 unreachable!("should be handled by describe_rvalue case above")
             }
             Rvalue::ThreadLocalRef(..) => todo!("type_of ThreadLocalRef"),
             Rvalue::Cast(..) => panic!("Cast should be present in rvalue_tys"),
-            Rvalue::Len(..)
-            | Rvalue::BinaryOp(..)
-            | Rvalue::CheckedBinaryOp(..)
+            Rvalue::BinaryOp(..)
             | Rvalue::NullaryOp(..)
             | Rvalue::UnaryOp(..)
             | Rvalue::Discriminant(..) => {
@@ -1394,9 +1397,9 @@ impl<'tcx> TypeOf<'tcx> for PlaceRef<'tcx> {
     }
 }
 
-pub fn const_alloc_id(c: &Constant) -> Option<AllocId> {
-    if let ConstantKind::Val(ConstValue::Scalar(interpret::Scalar::Ptr(ptr, _)), _ty) = c.literal {
-        return Some(ptr.provenance);
+pub fn const_alloc_id(c: &ConstOperand) -> Option<AllocId> {
+    if let Const::Val(ConstValue::Scalar(interpret::Scalar::Ptr(ptr, _)), _ty) = c.const_ {
+        return Some(ptr.provenance.alloc_id());
     }
     None
 }
@@ -1551,8 +1554,8 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
             print_ty_with_pointer_labels_into(dest, lty.args[0], f);
             dest.push(']');
         }
-        RawPtr(mty) => {
-            if mty.mutbl == Mutability::Not {
+        RawPtr(_, mutbl) => {
+            if *mutbl == Mutability::Not {
                 dest.push_str("*const ");
             } else {
                 dest.push_str("*mut ");
@@ -1594,7 +1597,7 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
                 dest.push('>');
             }
         }
-        FnPtr(_) => {
+        FnPtr(..) => {
             let (ret_lty, arg_ltys) = lty.args.split_last().unwrap();
             dest.push_str("fn(");
             for (i, &arg_lty) in arg_ltys.iter().enumerate() {
@@ -1617,18 +1620,11 @@ pub fn print_ty_with_pointer_labels_into<L: Copy>(
             dest.push(')');
         }
 
-        // Types that aren't actually supported by this code yet
-        Dynamic(..)
-        | Closure(..)
-        | Generator(..)
-        | GeneratorWitness(..)
-        | GeneratorWitnessMIR(..)
-        | Alias(..)
-        | Param(..)
-        | Bound(..)
-        | Placeholder(..)
-        | Infer(..)
-        | Error(..) => {
+        // These constructors have no labeled rendering yet. Mark rustc's
+        // fallback explicitly: it does not display labels from `lty.args`.
+        Pat(..) | UnsafeBinder(..) | CoroutineClosure(..) | Dynamic(..) | Closure(..)
+        | Coroutine(..) | CoroutineWitness(..) | Alias(..) | Param(..) | Bound(..)
+        | Placeholder(..) | Infer(..) | Error(..) => {
             write!(dest, "unknown:{:?}", lty.ty).unwrap();
         }
     }

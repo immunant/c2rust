@@ -1,5 +1,5 @@
 use log::error;
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 use rustc_middle::mir::{
     BasicBlock, Body, Local, Location, Place, Rvalue, StatementKind, TerminatorKind,
 };
@@ -230,7 +230,7 @@ fn calc_recent_writes(mir: &Body) -> RecentWrites {
     let block_preds = mir.basic_blocks.predecessors();
     loop {
         let mut updated = false;
-        for &bb in mir.basic_blocks.postorder().iter().rev() {
+        for (bb, _) in rustc_middle::mir::traversal::reverse_postorder(mir) {
             if !needs_update[bb] {
                 continue;
             }
@@ -282,9 +282,7 @@ fn scan_blocks(mir: &Body, rw: &mut RecentWrites) {
                     let (pl, rv) = (x.0, &x.1);
                     rw.record_place_written(loc, pl);
                     match *rv {
-                        Rvalue::AddressOf(_, pl) | Rvalue::Ref(_, _, pl) => {
-                            rw.record_addr_taken(pl)
-                        }
+                        Rvalue::RawPtr(_, pl) | Rvalue::Ref(_, _, pl) => rw.record_addr_taken(pl),
                         _ => {}
                     }
                 }

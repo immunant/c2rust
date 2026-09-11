@@ -17,7 +17,7 @@
 //!    For itemlikes, a lone ident can't be used as a placeholder because it's not a valid
 //!    itemlike.  Use a zero-argument macro invocation `__x!()` instead.
 
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::{Nonterminal, Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
@@ -26,10 +26,9 @@ use rustc_ast::{
     DelimArgs, Expr, ExprKind, Item, ItemKind, Label, Pat, PatKind, Path, Stmt, StmtKind, Ty,
     TyKind,
 };
-use rustc_ast_pretty::pprust;
 use rustc_data_structures::sync::Lrc;
 use rustc_parse::parser::{ForceCollect, Parser};
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 
@@ -71,7 +70,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
 
     fn subst_token_stream_bindings(&mut self, ts: TokenStream) -> TokenStream {
         let mut trees = Vec::new();
-        let mut c = ts.into_trees();
+        let mut c = ts.iter().cloned();
         while let Some(tt) = c.next() {
             if let TokenTree::Token(
                 Token {
@@ -109,13 +108,12 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
     }
 }
 
-fn unwrap_or_panic_tts<T, E>(x: Result<T, E>, args: &DelimArgs, kind: &str) -> T
-where
-    E: std::fmt::Debug,
-{
+fn unwrap_or_panic_tts<T>(x: rustc_errors::PResult<'_, T>, args: &DelimArgs, kind: &str) -> T {
     x.unwrap_or_else(|e| {
-        let tts = pprust::tts_to_string(&args.tokens);
-        panic!("Failed to parse {kind} parse!({tts}): {e:?}");
+        let diagnostic = format!("{e:?}");
+        e.cancel();
+        let tts = crate::ast_manip::print::tokens_to_string(&args.tokens);
+        panic!("Failed to parse {kind} parse!({tts}): {diagnostic}");
     })
 }
 
@@ -138,7 +136,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             }
             // Otherwise, fall through
         }
-        mut_visit::noop_visit_ident(i, self)
+        mut_visit::walk_ident(self, i)
     }
 
     fn visit_path(&mut self, p: &mut Path) {
@@ -149,7 +147,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             *p = binding.clone();
         }
 
-        mut_visit::noop_visit_path(p, self);
+        mut_visit::walk_path(self, p);
     }
 
     fn visit_expr(&mut self, e: &mut P<Expr>) {
@@ -165,7 +163,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         // since `visit_label` takes the inner `Label` instead of `Option<Label>`
         match e.kind {
             ExprKind::While(_, _, ref mut label)
-            | ExprKind::ForLoop(_, _, _, ref mut label)
+            | ExprKind::ForLoop { ref mut label, .. }
             | ExprKind::Loop(_, ref mut label, _)
             | ExprKind::Block(_, ref mut label)
             | ExprKind::Break(ref mut label, _)
@@ -174,19 +172,15 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             }
 
             ExprKind::MacCall(ref mc) if mc.path.is_named("parse") => {
-                let mut parser = Parser::new(
-                    &self.cx.session().parse_sess,
-                    mc.args.tokens.clone(),
-                    false,
-                    None,
-                );
+                let mut parser =
+                    Parser::new(&self.cx.session().psess, mc.args.tokens.clone(), None);
                 *e = unwrap_or_panic_tts(parser.parse_expr(), &mc.args, "Expr");
             }
 
             _ => {}
         }
 
-        mut_visit::noop_visit_expr(e, self);
+        mut_visit::walk_expr(self, e);
     }
 
     fn visit_pat(&mut self, p: &mut P<Pat>) {
@@ -200,16 +194,11 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         if let PatKind::MacCall(mc) = &p.kind
             && mc.path.is_named("parse")
         {
-            let mut parser = Parser::new(
-                &self.cx.session().parse_sess,
-                mc.args.tokens.clone(),
-                false,
-                None,
-            );
-            *p = unwrap_or_panic_tts(parser.parse_pat_no_top_alt(None), &mc.args, "Pat");
+            let mut parser = Parser::new(&self.cx.session().psess, mc.args.tokens.clone(), None);
+            *p = unwrap_or_panic_tts(parser.parse_pat_no_top_alt(None, None), &mc.args, "Pat");
         }
 
-        mut_visit::noop_visit_pat(p, self);
+        mut_visit::walk_pat(self, p);
     }
 
     fn visit_ty(&mut self, ty: &mut P<Ty>) {
@@ -224,16 +213,11 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         if let TyKind::MacCall(mc) = &ty.kind
             && mc.path.is_named("parse")
         {
-            let mut parser = Parser::new(
-                &self.cx.session().parse_sess,
-                mc.args.tokens.clone(),
-                false,
-                None,
-            );
+            let mut parser = Parser::new(&self.cx.session().psess, mc.args.tokens.clone(), None);
             *ty = unwrap_or_panic_tts(parser.parse_ty(), &mc.args, "Ty");
         }
 
-        mut_visit::noop_visit_ty(ty, self)
+        mut_visit::walk_ty(self, ty)
     }
 
     fn flat_map_stmt(&mut self, s: Stmt) -> SmallVec<[Stmt; 1]> {
@@ -250,19 +234,22 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         } else if let StmtKind::MacCall(mcs) = &s.kind
             && mcs.mac.path.is_named("parse")
         {
-            let mut parser = Parser::new(
-                &self.cx.session().parse_sess,
-                mcs.mac.args.tokens.clone(),
-                false,
-                None,
-            );
-            unwrap_or_panic_tts(parser.parse_stmt(ForceCollect::No), &mcs.mac.args, "Stmt")
+            let mut parser =
+                Parser::new(&self.cx.session().psess, mcs.mac.args.tokens.clone(), None);
+            // The former public parse_stmt emitted errors and returned None.
+            // Its recovery only advanced the parser, which we discard here.
+            parser
+                .parse_stmt_without_recovery(false, ForceCollect::No)
+                .unwrap_or_else(|error| {
+                    error.emit();
+                    None
+                })
                 .into_iter()
-                .map(|s| mut_visit::noop_flat_map_stmt(s, self))
+                .map(|s| mut_visit::walk_flat_map_stmt(self, s))
                 .flatten()
                 .collect()
         } else {
-            mut_visit::noop_flat_map_stmt(s, self)
+            mut_visit::walk_flat_map_stmt(self, s)
         }
     }
 
@@ -275,26 +262,21 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
         } else if let ItemKind::MacCall(mc) = &i.kind
             && mc.path.is_named("parse")
         {
-            let mut parser = Parser::new(
-                &self.cx.session().parse_sess,
-                mc.args.tokens.clone(),
-                false,
-                None,
-            );
+            let mut parser = Parser::new(&self.cx.session().psess, mc.args.tokens.clone(), None);
             unwrap_or_panic_tts(parser.parse_item(ForceCollect::No), &mc.args, "Item")
                 .into_iter()
-                .map(|i| mut_visit::noop_flat_map_item(i, self))
+                .map(|i| mut_visit::walk_flat_map_item(self, i))
                 .flatten()
                 .collect()
         } else {
-            mut_visit::noop_flat_map_item(i, self)
+            mut_visit::walk_flat_map_item(self, i)
         }
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
         mac.args.tokens = self.subst_token_stream_bindings(std::mem::take(&mut mac.args.tokens));
 
-        mut_visit::noop_visit_mac(mac, self)
+        mut_visit::walk_mac(self, mac)
     }
 }
 

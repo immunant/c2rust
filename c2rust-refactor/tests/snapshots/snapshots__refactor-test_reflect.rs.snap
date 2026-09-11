@@ -1,8 +1,10 @@
 ---
 source: c2rust-refactor/tests/snapshots.rs
+assertion_line: 218
 expression: c2rust-refactor test_reflect --rewrite-mode alongside -- tests/snapshots/test_reflect.rs --edition 2021
 ---
 #![feature(type_ascription)]
+#![feature(builtin_syntax)]
 
 struct S<T>(T);
 
@@ -13,35 +15,33 @@ impl S<(i32, S<Option<i32>>)> {
 fn g() {}
 
 fn main() {
-    let s = (crate::S::<(i32, crate::S<::std::option::Option<i32>>)>: _)(
-        (
-            0: i32,
-            (crate::S::<::std::option::Option<i32>>: _)(
-                ::std::prelude::v1::None: ::std::option::Option<i32>,
-            ): crate::S<::std::option::Option<i32>>,
-        ): (i32, crate::S<::std::option::Option<i32>>),
-    ): crate::S<(i32, crate::S<::std::option::Option<i32>>)>;
-    let x = (s: crate::S<(i32, crate::S<::std::option::Option<i32>>)>).f(): ();
-    let f = crate::S::<(i32, crate::S<::std::option::Option<i32>>)>::f: _;
-    let s = (crate::S::<(i32, crate::S<::std::option::Option<i32>>)>: _)(
-        (
-            1: i32,
-            (crate::S::<::std::option::Option<i32>>: _)(
-                (::std::prelude::v1::Some: _)(2: i32): ::std::option::Option<i32>,
-            ): crate::S<::std::option::Option<i32>>,
-        ): (i32, crate::S<::std::option::Option<i32>>),
-    ): crate::S<(i32, crate::S<::std::option::Option<i32>>)>;
+    let s = builtin # type_ascribe( builtin # type_ascribe(crate::S::<(i32,
+        crate::S<::std::option::Option<i32>>)>, _)(builtin # type_ascribe((builtin # type_ascribe(0, i32), builtin # type_ascribe( builtin # type_ascribe(crate::S::<::std::option::Option<i32>>, _)(builtin # type_ascribe(::std::prelude::v1::None, ::std::option::Option<i32>)),
+    crate::S<::std::option::Option<i32>>)),
+    (i32, crate::S<::std::option::Option<i32>>))),
+    crate::S<(i32, crate::S<::std::option::Option<i32>>)>);
+    let x = builtin # type_ascribe( builtin # type_ascribe( s,
+    crate::S<(i32, crate::S<::std::option::Option<i32>>)>).f(), ());
+    let f = builtin # type_ascribe(crate::S::<(i32,
+        crate::S<::std::option::Option<i32>>)>::f, _);
+    let s = builtin # type_ascribe( builtin # type_ascribe(crate::S::<(i32,
+        crate::S<::std::option::Option<i32>>)>, _)(builtin # type_ascribe((builtin # type_ascribe(1, i32), builtin # type_ascribe( builtin # type_ascribe(crate::S::<::std::option::Option<i32>>, _)(builtin # type_ascribe(builtin # type_ascribe(::std::prelude::v1::Some, _)(builtin # type_ascribe(2, i32)), ::std::option::Option<i32>)),
+    crate::S<::std::option::Option<i32>>)),
+    (i32, crate::S<::std::option::Option<i32>>))),
+    crate::S<(i32, crate::S<::std::option::Option<i32>>)>);
 
-    let mut v = (::std::vec::Vec::<i32>::new: _)(): ::std::vec::Vec<i32>;
-
-    (v: ::std::vec::Vec<i32>).push(123: i32): ();
-    let f = ::std::vec::Vec::<i32>::pop: _;
-
-    (::std::vec::Vec::<i32>::pop: _)(&mut (v: ::std::vec::Vec<i32>): &mut ::std::vec::Vec<i32>):
-        ::std::option::Option<i32>;
-
-    (::std::vec::Vec::<i32>::drain::<::std::ops::RangeFull>: _)(
-        &mut (v: ::std::vec::Vec<i32>): &mut ::std::vec::Vec<i32>,
-        (..): ::std::ops::RangeFull,
-    ): ::std::vec::Drain<i32>;
+    let mut v = builtin # type_ascribe( builtin # type_ascribe(::std::vec::Vec::<i32>::new, _)(), ::std::vec::Vec<i32>);
+    builtin # type_ascribe(
+    builtin # type_ascribe(
+    v, ::std::vec::Vec<i32>).push(builtin # type_ascribe(123, i32)), ());
+    let f = builtin # type_ascribe(::std::vec::Vec::<i32>::pop, _);
+    builtin # type_ascribe(
+    builtin # type_ascribe(::std::vec::Vec::<i32>::pop, _)(builtin # type_ascribe(&mut builtin # type_ascribe( v, ::std::vec::Vec<i32>),
+    &mut ::std::vec::Vec<i32>)),
+    ::std::option::Option<i32>);
+    builtin # type_ascribe(
+    builtin # type_ascribe(::std::vec::Vec::<i32>::drain::<::std::ops::RangeFull>,
+    _)(builtin # type_ascribe(&mut builtin # type_ascribe( v, ::std::vec::Vec<i32>),
+    &mut ::std::vec::Vec<i32>), builtin # type_ascribe( .., ::std::ops::RangeFull)),
+    ::std::vec::Drain<i32>);
 }

@@ -1,12 +1,17 @@
 use log::trace;
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
+use rustc_ast::tokenstream::DelimSpacing;
+use rustc_data_structures::packed::Pu128;
+use rustc_errors::ErrorGuaranteed;
 use std::collections::HashMap;
 
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::source_map::{Span, SyntaxContext};
-use rustc_span::symbol::Ident;
+use rustc_span::{Span, SyntaxContext};
+
+use rustc_span::Ident;
 use rustc_target::spec::abi::Abi;
 use thin_vec::ThinVec;
 
@@ -16,6 +21,7 @@ use rustc_span::source_map::Spanned;
 use rustc_span::{sym, Symbol};
 use std::fmt::Debug;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::ast_manip::util::path_eq;
 use crate::ast_manip::Visit;
@@ -124,7 +130,7 @@ impl<T: AsMacNodeRef + ?Sized + 'static> AsMacNodeRef for P<T> {
 }
 
 impl<'a> Visit for MacNodeRef<'a> {
-    fn visit<'b, V: Visitor<'b>>(&'b self, v: &mut V) {
+    fn visit<'b, V: Visitor<'b, Result = ()>>(&'b self, v: &mut V) {
         match *self {
             MacNodeRef::Expr(x) => v.visit_expr(x),
             MacNodeRef::Pat(x) => v.visit_pat(x),
@@ -383,7 +389,7 @@ fn is_derived<'a>(invoc: InvocKind<'a>, new: MacNodeRef<'a>) -> bool {
                     Some(&i.attrs[..])
                 }
                 MacNodeRef::Stmt(s) => match &s.kind {
-                    StmtKind::Local(l) => Some(&l.attrs[..]),
+                    StmtKind::Let(l) => Some(&l.attrs[..]),
                     StmtKind::Item(i) => {
                         if is_structural_derive(i) {
                             return true;
@@ -445,6 +451,10 @@ impl CollectMacros for FormatArgs {
             CollectMacros::collect_macros(&old.expr, &new.expr, cx);
         }
     }
+}
+
+impl CollectMacros for std::borrow::Cow<'_, str> {
+    fn collect_macros<'a>(_old: &'a Self, _new: &'a Self, _cx: &mut Ctxt<'a>) {}
 }
 
 include!(concat!(env!("OUT_DIR"), "/mac_table_gen.inc.rs"));
@@ -613,7 +623,7 @@ impl MaybeInvoc for Stmt {
     fn as_invoc(&self) -> Option<InvocKind> {
         match &self.kind {
             StmtKind::MacCall(mac) => Some(InvocKind::Mac(&mac.mac)),
-            StmtKind::Local(l) if has_macro_attr(&l.attrs) => Some(InvocKind::Attrs(&l.attrs)),
+            StmtKind::Let(l) if has_macro_attr(&l.attrs) => Some(InvocKind::Attrs(&l.attrs)),
             StmtKind::Item(i) if has_macro_attr(&i.attrs) => Some(InvocKind::Attrs(&i.attrs)),
             StmtKind::Expr(e) | StmtKind::Semi(e) if has_macro_attr(&e.attrs) => {
                 Some(InvocKind::Attrs(&e.attrs))
@@ -626,5 +636,11 @@ impl MaybeInvoc for Stmt {
 impl<T: MaybeInvoc + ?Sized> MaybeInvoc for P<T> {
     fn as_invoc(&self) -> Option<InvocKind> {
         <T as MaybeInvoc>::as_invoc(self)
+    }
+}
+
+impl<T: CollectMacros + ?Sized> CollectMacros for Arc<T> {
+    fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
+        <T as CollectMacros>::collect_macros(old, new, cx);
     }
 }

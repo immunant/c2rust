@@ -14,7 +14,8 @@ use log::info;
 use rustc_ast::token::{Delimiter, Token, TokenKind};
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::source_map::{BytePos, Span};
+use rustc_span::{BytePos, Span};
+
 use rustc_span::DUMMY_SP;
 
 use crate::ast_manip::AstEquiv;
@@ -164,9 +165,10 @@ fn span_empty(sp: Span) -> bool {
 
 fn find_fn_header_arg_list(ts: TokenStream, generics_span: Span) -> Option<(TokenStream, Span)> {
     // Take the body of the first paren-delimited subtree that's strictly after `generics_span`.
-    ts.into_trees()
+    ts.iter()
+        .cloned()
         .filter_map(|tt| match tt {
-            TokenTree::Delimited(sp, delim, tts) => {
+            TokenTree::Delimited(sp, _, delim, tts) => {
                 if delim == Delimiter::Parenthesis && sp.open.lo() >= generics_span.hi() {
                     Some((tts, sp.open.between(sp.close)))
                 } else {
@@ -186,17 +188,19 @@ fn shift_span(sp: Span, offset: BytePos) -> Span {
 /// original source file.
 fn shift_token_stream(ts: TokenStream, offset: BytePos) -> TokenStream {
     TokenStream::new(
-        ts.into_trees()
+        ts.iter()
+            .cloned()
             .map(|tt| match tt {
                 TokenTree::Token(mut token, spacing) => {
                     token.span = shift_span(token.span, offset);
                     TokenTree::Token(token, spacing)
                 }
-                TokenTree::Delimited(sp, delimiter, tokens) => TokenTree::Delimited(
+                TokenTree::Delimited(sp, spacing, delimiter, tokens) => TokenTree::Delimited(
                     DelimSpan {
                         open: shift_span(sp.open, offset),
                         close: shift_span(sp.close, offset),
                     },
+                    spacing,
                     delimiter,
                     shift_token_stream(tokens, offset),
                 ),
@@ -276,7 +280,7 @@ fn rewrite_arg_list_with_tokens(
     // argument lists (`<...>`) aren't `Delimited` like parens etc.  So instead of just looking for
     // commas at top level, we have to find commas that aren't included in any argument span.
     let mut comma_spans = Vec::with_capacity(old.len());
-    let mut tt_iter = args_tokens.into_trees();
+    let mut tt_iter = args_tokens.iter().cloned();
     for (i, old_arg) in old.iter().enumerate() {
         // First, run `tt_iter` forward until we're past `old_arg`.
         assert!(old_arg.ty.span.hi() > old_arg.pat.span.hi()); // sanity check
@@ -365,12 +369,14 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         (
             &ItemKind::Fn(box Fn {
                 sig: ref sig1,
+                defaultness: ref defaultness1,
                 generics: ref generics1,
                 body: ref block1,
                 ..
             }),
             &ItemKind::Fn(box Fn {
                 sig: ref sig2,
+                defaultness: ref defaultness2,
                 generics: ref generics2,
                 body: ref block2,
                 ..
@@ -378,7 +384,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
         ) => {
             let (tokens1_stream, token_generics_span) = if let Some(tokens) = tokens1 {
                 (
-                    tokens.to_attr_token_stream().to_tokenstream(),
+                    TokenStream::new(tokens.to_attr_token_stream().to_token_trees()),
                     generics1.span,
                 )
             } else {
@@ -399,7 +405,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 let Some(tokens) = reparsed.tokens.as_ref() else {
                     return false;
                 };
-                let tokens = tokens.to_attr_token_stream().to_tokenstream();
+                let tokens = TokenStream::new(tokens.to_attr_token_stream().to_token_trees());
                 (
                     shift_token_stream(tokens, offset),
                     shift_span(reparsed_generics.span, offset),
@@ -417,7 +423,9 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
                 Rewrite::rewrite(id1, id2, rcx.borrow()) &&
                 Rewrite::rewrite(span1, span2, rcx.borrow()) &&
                 // ItemKind::Fn parts
-                Rewrite::rewrite(&sig1.header.unsafety, &sig2.header.unsafety, rcx.borrow()) &&
+                Rewrite::rewrite(defaultness1, defaultness2, rcx.borrow()) &&
+                Rewrite::rewrite(&sig1.header.coroutine_kind, &sig2.header.coroutine_kind, rcx.borrow()) &&
+                Rewrite::rewrite(&sig1.header.safety, &sig2.header.safety, rcx.borrow()) &&
                 Rewrite::rewrite(&sig1.header.ext, &sig2.header.ext, rcx.borrow()) &&
                 Rewrite::rewrite(generics1, generics2, rcx.borrow()) &&
                 Rewrite::rewrite(block1, block2, rcx.borrow()) &&

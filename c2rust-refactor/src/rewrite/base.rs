@@ -14,11 +14,16 @@
 //! specialized function, such as `rewrite_seq_comma_sep`) to get better results than the generic
 //! `[T]` implementation.
 use rustc_ast::token::{BinOpToken, CommentKind, Delimiter, Nonterminal, Token, TokenKind};
+use rustc_ast::token::{IdentIsRaw, InvisibleOrigin, MetaVarKind, NtExprKind, NtPatKind};
 use rustc_ast::token::{Lit as TokenLit, LitKind as TokenLitKind};
+use rustc_ast::tokenstream::DelimSpacing;
 use rustc_ast::tokenstream::{DelimSpan, LazyAttrTokenStream, Spacing, TokenStream, TokenTree};
 use rustc_ast::*;
-use rustc_span::source_map::{Span, SyntaxContext};
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_data_structures::packed::Pu128;
+use rustc_errors::ErrorGuaranteed;
+use rustc_span::{Span, SyntaxContext};
+
+use rustc_span::{Ident, Symbol};
 use rustc_target::spec::abi::Abi;
 use thin_vec::ThinVec;
 
@@ -27,13 +32,15 @@ use log::{debug, info, warn};
 use rustc_ast::ptr::P;
 use rustc_ast::util::parser::{AssocOp, Fixity};
 use rustc_session::Session;
-use rustc_span::source_map::{Spanned, DUMMY_SP};
+use rustc_span::source_map::Spanned;
+use rustc_span::DUMMY_SP;
 use rustc_span::{BytePos, Pos};
 use std::fmt::Debug;
 use std::iter::Sum;
 use std::rc::Rc;
+use std::sync::Arc;
 
-use crate::ast_manip::{format_args_structure_equiv, AstDeref, CommentStyle, GetSpan};
+use crate::ast_manip::{format_args_structure_equiv, AstDeref, AstEquiv, CommentStyle, GetSpan};
 
 use super::strategy;
 use super::strategy::print;
@@ -56,15 +63,15 @@ fn non_interpolated_tokens_equal(old: &TokenStream, new: &TokenStream) -> bool {
     fn tree_span(tree: &TokenTree) -> Span {
         match tree {
             TokenTree::Token(token, _) => token.span,
-            TokenTree::Delimited(span, _, _) => span.entire(),
+            TokenTree::Delimited(span, _, _, _) => span.entire(),
         }
     }
 
-    let mut old_trees = old.trees().peekable();
-    for new_tree in new.trees() {
+    let mut old_trees = old.iter().peekable();
+    for new_tree in new.iter() {
         match new_tree {
             TokenTree::Token(new_token, _)
-                if matches!(new_token.kind, TokenKind::Interpolated(..)) =>
+                if crate::ast_manip::print::is_interpolated(&new_token.kind) =>
             {
                 // Consume the old token run this nonterminal replaced.
                 while old_trees.peek().map_or(false, |old_tree| {
@@ -77,8 +84,10 @@ fn non_interpolated_tokens_equal(old: &TokenStream, new: &TokenStream) -> bool {
                 Some(TokenTree::Token(old_token, _)) if old_token.kind == new_token.kind => {}
                 _ => return false,
             },
-            TokenTree::Delimited(_, new_delim, new_tokens) => match old_trees.next() {
-                Some(TokenTree::Delimited(_, old_delim, old_tokens)) if old_delim == new_delim => {
+            TokenTree::Delimited(_, _, new_delim, new_tokens) => match old_trees.next() {
+                Some(TokenTree::Delimited(_, _, old_delim, old_tokens))
+                    if old_delim.ast_equiv(new_delim) =>
+                {
                     if !non_interpolated_tokens_equal(old_tokens, new_tokens) {
                         return false;
                     }
@@ -92,17 +101,17 @@ fn non_interpolated_tokens_equal(old: &TokenStream, new: &TokenStream) -> bool {
 
 fn rewrite_interpolated_tokens(tokens: &TokenStream, rcx: &mut RewriteCtxtRef) -> Option<bool> {
     let mut found = false;
-    for tree in tokens.trees() {
+    for tree in tokens.iter() {
         match tree {
-            TokenTree::Token(token, _) if matches!(token.kind, TokenKind::Interpolated(..)) => {
+            TokenTree::Token(token, _) if crate::ast_manip::print::is_interpolated(&token.kind) => {
                 if !is_rewritable(token.span) {
                     return None;
                 }
-                let text = rustc_ast_pretty::pprust::token_to_string(token);
+                let text = crate::ast_manip::print::token_to_string(token);
                 rcx.record_text(token.span, &text);
                 found = true;
             }
-            TokenTree::Delimited(_, _, tokens) => {
+            TokenTree::Delimited(_, _, _, tokens) => {
                 found |= rewrite_interpolated_tokens(tokens, rcx)?;
             }
             TokenTree::Token(..) => {}
@@ -148,6 +157,12 @@ impl Rewrite for FormatArgs {
 }
 
 // Generic Rewrite impls
+
+impl Rewrite for std::borrow::Cow<'_, str> {
+    fn rewrite(old: &Self, new: &Self, _rcx: RewriteCtxtRef) -> bool {
+        old == new
+    }
+}
 
 impl<T: Rewrite + ?Sized> Rewrite for P<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
@@ -710,5 +725,11 @@ pub fn extend_span_comments_strict(
         Ok(span)
     } else {
         Err(span)
+    }
+}
+
+impl<T: Rewrite + ?Sized> Rewrite for Arc<T> {
+    fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
+        <T as Rewrite>::rewrite(old, new, rcx)
     }
 }

@@ -6,7 +6,8 @@ use std::slice;
 // use rustc_ast::util::comments::Comment as LexComment;
 use rustc_ast::visit::*;
 use rustc_session::parse::ParseSess;
-use rustc_span::source_map::{SourceMap, Span};
+use rustc_span::source_map::SourceMap;
+use rustc_span::Span;
 use rustc_span::{BytePos, CharPos, FileName, Pos};
 
 use crate::ast_manip::Visit;
@@ -127,7 +128,7 @@ impl<'a> Visitor<'a> for CommentCollector<'a> {
     check_comment!(visit_item, Item, walk_item);
     check_comment!(visit_stmt, Stmt, walk_stmt);
     check_comment!(visit_expr, Expr, walk_expr);
-    check_comment!(visit_foreign_item, ForeignItem, walk_foreign_item);
+    check_comment!(visit_foreign_item, ForeignItem, walk_item);
     fn visit_mac_call(&mut self, mac: &'a MacCall) {
         walk_mac(self, mac);
     }

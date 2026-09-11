@@ -1,6 +1,7 @@
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
+use rustc_parse::exp;
 use rustc_parse::new_parser_from_file;
 use rustc_session::parse::ParseSess;
 use rustc_span::source_map::SourceMap;
@@ -22,16 +23,17 @@ impl<'a> MutVisitor for LoadModules<'a> {
             ident,
             kind: ItemKind::Mod(_, mod_kind),
             ..
-        } = &mut *i else {
-            return mut_visit::noop_flat_map_item(i, self);
+        } = &mut *i
+        else {
+            return mut_visit::walk_flat_map_item(self, i);
         };
 
         match mod_kind {
-            ModKind::Loaded(_items, Inline::Yes, _spans) => {
+            ModKind::Loaded(_items, Inline::Yes, _spans, _) => {
                 // TODO: handle #[path="..."]
             }
 
-            ModKind::Loaded(_items, Inline::No, _spans) => {
+            ModKind::Loaded(_items, Inline::No, _spans, _) => {
                 // We shouldn't be seeing any modules at this point that
                 // were loaded from any file other than the crate root
                 // (e.g. lib.rs)
@@ -61,19 +63,22 @@ impl<'a> MutVisitor for LoadModules<'a> {
                     panic!("unable to load module file {mod_file_path:?}");
                 }
 
-                let mut parser =
-                    new_parser_from_file(&self.parse_sess, &mod_file_path, Some(*span));
+                let mut parser = rustc_parse::unwrap_or_emit_fatal(new_parser_from_file(
+                    &self.parse_sess,
+                    &mod_file_path,
+                    Some(*span),
+                ));
                 let (mut inner_attrs, items, inner_span) = parser
-                    .parse_mod(&token::Eof)
+                    .parse_mod(exp!(Eof))
                     .expect("failed to parse {mod_file_path:?}");
 
                 attrs.append(&mut inner_attrs);
-                *mod_kind = ModKind::Loaded(items, Inline::No, inner_span);
+                *mod_kind = ModKind::Loaded(items, Inline::No, inner_span, Ok(()));
             }
         }
 
         self.dir_path.push(ident.as_str());
-        let res = mut_visit::noop_flat_map_item(i, self);
+        let res = mut_visit::walk_flat_map_item(self, i);
         self.dir_path.pop();
 
         res

@@ -9,7 +9,7 @@ use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::HirId;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::mir::{self, Body, LocalInfo, Location, Operand};
-use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability, PointerCast};
+use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability, PointerCoercion};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::Span;
 use std::collections::btree_map::{BTreeMap, Entry};
@@ -224,6 +224,15 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
     fn visit_expr_inner(&mut self, ex: &'tcx hir::Expr<'tcx>) {
         let _g = panic_detail::set_current_span(ex.span);
 
+        // `while` lowering creates an `if` and an `else { break; }` block
+        // with the same span as the generated break. These wrappers have no
+        // source expression to rewrite; let the break own its MIR result.
+        if ex.span.desugaring_kind() == Some(rustc_span::DesugaringKind::WhileLoop)
+            && matches!(ex.kind, hir::ExprKind::If(..) | hir::ExprKind::Block(..))
+        {
+            return;
+        }
+
         let mut locs = self
             .span_index
             .lookup_exact(ex.span)
@@ -324,8 +333,8 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
 
                 for (i, (arg, mir_arg)) in hir_args.zip(mir_args).enumerate() {
                     let sub_loc = vec![SubLoc::Rvalue, SubLoc::CallArg(i)];
-                    self.record_operand(loc, &sub_loc, arg, mir_arg);
-                    self.visit_expr_operand(arg, loc, sub_loc, mir_arg, &[]);
+                    self.record_operand(loc, &sub_loc, arg, &mir_arg.node);
+                    self.visit_expr_operand(arg, loc, sub_loc, &mir_arg.node, &[]);
                 }
 
                 if !extra_locs.is_empty() {
@@ -346,93 +355,88 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             }
 
             // Remaining cases fall through to the default behavior below.
-            hir::ExprKind::Index(_arr_ex, _idx_ex) => {
-                // Look for the following pattern:
-                //      _3 = Len(((*_1).0: [u32; 4]))
-                //      _4 = Lt(_2, _3)
-                //      assert(
-                //          move _4,
-                //          "index out of bounds: the length is {} but the index is {}",
-                //          move _3,
-                //          _2,
-                //      ) -> [success: bb1, unwind: bb2];
+            hir::ExprKind::Index(_arr_ex, _idx_ex, _) => {
+                // Array lengths are constants; slice lengths are PtrMetadata.
+                // Identify the bounds assertion and its exact comparison operands
+                // before discarding compiler-generated work. This avoids matching
+                // an unrelated comparison that shares the index expression's span.
                 let mut match_pattern = || -> Option<()> {
-                    let mut iter = locs.iter().enumerate();
-                    // This pattern of `iter.by_ref().filter_map(..).next()` advances `iter` until
-                    // it produces an item matching the `filter_map` predicate.  The next call with
-                    // this pattern will continue searching from the following item.
-                    let (len_idx, len_var) = iter
-                        .by_ref()
-                        .filter_map(|(i, &loc)| {
-                            // Look for `_len = Len(_)`
-                            let stmt = self.mir.stmt_at(loc).left()?;
-                            if let mir::StatementKind::Assign(ref x) = stmt.kind {
-                                let (ref pl, ref rv) = **x;
-                                let pl_var = pl.as_local()?;
-                                if matches!(rv, mir::Rvalue::Len(_)) {
-                                    return Some((i, pl_var));
-                                }
-                            }
-                            None
-                        })
-                        .next()?;
-                    let (lt_idx, lt_var) = iter
-                        .by_ref()
-                        .filter_map(|(i, &loc)| {
-                            // Look for `_ok = Lt(_, _len)`
-                            let stmt = self.mir.stmt_at(loc).left()?;
-                            if let mir::StatementKind::Assign(ref x) = stmt.kind {
-                                let (ref pl, ref rv) = **x;
-                                let pl_var = pl.as_local()?;
-                                if let mir::Rvalue::BinaryOp(mir::BinOp::Lt, ref ops) = *rv {
-                                    let (_, ref op2) = **ops;
-                                    let op2_var = op2.place()?.as_local()?;
-                                    if op2_var == len_var {
-                                        return Some((i, pl_var));
-                                    }
-                                }
-                            }
-                            None
-                        })
-                        .next()?;
-                    let assert_idx = iter
-                        .by_ref()
-                        .filter_map(|(i, &loc)| {
-                            // Look for `Assert(_ok, ..)`
+                    let (assert_idx, cond, len, index) =
+                        locs.iter().enumerate().find_map(|(i, &loc)| {
                             let term = self.mir.stmt_at(loc).right()?;
-                            if let mir::TerminatorKind::Assert { ref cond, .. } = term.kind {
-                                let cond_var = cond.place()?.as_local()?;
-                                if cond_var == lt_var {
-                                    return Some(i);
+                            if let mir::TerminatorKind::Assert {
+                                cond,
+                                expected: true,
+                                msg,
+                                ..
+                            } = &term.kind
+                            {
+                                if let mir::AssertMessage::BoundsCheck { len, index } = &**msg {
+                                    return Some((i, cond.place()?.as_local()?, len, index));
                                 }
                             }
                             None
-                        })
-                        .next()?;
-
-                    // All three parts were found.  Mark them as `discard`, then remove them from
-                    // `locs`.
-                    self.unlower_map.discard.insert(locs[len_idx]);
-                    self.unlower_map.discard.insert(locs[lt_idx]);
-                    self.unlower_map.discard.insert(locs[assert_idx]);
-
-                    if lt_idx == len_idx + 1 && assert_idx == len_idx + 2 {
-                        // All three locations are consecutive.  Remove them with `drain`.
-                        locs.drain(lt_idx..=assert_idx);
-                    } else {
-                        // Remove the three locations separately.  Remove in reverse order to avoid
-                        // perturbing the other indices.
-                        debug_assert!(assert_idx > lt_idx);
-                        debug_assert!(lt_idx > len_idx);
-                        locs.remove(assert_idx);
-                        locs.remove(lt_idx);
-                        locs.remove(len_idx);
+                        })?;
+                    let lt_idx = locs[..assert_idx].iter().rposition(|&loc| {
+                        let Some(stmt) = self.mir.stmt_at(loc).left() else {
+                            return false;
+                        };
+                        if let mir::StatementKind::Assign(assign) = &stmt.kind {
+                            if let mir::Rvalue::BinaryOp(mir::BinOp::Lt, ops) = &assign.1 {
+                                return assign.0.as_local() == Some(cond)
+                                    && same_operand_value(&ops.0, index)
+                                    && same_operand_value(&ops.1, len);
+                            }
+                        }
+                        false
+                    })?;
+                    let mut discard = vec![lt_idx, assert_idx];
+                    if let Some(len_local) = len.place().and_then(|pl| pl.as_local()) {
+                        let (len_idx, ptr) =
+                            locs[..lt_idx]
+                                .iter()
+                                .enumerate()
+                                .rev()
+                                .find_map(|(i, &loc)| {
+                                    let stmt = self.mir.stmt_at(loc).left()?;
+                                    if let mir::StatementKind::Assign(assign) = &stmt.kind {
+                                        if assign.0.as_local() == Some(len_local) {
+                                            if let mir::Rvalue::UnaryOp(
+                                                mir::UnOp::PtrMetadata,
+                                                ptr,
+                                            ) = &assign.1
+                                            {
+                                                return Some((i, ptr));
+                                            }
+                                        }
+                                    }
+                                    None
+                                })?;
+                        discard.push(len_idx);
+                        // Mutable/nontrivial slice places need a temporary raw
+                        // reborrow. Its desugaring marker distinguishes this
+                        // temporary from user-written raw-pointer expressions.
+                        if let Some(ptr_local) = ptr.place().and_then(|pl| pl.as_local()) {
+                            if let Some(reborrow_idx) = locs[..len_idx].iter().rposition(|&loc| {
+                                let Some(stmt) = self.mir.stmt_at(loc).left() else {
+                                    return false;
+                                };
+                                stmt.source_info.span.desugaring_kind()
+                                    == Some(rustc_span::DesugaringKind::IndexBoundsCheckReborrow)
+                                    && matches!(&stmt.kind, mir::StatementKind::Assign(assign)
+                                        if assign.0.as_local() == Some(ptr_local)
+                                        && matches!(assign.1, mir::Rvalue::RawPtr(_, _)))
+                            }) {
+                                discard.push(reborrow_idx);
+                            }
+                        }
                     }
-
+                    discard.sort_unstable();
+                    for i in discard.into_iter().rev() {
+                        self.unlower_map.discard.insert(locs.remove(i));
+                    }
                     Some(())
                 };
-                // `match_pattern` returns `Option` only so we can bail out with `?`.  The result
-                // is unused.
                 let _ = match_pattern();
             }
 
@@ -456,6 +460,16 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
         };
         self.record_desc(cursor.loc, &[], ex, MirOriginDesc::StoreIntoLocal);
         self.walk_expr(ex, &mut cursor);
+        if let hir::ExprKind::Cast(operand, _) = ex.kind {
+            // Coercions performed as part of an `as` cast have the cast's
+            // span in MIR, but belong to the operand's HIR adjustments. The
+            // explicit cast has been handled above; visit its operand with
+            // the remaining producer statements, as for method receivers.
+            self.append_extra_locations
+                .entry(operand.hir_id)
+                .or_default()
+                .extend_from_slice(cursor.locs);
+        }
         self.finish_visit_expr_cursor(ex, cursor);
     }
 
@@ -518,17 +532,31 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
             let loc = cursor.loc;
             let sub_loc = cursor.sub_loc.clone();
             match adjust.kind {
+                Adjust::ReborrowPin(mutbl) => {
+                    if cursor.peel_pin(self.tcx).is_none()
+                        || cursor.peel_ref() != Some(mutbl)
+                        || cursor.peel_deref().is_none()
+                        || cursor.peel_field().is_none()
+                    {
+                        warn!(
+                            "expected Pin {{ __pointer: &*expr.__pointer }} for \
+                            {adjust:?} on expr {ex:?}, but got {:?}",
+                            cursor.cur
+                        );
+                        break;
+                    }
+                }
                 Adjust::Borrow(AutoBorrow::RawPtr(mutbl)) => {
                     if cursor.peel_address_of() != Some(mutbl) {
                         warn!(
-                            "expected Rvalue::AddressOf for {adjust:?} on expr {ex:?}, \
+                            "expected Rvalue::RawPtr for {adjust:?} on expr {ex:?}, \
                             but got {:?}",
                             cursor.cur
                         );
                         break;
                     }
                 }
-                Adjust::Borrow(AutoBorrow::Ref(_, AutoBorrowMutability::Not)) => {
+                Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Not)) => {
                     if cursor.peel_ref() != Some(mir::Mutability::Not) {
                         warn!(
                             "expected Rvalue::Ref(Mutability::Not) for {adjust:?} \
@@ -538,7 +566,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                         break;
                     }
                 }
-                Adjust::Borrow(AutoBorrow::Ref(_, AutoBorrowMutability::Mut { .. })) => {
+                Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { .. })) => {
                     if cursor.peel_ref() != Some(mir::Mutability::Mut) {
                         warn!(
                             "expected Rvalue::Ref(Mutability::Mut) for {adjust:?} \
@@ -690,7 +718,7 @@ impl<'a, 'tcx> UnlowerVisitor<'a, 'tcx> {
                         continue;
                     }
                 }
-                hir::ExprKind::Index(arr_ex, _idx_ex) => {
+                hir::ExprKind::Index(arr_ex, _idx_ex, _) => {
                     if let Some(()) = cursor.peel_index() {
                         ex = arr_ex;
                         continue;
@@ -880,7 +908,7 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
             },
         };
 
-        if !is_temp_var(self.mir, assign_pl.as_ref()) {
+        if assign_pl.as_ref() != pl || !is_temp_var(self.mir, assign_pl.as_ref()) {
             return None;
         }
 
@@ -931,10 +959,26 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
         }
     }
 
-    /// If the current MIR is `Rvalue::AddressOf`, peel it off and return its `Mutability`.
+    /// Peel the `Pin` aggregate wrapping a reborrow of its reference field.
+    pub fn peel_pin(&mut self, tcx: TyCtxt<'tcx>) -> Option<()> {
+        loop {
+            if let ExprMir::Rvalue(mir::Rvalue::Aggregate(kind, operands)) = self.cur {
+                if let mir::AggregateKind::Adt(def_id, ..) = **kind {
+                    if Some(def_id) == tcx.lang_items().pin_type() && operands.len() == 1 {
+                        self.cur = ExprMir::Operand(operands.iter().next().unwrap());
+                        self.sub_loc.push(SubLoc::RvalueOperand(0));
+                        return Some(());
+                    }
+                }
+            }
+            self.peel_temp()?;
+        }
+    }
+
+    /// If the current MIR is `Rvalue::RawPtr`, peel it off and return its `Mutability`.
     pub fn peel_address_of(&mut self) -> Option<mir::Mutability> {
         loop {
-            if let ExprMir::Rvalue(&mir::Rvalue::AddressOf(mutbl, pl)) = self.cur {
+            if let ExprMir::Rvalue(&mir::Rvalue::RawPtr(mutbl, pl)) = self.cur {
                 self.cur = ExprMir::Place(pl.as_ref());
                 self.sub_loc.push(SubLoc::RvaluePlace(0));
                 return Some(mutbl);
@@ -1007,12 +1051,12 @@ impl<'a, 'b, 'tcx> VisitExprCursor<'a, 'b, 'tcx> {
     }
 
     /// If the current MIR is `Rvalue::Cast` with `CastKind::Pointer`, peel it off and
-    /// return the `PointerCast` kind.
-    pub fn peel_pointer_cast(&mut self) -> Option<PointerCast> {
+    /// return the `PointerCoercion` kind.
+    pub fn peel_pointer_cast(&mut self) -> Option<PointerCoercion> {
         loop {
             if let ExprMir::Rvalue(&mir::Rvalue::Cast(kind, ref op, _)) = self.cur {
                 let pc = match kind {
-                    mir::CastKind::Pointer(x) => x,
+                    mir::CastKind::PointerCoercion(x, _) => x,
                     _ => return None,
                 };
                 self.cur = ExprMir::Operand(op);
@@ -1064,6 +1108,14 @@ fn get_operand_place<'tcx>(op: &mir::Operand<'tcx>) -> Option<mir::Place<'tcx>> 
     }
 }
 
+fn same_operand_value<'tcx>(a: &mir::Operand<'tcx>, b: &mir::Operand<'tcx>) -> bool {
+    match (get_operand_place(a), get_operand_place(b)) {
+        // The comparison copies its length; the final assert can move it.
+        (Some(a), Some(b)) => a == b,
+        _ => a == b,
+    }
+}
+
 /// Indicate whether a given MIR statement should be considered when building the unlowering map.
 fn filter_stmt(stmt: &mir::Statement) -> bool {
     // Ignore annotations and non-semantic place mentions.  These can appear in the middle or at
@@ -1071,13 +1123,19 @@ fn filter_stmt(stmt: &mir::Statement) -> bool {
     // actually computes the expression.
     !matches!(
         stmt.kind,
-        mir::StatementKind::AscribeUserType(..) | mir::StatementKind::PlaceMention(..)
+        mir::StatementKind::AscribeUserType(..)
+            | mir::StatementKind::PlaceMention(..)
+            | mir::StatementKind::BackwardIncompatibleDropHint { .. }
     )
 }
 
 /// Indicate whether a given MIR terminator should be considered when building the unlowering map.
-fn filter_term(_term: &mir::Terminator) -> bool {
-    true
+fn filter_term(term: &mir::Terminator) -> bool {
+    // A condition's branch now shares its span with the expression computing
+    // the discriminant. It produces no value and has no pointer rewrite of
+    // its own; keep the assignment/call producing the discriminant as the
+    // final location for that expression.
+    !matches!(term.kind, mir::TerminatorKind::SwitchInt { .. })
 }
 
 fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
@@ -1093,7 +1151,15 @@ fn build_span_index(mir: &Body<'_>) -> SpanIndex<Location> {
                 statement_index: i,
             };
             debug!("  {:?}: {:?}", loc, stmt.source_info.span);
-            span_index_items.push((stmt.source_info.span, loc));
+            let mut span = stmt.source_info.span;
+            if span.desugaring_kind() == Some(rustc_span::DesugaringKind::IndexBoundsCheckReborrow)
+            {
+                // The bounds-check reborrow has one additional hygiene mark.
+                // Remove only that mark so the index visitor can verify its
+                // producer chain; retain any surrounding macro context.
+                span = span.parent_callsite().unwrap();
+            }
+            span_index_items.push((span, loc));
         }
 
         let term = bb_data.terminator();
@@ -1196,10 +1262,100 @@ pub fn unlower<'tcx>(tcx: TyCtxt<'tcx>, mir: &Body<'tcx>, hir_body_id: hir::Body
         for (&hir_id, locs) in &visitor.append_extra_locations {
             error!(
                 "leftover locations for {hir_id:?} = {:?}: locs = {locs:?}",
-                tcx.hir().get(hir_id)
+                tcx.hir_node(hir_id)
             );
         }
     }
 
     visitor.unlower_map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustc_driver::{Callbacks, Compilation, RunCompiler};
+
+    #[test]
+    fn pin_reborrows_have_adjustment_and_expression_origins() {
+        struct CheckOrigins;
+        impl Callbacks for CheckOrigins {
+            fn after_expansion<'tcx>(
+                &mut self,
+                _: &rustc_interface::interface::Compiler,
+                tcx: TyCtxt<'tcx>,
+            ) -> Compilation {
+                let id = tcx
+                    .hir()
+                    .body_owners()
+                    .find(|&id| tcx.item_name(id.to_def_id()).as_str() == "exercise")
+                    .unwrap();
+                let hir = tcx.hir().body_owned_by(id);
+                let mir = tcx.mir_built(id).borrow();
+                let origins = unlower(tcx, &mir, hir.id());
+                let typeck = tcx.typeck(id);
+                let mut mutable = 0;
+                let mut shared = 0;
+                for origin in origins.origins.values() {
+                    let MirOriginDesc::Adjustment(i) = origin.desc else {
+                        continue;
+                    };
+                    let hir::Node::Expr(expr) = tcx.hir_node(origin.hir_id) else {
+                        continue;
+                    };
+                    let adjust = &typeck.expr_adjustments(expr)[i];
+                    let Adjust::ReborrowPin(mutbl) = adjust.kind else {
+                        continue;
+                    };
+                    match mutbl {
+                        hir::Mutability::Mut => mutable += 1,
+                        hir::Mutability::Not => shared += 1,
+                    }
+                    // Peeling must reach the original Pin expression, past
+                    // the aggregate, borrow, dereference, and private field.
+                    assert!(
+                        origins.origins.iter().any(|(loc, other)| {
+                            other.hir_id == origin.hir_id
+                                && other.desc == MirOriginDesc::Expr
+                                && loc.sub.ends_with(&[SubLoc::PlaceFieldBase])
+                        }),
+                        "{origins:?}"
+                    );
+                }
+                assert_eq!((mutable, shared), (2, 1));
+                Compilation::Stop
+            }
+        }
+        let dir = std::env::temp_dir().join(format!("c2rust-pin-origins-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pin.rs");
+        std::fs::write(
+            &path,
+            r#"
+#![feature(pin_ergonomics)]
+#![allow(incomplete_features)]
+use std::pin::Pin;
+fn update(mut p: Pin<&mut i32>) { *p += 1; }
+fn read(p: Pin<&i32>) -> i32 { *p }
+fn exercise(p: Pin<&mut i32>) -> i32 {
+    update(p);
+    update(p);
+    read(p)
+}
+"#,
+        )
+        .unwrap();
+        let sysroot = c2rust_build_paths::SysRoot::resolve();
+        RunCompiler::new(
+            &[
+                "rustc".into(),
+                path.to_str().unwrap().into(),
+                "--sysroot".into(),
+                sysroot.sysroot().to_str().unwrap().into(),
+                "--crate-type=lib".into(),
+            ],
+            &mut CheckOrigins,
+        )
+        .run();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

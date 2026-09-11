@@ -8,9 +8,9 @@ use rustc_ast::*;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
 use rustc_middle::ty;
-use rustc_span::symbol::Symbol;
 use rustc_span::Span;
-use rustc_type_ir::sty;
+use rustc_span::Symbol;
+use rustc_type_ir as sty;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
@@ -381,12 +381,14 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             Res::PrimTy(prim_ty) => {
                 let source = match prim_ty {
                     // TODO: check generics
-                    hir::PrimTy::Int(it) => LitTySource::Actual(tcx.mk_mach_int(ty::int_ty(it))),
+                    hir::PrimTy::Int(it) => {
+                        LitTySource::Actual(ty::Ty::new_int(tcx, ty::int_ty(it)))
+                    }
                     hir::PrimTy::Uint(uit) => {
-                        LitTySource::Actual(tcx.mk_mach_uint(ty::uint_ty(uit)))
+                        LitTySource::Actual(ty::Ty::new_uint(tcx, ty::uint_ty(uit)))
                     }
                     hir::PrimTy::Float(ft) => {
-                        LitTySource::Actual(tcx.mk_mach_float(ty::float_ty(ft)))
+                        LitTySource::Actual(ty::Ty::new_float(tcx, ty::float_ty(ft)))
                     }
                     _ => LitTySource::Unknown(false),
                 };
@@ -400,10 +402,8 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // This is a local variable that may have a type,
                 // try to get that type and unify it
                 let pid = self.cx.hir_map().get_parent_node(id);
-                let node = match_or!([tcx.hir().find(pid)]
-                                     Some(x) => x;
-                                     return self.new_empty_node());
-                let l = match_or!([node] hir::Node::Local(l) => l;
+                let node = tcx.hir_node(pid);
+                let l = match_or!([node] hir::Node::LetStmt(l) => l;
                                   return self.new_empty_node());
                 let lty = match_or!([l.ty] Some(ref lty) => lty;
                                     return self.new_empty_node());
@@ -419,7 +419,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
     fn def_id_to_key_tree(&mut self, did: hir::def_id::DefId, sp: Span) -> LitTyKeyTree<'kt, 'tcx> {
         let tcx = self.cx.ty_ctxt();
-        let ty = tcx.at(sp).type_of(did).subst_identity();
+        let ty = tcx.at(sp).type_of(did).instantiate_identity();
         self.ty_to_key_tree(ty, true)
     }
 
@@ -485,7 +485,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             sty::TyKind::Array(ty, _)
             | sty::TyKind::Slice(ty)
-            | sty::TyKind::RawPtr(ty::TypeAndMut { ty, .. })
+            | sty::TyKind::RawPtr(ty, _)
             | sty::TyKind::Ref(_, ty, _) => {
                 let ty_kt = self.ty_to_key_tree_internal(*ty, mach_actual, seen);
                 self.replace_with_node(new_node, &[ty_kt]);
@@ -495,10 +495,10 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 // Since we're using the original signature
                 // and not performing any substitutions,
                 // it's safe to include the machine types
-                fn_sig_to_key_tree(tcx.fn_sig(def_id).subst_identity(), true);
+                fn_sig_to_key_tree(tcx.fn_sig(def_id).instantiate_identity(), true);
             }
-            sty::TyKind::FnPtr(fn_sig) => {
-                fn_sig_to_key_tree(*fn_sig, mach_actual);
+            sty::TyKind::FnPtr(fn_sig, header) => {
+                fn_sig_to_key_tree(fn_sig.with(*header), mach_actual);
             }
 
             // TODO: Closure
@@ -740,7 +740,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // TODO: unify loops
-            ExprKind::Match(ref e, ref arms) => {
+            ExprKind::Match(ref e, ref arms, _) => {
                 let pat_key_tree = self.expr_ty_to_key_tree(e);
                 self.visit_expr_unify(e, pat_key_tree);
                 for arm in arms {
@@ -748,7 +748,9 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                     if let Some(ref guard) = arm.guard {
                         self.visit_expr(guard);
                     }
-                    self.visit_expr_unify(&arm.body, kt);
+                    if let Some(body) = &arm.body {
+                        self.visit_expr_unify(body, kt);
+                    }
                     for attr in &arm.attrs {
                         self.visit_attribute(attr);
                     }
@@ -787,7 +789,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             ExprKind::Field(ref e, ident) => {
                 let inner_key_tree = self.expr_ty_to_key_tree(e);
                 self.visit_expr_unify(e, inner_key_tree);
-                self.visit_ident(ident);
+                self.visit_ident(&ident);
                 if let Some(struct_ty) = self.cx.opt_adjusted_node_type(e.id) {
                     let tcx = self.cx.ty_ctxt();
                     let ch = inner_key_tree.get().children();
@@ -849,7 +851,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 }
             }
 
-            ExprKind::Index(ref e, ref idx) => {
+            ExprKind::Index(ref e, ref idx, _) => {
                 let e_key_tree = self.expr_ty_to_key_tree(e);
                 self.visit_expr_unify(e, e_key_tree);
 
@@ -955,7 +957,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         match p.kind {
             PatKind::Ident(_, ident, Some(ref pat)) => {
                 // `ref? mut? ident @ pat`, handle it as `pat`
-                self.visit_ident(ident);
+                self.visit_ident(&ident);
                 return self.visit_pat_unify(pat, kt);
             }
 
@@ -1230,15 +1232,15 @@ impl<'tcx> LitTySource<'tcx> {
         };
         match LitKind::from_token_lit(*lit).unwrap() {
             LitKind::Int(_, LitIntType::Signed(int_ty)) => {
-                LitTySource::Suffix(tcx.mk_mach_int(ty::int_ty(int_ty)), false)
+                LitTySource::Suffix(ty::Ty::new_int(tcx, ty::int_ty(int_ty)), false)
             }
 
             LitKind::Int(_, LitIntType::Unsigned(uint_ty)) => {
-                LitTySource::Suffix(tcx.mk_mach_uint(ty::uint_ty(uint_ty)), false)
+                LitTySource::Suffix(ty::Ty::new_uint(tcx, ty::uint_ty(uint_ty)), false)
             }
 
             LitKind::Float(_, LitFloatType::Suffixed(float_ty)) => {
-                LitTySource::Suffix(tcx.mk_mach_float(ty::float_ty(float_ty)), false)
+                LitTySource::Suffix(ty::Ty::new_float(tcx, ty::float_ty(float_ty)), false)
             }
 
             _ => LitTySource::Unknown(false),

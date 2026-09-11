@@ -2,7 +2,7 @@ use log::debug;
 use rustc_ast::ptr::P;
 use rustc_ast::token::{self, Lit};
 use rustc_ast::*;
-use rustc_middle::ty::{self, ParamEnv, TyKind};
+use rustc_middle::ty::{self, TyKind};
 use rustc_span::Symbol;
 
 use crate::ast_builder::mk;
@@ -31,11 +31,11 @@ impl Transform for RemoveRedundantCasts {
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let oe = mcx.bindings.get::<_, P<Expr>>("$oe").unwrap();
             let oe_ty = cx.node_type(oe.id);
-            let oe_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), oe_ty);
+            let oe_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), oe_ty);
 
             let ot = mcx.bindings.get::<_, P<Ty>>("$ot").unwrap();
             let ot_ty = cx.node_type(ot.id);
-            let ot_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ot_ty);
+            let ot_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), ot_ty);
             debug!(
                 "checking cast: {:?}, types: {:?} => {:?}",
                 ast, oe_ty, ot_ty
@@ -46,10 +46,12 @@ impl Transform for RemoveRedundantCasts {
                 ExprKind::Cast(ref ie, ref it) => {
                     // Found a double cast
                     let ie_ty = cx.node_type(ie.id);
-                    let ie_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ie_ty);
+                    let ie_ty =
+                        tcx.normalize_erasing_regions(crate::context::empty_typing_env(), ie_ty);
 
                     let it_ty = cx.node_type(it.id);
-                    let it_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), it_ty);
+                    let it_ty =
+                        tcx.normalize_erasing_regions(crate::context::empty_typing_env(), it_ty);
                     debug!("inner cast: {:?} => {:?}", ie_ty, it_ty);
 
                     match check_double_cast(ie_ty.into(), it_ty.into(), ot_ty.into()) {
@@ -323,7 +325,7 @@ impl<'tcx> From<ty::Ty<'tcx>> for SimpleTy {
                 _ => Ref,
             },
 
-            TyKind::RawPtr(_) | TyKind::FnPtr(_) => Pointer,
+            TyKind::RawPtr(..) | TyKind::FnPtr(..) => Pointer,
 
             _ => Other,
         }
@@ -429,8 +431,14 @@ enum ConstantValue {
 }
 
 impl ConstantValue {
-    fn cast(self, ty: SimpleTy) -> Self {
+    fn cast(self, ty: SimpleTy, pointer_bits: u64) -> Self {
         use ConstantValue::*;
+        // Evaluate pointer-sized integers for the compilation target, which
+        // can differ from the host running the refactorer.
+        let ty = match ty {
+            SimpleTy::Size(signed) => SimpleTy::Int(pointer_bits, signed),
+            ty => ty,
+        };
         macro_rules! match_ty {
             ($($pat:pat => $const_ty:ident[$($as_ty:ty),*]),*) => {
                 match (self, &ty) {
@@ -455,8 +463,6 @@ impl ConstantValue {
             SimpleTy::Int(32, true) => Int[i32, i128],
             SimpleTy::Int(64, true) => Int[i64, i128],
             SimpleTy::Int(128, true) => Int[i128],
-            SimpleTy::Size(false) => Uint[usize, u128],
-            SimpleTy::Size(true) => Int[isize, i128],
             SimpleTy::Float32 => Float32[f32],
             SimpleTy::Float64 => Float64[f64]
         }
@@ -467,54 +473,60 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
     match e.kind {
         ExprKind::Lit(ref lit) => {
             match LitKind::from_token_lit(*lit).ok()? {
-                LitKind::Int(i, LitIntType::Unsuffixed) => Some(ConstantValue::Uint(i)),
+                LitKind::Int(i, LitIntType::Unsuffixed) => Some(ConstantValue::Uint(i.get())),
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::Isize)) => {
-                    Some(ConstantValue::Int(i as i16 as i128))
+                    Some(ConstantValue::Uint(i.get()).cast(
+                        SimpleTy::Size(true),
+                        cx.ty_ctxt().data_layout.pointer_size.bits(),
+                    ))
                 }
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::I8)) => {
-                    Some(ConstantValue::Int(i as i8 as i128))
+                    Some(ConstantValue::Int(i.get() as i8 as i128))
                 }
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::I16)) => {
-                    Some(ConstantValue::Int(i as i16 as i128))
+                    Some(ConstantValue::Int(i.get() as i16 as i128))
                 }
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::I32)) => {
-                    Some(ConstantValue::Int(i as i32 as i128))
+                    Some(ConstantValue::Int(i.get() as i32 as i128))
                 }
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::I64)) => {
-                    Some(ConstantValue::Int(i as i64 as i128))
+                    Some(ConstantValue::Int(i.get() as i64 as i128))
                 }
 
                 LitKind::Int(i, LitIntType::Signed(IntTy::I128)) => {
-                    Some(ConstantValue::Int(i as i128))
+                    Some(ConstantValue::Int(i.get() as i128))
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::Usize)) => {
-                    Some(ConstantValue::Uint(i as u16 as u128))
+                    Some(ConstantValue::Uint(i.get()).cast(
+                        SimpleTy::Size(false),
+                        cx.ty_ctxt().data_layout.pointer_size.bits(),
+                    ))
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::U8)) => {
-                    Some(ConstantValue::Uint(i as u8 as u128))
+                    Some(ConstantValue::Uint(i.get() as u8 as u128))
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::U16)) => {
-                    Some(ConstantValue::Uint(i as u16 as u128))
+                    Some(ConstantValue::Uint(i.get() as u16 as u128))
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::U32)) => {
-                    Some(ConstantValue::Uint(i as u32 as u128))
+                    Some(ConstantValue::Uint(i.get() as u32 as u128))
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::U64)) => {
-                    Some(ConstantValue::Uint(i as u64 as u128))
+                    Some(ConstantValue::Uint(i.get() as u64 as u128))
                 }
 
                 LitKind::Int(i, LitIntType::Unsigned(UintTy::U128)) => {
-                    Some(ConstantValue::Uint(i as u128))
+                    Some(ConstantValue::Uint(i.get() as u128))
                 }
 
                 LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F32)) => {
@@ -551,9 +563,9 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
         ExprKind::Cast(ref ie, ref ty) => {
             let tcx = cx.ty_ctxt();
             let ty_ty = cx.node_type(ty.id);
-            let ty_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), ty_ty);
+            let ty_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), ty_ty);
             let ic = eval_const(ie.clone(), cx)?;
-            Some(ic.cast(SimpleTy::from(ty_ty)))
+            Some(ic.cast(SimpleTy::from(ty_ty), tcx.data_layout.pointer_size.bits()))
         }
 
         _ => unreachable!("Unexpected ExprKind"),

@@ -1,15 +1,16 @@
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use log::{debug, info, trace};
-use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::token::Lit;
-use rustc_ast::token::{BinOpToken, TokenKind};
+use rustc_ast::token::{IdentIsRaw, TokenKind};
 use rustc_ast::*;
 use rustc_ast_pretty::pprust;
-use rustc_data_structures::stable_hasher::StableHasher;
-use rustc_errors::{Diagnostic, PResult, TRACK_DIAGNOSTICS};
+use rustc_data_structures::stable_hasher::{Hash128, StableHasher};
+use rustc_errors::{DiagInner, DiagMessage, ErrorGuaranteed, PResult, TRACK_DIAGNOSTIC};
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::ty::{self, ParamEnv, TyCtxt, TyKind};
+use rustc_middle::ty::{self, TyCtxt, TyKind};
+use rustc_parse::exp;
 use rustc_parse::parser::Parser;
 use rustc_span::Span;
 use smallvec::{smallvec, SmallVec};
@@ -47,27 +48,76 @@ fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn track_autoretype_diagnostic(diagnostic: &mut Diagnostic, emit: &mut dyn FnMut(&mut Diagnostic)) {
+fn track_autoretype_diagnostic(
+    diagnostic: DiagInner,
+    emit: &mut dyn FnMut(DiagInner) -> Option<ErrorGuaranteed>,
+) -> Option<ErrorGuaranteed> {
     if diagnostic.is_error() {
         let mut hasher = StableHasher::new();
         diagnostic.hash(&mut hasher);
-        let fingerprint = hasher.finish();
+        let fingerprint = hasher.finish::<Hash128>().as_u128();
         if let Some(diagnostics) = lock_unpoisoned(&AUTORETYPE_DIAGNOSTICS).as_mut() {
             diagnostics.push(fingerprint);
         }
     }
+    if diagnostic.is_lint.is_some()
+        && diagnostic.messages.iter().any(|(message, _)| {
+            matches!(message, DiagMessage::FluentIdentifier(id, None) if id.as_ref() == "mir_build_unused_unsafe")
+        })
+    {
+        if let Some(spans) = lock_unpoisoned(&UNUSED_UNSAFE_SPANS).as_mut() {
+            spans.extend(diagnostic.span.primary_spans().iter().copied());
+        }
+    }
     let previous = *lock_unpoisoned(&PREVIOUS_DIAGNOSTIC_TRACKER);
-    previous(diagnostic, emit);
+    previous(diagnostic, emit)
 }
 
-type DiagnosticTracker = fn(&mut Diagnostic, &mut dyn FnMut(&mut Diagnostic));
+type DiagnosticTracker =
+    fn(DiagInner, &mut dyn FnMut(DiagInner) -> Option<ErrorGuaranteed>) -> Option<ErrorGuaranteed>;
 
 static AUTORETYPE_DIAGNOSTIC_TRACKER: DiagnosticTracker = track_autoretype_diagnostic;
 static PREVIOUS_DIAGNOSTIC_TRACKER: Mutex<DiagnosticTracker> =
     Mutex::new(emit_untracked_diagnostic);
 
-fn emit_untracked_diagnostic(diagnostic: &mut Diagnostic, emit: &mut dyn FnMut(&mut Diagnostic)) {
-    emit(diagnostic);
+fn emit_untracked_diagnostic(
+    diagnostic: DiagInner,
+    emit: &mut dyn FnMut(DiagInner) -> Option<ErrorGuaranteed>,
+) -> Option<ErrorGuaranteed> {
+    emit(diagnostic)
+}
+
+fn install_diagnostic_tracker() {
+    let previous = TRACK_DIAGNOSTIC.swap(&AUTORETYPE_DIAGNOSTIC_TRACKER);
+    if !std::ptr::eq(previous, &AUTORETYPE_DIAGNOSTIC_TRACKER) {
+        *lock_unpoisoned(&PREVIOUS_DIAGNOSTIC_TRACKER) = *previous;
+    }
+}
+
+static UNUSED_UNSAFE_SPANS: Mutex<Option<Vec<Span>>> = Mutex::new(None);
+static UNUSED_UNSAFE_CAPTURE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Capture rustc's structured unused-unsafe lint while preserving its normal emission.
+/// The compiler's THIR checker no longer returns an unused-block query result.
+/// Its untranslated diagnostic identifier is used, never localized message text.
+pub(crate) fn collect_unused_unsafe_spans<R>(f: impl FnOnce() -> R) -> (R, Vec<Span>) {
+    let _guard = lock_unpoisoned(&UNUSED_UNSAFE_CAPTURE_LOCK);
+    install_diagnostic_tracker();
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            lock_unpoisoned(&UNUSED_UNSAFE_SPANS).take();
+        }
+    }
+    let previous = lock_unpoisoned(&UNUSED_UNSAFE_SPANS).replace(Vec::new());
+    assert!(
+        previous.is_none(),
+        "nested unused-unsafe diagnostic capture"
+    );
+    let _reset = Reset;
+    let result = f();
+    let spans = lock_unpoisoned(&UNUSED_UNSAFE_SPANS).take().unwrap();
+    (result, spans)
 }
 
 /// Captures structured diagnostics across the compiler sessions rebuilt by
@@ -83,10 +133,7 @@ impl AutoRetypeDiagnosticCapture {
         // `rustc_interface::setup_callbacks` can replace this global callback
         // between commands.  Reinstall our wrapper every time, updating its
         // delegate only when the callback we displaced is not our own wrapper.
-        let previous = TRACK_DIAGNOSTICS.swap(&AUTORETYPE_DIAGNOSTIC_TRACKER);
-        if !std::ptr::eq(previous, &AUTORETYPE_DIAGNOSTIC_TRACKER) {
-            *lock_unpoisoned(&PREVIOUS_DIAGNOSTIC_TRACKER) = *previous;
-        }
+        install_diagnostic_tracker();
 
         let old = lock_unpoisoned(&AUTORETYPE_DIAGNOSTICS).replace(Vec::new());
         assert!(old.is_none(), "nested autoretype diagnostic capture");
@@ -368,8 +415,8 @@ impl Transform for RetypeStatic {
             }
 
             match fi.kind {
-                ForeignItemKind::Static(ref mut ty, _, _) => {
-                    *ty = new_ty.clone();
+                ForeignItemKind::Static(ref mut item) => {
+                    item.ty = new_ty.clone();
                     mod_statics.insert(cx.node_def_id(fi.id));
                 }
                 _ => {}
@@ -538,7 +585,7 @@ where
                 i
             };
 
-            mut_visit::noop_flat_map_item(i, self)
+            mut_visit::walk_flat_map_item(self, i)
         }
 
         fn flat_map_field_def(&mut self, mut fd: FieldDef) -> SmallVec<[FieldDef; 1]> {
@@ -546,7 +593,7 @@ where
             if (self.retype)(&mut fd.ty) {
                 self.changed_defs.insert(fd.id, (old_ty, fd.ty.clone()));
             }
-            mut_visit::noop_flat_map_field_def(fd, self)
+            mut_visit::walk_flat_map_field_def(self, fd)
         }
     }
 
@@ -778,28 +825,37 @@ struct Rule {
 }
 
 fn parse_rule<'a>(p: &mut Parser<'a>) -> PResult<'a, Rule> {
-    let ectx = if p.eat(&TokenKind::Ident("rval".into_symbol(), false)) {
+    // Rule-context names are user DSL identifiers, not Rust keywords.
+    fn eat_name(p: &mut Parser<'_>, name: &str) -> bool {
+        if p.token.kind == TokenKind::Ident(name.into_symbol(), IdentIsRaw::No) {
+            p.bump();
+            true
+        } else {
+            false
+        }
+    }
+    let ectx = if eat_name(p, "rval") {
         Some(lr_expr::Context::Rvalue)
-    } else if p.eat(&TokenKind::Ident("lval".into_symbol(), false)) {
+    } else if eat_name(p, "lval") {
         Some(lr_expr::Context::Lvalue)
-    } else if p.eat(&TokenKind::Ident("lval_mut".into_symbol(), false)) {
+    } else if eat_name(p, "lval_mut") {
         Some(lr_expr::Context::LvalueMut)
     } else {
-        p.expect(&TokenKind::BinOp(BinOpToken::Star))?;
+        p.expect(exp!(Star))?;
         None
     };
-    p.expect(&TokenKind::Comma)?;
+    p.expect(exp!(Comma))?;
 
     let actual_ty = p.parse_ty()?;
-    p.expect(&TokenKind::Comma)?;
+    p.expect(exp!(Comma))?;
 
     let expected_ty = p.parse_ty()?;
 
-    p.expect(&TokenKind::FatArrow)?;
+    p.expect(exp!(FatArrow))?;
 
     let cast_expr = p.parse_expr()?;
 
-    p.expect(&TokenKind::Eof)?;
+    p.expect(exp!(Eof))?;
 
     Ok(Rule {
         ectx,
@@ -1045,7 +1101,7 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
     /// Replace marked struct field types with their new types
     fn flat_map_field_def(&mut self, mut field: FieldDef) -> SmallVec<[FieldDef; 1]> {
         self.map_type(&mut field.ty);
-        return mut_visit::noop_flat_map_field_def(field, self);
+        return mut_visit::walk_flat_map_field_def(self, field);
     }
 
     /// Remove all local variable types forcing type inference to update their
@@ -1217,8 +1273,7 @@ impl<'tcx> TypeExpectation<'tcx> {
 impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
     /// Determine if `from` can cast be cast to `to` according to rust-rfc 0401.
     fn can_cast(&self, from: ty::Ty<'tcx>, to: ty::Ty<'tcx>, parent: LocalDefId) -> bool {
-        use rustc_middle::ty::TypeAndMut;
-        use rustc_type_ir::sty::TyKind::*;
+        use rustc_type_ir::TyKind::*;
 
         // coercion-cast
         if can_coerce(from, to, self.cx.ty_ctxt()) {
@@ -1236,17 +1291,16 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 => self.can_cast(*from, *to, parent),
 
             // ptr-ptr-cast
-            (&RawPtr(TypeAndMut{ty: ref _from_ty, mutbl: from_mut}),
-             &RawPtr(TypeAndMut{ty: ref _to_ty, mutbl: to_mut})) => match (from_mut, to_mut) {
+            (&RawPtr(_from_ty, from_mut), &RawPtr(_to_ty, to_mut)) => match (from_mut, to_mut) {
                 // Immutable -> Mutable is an allowed cast, but we shouldn't
                 // introduce these as they may break semantics.
                 (Mutability::Not, Mutability::Mut) => false,
 
                 _ => {
-                    let param_env_ty = self.cx.ty_ctxt().param_env(parent.to_def_id()).and(to);
+                    let typing_env = ty::TypingEnv::non_body_analysis(self.cx.ty_ctxt(), parent);
 
                     // All pointer casts to sized types are allowed
-                    self.cx.ty_ctxt().is_sized_raw(param_env_ty)
+                    to.is_sized(self.cx.ty_ctxt(), typing_env)
 
                     // Pointer casts to unsized types are also allowed if the
                     // from and to type have the same unsize info. TODO: Handle
@@ -1390,8 +1444,9 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
                 // Detect literal value out of range [min, max] inclusive
                 // avoiding use of -min to prevent overflow/panic
-                if (expected.negated && *v <= max + 1) || (!expected.negated && *v <= max) {
-                    Some(mk().lit_expr(mk().int_lit(*v, int_type)))
+                if (expected.negated && v.get() <= max + 1) || (!expected.negated && v.get() <= max)
+                {
+                    Some(mk().lit_expr(mk().int_lit(v.get(), int_type)))
                 } else {
                     None
                 }
@@ -1399,8 +1454,8 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             (TyKind::Uint(t), LitKind::Int(v, _)) => {
                 let uint_type = t.normalize(self.cx.session().target.pointer_width);
                 let (min, max) = uint_ty_range(uint_type);
-                if *v >= min && *v <= max {
-                    Some(mk().lit_expr(mk().int_lit(*v, uint_type)))
+                if v.get() >= min && v.get() <= max {
+                    Some(mk().lit_expr(mk().int_lit(v.get(), uint_type)))
                 } else {
                     None
                 }
@@ -1431,14 +1486,9 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     }
                 }
             }
-            (
-                ExprKind::MethodCall(ref call),
-                TyKind::RawPtr(ty::TypeAndMut {
-                    ty: ref inner_ty,
-                    ref mutbl,
-                }),
-            ) if (call.seg.ident.name.as_str() == "as_mut_ptr"
-                || call.seg.ident.name.as_str() == "as_ptr") =>
+            (ExprKind::MethodCall(ref call), TyKind::RawPtr(inner_ty, mutbl))
+                if (call.seg.ident.name.as_str() == "as_mut_ptr"
+                    || call.seg.ident.name.as_str() == "as_ptr") =>
             {
                 let new_method_name = if *mutbl == hir::Mutability::Mut {
                     "as_mut_ptr"
@@ -1446,19 +1496,18 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     "as_ptr"
                 };
                 let mut sub_expected = expected;
-                sub_expected.ty = self.cx.ty_ctxt().mk_slice(*inner_ty);
+                sub_expected.ty = ty::Ty::new_slice(self.cx.ty_ctxt(), *inner_ty);
                 sub_expected.mutability = Some(*mutbl);
                 let mut e = call.receiver.clone();
                 if self.try_retype(&mut e, sub_expected.clone()) {
                     *expr = mk().method_call_expr(e, new_method_name, Vec::<P<Expr>>::new());
                     return true;
                 }
-                sub_expected.ty = self.cx.ty_ctxt().mk_ref(
+                sub_expected.ty = ty::Ty::new_ref(
+                    self.cx.ty_ctxt(),
                     self.cx.ty_ctxt().lifetimes.re_erased,
-                    ty::TypeAndMut {
-                        ty: sub_expected.ty,
-                        mutbl: *mutbl,
-                    },
+                    sub_expected.ty,
+                    *mutbl,
                 );
                 if self.try_retype(&mut e, sub_expected) {
                     *expr = mk().method_call_expr(e, new_method_name, Vec::<P<Expr>>::new());
@@ -1471,24 +1520,17 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     return false;
                 };
                 sub_expected.ty = match old_subtype.kind() {
-                    TyKind::RawPtr(ty::TypeAndMut {
-                        mutbl: subtype_mutbl,
-                        ..
-                    }) => {
+                    TyKind::RawPtr(_, subtype_mutbl) => {
                         let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
-                        self.cx.ty_ctxt().mk_ptr(ty::TypeAndMut {
-                            ty: expected.ty,
-                            mutbl,
-                        })
+                        ty::Ty::new_ptr(self.cx.ty_ctxt(), expected.ty, mutbl)
                     }
                     TyKind::Ref(_, _, subtype_mutbl) => {
                         let mutbl = expected.mutability.unwrap_or(*subtype_mutbl);
-                        self.cx.ty_ctxt().mk_ref(
+                        ty::Ty::new_ref(
+                            self.cx.ty_ctxt(),
                             self.cx.ty_ctxt().lifetimes.re_erased,
-                            ty::TypeAndMut {
-                                ty: expected.ty,
-                                mutbl,
-                            },
+                            expected.ty,
+                            mutbl,
                         )
                     }
                     _ => panic!("Unsupported type for dereference"),
@@ -1566,14 +1608,14 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 /// Will `from_ty` coerce to `to_ty`?
 /// Based on rules described in <https://doc.rust-lang.org/nomicon/coercions.html>.
 fn can_coerce<'a, 'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
-    use rustc_type_ir::sty::TyKind::*;
+    use rustc_type_ir::TyKind::*;
 
     // We won't necessarily have matching regions if we created new expressions
     // during retyping, so we should strip those. This also handles arrays with
     // length expressions that aren't yet evaluated. See types_approx_equal() in
     // illtyped.rs for more details.
-    let from_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), from_ty);
-    let to_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), to_ty);
+    let from_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), from_ty);
+    let to_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), to_ty);
 
     if from_ty == to_ty {
         return true;
@@ -1600,7 +1642,7 @@ fn can_coerce<'a, 'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<
 
         // TODO Deref coercion: Expression &x of type &T to &*x of type &U if T
         // derefs to U (i.e. T: Deref<Target=U>)
-        (FnDef(..), FnPtr(sig)) => from_ty.fn_sig(tcx) == *sig,
+        (FnDef(..), FnPtr(sig, header)) => from_ty.fn_sig(tcx) == sig.with(*header),
 
         _ => false,
     }

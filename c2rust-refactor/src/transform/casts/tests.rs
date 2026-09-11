@@ -1,8 +1,43 @@
-use super::{check_double_cast, DoubleCastAction, SimpleTy};
+use super::{check_double_cast, ConstantValue, DoubleCastAction, SimpleTy};
 use quickcheck::{quickcheck, Arbitrary, Gen};
 use rand::Rng;
 use z3::ast::{Ast, BV};
 use z3::{Config, Context, SatResult, Solver};
+
+#[test]
+fn pointer_sized_constants_follow_target_width() {
+    use ConstantValue::{Float64, Int, Uint};
+    for (bits, unsigned, signed) in [
+        (16, 0xffff, -1),
+        (32, 0xffff_ffff, -1),
+        (64, 0xffff_ffff, 0xffff_ffff),
+    ] {
+        assert_eq!(
+            Uint(0xffff_ffff).cast(SimpleTy::Size(false), bits),
+            Uint(unsigned)
+        );
+        assert_eq!(
+            Uint(0xffff_ffff).cast(SimpleTy::Size(true), bits),
+            Int(signed)
+        );
+    }
+    for bits in [32, 64] {
+        assert_eq!(Uint(70000).cast(SimpleTy::Size(false), bits), Uint(70000));
+        assert_eq!(Int(-70000).cast(SimpleTy::Size(true), bits), Int(-70000));
+        assert_eq!(
+            Float64(70000.0).cast(SimpleTy::Size(false), bits),
+            Uint(70000)
+        );
+    }
+    assert_eq!(Uint(1 << 32).cast(SimpleTy::Size(false), 32), Uint(0));
+    assert_eq!(Uint(1 << 32).cast(SimpleTy::Size(false), 64), Uint(1 << 32));
+    // Float-to-integer casts saturate, while integer narrowing truncates.
+    assert_eq!(
+        Float64(70000.0).cast(SimpleTy::Size(false), 16),
+        Uint(65535)
+    );
+    assert_eq!(Uint(70000).cast(SimpleTy::Size(false), 16), Uint(4464));
+}
 
 #[derive(Debug, Copy, Clone)]
 #[repr(transparent)]

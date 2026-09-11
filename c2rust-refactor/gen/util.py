@@ -24,7 +24,10 @@ def wordwise(f):
 @comma_sep
 def struct_fields(fields, suffix, bind_mode):
     for f in fields:
-        yield 'r#%s: %s%s%s' % (f.name, bind_mode, f.name, suffix)
+        if suffix:
+            yield 'r#%s: %sr#%s%s' % (f.name, bind_mode, f.name, suffix)
+        else:
+            yield '%sr#%s' % (bind_mode, f.name)
 
 @comma_sep
 def tuple_fields(fields, suffix, bind_mode):

@@ -15,8 +15,8 @@
 //! processed during macro expansion, which includes regular macros, proc macros (`format!`, etc.),
 //! certain attributes (`#[derive]`, `#[cfg]`), and `std`/prelude injection.
 use rustc_ast::*;
-use rustc_span::source_map::Span;
 use rustc_span::sym;
+use rustc_span::Span;
 use std::collections::HashMap;
 
 mod cfg_attr;

@@ -28,6 +28,7 @@ pub use self::ast_map::{
 pub use self::ast_names::AstName;
 pub use self::ast_node::{AstNode, AstNodeRef};
 pub use self::comments::{collect_comments, gather_comments, Comment, CommentMap, CommentStyle};
+pub use self::fold::walk as mut_visit;
 pub use self::fold::{FlatMapNodes, MutVisit, MutVisitNodes, WalkAst};
 pub use self::get_node_id::{GetNodeId, MaybeGetNodeId};
 pub use self::get_span::GetSpan;
@@ -47,4 +48,5 @@ pub mod comments;
 pub mod fn_edit;
 pub mod lr_expr;
 pub mod number_nodes;
+pub(crate) mod print;
 pub mod util;

@@ -1,7 +1,7 @@
 use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
-use rustc_span::source_map::Span;
-use rustc_span::symbol::Symbol;
+use rustc_span::Span;
+use rustc_span::Symbol;
 use std::str::FromStr;
 
 use crate::ast_manip::AstEquiv;
@@ -74,13 +74,13 @@ impl<'ast> AnyNode<'ast> {
                 _ => None,
             },
             AnyNode::ForeignItem(fi) => match fi.kind {
-                ForeignItemKind::Static(_, mutability, _) => Some(mutability),
+                ForeignItemKind::Static(ref item) => Some(item.mutability),
                 _ => None,
             },
             AnyNode::Pat(p) => match p.kind {
                 PatKind::Ident(mode, _, _) => match mode {
-                    BindingAnnotation(ByRef::Yes, mutbl) => Some(mutbl),
-                    BindingAnnotation(ByRef::No, mutbl) => Some(mutbl),
+                    BindingMode(ByRef::Yes(mutbl), _) => Some(mutbl),
+                    BindingMode(ByRef::No, mutbl) => Some(mutbl),
                 },
                 _ => None,
             },
@@ -153,6 +153,8 @@ pub enum ItemLikeKind {
     Impl,
     Mac,
     MacroDef,
+    Delegation,
+    DelegationMac,
 }
 
 impl FromStr for ItemLikeKind {
@@ -178,6 +180,8 @@ impl FromStr for ItemLikeKind {
             "impl" => Ok(ItemLikeKind::Impl),
             "mac" => Ok(ItemLikeKind::Mac),
             "macro_def" => Ok(ItemLikeKind::MacroDef),
+            "delegation" => Ok(ItemLikeKind::Delegation),
+            "delegation_mac" => Ok(ItemLikeKind::DelegationMac),
 
             _ => Err(()),
         }
@@ -204,6 +208,8 @@ impl ItemLikeKind {
             ItemKind::Impl(..) => ItemLikeKind::Impl,
             ItemKind::MacCall(..) => ItemLikeKind::Mac,
             ItemKind::MacroDef(..) => ItemLikeKind::MacroDef,
+            ItemKind::Delegation(..) => ItemLikeKind::Delegation,
+            ItemKind::DelegationMac(..) => ItemLikeKind::DelegationMac,
         }
     }
 
@@ -213,6 +219,8 @@ impl ItemLikeKind {
             AssocItemKind::Fn(..) => ItemLikeKind::Fn,
             AssocItemKind::Type(..) => ItemLikeKind::Ty,
             AssocItemKind::MacCall(..) => ItemLikeKind::Mac,
+            AssocItemKind::Delegation(..) => ItemLikeKind::Delegation,
+            AssocItemKind::DelegationMac(..) => ItemLikeKind::DelegationMac,
         }
     }
 
@@ -395,7 +403,7 @@ pub fn iter_children<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
         AnyNode::Item(x) => visit::walk_item(&mut v, x),
         AnyNode::TraitItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Trait),
         AnyNode::ImplItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Impl),
-        AnyNode::ForeignItem(x) => visit::walk_foreign_item(&mut v, x),
+        AnyNode::ForeignItem(x) => visit::walk_item(&mut v, x),
         AnyNode::Stmt(x) => visit::walk_stmt(&mut v, x),
         AnyNode::Expr(x) => visit::walk_expr(&mut v, x),
         AnyNode::Pat(x) => visit::walk_pat(&mut v, x),
@@ -435,7 +443,7 @@ impl<'ast, F: FnMut(AnyNode)> Visitor<'ast> for DescendantVisitor<F> {
             }
         }
         (self.func)(AnyNode::ForeignItem(x));
-        visit::walk_foreign_item(self, x);
+        visit::walk_item(self, x);
     }
 
     fn visit_stmt(&mut self, x: &'ast Stmt) {
@@ -478,7 +486,7 @@ pub fn iter_descendants<F: FnMut(AnyNode)>(node: AnyNode, func: F) {
         AnyNode::Item(x) => visit::walk_item(&mut v, x),
         AnyNode::TraitItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Trait),
         AnyNode::ImplItem(x) => visit::walk_assoc_item(&mut v, x, AssocCtxt::Impl),
-        AnyNode::ForeignItem(x) => visit::walk_foreign_item(&mut v, x),
+        AnyNode::ForeignItem(x) => visit::walk_item(&mut v, x),
         AnyNode::Stmt(x) => visit::walk_stmt(&mut v, x),
         AnyNode::Expr(x) => visit::walk_expr(&mut v, x),
         AnyNode::Pat(x) => visit::walk_pat(&mut v, x),

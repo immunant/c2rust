@@ -9,9 +9,10 @@ use rustc_hir::definitions::DefPathData;
 use rustc_hir::Node;
 use rustc_middle::hir::map::Map as HirMap;
 use rustc_middle::ty::{self, GenericParamDefKind, TyCtxt};
-use rustc_span::source_map::DUMMY_SP;
-use rustc_span::symbol::kw;
-use rustc_type_ir::sty::TyKind as IrTyKind;
+use rustc_middle::ty::{TypeFoldable, TypeFolder, TypeSuperFoldable};
+use rustc_span::kw;
+use rustc_span::DUMMY_SP;
+use rustc_type_ir::TyKind as IrTyKind;
 
 use std::collections::HashMap;
 
@@ -69,7 +70,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     let explicit_type_args = self
                         .tcx
                         .generics_of(def.did())
-                        .own_substs_no_defaults(self.tcx, substs)
+                        .own_args_no_defaults(self.tcx, substs)
                         .iter()
                         .filter(|arg| matches!(arg.unpack(), ty::GenericArgKind::Type(_)))
                         .count();
@@ -95,35 +96,47 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
             IrTyKind::Str => mk().ident_ty("str"),
             IrTyKind::Array(ty, len) => mk().array_ty(
                 self.reflect_ty(*ty),
-                mk().lit_expr(mk().int_lit(
-                    len.eval_target_usize(self.tcx, ty::ParamEnv::empty()) as u128,
-                    "usize",
-                )),
+                mk().lit_expr(
+                    mk().int_lit(
+                        crate::context::try_eval_array_len(self.tcx, *len)
+                            .expect("array length must be evaluable for type reflection")
+                            as u128,
+                        "usize",
+                    ),
+                ),
             ),
             IrTyKind::Slice(ty) => mk().slice_ty(self.reflect_ty(*ty)),
-            IrTyKind::RawPtr(mty) => mk().set_mutbl(mty.mutbl).ptr_ty(self.reflect_ty(mty.ty)),
+            IrTyKind::RawPtr(ty, mutbl) => mk().set_mutbl(*mutbl).ptr_ty(self.reflect_ty(*ty)),
             IrTyKind::Ref(_, ty, m) => mk().set_mutbl(m).ref_ty(self.reflect_ty(*ty)),
             IrTyKind::FnDef(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-            IrTyKind::FnPtr(poly_fn_sig) => {
-                if let Some(fn_sig) = poly_fn_sig.no_bound_vars() {
+            IrTyKind::FnPtr(poly_fn_sig, header) => {
+                if let Some(fn_sig) = poly_fn_sig.with(*header).no_bound_vars() {
                     let inputs = fn_sig
                         .inputs()
                         .iter()
                         .map(|input| mk().arg(self.reflect_ty(*input), mk().wild_pat()))
                         .collect();
                     let output = FnRetTy::Ty(self.reflect_ty(fn_sig.output()));
-                    mk().unsafety(fn_sig.unsafety.to_string().as_str())
+                    // HIR safety describes semantics; a safe function pointer
+                    // has no explicit `safe` qualifier in its AST syntax.
+                    let safety = match fn_sig.safety {
+                        hir::Safety::Safe => Safety::Default,
+                        hir::Safety::Unsafe => Safety::Unsafe(DUMMY_SP),
+                    };
+                    mk().unsafety(safety)
                         .extern_(fn_sig.abi)
                         .barefn_ty(mk().fn_decl(inputs, output))
                 } else {
                     mk().infer_ty() // TODO higher-rank lifetimes (for<'a> fn(...) -> ...)
                 }
             }
+            IrTyKind::Pat(..) | IrTyKind::UnsafeBinder(..) => reflect_extended_ty(self, ty),
             IrTyKind::Dynamic(..) => mk().infer_ty(), // TODO (dyn Trait)
-            IrTyKind::Closure(_, _) => mk().infer_ty(), // unsupported (type cannot be named)
-            IrTyKind::Generator(_, _, _) => mk().infer_ty(), // unsupported (type cannot be named)
-            IrTyKind::GeneratorWitness(_) => mk().infer_ty(), // unsupported (type cannot be named)
-            IrTyKind::GeneratorWitnessMIR(..) => mk().infer_ty(), // unsupported (type cannot be named)
+            IrTyKind::Closure(_, _) | IrTyKind::CoroutineClosure(_, _) => {
+                mk().infer_ty() // unsupported (type cannot be named)
+            }
+            IrTyKind::Coroutine(..) => mk().infer_ty(), // unsupported (type cannot be named)
+            IrTyKind::CoroutineWitness(..) => mk().infer_ty(), // unsupported (type cannot be named)
             IrTyKind::Never => mk().never_ty(),
             IrTyKind::Tuple(tys) => {
                 mk().tuple_ty(tys.iter().map(|ty| self.reflect_ty(ty)).collect())
@@ -185,7 +198,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 DefPathData::Impl => {
                     let ty = self.tcx.type_of(id);
                     let gen = self.tcx.generics_of(id);
-                    let num_params = gen.params.len();
+                    let num_params = gen.own_params.len();
 
                     // Reflect the type.  If we have substs available, apply them to the type first.
                     let ast_ty = if let Some(substs) = opt_substs {
@@ -194,10 +207,10 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                             .iter()
                             .map(|&t| t.into())
                             .collect::<Vec<_>>();
-                        let ty = ty.subst(self.tcx, &tcx_substs);
+                        let ty = ty.instantiate(self.tcx, &tcx_substs[..]);
                         reflect_tcx_ty(self.tcx, ty)
                     } else {
-                        self.reflect_ty_inner(ty.subst_identity(), true)
+                        self.reflect_ty_inner(ty.instantiate_identity(), true)
                     };
 
                     match ast_ty.kind {
@@ -243,11 +256,10 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                     | DefPathData::ForeignMod
                     | DefPathData::Use
                     | DefPathData::GlobalAsm
-                    | DefPathData::ClosureExpr
+                    | DefPathData::Closure
                     | DefPathData::Ctor
                     | DefPathData::AnonConst
-                    | DefPathData::ImplTrait
-                    | DefPathData::ImplTraitAssocTy => {}
+                    | DefPathData::OpaqueTy => {}
             }
 
             // Special logic for certain node kinds
@@ -281,7 +293,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
                 | DefKind::Ctor(..) => {
                     let gen = self.tcx.generics_of(id);
                     let num_params = gen
-                        .params
+                        .own_params
                         .iter()
                         .filter(|x| match x.kind {
                             GenericParamDefKind::Lifetime { .. } => false,
@@ -322,6 +334,167 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
     }
 }
 
+/// Print extended types while preserving binders and definition replacements.
+/// rustc prints unsafe binders as `for<>` and pattern types as `T is PAT`,
+/// neither of which is valid source syntax. Temporarily represent these types
+/// (and replaced definitions) as variadic Rust function pointers. Rust's ABI
+/// forbids variadics, so these markers cannot collide with a valid source type.
+/// Their arities distinguish binders, patterns, and replaced definitions.
+fn reflect_extended_ty<'tcx>(reflector: &Reflector<'_, 'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
+    struct MarkTypes<'a, 'tcx> {
+        reflector: &'a Reflector<'a, 'tcx>,
+        patterns: Vec<String>,
+        replacements: Vec<(Option<P<QSelf>>, Path)>,
+    }
+    impl<'tcx> TypeFolder<TyCtxt<'tcx>> for MarkTypes<'_, 'tcx> {
+        fn cx(&self) -> TyCtxt<'tcx> {
+            self.reflector.tcx
+        }
+
+        fn fold_ty(&mut self, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
+            let tcx = self.cx();
+            let def_id = match ty.kind() {
+                IrTyKind::Adt(def, _) => Some(def.did()),
+                IrTyKind::Foreign(id) => Some(*id),
+                _ => None,
+            };
+            if let Some(path) =
+                def_id.and_then(|id| self.reflector.def_mapping.and_then(|m| m.get(&id)))
+            {
+                // The existing reflector replaces the complete path, including
+                // its arguments; keep precisely that contract inside binders.
+                let index = self.replacements.len();
+                self.replacements.push(path.clone());
+                let original = ty.super_fold_with(self);
+                let sig = tcx.mk_fn_sig(
+                    [
+                        ty::Ty::new_array(tcx, tcx.types.unit, index as u64),
+                        tcx.types.unit,
+                    ],
+                    // Retain uses of outer bound lifetimes while printing;
+                    // the complete output type is replaced in the AST below.
+                    ty::fold::shift_vars(tcx, original, 1),
+                    true,
+                    hir::Safety::Safe,
+                    rustc_target::abi::ExternAbi::Rust,
+                );
+                return ty::Ty::new_fn_ptr(tcx, ty::Binder::bind_with_vars(sig, ty::List::empty()));
+            }
+            let ty = ty.super_fold_with(self);
+            match ty.kind() {
+                IrTyKind::UnsafeBinder(binder) => {
+                    // FmtPrinter normally elides unused bound regions. A
+                    // synthetic input mentions every region so even vacuous
+                    // unsafe binders retain their parameter names and order.
+                    // The target's resolve_bound_vars rejects non-region
+                    // parameters in source unsafe binders.
+                    let regions = binder.bound_vars().iter().enumerate().map(|(index, var)| {
+                        let region = ty::Region::new_bound(
+                            tcx,
+                            ty::INNERMOST,
+                            ty::BoundRegion {
+                                var: ty::BoundVar::from_usize(index),
+                                kind: var.expect_region(),
+                            },
+                        );
+                        ty::Ty::new_imm_ref(tcx, region, tcx.types.unit)
+                    });
+                    let sig = tcx.mk_fn_sig(
+                        [
+                            ty::Ty::new_tup_from_iter(tcx, regions),
+                            tcx.types.unit,
+                            tcx.types.unit,
+                        ],
+                        binder.skip_binder(),
+                        true,
+                        hir::Safety::Safe,
+                        rustc_target::abi::ExternAbi::Rust,
+                    );
+                    ty::Ty::new_fn_ptr(tcx, binder.rebind(sig))
+                }
+                IrTyKind::Pat(base, pattern) => {
+                    let index = self.patterns.len();
+                    self.patterns.push(format!("{pattern:?}"));
+                    let sig = tcx.mk_fn_sig(
+                        [ty::Ty::new_array(tcx, tcx.types.unit, index as u64)],
+                        // This marker adds a binder level that is absent from
+                        // the pattern type. Preserve any escaping bound vars.
+                        ty::fold::shift_vars(tcx, *base, 1),
+                        true,
+                        hir::Safety::Safe,
+                        rustc_target::abi::ExternAbi::Rust,
+                    );
+                    ty::Ty::new_fn_ptr(tcx, ty::Binder::bind_with_vars(sig, ty::List::empty()))
+                }
+                _ => ty,
+            }
+        }
+    }
+
+    struct RestoreTypes<'a, 'tcx>(&'a MarkTypes<'a, 'tcx>);
+    impl rustc_ast::mut_visit::MutVisitor for RestoreTypes<'_, '_> {
+        fn visit_ty(&mut self, ty: &mut P<Ty>) {
+            // Restore children before putting them inside a macro token stream.
+            rustc_ast::mut_visit::walk_ty(self, ty);
+            let TyKind::BareFn(f) = &ty.kind else { return };
+            if !matches!(f.ext, Extern::None)
+                || !f
+                    .decl
+                    .inputs
+                    .last()
+                    .is_some_and(|p| matches!(p.ty.kind, TyKind::CVarArgs))
+            {
+                return;
+            }
+            let inner_ty = match &f.decl.output {
+                FnRetTy::Ty(ty) => ty.clone(),
+                FnRetTy::Default(_) => mk().tuple_ty(Vec::<P<Ty>>::new()),
+            };
+            if f.decl.inputs.len() == 4 {
+                ty.kind = TyKind::UnsafeBinder(P(UnsafeBinderTy {
+                    generic_params: f.generic_params.clone(),
+                    inner_ty,
+                }));
+                return;
+            }
+            let length = expect!([&f.decl.inputs[0].ty.kind] TyKind::Array(_, len) => len);
+            let lit = expect!([&length.value.kind] ExprKind::Lit(lit) => lit);
+            let index = lit.symbol.as_str().parse::<usize>().unwrap();
+            match f.decl.inputs.len() {
+                2 => {
+                    *ty = crate::driver::parse_ty(
+                        self.0.reflector.tcx.sess,
+                        &format!(
+                            "::core::pattern_type!({} is {})",
+                            crate::ast_manip::print::nonterminal_to_string(
+                                &token::Nonterminal::NtTy(inner_ty)
+                            ),
+                            self.0.patterns[index],
+                        ),
+                    );
+                }
+                3 => {
+                    let (qself, path) = self.0.replacements[index].clone();
+                    *ty = mk().qpath_ty(qself, path);
+                }
+                _ => unreachable!("unknown extended-type marker"),
+            }
+        }
+    }
+
+    let mut markers = MarkTypes {
+        reflector,
+        patterns: Vec::new(),
+        replacements: Vec::new(),
+    };
+    let printable = ty.fold_with(&mut markers);
+    let source =
+        ty::print::with_crate_prefix!(ty::print::with_no_trimmed_paths!(printable.to_string()));
+    let mut ast_ty = crate::driver::parse_ty(reflector.tcx.sess, &source);
+    rustc_ast::mut_visit::MutVisitor::visit_ty(&mut RestoreTypes(&markers), &mut ast_ty);
+    ast_ty
+}
+
 /// Build an AST representing a `ty::Ty`.
 pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
     Reflector::new(tcx).reflect_ty(ty)
@@ -352,7 +525,7 @@ fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
             mk().binary_expr(op, hir_expr_to_expr(a), hir_expr_to_expr(b))
         }
         Unary(op, ref a) => mk().unary_expr(op.as_str(), hir_expr_to_expr(a)),
-        Lit(ref l) => mk().span(l.span).lit_expr(l.clone()),
+        Lit(ref l) => mk().span(l.span).lit_expr(&l.node),
         ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
 }
@@ -376,17 +549,24 @@ pub fn can_reflect_path(cx: &RefactorCtxt, id: NodeId) -> bool {
         | Node::ImplItem(_)
         | Node::Variant(_)
         | Node::Field(_)
-        | Node::Local(_)
+        | Node::LetStmt(_)
         | Node::Ctor(_)
         | Node::GenericParam(_) => true,
 
         Node::AnonConst(_)
+        | Node::ConstBlock(_)
+        | Node::ConstArg(_)
+        | Node::OpaqueTy(_)
+        | Node::WherePredicate(_)
+        | Node::PreciseCapturingNonLifetimeArg(_)
+        | Node::Synthetic
+        | Node::Err(_)
         | Node::Expr(_)
         | Node::Stmt(_)
         | Node::PathSegment(_)
         | Node::Ty(_)
         // TODO: return true here?
-        | Node::TypeBinding(_)
+        | Node::AssocItemConstraint(_)
         | Node::TraitRef(_)
         | Node::Pat(_)
         | Node::Arm(_)
@@ -413,6 +593,14 @@ fn register_test_reflect(reg: &mut Registry) {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let reflector = Reflector::new(cx.ty_ctxt());
             st.map_krate(|krate| {
+                // Type ascription now prints as `builtin # type_ascribe`,
+                // whose feature gate is distinct from the old syntax's gate.
+                if !cx.ty_ctxt().features().builtin_syntax() {
+                    krate.attrs.extend(
+                        mk().call_attr("feature", vec!["builtin_syntax"])
+                            .as_inner_attrs(),
+                    );
+                }
                 MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
@@ -428,7 +616,7 @@ fn register_test_reflect(reg: &mut Registry) {
                         let parent_body = cx.hir_map().body_owned_by(parent);
                         let tables = cx.ty_ctxt().typeck_body(parent_body);
                         let hir_id = cx.hir_map().node_to_hir_id(e.id);
-                        let substs = tables.node_substs(hir_id);
+                        let substs = tables.node_args(hir_id);
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) = reflector.reflect_def_path_inner(def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
@@ -448,6 +636,141 @@ pub fn register_commands(reg: &mut Registry) {
 }
 
 #[cfg(test)]
+mod extended_type_tests {
+    use super::*;
+    use rustc_driver::{Callbacks, Compilation, RunCompiler};
+    use rustc_interface::interface::Compiler;
+
+    #[test]
+    fn nested_unsafe_binders_and_pattern_types_round_trip() {
+        struct ReflectTypes(Vec<(String, String)>);
+        impl Callbacks for ReflectTypes {
+            fn after_analysis<'tcx>(&mut self, _: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
+                for id in tcx.hir_crate_items(()).definitions() {
+                    if tcx.def_kind(id) == DefKind::TyAlias {
+                        let name = tcx.item_name(id.to_def_id()).to_string();
+                        let mut mappings = HashMap::new();
+                        if name == "Mapped" {
+                            let wrapper = tcx
+                                .hir_crate_items(())
+                                .definitions()
+                                .find(|&id| {
+                                    tcx.def_kind(id) == DefKind::Struct
+                                        && tcx.item_name(id.to_def_id()).as_str() == "Wrapper"
+                                })
+                                .unwrap();
+                            let replacement =
+                                crate::driver::parse_ty(tcx.sess, "crate::Renamed<'a, u8>");
+                            let path = expect!([&replacement.kind] TyKind::Path(qself, path) => (qself.clone(), path.clone()));
+                            mappings.insert(wrapper.to_def_id(), path);
+                        }
+                        let ast = Reflector::new_with_mapping(tcx, &mappings)
+                            .reflect_ty(tcx.type_of(id).instantiate_identity());
+                        self.0.push((
+                            name,
+                            crate::ast_manip::print::nonterminal_to_string(
+                                &token::Nonterminal::NtTy(ast),
+                            ),
+                        ));
+                    }
+                }
+                Compilation::Stop
+            }
+        }
+
+        let source = r#"
+#![feature(unsafe_binders, pattern_types, pattern_type_macro)]
+#![allow(incomplete_features, internal_features, dead_code, non_snake_case)]
+struct Wrapper<'a, T>(&'a T);
+struct Renamed<'a, T>(&'a T);
+type Nested = unsafe<'a> (
+    &'a u8,
+    unsafe<'b> (&'a u8, &'b u8),
+    for<'c> unsafe extern "C" fn(&'a u8, &'c u8) -> u32,
+    Wrapper<'a, u8>,
+);
+type UnitBinder = unsafe<> ();
+type Unused = unsafe<'unused> u8;
+type Pattern = std::pat::pattern_type!(u32 is 1..=9);
+type NestedPattern = unsafe<'a> (&'a u8, std::pat::pattern_type!(u32 is 2..=10));
+type Mapped = unsafe<'a> Wrapper<'a, u8>;
+type ExpectedMapped = unsafe<'a> Renamed<'a, u8>;
+type SafeFn = fn(u32) -> u32;
+type UnsafeFn = unsafe extern "C" fn(u32) -> u32;
+fn main() {}
+"#;
+        let dir =
+            std::env::temp_dir().join(format!("c2rust-reflect-binders-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("binders.rs");
+        std::fs::write(&path, source).unwrap();
+        let sysroot = std::process::Command::new("rustc")
+            .args(["--print", "sysroot"])
+            .output()
+            .unwrap();
+        assert!(sysroot.status.success());
+        let args = vec![
+            "rustc".to_owned(),
+            path.to_str().unwrap().to_owned(),
+            "--edition=2024".to_owned(),
+            "--sysroot".to_owned(),
+            String::from_utf8(sysroot.stdout).unwrap().trim().to_owned(),
+        ];
+        let mut reflected = ReflectTypes(Vec::new());
+        RunCompiler::new(&args, &mut reflected).run();
+        assert_eq!(reflected.0.len(), 9);
+        let nested = &reflected
+            .0
+            .iter()
+            .find(|(name, _)| name == "Nested")
+            .unwrap()
+            .1;
+        assert_eq!(nested.matches("unsafe<").count(), 2, "{nested}");
+        assert!(nested.contains("unsafe extern \"C\" fn"), "{nested}");
+        assert!(!nested.contains("..."), "{nested}");
+        let unused = &reflected
+            .0
+            .iter()
+            .find(|(name, _)| name == "Unused")
+            .unwrap()
+            .1;
+        assert!(unused.contains("unsafe<'unused>"), "{unused}");
+        let mapped = &reflected
+            .0
+            .iter()
+            .find(|(name, _)| name == "Mapped")
+            .unwrap()
+            .1;
+        assert!(mapped.contains("crate::Renamed<'a, u8>"), "{mapped}");
+        assert!(mapped.contains("unsafe<'a>"), "{mapped}");
+        let mut rewritten = source.to_owned();
+        for (name, ty) in reflected.0 {
+            let input_ty = if name == "Mapped" {
+                "ExpectedMapped"
+            } else {
+                &name
+            };
+            rewritten.push_str(&format!(
+                "\nfn check_{name}(value: {input_ty}) {{ let _: {ty} = value; }}\n"
+            ));
+        }
+        std::fs::write(&path, &rewritten).unwrap();
+        let output = std::process::Command::new("rustc")
+            .args(&args[1..])
+            .args(["--emit=metadata", "-o"])
+            .arg(dir.join("binders.rmeta"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{rewritten}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use rustc_hir::def_id::CRATE_DEF_ID;
@@ -464,12 +787,13 @@ mod tests {
         rustc_span::create_default_session_globals_then(|| {
             let lit_span = Span::new(BytePos(10), BytePos(12), SyntaxContext::root(), None);
             let hir_id = hir::HirId::make_owner(CRATE_DEF_ID);
+            let lit = Spanned {
+                node: LitKind::Int(42.into(), LitIntType::Unsuffixed),
+                span: lit_span,
+            };
             let hir_lit_expr = hir::Expr {
                 hir_id,
-                kind: hir::ExprKind::Lit(Spanned {
-                    node: LitKind::Int(42, LitIntType::Unsuffixed),
-                    span: lit_span,
-                }),
+                kind: hir::ExprKind::Lit(&lit),
                 span: lit_span,
             };
 

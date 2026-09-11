@@ -1,6 +1,6 @@
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_span::symbol::Symbol;
+use rustc_span::Symbol;
 use smallvec::smallvec;
 use std::collections::HashSet;
 
@@ -164,7 +164,8 @@ impl Transform for GeneralizeItems {
                             GenericArgs::AngleBracketed(ref mut abpd) => abpd
                                 .args
                                 .push(AngleBracketedArg::Arg(mk().generic_arg(arg))),
-                            GenericArgs::Parenthesized(..) => {
+                            GenericArgs::Parenthesized(..)
+                            | GenericArgs::ParenthesizedElided(..) => {
                                 panic!("expected angle bracketed params, but found parenthesized")
                             }
                         }

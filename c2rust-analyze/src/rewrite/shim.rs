@@ -84,7 +84,13 @@ impl<'a, 'tcx> Visitor<'tcx> for ShimCallVisitor<'a, 'tcx> {
                 let res = self.typeck_results.qpath_res(qp, ex.hir_id);
                 match res {
                     Res::Def(DefKind::Fn, def_id) | Res::Def(DefKind::AssocFn, def_id) => {
-                        let ident_span = qp.last_segment_span();
+                        let ident_span = match qp {
+                            rustc_hir::QPath::Resolved(_, path) => {
+                                path.segments.last().unwrap().ident.span
+                            }
+                            rustc_hir::QPath::TypeRelative(_, segment) => segment.ident.span,
+                            rustc_hir::QPath::LangItem(_, span) => *span,
+                        };
                         self.handle_def_mention(def_id, ident_span);
                     }
                     _ => {}
@@ -130,7 +136,7 @@ pub fn gen_shim_call_rewrites<'tcx>(
         // When using --rewrite-paths, fns in extern blocks may show up here.  We can't do anything
         // with these, since they don't have a HIR body, so skip them.
         let hir_body_id = match tcx.hir().maybe_body_owned_by(skip_def_id) {
-            Some(x) => x,
+            Some(x) => x.id(),
             None => continue,
         };
         let hir = tcx.hir().body(hir_body_id);
@@ -190,7 +196,7 @@ pub fn gen_shim_definition_rewrite<'tcx>(
 ) -> (Span, Rewrite) {
     let tcx = gacx.tcx;
 
-    let owner_node = tcx.hir().expect_owner(def_id.as_local().unwrap());
+    let owner_node = tcx.expect_hir_owner_node(def_id.as_local().unwrap());
     let insert_span = owner_node.span().shrink_to_hi();
 
     let fn_decl = owner_node.fn_decl().unwrap();

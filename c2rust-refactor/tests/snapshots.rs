@@ -1,3 +1,5 @@
+#![feature(rustc_private)]
+
 use c2rust_refactor::file_io::OutputMode;
 use c2rust_refactor::lib_main;
 use c2rust_refactor::Command as RefactorCommand;
@@ -141,11 +143,13 @@ fn test_refactor(
     let old_path = tests_dir.join(path);
 
     rustfmt(&old_path)
+        .current_toolchain()
         .edition(edition)
         .check(true)
         .expect_error(old_expect_format_error)
         .run();
     rustc(&old_path)
+        .current_toolchain()
         .edition(edition)
         .expect_error(old_expect_compile_error)
         .run();
@@ -176,10 +180,12 @@ fn test_refactor(
     // TODO Run `rustfmt` by default as part of `c2rust-refactor`
     // with the same `--disable-rustfmt` flag that `c2rust-transpile` has.
     rustfmt(&new_path)
+        .current_toolchain()
         .edition(edition)
         .expect_error(new_expect_format_error)
         .run();
     rustc(&new_path)
+        .current_toolchain()
         .edition(edition)
         .expect_error(new_expect_compile_error)
         .run();

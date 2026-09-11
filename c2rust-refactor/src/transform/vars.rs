@@ -1,11 +1,11 @@
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use log::info;
-use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, Visitor};
 use rustc_ast::*;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_hir::HirId;
-use rustc_middle::ty::{ParamEnv, TyKind};
+use rustc_middle::ty::TyKind;
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::mem;
@@ -43,7 +43,7 @@ impl Transform for SinkLets {
 
         let mut locals: HashMap<HirId, LocalInfo> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
-            if let PatKind::Ident(BindingAnnotation(ByRef::No, _), _, None) = l.pat.kind {
+            if let PatKind::Ident(BindingMode(ByRef::No, _), _, None) = l.pat.kind {
                 let l_init = get_local_init(&l.kind);
                 if l_init.is_none() || !expr_has_side_effects(cx, l_init.unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
@@ -197,7 +197,7 @@ impl Transform for SinkLets {
 
         MutVisitNodes::visit(krate, |b: &mut P<Block>| {
             b.stmts.retain(|s| match s.kind {
-                StmtKind::Local(ref l) => !remove_local_ids.contains(&l.id),
+                StmtKind::Let(ref l) => !remove_local_ids.contains(&l.id),
                 _ => true,
             });
         });
@@ -286,7 +286,7 @@ impl Transform for FoldLetAssign {
 
         let mut locals: HashMap<HirId, P<Local>> = HashMap::new();
         visit_nodes(krate, |l: &Local| {
-            if let PatKind::Ident(BindingAnnotation(ByRef::No, _), _, None) = l.pat.kind {
+            if let PatKind::Ident(BindingMode(ByRef::No, _), _, None) = l.pat.kind {
                 let l_init = get_local_init(&l.kind);
                 if l_init.is_none() || !expr_has_side_effects(cx, l_init.unwrap()) {
                     let hir_id = cx.hir_map().node_to_hir_id(l.pat.id);
@@ -362,7 +362,7 @@ impl Transform for FoldLetAssign {
             while !curs.eof() {
                 // Is it a local declaration?  If so, mark it.
                 let mark_did = match curs.next().kind {
-                    StmtKind::Local(ref l) => {
+                    StmtKind::Let(ref l) => {
                         if let Some(&did) = local_node_def.get(&l.id) {
                             Some(did)
                         } else {
@@ -505,11 +505,11 @@ impl Transform for RemoveRedundantLetTypes {
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let e = mcx.bindings.get::<_, P<Expr>>("$init").unwrap();
             let e_ty = cx.adjusted_node_type(e.id);
-            let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
+            let e_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), e_ty);
 
             let t = mcx.bindings.get::<_, P<Ty>>("$ty").unwrap();
             let t_ty = cx.adjusted_node_type(t.id);
-            let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
+            let t_ty = tcx.normalize_erasing_regions(crate::context::empty_typing_env(), t_ty);
             if e_ty == t_ty {
                 *ast = repl.clone().subst(st, cx, &mcx.bindings);
             }
@@ -537,7 +537,7 @@ fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
         fn visit_local(&mut self, local: &mut P<Local>) {
             // If it already has a ty, skip
             if local.ty.is_some() {
-                return mut_visit::noop_visit_local(local, self);
+                return mut_visit::walk_local(self, local);
             }
 
             // Get the type
@@ -549,7 +549,7 @@ fn expand_local_ptr_tys(st: &CommandState, cx: &RefactorCtxt) {
                 local.ty = Some(ty);
             }
 
-            mut_visit::noop_visit_local(local, self)
+            mut_visit::walk_local(self, local)
         }
     }
 

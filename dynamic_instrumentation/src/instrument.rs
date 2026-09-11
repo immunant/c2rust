@@ -8,19 +8,18 @@ use indexmap::IndexSet;
 use log::{debug, trace};
 
 use rustc_ast::Mutability;
-use rustc_index::vec::Idx;
+use rustc_index::Idx;
 use rustc_middle::mir::visit::{
     MutVisitor, MutatingUseContext, NonMutatingUseContext, PlaceContext, Visitor,
 };
 use rustc_middle::mir::{
-    BasicBlock, BasicBlockData, Body, ClearCrossCrate, HasLocalDecls, Local, LocalDecl, Location,
-    Operand, Place, PlaceElem, ProjectionElem, Rvalue, Safety, SourceInfo, SourceScope,
-    SourceScopeData, Statement, StatementKind, Terminator, TerminatorKind, UnwindAction,
-    START_BLOCK,
+    BasicBlock, BasicBlockData, Body, CallSource, HasLocalDecls, Local, LocalDecl, Location,
+    Operand, Place, PlaceElem, ProjectionElem, Rvalue, SourceInfo, Statement, StatementKind,
+    Terminator, TerminatorKind, UnwindAction, UnwindTerminateReason, START_BLOCK,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::def_id::{DefId, DefPathHash};
-use rustc_span::DUMMY_SP;
+use rustc_span::{source_map::Spanned, DUMMY_SP};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -64,6 +63,18 @@ impl Instrumenter {
 
     /// Instrument memory operations in-place in the function `body`.
     pub fn instrument_fn<'tcx>(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>, body_did: DefId) {
+        for block in body.basic_blocks.iter() {
+            let terminator = block.terminator();
+            if matches!(terminator.kind, TerminatorKind::TailCall { .. }) {
+                // There is no return edge on which to record the result or
+                // finalize main. Lowering this to Call + Return would lose the
+                // bounded-stack guarantee of explicit tail calls.
+                tcx.dcx().span_fatal(
+                    terminator.source_info.span,
+                    "c2rust-instrument does not support explicit tail calls",
+                );
+            }
+        }
         let function_name = tcx.item_name(body_did);
         debug!("Instrumenting function {}", function_name);
 
@@ -99,7 +110,7 @@ impl Instrumenter {
             .context("Could not open metadata file")?;
         file.file().lock_exclusive()?;
         let e = file.write_all(&bytes);
-        file.file().unlock()?;
+        FileExt::unlock(file.file())?;
         e?;
         Ok(())
     }
@@ -164,7 +175,7 @@ impl<'tcx> Visitor<'tcx> for CollectAddressTakenLocals<'_, 'tcx> {
     fn visit_assign(&mut self, place: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
         self.super_assign(place, rvalue, location);
         let p = match rvalue {
-            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p) => p,
+            Rvalue::RawPtr(_, p) | Rvalue::Ref(_, _, p) => p,
             _ => return,
         };
         let value_ty = rvalue.ty(self, self.tcx());
@@ -176,12 +187,7 @@ impl<'tcx> Visitor<'tcx> for CollectAddressTakenLocals<'_, 'tcx> {
 
 impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
     /// Rewrites an address-taken local in terms of its underlying address.
-    fn visit_place(
-        &mut self,
-        mut place: &mut Place<'tcx>,
-        context: PlaceContext,
-        location: Location,
-    ) {
+    fn visit_place(&mut self, place: &mut Place<'tcx>, context: PlaceContext, location: Location) {
         // If we have found an address-taken local `_x`, substitute with `(*_y)` where `_y`
         // is the address of `_x`.
         if let Some(substitute) = self.local_to_address.get(&place.local) {
@@ -233,7 +239,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                 mutbl: Mutability::Mut,
             };
 
-            let raw_ptr_ty = self.tcx().mk_ptr(inner_ty);
+            let raw_ptr_ty = Ty::new_ptr(self.tcx(), inner_ty.ty, inner_ty.mutbl);
             let raw_ptr_local = body.local_decls.push(LocalDecl::new(raw_ptr_ty, DUMMY_SP));
 
             self.local_to_address.insert(local, raw_ptr_local);
@@ -344,7 +350,7 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                         .copied()
                         .unwrap()
                         .into(),
-                    Rvalue::AddressOf(Mutability::Mut, addr_taken_local),
+                    Rvalue::RawPtr(Mutability::Mut, addr_taken_local),
                 ))),
             };
 
@@ -427,8 +433,8 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     if !context.is_borrow()
                         && !matches!(
                             context,
-                            NonMutatingUse(NonMutatingUseContext::AddressOf)
-                                | MutatingUse(MutatingUseContext::AddressOf)
+                            NonMutatingUse(NonMutatingUseContext::RawBorrow)
+                                | MutatingUse(MutatingUseContext::RawBorrow)
                         )
                     {
                         // The only cases we care about here are the same as
@@ -474,14 +480,14 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 | MutatingUse(MutatingUseContext::Call)
                 | MutatingUse(MutatingUseContext::AsmOutput) => Some(store_fn),
 
-                NonMutatingUse(NonMutatingUseContext::ShallowBorrow)
+                NonMutatingUse(NonMutatingUseContext::FakeBorrow)
                 | NonMutatingUse(NonMutatingUseContext::SharedBorrow)
-                | NonMutatingUse(NonMutatingUseContext::UniqueBorrow)
-                | NonMutatingUse(NonMutatingUseContext::AddressOf)
+                | NonMutatingUse(NonMutatingUseContext::RawBorrow)
                 | MutatingUse(MutatingUseContext::Borrow)
-                | MutatingUse(MutatingUseContext::AddressOf) => Some(copy_fn),
+                | MutatingUse(MutatingUseContext::RawBorrow) => Some(copy_fn),
 
                 NonMutatingUse(NonMutatingUseContext::Inspect)
+                | NonMutatingUse(NonMutatingUseContext::PlaceMention)
                 | NonMutatingUse(NonMutatingUseContext::Projection)
                 | MutatingUse(MutatingUseContext::SetDiscriminant)
                 | MutatingUse(MutatingUseContext::Deinit)
@@ -653,10 +659,10 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                     .dest(&dest)
                     .add_to(self);
             }
-            Rvalue::AddressOf(_, p) | Rvalue::Ref(_, _, p) if !p.is_indirect() => {
+            Rvalue::RawPtr(_, p) | Rvalue::Ref(_, _, p) if !p.is_indirect() => {
                 let source = remove_outer_deref(*p, self.tcx());
                 let layout = ctx
-                    .layout_of(ty::ParamEnv::reveal_all().and(local_ty(p)))
+                    .layout_of(ty::TypingEnv::fully_monomorphized().as_query_input(local_ty(p)))
                     .expect("Failed to compute layout of local");
                 let size =
                     u32::try_from(layout.size.bytes()).expect("Failed to convert local size");
@@ -741,7 +747,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                 };
                 if !is_hook {
                     for arg in args {
-                        if let Some(place) = arg.place() {
+                        if let Some(place) = arg.node.place() {
                             let place_ty = place.ty(self, self.tcx()).ty;
                             if is_shared_or_unsafe_ptr(place_ty) {
                                 self.loc(location, location, arg_fn)
@@ -767,7 +773,7 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
                             .dest(destination)
                             .after_call()
                             .transfer(TransferKind::Ret(self.func_id()))
-                            .arg_vars(args.iter().cloned())
+                            .arg_vars(args.iter().map(|arg| arg.node.clone()))
                             .add_to(self);
                     } else if is_region_or_unsafe_ptr(destination.ty(self, self.tcx()).ty) {
                         let instrumentation_location = Location {
@@ -799,14 +805,6 @@ impl<'tcx> Visitor<'tcx> for CollectInstrumentationPoints<'_, 'tcx> {
     }
 }
 
-fn mark_scopes_unsafe(scopes: &mut rustc_index::vec::IndexVec<SourceScope, SourceScopeData>) {
-    for scope in scopes {
-        if let ClearCrossCrate::Set(data) = &mut scope.local_data {
-            data.safety = Safety::BuiltinUnsafe;
-        }
-    }
-}
-
 fn instrument_body<'a, 'tcx>(
     state: &Instrumenter,
     tcx: TyCtxt<'tcx>,
@@ -827,10 +825,8 @@ fn instrument_body<'a, 'tcx>(
         local_rewriter.local_to_address
     };
 
-    // The local rewriter above rewrites address-taken locals with (*_x) where _x
-    // is a pointer, resulting in an unsafe operation. To allow this, set all scopes
-    // as unsafe
-    mark_scopes_unsafe(&mut body.source_scopes);
+    // Unsafety checking now uses THIR, so the raw pointer dereferences
+    // introduced here need no MIR scope safety annotation.
 
     // collect instrumentation points
     let points = {
@@ -865,7 +861,7 @@ fn instrument_entry_fn<'tcx>(tcx: TyCtxt<'tcx>, hooks: Hooks, body: &mut Body<'t
             TerminatorKind::Return => {
                 return_blocks.push(block);
             }
-            TerminatorKind::Resume => {
+            TerminatorKind::UnwindResume => {
                 resume_blocks.push(block);
             }
             _ => {}
@@ -920,15 +916,15 @@ pub fn insert_call<'tcx>(
         }
     }
 
-    let fn_sig = tcx.fn_sig(func).subst_identity();
+    let fn_sig = tcx.fn_sig(func).instantiate_identity();
     let fn_sig = tcx.liberate_late_bound_regions(func, fn_sig);
 
     let ret_local = locals.push(LocalDecl::new(fn_sig.output(), DUMMY_SP));
-    let func = Operand::function_handle(tcx, func, tcx.mk_substs(&ty_substs), DUMMY_SP);
+    let func = Operand::function_handle(tcx, func, tcx.mk_args(&ty_substs), DUMMY_SP);
     let unwind = if blocks[block].is_cleanup {
         // A panic while already unwinding terminates the process.  This is the
         // target-MIR equivalent of `cleanup: None` on a cleanup block.
-        UnwindAction::Terminate
+        UnwindAction::Terminate(UnwindTerminateReason::InCleanup)
     } else {
         UnwindAction::Continue
     };
@@ -936,11 +932,17 @@ pub fn insert_call<'tcx>(
     let call = Terminator {
         kind: TerminatorKind::Call {
             func,
-            args: args.iter().map(|arg| arg.inner().clone()).collect(),
+            args: args
+                .iter()
+                .map(|arg| Spanned {
+                    node: arg.inner().clone(),
+                    span: DUMMY_SP,
+                })
+                .collect(),
             destination: ret_local.into(),
             target: Some(successor_block),
             unwind,
-            from_hir_call: true,
+            call_source: CallSource::Normal,
             fn_span: DUMMY_SP,
         },
         source_info: SourceInfo::outermost(DUMMY_SP),

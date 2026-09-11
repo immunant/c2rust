@@ -23,9 +23,9 @@ use rustc_arena::DroplessArena;
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_hir::{Mutability, Node};
-use rustc_index::vec::{Idx, IndexVec};
-use rustc_middle::ty::{self, Ty, TyCtxt, TyKind, TypeAndMut};
-use rustc_span::source_map::Span;
+use rustc_index::{Idx, IndexVec};
+use rustc_middle::ty::{self, Ty, TyCtxt, TyKind};
+use rustc_span::Span;
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
 use crate::command::CommandState;
@@ -234,10 +234,7 @@ fn analyze_externs<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>
                             .sig_cset
                             .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
                     }
-                    TyKind::RawPtr(TypeAndMut {
-                        mutbl: Mutability::Mut,
-                        ..
-                    }) => {
+                    TyKind::RawPtr(_, Mutability::Mut) => {
                         func_summ
                             .sig_cset
                             .add(Perm::Concrete(ConcretePerm::Move), Perm::var(p));
@@ -259,9 +256,9 @@ fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
 }
 
 fn is_mut_t(ty: &Ty) -> bool {
-    if let TyKind::RawPtr(mut_ty) = ty.kind() {
-        if mut_ty.mutbl == Mutability::Mut {
-            if let TyKind::Param(param_ty) = mut_ty.ty.kind() {
+    if let TyKind::RawPtr(inner, mutbl) = ty.kind() {
+        if *mutbl == Mutability::Mut {
+            if let TyKind::Param(param_ty) = inner.kind() {
                 return param_ty.name.as_str() == "T";
             }
         }
@@ -639,14 +636,14 @@ pub fn dump_results(dcx: &RefactorCtxt, results: &AnalysisResult) {
     let path_str = |def_id| def_path_string_no_crate(dcx.ty_ctxt(), def_id);
 
     let mut ids = results.statics.keys().cloned().collect::<Vec<_>>();
-    ids.sort();
+    ids.sort_by_key(|id| (id.krate.as_u32(), id.index.as_u32()));
     for id in ids {
         let ty = results.statics[&id];
         debug!("static {} :: {:?}", path_str(id), Pretty(ty));
     }
 
     let mut ids = results.funcs.keys().cloned().collect::<Vec<_>>();
-    ids.sort();
+    ids.sort_by_key(|id| (id.krate.as_u32(), id.index.as_u32()));
     for id in ids {
         let fr = &results.funcs[&id];
 
