@@ -199,8 +199,8 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // C compound literals are lvalues, but equivalent Rust expressions generally are not.
         // So if an address is needed, store it in an intermediate variable first.
-        if !ctx.needs_address || ctx.expanding_macro.is_some() {
-            return self.convert_expr(ctx, val, override_ty);
+        if !ctx.needs_address || !ctx.is_used || ctx.expanding_macro.is_some() {
+            return self.convert_expr(ctx.not_needs_address(), val, override_ty);
         }
 
         let fresh_name = self
@@ -211,7 +211,7 @@ impl<'c> Translation<'c> {
 
         // Translate the expression to be assigned to the fresh variable.
         // It will be assigned by value, so we don't need its address anymore.
-        let val = self.convert_expr(ctx.not_needs_address(), val, override_ty)?;
+        let val = self.convert_expr(ctx.used().not_needs_address(), val, override_ty)?;
 
         // If we are translating a static variable,
         // then the fresh variable should also be static.
@@ -258,7 +258,7 @@ impl<'c> Translation<'c> {
 
                 let to_array_element = |id: CExprId| -> TranslationResult<_> {
                     let val =
-                        self.convert_expr(ctx.used(), id, Some(CQualTypeId::new(element_type_id)))?;
+                        self.convert_expr(ctx, id, Some(CQualTypeId::new(element_type_id)))?;
                     val.try_map(|x| {
                         // Array literals require all of their elements to be
                         // the correct type; they will not use implicit casts to
@@ -325,7 +325,7 @@ impl<'c> Translation<'c> {
                         // * `ptr_extra_braces`
                         // * `array_of_ptrs`
                         // * `array_of_arrays`
-                        self.convert_expr(ctx.used(), single, expected_type_id)
+                        self.convert_expr(ctx, single, expected_type_id)
                     }
                     &[single] if is_zero_literal(single) && n > 1 => {
                         // This was likely a C array of the form `int x[16] = { 0 }`.
@@ -364,9 +364,9 @@ impl<'c> Translation<'c> {
             }
             ref kind if kind.is_scalar() => {
                 if let Some(&first) = ids.first() {
-                    self.convert_expr(ctx.used(), first, expected_type_id)
+                    self.convert_expr(ctx, first, expected_type_id)
                 } else {
-                    self.implicit_default_expr(ctx.used(), result_type_id.ctype)
+                    self.implicit_default_expr(ctx, result_type_id.ctype)
                 }
             }
             ref t => Err(format_err!("Init list not implemented for {:?}", t).into()),

@@ -527,7 +527,7 @@ impl<'a> Translation<'a> {
                     fields.push(field);
                 }
                 Both(field_id, (field_name, ty, bitfield_width, use_inner_type)) => {
-                    let mut expr = self.convert_expr(ctx.used(), *field_id, Some(ty))?;
+                    let mut expr = self.convert_expr(ctx, *field_id, Some(ty))?;
 
                     if use_inner_type {
                         // See comment above
@@ -620,7 +620,7 @@ impl<'a> Translation<'a> {
                         let val = if ids.is_empty() {
                             self.implicit_default_expr(ctx, field_ty.ctype)?
                         } else {
-                            self.convert_expr(ctx.used(), ids[0], None)?
+                            self.convert_expr(ctx, ids[0], None)?
                         };
 
                         Ok(val.map(|v| {
@@ -743,7 +743,7 @@ impl<'a> Translation<'a> {
         rhs_expr: Box<Expr>,
         field_id: CDeclId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let named_reference = self.name_reference_write_read(ctx.bitfield_write(), lhs)?;
+        let named_reference = self.name_reference_write_read(ctx.used().bitfield_write(), lhs)?;
         named_reference.and_then_try(
             |NamedReference {
                  lvalue: lhs_expr, ..
@@ -1053,7 +1053,7 @@ impl<'a> Translation<'a> {
         lrvalue: LRValue,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if ctx.is_unused() {
+        if !ctx.is_used {
             return self.convert_expr(ctx, expr, None);
         }
 
