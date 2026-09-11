@@ -21,7 +21,7 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
         super().__init__(id)
         self.client = genai.Client(api_key=api_key)
 
-    def generate_with_tools(
+    async def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
         tools: Iterable[Callable[..., Any]] = (),
@@ -38,11 +38,17 @@ class GoogleGenerativeModel(AbstractGenerativeModel):
             ),
         )
 
-        response = self.client.models.generate_content(
+        response = await self.client.aio.models.generate_content(
             model=self._id, contents=contents, config=config
         )
 
         return response.text
+
+    async def aclose(self) -> None:
+        try:
+            await self.client.aio.aclose()
+        finally:
+            self.client.close()
 
     def _convert_messages(self, messages: list[dict[str, Any]]) -> list[types.Content]:
         """
