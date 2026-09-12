@@ -171,11 +171,11 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         }
         Enum {
             ref variants,
-            integral_type,
+            underlying_type_id,
             ..
         } => {
             let mut res: Vec<SomeId> = variants.iter().map(|&x| x.into()).collect();
-            if let Some(qty) = integral_type {
+            if let Some(qty) = underlying_type_id {
                 res.push(qty.ctype.into());
             }
             res
