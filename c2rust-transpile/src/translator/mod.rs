@@ -4337,9 +4337,11 @@ impl<'c> Translation<'c> {
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
             | CastKind::BooleanToSignedIntegral => {
-                if ctx.is_pattern && !target_ty_kind.is_enum() {
+                if ctx.is_pattern
+                    && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
+                {
                     return Err(TranslationError::generic(
-                        "integral casts to non-enums are not supported in patterns",
+                        "only casts from integers to enums are supported in patterns",
                     ));
                 }
 
@@ -4351,7 +4353,9 @@ impl<'c> Translation<'c> {
                     }
 
                     CTypeKind::Enum(enum_id) => {
-                        return self.convert_cast_from_enum(ctx, enum_id, target_cty, val);
+                        let source_type_id = self.enum_underlying_type(enum_id);
+                        let val = self.make_enum_to_underlying_cast(val);
+                        return self.make_cast(ctx, source_type_id, target_cty, val);
                     }
 
                     _ => {}
@@ -4359,7 +4363,10 @@ impl<'c> Translation<'c> {
 
                 match *target_ty_kind {
                     CTypeKind::Enum(enum_id) => {
-                        self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
+                        let target_type_id = self.enum_underlying_type(enum_id);
+                        let val = self.make_cast(ctx, source_cty, target_type_id, val)?;
+                        let val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
+                        Ok(val)
                     }
 
                     _ if target_ty_kind.is_numeric()
