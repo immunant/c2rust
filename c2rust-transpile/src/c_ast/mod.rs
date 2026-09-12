@@ -530,7 +530,7 @@ impl TypedAstContext {
                 Struct { fields: None, .. }
                     | Union { fields: None, .. }
                     | Enum {
-                        integral_type: None,
+                        underlying_type_id: None,
                         ..
                     }
             )
@@ -1832,7 +1832,7 @@ pub enum CDeclKind {
     Enum {
         name: Option<String>,
         variants: Vec<CEnumConstantId>,
-        integral_type: Option<CQualTypeId>,
+        underlying_type_id: Option<CQualTypeId>,
     },
 
     EnumConstant {

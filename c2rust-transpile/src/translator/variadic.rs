@@ -192,9 +192,9 @@ impl<'c> Translation<'c> {
 
         match self.ast_context.resolve_type(ty.ctype).kind {
             CTypeKind::Enum(enum_id) => {
-                let integral_type_id = self.enum_integral_type(enum_id);
+                let underlying_type_id = self.enum_underlying_type(enum_id);
                 cast_kind = Some(VaArgCastKind::Enum(enum_id));
-                arg_ty = Some(self.convert_type(integral_type_id.ctype).unwrap());
+                arg_ty = Some(self.convert_type(underlying_type_id.ctype).unwrap());
             }
 
             CTypeKind::Pointer(p) => {

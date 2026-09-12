@@ -2026,7 +2026,7 @@ impl CfgBuilder {
                         .kind;
 
                     if let CTypeKind::Enum(enum_id) = *castee_type_kind {
-                        if target_type_id == translator.enum_integral_type(enum_id) {
+                        if target_type_id == translator.enum_underlying_type(enum_id) {
                             expected_type_id = Some(castee_type_id);
                         }
                     }
