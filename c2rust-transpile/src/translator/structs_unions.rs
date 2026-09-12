@@ -1110,7 +1110,9 @@ impl<'a> Translation<'a> {
         };
 
         if lrvalue.is_rvalue() {
-            val = self.make_cast(ctx, qual_ty, override_ty.unwrap_or(qual_ty), val)?;
+            val = val.and_then_try(|val| {
+                self.make_cast(ctx, qual_ty, override_ty.unwrap_or(qual_ty), val)
+            })?;
         }
 
         Ok(val)
@@ -1118,7 +1120,7 @@ impl<'a> Translation<'a> {
 
     pub fn convert_cast_to_union(
         &self,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
         opt_field_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let field_id = opt_field_id.expect("Missing field ID in union cast");
@@ -1135,9 +1137,10 @@ impl<'a> Translation<'a> {
             .resolve_field_name(Some(union_id), field_id)
             .expect("field name required");
 
-        Ok(val.map(|x| {
-            mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
-        }))
+        Ok(WithStmts::new_val(mk().struct_expr(
+            mk().path(vec![union_name]),
+            vec![mk().field(field_name, val)],
+        )))
     }
 }
 

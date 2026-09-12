@@ -376,12 +376,8 @@ impl<'c> Translation<'c> {
             ) {
                 // Cast the lhs to the compute lhs type, do the compute, and then
                 // cast the compute result to the final lhs type.
-                let lhs = self.make_cast(
-                    ctx.used(),
-                    lhs_type_id,
-                    compute_lhs_type_id,
-                    WithStmts::new_val(read.clone()),
-                )?;
+                let lhs =
+                    self.make_cast(ctx.used(), lhs_type_id, compute_lhs_type_id, read.clone())?;
 
                 let val = lhs.and_then_try(|lhs| {
                     self.convert_binary_operator(
@@ -395,7 +391,9 @@ impl<'c> Translation<'c> {
                     )
                 })?;
 
-                let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
+                let val = val.and_then_try(|val| {
+                    self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)
+                })?;
 
                 if is_volatile {
                     val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
@@ -421,7 +419,7 @@ impl<'c> Translation<'c> {
                 ctx,
                 result_type_id,
                 expected_type_id.unwrap_or(result_type_id),
-                WithStmts::new_val(read),
+                read,
             )?
         } else {
             WithStmts::new_val(self.panic_or_err("assignment result is not supposed to be used"))
@@ -545,7 +543,9 @@ impl<'c> Translation<'c> {
         if let &CTypeKind::Pointer(pointee) = rhs_type {
             let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
             let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
-            self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
+            val.and_then_try(|val| {
+                self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
+            })
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
         } else if lhs_type.is_unsigned_integral_type() {

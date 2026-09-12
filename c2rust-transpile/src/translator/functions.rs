@@ -446,13 +446,12 @@ impl<'c> Translation<'c> {
             }
         };
 
-        let call = func.and_then_try(|func| {
-            // We want to decay refs only when function is variadic
-            ctx.decay_ref = DecayRef::from(is_variadic);
+        // We want to decay refs only when function is variadic
+        ctx.decay_ref = DecayRef::from(is_variadic);
+        let args = self.convert_call_args(ctx.used(), args, arg_tys.as_deref(), is_variadic)?;
 
-            let args = self.convert_call_args(ctx.used(), args, arg_tys.as_deref(), is_variadic)?;
-
-            let call_expr = args.map(|args| mk().call_expr(func, args));
+        let call = func.zip(args).and_then_try(|(func, args)| {
+            let call_expr = mk().call_expr(func, args);
             self.make_cast(
                 ctx,
                 call_expr_ty,
