@@ -664,7 +664,7 @@ impl<'c> Translation<'c> {
                 one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int));
             }
             CTypeKind::Enum(enum_id) => {
-                one_type_id = self.enum_integral_type(enum_id);
+                one_type_id = self.enum_underlying_type(enum_id);
                 compute_lhs_type_id = one_type_id;
                 compute_res_type_id = one_type_id;
             }

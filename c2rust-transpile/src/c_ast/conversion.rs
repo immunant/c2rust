@@ -2294,12 +2294,12 @@ impl ConversionContext {
                         })
                         .collect();
 
-                    let integral_type = node.type_id.map(|x| self.visit_qualified_type(x));
+                    let underlying_type_id = node.type_id.map(|x| self.visit_qualified_type(x));
 
                     let enum_decl = CDeclKind::Enum {
                         name,
                         variants,
-                        integral_type,
+                        underlying_type_id,
                     };
 
                     self.add_decl(new_id, located(node, enum_decl));
