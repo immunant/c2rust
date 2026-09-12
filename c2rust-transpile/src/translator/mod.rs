@@ -3213,12 +3213,14 @@ impl<'c> Translation<'c> {
         let ty = self.convert_type(type_id)?;
         let result = self.mk_size_of_ty_expr(ty)?;
 
-        self.make_cast(
-            ctx,
-            result_type_id,
-            expected_type_id.unwrap_or(result_type_id),
-            result,
-        )
+        result.and_then_try(|result| {
+            self.make_cast(
+                ctx,
+                result_type_id,
+                expected_type_id.unwrap_or(result_type_id),
+                result,
+            )
+        })
     }
 
     fn mk_size_of_ty_expr(&self, ty: Box<Type>) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -3279,7 +3281,7 @@ impl<'c> Translation<'c> {
             ctx,
             result_type_id,
             expected_type_id.unwrap_or(result_type_id),
-            WithStmts::new_val(call),
+            call,
         )
     }
 
@@ -3883,12 +3885,14 @@ impl<'c> Translation<'c> {
         let mut val = WithStmts::new_val(val).merge_unsafe(set_unsafe);
 
         if lrvalue.is_rvalue() {
-            val = self.make_cast(
-                ctx,
-                result_type_id,
-                expected_type_id.unwrap_or(result_type_id),
-                val,
-            )?;
+            val = val.and_then_try(|val| {
+                self.make_cast(
+                    ctx,
+                    result_type_id,
+                    expected_type_id.unwrap_or(result_type_id),
+                    val,
+                )
+            })?;
         }
 
         Ok(val)
@@ -4078,7 +4082,9 @@ impl<'c> Translation<'c> {
                 };
 
                 // if the context wants a different type, add a cast
-                return self.make_cast(ctx, source_ty.not_volatile(), target_ty, val);
+                return val.and_then_try(|val| {
+                    self.make_cast(ctx, source_ty.not_volatile(), target_ty, val)
+                });
             }
 
             CastKind::NullToPointer => {
@@ -4130,15 +4136,17 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        self.make_cast_full(
-            ctx,
-            source_ty,
-            target_ty,
-            val,
-            Some(expr),
-            Some(kind),
-            opt_field_id,
-        )
+        val.and_then_try(|val| {
+            self.make_cast_full(
+                ctx,
+                source_ty,
+                target_ty,
+                val,
+                Some(expr),
+                Some(kind),
+                opt_field_id,
+            )
+        })
     }
 
     fn can_propagate_cast(
@@ -4234,7 +4242,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         source_type_id: CQualTypeId,
         target_type_id: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.make_cast_full(ctx, source_type_id, target_type_id, val, None, None, None)
     }
@@ -4244,7 +4252,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         source_cty: CQualTypeId,
         target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
         expr: Option<CExprId>,
         kind: Option<CastKind>,
         opt_field_id: Option<CFieldId>,
@@ -4262,6 +4270,8 @@ impl<'c> Translation<'c> {
                 CastKind::BitCast
             })
         });
+
+        let val = WithStmts::new_val(val);
 
         if self.ast_context.type_kinds_eq(
             source_ty_kind,
@@ -4284,17 +4294,17 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            CastKind::BitCast | CastKind::NoOp => {
+            CastKind::BitCast | CastKind::NoOp => val.and_then_try(|val| {
                 self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
-            }
+            }),
 
-            CastKind::IntegralToPointer | CastKind::NullToPointer => {
+            CastKind::IntegralToPointer | CastKind::NullToPointer => val.and_then_try(|val| {
                 self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
-            }
+            }),
 
-            CastKind::PointerToIntegral => {
+            CastKind::PointerToIntegral => val.and_then_try(|val| {
                 self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
-            }
+            }),
 
             CastKind::IntegralCast
             | CastKind::FloatingCast
@@ -4333,7 +4343,7 @@ impl<'c> Translation<'c> {
                 } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
                     self.ast_context[source_cty.ctype].kind
                 {
-                    self.f128_cast_to(val, target_ty_kind)
+                    val.and_then_try(|val| self.f128_cast_to(val, target_ty_kind))
                 } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
                     val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
@@ -4359,11 +4369,13 @@ impl<'c> Translation<'c> {
                 Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
             }
 
-            CastKind::ArrayToPointerDecay => {
+            CastKind::ArrayToPointerDecay => val.and_then_try(|val| {
                 self.convert_array_to_pointer_decay(ctx, source_cty, target_cty, val, expr)
-            }
+            }),
 
-            CastKind::ToUnion => self.convert_cast_to_union(val, opt_field_id),
+            CastKind::ToUnion => {
+                val.and_then_try(|val| self.convert_cast_to_union(val, opt_field_id))
+            }
 
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
@@ -4394,7 +4406,7 @@ impl<'c> Translation<'c> {
     /// Cast a f128 to some other int or float type
     fn f128_cast_to(
         &self,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
         target_ty_ctype: &CTypeKind,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.use_crate(ExternCrate::NumTraits);
@@ -4426,11 +4438,10 @@ impl<'c> Translation<'c> {
             }
         };
 
-        Ok(val.map(|val| {
-            let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
+        let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
+        let val = mk().method_call_expr(to_call, "unwrap", Vec::new());
 
-            mk().method_call_expr(to_call, "unwrap", Vec::new())
-        }))
+        Ok(WithStmts::new_val(val))
     }
 
     pub fn implicit_default_expr(
