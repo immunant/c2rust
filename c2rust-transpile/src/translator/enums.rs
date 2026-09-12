@@ -106,15 +106,18 @@ impl<'c> Translation<'c> {
         expr_type_id: CQualTypeId,
         enum_constant_id: CEnumConstantId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let val = self.enum_constant_expr(enum_constant_id);
+        let mut val = self.enum_constant_expr(enum_constant_id);
 
         if self.enum_constant_matches_type(expr_type_id.ctype, enum_constant_id) {
             return Ok(WithStmts::new_val(val));
         }
 
+        val = self.make_enum_to_underlying_cast(val);
+
         // Add a cast to the expected integral type.
         let enum_id = self.ast_context.parents[&enum_constant_id];
-        self.convert_cast_from_enum(ctx, enum_id, expr_type_id, val)
+        let underlying_type_id = self.enum_underlying_type(enum_id);
+        self.make_cast(ctx, underlying_type_id, expr_type_id, val)
     }
 
     /// Translate a cast where the source type, but not the target type, is an `enum` type.

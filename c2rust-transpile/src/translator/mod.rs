@@ -4311,9 +4311,11 @@ impl<'c> Translation<'c> {
             | CastKind::BooleanToSignedIntegral => {
                 let target_ty = self.convert_type(target_cty.ctype)?;
 
-                if ctx.is_pattern && !target_ty_kind.is_enum() {
+                if ctx.is_pattern
+                    && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
+                {
                     return Err(TranslationError::generic(
-                        "integral casts to non-enums are not supported in patterns",
+                        "only casts from integers to enums are supported in patterns",
                     ));
                 }
 
@@ -4324,6 +4326,19 @@ impl<'c> Translation<'c> {
                         CTypeKind::LongDouble | CTypeKind::Float128,
                         CTypeKind::LongDouble | CTypeKind::Float128,
                     ) => Ok(val.into()),
+
+                    (_, &CTypeKind::Enum(enum_id)) => {
+                        let underlying_type_id = self.enum_underlying_type(enum_id);
+                        let val = self.make_cast(ctx, source_cty, underlying_type_id, val)?;
+                        let val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
+                        Ok(val)
+                    }
+
+                    (&CTypeKind::Enum(enum_id), _) => {
+                        let underlying_type_id = self.enum_underlying_type(enum_id);
+                        let val = self.make_enum_to_underlying_cast(val);
+                        self.make_cast(ctx, underlying_type_id, target_cty, val)
+                    }
 
                     (_, CTypeKind::LongDouble | CTypeKind::Float128) => {
                         if ctx.is_const {
@@ -4345,18 +4360,10 @@ impl<'c> Translation<'c> {
                         self.f128_cast_to(val, target_ty_kind)
                     }
 
-                    (_, &CTypeKind::Enum(enum_id)) => {
-                        self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
-                    }
-
                     (CTypeKind::Bool, _) if target_ty_kind.is_floating_type() => {
                         let val = mk()
                             .cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty);
                         Ok(val.into())
-                    }
-
-                    (&CTypeKind::Enum(enum_id), _) => {
-                        self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
                     }
 
                     _ => {
