@@ -4309,8 +4309,6 @@ impl<'c> Translation<'c> {
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
             | CastKind::BooleanToSignedIntegral => {
-                let target_ty = self.convert_type(target_cty.ctype)?;
-
                 if ctx.is_pattern
                     && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
                 {
@@ -4340,6 +4338,13 @@ impl<'c> Translation<'c> {
                         self.make_cast(ctx, underlying_type_id, target_cty, val)
                     }
 
+                    // Booleans can only be cast to integers, so cast to an integer first.
+                    (CTypeKind::Bool, _) if !target_ty_kind.is_integral_type() => {
+                        let u8_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
+                        let val = mk().cast_expr(val, mk().path_ty(vec!["u8"]));
+                        self.make_cast(ctx, u8_type_id.into(), target_cty, val)
+                    }
+
                     (_, CTypeKind::LongDouble | CTypeKind::Float128) => {
                         if ctx.is_const {
                             return Err(format_translation_err!(
@@ -4360,13 +4365,8 @@ impl<'c> Translation<'c> {
                         self.f128_cast_to(val, target_ty_kind)
                     }
 
-                    (CTypeKind::Bool, _) if target_ty_kind.is_floating_type() => {
-                        let val = mk()
-                            .cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty);
-                        Ok(val.into())
-                    }
-
                     _ => {
+                        let target_ty = self.convert_type(target_cty.ctype)?;
                         let val = mk().cast_expr(val, target_ty);
                         Ok(val.into())
                     }

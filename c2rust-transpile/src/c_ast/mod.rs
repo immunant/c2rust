@@ -2759,6 +2759,12 @@ impl CQualTypeId {
     }
 }
 
+impl From<CTypeId> for CQualTypeId {
+    fn from(value: CTypeId) -> Self {
+        Self::new(value)
+    }
+}
+
 // TODO: these may be interesting, but I'm not sure if they fit here:
 //
 //  * UnaryTransformType <http://clang.llvm.org/doxygen/classclang_1_1UnaryTransformType.html>
