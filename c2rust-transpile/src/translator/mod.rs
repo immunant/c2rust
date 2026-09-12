@@ -4081,6 +4081,10 @@ impl<'c> Translation<'c> {
                 return self.make_cast(ctx, source_ty.not_volatile(), target_ty, val);
             }
 
+            CastKind::NullToPointer => {
+                return Ok(WithStmts::new_val(self.null_ptr(ty.ctype)?));
+            }
+
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
             | CastKind::PointerToBoolean => {
@@ -4284,7 +4288,7 @@ impl<'c> Translation<'c> {
                 self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
             }
 
-            CastKind::IntegralToPointer => {
+            CastKind::IntegralToPointer | CastKind::NullToPointer => {
                 self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
             }
 
@@ -4357,11 +4361,6 @@ impl<'c> Translation<'c> {
 
             CastKind::ArrayToPointerDecay => {
                 self.convert_array_to_pointer_decay(ctx, source_cty, target_cty, val, expr)
-            }
-
-            CastKind::NullToPointer => {
-                assert!(val.stmts().is_empty());
-                Ok(WithStmts::new_val(self.null_ptr(target_cty.ctype)?))
             }
 
             CastKind::ToUnion => self.convert_cast_to_union(val, opt_field_id),
