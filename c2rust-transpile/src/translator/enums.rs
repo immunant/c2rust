@@ -36,6 +36,8 @@ impl<'c> Translation<'c> {
             return Ok(ConvertedDecl::Item(enum_item));
         }
 
+        let underlying_type_kind = &self.ast_context.resolve_type(underlying_type_id.ctype).kind;
+        let underlying_type_is_bool = underlying_type_kind.is_bool();
         let enum_type = mk().ident_ty("Self");
         let constants = variants
             .iter()
@@ -49,7 +51,8 @@ impl<'c> Translation<'c> {
                     enum_constant_id,
                     name,
                 );
-                let (span, init) = self.make_enum_constant_init(enum_constant_id);
+                let (span, init) =
+                    self.make_enum_constant_init(enum_constant_id, underlying_type_is_bool);
                 mk().span(span)
                     .pub_()
                     .const_impl_item(name_rs, enum_type.clone(), init)
@@ -62,14 +65,26 @@ impl<'c> Translation<'c> {
         Ok(ConvertedDecl::Items(vec![enum_item, impl_block]))
     }
 
-    fn make_enum_constant_init(&self, enum_constant_id: CEnumConstantId) -> (Span, Box<Expr>) {
+    fn make_enum_constant_init(
+        &self,
+        enum_constant_id: CEnumConstantId,
+        is_bool: bool,
+    ) -> (Span, Box<Expr>) {
         let value = match self.ast_context[enum_constant_id].kind {
             CDeclKind::EnumConstant { value, .. } => value,
             _ => panic!("{:?} does not point to an enum variant", enum_constant_id),
         };
         let value_rs = match value {
             ConstIntExpr::I(value) => signed_int_expr(value),
-            ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
+            ConstIntExpr::U(value) => {
+                let lit = if is_bool {
+                    mk().bool_lit(value != 0)
+                } else {
+                    mk().int_unsuffixed_lit(value as u128)
+                };
+
+                mk().lit_expr(lit)
+            }
         };
         let enum_id = self.ast_context.parents[&enum_constant_id];
         let init = self.enum_constructor_expr(enum_id, value_rs, true);
