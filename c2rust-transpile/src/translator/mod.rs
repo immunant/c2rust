@@ -4317,19 +4317,20 @@ impl<'c> Translation<'c> {
                     ));
                 }
 
-                if let CTypeKind::LongDouble | CTypeKind::Float128 = target_ty_kind {
-                    if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                        self.ast_context[source_cty.ctype].kind
-                    {
-                        // These are both converted to `f128`, so a cast between the two should
-                        // just be a no-op.
-                        Ok(val.into())
-                    } else {
+                match (source_ty_kind, target_ty_kind) {
+                    // These are both converted to `f128`, so a cast between the two should just be
+                    // a no-op.
+                    (
+                        CTypeKind::LongDouble | CTypeKind::Float128,
+                        CTypeKind::LongDouble | CTypeKind::Float128,
+                    ) => Ok(val.into()),
+
+                    (_, CTypeKind::LongDouble | CTypeKind::Float128) => {
                         if ctx.is_const {
                             return Err(format_translation_err!(
                                 None,
                                 "f128 cannot be used in constants because \
-                                `f128::f128::new` is not `const`",
+                                    `f128::f128::new` is not `const`",
                             ));
                         }
 
@@ -4339,21 +4340,29 @@ impl<'c> Translation<'c> {
                         let val = mk().call_expr(fn_path, vec![val]);
                         Ok(val.into())
                     }
-                } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                    self.ast_context[source_cty.ctype].kind
-                {
-                    self.f128_cast_to(val, target_ty_kind)
-                } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-                    self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
-                } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                    let val =
-                        mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty);
-                    Ok(val.into())
-                } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
-                    self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
-                } else {
-                    let val = mk().cast_expr(val, target_ty);
-                    Ok(val.into())
+
+                    (CTypeKind::LongDouble | CTypeKind::Float128, _) => {
+                        self.f128_cast_to(val, target_ty_kind)
+                    }
+
+                    (_, &CTypeKind::Enum(enum_id)) => {
+                        self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
+                    }
+
+                    (CTypeKind::Bool, _) if target_ty_kind.is_floating_type() => {
+                        let val = mk()
+                            .cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty);
+                        Ok(val.into())
+                    }
+
+                    (&CTypeKind::Enum(enum_id), _) => {
+                        self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
+                    }
+
+                    _ => {
+                        let val = mk().cast_expr(val, target_ty);
+                        Ok(val.into())
+                    }
                 }
             }
 
