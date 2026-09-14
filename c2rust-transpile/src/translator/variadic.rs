@@ -184,7 +184,7 @@ impl<'c> Translation<'c> {
         enum VaArgCastKind {
             Cast(Box<Type>),
             Enum(CDeclId),
-            Transmute,
+            Transmute(Box<Type>),
         }
 
         let mut arg_ty: Option<Box<Type>> = None;
@@ -217,7 +217,7 @@ impl<'c> Translation<'c> {
                         is_variadic,
                     )?;
 
-                    cast_kind = Some(VaArgCastKind::Transmute);
+                    cast_kind = Some(VaArgCastKind::Transmute(self.convert_type(ty.ctype)?));
                     arg_ty = Some(mk().set_mutbl(p.mutability()).ptr_ty(fn_ty));
                 } else if self.ast_context.is_forward_declared_type(p.ctype) {
                     cast_kind = Some(VaArgCastKind::Cast(self.convert_type(ty.ctype).unwrap()));
@@ -250,8 +250,16 @@ impl<'c> Translation<'c> {
                         VaArgCastKind::Enum(enum_id) => {
                             self.enum_constructor_expr(enum_id, val, false)
                         }
-                        VaArgCastKind::Transmute => {
-                            transmute_expr(mk().infer_ty(), mk().infer_ty(), val)
+                        VaArgCastKind::Transmute(ty) => {
+                            // An enclosing cast or field access may prevent
+                            // inference of the transmute's destination type.
+                            // For `callbacks.fn = va_arg(arg, char_to_int_fp)`, emit
+                            // `transmute::<_, char_to_int_fp>(arg.arg::<*mut Fn>())
+                            // as Option<Fn>`, where Fn abbreviates the underlying
+                            // `unsafe extern "C" fn(c_char) -> c_int` signature.
+                            // With `transmute::<_, _>(...)`, inference fails:
+                            // the `as` cast does not determine its input type.
+                            transmute_expr(mk().infer_ty(), ty, val)
                         }
                     };
                 }

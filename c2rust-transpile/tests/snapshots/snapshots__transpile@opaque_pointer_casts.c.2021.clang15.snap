@@ -1,0 +1,45 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/opaque_pointer_casts.2021.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+#![feature(extern_types, strict_provenance)]
+extern "C" {
+    pub type Opaque;
+    pub type OpaqueUnion;
+}
+#[no_mangle]
+pub unsafe extern "C" fn sentinel() -> *mut Opaque {
+    return ::core::ptr::from_exposed_addr_mut::<::core::ffi::c_void>(
+        8 as ::core::ffi::c_int as usize,
+    ) as *mut Opaque;
+}
+#[no_mangle]
+pub unsafe extern "C" fn const_sentinel() -> *const Opaque {
+    return ::core::ptr::from_exposed_addr::<::core::ffi::c_void>(8 as ::core::ffi::c_int as usize)
+        as *const Opaque;
+}
+#[no_mangle]
+pub unsafe extern "C" fn union_sentinel() -> *mut OpaqueUnion {
+    return ::core::ptr::from_exposed_addr_mut::<::core::ffi::c_void>(
+        8 as ::core::ffi::c_int as usize,
+    ) as *mut OpaqueUnion;
+}
+#[no_mangle]
+pub unsafe extern "C" fn from_address(mut address: ::core::ffi::c_ulong) -> *mut Opaque {
+    return ::core::ptr::from_exposed_addr_mut::<::core::ffi::c_void>(address as usize)
+        as *mut Opaque;
+}
+static mut static_sentinel: *const Opaque = 8 as ::core::ffi::c_int as *const Opaque;
+#[no_mangle]
+pub unsafe extern "C" fn get_static_sentinel() -> *const Opaque {
+    return static_sentinel;
+}

@@ -593,14 +593,31 @@ impl<'c> Translation<'c> {
                     Mutability::Mutable => "with_exposed_provenance_mut",
                 },
             };
-            let pointee_type_rs = self.convert_pointee_type(pointee_type_id.ctype)?;
+            // Extern types are unsized, but the exposed-provenance constructors
+            // require Sized pointees. Construct a c_void pointer first and cast
+            // it to the opaque pointer type, which is still a thin pointer.
+            let is_opaque = self
+                .ast_context
+                .is_forward_declared_type(pointee_type_id.ctype);
+            let pointee_type_rs = if is_opaque {
+                mk().abs_path_ty(vec!["core", "ffi", "c_void"])
+            } else {
+                self.convert_pointee_type(pointee_type_id.ctype)?
+            };
             let type_args = mk().angle_bracketed_args(vec![pointee_type_rs]);
             let fn_expr = mk().abs_path_expr(vec![
                 mk().path_segment("core"),
                 mk().path_segment("ptr"),
                 mk().path_segment_with_args(fn_name, type_args),
             ]);
-            let val = val.map(|val| mk().call_expr(fn_expr, vec![val]));
+            let val = val.map(|val| {
+                let ptr = mk().call_expr(fn_expr, vec![val]);
+                if is_opaque {
+                    mk().cast_expr(ptr, target_ty)
+                } else {
+                    ptr
+                }
+            });
 
             Ok(val)
         }
