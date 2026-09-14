@@ -4468,6 +4468,8 @@ impl<'c> Translation<'c> {
                     mk().lit_expr(mk().float_unsuffixed_lit("0.")),
                 )),
             }
+        } else if let &CTypeKind::Atomic(inner) = resolved_ty {
+            self.implicit_default_expr(ctx, inner.ctype)
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
             self.null_ptr(resolved_ty_id).map(WithStmts::new_val)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
