@@ -13,8 +13,8 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{
     self, AdtDef, FnSig, GenericArg, GenericArgsRef, List, Ty, TyCtxt, TyKind, UintTy,
 };
-use rustc_span::{sym, Symbol};
 use rustc_span::source_map::Spanned;
+use rustc_span::{sym, Symbol};
 use rustc_type_ir::IntTy;
 use std::fmt::Debug;
 
@@ -635,11 +635,7 @@ pub fn is_automatically_derived<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> b
 /// its arguments and return value have the same dataflow as a final call.
 pub fn call_parts<'a, 'tcx>(
     kind: &'a TerminatorKind<'tcx>,
-) -> Option<(
-    &'a Operand<'tcx>,
-    &'a [Spanned<Operand<'tcx>>],
-    Place<'tcx>,
-)> {
+) -> Option<(&'a Operand<'tcx>, &'a [Spanned<Operand<'tcx>>], Place<'tcx>)> {
     match kind {
         TerminatorKind::Call {
             func,

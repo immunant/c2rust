@@ -641,8 +641,8 @@ mod tests {
     use rustc_driver::{Callbacks, Compilation, RunCompiler};
     use rustc_hir::def_id::CRATE_DEF_ID;
     use rustc_interface::interface::Compiler;
-    use rustc_span::{create_default_session_globals_then, BytePos, Span, SyntaxContext};
     use rustc_span::source_map::Spanned;
+    use rustc_span::{create_default_session_globals_then, BytePos, Span, SyntaxContext};
     use std::env;
     use std::fs;
     use std::process::{self, Command};
@@ -705,8 +705,7 @@ type SafeFn = fn(u32) -> u32;
 type UnsafeFn = unsafe extern "C" fn(u32) -> u32;
 fn main() {}
 "#;
-        let dir =
-            env::temp_dir().join(format!("c2rust-reflect-binders-{}", process::id()));
+        let dir = env::temp_dir().join(format!("c2rust-reflect-binders-{}", process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("binders.rs");
         fs::write(&path, source).unwrap();

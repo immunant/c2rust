@@ -9,8 +9,8 @@ use rustc_ast::{
     Pat, Stmt, Ty, UnsafeSource, DUMMY_NODE_ID,
 };
 use rustc_data_structures::fx::FxHashMap;
-use rustc_data_structures::unord::UnordMap;
 use rustc_data_structures::sync::Lrc;
+use rustc_data_structures::unord::UnordMap;
 use rustc_driver;
 use rustc_errors::{Diag, ErrorGuaranteed, PResult};
 use rustc_hir::def::{PartialRes, PerNS, Res};

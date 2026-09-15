@@ -1273,10 +1273,10 @@ pub fn unlower<'tcx>(tcx: TyCtxt<'tcx>, mir: &Body<'tcx>, hir_body_id: hir::Body
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fs_err as fs;
     use rustc_driver::{Callbacks, Compilation, RunCompiler};
     use std::env;
     use std::process;
-    use fs_err as fs;
 
     #[test]
     fn pin_reborrows_have_adjustment_and_expression_origins() {

@@ -22,7 +22,8 @@ impl<'a> MutVisitor for LoadModules<'a> {
             ident,
             kind: ItemKind::Mod(_, mod_kind),
             ..
-        } = &mut *i else {
+        } = &mut *i
+        else {
             return mut_visit::walk_flat_map_item(self, i);
         };
 

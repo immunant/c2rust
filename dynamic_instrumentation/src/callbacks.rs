@@ -65,10 +65,10 @@ fn override_queries(_sess: &Session, providers: &mut Providers) {
 mod tests {
     use super::*;
     use rustc_driver::{Callbacks, RunCompiler};
-    use std::process::Command;
     use std::env;
     use std::fs;
     use std::path::PathBuf;
+    use std::process::Command;
 
     struct InvalidMirCallbacks;
 

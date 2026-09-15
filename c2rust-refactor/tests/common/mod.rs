@@ -1,11 +1,11 @@
 use c2rust_refactor::file_io::OutputMode;
 use c2rust_refactor::{lib_main, Command as RefactorCommand, Options, RustcArgSource};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
-use std::env;
 
 // Diagnostic tracking and the embedded compiler have process-wide hooks.
 pub static COMPILER: Mutex<()> = Mutex::new(());

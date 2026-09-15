@@ -8,35 +8,36 @@ use std::ops::{Bound, Deref, DerefMut};
 use std::path::Path;
 use std::u32;
 
-use rustc_hir::{self, HirId, DUMMY_HIR_ID};
-use rustc_errors::Level;
-use smallvec::SmallVec;
-use rustc_ast::{ast, entry};
 use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
-use rustc_span::{kw, BytePos, FileName, Ident, Pos, Span, Symbol, SyntaxContext, DUMMY_SP};
+use rustc_ast::{ast, entry};
+use rustc_errors::Level;
+use rustc_hir::{self, HirId, DUMMY_HIR_ID};
 use rustc_middle::ty;
+use rustc_span::{kw, BytePos, FileName, Ident, Pos, Span, Symbol, SyntaxContext, DUMMY_SP};
+use smallvec::SmallVec;
 
-use indexmap::IndexSet;
 use failure::{Error, ResultExt};
+use indexmap::IndexSet;
 use petgraph::dot::Dot;
 use petgraph::graph::{Graph, NodeIndex};
-use petgraph::visit::{IntoNodeIdentifiers};
+use petgraph::visit::IntoNodeIdentifiers;
 
-use c2rust_analysis_rt::{SourceSpan, SourcePos, SpanId};
-use c2rust_analysis_rt::events::{Pointer, Event, EventKind};
 use crate::ast_builder::{mk, Make};
+use c2rust_analysis_rt::events::{Event, EventKind, Pointer};
+use c2rust_analysis_rt::{SourcePos, SourceSpan, SpanId};
 
-use crate::ast_manip::{lr_expr, map_ast_unified, visit_nodes, AstEquiv, AstNodeRef, UnifiedAstMap};
 use crate::ast_manip::fn_edit::{visit_fns, FnLike};
-use crate::context::RefactorCtxt;
+use crate::ast_manip::{
+    lr_expr, map_ast_unified, visit_nodes, AstEquiv, AstNodeRef, UnifiedAstMap,
+};
 use crate::command::{Command, CommandState, RefactorState, Registry};
+use crate::context::RefactorCtxt;
 use crate::driver::{parse_ty, Phase};
 use crate::expect;
 use crate::reflect;
 use crate::transform::Transform;
 use crate::util::Lone;
-
 
 struct InstrumentCmd {
     span_file_path: String,
@@ -45,7 +46,8 @@ struct InstrumentCmd {
 
 impl Transform for InstrumentCmd {
     fn transform(&self, krate: &mut ast::Crate, _st: &CommandState, cx: &RefactorCtxt) {
-        let mut folder = LifetimeInstrumenter::new(cx, &self.span_file_path, &self.main_path, krate);
+        let mut folder =
+            LifetimeInstrumenter::new(cx, &self.span_file_path, &self.main_path, krate);
         let folded = folder.visit_crate(krate);
         folder.finalize().expect("Error instrumenting lifetimes");
         folded
@@ -68,13 +70,16 @@ trait GetPointerArg {
 impl GetPointerArg for EventKind {
     fn get_ptr_expr<'a>(&self, ast_node: AstNodeRef<'a>) -> Option<&'a ast::Expr> {
         match self {
-            EventKind::Alloc{..} => None,
-            EventKind::Free{..} | EventKind::Realloc{..} => {
+            EventKind::Alloc { .. } => None,
+            EventKind::Free { .. } | EventKind::Realloc { .. } => {
                 let expr: &ast::Expr = ast_node.try_into().unwrap();
                 let args = expect!([&expr.kind] ast::ExprKind::Call(_, args) => args);
                 Some(&args[0])
             }
-            EventKind::Arg{..} | EventKind::Assign{..} | EventKind::Deref{..} | EventKind::Ret{..} => {
+            EventKind::Arg { .. }
+            | EventKind::Assign { .. }
+            | EventKind::Deref { .. }
+            | EventKind::Ret { .. } => {
                 let expr: &ast::Expr = ast_node.try_into().unwrap();
                 Some(get_ptr_expr(expr))
             }
@@ -114,10 +119,9 @@ fn get_ptr_expr(expr: &ast::Expr) -> &ast::Expr {
             get_ptr_expr(&e)
         }
 
-        ast::ExprKind::Loop(block, _) | ast::ExprKind::Block(block, _)
-        | ast::ExprKind::TryBlock(block) => {
-            get_block_value(&block)
-        }
+        ast::ExprKind::Loop(block, _)
+        | ast::ExprKind::Block(block, _)
+        | ast::ExprKind::TryBlock(block) => get_block_value(&block),
 
         ast::ExprKind::Unary(ast::UnOp::Deref, e) => e,
 
@@ -148,18 +152,25 @@ struct LifetimeInstrumenter<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
-    fn new(cx: &'a RefactorCtxt<'a, 'tcx>, span_file_path: &'a str, main_path: &'a str, krate: &ast::Crate) -> Self {
+    fn new(
+        cx: &'a RefactorCtxt<'a, 'tcx>,
+        span_file_path: &'a str,
+        main_path: &'a str,
+        krate: &ast::Crate,
+    ) -> Self {
         let main_path = {
-            if let ast::TyKind::Path(_, mut path) = parse_ty(cx.session(), main_path)
-                .into_inner()
-                .kind
+            if let ast::TyKind::Path(_, mut path) =
+                parse_ty(cx.session(), main_path).into_inner().kind
             {
                 if !path.segments[0].ident.is_path_segment_keyword() {
                     path.segments.insert(0, mk().path_segment(kw::Crate));
                 }
                 path
             } else {
-                panic!("Could not parse lifetime_analysis main path argument: {:?}", main_path);
+                panic!(
+                    "Could not parse lifetime_analysis main path argument: {:?}",
+                    main_path
+                );
             }
         };
         let mut hooked_functions = HashMap::new();
@@ -180,11 +191,9 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
 
     fn finalize(self) -> Result<(), Error> {
         debug!("Writing spans to {:?}", self.span_file_path);
-        let span_file = File::create(self.span_file_path)
-            .context("Could not open span file")?;
+        let span_file = File::create(self.span_file_path).context("Could not open span file")?;
         let spans: Vec<SourceSpan> = self.spans.into_iter().collect();
-        bincode::serialize_into(span_file, &spans)
-            .context("Span serialization failed")?;
+        bincode::serialize_into(span_file, &spans).context("Span serialization failed")?;
         Ok(())
     }
 
@@ -192,17 +201,15 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     /// the function and its declaration if found.
     fn hooked_fn(&self, fn_hir_id: HirId) -> Option<(Ident, &ast::FnDecl)> {
         match self.cx.hir_map().find_by_hir_id(fn_hir_id) {
-            Some(hir::Node::ForeignItem(item)) => {
-                self.hooked_functions
-                    .get(&item.ident.name)
-                    .and_then(|decl| Some((item.ident, &**decl)))
-            }
-            Some(hir::Node::Item(item)) => {
-                self.hooked_functions
-                    .get(&item.ident.name)
-                    .and_then(|decl| Some((item.ident, &**decl)))
-            }
-            _ => None
+            Some(hir::Node::ForeignItem(item)) => self
+                .hooked_functions
+                .get(&item.ident.name)
+                .and_then(|decl| Some((item.ident, &**decl))),
+            Some(hir::Node::Item(item)) => self
+                .hooked_functions
+                .get(&item.ident.name)
+                .and_then(|decl| Some((item.ident, &**decl))),
+            _ => None,
         }
     }
 
@@ -220,12 +227,16 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         let hi = self.cx.session().source_map().lookup_byte_offset(span.hi());
 
         if lo.sf.start_pos != hi.sf.start_pos {
-            self.cx.session().span_err(span, "Location crosses source files");
+            self.cx
+                .session()
+                .span_err(span, "Location crosses source files");
         }
         let file_path = match &lo.sf.name {
             FileName::Real(path) => path.to_owned(),
             _ => {
-                self.cx.session().span_err(span, "Location does not refer to a source file");
+                self.cx
+                    .session()
+                    .span_err(span, "Location does not refer to a source file");
                 unreachable!()
             }
         };
@@ -237,33 +248,28 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
     }
 
     fn instrument_entry_block(&self, block: &mut P<ast::Block>) {
-        let init_stmt = mk().semi_stmt(
-            mk().call_expr(
-                mk().path_expr(vec!["c2rust_analysis_rt", "init"]),
-                vec![mk().lit_expr(self.span_file_path)],
-            )
-        );
+        let init_stmt = mk().semi_stmt(mk().call_expr(
+            mk().path_expr(vec!["c2rust_analysis_rt", "init"]),
+            vec![mk().lit_expr(self.span_file_path)],
+        ));
         block.stmts.insert(0, init_stmt);
     }
 
     fn instrument_main_block(&self, block: &mut P<ast::Block>) {
-        let init_stmt = mk().local_stmt(
-            P(mk().local::<_, P<ast::Ty>, _>(
-                mk().ident_pat("c2rust_analysis_ctx"), None, Some(
-                    mk().call_expr(
-                        mk().path_expr(vec!["c2rust_analysis_rt", "context"]),
-                        vec![],
-                    )
-                )
-            ))
-        );
+        let init_stmt = mk().local_stmt(P(mk().local::<_, P<ast::Ty>, _>(
+            mk().ident_pat("c2rust_analysis_ctx"),
+            None,
+            Some(mk().call_expr(
+                mk().path_expr(vec!["c2rust_analysis_rt", "context"]),
+                vec![],
+            )),
+        )));
         block.stmts.insert(0, init_stmt);
     }
 
     fn instrument_expr_block(&self, expr: &mut P<ast::Expr>, stmts: &[ast::Stmt]) {
-        let local = P(mk().local::<_, P<ast::Ty>, _>(
-            mk().ident_pat("ret"), None, Some(expr.clone())
-        ));
+        let local =
+            P(mk().local::<_, P<ast::Ty>, _>(mk().ident_pat("ret"), None, Some(expr.clone())));
 
         let mut block_stmts = vec![mk().local_stmt(local)];
         block_stmts.extend(stmts.into_iter().cloned());
@@ -277,24 +283,23 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         &mut self,
         span: Span,
         fn_name: I,
-        args: &[P<ast::Expr>]
+        args: &[P<ast::Expr>],
     ) -> P<ast::Expr>
-    where I: Make<Ident>
+    where
+        I: Make<Ident>,
     {
         let source_loc_idx = self.get_source_location_idx(span);
         let mut hook_args = vec![mk().lit_expr(mk().int_lit(source_loc_idx as u128, "u32"))];
         hook_args.extend(args.into_iter().cloned());
         mk().call_expr(
-            mk().path_expr(vec![
-                mk().ident("c2rust_analysis_rt"),
-                mk().ident(fn_name),
-            ]),
+            mk().path_expr(vec![mk().ident("c2rust_analysis_rt"), mk().ident(fn_name)]),
             hook_args,
         )
     }
 
     fn instrument_expr_use<I>(&mut self, expr: &mut P<ast::Expr>, fn_name: I)
-        where I: Make<Ident> + Copy
+    where
+        I: Make<Ident> + Copy,
     {
         match &mut expr.kind {
             ast::ExprKind::If(_, true_block, else_block) => {
@@ -305,8 +310,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
                 return;
             }
 
-            ast::ExprKind::While(..)
-            | ast::ExprKind::ForLoop(..) => {
+            ast::ExprKind::While(..) | ast::ExprKind::ForLoop(..) => {
                 panic!("Unexpected loop expression without value: {:?}", expr);
             }
 
@@ -329,10 +333,7 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
         // `ret` is the local created inside the instrumentation block
         // by `instrument_expr_block`
         let mut value = mk().path_expr(vec!["ret"]);
-        if let Some(ty::TyKind::Ref(_, ty, _)) = self.cx
-            .opt_node_type(inner.id)
-            .map(|x| &x.kind)
-        {
+        if let Some(ty::TyKind::Ref(_, ty, _)) = self.cx.opt_node_type(inner.id).map(|x| &x.kind) {
             // Cast the reference to a raw pointer
             value = mk().cast_expr(
                 value,
@@ -348,10 +349,13 @@ impl<'a, 'tcx> LifetimeInstrumenter<'a, 'tcx> {
             if let ast::ExprKind::Block(block, _) = &mut expr.kind {
                 // Insert the new instrumentation call right before the
                 // return value
-                let index = block.stmts.len()-1;
+                let index = block.stmts.len() - 1;
                 block.stmts.insert(index, mk().semi_stmt(call));
             } else {
-                panic!("Expected a block for already instrumented expression: {:?}", expr);
+                panic!(
+                    "Expected a block for already instrumented expression: {:?}",
+                    expr
+                );
             }
         } else {
             // Make a new instrumentation block
@@ -418,17 +422,17 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                     let mut args: Vec<P<ast::Expr>> = args
                         .iter()
                         .zip(decl.inputs.iter())
-                    // .filter(|(_, arg_decl)| {
-                    //     // We don't want to pass ADT types to the handlers,
-                    //     // since they can't define a correct argument type for
-                    //     // ADTs in the instrumented program.
-                    //     if let Some(ty) = self.cx.opt_node_type(arg_decl.ty.id) {
-                    //         if let ty::Adt(..) = ty.sty {
-                    //             return false;
-                    //         }
-                    //     }
-                    //     true
-                    // })
+                        // .filter(|(_, arg_decl)| {
+                        //     // We don't want to pass ADT types to the handlers,
+                        //     // since they can't define a correct argument type for
+                        //     // ADTs in the instrumented program.
+                        //     if let Some(ty) = self.cx.opt_node_type(arg_decl.ty.id) {
+                        //         if let ty::Adt(..) = ty.sty {
+                        //             return false;
+                        //         }
+                        //     }
+                        //     true
+                        // })
                         .map(|(arg, arg_decl)| self.add_ptr_cast(arg, &arg_decl.ty))
                         .collect();
                     // Add the return value of the hooked call.
@@ -488,7 +492,9 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                 // TODO: We don't handle @ subpattern patterns or let binding
                 // decomposition yet.
                 if let ast::PatKind::Ident(binding, _local_ident, None) = local.pat.kind {
-                    let is_unsafe_ptr = self.cx.opt_node_type(local.id)
+                    let is_unsafe_ptr = self
+                        .cx
+                        .opt_node_type(local.id)
                         .map_or(false, |ty| ty.is_unsafe_ptr());
                     if let Some(init) = &mut local.init {
                         if is_unsafe_ptr {
@@ -497,7 +503,9 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
                                 // directly dereferenced value for now. As this
                                 // is the only kind of reference the translator
                                 // creates, that's fine.
-                                if let ast::ExprKind::Unary(ast::UnOp::Deref, ptr_value) = &mut init.kind {
+                                if let ast::ExprKind::Unary(ast::UnOp::Deref, ptr_value) =
+                                    &mut init.kind
+                                {
                                     self.instrument_expr_use(ptr_value, "ptr_assign");
                                 }
                             } else {
@@ -532,9 +540,9 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
 
         // Instrument entry point if found
         match entry::entry_point_type(&*item, self.depth) {
-            entry::EntryPointType::MainNamed |
-            entry::EntryPointType::MainAttr |
-            entry::EntryPointType::Start => {
+            entry::EntryPointType::MainNamed
+            | entry::EntryPointType::MainAttr
+            | entry::EntryPointType::Start => {
                 if let ast::ItemKind::Fn(_sig, _generics, block) = &mut item.kind {
                     self.instrument_entry_block(block);
                 } else {
@@ -547,7 +555,11 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
         let item_id = item.id;
         // Instrument the real main function
         if let ast::ItemKind::Fn(_sig, _generics, block) = &mut item.kind {
-            if self.cx.def_path(self.cx.node_def_id(item_id)).ast_equiv(&self.main_path) {
+            if self
+                .cx
+                .def_path(self.cx.node_def_id(item_id))
+                .ast_equiv(&self.main_path)
+            {
                 self.instrument_main_block(block);
             }
         }
@@ -556,7 +568,6 @@ impl<'a, 'tcx> MutVisitor for LifetimeInstrumenter<'a, 'tcx> {
     }
 }
 
-
 struct AnalysisCmd {
     span_filename: String,
     log_filename: String,
@@ -564,23 +575,24 @@ struct AnalysisCmd {
 
 impl Command for AnalysisCmd {
     fn run(&mut self, state: &mut RefactorState) {
-        state.transform_crate(Phase::Phase3, |st, cx| {
-            // Initialize the analysis runtime so we get debug pretty printing for
-            // spans
-            c2rust_analysis_rt::span::set_file(&self.span_filename);
+        state
+            .transform_crate(Phase::Phase3, |st, cx| {
+                // Initialize the analysis runtime so we get debug pretty printing for
+                // spans
+                c2rust_analysis_rt::span::set_file(&self.span_filename);
 
-            // let arena = DroplessArena::default();
-            // let ownership_analysis = ownership::analyze(&st, &cx, &arena);
+                // let arena = DroplessArena::default();
+                // let ownership_analysis = ownership::analyze(&st, &cx, &arena);
 
-            let mut analyzer = LifetimeAnalyzer::new(
-                cx,
-                &self.span_filename,
-                &self.log_filename,
-                // ownership_analysis,
-            );
-            analyzer.run(&mut *st.krate_mut());
-            analyzer.visit_crate(&mut *st.krate_mut());
-        })
+                let mut analyzer = LifetimeAnalyzer::new(
+                    cx,
+                    &self.span_filename,
+                    &self.log_filename,
+                    // ownership_analysis,
+                );
+                analyzer.run(&mut *st.krate_mut());
+                analyzer.visit_crate(&mut *st.krate_mut());
+            })
             .expect("Failed to run lifetime analysis");
     }
 }
@@ -623,11 +635,11 @@ impl fmt::Debug for AllocInfo {
     }
 }
 
-struct MemMap ( BTreeMap<Pointer, AllocInfo> );
+struct MemMap(BTreeMap<Pointer, AllocInfo>);
 
 impl MemMap {
     fn new() -> Self {
-        Self ( BTreeMap::new() )
+        Self(BTreeMap::new())
     }
 
     fn is_allocated(&self, ptr: Pointer) -> bool {
@@ -635,27 +647,17 @@ impl MemMap {
     }
 
     fn get(&self, ptr: &Pointer) -> Option<&AllocInfo> {
-        self.0.range((Bound::Unbounded, Bound::Included(ptr)))
+        self.0
+            .range((Bound::Unbounded, Bound::Included(ptr)))
             .next_back()
-            .and_then(|a| {
-                if a.1.contains(*ptr) {
-                    Some(a.1)
-                } else {
-                    None
-                }
-            })
+            .and_then(|a| if a.1.contains(*ptr) { Some(a.1) } else { None })
     }
 
     fn get_mut(&mut self, ptr: &Pointer) -> Option<&mut AllocInfo> {
-        self.0.range_mut((Bound::Unbounded, Bound::Included(ptr)))
+        self.0
+            .range_mut((Bound::Unbounded, Bound::Included(ptr)))
             .next_back()
-            .and_then(|a| {
-                if a.1.contains(*ptr) {
-                    Some(a.1)
-                } else {
-                    None
-                }
-            })
+            .and_then(|a| if a.1.contains(*ptr) { Some(a.1) } else { None })
     }
 
     fn alloc(&mut self, size: usize, ptr: Pointer) -> &mut AllocInfo {
@@ -676,7 +678,9 @@ impl MemMap {
 
     fn realloc(&mut self, old_ptr: Pointer, size: usize, new_ptr: Pointer) -> &mut AllocInfo {
         if old_ptr == new_ptr {
-            let alloc = self.0.get_mut(&old_ptr)
+            let alloc = self
+                .0
+                .get_mut(&old_ptr)
                 .unwrap_or_else(|| panic!("Could not realloc from {:?}", old_ptr));
             alloc.size = size;
             alloc
@@ -694,7 +698,6 @@ impl Deref for MemMap {
         &self.0
     }
 }
-
 
 impl DerefMut for MemMap {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -723,10 +726,9 @@ struct LifetimeAnalyzer<'a, 'tcx: 'a> {
     data_flow: DataFlowGraph,
 
     // _ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
-
     mem_map: MemMap,
 }
-    
+
 impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
     fn new(
         cx: &'a RefactorCtxt<'a, 'tcx>,
@@ -734,30 +736,34 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
         log_file: &'a str,
         // ownership_analysis: ownership::AnalysisResult<'lty, 'tcx>,
     ) -> Self {
-        let file = File::open(span_file)
-            .expect(&format!("Could not open span file: {:?}", span_file));
-        let spans: Vec<SourceSpan> = bincode::deserialize_from(file)
-            .expect("Error deserializing span file");
+        let file =
+            File::open(span_file).expect(&format!("Could not open span file: {:?}", span_file));
+        let spans: Vec<SourceSpan> =
+            bincode::deserialize_from(file).expect("Error deserializing span file");
 
-        let spans: Vec<Span> = spans.into_iter().map(|s: SourceSpan| {
-            let filename = FileName::from(s.source.clone());
-            let source_file = cx.session().source_map().get_source_file(&filename)
-                .unwrap_or_else(|| panic!("Could not find source file: {:?}", filename));
-            Span::new(
-                source_file.start_pos + BytePos::from_u32(s.lo.to_u32()),
-                source_file.start_pos + BytePos::from_u32(s.hi.to_u32()),
-                SyntaxContext::root(),
-                None,
-            )
-        }).collect();
+        let spans: Vec<Span> = spans
+            .into_iter()
+            .map(|s: SourceSpan| {
+                let filename = FileName::from(s.source.clone());
+                let source_file = cx
+                    .session()
+                    .source_map()
+                    .get_source_file(&filename)
+                    .unwrap_or_else(|| panic!("Could not find source file: {:?}", filename));
+                Span::new(
+                    source_file.start_pos + BytePos::from_u32(s.lo.to_u32()),
+                    source_file.start_pos + BytePos::from_u32(s.hi.to_u32()),
+                    SyntaxContext::root(),
+                    None,
+                )
+            })
+            .collect();
 
         if spans.len() > u32::MAX as usize {
             panic!("Too many spans");
         }
-        let span_ids = HashMap::from_iter(
-            spans.iter().enumerate().map(|(i, v)| (*v, i as SpanId))
-        );
-        
+        let span_ids = HashMap::from_iter(spans.iter().enumerate().map(|(i, v)| (*v, i as SpanId)));
+
         Self {
             cx: cx,
             log_path: Path::new(log_file),
@@ -798,8 +804,8 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
 
         let ast_map = map_ast_unified(krate);
 
-        let mut log_file = File::open(&self.log_path)
-            .expect("Could not open instrumentation log file");
+        let mut log_file =
+            File::open(&self.log_path).expect("Could not open instrumentation log file");
         while let Ok(event) = bincode::deserialize_from(&mut log_file) as bincode::Result<Event> {
             let span = self.spans[event.span as usize];
             debug!("{:?} {:?}", span, event.kind);
@@ -814,8 +820,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
 
             match event.kind {
                 EventKind::Alloc { size, ptr } => {
-                    self.mem_map.alloc(size, ptr)
-                        .add_event(event.kind, node_id);
+                    self.mem_map.alloc(size, ptr).add_event(event.kind, node_id);
                 }
                 EventKind::Free { ptr } => {
                     if let Some(mut info) = self.mem_map.free(ptr) {
@@ -823,21 +828,24 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                         self.process_chain(&info.events, &ast_map);
                     }
                 }
-                EventKind::Realloc { old_ptr, size, new_ptr } => {
-                    self.mem_map.realloc(old_ptr, size, new_ptr)
+                EventKind::Realloc {
+                    old_ptr,
+                    size,
+                    new_ptr,
+                } => {
+                    self.mem_map
+                        .realloc(old_ptr, size, new_ptr)
                         .add_event(event.kind, node_id);
                 }
-                EventKind::Assign(ptr) |
-                EventKind::Arg(ptr) |
-                EventKind::Ret(ptr) |
-                EventKind::Deref(ptr) => {
-                    match self.mem_map.get_mut(&ptr) {
-                        Some(info) => info.add_event(event.kind, node_id),
-                        None => {
-                            warn!("Warning: Could not find allocation for {:?}", event);
-                        }
+                EventKind::Assign(ptr)
+                | EventKind::Arg(ptr)
+                | EventKind::Ret(ptr)
+                | EventKind::Deref(ptr) => match self.mem_map.get_mut(&ptr) {
+                    Some(info) => info.add_event(event.kind, node_id),
+                    None => {
+                        warn!("Warning: Could not find allocation for {:?}", event);
                     }
-                }
+                },
                 EventKind::Done => continue,
             };
 
@@ -853,7 +861,8 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
         debug!("{:?}", self.data_flow.dot());
         let owned_paths = self.data_flow.find_owned_paths();
         for path in &owned_paths {
-            let path_str = path.iter()
+            let path_str = path
+                .iter()
                 .map(|node| {
                     let node_id = self.cx.hir_map().hir_to_node_id(node.id);
                     if let Some(ast_node) = ast_map.get(&node_id) {
@@ -869,10 +878,9 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
 
             let node_id = self.cx.hir_map().hir_to_node_id(path[0].id);
             let alloc_span = ast_map.get_ast::<ast::Expr>(&node_id).unwrap().span;
-            let mut diagnostic = self.cx.make_diagnostic(
-                Level::Note,
-                "Found candidate for Boxing",
-            );
+            let mut diagnostic = self
+                .cx
+                .make_diagnostic(Level::Note, "Found candidate for Boxing");
             diagnostic.set_span(alloc_span);
             diagnostic.emit();
         }
@@ -881,7 +889,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
     fn canonical_def(&self, expr: &ast::Expr) -> hir::HirId {
         match &expr.kind {
             ast::ExprKind::Cast(sub, _) => self.canonical_def(sub),
-            
+
             _ => {
                 if let Some(hir_id) = self.cx.try_resolve_expr_to_hid(expr) {
                     return hir_id;
@@ -893,9 +901,16 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
     }
 
     /// Look up the canonical definition of `expr` in `sources`.
-    fn get_source(&self, sources: &HashMap<HirId, NodeIndex>, expr: &ast::Expr) -> Option<NodeIndex> {
+    fn get_source(
+        &self,
+        sources: &HashMap<HirId, NodeIndex>,
+        expr: &ast::Expr,
+    ) -> Option<NodeIndex> {
         if let ast::ExprKind::Call(callee, _) = &expr.kind {
-            debug!("    Callee node id: {:?}", self.cx.hir_map().hir_to_node_id(self.canonical_def(callee)));
+            debug!(
+                "    Callee node id: {:?}",
+                self.cx.hir_map().hir_to_node_id(self.canonical_def(callee))
+            );
             if let Some(source) = sources.get(&self.canonical_def(callee)) {
                 return Some(*source);
             }
@@ -912,24 +927,20 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
         let mut sources: HashMap<HirId, NodeIndex> = HashMap::new();
 
         for event in events {
-            debug!(
-                "  Event: {:?} @ {:?}",
-                event.kind,
-                ast_map.get(&event.node),
-            );
+            debug!("  Event: {:?} @ {:?}", event.kind, ast_map.get(&event.node),);
             let input_ptr = if let EventKind::Done = event.kind {
                 None
             } else {
                 event.kind.get_ptr_expr(*ast_map.get(&event.node).unwrap())
             };
             match event.kind {
-                EventKind::Alloc{..} => {
+                EventKind::Alloc { .. } => {
                     let id = self.cx.hir_map().node_to_hir_id(event.node);
                     let alloc_node = self.data_flow.get_node(id, DataFlowNodeKind::Alloc);
                     allocation = Some(alloc_node);
                     sources.insert(id, alloc_node);
                 }
-                EventKind::Realloc{..} => {
+                EventKind::Realloc { .. } => {
                     let id = self.cx.hir_map().node_to_hir_id(event.node);
                     let realloc_node = self.data_flow.get_node(id, DataFlowNodeKind::Realloc);
                     sources.insert(id, realloc_node);
@@ -937,16 +948,18 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
 
                     let input_ptr = input_ptr.expect("Could not identify input pointer to realloc");
                     if let Some(source) = self.get_source(&sources, input_ptr) {
-                        self.data_flow.add_flow(source, realloc_node, DataFlowEdge::Use);
+                        self.data_flow
+                            .add_flow(source, realloc_node, DataFlowEdge::Use);
                     }
                 }
-                EventKind::Free{..} | EventKind::Deref(..) => {
-                    let input_ptr = input_ptr.expect("Could not identify input pointer to free or deref");
+                EventKind::Free { .. } | EventKind::Deref(..) => {
+                    let input_ptr =
+                        input_ptr.expect("Could not identify input pointer to free or deref");
                     if let Some(source) = self.get_source(&sources, input_ptr) {
                         let id = self.cx.hir_map().node_to_hir_id(event.node);
                         let node_kind = match event.kind {
-                            EventKind::Free{..} => DataFlowNodeKind::Free,
-                            EventKind::Deref{..} => DataFlowNodeKind::Deref,
+                            EventKind::Free { .. } => DataFlowNodeKind::Free,
+                            EventKind::Deref { .. } => DataFlowNodeKind::Deref,
                             _ => panic!("Unexpected event kind"),
                         };
                         let new_node = self.data_flow.get_node(id, node_kind);
@@ -955,7 +968,7 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                         warn!("    Did not find def {:?} for in sources", input_ptr);
                     }
                 }
-                EventKind::Ret{..} => {
+                EventKind::Ret { .. } => {
                     let input_ptr = input_ptr.expect("Could not identify input pointer to ret");
                     if let Some(source) = self.get_source(&sources, input_ptr) {
                         let id = self.cx.hir_map().node_to_hir_id(event.node);
@@ -966,13 +979,17 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                     } else {
                         warn!("    Did not find def {:?} for in sources", input_ptr);
                     }
-                }                    
+                }
                 EventKind::Done => {
-                    let leak_node = self.data_flow.get_node(DUMMY_HIR_ID, DataFlowNodeKind::Leak);
-                    self.data_flow.add_flow(allocation.unwrap(), leak_node, DataFlowEdge::Use);
+                    let leak_node = self
+                        .data_flow
+                        .get_node(DUMMY_HIR_ID, DataFlowNodeKind::Leak);
+                    self.data_flow
+                        .add_flow(allocation.unwrap(), leak_node, DataFlowEdge::Use);
                 }
                 EventKind::Assign(..) => {
-                    let input_ptr = input_ptr.expect("Could not identify input pointer to assignment");
+                    let input_ptr =
+                        input_ptr.expect("Could not identify input pointer to assignment");
                     let source = self.get_source(&sources, input_ptr);
                     let mut hir_id = self.cx.hir_map().node_to_hir_id(event.node);
                     // Walk up from the assigned value to the assignment node
@@ -991,10 +1008,9 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                     if let Some(expr) = ast_map.get_ast::<ast::Expr>(&node_id) {
                         let lhs = expect!([expr.kind] ast::ExprKind::Assign(ref lhs, _) => lhs);
                         let dest_id = self.canonical_def(lhs);
-                        let dest = self.data_flow.get_node(
-                            dest_id,
-                            DataFlowNodeKind::from_lvalue(&lhs.kind),
-                        );
+                        let dest = self
+                            .data_flow
+                            .get_node(dest_id, DataFlowNodeKind::from_lvalue(&lhs.kind));
                         if let Some(source) = source {
                             self.data_flow.add_flow(source, dest, DataFlowEdge::Assign);
                         }
@@ -1010,9 +1026,10 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                     } else {
                         panic!("Unexpected AST node kind for event {:?}", event);
                     }
-                },
+                }
                 EventKind::Arg(..) => {
-                    let input_ptr = input_ptr.expect("Could not identify input pointer to argument");
+                    let input_ptr =
+                        input_ptr.expect("Could not identify input pointer to argument");
                     let mut hir_id = self.cx.hir_map().node_to_hir_id(event.node);
                     hir_id = self.cx.hir_map().get_parent_node(hir_id);
                     // Walk up to the call
@@ -1025,14 +1042,17 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                         }
                         hir_id = self.cx.hir_map().get_parent_node(hir_id);
                     };
-                    let arg_index = call_args.iter().position(|arg| arg.id == event.node)
+                    let arg_index = call_args
+                        .iter()
+                        .position(|arg| arg.id == event.node)
                         .expect("Could not find event node id in call argument list");
                     // let call = ast_map.get_ast::<ast::Expr>(&node_id)
                     //     .expect("Could not find call expr for argument");
                     if let Some(source) = self.get_source(&sources, input_ptr) {
                         // TODO: construct an argument node for the callee argument
                         let callee_hir_id = self.canonical_def(callee);
-                        if let Some(body_id) = self.cx.hir_map().maybe_body_owned_by(callee_hir_id) {
+                        if let Some(body_id) = self.cx.hir_map().maybe_body_owned_by(callee_hir_id)
+                        {
                             let body = self.cx.hir_map().body(body_id);
                             let arg = &body.params[arg_index];
                             let arg_id = arg.pat.hir_id;
@@ -1041,15 +1061,13 @@ impl<'a, 'tcx> LifetimeAnalyzer<'a, 'tcx> {
                             sources.insert(arg_id, dest);
                         }
                     }
-                },
+                }
             };
         }
     }
 }
 
-impl<'a, 'tcx> MutVisitor for LifetimeAnalyzer<'a, 'tcx> {
-}
-
+impl<'a, 'tcx> MutVisitor for LifetimeAnalyzer<'a, 'tcx> {}
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum DataFlowNodeKind {
@@ -1141,7 +1159,8 @@ impl DataFlowGraph {
             let mut path = vec![self.graph[free].clone()];
             let mut cur = free;
             while self.graph[cur].kind != DataFlowNodeKind::Alloc {
-                cur = self.graph
+                cur = self
+                    .graph
                     .neighbors_directed(cur, petgraph::Direction::Incoming)
                     .next()
                     .unwrap_or_else(|| panic!("Could not find incoming edge to {:?}", cur));
@@ -1172,13 +1191,17 @@ impl DataFlowGraph {
 pub fn register_commands(reg: &mut Registry) {
     use super::mk;
 
-    reg.register("lifetime_analysis_instrument", |args| mk(InstrumentCmd {
-        span_file_path: args[0].clone(),
-        main_path: args[1].clone(),
-    }));
+    reg.register("lifetime_analysis_instrument", |args| {
+        mk(InstrumentCmd {
+            span_file_path: args[0].clone(),
+            main_path: args[1].clone(),
+        })
+    });
 
-    reg.register("lifetime_analysis", |args| Box::new(AnalysisCmd {
-        span_filename: args[0].clone(),
-        log_filename: args[1].clone(),
-    }));
+    reg.register("lifetime_analysis", |args| {
+        Box::new(AnalysisCmd {
+            span_filename: args[0].clone(),
+            log_filename: args[1].clone(),
+        })
+    });
 }

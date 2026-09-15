@@ -120,10 +120,7 @@ pub fn nonterminal_to_string_owned(nt: Nonterminal) -> String {
 }
 
 fn print_nonterminal(nt: Nonterminal, prepare: &mut Prepare) -> String {
-    let mut token = Token::new(
-        TokenKind::Interpolated(Lrc::new(nt)),
-        rustc_span::DUMMY_SP,
-    );
+    let mut token = Token::new(TokenKind::Interpolated(Lrc::new(nt)), rustc_span::DUMMY_SP);
     mut_visit::visit_token(prepare, &mut token);
     let TokenKind::Interpolated(nt) = &token.kind else {
         unreachable!()

@@ -6,9 +6,9 @@ use crate::common::Analyze;
 use crate::common::CrateOptions;
 use crate::common::CrateType;
 use fs_err::{self as fs, File};
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
-use std::env;
 
 #[test]
 fn check_for_missing_tests() {
@@ -98,10 +98,7 @@ fn with_pdg_file() {
 fn mir_lowering() {
     let analyze = Analyze::resolve();
     let fixture = test_dir_for(file!(), true).join("mir_lowering.rs");
-    let test_dir = env::temp_dir().join(format!(
-        "c2rust-analyze-mir-lowering-{}",
-        process::id()
-    ));
+    let test_dir = env::temp_dir().join(format!("c2rust-analyze-mir-lowering-{}", process::id()));
     for edition in [2021, 2024] {
         let dir = test_dir.join(edition.to_string());
         fs::create_dir_all(&dir).unwrap();

@@ -1095,10 +1095,10 @@ pub fn convert_rewrites(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fs_err as fs;
     use std::env;
     use std::path::PathBuf;
     use std::process::{self, Command};
-    use fs_err as fs;
 
     #[test]
     fn pin_adjustment_reborrows_an_immutable_binding() {
@@ -1135,9 +1135,7 @@ fn main() {{
                 let _ = fs::remove_dir_all(&self.0);
             }
         }
-        let dir = Scratch(
-            env::temp_dir().join(format!("c2rust-pin-adjustment-{}", process::id())),
-        );
+        let dir = Scratch(env::temp_dir().join(format!("c2rust-pin-adjustment-{}", process::id())));
         fs::create_dir_all(&dir.0).unwrap();
         let path = dir.0.join("pin.rs");
         fs::write(&path, &source).unwrap();
@@ -1158,10 +1156,7 @@ fn main() {{
                 "{}\n{source}",
                 String::from_utf8_lossy(&output.stderr)
             );
-            assert!(Command::new(binary)
-                .status()
-                .unwrap()
-                .success());
+            assert!(Command::new(binary).status().unwrap().success());
         }
     }
 }

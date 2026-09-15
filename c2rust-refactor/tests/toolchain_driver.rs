@@ -7,8 +7,8 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 #[test]
 fn cargo_derived_rustc_arguments_preserve_the_input_and_sysroot() {
