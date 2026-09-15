@@ -995,6 +995,116 @@ impl TypedAstContext {
         }
     }
 
+    pub(crate) fn cast_kind_from_types(
+        &self,
+        source_ty_kind: &CTypeKind,
+        target_ty_kind: &CTypeKind,
+    ) -> Option<CastKind> {
+        if self.type_kinds_eq(
+            source_ty_kind,
+            target_ty_kind,
+            &TypedAstContext::resolve_type_id,
+        ) && !matches!(source_ty_kind, CTypeKind::Enum(..))
+        {
+            return Some(CastKind::NoOp);
+        }
+
+        Some(match (source_ty_kind, target_ty_kind) {
+            (_, CTypeKind::Void) => CastKind::ToVoid,
+
+            (CTypeKind::Pointer(pointee1), CTypeKind::Pointer(pointee2)) => {
+                if self.types_eq(
+                    pointee1.ctype,
+                    pointee2.ctype,
+                    &TypedAstContext::resolve_type_id,
+                ) {
+                    if !pointee1.qualifiers.is_const && pointee2.qualifiers.is_const {
+                        CastKind::BitCast //CastKind::ConstCast
+                    } else if pointee1.qualifiers.is_const && !pointee2.qualifiers.is_const {
+                        CastKind::NoOp
+                    } else {
+                        CastKind::BitCast
+                    }
+                } else {
+                    CastKind::BitCast
+                }
+            }
+
+            (
+                CTypeKind::ConstantArray(..)
+                | CTypeKind::VariableArray(..)
+                | CTypeKind::IncompleteArray(..),
+                CTypeKind::Pointer(..),
+            ) => CastKind::ArrayToPointerDecay,
+
+            (CTypeKind::Function(..), CTypeKind::Pointer(..)) => CastKind::FunctionToPointerDecay,
+
+            (_, CTypeKind::Atomic(..)) if !matches!(source_ty_kind, CTypeKind::Atomic(..)) => {
+                CastKind::NonAtomicToAtomic
+            }
+
+            (CTypeKind::Atomic(..), _) if !matches!(target_ty_kind, CTypeKind::Atomic(..)) => {
+                CastKind::AtomicToNonAtomic
+            }
+
+            (CTypeKind::Bool, CTypeKind::Pointer(..)) => CastKind::IntegralToPointer,
+
+            (_, CTypeKind::Pointer(..)) if source_ty_kind.is_enum_or_integral_type() => {
+                CastKind::IntegralToPointer
+            }
+
+            (CTypeKind::Pointer(..), CTypeKind::Bool) => CastKind::PointerToBoolean,
+
+            (CTypeKind::Pointer(..), _) if target_ty_kind.is_enum_or_integral_type() => {
+                CastKind::PointerToIntegral
+            }
+
+            (_, CTypeKind::Bool) if source_ty_kind.is_enum_or_integral_type() => {
+                CastKind::IntegralToBoolean
+            }
+
+            (CTypeKind::Bool, _) if target_ty_kind.is_enum_or_integral_type() => {
+                CastKind::IntegralCast
+            }
+
+            (_, _)
+                if source_ty_kind.is_enum_or_integral_type()
+                    && target_ty_kind.is_enum_or_integral_type() =>
+            {
+                CastKind::IntegralCast
+            }
+
+            (CTypeKind::Bool, _) if target_ty_kind.is_floating_type() => {
+                CastKind::IntegralToFloating
+            }
+
+            (_, _)
+                if source_ty_kind.is_enum_or_integral_type()
+                    && target_ty_kind.is_floating_type() =>
+            {
+                CastKind::IntegralToFloating
+            }
+
+            (_, CTypeKind::Bool) if source_ty_kind.is_floating_type() => {
+                CastKind::FloatingToBoolean
+            }
+
+            (_, _)
+                if source_ty_kind.is_floating_type()
+                    && target_ty_kind.is_enum_or_integral_type() =>
+            {
+                CastKind::FloatingToIntegral
+            }
+
+            (_, _) if source_ty_kind.is_floating_type() && target_ty_kind.is_floating_type() => {
+                CastKind::FloatingCast
+            }
+
+            // Ignoring Complex casts for now
+            _ => return None,
+        })
+    }
+
     /// Extract decl of referenced function.
     /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
     pub fn fn_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
@@ -2156,76 +2266,6 @@ pub enum CastKind {
     VectorSplat,
     AtomicToNonAtomic,
     NonAtomicToAtomic,
-}
-
-impl CastKind {
-    pub fn from_types(source_ty_kind: &CTypeKind, target_ty_kind: &CTypeKind) -> Option<Self> {
-        if source_ty_kind == target_ty_kind {
-            return Some(CastKind::NoOp);
-        }
-
-        Some(match (source_ty_kind, target_ty_kind) {
-            (CTypeKind::VariableArray(..), CTypeKind::Pointer(..))
-            | (CTypeKind::ConstantArray(..), CTypeKind::Pointer(..))
-            | (CTypeKind::IncompleteArray(..), CTypeKind::Pointer(..)) => {
-                CastKind::ArrayToPointerDecay
-            }
-
-            (CTypeKind::Function(..), CTypeKind::Pointer(..)) => CastKind::FunctionToPointerDecay,
-
-            (_, CTypeKind::Pointer(..)) if source_ty_kind.is_enum_or_integral_type() => {
-                CastKind::IntegralToPointer
-            }
-
-            (CTypeKind::Pointer(..), CTypeKind::Bool) => CastKind::PointerToBoolean,
-
-            (CTypeKind::Pointer(..), _) if target_ty_kind.is_enum_or_integral_type() => {
-                CastKind::PointerToIntegral
-            }
-
-            (_, CTypeKind::Bool) if source_ty_kind.is_enum_or_integral_type() => {
-                CastKind::IntegralToBoolean
-            }
-
-            (CTypeKind::Bool, _) if target_ty_kind.is_signed_integral_type() => {
-                CastKind::BooleanToSignedIntegral
-            }
-
-            (_, _)
-                if source_ty_kind.is_enum_or_integral_type()
-                    && target_ty_kind.is_enum_or_integral_type() =>
-            {
-                CastKind::IntegralCast
-            }
-
-            (_, _)
-                if source_ty_kind.is_enum_or_integral_type()
-                    && target_ty_kind.is_floating_type() =>
-            {
-                CastKind::IntegralToFloating
-            }
-
-            (_, CTypeKind::Bool) if source_ty_kind.is_floating_type() => {
-                CastKind::FloatingToBoolean
-            }
-
-            (_, _)
-                if source_ty_kind.is_floating_type()
-                    && target_ty_kind.is_enum_or_integral_type() =>
-            {
-                CastKind::FloatingToIntegral
-            }
-
-            (_, _) if source_ty_kind.is_floating_type() && target_ty_kind.is_floating_type() => {
-                CastKind::FloatingCast
-            }
-
-            (CTypeKind::Pointer(..), CTypeKind::Pointer(..)) => CastKind::BitCast,
-
-            // Ignoring Complex casts for now
-            _ => return None,
-        })
-    }
 }
 
 /// Represents a unary operator in C (6.5.3 Unary operators) and GNU C extensions

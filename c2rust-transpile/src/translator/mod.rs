@@ -3721,14 +3721,17 @@ impl<'c> Translation<'c> {
         let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
         let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
 
-        let kind = CastKind::from_types(source_type_kind, target_type_kind).unwrap_or_else(|| {
-            warn!(
-                "Unknown CastKind for {source_type_kind:?} to {target_type_kind:?} cast. \
+        let kind = self
+            .ast_context
+            .cast_kind_from_types(source_type_kind, target_type_kind)
+            .unwrap_or_else(|| {
+                warn!(
+                    "Unknown CastKind for {source_type_kind:?} to {target_type_kind:?} cast. \
                 Defaulting to BitCast",
-            );
+                );
 
-            CastKind::BitCast
-        });
+                CastKind::BitCast
+            });
 
         self.convert_cast(ctx, None, target_type_id, expr_id, kind, None, false)
     }
@@ -4248,8 +4251,26 @@ impl<'c> Translation<'c> {
         let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
         let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
 
-        let kind = kind.unwrap_or_else(|| {
-            CastKind::from_types(source_ty_kind, target_ty_kind).unwrap_or_else(|| {
+        let kind_from_types = self
+            .ast_context
+            .cast_kind_from_types(source_ty_kind, target_ty_kind);
+
+        let kind = if let Some(kind) = kind {
+            // Some cast kinds require knowing the expression being cast.
+            if !matches!(kind, CastKind::NullToPointer | CastKind::BuiltinFnToFnPtr)
+                && !CTypeKind::PULLBACK_KINDS
+                    .iter()
+                    .any(|k| k == source_ty_kind || k == target_ty_kind)
+            {
+                assert_eq!(
+                    Some(kind),
+                    kind_from_types,
+                    "\nsource_ty_kind: {source_ty_kind:?}\ntarget_ty_kind: {target_ty_kind:?}"
+                );
+            }
+            kind
+        } else {
+            kind_from_types.unwrap_or_else(|| {
                 warn!(
                     "Unknown CastKind for {source_ty_kind:?} to {target_ty_kind:?} cast. \
                     Defaulting to BitCast",
@@ -4257,7 +4278,7 @@ impl<'c> Translation<'c> {
 
                 CastKind::BitCast
             })
-        });
+        };
 
         if self.ast_context.type_kinds_eq(
             source_ty_kind,
