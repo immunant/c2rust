@@ -26,6 +26,24 @@ int varargs_fp(const int c, ...) {
   return fp((char)c);
 }
 
+// The typedef forces a cast on the va_arg result when assigning to a field
+// spelled with the underlying function pointer type (as in SQLite's config).
+int varargs_fp_field(const int c, ...) {
+  struct { int (*fn)(char); } callbacks;
+  va_list arg;
+  va_start(arg, c);
+  callbacks.fn = va_arg(arg, char_to_int_fp);
+  va_end(arg);
+  return callbacks.fn ? callbacks.fn((char)c) : -1;
+}
+
+int varargs_fp_field_test(void) {
+  char_to_int_fp null_fp = 0;
+  return varargs_fp_field('a', intval) == 'a' &&
+         varargs_fp_field('b', negintval) == -'b' &&
+         varargs_fp_field('c', null_fp) == -1;
+}
+
 #endif
 
 void entry3(const unsigned sz, int buffer[const]) {

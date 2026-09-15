@@ -40,3 +40,8 @@ unsigned int fetch_after_atomics_unsigned(unsigned int x) {
 
     return x;
 }
+
+int initialized_atomic(void) {
+    atomic_int value = 5;
+    return atomic_load(&value);
+}

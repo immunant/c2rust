@@ -10,4 +10,6 @@ void fences(void) {
     __atomic_signal_fence(__ATOMIC_RELEASE);
     __atomic_signal_fence(__ATOMIC_ACQ_REL);
     __atomic_signal_fence(__ATOMIC_SEQ_CST);
+
+    __c11_atomic_signal_fence(__ATOMIC_SEQ_CST);
 }

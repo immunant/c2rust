@@ -2067,7 +2067,7 @@ impl<'c> Translation<'c> {
             Struct { fields: None, .. }
             | Union { fields: None, .. }
             | Enum {
-                integral_type: None,
+                underlying_type_id: None,
                 ..
             } => {
                 self.use_feature("extern_types");
@@ -2110,9 +2110,9 @@ impl<'c> Translation<'c> {
 
             Enum {
                 ref variants,
-                integral_type: Some(integral_type),
+                underlying_type_id: Some(underlying_type_id),
                 ..
-            } => self.convert_enum(decl_id, span, integral_type, variants),
+            } => self.convert_enum(decl_id, span, underlying_type_id, variants),
 
             // EnumConstant is translated as part of Enum.
             EnumConstant { .. } => Ok(ConvertedDecl::NoItem),
@@ -4200,16 +4200,16 @@ impl<'c> Translation<'c> {
                 let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
 
                 if let CTypeKind::Enum(target_enum_id) = *target_type_kind {
-                    let target_integral_type_id = self.enum_integral_type(target_enum_id);
-                    let target_integral_type_kind = &self
+                    let target_underlying_type_id = self.enum_underlying_type(target_enum_id);
+                    let target_underlying_type_kind = &self
                         .ast_context
-                        .resolve_type(target_integral_type_id.ctype)
+                        .resolve_type(target_underlying_type_id.ctype)
                         .kind;
 
                     // We are casting to an enum type, from its underlying integral type.
                     // Skip the cast to the integral type and cast to the enum type directly.
                     if cast_kind == CastKind::IntegralCast
-                        && source_type_kind == target_integral_type_kind
+                        && source_type_kind == target_underlying_type_kind
                     {
                         return true;
                     }
@@ -4226,14 +4226,14 @@ impl<'c> Translation<'c> {
                     }
 
                     let source_enum_id = self.ast_context.parents[&decl_id];
-                    let source_integral_type_id = self.enum_integral_type(source_enum_id);
+                    let source_underlying_type_id = self.enum_underlying_type(source_enum_id);
                     let target_type_resolved_id = self
                         .ast_context
                         .resolve_type_id_no_typedef(target_type_id.ctype);
 
-                    // Likewise, if we are casting to the inner integral type of the enum, then
+                    // Likewise, if we are casting to the underlying type of the enum, then
                     // translate the enum constant directly as that.
-                    if target_type_resolved_id == source_integral_type_id.ctype {
+                    if target_type_resolved_id == source_underlying_type_id.ctype {
                         return true;
                     }
                 }
@@ -4503,6 +4503,8 @@ impl<'c> Translation<'c> {
                     mk().lit_expr(mk().float_unsuffixed_lit("0.")),
                 )),
             }
+        } else if let &CTypeKind::Atomic(inner) = resolved_ty {
+            self.implicit_default_expr(ctx, inner.ctype)
         } else if let &CTypeKind::Pointer(_) = resolved_ty {
             self.null_ptr(resolved_ty_id).map(WithStmts::new_val)
         } else if let &CTypeKind::ConstantArray(elt, sz) = resolved_ty {
@@ -4728,7 +4730,7 @@ impl<'c> Translation<'c> {
             }
 
             let val = if ty.is_enum() {
-                self.integer_from_enum(val)
+                self.make_enum_to_underlying_cast(val)
             } else {
                 val
             };
