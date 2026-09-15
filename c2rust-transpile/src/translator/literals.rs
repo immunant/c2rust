@@ -49,7 +49,7 @@ impl<'c> Translation<'c> {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
             CLiteral::Integer(value, _) | CLiteral::Character(value)
-                if ty_kind.is_integral_type() && !ty_kind.is_bool() =>
+                if ty_kind.is_integral_type() =>
             {
                 ty_kind.guaranteed_integer_in_range(value)
                     && (!is_negated || ty_kind.is_signed_integral_type())

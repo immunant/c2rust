@@ -2173,7 +2173,9 @@ impl CastKind {
 
             (CTypeKind::Function(..), CTypeKind::Pointer(..)) => CastKind::FunctionToPointerDecay,
 
-            (_, CTypeKind::Pointer(..)) if source_ty_kind.is_enum_or_integral_type() => {
+            (_, CTypeKind::Pointer(..))
+                if source_ty_kind.is_enum_or_integral_type() || source_ty_kind.is_bool() =>
+            {
                 CastKind::IntegralToPointer
             }
 
@@ -3224,7 +3226,7 @@ impl CTypeKind {
         use CTypeKind::*;
         matches!(
             self,
-            Bool | UChar
+            UChar
                 | UInt
                 | UShort
                 | ULong
@@ -3272,7 +3274,11 @@ impl CTypeKind {
     }
 
     pub fn is_scalar(&self) -> bool {
-        self.is_integral_type() || self.is_floating_type() || self.is_enum() || self.is_pointer()
+        self.is_bool()
+            || self.is_integral_type()
+            || self.is_floating_type()
+            || self.is_enum()
+            || self.is_pointer()
     }
 
     pub fn as_underlying_decl(&self) -> Option<CDeclId> {
@@ -3297,7 +3303,7 @@ impl CTypeKind {
 
     /// Choose the smaller, simpler of the two types if they are cast-compatible.
     pub fn smaller_compatible_type(ty1: CTypeKind, ty2: CTypeKind) -> Option<CTypeKind> {
-        let int = Self::is_integral_type;
+        let int = |ty: &Self| ty.is_integral_type() || ty.is_bool();
         let float = Self::is_floating_type;
 
         use CTypeKind::*;
