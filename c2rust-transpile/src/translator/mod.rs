@@ -122,7 +122,27 @@ pub enum ReplaceMode {
 /// Options that impact an expression and all of its subexpressions.
 #[derive(Copy, Clone, Debug)]
 pub struct ExprContext {
-    used: bool,
+    /// Whether the result value of the expression is used in a larger expression.
+    ///
+    /// When the result value is not used in a particular context, only the side effects of the
+    /// expression matter. The `stmts` field of `WithStmts` should hold any statements with side
+    /// effects, and the `val` field is expected to be discarded. It should not appear in the final
+    /// transpiler output, and may be an expression that panics when evaluated.
+    ///
+    /// - `.unused()` should be called for the top-level expression of an `ExprStmt`, the increment
+    /// expression of a `for` loop, the `lhs` of a comma operator expression, and other such cases.
+    ///
+    /// - `.used()` should be called if an expression is needed to evaluate the side effects of a
+    /// parent expression, such as the arguments of a function call (unless the function is known to
+    /// be pure), the operands of an assignment expression, the expression of a `return` statement,
+    /// etc. An expression that sets `.used()` for one of its subexpressions should handle the case
+    /// that its own context has `!is_used`, by moving its side effects into the `stmts` field;
+    /// the `convert_side_effects_expr` helper can be used for this purpose.
+    ///
+    /// - If an expression is pure (has no side effects), then it should inherit its `is_used` value
+    /// from its parent expression: if the parent expression is going to be discarded, then so are
+    /// all of its pure child expressions.
+    is_used: bool,
 
     /// In a Rust const context, for example in a static initializer or constant-like macro
     /// translation.
@@ -152,20 +172,18 @@ pub struct ExprContext {
 
 impl ExprContext {
     pub fn used(self) -> Self {
-        ExprContext { used: true, ..self }
-    }
-    pub fn unused(self) -> Self {
         ExprContext {
-            used: false,
+            is_used: true,
             ..self
         }
     }
-    pub fn is_used(&self) -> bool {
-        self.used
+    pub fn unused(self) -> Self {
+        ExprContext {
+            is_used: false,
+            ..self
+        }
     }
-    pub fn is_unused(&self) -> bool {
-        !self.used
-    }
+
     pub fn decay_ref(self) -> Self {
         ExprContext {
             decay_ref: DecayRef::Yes,
@@ -876,7 +894,7 @@ pub fn translate(
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
-        used: true,
+        is_used: false,
         is_const: false,
         is_pattern: false,
         is_static: false,
@@ -1984,7 +2002,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
         init: &mut Box<Expr>,
     ) -> TranslationResult<()> {
-        let mut default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
+        let mut default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
 
         std::mem::swap(init, &mut default_init);
 
@@ -2479,7 +2497,7 @@ impl<'c> Translation<'c> {
 
         let null_pointer_case =
             |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
-                let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
+                let val = self.convert_expr(ctx.decay_ref(), ptr, None)?;
                 let ptr_type = self
                     .ast_context
                     .index_unwrap_parens(ptr)
@@ -2534,7 +2552,7 @@ impl<'c> Translation<'c> {
                 // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
                 // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
                 // specify Yes for that particular case, given enough analysis.
-                let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
+                let val = self.convert_expr(ctx.decay_ref(), cond_id, None)?;
                 val.try_map(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
@@ -2676,7 +2694,7 @@ impl<'c> Translation<'c> {
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
                     self.convert_variable(ctx, initializer, typ)?;
-                let default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
+                let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2793,7 +2811,7 @@ impl<'c> Translation<'c> {
                     init.into_value()
                 };
 
-                let zeroed = self.implicit_default_expr(ctx, typ.ctype)?;
+                let zeroed = self.implicit_default_expr(ctx.used(), typ.ctype)?;
                 let zeroed = if ctx.is_const {
                     zeroed.wrap_unsafe().to_pure_expr()
                 } else {
@@ -3007,7 +3025,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
-            None => self.implicit_default_expr(ctx, typ.ctype),
+            None => self.implicit_default_expr(ctx.used(), typ.ctype),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
@@ -3203,7 +3221,7 @@ impl<'c> Translation<'c> {
 
             let elts = self.compute_size_of_type(ctx, expected_type_id, result_type_id, elts)?;
             return elts.and_then_try(|lhs| {
-                let len = self.convert_expr(ctx.used().not_static(), len, expected_type_id)?;
+                let len = self.convert_expr(ctx.not_static(), len, expected_type_id)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
@@ -3303,10 +3321,10 @@ impl<'c> Translation<'c> {
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
-    /// `ctx.is_used()` informs us how the C expression we are translating is used in the C
+    /// `ctx.is_used` informs us how the C expression we are translating is used in the C
     /// program.
     ///
-    /// In the case that `ctx.is_unused()`, all side-effecting components will be in the
+    /// In the case that `!ctx.is_used`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
     ///
@@ -3549,12 +3567,12 @@ impl<'c> Translation<'c> {
             }
 
             Conditional(ty, cond, lhs, rhs) => {
-                let cond = self.convert_condition(ctx, true, cond)?;
+                let cond = self.convert_condition(ctx.used(), true, cond)?;
 
                 let lhs = self.convert_expr(ctx, lhs, Some(override_ty.unwrap_or(ty)))?;
                 let rhs = self.convert_expr(ctx, rhs, Some(override_ty.unwrap_or(ty)))?;
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let is_unsafe = lhs.is_unsafe() || rhs.is_unsafe();
                     let then = mk().block(lhs.into_stmts());
                     let else_ = mk().block_expr(mk().block(rhs.into_stmts()));
@@ -3581,9 +3599,9 @@ impl<'c> Translation<'c> {
             BinaryConditional(ty, lhs, rhs) => {
                 let rhs = self.convert_expr(ctx, rhs, None)?;
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let lhs = self
-                        .convert_condition(ctx, false, lhs)?
+                        .convert_condition(ctx.used(), false, lhs)?
                         .merge_unsafe(rhs.is_unsafe());
 
                     Ok(lhs.and_then(|val| {
@@ -3915,8 +3933,8 @@ impl<'c> Translation<'c> {
         expr: WithStmts<Box<Expr>>,
         panic_msg: &str,
     ) -> WithStmts<Box<Expr>> {
-        if ctx.is_unused() {
-            // Recall that if `used` is false, the `stmts` field of the output must contain
+        if !ctx.is_used {
+            // Recall that if `!is_used`, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
             expr.and_then(|expr| {
                 WithStmts::new(vec![mk().semi_stmt(expr)], self.panic_or_err(panic_msg))
@@ -3985,7 +4003,7 @@ impl<'c> Translation<'c> {
                     match as_semi_break_stmt(&stmt, &lbl) {
                         Some(val) => {
                             let block = mk().block_expr(match val {
-                                Some(val) if ctx.is_used() => WithStmts::new(stmts, val).to_block(),
+                                Some(val) if ctx.is_used => WithStmts::new(stmts, val).to_block(),
                                 _ => mk().block(stmts),
                             });
 
@@ -4014,7 +4032,7 @@ impl<'c> Translation<'c> {
                 ))
             }
             _ => {
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let val =
                         self.panic_or_err("Empty statement expression is not supposed to be used");
                     Ok(WithStmts::new_val(val))
