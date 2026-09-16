@@ -420,18 +420,18 @@ impl<'c> Translation<'c> {
                         // K&R function pointer without arguments
                         let ret_ty = self.convert_type(ret_ty.ctype)?;
                         let target_ty = make_fn_ty(ret_ty);
-                        callee.map(|fn_ptr| {
+                        callee.flat_map(|fn_ptr| {
                             let fn_ptr = unwrap_function_pointer(fn_ptr);
                             transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
-                        }).set_unsafe()
+                        })
                     }
                     None => {
                         // We have to infer the return type from our expression type
                         let ret_ty = self.convert_type(call_expr_ty.ctype)?;
                         let target_ty = make_fn_ty(ret_ty);
-                        callee.map(|fn_ptr| {
+                        callee.flat_map(|fn_ptr| {
                             transmute_expr(mk().infer_ty(), target_ty, fn_ptr)
-                        }).set_unsafe()
+                        })
                     }
                     Some(CTypeKind::Function(_, ty_arg_tys, ..)) => {
                         arg_tys = Some(ty_arg_tys.clone());
@@ -795,8 +795,8 @@ impl<'c> Translation<'c> {
             };
 
             if let CTypeKind::Void = ret {
-                let call_main = mk().call_expr(main_fn, main_args);
-                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(vec![mk().expr_stmt(call_main)])));
+                let call_main = TaggedExpr::new(mk().call_expr(main_fn, main_args)).set_unsafe();
+                stmts.push(mk().expr_stmt(call_main.into_wrapped_expr()));
 
                 let exit_arg = mk().lit_expr(mk().int_lit(0, "i32"));
                 let call_exit = mk().call_expr(exit_fn, vec![exit_arg]);
@@ -808,8 +808,9 @@ impl<'c> Translation<'c> {
                     mk().path_ty(vec!["i32"]),
                 );
 
-                let call_exit = mk().call_expr(exit_fn, vec![call_main]);
-                stmts.push(mk().expr_stmt(mk().unsafe_block_expr(vec![mk().expr_stmt(call_exit)])));
+                let call_exit =
+                    TaggedExpr::new(mk().call_expr(exit_fn, vec![call_main])).set_unsafe();
+                stmts.push(mk().expr_stmt(call_exit.into_wrapped_expr()));
             };
 
             let block = mk().block(stmts);

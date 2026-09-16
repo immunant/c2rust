@@ -575,12 +575,12 @@ impl<'c> Translation<'c> {
                 let arg0 = self.convert_expr(ctx.used(), args[0], None)?;
                 let arg1 = self.convert_expr(ctx.used(), args[1], None)?;
                 Ok(arg0.zip(arg1).and_then(|(arg0, arg1)| {
-                    let call_expr = value.restore(
-                        mk().call_expr(atomic_func, vec![value.storage(arg0), value.lower(arg1)]),
-                    );
+                    let call_expr = value.lower(arg1).flat_map(|arg1| {
+                        value.restore(mk().call_expr(atomic_func, vec![value.storage(arg0), arg1]))
+                    });
                     self.convert_side_effects_expr(
                         ctx,
-                        WithStmts::new_val(call_expr),
+                        call_expr.into(),
                         "Builtin is not supposed to be used",
                     )
                 }))

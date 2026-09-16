@@ -5,6 +5,7 @@ use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
 use crate::c_ast::CUnOp;
+use crate::with_stmts::TaggedExpr;
 use crate::{
     diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
     format_translation_err,
@@ -301,7 +302,7 @@ impl<'c> Translation<'c> {
                     CQualTypeId::new(target_type_id),
                     offset_id,
                 )?;
-                array_rs.zip(offset_rs).and_then(|(array_rs, offset_rs)| {
+                array_rs.zip(offset_rs).flat_map(|(array_rs, offset_rs)| {
                     self.make_pointer_offset(array_rs, offset_rs, elt_type_id, false, deref)
                 })
             } else {
@@ -342,7 +343,7 @@ impl<'c> Translation<'c> {
 
             let mut val = pointer_rs
                 .zip(offset_rs)
-                .and_then(|(pointer_rs, offset_rs)| {
+                .flat_map(|(pointer_rs, offset_rs)| {
                     self.make_pointer_offset(
                         pointer_rs,
                         offset_rs,
@@ -374,14 +375,14 @@ impl<'c> Translation<'c> {
     }
 
     /// Pointer offset that casts its argument to isize
-    pub fn convert_pointer_offset(
+    pub(crate) fn convert_pointer_offset(
         &self,
         ptr: Box<Expr>,
         offset: Box<Expr>,
         pointee_cty: CTypeId,
         neg: bool,
         deref: bool,
-    ) -> WithStmts<Box<Expr>> {
+    ) -> TaggedExpr {
         self.make_pointer_offset(
             ptr,
             cast_int(offset, "isize", false),
@@ -399,7 +400,7 @@ impl<'c> Translation<'c> {
         pointee_type_id: CTypeId,
         neg: bool,
         mut deref: bool,
-    ) -> WithStmts<Box<Expr>> {
+    ) -> TaggedExpr {
         if let Some(mul) = self.compute_size_of_expr(pointee_type_id) {
             let mul = cast_int(mul, "isize", false);
             offset_rs = mk().binary_expr(BinOp::Mul(Default::default()), offset_rs, mul);
@@ -416,7 +417,7 @@ impl<'c> Translation<'c> {
             expr = mk().unary_expr(UnOp::Deref(Default::default()), expr);
         }
 
-        WithStmts::new_val(expr).set_unsafe()
+        TaggedExpr::new(expr).set_unsafe()
     }
 
     /// Creates a pointer difference expression. Returns an expression of type `isize`.
@@ -425,7 +426,7 @@ impl<'c> Translation<'c> {
         lhs_rs: Box<Expr>,
         rhs_rs: Box<Expr>,
         pointee_type_id: CTypeId,
-    ) -> WithStmts<Box<Expr>> {
+    ) -> TaggedExpr {
         let mut expr_rs = mk().method_call_expr(lhs_rs, "offset_from", vec![rhs_rs]);
 
         // If the pointee is a variable array type, the actual pointee type used by `offset_from`
@@ -436,7 +437,7 @@ impl<'c> Translation<'c> {
             expr_rs = mk().binary_expr(BinOp::Div(Default::default()), expr_rs, div_rs);
         }
 
-        WithStmts::new_val(expr_rs).set_unsafe()
+        TaggedExpr::new(expr_rs).set_unsafe()
     }
 
     /// Construct an expression for a NULL at any type, including forward declarations,
@@ -503,9 +504,7 @@ impl<'c> Translation<'c> {
             self.import_type(source_cty.ctype);
             self.import_type(target_cty.ctype);
 
-            Ok(val.and_then(|val| {
-                WithStmts::new_val(transmute_expr(source_ty, target_ty, val)).set_unsafe()
-            }))
+            Ok(val.flat_map(|val| transmute_expr(source_ty, target_ty, val)))
         } else {
             // Normal case
             let target_ty = self.convert_type(target_cty.ctype)?;
@@ -532,12 +531,12 @@ impl<'c> Translation<'c> {
             }
 
             self.use_crate(ExternCrate::Libc);
-            Ok(val.and_then(|mut val| {
+            Ok(val.flat_map(|mut val| {
                 // First cast the integer to pointer size
                 let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
                 val = mk().cast_expr(val, intptr_t.clone());
 
-                WithStmts::new_val(transmute_expr(intptr_t, target_ty, val)).set_unsafe()
+                transmute_expr(intptr_t, target_ty, val)
             }))
         }
         // Rust 1.90: `const_strict_provenance` feature added
@@ -642,9 +641,7 @@ impl<'c> Translation<'c> {
         if self.ast_context.is_function_pointer(source_cty.ctype) {
             let source_ty = self.convert_type(source_cty.ctype)?;
 
-            Ok(val.and_then(|val| {
-                WithStmts::new_val(transmute_expr(source_ty, target_type_rs, val)).set_unsafe()
-            }))
+            Ok(val.flat_map(|val| transmute_expr(source_ty, target_type_rs, val)))
         } else {
             // First convert the pointer to `usize`.
             let method_name = match self.tcfg.edition {
