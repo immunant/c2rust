@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -115,11 +116,13 @@ def patched_io(monkeypatch, rust_file: Path) -> None:
 def test_accepted_batch_is_applied(patched_io, rust_file: Path) -> None:
     cache, transform = make_comments_transform()
 
-    result = transform.apply_file(
-        rust_source_file=rust_file,
-        exclude_list=IdentifierExcludeList(None),
-        keep_going=True,
-        validator=BatchValidator(lambda: None),
+    result = asyncio.run(
+        transform.apply_file(
+            rust_source_file=rust_file,
+            exclude_list=IdentifierExcludeList(None),
+            keep_going=True,
+            validator=BatchValidator(lambda: None),
+        )
     )
 
     assert result.failed == []
@@ -132,11 +135,13 @@ def test_rejection_counts_failure_and_invalidates_final_response(
 ) -> None:
     cache, transform = make_comments_transform()
 
-    result = transform.apply_file(
-        rust_source_file=rust_file,
-        exclude_list=IdentifierExcludeList(None),
-        keep_going=True,
-        validator=BatchValidator(lambda: "type error"),
+    result = asyncio.run(
+        transform.apply_file(
+            rust_source_file=rust_file,
+            exclude_list=IdentifierExcludeList(None),
+            keep_going=True,
+            validator=BatchValidator(lambda: "type error"),
+        )
     )
 
     assert result.failed == [(rust_file, "enabled", "rejected by cargo check")]
@@ -150,11 +155,13 @@ def test_rejection_raises_without_keep_going(patched_io, rust_file: Path) -> Non
     cache, transform = make_comments_transform()
 
     with pytest.raises(TransformError, match="cargo check rejected"):
-        transform.apply_file(
-            rust_source_file=rust_file,
-            exclude_list=IdentifierExcludeList(None),
-            keep_going=False,
-            validator=BatchValidator(lambda: "type error"),
+        asyncio.run(
+            transform.apply_file(
+                rust_source_file=rust_file,
+                exclude_list=IdentifierExcludeList(None),
+                keep_going=False,
+                validator=BatchValidator(lambda: "type error"),
+            )
         )
 
     assert rust_file.read_text() == "original\n"
@@ -167,12 +174,14 @@ def test_no_update_rust_is_purely_generative(patched_io, rust_file: Path) -> Non
     def exploding_check() -> str | None:
         raise AssertionError("validator must not run")
 
-    result = transform.apply_file(
-        rust_source_file=rust_file,
-        exclude_list=IdentifierExcludeList(None),
-        update_rust=False,
-        keep_going=True,
-        validator=BatchValidator(exploding_check),
+    result = asyncio.run(
+        transform.apply_file(
+            rust_source_file=rust_file,
+            exclude_list=IdentifierExcludeList(None),
+            update_rust=False,
+            keep_going=True,
+            validator=BatchValidator(exploding_check),
+        )
     )
 
     assert result.failures == 0
@@ -182,11 +191,13 @@ def test_no_update_rust_is_purely_generative(patched_io, rust_file: Path) -> Non
 def test_without_validator_candidates_are_applied(patched_io, rust_file: Path) -> None:
     cache, transform = make_comments_transform()
 
-    result = transform.apply_file(
-        rust_source_file=rust_file,
-        exclude_list=IdentifierExcludeList(None),
-        keep_going=True,
-        validator=None,
+    result = asyncio.run(
+        transform.apply_file(
+            rust_source_file=rust_file,
+            exclude_list=IdentifierExcludeList(None),
+            keep_going=True,
+            validator=None,
+        )
     )
 
     assert result.failures == 0
@@ -215,7 +226,7 @@ class CannedTransform(AbstractTransform):
         super().__init__("", CannedCache({}), MockGenerativeModel())
         self.rewrites = rewrites
 
-    def try_apply_ident(
+    async def try_apply_ident(
         self,
         rust_source_file: Path,
         rust_definition: str,
@@ -268,11 +279,13 @@ def test_end_to_end_type_invalid_rewrite_is_isolated(tmp_path: Path) -> None:
     checker = CargoChecker(manifest)
     assert checker() is None  # baseline
 
-    result = transform.apply_file(
-        rust_source_file=lib_rs,
-        exclude_list=IdentifierExcludeList(None),
-        keep_going=True,
-        validator=BatchValidator(checker),
+    result = asyncio.run(
+        transform.apply_file(
+            rust_source_file=lib_rs,
+            exclude_list=IdentifierExcludeList(None),
+            keep_going=True,
+            validator=BatchValidator(checker),
+        )
     )
 
     content = lib_rs.read_text()
