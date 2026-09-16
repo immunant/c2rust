@@ -31,28 +31,14 @@ impl<T> WithStmts<T> {
     where
         F: FnOnce(T) -> WithStmts<U>,
     {
-        let mut next = f(self.val);
-        let mut stmts = self.stmts;
-        stmts.append(&mut next.stmts);
-        WithStmts {
-            val: next.val,
-            stmts,
-            is_unsafe: self.is_unsafe || next.is_unsafe,
-        }
+        self.flat_map(f)
     }
 
     pub fn and_then_try<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
     where
         F: FnOnce(T) -> Result<WithStmts<U>, E>,
     {
-        let mut next = f(self.val)?;
-        let mut stmts = self.stmts;
-        stmts.append(&mut next.stmts);
-        Ok(WithStmts {
-            val: next.val,
-            stmts,
-            is_unsafe: self.is_unsafe || next.is_unsafe,
-        })
+        self.try_flat_map(f)
     }
 
     pub fn map<U, F>(self, f: F) -> WithStmts<U>
@@ -75,6 +61,23 @@ impl<T> WithStmts<T> {
             stmts: self.stmts,
             is_unsafe: self.is_unsafe,
         })
+    }
+
+    pub(crate) fn flat_map<U>(self, f: impl FnOnce(T) -> U) -> <WithStmts<U> as Flattenable>::Output
+    where
+        WithStmts<U>: Flattenable,
+    {
+        self.map(f).flatten()
+    }
+
+    pub(crate) fn try_flat_map<U, E>(
+        self,
+        f: impl FnOnce(T) -> Result<U, E>,
+    ) -> Result<<WithStmts<U> as Flattenable>::Output, E>
+    where
+        WithStmts<U>: Flattenable,
+    {
+        Ok(self.try_map(f)?.flatten())
     }
 
     pub fn zip<U>(self, mut next: WithStmts<U>) -> WithStmts<(T, U)> {
@@ -197,6 +200,24 @@ impl WithStmts<Box<Expr>> {
     }
 }
 
+impl<T> Flattenable for WithStmts<WithStmts<T>> {
+    type Output = WithStmts<T>;
+
+    fn flatten(self) -> Self::Output {
+        let WithStmts {
+            mut stmts,
+            val,
+            is_unsafe,
+        } = self;
+        stmts.extend(val.stmts);
+        WithStmts {
+            val: val.val,
+            stmts,
+            is_unsafe: is_unsafe || val.is_unsafe,
+        }
+    }
+}
+
 impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
     fn from_iter<I: IntoIterator<Item = WithStmts<T>>>(value: I) -> Self {
         let mut stmts = vec![];
@@ -209,4 +230,9 @@ impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
         }
         WithStmts::new(stmts, res).merge_unsafe(is_unsafe)
     }
+}
+
+pub(crate) trait Flattenable {
+    type Output;
+    fn flatten(self) -> Self::Output;
 }
