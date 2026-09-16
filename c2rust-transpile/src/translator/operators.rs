@@ -398,8 +398,7 @@ impl<'c> Translation<'c> {
                 let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
 
                 if is_volatile {
-                    val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
-                        .set_unsafe()
+                    val.try_flat_map(|val| self.volatile_write(write, lhs_type_id, val))?
                 } else {
                     val.map(|val| mk().assign_expr(write, val))
                 }
@@ -410,7 +409,7 @@ impl<'c> Translation<'c> {
             // Regular assignment
 
             if is_volatile {
-                WithStmts::new_val(self.volatile_write(write, lhs_type_id, rhs)?).set_unsafe()
+                self.volatile_write(write, lhs_type_id, rhs)?.into()
             } else {
                 WithStmts::new_val(mk().assign_expr(write, rhs))
             }
@@ -512,9 +511,13 @@ impl<'c> Translation<'c> {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, false, false))
+            Ok(self
+                .convert_pointer_offset(lhs, rhs, pointee.ctype, false, false)
+                .into())
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false))
+            Ok(self
+                .convert_pointer_offset(rhs, lhs, pointee.ctype, false, false)
+                .into())
         } else if lhs_type.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,
@@ -545,9 +548,16 @@ impl<'c> Translation<'c> {
         if let &CTypeKind::Pointer(pointee) = rhs_type {
             let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
             let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
-            self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
+            self.make_cast(
+                ctx,
+                CQualTypeId::new(source_type_id),
+                expr_type_id,
+                val.into(),
+            )
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
+            Ok(self
+                .convert_pointer_offset(lhs, rhs, pointee.ctype, true, false)
+                .into())
         } else if lhs_type.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,
