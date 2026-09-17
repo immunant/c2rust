@@ -127,7 +127,7 @@ impl<'a, 's> Visitor<'s> for MapAstInto<'a, 's> {
 
     fn visit_foreign_item(&mut self, x: &'s ForeignItem) {
         self.map.foreign_items.insert(x.id, x);
-        visit::walk_foreign_item(self, x);
+        visit::walk_item(self, x);
     }
 
     fn visit_block(&mut self, x: &'s Block) {
@@ -207,7 +207,7 @@ impl<'a, 's> Visitor<'s> for MapAstIntoUnified<'a, 's> {
 
     fn visit_foreign_item(&mut self, x: &'s ForeignItem) {
         self.map.insert(x.id, x.try_into().unwrap());
-        visit::walk_foreign_item(self, x);
+        visit::walk_item(self, x);
     }
 
     fn visit_block(&mut self, x: &'s Block) {

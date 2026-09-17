@@ -4,12 +4,12 @@ use rustc_ast::*;
 
 /// A trait for AST nodes that can accept a `Visitor`.
 pub trait Visit {
-    fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V);
+    fn visit<'ast, V: Visitor<'ast, Result = ()>>(&'ast self, v: &mut V);
 }
 
 // There's no `visit_crate` method in `Visitor`, for some reason.
 impl Visit for Crate {
-    fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
+    fn visit<'ast, V: Visitor<'ast, Result = ()>>(&'ast self, v: &mut V) {
         rustc_ast::visit::walk_crate(v, self);
     }
 }
@@ -26,7 +26,7 @@ macro_rules! gen_visit_impls {
     ) => {
         $(
             impl Visit for $ArgTy {
-                fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
+                fn visit<'ast, V: Visitor<'ast, Result = ()>>(&'ast self, v: &mut V) {
                     v.$visit_fn(self)
                 }
             }

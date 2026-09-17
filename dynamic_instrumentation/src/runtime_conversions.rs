@@ -16,7 +16,8 @@ impl Convert<Fingerprint> for mir_loc::Fingerprint {
 
 impl Convert<mir_loc::Fingerprint> for Fingerprint {
     fn convert(self) -> mir_loc::Fingerprint {
-        self.as_value().into()
+        let (a, b) = self.split();
+        (a.as_u64(), b.as_u64()).into()
     }
 }
 

@@ -109,8 +109,10 @@ can be consulted to check this for each toolchain version.
 
 #### `rust-src`
 
-`rust-src` is the `rustup` component containing `rustc`'s source code.
-This is needed to view `rustc`'s source when developing.
+`rust-src` contains the Rust standard library sources. Compiler API work also
+requires the compiler implementation at the exact `commit-hash` reported by
+`rustc -Vv`; clone `https://github.com/rust-lang/rust.git` and check out that
+commit. Do not use a recent compiler checkout to infer the pinned compiler's APIs.
 
 `rust-src` is included in our [`rust-toolchain.toml`](../rust-toolchain.toml),
 so it will automatically be installed.  Otherwise,

@@ -12,11 +12,9 @@ pub fn rv_place<'tcx>(rv: &Rvalue<'tcx>) -> Option<Place<'tcx>> {
         Repeat(op, _) => op.place(),
         Ref(_, _, p) => Some(*p),
         // ThreadLocalRef
-        AddressOf(_, p) => Some(*p),
-        Len(p) => Some(*p),
+        RawPtr(_, p) => Some(*p),
         Cast(_, op, _) => op.place(),
         // BinaryOp
-        // CheckedBinaryOp
         // NullaryOp
         UnaryOp(_, op) => op.place(),
         Discriminant(p) => Some(*p),

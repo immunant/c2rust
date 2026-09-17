@@ -4,11 +4,10 @@
 use log::info;
 use rustc_ast::visit::{self, AssocCtxt, FnKind, Visitor};
 use rustc_ast::*;
+use rustc_data_structures::sync::Lrc;
 use rustc_interface::interface::{self, Config};
-use rustc_span::source_map::Span;
 use rustc_span::source_map::{FileLoader, RealFileLoader};
-use rustc_span::symbol::Symbol;
-use rustc_span::FileName;
+use rustc_span::{FileName, Span, Symbol};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
@@ -16,7 +15,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, SyncSender};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
 
 use crate::ast_builder::IntoSymbol;
@@ -33,20 +32,20 @@ use crate::RefactorCtxt;
 
 use super::MarkInfo;
 
-struct InteractState {
+struct InteractState<'compiler> {
     to_client: SyncSender<ToClient>,
-    buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
+    buffers_available: Lrc<Mutex<HashSet<PathBuf>>>,
 
-    state: RefactorState,
+    state: RefactorState<'compiler>,
 }
 
-impl InteractState {
+impl<'compiler> InteractState<'compiler> {
     fn new(
-        state: RefactorState,
-        buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
+        state: RefactorState<'compiler>,
+        buffers_available: Lrc<Mutex<HashSet<PathBuf>>>,
         _to_worker: SyncSender<ToWorker>,
         to_client: SyncSender<ToClient>,
-    ) -> InteractState {
+    ) -> InteractState<'compiler> {
         InteractState {
             to_client,
             buffers_available,
@@ -54,20 +53,42 @@ impl InteractState {
         }
     }
 
-    fn run_loop(&mut self, main_recv: Receiver<ToServer>) {
-        for msg in main_recv.iter() {
-            let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                self.handle_one(msg);
-            }));
-
-            if let Err(e) = result {
-                let text = if let Some(s) = e.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "An error occurred of unknown type".to_owned()
-                };
-                self.to_client.send(ToClient::Error { text }).unwrap();
+    /// Return a pending command to the callback owner so it can reload with a
+    /// fresh compiler/source map before executing it. Mark queries between
+    /// commands remain in the current session and keep their symbol identities.
+    fn run_loop(
+        &mut self,
+        main_recv: &Receiver<ToServer>,
+        pending: Option<ToServer>,
+    ) -> Option<Option<ToServer>> {
+        if let Some(msg) = pending {
+            self.handle_catching_errors(msg);
+            if self.state.reload_requested() {
+                return Some(None);
             }
+        }
+        for msg in main_recv.iter() {
+            if matches!(msg, ToServer::RunCommand { .. }) {
+                return Some(Some(msg));
+            }
+            self.handle_catching_errors(msg);
+        }
+        None
+    }
+
+    fn handle_catching_errors(&mut self, msg: ToServer) {
+        let result = panic::catch_unwind(AssertUnwindSafe(|| self.handle_one(msg)));
+        if let Err(e) = result {
+            let text = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "An error occurred of unknown type".to_owned()
+            };
+            self.to_client.send(ToClient::Error { text }).unwrap();
+            // The failed request has already been reported to the client.
+            // Do not let rustc abort the enclosing callback before the next
+            // command can start with a fresh compiler.
+            self.state.session().dcx().reset_err_count();
         }
     }
 
@@ -190,7 +211,6 @@ impl InteractState {
 
             RunCommand { name, args } => {
                 info!("running command {} with args {:?}", name, args);
-                self.state.load_crate();
                 match self.state.run(&name, &args) {
                     Ok(_) => {}
                     Err(e) => {
@@ -271,22 +291,44 @@ pub fn interact_command(args: &[String], config: Config, registry: command::Regi
         worker::run_worker(worker_recv, to_client_, to_main);
     });
 
-    let buffers_available = Arc::new(Mutex::new(HashSet::new()));
+    let buffers_available = Lrc::new(Mutex::new(HashSet::new()));
 
-    let file_io = Arc::new(InteractiveFileIO {
+    let file_io = Lrc::new(InteractiveFileIO {
         buffers_available: buffers_available.clone(),
         to_worker: to_worker.clone(),
         to_client: to_client.clone(),
     });
 
-    driver::run_refactoring(config, registry, file_io, HashSet::new(), |state| {
-        InteractState::new(state, buffers_available, to_worker, to_client).run_loop(main_recv);
-    });
+    let mut registry = registry;
+    let mut main_recv = main_recv;
+    let mut pending = None;
+    loop {
+        let buffers = buffers_available.clone();
+        let worker = to_worker.clone();
+        let client = to_client.clone();
+        let (next_registry, receiver, resume) = driver::run_refactoring(
+            driver::clone_config(&config),
+            registry,
+            file_io.clone(),
+            HashSet::new(),
+            move |state| {
+                let mut interactive = InteractState::new(state, buffers, worker, client);
+                let resume = interactive.run_loop(&main_recv, pending);
+                (interactive.state.into_registry(), main_recv, resume)
+            },
+        );
+        registry = next_registry;
+        main_recv = receiver;
+        match resume {
+            Some(next) => pending = next,
+            None => break,
+        }
+    }
 }
 
 #[derive(Clone)]
 struct InteractiveFileIO {
-    buffers_available: Arc<Mutex<HashSet<PathBuf>>>,
+    buffers_available: Lrc<Mutex<HashSet<PathBuf>>>,
     to_worker: SyncSender<ToWorker>,
     to_client: SyncSender<ToClient>,
 }
@@ -346,7 +388,7 @@ impl<'ast> Visitor<'ast> for CollectSpanVisitor {
 
     fn visit_foreign_item(&mut self, x: &'ast ForeignItem) {
         self.record(x);
-        visit::walk_foreign_item(self, x)
+        visit::walk_item(self, x)
     }
 
     fn visit_stmt(&mut self, x: &'ast Stmt) {

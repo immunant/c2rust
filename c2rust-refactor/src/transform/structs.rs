@@ -1,7 +1,7 @@
 use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_middle::ty;
-use rustc_span::symbol::Ident;
+use rustc_span::Ident;
 
 use smallvec::smallvec;
 
@@ -208,7 +208,7 @@ impl Transform for Rename {
 
 fn is_struct(i: &Item) -> bool {
     if let ItemKind::Struct(ref vd, _) = i.kind {
-        if let VariantData::Struct(..) = *vd {
+        if let VariantData::Struct { .. } = *vd {
             return true;
         }
     }

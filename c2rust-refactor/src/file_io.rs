@@ -3,15 +3,14 @@ use std::fs;
 use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use json::{self, JsonValue};
 use log::info;
 use rustc_ast::*;
-use rustc_span::hygiene::SyntaxContext;
-use rustc_span::source_map::{FileLoader, SourceFile, SourceMap};
-use rustc_span::source_map::{Span, DUMMY_SP};
-use rustc_span::symbol::Symbol;
+use rustc_data_structures::sync::Lrc;
+use rustc_span::source_map::{FileLoader, SourceMap};
+use rustc_span::{SourceFile, Span, Symbol, SyntaxContext, DUMMY_SP};
 
 use crate::rewrite::{self, TextRewrite};
 
@@ -225,7 +224,7 @@ impl FileIO for RealFileIO {
         // the json instead.
         let rw = rewrite::TextRewrite {
             old_span: DUMMY_SP,
-            new_span: Span::new(sf.start_pos, sf.end_pos, SyntaxContext::root(), None),
+            new_span: Span::new(sf.start_pos, sf.end_position(), SyntaxContext::root(), None),
             rewrites: rws.to_owned(),
             nodes: nodes.to_owned(),
             adjust: rewrite::TextAdjust::None,
@@ -260,7 +259,7 @@ impl FileIO for RealFileIO {
     }
 }
 
-pub struct ArcFileIO(pub Arc<dyn FileIO + Sync + Send>);
+pub struct ArcFileIO(pub Lrc<dyn FileIO + Sync + Send>);
 
 impl FileLoader for ArcFileIO {
     fn file_exists(&self, path: &Path) -> bool {
@@ -271,7 +270,7 @@ impl FileLoader for ArcFileIO {
         self.0.read_file(path)
     }
 
-    fn read_binary_file(&self, path: &Path) -> io::Result<Vec<u8>> {
-        self.0.read_binary_file(path)
+    fn read_binary_file(&self, path: &Path) -> io::Result<Lrc<[u8]>> {
+        self.0.read_binary_file(path).map(Into::into)
     }
 }

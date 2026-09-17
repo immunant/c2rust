@@ -3,13 +3,13 @@ use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::{ForeignItemRef, Mod, Node, UsePath};
 use rustc_middle::ty::TyCtxt;
-use rustc_span::symbol::{Ident, Symbol};
+use rustc_span::{Ident, Symbol};
 
 fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res<!>)>) {
     use rustc_hir::ItemKind::*;
 
     for &iid in &m.item_ids[..] {
-        let node = tcx.hir().get(iid.hir_id());
+        let node = tcx.hir_node(iid.hir_id());
         let item = expect!([node] Node::Item(i) => i);
         let item_did = item.owner_id.def_id;
 

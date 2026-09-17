@@ -1,7 +1,7 @@
 //! Mappings between old and new `NodeId`s.  Also has some support for `AttrId`s.
 use log::{trace, warn};
 use rustc_ast::{AttrId, NodeId, DUMMY_NODE_ID};
-use rustc_span::source_map::symbol::Symbol;
+use rustc_span::Symbol;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::mem;

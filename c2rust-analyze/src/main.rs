@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 extern crate either;
+extern crate rustc_abi;
 extern crate rustc_arena;
 extern crate rustc_ast;
 extern crate rustc_const_eval;
@@ -268,10 +269,11 @@ fn is_primary_package() -> bool {
 /// This uses the [`rustc_driver`] and [`rustc_session`] APIs
 /// to check this exactly as `rustc` would.
 fn is_bin_crate(at_args: &[String]) -> anyhow::Result<bool> {
-    let args = rustc_driver::args::arg_expand_all(at_args);
-    let matches = rustc_driver::handle_options(&args)
+    let mut early_dcx = rustc_session::EarlyDiagCtxt::default();
+    let args = rustc_driver::args::arg_expand_all(&early_dcx, at_args);
+    let matches = rustc_driver::handle_options(&early_dcx, &args)
         .ok_or_else(|| anyhow!("failed to parse `rustc` args"))?;
-    let session_options = rustc_session::config::build_session_options(&matches);
+    let session_options = rustc_session::config::build_session_options(&mut early_dcx, &matches);
     let is_bin = session_options.crate_types.contains(&CrateType::Executable);
     Ok(is_bin)
 }
@@ -342,21 +344,23 @@ fn rustc_wrapper() -> anyhow::Result<()> {
         .to_str()
         .ok_or_else(|| anyhow!("sysroot path is not UTF-8: {}", sysroot.display()))?;
     at_args.extend(["--sysroot".into(), sysroot.into()]);
-    let result = if is_primary_compilation {
-        let dont_catch = env::var_os("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC").is_some();
-        if !dont_catch {
-            panic_detail::set_hook();
-        }
+    let result = rustc_driver::catch_fatal_errors(|| {
+        if is_primary_compilation {
+            let dont_catch = env::var_os("C2RUST_ANALYZE_TEST_DONT_CATCH_PANIC").is_some();
+            if !dont_catch {
+                panic_detail::set_hook();
+            }
 
-        RunCompiler::new(&at_args, &mut AnalysisCallbacks).run()
-    } else {
-        // Always use the dynamically linked `librustc_driver-{hash}.so`,
-        // as it is guaranteed to be the same version as the instrumented version.
-        // Furthermore, we can't accidentally load the wrong `librustc_driver-{hash}.so`,
-        // as it contains its hash.
-        // This also avoids an extra `rustc` (and potentially `rustup` `rustc`) invocation.
-        RunCompiler::new(&at_args, &mut TimePassesCallbacks::default()).run()
-    };
+            RunCompiler::new(&at_args, &mut AnalysisCallbacks).run()
+        } else {
+            // Always use the dynamically linked `librustc_driver-{hash}.so`,
+            // as it is guaranteed to be the same version as the instrumented version.
+            // Furthermore, we can't accidentally load the wrong `librustc_driver-{hash}.so`,
+            // as it contains its hash.
+            // This also avoids an extra `rustc` (and potentially `rustup` `rustc`) invocation.
+            RunCompiler::new(&at_args, &mut TimePassesCallbacks::default()).run()
+        }
+    });
     // `ErrorReported` means the error has already been reported to the user,
     // so we just have to fail/exit with a failing exit code.
     // There is no `impl Error for ErrorReported`.

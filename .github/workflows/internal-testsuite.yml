@@ -65,8 +65,10 @@ jobs:
 
     - name: Install Rust toolchains
       run: |
-        rustup toolchain install nightly-2023-04-15 \
+        rustup toolchain install nightly-2025-01-01 \
           --profile minimal --component rustfmt,rustc-dev
+        rustup toolchain install nightly-2023-04-15 \
+          --profile minimal --component rustfmt
 
     - name: Provision Debian Packages
       run: |

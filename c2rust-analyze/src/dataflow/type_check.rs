@@ -16,8 +16,8 @@ use rustc_middle::mir::{
     AggregateKind, BinOp, Body, CastKind, Location, Mutability, Operand, Place, PlaceRef,
     ProjectionElem, Rvalue, Statement, StatementKind, Terminator, TerminatorKind,
 };
-use rustc_middle::ty::adjustment::PointerCast;
-use rustc_middle::ty::{SubstsRef, Ty, TyKind};
+use rustc_middle::ty::adjustment::PointerCoercion;
+use rustc_middle::ty::{GenericArgsRef, Ty, TyKind};
 
 /// Visitor that walks over the MIR, computing types of rvalues/operands/places and generating
 /// constraints as a side effect.
@@ -157,7 +157,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let from_ty = from_lty.ty;
 
         match cast_kind {
-            CastKind::PointerFromExposedAddress => {
+            CastKind::PointerWithExposedProvenance => {
                 // We support only one case here, which is the case of null pointers
                 // constructed via casts such as `0 as *const T`
                 if !util::is_null_const_operand(op) {
@@ -166,28 +166,31 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 // The target type of the cast must not have `NON_NULL` permission.
                 self.add_no_perms(to_lty.label, PermissionSet::NON_NULL);
             }
-            CastKind::PointerExposeAddress => {
-                // Allow, as [`CastKind::PointerFromExposedAddress`] is the dangerous one,
+            CastKind::PointerExposeProvenance => {
+                // Allow, as [`CastKind::PointerWithExposedProvenance`] is the dangerous one,
                 // and we'll catch (not allow) that above.
                 // This becomes no longer a pointer, so we don't need to add any dataflow constraints
-                // (until we try to handle [`CastKind::PointerFromExposedAddress`], if we do).
+                // (until we try to handle [`CastKind::PointerWithExposedProvenance`], if we do).
             }
-            CastKind::Pointer(ptr_cast) => {
-                // All of these [`PointerCast`]s are type checked by rustc already.
+            CastKind::PointerCoercion(ptr_cast, _) => {
+                // All of these [`PointerCoercion`]s are type checked by rustc already.
                 // They don't involve arbitrary raw ptr to raw ptr casts
-                // ([PointerCast::MutToConstPointer`] doesn't allow changing types),
+                // ([PointerCoercion::MutToConstPointer`] doesn't allow changing types),
                 // which we need to check for safe transmutability,
                 // and which are covered by ptr-to-ptr cast kinds below.
                 // That's why there's a `match` here that does nothing;
-                // it ensures if [`PointerCast`] is changed in a future `rustc` version,
+                // it ensures if [`PointerCoercion`] is changed in a future `rustc` version,
                 // this won't compile until we've checked that this reasoning is still accurate.
                 match ptr_cast {
-                    PointerCast::ReifyFnPointer => {}
-                    PointerCast::UnsafeFnPointer => {}
-                    PointerCast::ClosureFnPointer(_) => {}
-                    PointerCast::MutToConstPointer => {}
-                    PointerCast::ArrayToPointer => {}
-                    PointerCast::Unsize => {}
+                    PointerCoercion::ReifyFnPointer => {}
+                    PointerCoercion::UnsafeFnPointer => {}
+                    PointerCoercion::ClosureFnPointer(_) => {}
+                    PointerCoercion::MutToConstPointer => {}
+                    PointerCoercion::ArrayToPointer => {}
+                    PointerCoercion::Unsize => {}
+                    PointerCoercion::DynStar => {
+                        unimplemented!("dyn* casts are too unstable and rare to bother supporting")
+                    }
                 }
                 self.do_assign_pointer_ids(to_lty.label, from_lty.label)
                 // TODO add other dataflow constraints
@@ -227,9 +230,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             | CastKind::FloatToFloat
             | CastKind::IntToFloat => {
                 // Not ptr casts, and we don't allow ptr-to-int casts.
-            }
-            CastKind::DynStar => {
-                unimplemented!("dyn* casts are too unstable and rare to bother supporting")
             }
         }
 
@@ -287,11 +287,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 unreachable!("Rvalue::Ref should be handled by describe_rvalue instead")
             }
             Rvalue::ThreadLocalRef(..) => todo!("visit_rvalue ThreadLocalRef"),
-            Rvalue::AddressOf(..) => {
-                unreachable!("Rvalue::AddressOf should be handled by describe_rvalue instead")
-            }
-            Rvalue::Len(pl) => {
-                self.visit_place(pl, Mutability::Not);
+            Rvalue::RawPtr(..) => {
+                unreachable!("Rvalue::RawPtr should be handled by describe_rvalue instead")
             }
             Rvalue::Cast(cast_kind, ref op, ty) => {
                 assert_eq!(ty, rvalue_lty.ty);
@@ -299,11 +296,6 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             }
             Rvalue::BinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
             Rvalue::BinaryOp(_, ref ops) => {
-                self.visit_operand(&ops.0);
-                self.visit_operand(&ops.1);
-            }
-            Rvalue::CheckedBinaryOp(BinOp::Offset, _) => todo!("visit_rvalue BinOp::Offset"),
-            Rvalue::CheckedBinaryOp(_, ref ops) => {
                 self.visit_operand(&ops.0);
                 self.visit_operand(&ops.1);
             }
@@ -482,19 +474,9 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         let _g = panic_detail::set_current_span(term.source_info.span);
         // TODO(spernsteiner): other `TerminatorKind`s will be handled in the future
         #[allow(clippy::single_match)]
-        match term.kind {
-            TerminatorKind::Call {
-                ref func,
-                ref args,
-                destination,
-                target: _,
-                ..
-            } => {
-                let func = func.ty(self.mir, tcx);
-                self.visit_call(loc, func, args, destination);
-            }
-            // TODO(spernsteiner): handle other `TerminatorKind`s
-            _ => (),
+        if let Some((func, args, destination)) = crate::util::call_parts(&term.kind) {
+            let func = func.ty(self.mir, tcx);
+            self.visit_call(loc, func, args, destination);
         }
     }
 
@@ -502,7 +484,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         &mut self,
         loc: Location,
         func: Ty<'tcx>,
-        args: &[Operand<'tcx>],
+        args: &[rustc_span::source_map::Spanned<Operand<'tcx>>],
         destination: Place<'tcx>,
     ) {
         let tcx = self.acx.tcx();
@@ -530,8 +512,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(destination, Mutability::Mut);
                 let pl_lty = self.acx.type_of(destination);
                 assert!(args.len() == 2);
-                self.visit_operand(&args[0]);
-                let rv_lty = self.acx.type_of(&args[0]);
+                self.visit_operand(&args[0].node);
+                let rv_lty = self.acx.type_of(&args[0].node);
                 self.do_assign(pl_lty, rv_lty);
                 let perms = PermissionSet::OFFSET_ADD | PermissionSet::OFFSET_SUB;
                 self.add_all_perms(rv_lty.label, perms);
@@ -543,8 +525,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.visit_place(destination, Mutability::Mut);
                 let pl_lty = self.acx.type_of(destination);
                 assert!(args.len() == 1);
-                self.visit_operand(&args[0]);
-                let rv_lty = self.acx.type_of(&args[0]);
+                self.visit_operand(&args[0].node);
+                let rv_lty = self.acx.type_of(&args[0].node);
 
                 // Map `rv_lty = &[i32]` to `rv_elem_lty = i32`
                 let rv_pointee_lty = rv_lty.args[0];
@@ -571,6 +553,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Callee::Realloc => {
                 let out_ptr = destination;
                 let in_ptr = args[0]
+                    .node
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
                 self.visit_place(out_ptr, Mutability::Mut);
@@ -591,6 +574,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             }
             Callee::Free => {
                 let in_ptr = args[0]
+                    .node
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
                 self.visit_place(destination, Mutability::Mut);
@@ -604,6 +588,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let out_ptr = destination;
 
                 let dest_ptr = args[0]
+                    .node
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
                 self.visit_place(out_ptr, Mutability::Mut);
@@ -615,7 +600,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let mut maybe_offset_perm = PermissionSet::OFFSET_ADD;
                 let rv_ptr = rv_lty.label;
                 if let Some(pointee_lty) = self.pointee_type(rv_ptr) {
-                    if self.operand_is_size_of_t(loc, &args[2], pointee_lty.ty) {
+                    if self.operand_is_size_of_t(loc, &args[2].node, pointee_lty.ty) {
                         // The size is exactly the (original) size of the pointee type, so this
                         // `memset` is operating on a single element only.
                         maybe_offset_perm = PermissionSet::empty();
@@ -628,6 +613,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 self.add_all_perms(rv_lty.label, perms);
 
                 let src_ptr = args[1]
+                    .node
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
 
@@ -647,6 +633,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             }
             Callee::Memset => {
                 let dest_ptr = args[0]
+                    .node
                     .place()
                     .expect("Casts to/from null pointer are not yet supported");
                 self.visit_place(destination, Mutability::Mut);
@@ -658,7 +645,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
                 let mut maybe_offset_perm = PermissionSet::OFFSET_ADD;
                 let rv_ptr = rv_lty.label;
                 if let Some(pointee_lty) = self.pointee_type(rv_ptr) {
-                    if self.operand_is_size_of_t(loc, &args[2], pointee_lty.ty) {
+                    if self.operand_is_size_of_t(loc, &args[2].node, pointee_lty.ty) {
                         // The size is exactly the (original) size of the pointee type, so this
                         // `memset` is operating on a single element only.
                         maybe_offset_perm = PermissionSet::empty();
@@ -678,7 +665,7 @@ impl<'tcx> TypeChecker<'tcx, '_> {
             Callee::SizeOf { .. } => {}
             Callee::IsNull => {
                 assert!(args.len() == 1);
-                self.visit_operand(&args[0]);
+                self.visit_operand(&args[0].node);
             }
             Callee::Null { .. } => {
                 assert!(args.is_empty());
@@ -698,8 +685,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
     fn visit_local_call(
         &mut self,
         def_id: DefId,
-        substs: SubstsRef<'tcx>,
-        args: &[Operand<'tcx>],
+        substs: GenericArgsRef<'tcx>,
+        args: &[rustc_span::source_map::Spanned<Operand<'tcx>>],
         dest: Place<'tcx>,
     ) {
         let sig = self.acx.gacx.fn_sigs.get(&def_id)
@@ -709,7 +696,8 @@ impl<'tcx> TypeChecker<'tcx, '_> {
         }
 
         // Process pseudo-assignments from `args` to the types declared in `sig`.
-        for (arg_op, &input_lty) in args.iter().zip(sig.inputs.iter()) {
+        for (arg, &input_lty) in args.iter().zip(sig.inputs.iter()) {
+            let arg_op = &arg.node;
             self.visit_operand(arg_op);
             let arg_lty = self.acx.type_of(arg_op);
             self.do_assign(input_lty, arg_lty);
