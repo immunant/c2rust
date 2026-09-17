@@ -279,8 +279,7 @@ impl FuncContext {
     }
 }
 
-#[derive(Clone)]
-struct MacroExpansion {
+struct ConvertedMacro {
     ty: CTypeId,
 }
 
@@ -305,7 +304,7 @@ pub struct Translation<'c> {
     zero_inits: RefCell<ZeroInits>,
     function_context: RefCell<FuncContext>,
     potential_flexible_array_members: RefCell<IndexSet<CDeclId>>,
-    macro_expansions: RefCell<IndexMap<CDeclId, Option<MacroExpansion>>>,
+    converted_macros: RefCell<IndexMap<CDeclId, Option<Rc<ConvertedMacro>>>>,
     /// Sets of imports deferred while translating nested expressions for caching. Imports are
     /// deferred when caching translations to make them pure and thus cache the translation
     /// alongside its required imports. Each additional nested level of caching translation
@@ -1676,7 +1675,7 @@ impl<'c> Translation<'c> {
             zero_inits: RefCell::new(IndexMap::new()),
             function_context: RefCell::new(FuncContext::new()),
             potential_flexible_array_members: RefCell::new(IndexSet::new()),
-            macro_expansions: RefCell::new(IndexMap::new()),
+            converted_macros: RefCell::new(IndexMap::new()),
             deferred_imports: RefCell::new(Vec::new()),
             cleanup_guard_emitted: Cell::new(false),
             comment_context,
@@ -2327,7 +2326,7 @@ impl<'c> Translation<'c> {
                     .get(&decl_id)
                     .expect("Macro object not named");
 
-                self.convert_macro(ctx, decl_id, span, &name)
+                Ok(self.convert_macro(ctx, decl_id, span, &name))
             }
 
             // We aren't doing anything with the definitions of function-like
@@ -4981,8 +4980,8 @@ impl<'c> Translation<'c> {
             } => add_use_items_for_type(typ),
 
             CDeclKind::MacroObject { .. } => {
-                if let Some(Some(expansion)) = self.macro_expansions.borrow().get(&decl_id) {
-                    add_use_items_for_type(expansion.ty)
+                if let Some(Some(converted)) = self.converted_macros.borrow().get(&decl_id) {
+                    add_use_items_for_type(converted.ty)
                 }
             }
 
