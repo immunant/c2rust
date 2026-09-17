@@ -214,7 +214,9 @@ impl<'c> Translation<'c> {
         // so we need to cast it to the `override_ty` here.
         let expr_ty = override_ty.or_else(|| expr_kind.get_qual_type());
         if let Some(expr_ty) = expr_ty {
-            match self.make_cast(ctx, CQualTypeId::new(macro_ty), expr_ty, val) {
+            let result = val
+                .and_then_try(|val| self.make_cast(ctx, CQualTypeId::new(macro_ty), expr_ty, val));
+            match result {
                 Ok(new_val) => val = new_val,
                 Err(err) => {
                     info!(
