@@ -904,10 +904,11 @@ pub fn translate(
         t.ast_context
             .prune_unwanted_items(tcfg.preserve_unused_functions);
 
-        // Normalize AST types between Clang < 16 and later versions. Ensures that
+        // Override expression types with `PULLBACK_KINDS` where appropriate.
+        // Also normalize AST types between Clang < 16 and later versions. Ensures that
         // binary and unary operators' expr types agree with their argument types
         // in the presence of typedefs.
-        t.ast_context.bubble_expr_types();
+        t.ast_context.override_expr_types();
 
         // Used for testing; so that we don't overlap with C function names
         if let Some(ref prefix) = t.tcfg.prefix_function_names {
