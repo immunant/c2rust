@@ -1,7 +1,7 @@
----
+/*---
 source: c2rust-transpile/tests/snapshots.rs
 expression: cat tests/snapshots/os-specific/sigign.2021.linux.clang15.rs
----
+---*/
 #![allow(
     clippy::missing_safety_doc,
     dead_code,
@@ -15,8 +15,7 @@ pub type __sighandler_t = Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>
 #[no_mangle]
 pub unsafe extern "C" fn foo() {
     let mut handler: Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()> =
-        ::core::mem::transmute::<
-            ::libc::intptr_t,
-            Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>,
-        >(1 as ::core::ffi::c_int as ::libc::intptr_t);
+        ::core::mem::transmute::<usize, Option<unsafe extern "C" fn(::core::ffi::c_int) -> ()>>(
+            1 as ::core::ffi::c_int as usize,
+        );
 }

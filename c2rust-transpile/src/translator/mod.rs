@@ -4292,23 +4292,16 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            CastKind::BitCast | CastKind::NoOp => {
-                self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
-            }
-
-            CastKind::IntegralToPointer | CastKind::NullToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
-            }
-
-            CastKind::PointerToIntegral => {
-                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
-            }
-
             CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
-            | CastKind::BooleanToSignedIntegral => {
+            | CastKind::BooleanToSignedIntegral
+            | CastKind::BitCast
+            | CastKind::NoOp
+            | CastKind::IntegralToPointer
+            | CastKind::NullToPointer
+            | CastKind::PointerToIntegral => {
                 if ctx.is_pattern
                     && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
                 {
@@ -4318,6 +4311,10 @@ impl<'c> Translation<'c> {
                 }
 
                 match (source_ty_kind, target_ty_kind) {
+                    (CTypeKind::Pointer(_), CTypeKind::Pointer(_)) => {
+                        self.make_pointer_to_pointer_cast(source_cty.ctype, target_cty.ctype, val)
+                    }
+
                     // These are both converted to `f128`, so a cast between the two should just be
                     // a no-op.
                     (
@@ -4325,11 +4322,27 @@ impl<'c> Translation<'c> {
                         CTypeKind::LongDouble | CTypeKind::Float128,
                     ) => Ok(val.into()),
 
+                    (_, CTypeKind::Pointer(_)) => {
+                        let usize_type_id = self.ast_context.type_for_kind(&CTypeKind::UIntPtr);
+                        let val = self.make_cast(ctx, source_cty, usize_type_id.into(), val)?;
+                        val.and_then_try(|val| {
+                            self.make_usize_to_pointer_cast(ctx, target_cty.ctype, val)
+                        })
+                    }
+
                     (_, &CTypeKind::Enum(enum_id)) => {
                         let underlying_type_id = self.enum_underlying_type(enum_id);
                         let val = self.make_cast(ctx, source_cty, underlying_type_id, val)?;
                         let val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
                         Ok(val)
+                    }
+
+                    (CTypeKind::Pointer(_), _) => {
+                        let usize_type_id = self.ast_context.type_for_kind(&CTypeKind::UIntPtr);
+                        let val = self.make_pointer_to_usize_cast(ctx, source_cty.ctype, val)?;
+                        val.and_then_try(|val| {
+                            self.make_cast(ctx, usize_type_id.into(), target_cty, val)
+                        })
                     }
 
                     (&CTypeKind::Enum(enum_id), _) => {
