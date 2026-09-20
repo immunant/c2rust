@@ -3233,12 +3233,14 @@ impl<'c> Translation<'c> {
         let ty = self.convert_type(type_id)?;
         let result = self.mk_size_of_ty_expr(ty)?;
 
-        self.make_cast(
-            ctx,
-            result_type_id,
-            expected_type_id.unwrap_or(result_type_id),
-            result,
-        )
+        result.and_then_try(|result| {
+            self.make_cast(
+                ctx,
+                result_type_id,
+                expected_type_id.unwrap_or(result_type_id),
+                result,
+            )
+        })
     }
 
     fn mk_size_of_ty_expr(&self, ty: Box<Type>) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -3299,7 +3301,7 @@ impl<'c> Translation<'c> {
             ctx,
             result_type_id,
             expected_type_id.unwrap_or(result_type_id),
-            WithStmts::new_val(call),
+            call,
         )
     }
 
@@ -3907,12 +3909,14 @@ impl<'c> Translation<'c> {
         let mut val = WithStmts::new_val(val).merge_unsafe(set_unsafe);
 
         if lrvalue.is_rvalue() {
-            val = self.make_cast(
-                ctx,
-                result_type_id,
-                expected_type_id.unwrap_or(result_type_id),
-                val,
-            )?;
+            val = val.and_then_try(|val| {
+                self.make_cast(
+                    ctx,
+                    result_type_id,
+                    expected_type_id.unwrap_or(result_type_id),
+                    val,
+                )
+            })?;
         }
 
         Ok(val)
@@ -4102,7 +4106,9 @@ impl<'c> Translation<'c> {
                 };
 
                 // if the context wants a different type, add a cast
-                return self.make_cast(ctx, source_ty.not_volatile(), target_ty, val);
+                return val.and_then_try(|val| {
+                    self.make_cast(ctx, source_ty.not_volatile(), target_ty, val)
+                });
             }
 
             CastKind::NullToPointer => {
@@ -4154,15 +4160,17 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        self.make_cast_full(
-            ctx,
-            source_ty,
-            target_ty,
-            val,
-            Some(expr),
-            Some(kind),
-            opt_field_id,
-        )
+        val.and_then_try(|val| {
+            self.make_cast_full(
+                ctx,
+                source_ty,
+                target_ty,
+                val,
+                Some(expr),
+                Some(kind),
+                opt_field_id,
+            )
+        })
     }
 
     fn can_propagate_cast(
@@ -4260,7 +4268,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         source_type_id: CQualTypeId,
         target_type_id: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         self.make_cast_full(ctx, source_type_id, target_type_id, val, None, None, None)
     }
@@ -4270,7 +4278,7 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         source_cty: CQualTypeId,
         target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
         expr: Option<CExprId>,
         kind: Option<CastKind>,
         opt_field_id: Option<CFieldId>,
@@ -4295,7 +4303,7 @@ impl<'c> Translation<'c> {
             &TypedAstContext::resolve_type_id,
         ) && kind != CastKind::LValueToRValue
         {
-            return Ok(val);
+            return Ok(val.into());
         }
 
         if ctx.is_pattern
@@ -4341,7 +4349,7 @@ impl<'c> Translation<'c> {
                     {
                         // These are both converted to `f128`, so a cast between the two should
                         // just be a no-op.
-                        Ok(val)
+                        Ok(val.into())
                     } else {
                         if ctx.is_const {
                             return Err(format_translation_err!(
@@ -4354,7 +4362,7 @@ impl<'c> Translation<'c> {
                         self.use_crate(ExternCrate::F128);
 
                         let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
+                        Ok(mk().call_expr(fn_path, vec![val]).into())
                     }
                 } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
                     self.ast_context[source_cty.ctype].kind
@@ -4368,19 +4376,17 @@ impl<'c> Translation<'c> {
                         mk().path_segment_with_args("Into", type_args_rs),
                         mk().path_segment("into"),
                     ]);
-                    Ok(val.map(|val| mk().call_expr(callee_rs, vec![val])))
+                    Ok(mk().call_expr(callee_rs, vec![val]).into())
                 } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-                    val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
+                    self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                    Ok(val.map(|val| {
-                        mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
-                    }))
+                    Ok(mk()
+                        .cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
+                        .into())
                 } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
-                    val.and_then_try(|val| {
-                        self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
-                    })
+                    self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
                 } else {
-                    Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+                    Ok(mk().cast_expr(val, target_ty).into())
                 }
             }
 
@@ -4388,10 +4394,10 @@ impl<'c> Translation<'c> {
                 panic!("LValueToRValue casts must be handled in convert_cast")
             }
 
-            CastKind::ToVoid | CastKind::ConstCast => Ok(val),
+            CastKind::ToVoid | CastKind::ConstCast => Ok(val.into()),
 
             CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
-                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
+                Ok(mk().call_expr(mk().ident_expr("Some"), vec![val]).into())
             }
 
             CastKind::ArrayToPointerDecay => {
@@ -4402,9 +4408,9 @@ impl<'c> Translation<'c> {
 
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
-            | CastKind::PointerToBoolean => {
-                val.try_map(|e| self.match_bool(ctx, true, source_cty.ctype, e))
-            }
+            | CastKind::PointerToBoolean => self
+                .match_bool(ctx, true, source_cty.ctype, val)
+                .map(Into::into),
 
             CastKind::FloatingRealToComplex
             | CastKind::FloatingComplexToIntegralComplex
@@ -4422,7 +4428,7 @@ impl<'c> Translation<'c> {
                 "TODO vector splat casts not supported",
             )),
 
-            CastKind::AtomicToNonAtomic | CastKind::NonAtomicToAtomic => Ok(val),
+            CastKind::AtomicToNonAtomic | CastKind::NonAtomicToAtomic => Ok(val.into()),
         }
     }
 

@@ -136,7 +136,7 @@ impl<'c> Translation<'c> {
 
         // Cast from the underlying type to the expected type.
         let source_cty = self.enum_underlying_type(enum_id);
-        self.make_cast(ctx, source_cty, target_cty, WithStmts::new_val(val))
+        self.make_cast(ctx, source_cty, target_cty, val)
     }
 
     /// Gets the underlying value of an enum value.
@@ -173,8 +173,7 @@ impl<'c> Translation<'c> {
         }
 
         let underlying_type_id = self.enum_underlying_type(enum_id);
-        let mut val = WithStmts::new_val(val);
-        val = self.make_cast(ctx, source_cty, underlying_type_id, val)?;
+        let mut val = self.make_cast(ctx, source_cty, underlying_type_id, val)?;
         val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
 
         Ok(val)
