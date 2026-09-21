@@ -197,6 +197,12 @@ impl WithStmts<Box<Expr>> {
     }
 }
 
+impl<T> From<T> for WithStmts<T> {
+    fn from(val: T) -> Self {
+        WithStmts::new_val(val)
+    }
+}
+
 impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
     fn from_iter<I: IntoIterator<Item = WithStmts<T>>>(value: I) -> Self {
         let mut stmts = vec![];
