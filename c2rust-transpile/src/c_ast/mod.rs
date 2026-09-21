@@ -2194,7 +2194,6 @@ pub enum CastKind {
     IntegralComplexCast,
     IntegralComplexToFloatingComplex,
     BuiltinFnToFnPtr,
-    ConstCast,
     VectorSplat,
     AtomicToNonAtomic,
     NonAtomicToAtomic,
