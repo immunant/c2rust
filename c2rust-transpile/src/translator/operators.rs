@@ -27,8 +27,8 @@ impl<'c> Translation<'c> {
             }
 
             op if op.is_logical() => {
-                let lhs = self.convert_condition(ctx.used(), true, lhs)?;
-                let rhs = self.convert_condition(ctx.used(), true, rhs)?;
+                let lhs = self.convert_scalar_to_bool_cast(ctx.used(), lhs, true)?;
+                let rhs = self.convert_scalar_to_bool_cast(ctx.used(), rhs, true)?;
                 let expr_rs = lhs
                     .map(|x| mk().binary_expr(BinOp::from(op), x, rhs.to_expr()))
                     .and_then(|out| {
@@ -612,7 +612,7 @@ impl<'c> Translation<'c> {
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
             CUnOp::Not => {
-                let val = self.convert_condition(ctx, false, arg)?;
+                let val = self.convert_scalar_to_bool_cast(ctx, arg, false)?;
                 let expected_type_id = expected_type_id.unwrap_or(result_type_id);
 
                 result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
