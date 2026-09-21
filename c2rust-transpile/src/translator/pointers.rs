@@ -686,10 +686,10 @@ impl<'c> Translation<'c> {
         ptr_type: CTypeId,
         val: Box<Expr>,
         is_null: bool,
-    ) -> TranslationResult<Box<Expr>> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         Ok(if self.ast_context.is_function_pointer(ptr_type) {
             let method = if is_null { "is_none" } else { "is_some" };
-            mk().method_call_expr(val, method, vec![])
+            mk().method_call_expr(val, method, vec![]).into()
         } else {
             // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
             if ctx.is_const {
@@ -700,9 +700,9 @@ impl<'c> Translation<'c> {
             }
             let val = mk().method_call_expr(val, "is_null", vec![]);
             if !is_null {
-                mk().unary_expr(UnOp::Not(Default::default()), val)
+                mk().unary_expr(UnOp::Not(Default::default()), val).into()
             } else {
-                val
+                val.into()
             }
         })
     }

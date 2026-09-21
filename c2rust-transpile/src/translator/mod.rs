@@ -2505,7 +2505,7 @@ impl<'c> Translation<'c> {
                     .get_type()
                     .ok_or_else(|| format_err!("bad pointer type for condition"))?;
 
-                val.try_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_null))
+                val.and_then_try(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_null))
             };
 
         match self.ast_context.index_unwrap_parens(cond_id).kind {
@@ -2553,7 +2553,7 @@ impl<'c> Translation<'c> {
                 // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
                 // specify Yes for that particular case, given enough analysis.
                 let val = self.convert_expr(ctx.decay_ref(), cond_id, None)?;
-                val.try_map(|e| self.match_bool(ctx, target, ty_id, e))
+                val.and_then_try(|e| self.match_bool(ctx, target, ty_id, e))
             }
         }
     }
@@ -3627,23 +3627,27 @@ impl<'c> Translation<'c> {
                         .merge_unsafe(rhs.is_unsafe());
                     let fresh_name = self.renamer.borrow_mut().fresh(Namespaces::values());
 
-                    lhs.and_then_try(|lhs| {
-                        let fresh_stmt = mk().local_stmt(Box::new(mk().local(
+                    let cond = lhs.and_then(|lhs| {
+                        let stmt = mk().local_stmt(Box::new(mk().local(
                             mk().ident_pat(&fresh_name),
                             None,
                             Some(lhs),
                         )));
+                        let fresh_expr = mk().ident_expr(&fresh_name);
+                        WithStmts::new(vec![stmt], fresh_expr)
+                    });
+                    let cond =
+                        cond.and_then_try(|cond| self.match_bool(ctx, true, ty.ctype, cond))?;
 
-                        let cond =
-                            self.match_bool(ctx, true, ty.ctype, mk().ident_expr(&fresh_name))?;
-                        let ite = mk().ifte_expr(
+                    let ite = cond.map(|cond| {
+                        mk().ifte_expr(
                             cond,
                             mk().block(vec![mk().expr_stmt(mk().ident_expr(&fresh_name))]),
                             Some(rhs.to_expr()),
-                        );
+                        )
+                    });
 
-                        Ok(WithStmts::new(vec![fresh_stmt], ite))
-                    })
+                    Ok(ite)
                 }
             }
 
@@ -4392,7 +4396,7 @@ impl<'c> Translation<'c> {
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
             | CastKind::PointerToBoolean => {
-                val.try_map(|e| self.match_bool(ctx, true, source_cty.ctype, e))
+                val.and_then_try(|e| self.match_bool(ctx, true, source_cty.ctype, e))
             }
 
             CastKind::FloatingRealToComplex
@@ -4675,16 +4679,16 @@ impl<'c> Translation<'c> {
         target: bool,
         ty_id: CTypeId,
         val: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
         Ok(if ty.is_pointer() {
             self.convert_pointer_is_null(ctx, ty_id, val, !target)?
         } else if ty.is_bool() {
             if target {
-                val
+                val.into()
             } else {
-                mk().unary_expr(UnOp::Not(Default::default()), val)
+                mk().unary_expr(UnOp::Not(Default::default()), val).into()
             }
         } else {
             // One simplification we can make at the cost of inspecting `val` more closely: if `val`
@@ -4706,13 +4710,14 @@ impl<'c> Translation<'c> {
                 {
                     return Ok(if target {
                         // If target == true, just return the argument
-                        Box::new(unparen(arg).clone())
+                        Box::new(unparen(arg).clone()).into()
                     } else {
                         // If target == false, return !arg
                         mk().unary_expr(
                             UnOp::Not(Default::default()),
                             Box::new(unparen(arg).clone()),
                         )
+                        .into()
                     });
                 }
             }
@@ -4735,8 +4740,10 @@ impl<'c> Translation<'c> {
 
             if target {
                 mk().binary_expr(BinOp::Ne(Default::default()), val, zero)
+                    .into()
             } else {
                 mk().binary_expr(BinOp::Eq(Default::default()), val, zero)
+                    .into()
             }
         })
     }
