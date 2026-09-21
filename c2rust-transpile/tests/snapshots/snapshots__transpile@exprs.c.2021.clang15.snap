@@ -103,22 +103,17 @@ pub unsafe extern "C" fn mut_to_const_ptr_cast(
     mut m: *mut ::core::ffi::c_int,
     mut mm: *mut *mut ::core::ffi::c_int,
 ) {
-    let mut bit_cast: ::core::ffi::c_int =
-        (c == m as *const ::core::ffi::c_int) as ::core::ffi::c_int;
-    let mut conditional: *const ::core::ffi::c_int = if cond != 0 {
-        c
-    } else {
-        m as *const ::core::ffi::c_int
-    };
+    let mut bit_cast: ::core::ffi::c_int = (c == m) as ::core::ffi::c_int;
+    let mut conditional: *const ::core::ffi::c_int = if cond != 0 { c } else { m };
     let mut r#macro: ::core::ffi::c_int = c.is_null() as ::core::ffi::c_int;
-    let mut borrow: *const ::core::ffi::c_int = &raw mut cond as *const ::core::ffi::c_int;
+    let mut borrow: *const ::core::ffi::c_int = &raw mut cond;
     let mut array: [*const ::core::ffi::c_int; 1] = [m as *const ::core::ffi::c_int];
     let mut vol: *const ::core::ffi::c_int = m as *const ::core::ffi::c_int;
     let mut td: [*const cint; 1] = [m as *const cint];
-    let mut ptr_ptr: *const *mut ::core::ffi::c_int = mm as *const *mut ::core::ffi::c_int;
+    let mut ptr_ptr: *const *mut ::core::ffi::c_int = mm;
 }
 #[no_mangle]
 pub static mut global: ::core::ffi::c_int = 0;
 #[no_mangle]
 pub static mut global_ptr: *const ::core::ffi::c_int =
-    unsafe { &raw const global as *mut ::core::ffi::c_int as *const ::core::ffi::c_int };
+    unsafe { &raw const global as *mut ::core::ffi::c_int };
