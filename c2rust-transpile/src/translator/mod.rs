@@ -3334,12 +3334,23 @@ impl<'c> Translation<'c> {
     /// `override_ty` is the type expected by the surrounding expression context.
     /// This can be different from the type of the AST node itself
     /// and in many cases should override it.
-    pub fn convert_expr(
+    pub(crate) fn convert_expr(
         &self,
         ctx: ExprContext,
-        expr_id: CExprId,
+        expr: impl Into<IdOrExpr>,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let expr_id = match expr.into() {
+            IdOrExpr::Id(expr_id) => expr_id,
+            IdOrExpr::Expr(expr_rs, type_id) => {
+                if let Some(override_ty) = override_ty {
+                    return self.make_cast(ctx, type_id, override_ty, expr_rs.into());
+                } else {
+                    return Ok(expr_rs.into());
+                }
+            }
+        };
+
         let Located {
             loc: src_loc,
             kind: expr_kind,
@@ -5010,4 +5021,19 @@ fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
 
 fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![])
+}
+
+/// Holds either a `CExprId` to an untranslated C expression, or an already-translated `Box<Expr>`
+/// accompanied its type.
+#[derive(Debug, Clone)]
+pub(crate) enum IdOrExpr {
+    Id(CExprId),
+    #[allow(dead_code)]
+    Expr(Box<Expr>, CQualTypeId),
+}
+
+impl From<CExprId> for IdOrExpr {
+    fn from(value: CExprId) -> Self {
+        Self::Id(value)
+    }
 }
