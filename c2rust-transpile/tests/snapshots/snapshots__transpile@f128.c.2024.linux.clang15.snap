@@ -13,6 +13,12 @@ expression: cat tests/snapshots/os-specific/f128.2024.linux.clang15.rs
     unused_mut
 )]
 use ::num_traits::{Float, ToPrimitive};
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct E(pub ::core::ffi::c_uint);
+impl E {
+    pub const A: Self = Self(0);
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn long_double_test() {
     let mut one: ::f128::f128 = ::f128::f128::new(1.0);
@@ -21,8 +27,12 @@ pub unsafe extern "C" fn long_double_test() {
     let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
     let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
     let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut b: bool = one != ::f128::f128::ZERO;
+    let mut e: E = E::A;
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
+    let mut cast_from_bool: ::f128::f128 = ::f128::f128::new(b);
+    let mut cast_from_enum: ::f128::f128 = ::f128::f128::new(e);
     let mut is_inf: bool = if huge.is_infinite() {
         if huge.is_sign_positive() { 1 } else { -1 }
     } else {
@@ -40,8 +50,12 @@ pub unsafe extern "C" fn float128_test() {
     let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
     let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
     let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut b: bool = one != ::f128::f128::ZERO;
+    let mut e: E = E::A;
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
+    let mut cast_from_bool: ::f128::f128 = ::f128::f128::new(b);
+    let mut cast_from_enum: ::f128::f128 = ::f128::f128::new(e);
     let mut ld_from_float128: ::f128::f128 = one;
     let mut is_inf: bool = if huge.is_infinite() {
         if huge.is_sign_positive() { 1 } else { -1 }

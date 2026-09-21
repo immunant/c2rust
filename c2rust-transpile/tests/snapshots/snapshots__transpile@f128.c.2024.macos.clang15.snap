@@ -13,6 +13,12 @@ expression: cat tests/snapshots/os-specific/f128.c.2024.macos.rs
     unused_mut
 )]
 use ::num_traits::{Float, ToPrimitive};
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct E(pub ::core::ffi::c_uint);
+impl E {
+    pub const A: Self = Self(0);
+}
 #[inline(always)]
 unsafe extern "C" fn __inline_isinff(mut __x: ::core::ffi::c_float) -> ::core::ffi::c_int {
     return (__x.abs() == ::core::f32::INFINITY) as ::core::ffi::c_int;
@@ -33,8 +39,12 @@ pub unsafe extern "C" fn long_double_test() {
     let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
     let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
     let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut b: bool = one != ::f128::f128::ZERO;
+    let mut e: E = E::A;
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
+    let mut cast_from_bool: ::f128::f128 = ::f128::f128::new(b);
+    let mut cast_from_enum: ::f128::f128 = ::f128::f128::new(e);
     let mut is_inf: bool = if ::core::mem::size_of::<::f128::f128>()
         == ::core::mem::size_of::<::core::ffi::c_float>()
     {
