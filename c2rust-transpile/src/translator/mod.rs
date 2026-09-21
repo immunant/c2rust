@@ -2485,64 +2485,65 @@ impl<'c> Translation<'c> {
     pub(crate) fn convert_scalar_to_bool_cast(
         &self,
         ctx: ExprContext,
-        cond_id: CExprId,
+        expr: impl Into<IdOrExpr<CTypeId>>,
         target: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let ty_id = self
-            .ast_context
-            .index_unwrap_parens(cond_id)
-            .kind
-            .get_type()
-            .ok_or_else(|| format_err!("bad condition type"))?;
+        let expr = expr.into();
 
-        match self.ast_context.index_unwrap_parens(cond_id).kind {
-            CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                self.convert_pointer_is_null(ctx.decay_ref(), ptr, target)
-            }
+        if let Some(expr_id) = expr.expr_id() {
+            match self.ast_context.index_unwrap_parens(expr_id).kind {
+                CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, target);
+                }
 
-            CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                self.convert_pointer_is_null(ctx.decay_ref(), ptr, target)
-            }
+                CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, target);
+                }
 
-            CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target)
-            }
+                CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target);
+                }
 
-            CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target)
-            }
+                CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target);
+                }
 
-            CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
-                if !self.expr_is_expanded_macro(ctx, cond_id, None) =>
-            {
-                // If there is a literal `0` or `1` here, translate them directly rather than
-                // with a comparison. But not if they're inside a macro; we want to keep that.
-                // TODO: What about the `false` and `true` macros in stdbool.h?
-                let val = mk().lit_expr(mk().bool_lit(target == literal.get_bool()));
-                Ok(WithStmts::new_val(val))
-            }
+                CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
+                    if !self.expr_is_expanded_macro(ctx, expr_id, None) =>
+                {
+                    // If there is a literal `0` or `1` here, translate them directly rather than
+                    // with a comparison. But not if they're inside a macro; we want to keep that.
+                    // TODO: What about the `false` and `true` macros in stdbool.h?
+                    let val = mk().lit_expr(mk().bool_lit(target == literal.get_bool()));
+                    return Ok(WithStmts::new_val(val));
+                }
 
-            CExprKind::Unary(_, CUnOp::Not, subexpr_id, _) => {
-                self.convert_scalar_to_bool_cast(ctx, subexpr_id, !target)
-            }
+                CExprKind::Unary(_, CUnOp::Not, subexpr_id, _) => {
+                    return self.convert_scalar_to_bool_cast(ctx, subexpr_id, !target);
+                }
 
-            _ => {
-                // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
-                // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
-                // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
-                // specify Yes for that particular case, given enough analysis.
-                let val = self.convert_expr(ctx.decay_ref(), cond_id, None)?;
-                val.and_then_try(|e| self.match_bool(ctx, target, ty_id, e))
+                _ => {}
             }
         }
+
+        let expr_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("bad condition type"))?;
+
+        // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
+        // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
+        // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
+        // specify Yes for that particular case, given enough analysis.
+        self.convert_expr(ctx.decay_ref(), expr, None)?
+            .and_then_try(|expr_rs| self.match_bool(ctx, target, expr_type_id, expr_rs))
     }
 
     /// Search for references to the given declaration in a value position
@@ -5038,8 +5039,16 @@ fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
 #[derive(Debug, Clone)]
 pub(crate) enum IdOrExpr<T> {
     Id(CExprId),
-    #[allow(dead_code)]
     Expr(Box<Expr>, T),
+}
+
+impl<T> IdOrExpr<T> {
+    pub(crate) fn expr_id(&self) -> Option<CExprId> {
+        match *self {
+            IdOrExpr::Id(expr_id) => Some(expr_id),
+            IdOrExpr::Expr(_, _) => None,
+        }
+    }
 }
 
 impl IdOrExpr<CTypeId> {
