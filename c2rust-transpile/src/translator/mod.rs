@@ -122,7 +122,27 @@ pub enum ReplaceMode {
 /// Options that impact an expression and all of its subexpressions.
 #[derive(Copy, Clone, Debug)]
 pub struct ExprContext {
-    used: bool,
+    /// Whether the result value of the expression is used in a larger expression.
+    ///
+    /// When the result value is not used in a particular context, only the side effects of the
+    /// expression matter. The `stmts` field of `WithStmts` should hold any statements with side
+    /// effects, and the `val` field is expected to be discarded. It should not appear in the final
+    /// transpiler output, and may be an expression that panics when evaluated.
+    ///
+    /// - `.unused()` should be called for the top-level expression of an `ExprStmt`, the increment
+    /// expression of a `for` loop, the `lhs` of a comma operator expression, and other such cases.
+    ///
+    /// - `.used()` should be called if an expression is needed to evaluate the side effects of a
+    /// parent expression, such as the arguments of a function call (unless the function is known to
+    /// be pure), the operands of an assignment expression, the expression of a `return` statement,
+    /// etc. An expression that sets `.used()` for one of its subexpressions should handle the case
+    /// that its own context has `!is_used`, by moving its side effects into the `stmts` field;
+    /// the `convert_side_effects_expr` helper can be used for this purpose.
+    ///
+    /// - If an expression is pure (has no side effects), then it should inherit its `is_used` value
+    /// from its parent expression: if the parent expression is going to be discarded, then so are
+    /// all of its pure child expressions.
+    is_used: bool,
 
     /// In a Rust const context, for example in a static initializer or constant-like macro
     /// translation.
@@ -152,20 +172,18 @@ pub struct ExprContext {
 
 impl ExprContext {
     pub fn used(self) -> Self {
-        ExprContext { used: true, ..self }
-    }
-    pub fn unused(self) -> Self {
         ExprContext {
-            used: false,
+            is_used: true,
             ..self
         }
     }
-    pub fn is_used(&self) -> bool {
-        self.used
+    pub fn unused(self) -> Self {
+        ExprContext {
+            is_used: false,
+            ..self
+        }
     }
-    pub fn is_unused(&self) -> bool {
-        !self.used
-    }
+
     pub fn decay_ref(self) -> Self {
         ExprContext {
             decay_ref: DecayRef::Yes,
@@ -876,7 +894,7 @@ pub fn translate(
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
     let ctx = ExprContext {
-        used: true,
+        is_used: false,
         is_const: false,
         is_pattern: false,
         is_static: false,
@@ -1984,7 +2002,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
         init: &mut Box<Expr>,
     ) -> TranslationResult<()> {
-        let mut default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
+        let mut default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
 
         std::mem::swap(init, &mut default_init);
 
@@ -2464,80 +2482,135 @@ impl<'c> Translation<'c> {
     }
 
     /// Convert a C expression to a rust boolean expression
-    pub fn convert_condition(
+    pub(crate) fn convert_scalar_to_bool_cast(
         &self,
         ctx: ExprContext,
+        expr: impl Into<IdOrExpr<CTypeId>>,
         target: bool,
-        cond_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let ty_id = self
-            .ast_context
-            .index_unwrap_parens(cond_id)
-            .kind
-            .get_type()
-            .ok_or_else(|| format_err!("bad condition type"))?;
+        let expr = expr.into();
 
-        let null_pointer_case =
-            |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
-                let val = self.convert_expr(ctx.used().decay_ref(), ptr, None)?;
-                let ptr_type = self
-                    .ast_context
-                    .index_unwrap_parens(ptr)
-                    .kind
-                    .get_type()
-                    .ok_or_else(|| format_err!("bad pointer type for condition"))?;
+        if let Some(expr_id) = expr.expr_id() {
+            match self.ast_context.index_unwrap_parens(expr_id).kind {
+                CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, target);
+                }
 
-                val.try_map(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_null))
-            };
+                CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, target);
+                }
 
-        match self.ast_context.index_unwrap_parens(cond_id).kind {
-            CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                null_pointer_case(ptr, target)
-            }
+                CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target);
+                }
 
-            CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                null_pointer_case(ptr, target)
-            }
+                CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
+                    if self.ast_context.is_null_expr(null_expr) =>
+                {
+                    return self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target);
+                }
 
-            CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                null_pointer_case(ptr, !target)
-            }
+                CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
+                    if !self.expr_is_expanded_macro(ctx, expr_id, None) =>
+                {
+                    // If there is a literal `0` or `1` here, translate them directly rather than
+                    // with a comparison. But not if they're inside a macro; we want to keep that.
+                    // TODO: What about the `false` and `true` macros in stdbool.h?
+                    let val = mk().lit_expr(mk().bool_lit(target == literal.get_bool()));
+                    return Ok(WithStmts::new_val(val));
+                }
 
-            CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
-                if self.ast_context.is_null_expr(null_expr) =>
-            {
-                null_pointer_case(ptr, !target)
-            }
+                CExprKind::Unary(_, CUnOp::Not, subexpr_id, _) => {
+                    return self.convert_scalar_to_bool_cast(ctx, subexpr_id, !target);
+                }
 
-            CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
-                if !self.expr_is_expanded_macro(ctx, cond_id, None) =>
-            {
-                // If there is a literal `0` or `1` here, translate them directly rather than
-                // with a comparison. But not if they're inside a macro; we want to keep that.
-                // TODO: What about the `false` and `true` macros in stdbool.h?
-                let val = mk().lit_expr(mk().bool_lit(target == literal.get_bool()));
-                Ok(WithStmts::new_val(val))
-            }
-
-            CExprKind::Unary(_, CUnOp::Not, subexpr_id, _) => {
-                self.convert_condition(ctx, !target, subexpr_id)
-            }
-
-            _ => {
-                // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
-                // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
-                // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
-                // specify Yes for that particular case, given enough analysis.
-                let val = self.convert_expr(ctx.used().decay_ref(), cond_id, None)?;
-                val.try_map(|e| self.match_bool(ctx, target, ty_id, e))
+                _ => {}
             }
         }
+
+        let expr_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("bad condition type"))?;
+
+        let expr_type_kind = &self.ast_context.resolve_type(expr_type_id).kind;
+
+        if expr_type_kind.is_pointer() {
+            return self.convert_pointer_is_null(ctx, expr, !target);
+        }
+
+        // DecayRef could (and probably should) be Default instead of Yes here; however, as noted
+        // in https://github.com/rust-lang/rust/issues/53772, you cant compare a reference (lhs) to
+        // a ptr (rhs) (even though the reverse works!). We could also be smarter here and just
+        // specify Yes for that particular case, given enough analysis.
+        let expr_rs = self.convert_expr(ctx.decay_ref(), expr, None)?;
+
+        Ok(expr_rs.map(|mut expr_rs| {
+            if expr_type_kind.is_bool() {
+                if !target {
+                    expr_rs = mk().unary_expr(UnOp::Not(Default::default()), expr_rs);
+                }
+            } else {
+                // One simplification we can make at the cost of inspecting `val` more closely: if `val`
+                // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
+                // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
+                if let Expr::Cast(ExprCast { expr: ref arg, .. }) = *unparen(&expr_rs) {
+                    if let Expr::Binary(ExprBinary {
+                        op:
+                            BinOp::Or(_)
+                            | BinOp::And(_)
+                            | BinOp::Eq(_)
+                            | BinOp::Ne(_)
+                            | BinOp::Lt(_)
+                            | BinOp::Le(_)
+                            | BinOp::Gt(_)
+                            | BinOp::Ge(_),
+                        ..
+                    }) = *unparen(arg)
+                    {
+                        return if target {
+                            // If target == true, just return the argument
+                            Box::new(unparen(arg).clone())
+                        } else {
+                            // If target == false, return !arg
+                            mk().unary_expr(
+                                UnOp::Not(Default::default()),
+                                Box::new(unparen(arg).clone()),
+                            )
+                        };
+                    }
+                }
+
+                if expr_type_kind.is_enum() {
+                    expr_rs = self.make_enum_to_underlying_cast(expr_rs);
+                }
+
+                // The backup is to just compare against zero
+                let zero = if let CTypeKind::LongDouble | CTypeKind::Float128 = expr_type_kind {
+                    self.use_crate(ExternCrate::F128);
+                    mk().abs_path_expr(vec!["f128", "f128", "ZERO"])
+                } else if expr_type_kind.is_floating_type() {
+                    mk().lit_expr(mk().float_unsuffixed_lit("0."))
+                } else {
+                    mk().lit_expr(mk().int_unsuffixed_lit(0))
+                };
+
+                let bin_op = if target {
+                    BinOp::Ne(Default::default())
+                } else {
+                    BinOp::Eq(Default::default())
+                };
+
+                expr_rs = mk().binary_expr(bin_op, expr_rs, zero);
+            }
+
+            expr_rs
+        }))
     }
 
     /// Search for references to the given declaration in a value position
@@ -2676,7 +2749,7 @@ impl<'c> Translation<'c> {
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
                     self.convert_variable(ctx, initializer, typ)?;
-                let default_init = self.implicit_default_expr(ctx, typ.ctype)?.to_expr();
+                let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2793,7 +2866,7 @@ impl<'c> Translation<'c> {
                     init.into_value()
                 };
 
-                let zeroed = self.implicit_default_expr(ctx, typ.ctype)?;
+                let zeroed = self.implicit_default_expr(ctx.used(), typ.ctype)?;
                 let zeroed = if ctx.is_const {
                     zeroed.wrap_unsafe().to_pure_expr()
                 } else {
@@ -3007,7 +3080,7 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
             Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
-            None => self.implicit_default_expr(ctx, typ.ctype),
+            None => self.implicit_default_expr(ctx.used(), typ.ctype),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
@@ -3203,7 +3276,7 @@ impl<'c> Translation<'c> {
 
             let elts = self.compute_size_of_type(ctx, expected_type_id, result_type_id, elts)?;
             return elts.and_then_try(|lhs| {
-                let len = self.convert_expr(ctx.used().not_static(), len, expected_type_id)?;
+                let len = self.convert_expr(ctx.not_static(), len, expected_type_id)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
@@ -3303,22 +3376,27 @@ impl<'c> Translation<'c> {
     /// Translate a C expression into a Rust one, possibly collecting side-effecting statements
     /// to run before the expression.
     ///
-    /// `ctx.is_used()` informs us how the C expression we are translating is used in the C
+    /// `ctx.is_used` informs us how the C expression we are translating is used in the C
     /// program.
     ///
-    /// In the case that `ctx.is_unused()`, all side-effecting components will be in the
+    /// In the case that `!ctx.is_used`, all side-effecting components will be in the
     /// `stmts` field of the output and it is expected that the `val` field of the output will be
     /// ignored.
     ///
     /// `override_ty` is the type expected by the surrounding expression context.
     /// This can be different from the type of the AST node itself
     /// and in many cases should override it.
-    pub fn convert_expr(
+    pub(crate) fn convert_expr(
         &self,
         ctx: ExprContext,
-        expr_id: CExprId,
+        expr: impl Into<IdOrExpr<()>>,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let expr_id = match expr.into() {
+            IdOrExpr::Id(expr_id) => expr_id,
+            IdOrExpr::Expr(expr_rs, _) => return Ok(expr_rs.into()),
+        };
+
         let Located {
             loc: src_loc,
             kind: expr_kind,
@@ -3549,12 +3627,12 @@ impl<'c> Translation<'c> {
             }
 
             Conditional(ty, cond, lhs, rhs) => {
-                let cond = self.convert_condition(ctx, true, cond)?;
+                let cond = self.convert_scalar_to_bool_cast(ctx.used(), cond, true)?;
 
                 let lhs = self.convert_expr(ctx, lhs, Some(override_ty.unwrap_or(ty)))?;
                 let rhs = self.convert_expr(ctx, rhs, Some(override_ty.unwrap_or(ty)))?;
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let is_unsafe = lhs.is_unsafe() || rhs.is_unsafe();
                     let then = mk().block(lhs.into_stmts());
                     let else_ = mk().block_expr(mk().block(rhs.into_stmts()));
@@ -3581,9 +3659,9 @@ impl<'c> Translation<'c> {
             BinaryConditional(ty, lhs, rhs) => {
                 let rhs = self.convert_expr(ctx, rhs, None)?;
 
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let lhs = self
-                        .convert_condition(ctx, false, lhs)?
+                        .convert_scalar_to_bool_cast(ctx.used(), lhs, false)?
                         .merge_unsafe(rhs.is_unsafe());
 
                     Ok(lhs.and_then(|val| {
@@ -3604,23 +3682,28 @@ impl<'c> Translation<'c> {
                         .merge_unsafe(rhs.is_unsafe());
                     let fresh_name = self.renamer.borrow_mut().fresh(Namespaces::values());
 
-                    lhs.and_then_try(|lhs| {
-                        let fresh_stmt = mk().local_stmt(Box::new(mk().local(
+                    let cond = lhs.and_then(|lhs| {
+                        let stmt = mk().local_stmt(Box::new(mk().local(
                             mk().ident_pat(&fresh_name),
                             None,
                             Some(lhs),
                         )));
+                        let fresh_expr = mk().ident_expr(&fresh_name);
+                        WithStmts::new(vec![stmt], fresh_expr)
+                    });
+                    let cond = cond.and_then_try(|cond| {
+                        self.convert_scalar_to_bool_cast(ctx, (cond, ty.ctype), true)
+                    })?;
 
-                        let cond =
-                            self.match_bool(ctx, true, ty.ctype, mk().ident_expr(&fresh_name))?;
-                        let ite = mk().ifte_expr(
+                    let ite = cond.map(|cond| {
+                        mk().ifte_expr(
                             cond,
                             mk().block(vec![mk().expr_stmt(mk().ident_expr(&fresh_name))]),
                             Some(rhs.to_expr()),
-                        );
+                        )
+                    });
 
-                        Ok(WithStmts::new(vec![fresh_stmt], ite))
-                    })
+                    Ok(ite)
                 }
             }
 
@@ -3915,8 +3998,8 @@ impl<'c> Translation<'c> {
         expr: WithStmts<Box<Expr>>,
         panic_msg: &str,
     ) -> WithStmts<Box<Expr>> {
-        if ctx.is_unused() {
-            // Recall that if `used` is false, the `stmts` field of the output must contain
+        if !ctx.is_used {
+            // Recall that if `!is_used`, the `stmts` field of the output must contain
             // all side-effects (and a function call can always have side-effects)
             expr.and_then(|expr| {
                 WithStmts::new(vec![mk().semi_stmt(expr)], self.panic_or_err(panic_msg))
@@ -3985,7 +4068,7 @@ impl<'c> Translation<'c> {
                     match as_semi_break_stmt(&stmt, &lbl) {
                         Some(val) => {
                             let block = mk().block_expr(match val {
-                                Some(val) if ctx.is_used() => WithStmts::new(stmts, val).to_block(),
+                                Some(val) if ctx.is_used => WithStmts::new(stmts, val).to_block(),
                                 _ => mk().block(stmts),
                             });
 
@@ -4014,7 +4097,7 @@ impl<'c> Translation<'c> {
                 ))
             }
             _ => {
-                if ctx.is_unused() {
+                if !ctx.is_used {
                     let val =
                         self.panic_or_err("Empty statement expression is not supposed to be used");
                     Ok(WithStmts::new_val(val))
@@ -4084,7 +4167,7 @@ impl<'c> Translation<'c> {
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
             | CastKind::PointerToBoolean => {
-                return self.convert_condition(ctx, true, expr);
+                return self.convert_scalar_to_bool_cast(ctx, expr, true);
             }
 
             _ => {}
@@ -4368,9 +4451,9 @@ impl<'c> Translation<'c> {
 
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
-            | CastKind::PointerToBoolean => {
-                val.try_map(|e| self.match_bool(ctx, true, source_cty.ctype, e))
-            }
+            | CastKind::PointerToBoolean => val.and_then_try(|val| {
+                self.convert_scalar_to_bool_cast(ctx, (val, source_cty.ctype), true)
+            }),
 
             CastKind::FloatingRealToComplex
             | CastKind::FloatingComplexToIntegralComplex
@@ -4643,79 +4726,6 @@ impl<'c> Translation<'c> {
                 .resolve_decl_name(decl_id)
                 .unwrap()
         }
-    }
-
-    /// Convert a boolean expression to a boolean for use in && or || or if
-    fn match_bool(
-        &self,
-        ctx: ExprContext,
-        target: bool,
-        ty_id: CTypeId,
-        val: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
-        let ty = &self.ast_context.resolve_type(ty_id).kind;
-
-        Ok(if ty.is_pointer() {
-            self.convert_pointer_is_null(ctx, ty_id, val, !target)?
-        } else if ty.is_bool() {
-            if target {
-                val
-            } else {
-                mk().unary_expr(UnOp::Not(Default::default()), val)
-            }
-        } else {
-            // One simplification we can make at the cost of inspecting `val` more closely: if `val`
-            // is already in the form `(x <op> y) as <ty>` where `<op>` is a Rust operator
-            // that returns a boolean, we can simple output `x <op> y` or `!(x <op> y)`.
-            if let Expr::Cast(ExprCast { expr: ref arg, .. }) = *unparen(&val) {
-                if let Expr::Binary(ExprBinary {
-                    op:
-                        BinOp::Or(_)
-                        | BinOp::And(_)
-                        | BinOp::Eq(_)
-                        | BinOp::Ne(_)
-                        | BinOp::Lt(_)
-                        | BinOp::Le(_)
-                        | BinOp::Gt(_)
-                        | BinOp::Ge(_),
-                    ..
-                }) = *unparen(arg)
-                {
-                    return Ok(if target {
-                        // If target == true, just return the argument
-                        Box::new(unparen(arg).clone())
-                    } else {
-                        // If target == false, return !arg
-                        mk().unary_expr(
-                            UnOp::Not(Default::default()),
-                            Box::new(unparen(arg).clone()),
-                        )
-                    });
-                }
-            }
-
-            let val = if ty.is_enum() {
-                self.make_enum_to_underlying_cast(val)
-            } else {
-                val
-            };
-
-            // The backup is to just compare against zero
-            let zero = if let CTypeKind::LongDouble | CTypeKind::Float128 = ty {
-                self.use_crate(ExternCrate::F128);
-                mk().abs_path_expr(vec!["f128", "f128", "ZERO"])
-            } else if ty.is_floating_type() {
-                mk().lit_expr(mk().float_unsuffixed_lit("0."))
-            } else {
-                mk().lit_expr(mk().int_unsuffixed_lit(0))
-            };
-
-            if target {
-                mk().binary_expr(BinOp::Ne(Default::default()), val, zero)
-            } else {
-                mk().binary_expr(BinOp::Eq(Default::default()), val, zero)
-            }
-        })
     }
 
     pub fn with_scope<F, A>(&self, f: F) -> A
@@ -5016,4 +5026,49 @@ fn neg_expr(arg: Box<Expr>) -> Box<Expr> {
 
 fn wrapping_neg_expr(arg: Box<Expr>) -> Box<Expr> {
     mk().method_call_expr(arg, "wrapping_neg", vec![])
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum IdOrExpr<T> {
+    Id(CExprId),
+    Expr(Box<Expr>, T),
+}
+
+impl<T> IdOrExpr<T> {
+    pub(crate) fn expr_id(&self) -> Option<CExprId> {
+        match *self {
+            IdOrExpr::Id(expr_id) => Some(expr_id),
+            IdOrExpr::Expr(_, _) => None,
+        }
+    }
+}
+
+impl IdOrExpr<CTypeId> {
+    pub(crate) fn type_id(&self, ast_context: &TypedAstContext) -> Option<CTypeId> {
+        match *self {
+            IdOrExpr::Id(expr_id) => ast_context[expr_id].kind.get_type(),
+            IdOrExpr::Expr(_, type_id) => Some(type_id),
+        }
+    }
+}
+
+impl From<IdOrExpr<CTypeId>> for IdOrExpr<()> {
+    fn from(value: IdOrExpr<CTypeId>) -> Self {
+        match value {
+            IdOrExpr::Id(expr_id) => IdOrExpr::Id(expr_id),
+            IdOrExpr::Expr(expr_rs, _) => IdOrExpr::Expr(expr_rs, ()),
+        }
+    }
+}
+
+impl<T> From<CExprId> for IdOrExpr<T> {
+    fn from(value: CExprId) -> Self {
+        Self::Id(value)
+    }
+}
+
+impl<T> From<(Box<Expr>, T)> for IdOrExpr<T> {
+    fn from(value: (Box<Expr>, T)) -> Self {
+        Self::Expr(value.0, value.1)
+    }
 }
