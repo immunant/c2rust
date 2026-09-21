@@ -259,7 +259,7 @@ impl<'c> Translation<'c> {
                 let to_array_element = |id: CExprId| -> TranslationResult<_> {
                     let val =
                         self.convert_expr(ctx.used(), id, Some(CQualTypeId::new(element_type_id)))?;
-                    val.try_map(|x| {
+                    val.try_map(|mut val| {
                         // Array literals require all of their elements to be
                         // the correct type; they will not use implicit casts to
                         // change mut to const. This becomes a problem when an
@@ -268,14 +268,24 @@ impl<'c> Translation<'c> {
                         // correct const or mut variation. To avoid this issue
                         // we manually insert the otherwise elided casts in this
                         // particular context.
-                        if let CExprKind::ImplicitCast(ty, _, CastKind::ConstCast, _, _) =
+                        if let CExprKind::ImplicitCast(target_type_id, expr_id, _, _, _) =
                             self.ast_context.index_unwrap_parens(id).kind
                         {
-                            let t = self.convert_type(ty.ctype)?;
-                            Ok(mk().cast_expr(x, t))
-                        } else {
-                            Ok(x)
+                            let expr_kind = &self.ast_context[expr_id].kind;
+                            let source_type_id = expr_kind
+                                .get_qual_type()
+                                .ok_or_else(|| format_err!("Invalid expression type"))?;
+
+                            if self.ast_context.is_mut_to_const_pointer_cast(
+                                source_type_id.ctype,
+                                target_type_id.ctype,
+                            ) {
+                                let t = self.convert_type(target_type_id.ctype)?;
+                                val = mk().cast_expr(val, t);
+                            }
                         }
+
+                        Ok(val)
                     })
                 };
 
