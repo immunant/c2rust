@@ -139,24 +139,14 @@ impl<'c> Translation<'c> {
 
                         if self.ast_context.is_null_expr(lhs) {
                             let val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
-                            let val = val.try_map(|rhs_rs| {
-                                self.convert_pointer_is_null(
-                                    ctx,
-                                    rhs_type_id.ctype,
-                                    rhs_rs,
-                                    is_null,
-                                )
+                            let val = val.and_then_try(|rhs_rs| {
+                                self.convert_pointer_is_null(ctx, rhs_type_id, rhs_rs, is_null)
                             })?;
                             return Ok(val.map(bool_to_int));
                         } else if self.ast_context.is_null_expr(rhs) {
                             let val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                            let val = val.try_map(|lhs_rs| {
-                                self.convert_pointer_is_null(
-                                    ctx,
-                                    lhs_type_id.ctype,
-                                    lhs_rs,
-                                    is_null,
-                                )
+                            let val = val.and_then_try(|lhs_rs| {
+                                self.convert_pointer_is_null(ctx, lhs_type_id, lhs_rs, is_null)
                             })?;
                             return Ok(val.map(bool_to_int));
                         }
