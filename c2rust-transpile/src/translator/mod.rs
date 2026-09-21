@@ -2482,11 +2482,11 @@ impl<'c> Translation<'c> {
     }
 
     /// Convert a C expression to a rust boolean expression
-    pub fn convert_condition(
+    pub(crate) fn convert_scalar_to_bool_cast(
         &self,
         ctx: ExprContext,
-        target: bool,
         cond_id: CExprId,
+        target: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let ty_id = self
             .ast_context
@@ -2531,7 +2531,7 @@ impl<'c> Translation<'c> {
             }
 
             CExprKind::Unary(_, CUnOp::Not, subexpr_id, _) => {
-                self.convert_condition(ctx, !target, subexpr_id)
+                self.convert_scalar_to_bool_cast(ctx, subexpr_id, !target)
             }
 
             _ => {
@@ -3559,7 +3559,7 @@ impl<'c> Translation<'c> {
             }
 
             Conditional(ty, cond, lhs, rhs) => {
-                let cond = self.convert_condition(ctx.used(), true, cond)?;
+                let cond = self.convert_scalar_to_bool_cast(ctx.used(), cond, true)?;
 
                 let lhs = self.convert_expr(ctx, lhs, Some(override_ty.unwrap_or(ty)))?;
                 let rhs = self.convert_expr(ctx, rhs, Some(override_ty.unwrap_or(ty)))?;
@@ -3593,7 +3593,7 @@ impl<'c> Translation<'c> {
 
                 if !ctx.is_used {
                     let lhs = self
-                        .convert_condition(ctx.used(), false, lhs)?
+                        .convert_scalar_to_bool_cast(ctx.used(), lhs, false)?
                         .merge_unsafe(rhs.is_unsafe());
 
                     Ok(lhs.and_then(|val| {
@@ -4098,7 +4098,7 @@ impl<'c> Translation<'c> {
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
             | CastKind::PointerToBoolean => {
-                return self.convert_condition(ctx, true, expr);
+                return self.convert_scalar_to_bool_cast(ctx, expr, true);
             }
 
             _ => {}

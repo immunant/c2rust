@@ -1491,7 +1491,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx.used(), true, scrutinee)?
+                    .convert_scalar_to_bool_cast(ctx.used(), scrutinee, true)?
                     .discard_unsafe();
                 wip.extend(stmts);
 
@@ -1564,7 +1564,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx.used(), true, condition)?
+                    .convert_scalar_to_bool_cast(ctx.used(), condition, true)?
                     .discard_unsafe();
                 let cond_val = translator
                     .ast_context
@@ -1643,7 +1643,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx.used(), true, condition)?
+                    .convert_scalar_to_bool_cast(ctx.used(), condition, true)?
                     .discard_unsafe();
                 let cond_val = translator
                     .ast_context
@@ -1698,7 +1698,7 @@ impl CfgBuilder {
                     // Condition
                     if let Some(cond) = condition {
                         let (stmts, val) = translator
-                            .convert_condition(ctx.used(), true, cond)?
+                            .convert_scalar_to_bool_cast(ctx.used(), cond, true)?
                             .discard_unsafe();
                         let cond_val = translator
                             .ast_context
