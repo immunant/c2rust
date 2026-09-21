@@ -1924,36 +1924,6 @@ class TranslateASTVisitor final
         encode_entry(
             ICE, TagImplicitCastExpr, childIds, [ICE](CborEncoder *array) {
                 auto cast_name = ICE->getCastKindName();
-
-#if CLANG_VERSION_MAJOR < 8
-                if (ICE->getCastKind() == CastKind::CK_BitCast) {
-#else  // Incompatible const qualifier pointer casts are now NoOp casts if they
-       // are in the same namespace. See Sema::CheckAssignmentConstraints
-       // (SemaExpr.cpp:7951)
-                if (ICE->getCastKind() == CastKind::CK_NoOp) {
-#endif // CLANG_VERSION_MAJOR
-                    auto source_type = ICE->getSubExpr()->getType();
-                    auto target_type = ICE->getType();
-
-                    if (auto *source_ptr = dyn_cast_or_null<clang::PointerType>(
-                            source_type.getTypePtrOrNull())) {
-                        if (auto *target_ptr =
-                                dyn_cast_or_null<clang::PointerType>(
-                                    target_type.getTypePtrOrNull())) {
-
-                            auto source_pointee = source_ptr->getPointeeType();
-                            auto target_pointee = target_ptr->getPointeeType();
-
-                            if (target_pointee.isConstQualified() &&
-                                source_pointee->getUnqualifiedDesugaredType() ==
-                                    target_pointee
-                                        ->getUnqualifiedDesugaredType()) {
-                                cast_name = "ConstCast";
-                            }
-                        }
-                    }
-                }
-
                 cbor_encode_text_stringz(array, cast_name);
             });
         return true;
