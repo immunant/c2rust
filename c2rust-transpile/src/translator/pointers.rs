@@ -5,6 +5,7 @@ use failure::{err_msg, format_err};
 use syn::{BinOp, Expr, Type, UnOp};
 
 use crate::c_ast::CUnOp;
+use crate::translator::IdOrExpr;
 use crate::{
     diagnostics::{TranslationError, TranslationErrorKind, TranslationResult},
     format_translation_err,
@@ -680,16 +681,21 @@ impl<'c> Translation<'c> {
         }
     }
 
-    pub fn convert_pointer_is_null(
+    pub(crate) fn convert_pointer_is_null(
         &self,
         ctx: ExprContext,
-        ptr_type: CTypeId,
-        val: Box<Expr>,
+        expr: impl Into<IdOrExpr<CTypeId>>,
         is_null: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        Ok(if self.ast_context.is_function_pointer(ptr_type) {
+        let expr = expr.into();
+        let expr_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+        let expr_rs = self.convert_expr(ctx, expr, None)?;
+
+        if self.ast_context.is_function_pointer(expr_type_id) {
             let method = if is_null { "is_none" } else { "is_some" };
-            mk().method_call_expr(val, method, vec![]).into()
+            Ok(expr_rs.map(|expr_rs| mk().method_call_expr(expr_rs, method, vec![])))
         } else {
             // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
             if ctx.is_const {
@@ -698,12 +704,16 @@ impl<'c> Translation<'c> {
                     "cannot check nullity of pointer in `const` context",
                 ));
             }
-            let val = mk().method_call_expr(val, "is_null", vec![]);
-            if !is_null {
-                mk().unary_expr(UnOp::Not(Default::default()), val).into()
-            } else {
-                val.into()
-            }
-        })
+
+            Ok(expr_rs.map(|mut expr_rs| {
+                expr_rs = mk().method_call_expr(expr_rs, "is_null", vec![]);
+
+                if !is_null {
+                    expr_rs = mk().unary_expr(UnOp::Not(Default::default()), expr_rs);
+                }
+
+                expr_rs
+            }))
+        }
     }
 }

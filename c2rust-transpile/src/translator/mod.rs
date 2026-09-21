@@ -2495,42 +2495,29 @@ impl<'c> Translation<'c> {
             .get_type()
             .ok_or_else(|| format_err!("bad condition type"))?;
 
-        let null_pointer_case =
-            |ptr: CExprId, is_null: bool| -> TranslationResult<WithStmts<Box<Expr>>> {
-                let val = self.convert_expr(ctx.decay_ref(), ptr, None)?;
-                let ptr_type = self
-                    .ast_context
-                    .index_unwrap_parens(ptr)
-                    .kind
-                    .get_type()
-                    .ok_or_else(|| format_err!("bad pointer type for condition"))?;
-
-                val.and_then_try(|val| self.convert_pointer_is_null(ctx, ptr_type, val, is_null))
-            };
-
         match self.ast_context.index_unwrap_parens(cond_id).kind {
             CExprKind::Binary(_, CBinOp::EqualEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(ptr, target)
+                self.convert_pointer_is_null(ctx.decay_ref(), ptr, target)
             }
 
             CExprKind::Binary(_, CBinOp::EqualEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(ptr, target)
+                self.convert_pointer_is_null(ctx.decay_ref(), ptr, target)
             }
 
             CExprKind::Binary(_, CBinOp::NotEqual, null_expr, ptr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(ptr, !target)
+                self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target)
             }
 
             CExprKind::Binary(_, CBinOp::NotEqual, ptr, null_expr, _, _)
                 if self.ast_context.is_null_expr(null_expr) =>
             {
-                null_pointer_case(ptr, !target)
+                self.convert_pointer_is_null(ctx.decay_ref(), ptr, !target)
             }
 
             CExprKind::Literal(_, ref literal @ CLiteral::Integer(0 | 1, _))
@@ -4683,7 +4670,7 @@ impl<'c> Translation<'c> {
         let ty = &self.ast_context.resolve_type(ty_id).kind;
 
         Ok(if ty.is_pointer() {
-            self.convert_pointer_is_null(ctx, ty_id, val, !target)?
+            self.convert_pointer_is_null(ctx, (val, ty_id), !target)?
         } else if ty.is_bool() {
             if target {
                 val.into()
@@ -5055,8 +5042,32 @@ pub(crate) enum IdOrExpr<T> {
     Expr(Box<Expr>, T),
 }
 
+impl IdOrExpr<CTypeId> {
+    pub(crate) fn type_id(&self, ast_context: &TypedAstContext) -> Option<CTypeId> {
+        match *self {
+            IdOrExpr::Id(expr_id) => ast_context[expr_id].kind.get_type(),
+            IdOrExpr::Expr(_, type_id) => Some(type_id),
+        }
+    }
+}
+
+impl From<IdOrExpr<CTypeId>> for IdOrExpr<()> {
+    fn from(value: IdOrExpr<CTypeId>) -> Self {
+        match value {
+            IdOrExpr::Id(expr_id) => IdOrExpr::Id(expr_id),
+            IdOrExpr::Expr(expr_rs, _) => IdOrExpr::Expr(expr_rs, ()),
+        }
+    }
+}
+
 impl<T> From<CExprId> for IdOrExpr<T> {
     fn from(value: CExprId) -> Self {
         Self::Id(value)
+    }
+}
+
+impl<T> From<(Box<Expr>, T)> for IdOrExpr<T> {
+    fn from(value: (Box<Expr>, T)) -> Self {
+        Self::Expr(value.0, value.1)
     }
 }
