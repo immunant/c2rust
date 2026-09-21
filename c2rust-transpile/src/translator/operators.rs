@@ -145,28 +145,12 @@ impl<'c> Translation<'c> {
                         let expected_type_id = expected_type_id.unwrap_or(result_type_id);
 
                         if self.ast_context.is_null_expr(lhs) {
-                            let val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
-                            let val = val.and_then_try(|rhs_rs| {
-                                self.convert_pointer_is_null(
-                                    ctx,
-                                    rhs_type_id.ctype,
-                                    rhs_rs,
-                                    is_null,
-                                )
-                            })?;
+                            let val = self.convert_pointer_is_null(rhs_ctx, rhs, is_null)?;
 
                             result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
                             return self.make_cast(ctx, result_type_id, expected_type_id, val);
                         } else if self.ast_context.is_null_expr(rhs) {
-                            let val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                            let val = val.and_then_try(|lhs_rs| {
-                                self.convert_pointer_is_null(
-                                    ctx,
-                                    lhs_type_id.ctype,
-                                    lhs_rs,
-                                    is_null,
-                                )
-                            })?;
+                            let val = self.convert_pointer_is_null(ctx, lhs, is_null)?;
 
                             result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
                             return self.make_cast(ctx, result_type_id, expected_type_id, val);
