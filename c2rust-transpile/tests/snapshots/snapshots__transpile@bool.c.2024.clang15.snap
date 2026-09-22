@@ -53,4 +53,7 @@ pub unsafe extern "C" fn test_bool() {
     } else {
     };
     int0 = int0 as ::core::ffi::c_int | int1 as ::core::ffi::c_int != 0;
+    int1 = (int1 as ::core::ffi::c_uint).wrapping_add(1 as ::core::ffi::c_uint) != 0;
+    int1 = int1 as u8 as ::core::ffi::c_double * 2.0f64 != 0.;
+    let mut d: ::core::ffi::c_double = int1 as u8 as ::core::ffi::c_double;
 }
