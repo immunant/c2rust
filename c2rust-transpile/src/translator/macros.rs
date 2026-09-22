@@ -12,13 +12,7 @@ use crate::with_stmts::WithStmts;
 use crate::TranslateMacros;
 
 impl<'c> Translation<'c> {
-    pub fn convert_macro(
-        &self,
-        ctx: ExprContext,
-        decl_id: CDeclId,
-        span: Span,
-        name: &str,
-    ) -> ConvertedDecl {
+    pub fn convert_macro(&self, decl_id: CDeclId, span: Span, name: &str) -> ConvertedDecl {
         trace!(
             "Expanding macro {:?}: {:?}",
             decl_id,
@@ -26,7 +20,7 @@ impl<'c> Translation<'c> {
         );
 
         self.recreate_const_macro_from_expansions(
-            ctx.const_().set_expanding_macro(decl_id),
+            ExprContext::default().const_().set_expanding_macro(decl_id),
             &self.ast_context.macro_expansions[&decl_id],
         )
         .and_then(|(replacement, converted)| {
@@ -82,7 +76,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let val = self.convert_expr(ctx, id, None)?;
+                let val = self.convert_expr(ctx.used(), id, None)?;
                 let new = ConvertedMacroExpr { val, ty };
 
                 // Join ty and cur_ty to the smaller of the two types. If the
@@ -193,7 +187,7 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to convert it yet.
             None => {
-                self.convert_decl(ctx.not_pattern(), *macro_id)?;
+                self.convert_decl(ctx, *macro_id)?;
                 let maybe_converted = self.converted_macros.borrow().get(macro_id).cloned();
                 if let Some(Some(converted)) = maybe_converted {
                     converted
