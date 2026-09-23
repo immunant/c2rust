@@ -1,6 +1,8 @@
 #include <stdbool.h>
 #include <math.h>
 
+enum E { A };
+
 void long_double_test(void) {
     long double one = 1.0l;
     long double zero;
@@ -9,8 +11,12 @@ void long_double_test(void) {
 
     int i = one;
     float f = one;
+    _Bool b = one;
+    enum E e = one;
     long double cast_from_int = i;
     long double cast_from_float = f;
+    long double cast_from_bool = b;
+    long double cast_from_enum = e;
 
     bool is_inf = isinf(huge);
     if (one) {
@@ -28,8 +34,12 @@ void float128_test(void) {
 
     int i = one;
     float f = one;
+    _Bool b = one;
+    enum E e = one;
     __float128 cast_from_int = i;
     __float128 cast_from_float = f;
+    __float128 cast_from_bool = b;
+    __float128 cast_from_enum = e;
     long double ld_from_float128 = one;
 
     bool is_inf = isinf(huge);

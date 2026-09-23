@@ -2965,14 +2965,29 @@ impl<'c> Translation<'c> {
                             return false;
                         }
 
-                        if let Some(CExprKind::ImplicitCast(_, _, cast_kind, _, _)) =
-                            initializer_kind
+                        if let Some(&CExprKind::ImplicitCast(
+                            target_type_id,
+                            expr_id,
+                            cast_kind,
+                            _,
+                            _,
+                        )) = initializer_kind
                         {
-                            match cast_kind {
-                                CastKind::NullToPointer => return false,
-                                CastKind::ConstCast => return true,
-                                _ => {}
+                            if cast_kind == CastKind::NullToPointer {
+                                return false;
+                            }
+
+                            let expr_kind = &self.ast_context[expr_id].kind;
+                            let Some(source_type_id) = expr_kind.get_qual_type() else {
+                                return false;
                             };
+
+                            if self.ast_context.is_mut_to_const_pointer_cast(
+                                source_type_id.ctype,
+                                target_type_id.ctype,
+                            ) {
+                                return true;
+                            }
                         }
 
                         // ref decayed ptrs generally need a type annotation
@@ -3212,12 +3227,14 @@ impl<'c> Translation<'c> {
         let ty = self.convert_type(type_id)?;
         let result = self.mk_size_of_ty_expr(ty)?;
 
-        self.make_cast(
-            ctx,
-            result_type_id,
-            expected_type_id.unwrap_or(result_type_id),
-            result,
-        )
+        result.and_then_try(|result| {
+            self.make_cast(
+                ctx,
+                result_type_id,
+                expected_type_id.unwrap_or(result_type_id),
+                result,
+            )
+        })
     }
 
     fn mk_size_of_ty_expr(&self, ty: Box<Type>) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -3278,7 +3295,7 @@ impl<'c> Translation<'c> {
             ctx,
             result_type_id,
             expected_type_id.unwrap_or(result_type_id),
-            WithStmts::new_val(call),
+            call,
         )
     }
 
@@ -3882,12 +3899,14 @@ impl<'c> Translation<'c> {
         let mut val = WithStmts::new_val(val).merge_unsafe(set_unsafe);
 
         if lrvalue.is_rvalue() {
-            val = self.make_cast(
-                ctx,
-                result_type_id,
-                expected_type_id.unwrap_or(result_type_id),
-                val,
-            )?;
+            val = val.and_then_try(|val| {
+                self.make_cast(
+                    ctx,
+                    result_type_id,
+                    expected_type_id.unwrap_or(result_type_id),
+                    val,
+                )
+            })?;
         }
 
         Ok(val)
@@ -4077,7 +4096,13 @@ impl<'c> Translation<'c> {
                 };
 
                 // if the context wants a different type, add a cast
-                return self.make_cast(ctx, source_ty.not_volatile(), target_ty, val);
+                return val.and_then_try(|val| {
+                    self.make_cast(ctx, source_ty.not_volatile(), target_ty, val)
+                });
+            }
+
+            CastKind::NullToPointer => {
+                return Ok(WithStmts::new_val(self.null_ptr(target_ty.ctype)?));
             }
 
             CastKind::IntegralToBoolean
@@ -4125,15 +4150,18 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        self.make_cast_full(
-            ctx,
-            source_ty,
-            target_ty,
-            val,
-            Some(expr),
-            Some(kind),
-            opt_field_id,
-        )
+        val.and_then_try(|val| {
+            self.make_cast_full(
+                ctx,
+                source_ty,
+                target_ty,
+                val,
+                Some(expr),
+                Some(kind),
+                opt_field_id,
+                is_explicit,
+            )
+        })
     }
 
     fn can_propagate_cast(
@@ -4229,9 +4257,18 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         source_type_id: CQualTypeId,
         target_type_id: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.make_cast_full(ctx, source_type_id, target_type_id, val, None, None, None)
+        self.make_cast_full(
+            ctx,
+            source_type_id,
+            target_type_id,
+            val,
+            None,
+            None,
+            None,
+            false,
+        )
     }
 
     pub fn make_cast_full(
@@ -4239,10 +4276,11 @@ impl<'c> Translation<'c> {
         ctx: ExprContext,
         source_cty: CQualTypeId,
         target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        val: Box<Expr>,
         expr: Option<CExprId>,
         kind: Option<CastKind>,
         opt_field_id: Option<CFieldId>,
+        is_explicit: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
         let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
@@ -4264,83 +4302,110 @@ impl<'c> Translation<'c> {
             &TypedAstContext::resolve_type_id,
         ) && kind != CastKind::LValueToRValue
         {
-            return Ok(val);
+            return Ok(val.into());
         }
 
-        if ctx.is_pattern
-            && !matches!(
-                kind,
-                CastKind::ToVoid | CastKind::ConstCast | CastKind::IntegralCast
-            )
+        if !is_explicit
+            && self
+                .ast_context
+                .is_mut_to_const_pointer_cast(source_cty.ctype, target_cty.ctype)
         {
+            return Ok(val.into());
+        }
+
+        if ctx.is_pattern && !matches!(kind, CastKind::ToVoid | CastKind::IntegralCast) {
             return Err(TranslationError::generic(
                 "cast kind is not supported in patterns",
             ));
         }
 
         match kind {
-            CastKind::BitCast | CastKind::NoOp => {
-                self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
-            }
-
-            CastKind::IntegralToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
-            }
-
-            CastKind::PointerToIntegral => {
-                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
-            }
-
             CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
-            | CastKind::BooleanToSignedIntegral => {
-                let target_ty = self.convert_type(target_cty.ctype)?;
-
-                if ctx.is_pattern && !target_ty_kind.is_enum() {
+            | CastKind::BooleanToSignedIntegral
+            | CastKind::BitCast
+            | CastKind::NoOp
+            | CastKind::IntegralToPointer
+            | CastKind::NullToPointer
+            | CastKind::PointerToIntegral => {
+                if ctx.is_pattern
+                    && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
+                {
                     return Err(TranslationError::generic(
-                        "integral casts to non-enums are not supported in patterns",
+                        "only casts from integers to enums are supported in patterns",
                     ));
                 }
 
-                if let CTypeKind::LongDouble | CTypeKind::Float128 = target_ty_kind {
-                    if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                        self.ast_context[source_cty.ctype].kind
-                    {
-                        // These are both converted to `f128`, so a cast between the two should
-                        // just be a no-op.
-                        Ok(val)
-                    } else {
-                        if ctx.is_const {
-                            return Err(format_translation_err!(
-                                None,
-                                "f128 cannot be used in constants because \
-                                `f128::f128::new` is not `const`",
-                            ));
-                        }
-
-                        self.use_crate(ExternCrate::F128);
-
-                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
+                match *source_ty_kind {
+                    CTypeKind::Bool if target_ty_kind.is_floating_type() => {
+                        let source_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
+                        let val = mk().cast_expr(val, mk().path_ty(vec!["u8"]));
+                        return self.make_cast(ctx, source_type_id.into(), target_cty, val);
                     }
-                } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                    self.ast_context[source_cty.ctype].kind
-                {
-                    self.f128_cast_to(val, target_ty_kind)
-                } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-                    val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
-                } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                    Ok(val.map(|val| {
-                        mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
-                    }))
-                } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
-                    val.and_then_try(|val| {
-                        self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
-                    })
-                } else {
-                    Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+
+                    CTypeKind::Enum(enum_id) => {
+                        let source_type_id = self.enum_underlying_type(enum_id);
+                        let val = self.make_enum_to_underlying_cast(val);
+                        return self.make_cast(ctx, source_type_id, target_cty, val);
+                    }
+
+                    CTypeKind::Pointer(..) if !target_ty_kind.is_pointer() => {
+                        let source_type_id = self.ast_context.type_for_kind(&CTypeKind::UIntPtr);
+                        let val = self.convert_pointer_to_usize_cast(ctx, source_cty.ctype, val)?;
+                        return val.and_then_try(|val| {
+                            self.make_cast(ctx, source_type_id.into(), target_cty, val)
+                        });
+                    }
+
+                    _ => {}
+                }
+
+                match *target_ty_kind {
+                    CTypeKind::Enum(enum_id) => {
+                        let target_type_id = self.enum_underlying_type(enum_id);
+                        let val = self.make_cast(ctx, source_cty, target_type_id, val)?;
+                        let val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
+                        Ok(val)
+                    }
+
+                    CTypeKind::Pointer(..) => {
+                        if let CTypeKind::Pointer(..) = source_ty_kind {
+                            self.convert_pointer_to_pointer_cast(
+                                source_cty.ctype,
+                                target_cty.ctype,
+                                val,
+                            )
+                        } else {
+                            let target_type_id =
+                                self.ast_context.type_for_kind(&CTypeKind::UIntPtr);
+                            let val =
+                                self.make_cast(ctx, source_cty, target_type_id.into(), val)?;
+                            val.and_then_try(|val| {
+                                self.convert_usize_to_pointer_cast(ctx, target_cty.ctype, val)
+                            })
+                        }
+                    }
+
+                    _ if target_ty_kind.is_numeric()
+                        && !target_ty_kind.is_bool()
+                        && (source_ty_kind.is_numeric() || source_ty_kind.is_bool()) =>
+                    {
+                        self.convert_numeric_to_numeric_cast(
+                            ctx,
+                            source_cty.ctype,
+                            target_cty.ctype,
+                            val,
+                        )
+                    }
+
+                    _ => Err(format_err!(
+                        "cast between unsupported type kinds:\n\
+                        source_type_kind = {source_ty_kind:?}\n\
+                        target_type_kind = {target_ty_kind:?}"
+                    )
+                    .into()),
                 }
             }
 
@@ -4348,28 +4413,23 @@ impl<'c> Translation<'c> {
                 panic!("LValueToRValue casts must be handled in convert_cast")
             }
 
-            CastKind::ToVoid | CastKind::ConstCast => Ok(val),
+            CastKind::ToVoid => Ok(val.into()),
 
             CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
-                Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
+                Ok(mk().call_expr(mk().ident_expr("Some"), vec![val]).into())
             }
 
             CastKind::ArrayToPointerDecay => {
                 self.convert_array_to_pointer_decay(ctx, source_cty, target_cty, val, expr)
             }
 
-            CastKind::NullToPointer => {
-                assert!(val.stmts().is_empty());
-                Ok(WithStmts::new_val(self.null_ptr(target_cty.ctype)?))
-            }
-
             CastKind::ToUnion => self.convert_cast_to_union(val, opt_field_id),
 
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
-            | CastKind::PointerToBoolean => {
-                val.try_map(|e| self.match_bool(ctx, true, source_cty.ctype, e))
-            }
+            | CastKind::PointerToBoolean => self
+                .match_bool(ctx, true, source_cty.ctype, val)
+                .map(Into::into),
 
             CastKind::FloatingRealToComplex
             | CastKind::FloatingComplexToIntegralComplex
@@ -4387,50 +4447,81 @@ impl<'c> Translation<'c> {
                 "TODO vector splat casts not supported",
             )),
 
-            CastKind::AtomicToNonAtomic | CastKind::NonAtomicToAtomic => Ok(val),
+            CastKind::AtomicToNonAtomic | CastKind::NonAtomicToAtomic => Ok(val.into()),
         }
     }
 
-    /// Cast a f128 to some other int or float type
-    fn f128_cast_to(
+    /// Converts a cast between two numeric types, or from `bool` to an integer type.
+    fn convert_numeric_to_numeric_cast(
         &self,
-        val: WithStmts<Box<Expr>>,
-        target_ty_ctype: &CTypeKind,
+        ctx: ExprContext,
+        source_type_id: CTypeId,
+        target_type_id: CTypeId,
+        val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.use_crate(ExternCrate::NumTraits);
+        let source_type_kind = &self.ast_context.resolve_type(source_type_id).kind;
+        let target_type_kind = &self.ast_context.resolve_type(target_type_id).kind;
 
-        self.with_cur_file_item_store(|item_store| {
-            item_store.add_use(true, vec!["num_traits".into()], "ToPrimitive");
-        });
-        let to_method_name = match target_ty_ctype {
-            CTypeKind::Float => "to_f32",
-            CTypeKind::Double => "to_f64",
-            CTypeKind::Char => "to_i8",
-            CTypeKind::UChar => "to_u8",
-            CTypeKind::Short => "to_i16",
-            CTypeKind::UShort => "to_u16",
-            CTypeKind::Int => "to_i32",
-            CTypeKind::UInt => "to_u32",
-            CTypeKind::Long => "to_i64",
-            CTypeKind::ULong => "to_u64",
-            CTypeKind::LongLong => "to_i64",
-            CTypeKind::ULongLong => "to_u64",
-            CTypeKind::Int128 => "to_i128",
-            CTypeKind::UInt128 => "to_u128",
-            _ => {
-                return Err(format_err!(
-                    "Tried casting long double to unsupported type: {:?}",
-                    target_ty_ctype
-                )
-                .into());
-            }
-        };
+        if matches!(
+            source_type_kind,
+            CTypeKind::LongDouble | CTypeKind::Float128
+        ) {
+            self.use_crate(ExternCrate::NumTraits);
+            self.with_cur_file_item_store(|item_store| {
+                item_store.add_use(true, vec!["num_traits".into()], "ToPrimitive");
+            });
 
-        Ok(val.map(|val| {
+            let to_method_name = match target_type_kind {
+                CTypeKind::LongDouble | CTypeKind::Float128 => {
+                    // These are both converted to `f128`, so a cast between the two should
+                    // just be a no-op.
+                    return Ok(val.into());
+                }
+                CTypeKind::Float => "to_f32",
+                CTypeKind::Double => "to_f64",
+                CTypeKind::Char => "to_i8",
+                CTypeKind::UChar => "to_u8",
+                CTypeKind::Short => "to_i16",
+                CTypeKind::UShort => "to_u16",
+                CTypeKind::Int => "to_i32",
+                CTypeKind::UInt => "to_u32",
+                CTypeKind::Long => "to_i64",
+                CTypeKind::ULong => "to_u64",
+                CTypeKind::LongLong => "to_i64",
+                CTypeKind::ULongLong => "to_u64",
+                CTypeKind::Int128 => "to_i128",
+                CTypeKind::UInt128 => "to_u128",
+                _ => {
+                    return Err(format_err!(
+                        "Tried casting LongDouble or Float128 to unsupported type: {:?}",
+                        target_type_kind
+                    )
+                    .into());
+                }
+            };
+
             let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
+            let val = mk().method_call_expr(to_call, "unwrap", Vec::new());
+            Ok(val.into())
+        } else if matches!(
+            target_type_kind,
+            CTypeKind::LongDouble | CTypeKind::Float128
+        ) {
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "f128 cannot be used in constants because `f128::f128::new` is not `const`",
+                ));
+            }
 
-            mk().method_call_expr(to_call, "unwrap", Vec::new())
-        }))
+            self.use_crate(ExternCrate::F128);
+
+            let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
+            Ok(mk().call_expr(fn_path, vec![val]).into())
+        } else {
+            let target_type_rs = self.convert_type(target_type_id)?;
+            Ok(mk().cast_expr(val, target_type_rs).into())
+        }
     }
 
     pub fn implicit_default_expr(
