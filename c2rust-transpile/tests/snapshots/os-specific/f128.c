@@ -12,7 +12,7 @@ void long_double_test(void) {
     int i = one;
     float f = one;
     _Bool b = one;
-    enum E e = A;
+    enum E e = one;
     long double cast_from_int = i;
     long double cast_from_float = f;
     long double cast_from_bool = b;
@@ -35,7 +35,7 @@ void float128_test(void) {
     int i = one;
     float f = one;
     _Bool b = one;
-    enum E e = A;
+    enum E e = one;
     __float128 cast_from_int = i;
     __float128 cast_from_float = f;
     __float128 cast_from_bool = b;
