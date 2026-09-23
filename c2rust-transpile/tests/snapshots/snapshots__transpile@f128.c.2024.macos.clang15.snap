@@ -40,11 +40,11 @@ pub unsafe extern "C" fn long_double_test() {
     let mut i: ::core::ffi::c_int = Into::<::core::ffi::c_int>::into(one);
     let mut f: ::core::ffi::c_float = Into::<::core::ffi::c_float>::into(one);
     let mut b: bool = one != ::f128::f128::ZERO;
-    let mut e: E = E::A;
+    let mut e: E = E(Into::<::core::ffi::c_uint>::into(one));
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
-    let mut cast_from_bool: ::f128::f128 = ::f128::f128::new(b);
-    let mut cast_from_enum: ::f128::f128 = ::f128::f128::new(e);
+    let mut cast_from_bool: ::f128::f128 = ::f128::f128::new(b as u8);
+    let mut cast_from_enum: ::f128::f128 = ::f128::f128::new(e.0);
     let mut is_inf: bool = if ::core::mem::size_of::<::f128::f128>()
         == ::core::mem::size_of::<::core::ffi::c_float>()
     {
