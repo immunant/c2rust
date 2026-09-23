@@ -4343,21 +4343,43 @@ impl<'c> Translation<'c> {
                     ));
                 }
 
-                if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-                    self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
-                } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                    let source_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
-                    let val = mk().cast_expr(val, mk().path_ty(vec!["u8"]));
-                    self.make_cast(ctx, source_type_id.into(), target_cty, val)
-                } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
-                    self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
-                } else {
-                    self.convert_numeric_to_numeric_cast(
-                        ctx,
-                        source_cty.ctype,
-                        target_cty.ctype,
-                        val,
+                match *source_ty_kind {
+                    CTypeKind::Bool if target_ty_kind.is_floating_type() => {
+                        let source_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
+                        let val = mk().cast_expr(val, mk().path_ty(vec!["u8"]));
+                        return self.make_cast(ctx, source_type_id.into(), target_cty, val);
+                    }
+
+                    CTypeKind::Enum(enum_id) => {
+                        return self.convert_cast_from_enum(ctx, enum_id, target_cty, val);
+                    }
+
+                    _ => {}
+                }
+
+                match *target_ty_kind {
+                    CTypeKind::Enum(enum_id) => {
+                        self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
+                    }
+
+                    _ if target_ty_kind.is_numeric()
+                        && !target_ty_kind.is_bool()
+                        && (source_ty_kind.is_numeric() || source_ty_kind.is_bool()) =>
+                    {
+                        self.convert_numeric_to_numeric_cast(
+                            ctx,
+                            source_cty.ctype,
+                            target_cty.ctype,
+                            val,
+                        )
+                    }
+
+                    _ => Err(format_err!(
+                        "cast between unsupported type kinds:\n\
+                        source_type_kind = {source_ty_kind:?}\n\
+                        target_type_kind = {target_ty_kind:?}"
                     )
+                    .into()),
                 }
             }
 
