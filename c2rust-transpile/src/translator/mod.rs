@@ -4425,16 +4425,32 @@ impl<'c> Translation<'c> {
                     ));
                 }
 
-                if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-                    val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
-                } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
-                    val.and_then_try(|val| {
+                match (source_ty_kind, target_ty_kind) {
+                    (&CTypeKind::Enum(enum_id), _) => val.and_then_try(|val| {
                         self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
-                    })
-                } else {
-                    val.and_then_try(|val| {
-                        self.convert_numeric_to_numeric_cast(ctx, target_cty, (val, source_cty))
-                    })
+                    }),
+
+                    (_, &CTypeKind::Enum(enum_id)) => val.and_then_try(|val| {
+                        self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
+                    }),
+
+                    (CTypeKind::Bool, _) if target_ty_kind.is_numeric() => {
+                        val.and_then_try(|val| {
+                            self.convert_numeric_to_numeric_cast(ctx, target_cty, (val, source_cty))
+                        })
+                    }
+
+                    _ if source_ty_kind.is_numeric() && target_ty_kind.is_numeric() => val
+                        .and_then_try(|val| {
+                            self.convert_numeric_to_numeric_cast(ctx, target_cty, (val, source_cty))
+                        }),
+
+                    _ => Err(format_err!(
+                        "cast between unsupported type kinds:\n\
+                        source_type_kind = {source_ty_kind:?}\n\
+                        target_type_kind = {target_ty_kind:?}"
+                    )
+                    .into()),
                 }
             }
 
