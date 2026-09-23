@@ -3084,6 +3084,10 @@ impl CTypeKind {
         matches!(*self, Self::Pointer { .. })
     }
 
+    pub(crate) fn is_numeric(&self) -> bool {
+        self.is_integral_type() || self.is_floating_type()
+    }
+
     pub fn is_scalar(&self) -> bool {
         self.is_bool()
             || self.is_integral_type()
