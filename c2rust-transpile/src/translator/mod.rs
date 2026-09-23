@@ -4373,9 +4373,9 @@ impl<'c> Translation<'c> {
                 } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
                     self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                    Ok(mk()
-                        .cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
-                        .into())
+                    let source_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
+                    let val = mk().cast_expr(val, mk().path_ty(vec!["u8"]));
+                    self.make_cast(ctx, source_type_id.into(), target_cty, val)
                 } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
                     self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
                 } else {
