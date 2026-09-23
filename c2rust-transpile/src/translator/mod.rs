@@ -4337,40 +4337,13 @@ impl<'c> Translation<'c> {
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
             | CastKind::BooleanToSignedIntegral => {
-                let target_ty = self.convert_type(target_cty.ctype)?;
-
                 if ctx.is_pattern && !target_ty_kind.is_enum() {
                     return Err(TranslationError::generic(
                         "integral casts to non-enums are not supported in patterns",
                     ));
                 }
 
-                if let CTypeKind::LongDouble | CTypeKind::Float128 = target_ty_kind {
-                    if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                        self.ast_context[source_cty.ctype].kind
-                    {
-                        // These are both converted to `f128`, so a cast between the two should
-                        // just be a no-op.
-                        Ok(val.into())
-                    } else {
-                        if ctx.is_const {
-                            return Err(format_translation_err!(
-                                None,
-                                "f128 cannot be used in constants because \
-                                `f128::f128::new` is not `const`",
-                            ));
-                        }
-
-                        self.use_crate(ExternCrate::F128);
-
-                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        Ok(mk().call_expr(fn_path, vec![val]).into())
-                    }
-                } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                    self.ast_context[source_cty.ctype].kind
-                {
-                    self.f128_cast_to(val, target_ty_kind)
-                } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
+                if let &CTypeKind::Enum(enum_id) = target_ty_kind {
                     self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
                     let source_type_id = self.ast_context.type_for_kind(&CTypeKind::UInt8);
@@ -4379,7 +4352,12 @@ impl<'c> Translation<'c> {
                 } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
                     self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
                 } else {
-                    Ok(mk().cast_expr(val, target_ty).into())
+                    self.convert_numeric_to_numeric_cast(
+                        ctx,
+                        source_cty.ctype,
+                        target_cty.ctype,
+                        val,
+                    )
                 }
             }
 
@@ -4425,44 +4403,77 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Cast a f128 to some other int or float type
-    fn f128_cast_to(
+    /// Converts a cast between two numeric types, or from `bool` to an integer type.
+    fn convert_numeric_to_numeric_cast(
         &self,
+        ctx: ExprContext,
+        source_type_id: CTypeId,
+        target_type_id: CTypeId,
         val: Box<Expr>,
-        target_ty_ctype: &CTypeKind,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.use_crate(ExternCrate::NumTraits);
+        let source_type_kind = &self.ast_context.resolve_type(source_type_id).kind;
+        let target_type_kind = &self.ast_context.resolve_type(target_type_id).kind;
 
-        self.with_cur_file_item_store(|item_store| {
-            item_store.add_use(true, vec!["num_traits".into()], "ToPrimitive");
-        });
-        let to_method_name = match target_ty_ctype {
-            CTypeKind::Float => "to_f32",
-            CTypeKind::Double => "to_f64",
-            CTypeKind::Char => "to_i8",
-            CTypeKind::UChar => "to_u8",
-            CTypeKind::Short => "to_i16",
-            CTypeKind::UShort => "to_u16",
-            CTypeKind::Int => "to_i32",
-            CTypeKind::UInt => "to_u32",
-            CTypeKind::Long => "to_i64",
-            CTypeKind::ULong => "to_u64",
-            CTypeKind::LongLong => "to_i64",
-            CTypeKind::ULongLong => "to_u64",
-            CTypeKind::Int128 => "to_i128",
-            CTypeKind::UInt128 => "to_u128",
-            _ => {
-                return Err(format_err!(
-                    "Tried casting long double to unsupported type: {:?}",
-                    target_ty_ctype
-                )
-                .into());
+        if matches!(
+            source_type_kind,
+            CTypeKind::LongDouble | CTypeKind::Float128
+        ) {
+            self.use_crate(ExternCrate::NumTraits);
+            self.with_cur_file_item_store(|item_store| {
+                item_store.add_use(true, vec!["num_traits".into()], "ToPrimitive");
+            });
+
+            let to_method_name = match target_type_kind {
+                CTypeKind::LongDouble | CTypeKind::Float128 => {
+                    // These are both converted to `f128`, so a cast between the two should
+                    // just be a no-op.
+                    return Ok(val.into());
+                }
+                CTypeKind::Float => "to_f32",
+                CTypeKind::Double => "to_f64",
+                CTypeKind::Char => "to_i8",
+                CTypeKind::UChar => "to_u8",
+                CTypeKind::Short => "to_i16",
+                CTypeKind::UShort => "to_u16",
+                CTypeKind::Int => "to_i32",
+                CTypeKind::UInt => "to_u32",
+                CTypeKind::Long => "to_i64",
+                CTypeKind::ULong => "to_u64",
+                CTypeKind::LongLong => "to_i64",
+                CTypeKind::ULongLong => "to_u64",
+                CTypeKind::Int128 => "to_i128",
+                CTypeKind::UInt128 => "to_u128",
+                _ => {
+                    return Err(format_err!(
+                        "Tried casting LongDouble or Float128 to unsupported type: {:?}",
+                        target_type_kind
+                    )
+                    .into());
+                }
+            };
+
+            let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
+            let val = mk().method_call_expr(to_call, "unwrap", Vec::new());
+            Ok(val.into())
+        } else if matches!(
+            target_type_kind,
+            CTypeKind::LongDouble | CTypeKind::Float128
+        ) {
+            if ctx.is_const {
+                return Err(format_translation_err!(
+                    None,
+                    "f128 cannot be used in constants because `f128::f128::new` is not `const`",
+                ));
             }
-        };
 
-        let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
-        let val = mk().method_call_expr(to_call, "unwrap", Vec::new());
-        Ok(val.into())
+            self.use_crate(ExternCrate::F128);
+
+            let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
+            Ok(mk().call_expr(fn_path, vec![val]).into())
+        } else {
+            let target_type_rs = self.convert_type(target_type_id)?;
+            Ok(mk().cast_expr(val, target_type_rs).into())
+        }
     }
 
     pub fn implicit_default_expr(

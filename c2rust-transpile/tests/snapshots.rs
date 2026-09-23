@@ -550,7 +550,6 @@ fn test_f128() {
         .expect_unresolved_import("f128")
         .expect_unresolved_import("num_traits")
         .os_specific(true)
-        .expect_compile_error(true)
         .run();
 }
 
