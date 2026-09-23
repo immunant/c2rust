@@ -4320,23 +4320,16 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            CastKind::BitCast | CastKind::NoOp => {
-                self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
-            }
-
-            CastKind::IntegralToPointer | CastKind::NullToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
-            }
-
-            CastKind::PointerToIntegral => {
-                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
-            }
-
             CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
-            | CastKind::BooleanToSignedIntegral => {
+            | CastKind::BooleanToSignedIntegral
+            | CastKind::BitCast
+            | CastKind::NoOp
+            | CastKind::IntegralToPointer
+            | CastKind::NullToPointer
+            | CastKind::PointerToIntegral => {
                 if ctx.is_pattern
                     && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
                 {
@@ -4358,6 +4351,14 @@ impl<'c> Translation<'c> {
                         return self.make_cast(ctx, source_type_id, target_cty, val);
                     }
 
+                    CTypeKind::Pointer(..) if !target_ty_kind.is_pointer() => {
+                        let source_type_id = self.ast_context.type_for_kind(&CTypeKind::UIntPtr);
+                        let val = self.convert_pointer_to_usize_cast(ctx, source_cty.ctype, val)?;
+                        return val.and_then_try(|val| {
+                            self.make_cast(ctx, source_type_id.into(), target_cty, val)
+                        });
+                    }
+
                     _ => {}
                 }
 
@@ -4367,6 +4368,24 @@ impl<'c> Translation<'c> {
                         let val = self.make_cast(ctx, source_cty, target_type_id, val)?;
                         let val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
                         Ok(val)
+                    }
+
+                    CTypeKind::Pointer(..) => {
+                        if let CTypeKind::Pointer(..) = source_ty_kind {
+                            self.convert_pointer_to_pointer_cast(
+                                source_cty.ctype,
+                                target_cty.ctype,
+                                val,
+                            )
+                        } else {
+                            let target_type_id =
+                                self.ast_context.type_for_kind(&CTypeKind::UIntPtr);
+                            let val =
+                                self.make_cast(ctx, source_cty, target_type_id.into(), val)?;
+                            val.and_then_try(|val| {
+                                self.convert_usize_to_pointer_cast(ctx, target_cty.ctype, val)
+                            })
+                        }
                     }
 
                     _ if target_ty_kind.is_numeric()

@@ -570,10 +570,7 @@ fn test_rotate_os_specific() {
 
 #[test]
 fn test_sigign() {
-    transpile("sigign.c")
-        .os_specific(true)
-        .expect_unresolved_import("libc")
-        .run();
+    transpile("sigign.c").os_specific(true).run();
 }
 
 #[test]
