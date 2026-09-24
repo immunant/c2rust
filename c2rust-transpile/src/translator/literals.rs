@@ -197,9 +197,13 @@ impl<'c> Translation<'c> {
         val: CExprId,
         override_ty: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if !qty.qualifiers.is_const && ctx.expanding_macro.is_some() {
+            return Err("mutable lvalues are not supported inside macros".into());
+        }
+
         // C compound literals are lvalues, but equivalent Rust expressions generally are not.
         // So if an address is needed, store it in an intermediate variable first.
-        if !ctx.needs_address || ctx.expanding_macro.is_some() {
+        if !ctx.needs_address {
             return self.convert_expr(ctx, val, override_ty);
         }
 
