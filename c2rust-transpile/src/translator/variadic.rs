@@ -236,7 +236,7 @@ impl<'c> Translation<'c> {
         Ok(val.and_then(|val| {
             let path = mk()
                 .path_segment_with_args(mk().ident("arg"), mk().angle_bracketed_args(vec![arg_ty]));
-            let mut val = mk().method_call_expr(val, path, vec![]);
+            let val = mk().method_call_expr(val, path, vec![]);
 
             if ctx.is_unused() {
                 WithStmts::new(
@@ -244,11 +244,13 @@ impl<'c> Translation<'c> {
                     self.panic_or_err("convert_vaarg unused"),
                 )
             } else {
+                let mut val = TaggedExpr::new(val);
+
                 if let Some(cast_kind) = cast_kind {
                     val = match cast_kind {
-                        VaArgCastKind::Cast(ty) => mk().cast_expr(val, ty),
+                        VaArgCastKind::Cast(ty) => val.map(|val| mk().cast_expr(val, ty)),
                         VaArgCastKind::Enum(enum_id) => {
-                            self.enum_constructor_expr(enum_id, val, false)
+                            val.map(|val| self.enum_constructor_expr(enum_id, val, false))
                         }
                         VaArgCastKind::Transmute(ty) => {
                             // An enclosing cast or field access may prevent
@@ -259,12 +261,12 @@ impl<'c> Translation<'c> {
                             // `unsafe extern "C" fn(c_char) -> c_int` signature.
                             // With `transmute::<_, _>(...)`, inference fails:
                             // the `as` cast does not determine its input type.
-                            transmute_expr(mk().infer_ty(), ty, val)
+                            val.flat_map(|val| transmute_expr(mk().infer_ty(), ty, val))
                         }
                     };
                 }
 
-                WithStmts::new_val(val)
+                val.into()
             }
         }))
     }

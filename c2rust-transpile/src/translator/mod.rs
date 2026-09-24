@@ -41,7 +41,7 @@ use crate::c_ast::*;
 use crate::cfg;
 use crate::convert_type::TypeConverter;
 use crate::renamer::{Namespaces, Renamer};
-use crate::with_stmts::WithStmts;
+use crate::with_stmts::{TaggedExpr, WithStmts};
 use crate::{c_ast, format_translation_err};
 use crate::{ExternCrate, TranspilerConfig};
 use c2rust_ast_exporter::clang_ast::LRValue;
@@ -355,7 +355,7 @@ fn unwrap_function_pointer(ptr: Box<Expr>) -> Box<Expr> {
     mk().method_call_expr(ptr, "expect", vec![err_msg])
 }
 
-fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>) -> Box<Expr> {
+fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>) -> TaggedExpr {
     let type_args = match (&*source_ty, &*target_ty) {
         (Type::Infer(_), Type::Infer(_)) => Vec::new(),
         _ => vec![source_ty, target_ty],
@@ -368,7 +368,7 @@ fn transmute_expr(source_ty: Box<Type>, target_ty: Box<Type>, expr: Box<Expr>) -
         path.push(mk().path_segment_with_args("transmute", mk().angle_bracketed_args(type_args)));
     }
 
-    mk().call_expr(mk().abs_path_expr(path), vec![expr])
+    TaggedExpr::new(mk().call_expr(mk().abs_path_expr(path), vec![expr])).set_unsafe()
 }
 
 fn vec_expr(val: Box<Expr>, count: Box<Expr>) -> Box<Expr> {
@@ -3072,26 +3072,24 @@ impl<'c> Translation<'c> {
     }
 
     /// Write to a `lhs` that is volatile
-    pub fn volatile_write(
+    pub(crate) fn volatile_write(
         &self,
         lhs: Box<Expr>,
         lhs_type: CQualTypeId,
         rhs: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
+    ) -> TranslationResult<TaggedExpr> {
         let addr_lhs = self.addr_lhs(lhs, lhs_type, true)?;
+        let func = mk().abs_path_expr(vec!["core", "ptr", "write_volatile"]);
 
-        Ok(mk().call_expr(
-            mk().abs_path_expr(vec!["core", "ptr", "write_volatile"]),
-            vec![addr_lhs, rhs],
-        ))
+        Ok(TaggedExpr::new(mk().call_expr(func, vec![addr_lhs, rhs])).set_unsafe())
     }
 
     /// Read from a `lhs` that is volatile
-    pub fn volatile_read(
+    pub(crate) fn volatile_read(
         &self,
         lhs: Box<Expr>,
         lhs_type: CQualTypeId,
-    ) -> TranslationResult<Box<Expr>> {
+    ) -> TranslationResult<TaggedExpr> {
         let addr_lhs = self.addr_lhs(lhs, lhs_type, false)?;
 
         // We explicitly annotate the type of pointer we're reading from
@@ -3107,7 +3105,7 @@ impl<'c> Translation<'c> {
         path_parts.push(elt);
 
         let read_volatile_expr = mk().abs_path_expr(path_parts);
-        Ok(mk().call_expr(read_volatile_expr, vec![addr_lhs]))
+        Ok(TaggedExpr::new(mk().call_expr(read_volatile_expr, vec![addr_lhs])).set_unsafe())
     }
 
     // Compute the offset multiplier for variable length array indexing
@@ -3809,8 +3807,7 @@ impl<'c> Translation<'c> {
         //     _ => self.add_import(decl_id, &rustname),
         // }
 
-        let mut val = mk().path_expr(vec![rustname]);
-        let mut set_unsafe = false;
+        let mut val = TaggedExpr::new(mk().path_expr(vec![rustname]));
 
         match decl {
             CDeclKind::Function { parameters, .. } => {
@@ -3832,8 +3829,7 @@ impl<'c> Translation<'c> {
                             // a K&R function pointer type, use transmute
                             self.import_type(result_type_id.ctype);
 
-                            val = transmute_expr(actual_ty, ty, val);
-                            set_unsafe = true;
+                            val = val.flat_map(|val| transmute_expr(actual_ty, ty, val));
                         }
                     } else {
                         let decl_kind = &self.ast_context[decl_id].kind;
@@ -3846,9 +3842,9 @@ impl<'c> Translation<'c> {
                             .map(CQualTypeId::new)
                         {
                             let ty = self.convert_type(ty.ctype)?;
-                            val = mk().cast_expr(val, ty);
+                            val = val.map(|val| mk().cast_expr(val, ty));
                         } else {
-                            val = mk().cast_expr(val, ty);
+                            val = val.map(|val| mk().cast_expr(val, ty));
                         }
                     }
                 }
@@ -3866,7 +3862,7 @@ impl<'c> Translation<'c> {
                 if (*has_static_duration || *has_thread_duration)
                     && (self.tcfg.edition < Edition2024 || !ctx.needs_address)
                 {
-                    set_unsafe = true;
+                    val = val.set_unsafe();
                 }
             }
 
@@ -3876,10 +3872,10 @@ impl<'c> Translation<'c> {
         if let CTypeKind::VariableArray(..) =
             self.ast_context.resolve_type(result_type_id.ctype).kind
         {
-            val = mk().method_call_expr(val, "as_mut_ptr", vec![]);
+            val = val.map(|val| mk().method_call_expr(val, "as_mut_ptr", vec![]));
         }
 
-        let mut val = WithStmts::new_val(val).merge_unsafe(set_unsafe);
+        let mut val = WithStmts::from(val);
 
         if lrvalue.is_rvalue() {
             val = self.make_cast(
@@ -4066,7 +4062,7 @@ impl<'c> Translation<'c> {
                     // needs to be included even if the expression is unused.
                     let val = self
                         .convert_expr(ctx.used(), expr, None)?
-                        .try_map(|val| self.volatile_read(val, source_ty))?;
+                        .try_flat_map(|val| self.volatile_read(val, source_ty))?;
                     self.convert_side_effects_expr(
                         ctx,
                         val,

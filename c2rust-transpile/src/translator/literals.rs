@@ -164,15 +164,11 @@ impl<'c> Translation<'c> {
                     // it will be const-promoted to 'static.
                     if ctx.needs_address {
                         self.use_feature("inline_const");
-                        // An inline `const` block is its own safety context and does not inherit
-                        // the surrounding `unsafe`, so the transmute needs an explicit `unsafe`
-                        // block inside the const block rather than relying on `set_unsafe`.
-                        let unsafe_transmute = mk().unsafe_block_expr(vec![mk().expr_stmt(val)]);
-                        let stmts = vec![mk().expr_stmt(unsafe_transmute)];
+                        let stmts = vec![mk().expr_stmt(val.into_wrapped_expr())];
                         let val = mk().const_block_expr(mk().const_block(stmts));
                         Ok(WithStmts::new_val(val))
                     } else {
-                        Ok(WithStmts::new_val(val).set_unsafe())
+                        Ok(val.into())
                     }
                 }
             }

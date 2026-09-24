@@ -267,10 +267,7 @@ impl<'c> Translation<'c> {
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
 
-            Ok(
-                WithStmts::new_val(transmute_expr(mk().infer_ty(), mk().infer_ty(), expr))
-                    .set_unsafe(),
-            )
+            Ok(transmute_expr(mk().infer_ty(), mk().infer_ty(), expr).into())
         } else {
             self.import_simd_function(fn_name)
                 .expect("None of these fns should be unsupported in rust");
@@ -291,12 +288,9 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let param_translation = self.convert_exprs(ctx, ids, None)?;
         param_translation.and_then_try(|mut params| {
-            let mut is_unsafe = false;
-
             // When used in a const context, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
             let call = if ctx.is_const {
-                is_unsafe = true;
                 let tuple = mk().tuple_expr(params);
                 transmute_expr(mk().infer_ty(), mk().infer_ty(), tuple)
             } else {
@@ -327,12 +321,12 @@ impl<'c> Translation<'c> {
                     params.reverse();
                 }
 
-                mk().call_expr(mk().ident_expr(fn_call_name), params)
+                mk().call_expr(mk().ident_expr(fn_call_name), params).into()
             };
 
             Ok(self.convert_side_effects_expr(
                 ctx,
-                WithStmts::new_val(call).merge_unsafe(is_unsafe),
+                call.into(),
                 "No value for unused shuffle vector return",
             ))
         })

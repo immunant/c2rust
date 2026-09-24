@@ -62,11 +62,11 @@ impl<'c> Translation<'c> {
     }
 
     /// Given the LHS access to a variable, produce the RHS one
-    fn read(&self, reference_ty: CQualTypeId, write: Box<Expr>) -> TranslationResult<Box<Expr>> {
+    fn read(&self, reference_ty: CQualTypeId, write: Box<Expr>) -> TranslationResult<TaggedExpr> {
         if reference_ty.qualifiers.is_volatile {
             self.volatile_read(write, reference_ty)
         } else {
-            Ok(write)
+            Ok(write.into())
         }
     }
 
@@ -96,12 +96,20 @@ impl<'c> Translation<'c> {
         let reference = self.convert_expr(ctx.used(), reference, Some(reference_ty))?;
         reference.and_then_try(|reference| {
             if is_lvalue(&reference) && (is_pure || !uses_read) {
-                let rvalue = uses_read.then(|| read(reference.clone())).transpose()?;
-
-                Ok(WithStmts::new_val(NamedReference {
-                    lvalue: reference,
-                    rvalue,
-                }))
+                if uses_read {
+                    let rvalue = read(reference.clone())?;
+                    Ok(rvalue.flat_map(|rvalue| {
+                        WithStmts::new_val(NamedReference {
+                            lvalue: reference,
+                            rvalue: Some(rvalue),
+                        })
+                    }))
+                } else {
+                    Ok(WithStmts::new_val(NamedReference {
+                        lvalue: reference,
+                        rvalue: None,
+                    }))
+                }
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
@@ -122,14 +130,17 @@ impl<'c> Translation<'c> {
 
                 let write =
                     mk().unary_expr(UnOp::Deref(Default::default()), mk().ident_expr(&ptr_name));
+                let read = read(write.clone())?;
 
-                Ok(WithStmts::new(
-                    vec![compute_ref],
-                    NamedReference {
-                        lvalue: write.clone(),
-                        rvalue: Some(read(write)?),
-                    },
-                ))
+                Ok(read.flat_map(|read| {
+                    WithStmts::new(
+                        vec![compute_ref],
+                        NamedReference {
+                            lvalue: write,
+                            rvalue: Some(read),
+                        },
+                    )
+                }))
             }
         })
     }
