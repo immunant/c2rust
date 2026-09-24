@@ -1532,26 +1532,93 @@ impl TypedAstContext {
                         let lhs_kind = &self.ast_context.c_exprs[&lhs].kind;
                         let lhs_type_id = lhs_kind.get_qual_type().unwrap();
 
-                        let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                        let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
+                        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+                        let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
                         if op == CBinOp::Subtract
-                            && lhs_resolved_ty.kind.is_pointer()
-                            && rhs_resolved_ty.kind.is_pointer()
+                            && lhs_type_kind.is_pointer()
+                            && rhs_type_kind.is_pointer()
                         {
                             // Pointer difference operator should return `ptrdiff_t`.
                             let new_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
                             Some(CQualTypeId::new(new_type_id))
                         } else {
-                            let neither_ptr = !lhs_resolved_ty.kind.is_pointer()
-                                && !rhs_resolved_ty.kind.is_pointer();
+                            let neither_ptr =
+                                !lhs_type_kind.is_pointer() && !rhs_type_kind.is_pointer();
 
                             if op.all_types_same() && neither_ptr {
-                                if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
-                                    Some(lhs_type_id)
-                                } else {
-                                    Some(rhs_type_id)
+                                struct Operand {
+                                    type_id: CQualTypeId,
+                                    is_complex: bool,
+                                    is_pullback_kind: bool,
                                 }
+
+                                let operand = |type_id, type_kind: &CTypeKind| -> Operand {
+                                    let real_type_id = type_kind.complex_real_type();
+                                    let is_complex = real_type_id.is_some();
+                                    let is_pullback_kind = CTypeKind::PULLBACK_KINDS.contains(
+                                        real_type_id.map_or(type_kind, |type_id| {
+                                            &self.ast_context.resolve_type(type_id).kind
+                                        }),
+                                    );
+
+                                    Operand {
+                                        type_id,
+                                        is_complex,
+                                        is_pullback_kind,
+                                    }
+                                };
+
+                                let operands = [
+                                    &operand(lhs_type_id, lhs_type_kind),
+                                    &operand(rhs_type_id, rhs_type_kind),
+                                ];
+
+                                // For complex arithmetic, complex and real operands can be mixed,
+                                // and the result will be `Complex` if at least one of the operands
+                                // is `Complex`.
+                                let is_complex_arithmetic =
+                                    operands.iter().any(|operand| operand.is_complex);
+
+                                let pullback_operand =
+                                    match operands.map(|operand| operand.is_pullback_kind) {
+                                        [true, true] => {
+                                            // If both operands are pullback kinds, then we can
+                                            // choose freely, so just pick the lhs. But if the rhs
+                                            // is `Complex` and the lhs is not, then prefer the rhs.
+                                            if operands[1].is_complex && !operands[0].is_complex {
+                                                operands[1]
+                                            } else {
+                                                operands[0]
+                                            }
+                                        }
+                                        [true, false] => operands[0],
+                                        [false, true] => operands[1],
+                                        [false, false] => return,
+                                    };
+                                let mut new_result_type_id = pullback_operand.type_id;
+
+                                // If we are doing complex arithmetic, but the chosen operand is not
+                                // complex itself, then we need to wrap it in a `Complex` ourselves.
+                                if is_complex_arithmetic && !pullback_operand.is_complex {
+                                    let real_type_id = new_result_type_id.ctype;
+                                    let new_type_id = self
+                                        .ast_context
+                                        .try_type_for_kind(&CTypeKind::Complex(real_type_id))
+                                        .unwrap_or_else(|| {
+                                            // We are guaranteed to have a `Complex` version of all
+                                            // pullback kinds, but that does not necessarily include
+                                            // typedefs. If a type doesn't exist with the original
+                                            // real type, resolve it.
+                                            let real_type_id =
+                                                self.ast_context.resolve_type_id(real_type_id);
+                                            self.ast_context
+                                                .type_for_kind(&CTypeKind::Complex(real_type_id))
+                                        });
+                                    new_result_type_id = new_type_id.into();
+                                }
+
+                                Some(new_result_type_id)
                             } else if op.is_bitshift() {
                                 Some(lhs_type_id)
                             } else {
@@ -2769,6 +2836,12 @@ impl CQualTypeId {
     }
 }
 
+impl From<CTypeId> for CQualTypeId {
+    fn from(value: CTypeId) -> Self {
+        CQualTypeId::new(value)
+    }
+}
+
 // TODO: these may be interesting, but I'm not sure if they fit here:
 //
 //  * UnaryTransformType <http://clang.llvm.org/doxygen/classclang_1_1UnaryTransformType.html>
@@ -3135,6 +3208,14 @@ impl CTypeKind {
 impl Display for CTypeKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_str())
+    }
+
+    pub(crate) fn complex_real_type(&self) -> Option<CTypeId> {
+        if let Self::Complex(real_type_id) = *self {
+            Some(real_type_id)
+        } else {
+            None
+        }
     }
 }
 
