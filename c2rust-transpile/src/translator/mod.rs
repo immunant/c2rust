@@ -2965,14 +2965,29 @@ impl<'c> Translation<'c> {
                             return false;
                         }
 
-                        if let Some(CExprKind::ImplicitCast(_, _, cast_kind, _, _)) =
-                            initializer_kind
+                        if let Some(&CExprKind::ImplicitCast(
+                            target_type_id,
+                            expr_id,
+                            cast_kind,
+                            _,
+                            _,
+                        )) = initializer_kind
                         {
-                            match cast_kind {
-                                CastKind::NullToPointer => return false,
-                                CastKind::ConstCast => return true,
-                                _ => {}
+                            if cast_kind == CastKind::NullToPointer {
+                                return false;
+                            }
+
+                            let expr_kind = &self.ast_context[expr_id].kind;
+                            let Some(source_type_id) = expr_kind.get_qual_type() else {
+                                return false;
                             };
+
+                            if self.ast_context.is_mut_to_const_pointer_cast(
+                                source_type_id.ctype,
+                                target_type_id.ctype,
+                            ) {
+                                return true;
+                            }
                         }
 
                         // ref decayed ptrs generally need a type annotation
@@ -4133,6 +4148,7 @@ impl<'c> Translation<'c> {
             Some(expr),
             Some(kind),
             opt_field_id,
+            is_explicit,
         )
     }
 
@@ -4231,7 +4247,16 @@ impl<'c> Translation<'c> {
         target_type_id: CQualTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.make_cast_full(ctx, source_type_id, target_type_id, val, None, None, None)
+        self.make_cast_full(
+            ctx,
+            source_type_id,
+            target_type_id,
+            val,
+            None,
+            None,
+            None,
+            false,
+        )
     }
 
     pub fn make_cast_full(
@@ -4243,6 +4268,7 @@ impl<'c> Translation<'c> {
         expr: Option<CExprId>,
         kind: Option<CastKind>,
         opt_field_id: Option<CFieldId>,
+        is_explicit: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
         let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
@@ -4267,12 +4293,7 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        if ctx.is_pattern
-            && !matches!(
-                kind,
-                CastKind::ToVoid | CastKind::ConstCast | CastKind::IntegralCast
-            )
-        {
+        if ctx.is_pattern && !matches!(kind, CastKind::ToVoid | CastKind::IntegralCast) {
             return Err(TranslationError::generic(
                 "cast kind is not supported in patterns",
             ));
@@ -4280,7 +4301,15 @@ impl<'c> Translation<'c> {
 
         match kind {
             CastKind::BitCast | CastKind::NoOp => {
-                self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
+                if !is_explicit
+                    && self
+                        .ast_context
+                        .is_mut_to_const_pointer_cast(source_cty.ctype, target_cty.ctype)
+                {
+                    Ok(val)
+                } else {
+                    self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
+                }
             }
 
             CastKind::IntegralToPointer => {
@@ -4348,7 +4377,7 @@ impl<'c> Translation<'c> {
                 panic!("LValueToRValue casts must be handled in convert_cast")
             }
 
-            CastKind::ToVoid | CastKind::ConstCast => Ok(val),
+            CastKind::ToVoid => Ok(val),
 
             CastKind::FunctionToPointerDecay | CastKind::BuiltinFnToFnPtr => {
                 Ok(val.map(|x| mk().call_expr(mk().ident_expr("Some"), vec![x])))
