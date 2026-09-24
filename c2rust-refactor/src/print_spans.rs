@@ -3,7 +3,8 @@ use log::info;
 use rustc_ast::visit::Visitor;
 use rustc_ast::*;
 use rustc_ast_pretty::pprust::{self, PrintState};
-use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
+use rustc_span::source_map::SourceMap;
+use rustc_span::{Span, DUMMY_SP};
 
 use crate::ast_manip::{visit_nodes, Visit};
 use crate::command::{DriverCommand, Registry};

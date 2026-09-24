@@ -1,4 +1,5 @@
-use rustc_span::source_map::{SourceMap, Span, DUMMY_SP};
+use rustc_span::source_map::SourceMap;
+use rustc_span::{Span, DUMMY_SP};
 
 use crate::rewrite::TextRewrite;
 

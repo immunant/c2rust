@@ -221,10 +221,12 @@ fn is_primary_package() -> bool {
 /// This uses the [`rustc_driver`] and [`rustc_session`] APIs
 /// to check this exactly as `rustc` would.
 fn is_bin_crate(at_args: &[String]) -> anyhow::Result<bool> {
-    let args = rustc_driver::args::arg_expand_all(at_args);
-    let matches = rustc_driver::handle_options(&args)
+    let mut early_dcx =
+        rustc_session::EarlyDiagCtxt::new(rustc_session::config::ErrorOutputType::default());
+    let args = rustc_driver::args::arg_expand_all(&early_dcx, at_args);
+    let matches = rustc_driver::handle_options(&early_dcx, &args)
         .ok_or_else(|| anyhow!("failed to parse `rustc` args"))?;
-    let session_options = rustc_session::config::build_session_options(&matches);
+    let session_options = rustc_session::config::build_session_options(&mut early_dcx, &matches);
     let is_bin = session_options.crate_types.contains(&CrateType::Executable);
     Ok(is_bin)
 }
@@ -286,19 +288,20 @@ fn rustc_wrapper() -> anyhow::Result<()> {
         .to_str()
         .ok_or_else(|| anyhow!("sysroot path is not UTF-8: {}", sysroot.display()))?;
     at_args.extend(["--sysroot".into(), sysroot.into()]);
-    let result = if should_instrument {
-        RunCompiler::new(&at_args, &mut MirTransformCallbacks).run()
-    } else {
-        // Always use the dynamically linked `librustc_driver-{hash}.so`,
-        // as it is guaranteed to be the same version as the instrumented version.
-        // Furthermore, we can't accidentally load the wrong `librustc_driver-{hash}.so`,
-        // as it contains its hash.
-        // This also avoids an extra `rustc` (and potentially `rustup` `rustc`) invocation.
-        RunCompiler::new(&at_args, &mut TimePassesCallbacks::default()).run()
-    };
-    // `ErrorReported` means the error has already been reported to the user,
+    let result = rustc_driver::catch_fatal_errors(|| {
+        if should_instrument {
+            RunCompiler::new(&at_args, &mut MirTransformCallbacks).run()
+        } else {
+            // Always use the dynamically linked `librustc_driver-{hash}.so`,
+            // as it is guaranteed to be the same version as the instrumented version.
+            // Furthermore, we can't accidentally load the wrong `librustc_driver-{hash}.so`,
+            // as it contains its hash.
+            // This also avoids an extra `rustc` (and potentially `rustup` `rustc`) invocation.
+            RunCompiler::new(&at_args, &mut TimePassesCallbacks::default()).run()
+        }
+    });
+    // `FatalError` means the error has already been reported to the user,
     // so we just have to fail/exit with a failing exit code.
-    // There is no `impl Error for ErrorReported`.
     result.map_err(|_| anyhow!("`rustc` failed"))?;
     if should_instrument {
         INSTRUMENTER.finalize(&env_path_from_wrapper(METADATA_VAR)?)?;

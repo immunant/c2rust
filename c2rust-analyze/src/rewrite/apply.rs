@@ -1,8 +1,8 @@
 use crate::rewrite::Rewrite;
 use log::warn;
 use rustc_hir::Mutability;
-use rustc_span::source_map::{FileName, SourceMap};
-use rustc_span::{BytePos, SourceFile, Span, SyntaxContext};
+use rustc_span::source_map::SourceMap;
+use rustc_span::{BytePos, FileName, SourceFile, Span, SyntaxContext};
 use std::cmp::{self, Reverse};
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -413,6 +413,15 @@ impl<S: Sink> Emitter<'_, S> {
                 self.emit(rw, 0)
             }
 
+            Rewrite::LetTyped(ref name, ref ty, ref rw) => {
+                self.emit_str("let ")?;
+                self.emit_str(name)?;
+                self.emit_str(": ")?;
+                self.emit(ty, 0)?;
+                self.emit_str(" = ")?;
+                self.emit(rw, 0)
+            }
+
             Rewrite::Closure1(ref name, ref rw) => {
                 self.emit_str("|")?;
                 self.emit_str(name)?;
@@ -541,7 +550,7 @@ impl<'a, F: FnMut(&str, Option<usize>)> RewriteTreeSink<'a, F> {
 
     fn emit_bytes(&mut self, lo: BytePos, hi: BytePos) -> Result<(), <Self as Sink>::Error> {
         assert!(
-            self.file.start_pos <= lo && hi <= self.file.end_pos,
+            self.file.start_pos <= lo && hi <= self.file.end_position(),
             "bytes {:?} .. {:?} are out of range for file {:?}",
             lo,
             hi,
@@ -557,7 +566,7 @@ impl<'a, F: FnMut(&str, Option<usize>)> RewriteTreeSink<'a, F> {
         let lo_in_file = lo - self.file.start_pos;
         let hi_in_file = hi - self.file.start_pos;
         let s = &src[lo_in_file.0 as usize..hi_in_file.0 as usize];
-        if let Some(line) = self.file.lookup_line(lo) {
+        if let Some(line) = self.file.lookup_line(self.file.relative_position(lo)) {
             self.emit_orig_str(s, line)
         } else {
             self.emit_str(s)
@@ -678,7 +687,7 @@ pub fn apply_rewrites(
         let file = source_map.lookup_source_file(rts[0].span.lo());
         let idx = rts
             .iter()
-            .position(|rt| rt.span.lo() >= file.end_pos)
+            .position(|rt| rt.span.lo() >= file.end_position())
             .unwrap_or(rts.len());
         assert!(idx > 0);
         let (file_rts, rest) = rts.split_at(idx);
@@ -703,7 +712,12 @@ pub fn apply_rewrites(
         };
 
         let mut sink = RewriteTreeSink::new(&file, &mut emit);
-        let file_span = Span::new(file.start_pos, file.end_pos, SyntaxContext::root(), None);
+        let file_span = Span::new(
+            file.start_pos,
+            file.end_position(),
+            SyntaxContext::root(),
+            None,
+        );
         sink.emit_span_with_rewrites(file_span, file_rts).unwrap();
 
         file_rewrites.insert(

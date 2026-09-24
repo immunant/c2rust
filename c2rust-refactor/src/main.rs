@@ -1,3 +1,5 @@
+#![feature(rustc_private)]
+
 use clap::{load_yaml, App, ArgMatches};
 use log::info;
 use std::fs::File;

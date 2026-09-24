@@ -2,10 +2,11 @@
 
 use log::{debug, log_enabled, Level};
 use rustc_hir::def_id::DefId;
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 use rustc_middle::mir::*;
 use rustc_middle::ty::{Ty, TyKind};
-use rustc_span::source_map::{Spanned, DUMMY_SP};
+use rustc_span::source_map::Spanned;
+use rustc_span::DUMMY_SP;
 use rustc_target::abi::{FieldIdx, VariantIdx};
 
 use crate::analysis::labeled_ty::{LabeledTy, LabeledTyCtxt};
@@ -237,7 +238,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             ..
         } = *self;
         ilcx.label(ty, &mut |ty| match ty.kind() {
-            TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+            TyKind::Ref(_, _, _) | TyKind::RawPtr(..) => {
                 let v = Var(*next_local_var);
                 *next_local_var += 1;
                 Label::Ptr(Perm::LocalVar(v))
@@ -319,6 +320,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 ProjectionElem::Subslice { .. } => unimplemented!(),
                 ProjectionElem::Downcast(_, variant) => (base_ty, base_perm, Some(variant)),
                 ProjectionElem::OpaqueCast(_) => (base_ty, base_perm, None),
+                ProjectionElem::Subtype(ty) => {
+                    // Optimized MIR makes implicit assignment coercions
+                    // explicit with this projection. Apply the same permission
+                    // constraints as a cast while retaining the target type.
+                    let target = self.local_ty(ty);
+                    self.propagate(target, base_ty, base_perm);
+                    (target, base_perm, None)
+                }
             }
         } else {
             (self.local_var_ty(lv.local), Perm::move_(), None)
@@ -356,7 +365,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
                 (arr_ty, Perm::move_())
             }
-            Rvalue::Ref(_, _, ref lv) | Rvalue::AddressOf(_, ref lv) => {
+            Rvalue::Ref(_, _, ref lv) | Rvalue::RawPtr(_, ref lv) => {
                 let (ty, perm) = self.place_lty(lv);
                 let args = self.ilcx.mk_slice(&[ty]);
                 let ref_ty = self
@@ -364,37 +373,53 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     .mk(rv.ty(self.mir, self.cx.tcx), args, Label::Ptr(perm));
                 (ref_ty, Perm::move_())
             }
-            Rvalue::Len(_) => (self.local_ty(ty), Perm::move_()),
             Rvalue::Cast(_, ref op, cast_raw_ty) => {
                 let cast_ty = self.local_ty(cast_raw_ty);
                 let (op_ty, op_perm) = self.operand_lty(op);
                 self.propagate(cast_ty, op_ty, Perm::move_());
                 (cast_ty, op_perm)
             }
-            Rvalue::BinaryOp(op, box (ref a, ref _b))
-            | Rvalue::CheckedBinaryOp(op, box (ref a, ref _b)) => match op {
+            Rvalue::BinaryOp(op, box (ref a, ref _b)) => match op {
                 BinOp::Add
+                | BinOp::AddUnchecked
+                | BinOp::AddWithOverflow
                 | BinOp::Sub
+                | BinOp::SubUnchecked
+                | BinOp::SubWithOverflow
                 | BinOp::Mul
+                | BinOp::MulUnchecked
+                | BinOp::MulWithOverflow
                 | BinOp::Div
                 | BinOp::Rem
                 | BinOp::BitXor
                 | BinOp::BitAnd
                 | BinOp::BitOr
                 | BinOp::Shl
+                | BinOp::ShlUnchecked
                 | BinOp::Shr
+                | BinOp::ShrUnchecked
                 | BinOp::Eq
                 | BinOp::Lt
                 | BinOp::Le
                 | BinOp::Ne
                 | BinOp::Ge
-                | BinOp::Gt => (self.local_ty(ty), Perm::move_()),
+                | BinOp::Gt
+                | BinOp::Cmp => (self.local_ty(ty), Perm::move_()),
 
                 BinOp::Offset => self.operand_lty(a),
             },
-            Rvalue::NullaryOp(_op, _ty) => unimplemented!(),
+            Rvalue::NullaryOp(op, _) => match op {
+                // Optimized MIR now inserts AlignOf when checking raw pointer
+                // dereferences. These operations inspect a type (or compiler
+                // option), never a value, and produce pointer-free scalars.
+                NullOp::SizeOf | NullOp::AlignOf | NullOp::OffsetOf(_) | NullOp::UbChecks => {
+                    (self.local_ty(ty), Perm::move_())
+                }
+            },
             Rvalue::UnaryOp(op, ref _a) => match op {
-                UnOp::Not | UnOp::Neg => (self.local_ty(ty), Perm::move_()),
+                // PtrMetadata replaces the former Len rvalue. Its result is
+                // scalar and does not grant access to the slice's elements.
+                UnOp::Not | UnOp::Neg | UnOp::PtrMetadata => (self.local_ty(ty), Perm::move_()),
             },
             Rvalue::Discriminant(ref _lv) => (self.local_ty(ty), Perm::move_()),
             Rvalue::Aggregate(ref kind, ref ops) => match **kind {
@@ -413,6 +438,15 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                         self.propagate(elem_ty, op_ty, op_perm);
                     }
                     (tuple_ty, Perm::move_())
+                }
+                AggregateKind::RawPtr(_, _) => {
+                    // Metadata determines the pointee's shape; authority comes
+                    // from the data pointer, just as for a raw-pointer cast.
+                    let pointer_ty = self.local_ty(ty);
+                    let (data_ty, data_perm) = self.operand_lty(&ops[FieldIdx::from_usize(0)]);
+                    self.operand_lty(&ops[FieldIdx::from_usize(1)]);
+                    self.propagate(pointer_ty, data_ty, Perm::move_());
+                    (pointer_ty, data_perm)
                 }
                 AggregateKind::Adt(adt_did, disr, _substs, _annot, union_variant) => {
                     let adt = self.cx.tcx.adt_def(adt_did);
@@ -439,7 +473,11 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                     (adt_ty, Perm::move_())
                 }
                 AggregateKind::Closure(_, _) => unimplemented!(),
-                AggregateKind::Generator(_, _, _) => unimplemented!(),
+                AggregateKind::Coroutine(_, _) | AggregateKind::CoroutineClosure(_, _) => {
+                    // As with closures, these generated capture aggregates
+                    // require closure ownership analysis before rewriting.
+                    unimplemented!("coroutine capture ownership")
+                }
             },
             Rvalue::CopyForDeref(ref lv) => self.place_lty(lv),
             // TODO: implement these; we shouldn't see them in transpiled
@@ -453,8 +491,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             Operand::Copy(ref lv) => self.place_lty(lv),
             Operand::Move(ref lv) => self.place_lty(lv),
             Operand::Constant(ref c) => {
-                debug!("CONSTANT {:?}: type = {:?}", c, c.literal.ty());
-                let lty = self.local_ty(c.literal.ty());
+                debug!("CONSTANT {:?}: type = {:?}", c, c.const_.ty());
+                let lty = self.local_ty(c.const_.ty());
                 if let Label::FnDef(inst_idx) = lty.label {
                     self.insts[inst_idx].span = Some(c.span);
                 }
@@ -567,10 +605,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 }
             }
 
-            TyKind::FnPtr(ty_sig) => FnSig {
+            TyKind::FnPtr(_, header) => FnSig {
                 inputs: &ty.args[..ty.args.len() - 1],
                 output: ty.args[ty.args.len() - 1],
-                is_variadic: ty_sig.skip_binder().c_variadic,
+                is_variadic: header.c_variadic,
             },
 
             TyKind::Closure(_, _) => unimplemented!(),
@@ -609,6 +647,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
                 | StatementKind::AscribeUserType(..)
                 | StatementKind::Coverage(..)
                 | StatementKind::ConstEvalCounter
+                // Lint-only marker, with no execution or ownership effect.
+                | StatementKind::BackwardIncompatibleDropHint { .. }
                 | StatementKind::Nop => {}
             }
         }
@@ -618,17 +658,17 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             | TerminatorKind::FalseEdge { .. }
             | TerminatorKind::FalseUnwind { .. }
             | TerminatorKind::SwitchInt { .. }
-            | TerminatorKind::Resume
+            | TerminatorKind::UnwindResume
             | TerminatorKind::Return
             | TerminatorKind::Unreachable
             | TerminatorKind::Drop { .. }
             | TerminatorKind::Assert { .. }
             | TerminatorKind::Yield { .. }
-            | TerminatorKind::GeneratorDrop
+            | TerminatorKind::CoroutineDrop
             // InlineAsm has some Lvalues and Operands, but we can't do anything useful
             // with them without analysing the actual asm code.
             | TerminatorKind::InlineAsm { .. }
-            | TerminatorKind::Terminate => {}
+            | TerminatorKind::UnwindTerminate(_) => {}
 
             // `DropAndReplace` no longer exists in target MIR. Its replacement
             // assignment is handled by the ordinary statement analysis above.
@@ -636,10 +676,17 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             TerminatorKind::Call {
                 ref func,
                 ref args,
-                ref destination,
-                ref target,
                 ..
+            }
+            | TerminatorKind::TailCall {
+                ref func, ref args, ..
             } => {
+                let destination = match bb.terminator().kind {
+                    TerminatorKind::Call { destination, target: Some(_), .. } => Some(destination),
+                    // A tail call returns directly from this body.
+                    TerminatorKind::TailCall { .. } => Some(Place::from(rustc_middle::mir::RETURN_PLACE)),
+                    _ => None,
+                };
                 debug!("    call {:?}", func);
                 let (func_ty, _func_perm) = self.operand_lty(func);
                 debug!("fty = {:?}", func_ty);
@@ -647,14 +694,14 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
                 // Note that `sig.inputs` may be shorter than `args`, if `func` is varargs.
                 for (&sig_ty, arg) in sig.inputs.iter().zip(args.iter()) {
-                    let (arg_ty, arg_perm) = self.operand_lty(arg);
+                    let (arg_ty, arg_perm) = self.operand_lty(&arg.node);
                     self.propagate(sig_ty, arg_ty, arg_perm);
                     debug!("    (arg): {:?}", sig_ty);
                     debug!("    ^-- {:?}: {:?}", arg, arg_ty);
                 }
-                if target.is_some() {
+                if let Some(destination) = destination {
                     let sig_ty = sig.output;
-                    let (dest_ty, dest_perm) = self.place_lty(destination);
+                    let (dest_ty, dest_perm) = self.place_lty(&destination);
                     self.propagate(dest_ty, sig_ty, Perm::move_());
                     self.propagate_perm(Perm::write(), dest_perm);
                     debug!("    {:?}: {:?}", destination, dest_ty);

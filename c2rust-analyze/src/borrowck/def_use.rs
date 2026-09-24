@@ -59,7 +59,7 @@ pub fn categorize(context: PlaceContext) -> Option<DefUse> {
         // output (tested on `tests/filecheck/move_mut.rs`).
         PlaceContext::NonUse(NonUseContext::StorageLive) |
         PlaceContext::NonUse(NonUseContext::StorageDead) |
-        PlaceContext::NonUse(NonUseContext::PlaceMention) => None,
+        PlaceContext::NonMutatingUse(NonMutatingUseContext::PlaceMention) => None,
 
         ///////////////////////////////////////////////////////////////////////////
         // REGULAR USES
@@ -77,15 +77,14 @@ pub fn categorize(context: PlaceContext) -> Option<DefUse> {
         // cross suspension points so this behavior is unproblematic.
         PlaceContext::MutatingUse(MutatingUseContext::Borrow) |
         PlaceContext::NonMutatingUse(NonMutatingUseContext::SharedBorrow) |
-        PlaceContext::NonMutatingUse(NonMutatingUseContext::ShallowBorrow) |
-        PlaceContext::NonMutatingUse(NonMutatingUseContext::UniqueBorrow) |
+        PlaceContext::NonMutatingUse(NonMutatingUseContext::FakeBorrow) |
 
-        PlaceContext::MutatingUse(MutatingUseContext::AddressOf) |
-        PlaceContext::NonMutatingUse(NonMutatingUseContext::AddressOf) |
+        PlaceContext::MutatingUse(MutatingUseContext::RawBorrow) |
+        PlaceContext::NonMutatingUse(NonMutatingUseContext::RawBorrow) |
         PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect) |
         PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy) |
         PlaceContext::NonMutatingUse(NonMutatingUseContext::Move) |
-        PlaceContext::NonUse(NonUseContext::AscribeUserTy) |
+        PlaceContext::NonUse(NonUseContext::AscribeUserTy(_)) |
         PlaceContext::MutatingUse(MutatingUseContext::Retag) =>
             Some(DefUse::Use),
 

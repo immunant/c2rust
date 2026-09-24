@@ -4,7 +4,7 @@
 //! in the same arena as the underlying `Ty`s.
 use rustc_arena::DroplessArena;
 use rustc_middle::ty::{Ty, TyKind};
-use rustc_type_ir::sty::TyKind as IrTyKind;
+use rustc_type_ir::TyKind as IrTyKind;
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -104,11 +104,11 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
             | IrTyKind::Never => self.mk(ty, &[], label),
 
             // Types with arguments
-            IrTyKind::Adt(_, substs) => {
+            IrTyKind::Adt(_, substs) | IrTyKind::CoroutineClosure(_, substs) => {
                 let args = substs.types().map(|t| self.label(t, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            IrTyKind::Array(elem, _) => {
+            IrTyKind::Array(elem, _) | IrTyKind::Pat(elem, _) => {
                 let args = [self.label(*elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
@@ -116,8 +116,8 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                 let args = [self.label(*elem, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            IrTyKind::RawPtr(mty) => {
-                let args = [self.label(mty.ty, f)];
+            IrTyKind::RawPtr(inner, _) => {
+                let args = [self.label(*inner, f)];
                 self.mk(ty, self.mk_slice(&args), label)
             }
             IrTyKind::Ref(_, mty, _) => {
@@ -131,7 +131,7 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                     .collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
-            IrTyKind::FnPtr(ref sig) => {
+            IrTyKind::FnPtr(ref sig, _) => {
                 let args = sig
                     .skip_binder()
                     .inputs_and_output
@@ -144,13 +144,16 @@ impl<'lty, 'tcx: 'lty, L: Clone> LabeledTyCtxt<'lty, L> {
                 let args = elems.iter().map(|ty| self.label(ty, f)).collect::<Vec<_>>();
                 self.mk(ty, self.mk_slice(&args), label)
             }
+            IrTyKind::UnsafeBinder(binder) => {
+                let args = [self.label(binder.skip_binder(), f)];
+                self.mk(ty, self.mk_slice(&args), label)
+            }
 
             // Types that aren't actually supported by this code yet
             IrTyKind::Dynamic(..)
             | IrTyKind::Closure(..)
-            | IrTyKind::Generator(..)
-            | IrTyKind::GeneratorWitness(..)
-            | IrTyKind::GeneratorWitnessMIR(..)
+            | IrTyKind::Coroutine(..)
+            | IrTyKind::CoroutineWitness(..)
             | IrTyKind::Alias(..)
             | IrTyKind::Param(..)
             | IrTyKind::Bound(..)

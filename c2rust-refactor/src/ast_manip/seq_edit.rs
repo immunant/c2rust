@@ -1,5 +1,5 @@
 //! Functions for rewriting sequences of stmts or items, using `Cursor<T>`.
-use rustc_ast::mut_visit::{self, MutVisitor};
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::{Block, Item, ItemKind, ModKind, Stmt};
 use std::mem;
@@ -17,7 +17,7 @@ impl<F: FnMut(&mut Cursor<Stmt>)> MutVisitor for BlockFolder<F> {
         let mut stmt_cursor = Cursor::from_vec(stmts.into_iter().collect());
         (self.f)(&mut stmt_cursor);
         b.stmts = stmt_cursor.into_vec().into();
-        mut_visit::noop_visit_block(b, self)
+        mut_visit::walk_block(self, b)
     }
 }
 
@@ -40,17 +40,17 @@ impl<F: FnMut(&mut Cursor<P<Item>>)> MutVisitor for ModuleFolder<F> {
         let mut curs = Cursor::from_vec(items.into_iter().collect());
         (self.f)(&mut curs);
         krate.items = curs.into_vec().into();
-        mut_visit::noop_visit_crate(krate, self)
+        mut_visit::walk_crate(self, krate)
     }
 
-    fn visit_item_kind(&mut self, i: &mut ItemKind) {
-        if let ItemKind::Mod(_, ModKind::Loaded(ref mut items_ref, ..)) = i {
+    fn visit_item(&mut self, i: &mut P<Item>) {
+        if let ItemKind::Mod(_, ModKind::Loaded(ref mut items_ref, ..)) = i.kind {
             let items = mem::take(items_ref);
             let mut curs = Cursor::from_vec(items.into_iter().collect());
             (self.f)(&mut curs);
             *items_ref = curs.into_vec().into();
         }
-        mut_visit::noop_visit_item_kind(i, self)
+        mut_visit::walk_item(self, i)
     }
 }
 

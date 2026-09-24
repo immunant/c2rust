@@ -2,8 +2,8 @@
 use rustc_ast::ptr::P;
 use rustc_ast::token::Token;
 use rustc_ast::*;
-use rustc_span::source_map::{Span, Spanned};
-use rustc_span::symbol::Ident;
+use rustc_span::source_map::Spanned;
+use rustc_span::{Ident, Span};
 
 use crate::ast_manip::util::extend_span_attrs;
 

@@ -3,7 +3,7 @@ use rustc_span::{Span, DUMMY_SP};
 use std::any::Any;
 use std::cell::Cell;
 use std::fmt::Write as _;
-use std::panic::{self, PanicInfo, UnwindSafe};
+use std::panic::{self, PanicHookInfo, UnwindSafe};
 
 /// Detailed information about a panic.
 #[derive(Clone, Debug)]
@@ -79,7 +79,7 @@ thread_local! {
 
 /// Panic hook for use with [`std::panic::set_hook`].  This builds a `PanicDetail` for each panic
 /// and stores it for later retrieval by [`catch_unwind`].
-fn panic_hook(default_hook: &dyn Fn(&PanicInfo), info: &PanicInfo) {
+fn panic_hook(default_hook: &dyn Fn(&PanicHookInfo), info: &PanicHookInfo) {
     CURRENT_PANIC_DETAIL.with(|cell| {
         // Take the old value, replacing it with something arbitrary.
         let old = cell.replace(PanicState::OutsideCatchUnwind);

@@ -320,16 +320,16 @@ where
                 }
             }
 
-            ForeignItemKind::Static(ref ast_ty, _, _) => {
+            ForeignItemKind::Static(ref item) => {
                 if let Some(ty) = self.source.def_type(def_id) {
-                    self.record_ty(ty, ast_ty);
+                    self.record_ty(ty, &item.ty);
                 }
             }
             ForeignItemKind::TyAlias(..) => {}
             ForeignItemKind::MacCall(..) => {}
         }
 
-        visit::walk_foreign_item(self, i);
+        visit::walk_item(self, i);
     }
 }
 

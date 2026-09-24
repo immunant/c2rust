@@ -380,7 +380,7 @@ fn numeric_literal_suffix(ty: &Type) -> Option<String> {
         ..
     }) = ty
     else {
-        return None
+        return None;
     };
 
     if segments.len() != 1 {

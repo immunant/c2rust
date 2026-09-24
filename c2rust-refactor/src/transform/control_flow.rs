@@ -4,14 +4,14 @@ use rustc_ast::token::Lit;
 use rustc_ast::{Crate, Expr, ExprKind, LitKind, Stmt, StmtKind};
 use rustc_hir::HirId;
 use rustc_hir_typeck::expr_use_visitor::*;
-use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::hir::place::PlaceWithHirId;
 use rustc_middle::mir::FakeReadCause;
-use rustc_middle::ty::{self, ParamEnv};
+use rustc_middle::ty::{self, TyCtxt};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::ast_builder::mk;
 use crate::command::{CommandState, Registry};
-use crate::context::HirMap;
 use crate::driver::Phase;
 use crate::match_or;
 use crate::matcher::{find_first, mut_visit_match_with, replace_expr, MatchCtxt, Subst};
@@ -118,14 +118,16 @@ impl Transform for ReconstructForRange {
             let var_expr = mcx.bindings.get::<_, P<Expr>>("$i").unwrap().clone();
             let var_hir_id = match_or!([cx.try_resolve_expr_hir(&var_expr)]
                                        Some(rustc_hir::def::Res::Local(x)) => x; return);
-            let mut delegate = ForRangeDelegate {
-                hir_map,
+            let writes_inside_loop = Rc::new(Cell::new(0));
+            let reads_outside_loop = Rc::new(Cell::new(0));
+            let delegate = ForRangeDelegate {
+                tcx: cx.ty_ctxt(),
                 while_hir_id,
                 parent_hir_id,
                 var_hir_id,
 
-                writes_inside_loop: 0,
-                reads_outside_loop: 0,
+                writes_inside_loop: writes_inside_loop.clone(),
+                reads_outside_loop: reads_outside_loop.clone(),
             };
 
             let tcx = cx.ty_ctxt();
@@ -133,17 +135,26 @@ impl Transform for ReconstructForRange {
                                        Some(x) => x; return);
             let parent_body_id = match_or!([hir_map.maybe_body_owned_by(parent_did)]
                                            Some(x) => x; return);
-            let parent_body = hir_map.body(parent_body_id);
-            let tables = tcx.typeck_body(parent_body_id);
-            let infcx = tcx.infer_ctxt().build();
-            ExprUseVisitor::new(&mut delegate, &infcx, parent_did, ParamEnv::empty(), tables)
-                .consume_body(&parent_body);
-            assert!(delegate.writes_inside_loop > 0);
+            // ExprUseVisitor's public post-typecheck entry point needs the compiler's
+            // LateContext. Let rustc construct it, including the body's parameter
+            // environment and cached typeck results. This pass has no lints; the
+            // refactor driver also registers no external late module passes.
+            rustc_lint::late_lint_mod(
+                tcx,
+                tcx.parent_module_from_def_id(parent_did),
+                ForRangeUsePass {
+                    body_id: parent_body_id,
+                    delegate,
+                },
+            );
+            assert!(writes_inside_loop.get() > 0);
             debug!(
                 "Loop variable '{:?}' writes:{} reads:{}",
-                var_expr, delegate.writes_inside_loop, delegate.reads_outside_loop
+                var_expr,
+                writes_inside_loop.get(),
+                reads_outside_loop.get()
             );
-            if delegate.writes_inside_loop > 1 || delegate.reads_outside_loop > 0 {
+            if writes_inside_loop.get() > 1 || reads_outside_loop.get() > 0 {
                 return;
             }
 
@@ -188,20 +199,44 @@ fn is_one_expr(e: &Expr) -> bool {
 }
 
 fn is_one_lit(l: &Lit) -> bool {
-    matches!(LitKind::from_token_lit(*l), Ok(LitKind::Int(1, _)))
+    matches!(LitKind::from_token_lit(*l), Ok(LitKind::Int(value, _)) if value.get() == 1)
 }
 
-struct ForRangeDelegate<'a, 'hir> {
-    hir_map: &'a HirMap<'hir>,
+struct ForRangeUsePass<'tcx> {
+    body_id: rustc_hir::BodyId,
+    delegate: ForRangeDelegate<'tcx>,
+}
+
+impl rustc_session::lint::LintPass for ForRangeUsePass<'_> {
+    fn name(&self) -> &'static str {
+        "C2RustForRangeUses"
+    }
+    fn get_lints(&self) -> rustc_session::lint::LintVec {
+        Vec::new()
+    }
+}
+
+impl<'tcx> rustc_lint::LateLintPass<'tcx> for ForRangeUsePass<'tcx> {
+    fn check_body(&mut self, cx: &rustc_lint::LateContext<'tcx>, body: &rustc_hir::Body<'tcx>) {
+        if body.id() == self.body_id {
+            let owner = cx.tcx.hir().body_owner_def_id(body.id());
+            let Ok(()) =
+                ExprUseVisitor::for_clippy(cx, owner, &mut self.delegate).consume_body(body);
+        }
+    }
+}
+
+struct ForRangeDelegate<'tcx> {
+    tcx: TyCtxt<'tcx>,
     while_hir_id: HirId,
     parent_hir_id: HirId,
     var_hir_id: HirId,
 
-    writes_inside_loop: usize,
-    reads_outside_loop: usize,
+    writes_inside_loop: Rc<Cell<usize>>,
+    reads_outside_loop: Rc<Cell<usize>>,
 }
 
-impl<'a, 'hir> ForRangeDelegate<'a, 'hir> {
+impl ForRangeDelegate<'_> {
     fn node_inside_loop(&self, id: HirId) -> bool {
         let mut cur_id = id;
         loop {
@@ -212,7 +247,7 @@ impl<'a, 'hir> ForRangeDelegate<'a, 'hir> {
                 return false;
             }
 
-            let parent_id = self.hir_map.get_parent_node(cur_id);
+            let parent_id = self.tcx.parent_hir_id(cur_id);
             if parent_id == cur_id {
                 panic!(
                     "expected node {} inside parent item {}",
@@ -224,7 +259,7 @@ impl<'a, 'hir> ForRangeDelegate<'a, 'hir> {
     }
 }
 
-impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
+impl<'tcx> Delegate<'tcx> for ForRangeDelegate<'tcx> {
     fn consume(&mut self, cmt: &PlaceWithHirId<'tcx>, _diag_expr_id: HirId) {
         match cmt.place.base {
             PlaceBase::Local(hir_id) if hir_id == self.var_hir_id => {}
@@ -232,7 +267,8 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
         }
 
         if !self.node_inside_loop(cmt.hir_id) {
-            self.reads_outside_loop += 1;
+            self.reads_outside_loop
+                .set(self.reads_outside_loop.get() + 1);
         }
     }
 
@@ -242,17 +278,20 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
             _ => return,
         }
 
-        if bk == ty::BorrowKind::MutBorrow {
+        if bk == ty::BorrowKind::Mutable {
             if !self.node_inside_loop(cmt.hir_id) {
                 // Be conservative here and assume that a
                 // mutable borrow outside the loop implies a read
-                self.reads_outside_loop += 1;
+                self.reads_outside_loop
+                    .set(self.reads_outside_loop.get() + 1);
             } else {
-                self.writes_inside_loop += 1;
+                self.writes_inside_loop
+                    .set(self.writes_inside_loop.get() + 1);
             }
         } else {
             if !self.node_inside_loop(cmt.hir_id) {
-                self.reads_outside_loop += 1;
+                self.reads_outside_loop
+                    .set(self.reads_outside_loop.get() + 1);
             }
         }
     }
@@ -264,7 +303,8 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
         }
 
         if self.node_inside_loop(cmt.hir_id) {
-            self.writes_inside_loop += 1;
+            self.writes_inside_loop
+                .set(self.writes_inside_loop.get() + 1);
         }
     }
 

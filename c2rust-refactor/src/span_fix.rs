@@ -6,11 +6,12 @@
 //!    reference to `std::fmt::Display::fmt` used to format `x`.  We'd like to detect all of these
 //!    bogus spans and reset them.
 
+use crate::ast_manip::mut_visit::{self, MutVisitor};
 use log::trace;
-use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::*;
-use rustc_span::source_map::{Span, DUMMY_SP};
+use rustc_span::{Span, DUMMY_SP};
+
 use smallvec::SmallVec;
 use std::mem;
 
@@ -120,7 +121,7 @@ impl MutVisitor for FixFormat {
             let mac_span = self.ctxt.parent_span;
             let leave_ctxt = FormatCtxt::new(e.span);
             self.descend(leave_ctxt, |this| {
-                mut_visit::noop_visit_expr(e, this);
+                mut_visit::walk_expr(this, e);
                 e.span = mac_span;
             })
         } else if !e.span.from_expansion() && self.ctxt.in_format && !self.ctxt.in_match {
@@ -128,24 +129,24 @@ impl MutVisitor for FixFormat {
             let mac_span = self.ctxt.parent_span;
             let new_ctxt = self.ctxt.enter_span(mac_span);
             self.descend(new_ctxt, |this| {
-                mut_visit::noop_visit_expr(e, this);
+                mut_visit::walk_expr(this, e);
                 e.span = mac_span;
             })
         } else if self.ctxt.in_format && crate::matches!([e.kind] ExprKind::Match(..)) {
             let new_ctxt = self.ctxt.enter_match(e.span);
-            self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))
+            self.descend(new_ctxt, |this| mut_visit::walk_expr(this, e))
         } else if !self.ctxt.in_format && self.is_format_entry(&e) {
             trace!("ENTERING format! at {:?}", e);
             let new_ctxt = self.ctxt.enter_format(e.span);
-            self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))
+            self.descend(new_ctxt, |this| mut_visit::walk_expr(this, e))
         } else {
             let new_ctxt = self.ctxt.enter_span(e.span);
-            self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))
+            self.descend(new_ctxt, |this| mut_visit::walk_expr(this, e))
         }
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
-        mut_visit::noop_visit_mac(mac, self)
+        mut_visit::walk_mac(self, mac)
     }
 }
 
@@ -164,7 +165,7 @@ impl MutVisitor for FixAttrs {
         } else {
             i
         };
-        mut_visit::noop_flat_map_item(i, self)
+        mut_visit::walk_flat_map_item(self, i)
     }
 
     fn flat_map_foreign_item(&mut self, mut fi: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
@@ -172,11 +173,11 @@ impl MutVisitor for FixAttrs {
         if new_span != fi.span {
             fi.span = new_span;
         }
-        mut_visit::noop_flat_map_foreign_item(fi, self)
+        mut_visit::walk_flat_map_foreign_item(self, fi)
     }
 
     fn visit_mac_call(&mut self, mac: &mut MacCall) {
-        mut_visit::noop_visit_mac(mac, self)
+        mut_visit::walk_mac(self, mac)
     }
 }
 

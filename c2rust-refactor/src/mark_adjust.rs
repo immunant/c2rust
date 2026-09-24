@@ -5,8 +5,8 @@ use rustc_ast::visit::{self, Visitor};
 use rustc_ast::*;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Res};
-use rustc_span::symbol::Symbol;
-use rustc_type_ir::sty::TyKind;
+use rustc_span::Symbol;
+use rustc_type_ir::TyKind;
 use std::str::FromStr;
 
 use crate::ast_builder::IntoSymbol;
@@ -397,7 +397,7 @@ pub fn mark_pub_in_mod(st: &CommandState, label: &str) {
 
     visit_nodes(&*st.krate(), |i: &Item| {
         if st.marked(i.id, label) {
-            if let ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _)) = i.kind {
+            if let ItemKind::Mod(_, ModKind::Loaded(ref m_items, _, _, _)) = i.kind {
                 for i in &m_items[..] {
                     if let VisibilityKind::Public = i.vis.kind {
                         st.add_mark(i.id, label);

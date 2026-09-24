@@ -1,7 +1,6 @@
 use c2rust_analysis_rt::mir_loc::{self, DefPathHash, Func};
 use c2rust_analysis_rt::mir_loc::{FuncId, MirPlace};
-use rustc_index::newtype_index;
-use rustc_index::vec::IndexVec;
+use rustc_index::{newtype_index, IndexVec};
 use rustc_middle::mir::{BasicBlock, Local};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Display;
@@ -236,6 +235,7 @@ impl Display for Node {
 
 newtype_index!(
     /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+    #[orderable]
     pub struct NodeId {}
 );
 
@@ -331,6 +331,7 @@ impl Display for Graph {
 
 newtype_index!(
     /// Implement `Idx` and other traits like MIR indices (`Local`, `BasicBlock`, etc.)
+    #[orderable]
     pub struct GraphId {}
 );
 

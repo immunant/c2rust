@@ -51,10 +51,14 @@ enum ItemKind {
     Impl(impl),
     MacCall(mac),
     MacroDef(tts),
+    Delegation(delegation),
+    DelegationMac(delegation),
 }
 
-struct StaticItem { ty, mutability, expr }
-struct ConstItem { defaultness, ty, expr }
+struct StaticItem { ty, safety, mutability, expr }
+struct ConstItem { defaultness, generics, ty, expr }
+struct Delegation { id, qself, path, rename, body, from_glob }
+struct DelegationMac { qself, prefix, suffixes, body }
 
 enum Inline {
     Yes,
@@ -64,18 +68,19 @@ enum Inline {
 // Ignore inline because we flip it from false to true when printing (see
 // `<Item as PrintParse>::to_string`).
 enum ModKind {
-    Loaded(#[mac_table_seq] items, #[rewrite_ignore] inline, spans),
+    Loaded(#[mac_table_seq] items, #[rewrite_ignore] inline, spans, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] error),
     Unloaded,
 }
 
 struct ModSpans { inner_span, inject_use_span }
 
-struct TyAliasWhereClause(has_where_token, span);
-struct TyAlias { defaultness, generics, where_clauses, where_predicates_split, bounds, ty }
+struct TyAliasWhereClause { has_where_token, span }
+struct TyAliasWhereClauses { before, after, split }
+struct TyAlias { defaultness, generics, where_clauses, bounds, ty }
 
 struct Impl {
     defaultness,
-    unsafety,
+    safety,
     generics,
     constness,
     polarity,
@@ -95,7 +100,7 @@ enum Extern {
 enum UseTreeKind {
     Simple(ident),
     Glob,
-    Nested(nested),
+    Nested { items, span },
 }
 
 struct UseTree { kind, prefix, span }
@@ -107,6 +112,8 @@ enum AssocItemKind {
     Fn(fn),
     Type(ta),
     MacCall(mac),
+    Delegation(delegation),
+    DelegationMac(delegation),
 }
 
 struct TraitRef { path, ref_id }
@@ -115,20 +122,20 @@ struct EnumDef { variants }
 #[extend_span]
 struct Variant { #[match=ignore] attrs, id, span, vis, ident, data, disr_expr, is_placeholder }
 enum VariantData {
-    Struct(fields, recovered),
+    Struct { fields, recovered },
     Tuple(fields, id),
     Unit(id),
 }
 
 #[extend_span]
-struct FieldDef { #[match=ignore] attrs, id, span, vis, ident, ty, is_placeholder }
+struct FieldDef { #[match=ignore] attrs, id, span, vis, safety, ident, ty, default, is_placeholder }
 
-struct ForeignMod { unsafety, abi, #[mac_table_seq] items }
+struct ForeignMod { extern_span, safety, abi, #[mac_table_seq] items }
 #[rewrite_print_recover] #[rewrite_seq_item] #[extend_span]
 struct ForeignItem { ident, #[match=ignore] attrs, kind, id, span, vis, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum ForeignItemKind {
     Fn(fn),
-    Static(ty, mutbl, init),
+    Static(item),
     TyAlias(ta),
     MacCall(mac),
 }
@@ -143,21 +150,31 @@ enum GenericParamKind {
     Const { ty, kw_span, default },
 }
 struct WhereClause { has_where_token, predicates, span }
-enum WherePredicate {
+struct WherePredicate { kind, id, span }
+enum WherePredicateKind {
     BoundPredicate(pred),
     RegionPredicate(pred),
     EqPredicate(pred),
 }
 
-struct WhereBoundPredicate { span, bounded_ty, bounds, bound_generic_params }
-struct WhereRegionPredicate { span, lifetime, bounds }
-struct WhereEqPredicate { span, lhs_ty, rhs_ty }
+struct WhereBoundPredicate { bounded_ty, bounds, bound_generic_params }
+struct WhereRegionPredicate { lifetime, bounds }
+struct WhereEqPredicate { lhs_ty, rhs_ty }
 
-enum TraitBoundModifier {
-    None,
-    Maybe,
-    MaybeConst,
-    MaybeConstMaybe,
+struct TraitBoundModifiers { constness, asyncness, polarity }
+enum BoundConstness {
+    Never,
+    Always(span),
+    Maybe(span),
+}
+enum BoundAsyncness {
+    Normal,
+    Async(span),
+}
+enum BoundPolarity {
+    Positive,
+    Negative(span),
+    Maybe(span),
 }
 
 #[match=ignore]
@@ -178,7 +195,9 @@ enum TyKind {
     Array(ty, len),
     Ptr(mty),
     Ref(lt, mty),
+    PinnedRef(lt, mty),
     BareFn(ty),
+    UnsafeBinder(ty),
     Never,
     Tup(tys),
     Path(qself, path),
@@ -189,8 +208,10 @@ enum TyKind {
     Infer,
     ImplicitSelf,
     #[mac_table_record] MacCall(mac),
-    Err,
+    Err(error),
     CVarArgs,
+    Pat(ty, pat),
+    Dummy,
 }
 
 enum TraitObjectSyntax {
@@ -224,12 +245,14 @@ enum UintTy {
 }
 
 enum FloatTy {
+    F16,
     F32,
     F64,
+    F128,
 }
 
-struct AssocConstraint { id, ident, gen_args, kind, span }
-enum AssocConstraintKind {
+struct AssocItemConstraint { id, ident, gen_args, kind, span }
+enum AssocItemConstraintKind {
     Equality { term },
     Bound { bounds },
 }
@@ -239,19 +262,25 @@ enum Term {
 }
 
 #[boxed]
-struct BareFnTy { unsafety, ext, generic_params, decl, decl_span }
+struct BareFnTy { safety, ext, generic_params, decl, decl_span }
+struct UnsafeBinderTy { generic_params, inner_ty }
 struct Lifetime { id, ident }
 enum GenericBound {
-    Trait(poly_trait_ref, modifier),
+    Trait(poly_trait_ref),
     Outlives(lt),
+    Use(args, span),
+}
+enum PreciseCapturingArg {
+    Lifetime(lt),
+    Arg(path, id),
 }
 
-struct PolyTraitRef { bound_generic_params, trait_ref, span }
+struct PolyTraitRef { bound_generic_params, modifiers, trait_ref, span }
 
 struct FnSig { header, decl, span }
 
 struct FnDecl { inputs, output }
-struct FnHeader { unsafety, asyncness, constness, ext }
+struct FnHeader { safety, coroutine_kind, constness, ext }
 #[rewrite_print]
 struct Param { attrs, ty, pat, id, span, is_placeholder }
 enum FnRetTy {
@@ -260,7 +289,7 @@ enum FnRetTy {
 }
 
 struct Trait {
-    unsafety,
+    safety,
     is_auto,
     generics,
     bounds,
@@ -271,7 +300,7 @@ struct Trait {
 struct Stmt { id, kind, span }
 #[no_debug]
 enum StmtKind {
-    Local(local),
+    Let(local),
     Item(item),
     Expr(expr),
     Semi(expr),
@@ -280,7 +309,7 @@ enum StmtKind {
 }
 
 #[extend_span]
-struct Local { id, pat, ty, kind, span, #[match=ignore] attrs, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
+struct Local { id, pat, ty, kind, span, colon_sp, #[match=ignore] attrs, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum LocalKind {
     Decl,
     Init(expr),
@@ -301,22 +330,22 @@ enum ExprKind {
     Unary(op, #[prec=PREFIX] a),
     Lit(lit),
     Cast(#[prec=As] expr, ty),
-    Type(#[prec=Colon] expr, ty),
-    Let(pats, #[prec_special=Cond] expr, span),
+    Type(expr, ty),
+    Let(pats, #[prec_special=Cond] expr, span, recovered),
     If(#[prec_special=Cond] cond, then_body, else_body),
     While(#[prec_special=Cond] cond, body, label),
-    ForLoop(pat, #[prec_special=Cond] iter, body, label),
+    ForLoop { pat, #[prec_special=Cond] iter, body, label, kind },
     Loop(body, label, span),
-    Match(#[prec_special=Cond] target, arms),
+    Match(#[prec_special=Cond] target, arms, kind),
     Closure(closure),
     Block(body, label),
-    Async(cap, block),
-    Await(expr),
+    Gen(cap, block, kind, span),
+    Await(#[prec=POSTFIX] expr, span),
     TryBlock(body),
     Assign(#[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs, span),
     AssignOp(op, #[lvalue_mut] #[prec_inc=Assign] lhs, #[prec=Assign] rhs),
     Field(#[lr_propagate] #[prec=POSTFIX] expr, ident),
-    Index(#[lr_propagate] #[prec=POSTFIX] arr, idx),
+    Index(#[lr_propagate] #[prec=POSTFIX] arr, idx, span),
     // Special case for `Range`.  `AssocOp` claims that `Range` has higher precedence than
     // `Assign`, but `x .. x = x` gives a parse error instead of `x .. (x = x)`.  Here we use a
     // fake precedence value so that any child with lower precedence than a "normal" binop gets
@@ -329,6 +358,7 @@ enum ExprKind {
     Continue(label),
     Ret(#[prec=JUMP] expr),
     InlineAsm(asm),
+    OffsetOf(ty, fields),
     #[mac_table_record] MacCall(mac),
     Struct(expr),
     Repeat(item, count),
@@ -336,10 +366,18 @@ enum ExprKind {
     Try(#[prec=POSTFIX] expr),
     Yield(#[prec=JUMP] expr),
     Yeet(expr),
+    Become(#[prec=JUMP] expr),
     IncludedBytes(#[rewrite_ignore] bytes),
     FormatArgs(args),
-    Err,
+    UnsafeBinderCast(kind, expr, ty),
+    Err(error),
+    Dummy,
 }
+
+enum ForLoopKind { For, ForAwait }
+enum GenBlockKind { Async, Gen, AsyncGen }
+enum MatchKind { Prefix, Postfix }
+enum UnsafeBinderCastKind { Wrap, Unwrap }
 
 #[boxed] #[prec_contains_expr]
 struct MethodCall {
@@ -354,7 +392,7 @@ struct Closure {
     binder,
     capture_clause,
     constness,
-    asyncness,
+    coroutine_kind,
     movability,
     fn_decl,
     body,
@@ -439,14 +477,21 @@ enum PatKind {
     Path(qself, path),
     Tuple(pats),
     Box(pat),
+    Deref(pat),
     Ref(pat, mutbl),
     Lit(expr),
     Range(lo, hi, end),
     Slice(pats),
     Rest,
+    Never,
+    Guard(pat, expr),
     Paren(pat),
     #[mac_table_record] MacCall(mac),
+    Err(error),
 }
+
+enum PatFieldsRest { Rest, Recovered(error), None }
+enum Recovered { No, Yes(error) }
 
 struct StrLit { style, symbol, suffix, span, symbol_unescaped }
 
@@ -455,12 +500,13 @@ struct MetaItemLit { symbol, suffix, kind, span }
 enum LitKind {
     Str(sym, style),
     ByteStr(bytes, style),
+    CStr(bytes, style),
     Byte(x),
     Char(x),
     Int(x, ty),
     Float(sym, ty),
     Bool(x),
-    Err,
+    Err(error),
 }
 
 enum LitFloatType {
@@ -481,7 +527,9 @@ enum TokenLitKind {
     StrRaw(n),
     ByteStr,
     ByteStrRaw(n),
-    Err,
+    CStr,
+    CStrRaw(n),
+    Err(error),
 }
 
 enum Defaultness {
@@ -504,14 +552,16 @@ enum IsAuto {
     No,
 }
 
-enum Unsafe {
-    Yes(span),
-    No,
+enum Safety {
+    Unsafe(span),
+    Safe(span),
+    Default,
 }
 
-enum Async {
-    Yes { span, closure_id, return_impl_trait_id },
-    No,
+enum CoroutineKind {
+    Async { span, closure_id, return_impl_trait_id },
+    Gen { span, closure_id, return_impl_trait_id },
+    AsyncGen { span, closure_id, return_impl_trait_id },
 }
 
 flag Abi;
@@ -534,12 +584,12 @@ enum RangeSyntax {
     DotDotEq,
 }
 enum ByRef {
-    Yes,
+    Yes(mutbl),
     No,
 }
-struct BindingAnnotation(by_ref, mutbl);
+struct BindingMode(by_ref, mutbl);
 enum CaptureBy {
-    Value,
+    Value { move_kw },
     Ref,
 }
 enum BlockCheckMode {
@@ -567,7 +617,7 @@ enum AttrKind {
     Normal(attr),
     DocComment(kind, symbol),
 }
-struct AttrItem { path, args, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
+struct AttrItem { unsafety, path, args, #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens }
 enum AttrStyle {
     Outer,
     Inner,
@@ -585,6 +635,7 @@ struct PathSegment { ident, id, args }
 enum GenericArgs {
     AngleBracketed(abpd),
     Parenthesized(ppd),
+    ParenthesizedElided(span),
 }
 struct AngleBracketedArgs { span, args }
 enum AngleBracketedArg {
@@ -606,7 +657,7 @@ struct MacCallStmt {
     #[match=ignore] attrs,
     #[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore] tokens,
 }
-struct MacCall { path, args, prior_type_ascription }
+struct MacCall { path, args }
 enum MacStmtStyle {
     Semicolon,
     Braces,
@@ -621,12 +672,7 @@ struct MacroDef { body, macro_rules }
 enum AttrArgs {
     Empty,
     Delimited(args),
-    Eq(span, value),
-}
-
-enum AttrArgsEq {
-    Ast(expr),
-    Hir(lit),
+    Eq { eq_span, expr },
 }
 
 struct DelimArgs {
@@ -636,6 +682,7 @@ struct DelimArgs {
 }
 
 struct InlineAsm {
+    asm_macro,
     template,
     template_strs,
     operands,
@@ -654,7 +701,9 @@ enum InlineAsmOperand {
     SplitInOut { reg, late, in_expr, out_expr },
     Const { anon_const },
     Sym { sym },
+    Label { block },
 }
+enum AsmMacro { Asm, GlobalAsm, NakedAsm }
 enum InlineAsmRegOrRegClass {
     Reg(symbol),
     RegClass(symbol),
@@ -663,12 +712,6 @@ struct InlineAsmSym { id, qself, path }
 #[match=eq] flag InlineAsmOptions;
 
 #[match=custom] struct Label { ident }
-
-enum MacDelimiter {
-    Parenthesis,
-    Bracket,
-    Brace,
-}
 
 struct AnonConst {
     id,
@@ -686,9 +729,14 @@ flag NodeId;
 #[equiv_mode=ignore] #[rewrite_ignore]
 flag AttrId;
 
+// A diagnostic's identity does not affect the syntax represented by a recovered AST node.
+#[equiv_mode=ignore] #[match=ignore] #[rewrite_ignore]
+flag ErrorGuaranteed;
+
 flag usize;
 #[match=eq] flag bool;
 #[match=eq] flag u128;
+#[match=eq] flag Pu128;
 #[match=eq] flag u16;
 #[match=eq] flag u8;
 #[match=eq] flag char;
@@ -702,8 +750,6 @@ enum Nonterminal {
     NtPat(p),
     NtExpr(y),
     NtTy(t),
-    NtIdent(i, raw),
-    NtLifetime(ident),
     NtLiteral(expr),
     NtMeta(m),
     NtPath(p),
@@ -712,10 +758,11 @@ enum Nonterminal {
 
 enum TokenTree {
     Token(t, spacing),
-    Delimited(span, d, tts),
+    Delimited(span, spacing, d, tts),
 }
 
 struct DelimSpan { open, close }
+struct DelimSpacing { open, close }
 
 #[equiv_mode=custom] #[match=ignore] #[rewrite_skip=Rewrite] #[list_node_ids=custom] #[mac_table_custom] #[nt_match_custom] #[lr_expr_custom]
 flag FormatArgs;
@@ -727,8 +774,18 @@ enum Delimiter {
     Parenthesis,
     Bracket,
     Brace,
-    Invisible,
+    Invisible(origin),
 }
+
+enum InvisibleOrigin { MetaVar(kind), ProcMacro, FlattenToken }
+enum MetaVarKind {
+    Item, Block, Stmt, Pat(kind),
+    Expr { kind, can_begin_literal_maybe_minus, can_begin_string_literal },
+    Ty, Ident, Lifetime, Literal, Meta, Path, Vis, TT,
+}
+enum NtPatKind { PatWithOr, PatParam { inferred } }
+enum NtExprKind { Expr, Expr2021 { inferred } }
+enum IdentIsRaw { No, Yes }
 
 struct Token { kind, span }
 
@@ -754,7 +811,7 @@ enum TokenKind {
     Comma,
     Semi,
     Colon,
-    ModSep,
+    PathSep,
     RArrow,
     LArrow,
     FatArrow,
@@ -766,7 +823,9 @@ enum TokenKind {
     CloseDelim(delim),
     Literal(lit),
     Ident(s, is_raw),
-    Lifetime(s),
+    NtIdent(ident, is_raw),
+    Lifetime(s, is_raw),
+    NtLifetime(ident, is_raw),
     Interpolated(nt),
     DocComment(kind, style, symbol),
     Eof,
@@ -788,16 +847,17 @@ enum BinOpToken {
 enum Spacing {
     Alone,
     Joint,
+    JointHidden,
 }
 
 #[fold_kind=MetaItemKind]
-struct MetaItem { path, kind, span }
+struct MetaItem { unsafety, path, kind, span }
 enum MetaItemKind {
     Word,
     List(l),
     NameValue(lit),
 }
-enum NestedMetaItem {
+enum MetaItemInner {
     MetaItem(mi),
     Lit(lit),
 }

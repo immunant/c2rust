@@ -25,9 +25,9 @@ use std::collections::hash_map::{self, Entry, HashMap};
 use log::{debug, log_enabled, Level};
 use rustc_arena::DroplessArena;
 use rustc_hir::def_id::DefId;
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 use rustc_middle::ty::{Ty, TyCtxt, TyKind};
-use rustc_span::source_map::Span;
+use rustc_span::Span;
 
 use crate::analysis::labeled_ty::LabeledTyCtxt;
 
@@ -142,9 +142,9 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
         let assign = &mut self.static_assign;
         match self.static_summ.entry(did) {
             Entry::Vacant(e) => *e.insert(self.lcx.label(
-                self.tcx.type_of(did).subst_identity(),
+                self.tcx.type_of(did).instantiate_identity(),
                 &mut |ty| match ty.kind() {
-                    TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                    TyKind::Ref(_, _, _) | TyKind::RawPtr(..) => {
                         let v = assign.push(ConcretePerm::Move);
                         Some(PermVar::Static(v))
                     }
@@ -170,12 +170,12 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                     "tried to create func summ for {:?}, which is already a variant",
                     did
                 );
-                let sig = tcx.fn_sig(did).subst_identity().skip_binder();
+                let sig = tcx.fn_sig(did).instantiate_identity().skip_binder();
                 let mut counter = 0;
 
                 let l_sig = {
                     let mut f = |ty: Ty<'tcx>| match ty.kind() {
-                        TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
+                        TyKind::Ref(_, _, _) | TyKind::RawPtr(..) => {
                             let v = Var(counter);
                             counter += 1;
                             Some(PermVar::Sig(v))
