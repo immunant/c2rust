@@ -168,37 +168,30 @@ impl<'c> Translation<'c> {
             Cow::Borrowed(string)
         };
 
-        literal_type_id = expected_type_id.unwrap_or(literal_type_id);
+        let target_type_id = expected_type_id.unwrap_or(literal_type_id);
+        literal_type_id = target_type_id;
+
         let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
         let Some(literal_floating_kind) = literal_type_kind.floating_kind() else {
             panic!("type of floating literal is not a floating type: {literal_type_kind:?}");
         };
 
+        // Rust only has `f32` and `f64` literals, so any other kinds must be translated as one of
+        // those two, and then cast.
         let val = match literal_floating_kind {
             CFloatingKind::Float => mk().lit_expr(mk().float_lit(&string, "f32")),
 
             CFloatingKind::Double => mk().lit_expr(mk().float_lit(&string, "f64")),
 
             CFloatingKind::LongDouble | CFloatingKind::Float128 => {
-                if ctx.is_const {
-                    return Err(format_translation_err!(
-                        None,
-                        "f128 cannot be used in constants because `f128::f128::new` is not `const`",
-                    ));
-                }
-
-                self.use_crate(ExternCrate::F128);
-
-                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                let args = vec![mk().lit_expr(mk().float_unsuffixed_lit(&string))];
-
-                mk().call_expr(fn_path, args)
+                literal_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Double);
+                mk().lit_expr(mk().float_unsuffixed_lit(&string))
             }
 
             ref k => panic!("Unsupported floating point literal type {:?}", k),
         };
 
-        Ok(WithStmts::new_val(val))
+        self.make_cast(ctx, literal_type_id, target_type_id, val)
     }
 
     /// Returns the bytes of a string literal, including any additional zero bytes to pad the
