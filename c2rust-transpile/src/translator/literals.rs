@@ -4,7 +4,7 @@
 
 use super::*;
 use failure::format_err;
-use std::iter;
+use std::{borrow::Cow, iter};
 use syn::{Path, TypePath};
 
 impl<'c> Translation<'c> {
@@ -102,34 +102,8 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(expr))
             }
 
-            CLiteral::Floating(val, ref c_str) => {
-                let str = if c_str.is_empty() {
-                    let mut buffer = dtoa::Buffer::new();
-                    buffer.format(val).to_string()
-                } else {
-                    c_str.to_owned()
-                };
-                let val = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::LongDouble | CTypeKind::Float128 => {
-                        if ctx.is_const {
-                            return Err(format_translation_err!(
-                                None,
-                                "f128 cannot be used in constants because `f128::f128::new` is not `const`",
-                            ));
-                        }
-
-                        self.use_crate(ExternCrate::F128);
-
-                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        let args = vec![mk().lit_expr(mk().float_unsuffixed_lit(&str))];
-
-                        mk().call_expr(fn_path, args)
-                    }
-                    CTypeKind::Double => mk().lit_expr(mk().float_lit(&str, "f64")),
-                    CTypeKind::Float => mk().lit_expr(mk().float_lit(&str, "f32")),
-                    ref k => panic!("Unsupported floating point literal type {:?}", k),
-                };
-                Ok(WithStmts::new_val(val))
+            CLiteral::Floating(value, ref string) => {
+                self.convert_floating_literal(ctx, expected_type_id, literal_type_id, value, string)
             }
 
             CLiteral::String(ref bytes, element_size) => {
@@ -177,6 +151,50 @@ impl<'c> Translation<'c> {
                 }
             }
         }
+    }
+
+    fn convert_floating_literal(
+        &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        mut literal_type_id: CQualTypeId,
+        value: f64,
+        string: &str,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let string: Cow<_> = if string.is_empty() {
+            let mut buffer = dtoa::Buffer::new();
+            Cow::Owned(buffer.format(value).to_string())
+        } else {
+            Cow::Borrowed(string)
+        };
+
+        literal_type_id = expected_type_id.unwrap_or(literal_type_id);
+
+        let val = match self.ast_context.resolve_type(literal_type_id.ctype).kind {
+            CTypeKind::Float => mk().lit_expr(mk().float_lit(&string, "f32")),
+
+            CTypeKind::Double => mk().lit_expr(mk().float_lit(&string, "f64")),
+
+            CTypeKind::LongDouble | CTypeKind::Float128 => {
+                if ctx.is_const {
+                    return Err(format_translation_err!(
+                        None,
+                        "f128 cannot be used in constants because `f128::f128::new` is not `const`",
+                    ));
+                }
+
+                self.use_crate(ExternCrate::F128);
+
+                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
+                let args = vec![mk().lit_expr(mk().float_unsuffixed_lit(&string))];
+
+                mk().call_expr(fn_path, args)
+            }
+
+            ref k => panic!("Unsupported floating point literal type {:?}", k),
+        };
+
+        Ok(WithStmts::new_val(val))
     }
 
     /// Returns the bytes of a string literal, including any additional zero bytes to pad the
