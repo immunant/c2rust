@@ -4210,8 +4210,10 @@ impl<'c> Translation<'c> {
         let mut is_negated = false;
 
         if let &CExprKind::Unary(_, CUnOp::Negate, subexpr_id, _) = literal_expr_kind {
-            literal_expr_kind = &self.ast_context.index_unwrap_parens(subexpr_id).kind;
-            is_negated = true;
+            if !self.expr_is_expanded_macro(ctx, subexpr_id, None) {
+                literal_expr_kind = &self.ast_context.index_unwrap_parens(subexpr_id).kind;
+                is_negated = true;
+            }
         }
 
         if let CExprKind::Literal(_, lit) = literal_expr_kind {
