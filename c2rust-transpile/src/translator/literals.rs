@@ -48,12 +48,9 @@ impl<'c> Translation<'c> {
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId, is_negated: bool) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
-            CLiteral::Integer(value, _) | CLiteral::Character(value) => {
-                ty_kind.integer_kind().is_some_and(|integer_kind| {
-                    integer_kind.is_guaranteed_in_range(value)
-                        && (!is_negated || integer_kind.is_signed())
-                })
-            }
+            CLiteral::Integer(value, _) | CLiteral::Character(value) => ty_kind
+                .integer_kind()
+                .is_some_and(|integer_kind| integer_kind.is_guaranteed_in_range(value, is_negated)),
             CLiteral::Floating(value, _) => ty_kind
                 .floating_kind()
                 .is_some_and(|floating_kind| floating_kind.is_guaranteed_in_range(value)),

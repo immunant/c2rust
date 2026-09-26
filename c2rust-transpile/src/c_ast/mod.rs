@@ -3267,60 +3267,64 @@ impl CIntegerKind {
     }
 
     /// Whether `value` is guaranteed to be in this integer type's range.
-    /// Thus, the narrowest possible range is used.
     ///
-    /// For example, for [`Self::Long`], [`i32`]'s range is used,
-    /// as on Linux and macOS (LP64), it's an [`i64`],
-    /// but on Windows (LLP64), it's only an [`i32`].
-    pub(crate) fn is_guaranteed_in_range(self, value: u64) -> bool {
-        fn in_range<T: TryFrom<u64>>(value: u64) -> bool {
-            T::try_from(value).is_ok()
+    /// The narrowest possible range allowed by the C standard is used. That means that,
+    /// for example, `int` is only guaranteed to be 16 bits, `long` only 32 bits, `intptr_t` only
+    /// 16 bits. `char` is considered an unsigned 7 bit value, because it can be signed or unsigned
+    /// and thus only has a guaranteed range of 0 to 127.
+    pub(crate) fn is_guaranteed_in_range(self, value: u64, is_negated: bool) -> bool {
+        // TODO: Rust 1.97: use `value.bit_width()`.
+        fn bit_width(value: u64) -> u32 {
+            u64::BITS - value.leading_zeros()
         }
+
+        let in_range_i =
+            |bits: u32| -> bool { bits > bit_width(value.saturating_sub(is_negated as _)) };
+        let in_range_u = |bits: u32| -> bool { !is_negated && bits >= bit_width(value) };
 
         use CIntegerKind::*;
         match self {
-            // Can be signed or unsigned, so choose the minimum range of each.
-            Char => (u8::MIN as u64..=i8::MAX as u64).contains(&value),
+            Char => in_range_u(7),
 
-            // `int` is at least `i16` and `long` is at least `i32`.
-            SChar => in_range::<i8>(value),
-            Short => in_range::<i16>(value),
-            Int => in_range::<i16>(value),
-            Long => in_range::<i32>(value),
-            LongLong => in_range::<i64>(value),
+            SChar => in_range_i(8),
+            Short => in_range_i(16),
+            Int => in_range_i(16),
+            Long => in_range_i(32),
+            LongLong => in_range_i(64),
 
-            // `unsigned int` is at least `u16` and `unsigned long` is at least `u32`.
-            UChar => in_range::<u8>(value),
-            UShort => in_range::<u16>(value),
-            UInt => in_range::<u16>(value),
-            ULong => in_range::<u32>(value),
-            ULongLong => in_range::<u64>(value),
+            UChar => in_range_u(8),
+            UShort => in_range_u(16),
+            UInt => in_range_u(16),
+            ULong => in_range_u(32),
+            ULongLong => in_range_u(64),
 
-            Int8 => in_range::<i8>(value),
-            Int16 => in_range::<i16>(value),
-            Int32 => in_range::<i32>(value),
-            Int64 => in_range::<i64>(value),
-            Int128 => in_range::<i128>(value),
+            Int8 => in_range_i(8),
+            Int16 => in_range_i(16),
+            Int32 => in_range_i(32),
+            Int64 => in_range_i(64),
+            Int128 => in_range_i(128),
 
-            UInt8 => in_range::<u8>(value),
-            UInt16 => in_range::<u16>(value),
-            UInt32 => in_range::<u32>(value),
-            UInt64 => in_range::<u64>(value),
-            UInt128 => in_range::<u128>(value),
+            UInt8 => in_range_u(8),
+            UInt16 => in_range_u(16),
+            UInt32 => in_range_u(32),
+            UInt64 => in_range_u(64),
+            UInt128 => in_range_u(128),
 
-            IntMax => in_range::<i64>(value),
-            UIntMax => in_range::<u64>(value),
+            IntMax => in_range_i(64),
+            UIntMax => in_range_u(64),
 
-            // There's no guarantee on pointer size, but `NULL` should work.
-            IntPtr => value == 0,
-            UIntPtr => value == 0,
+            IntPtr => in_range_i(16),
+            UIntPtr => in_range_u(16),
+            Size => in_range_u(16),
+            SSize => in_range_i(16),
 
-            // `size_t` is at least a `u16`, and similar for `ssize_t` and `ptrdiff_t`.
-            Size => in_range::<u16>(value),
-            SSize => in_range::<i16>(value),
-            PtrDiff => in_range::<i16>(value),
+            // `ptrdiff_t` must have a range of at least -65535 to +65535, the same range in both
+            // negative and positive. That's because it must be able to hold the subtraction of any
+            // two pointers or `uintptr_t` values.
+            PtrDiff => value <= 0xFFFF,
 
-            WChar => in_range::<i32>(value),
+            // As for `char`
+            WChar => in_range_u(7),
         }
     }
 }
