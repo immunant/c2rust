@@ -11,15 +11,15 @@ expression: cat tests/snapshots/os-specific/f128.2021.linux.clang15.rs
     unused_assignments,
     unused_mut
 )]
-use ::num_traits::{Float, ToPrimitive};
+use ::num_traits::Float;
 #[no_mangle]
 pub unsafe extern "C" fn long_double_test() {
     let mut one: ::f128::f128 = ::f128::f128::new(1.0);
     let mut zero: ::f128::f128 = ::f128::f128::ZERO;
     let mut add: ::f128::f128 = one + zero;
     let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
-    let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
-    let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut i: ::core::ffi::c_int = Into::<::core::ffi::c_int>::into(one);
+    let mut f: ::core::ffi::c_float = Into::<::core::ffi::c_float>::into(one);
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
     let mut is_inf: bool = if huge.is_infinite() {
@@ -41,8 +41,8 @@ pub unsafe extern "C" fn float128_test() {
     let mut zero: ::f128::f128 = ::f128::f128::ZERO;
     let mut add: ::f128::f128 = one + zero;
     let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
-    let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
-    let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut i: ::core::ffi::c_int = Into::<::core::ffi::c_int>::into(one);
+    let mut f: ::core::ffi::c_float = Into::<::core::ffi::c_float>::into(one);
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
     let mut ld_from_float128: ::f128::f128 = one;

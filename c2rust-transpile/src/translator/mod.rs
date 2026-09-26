@@ -4328,7 +4328,16 @@ impl<'c> Translation<'c> {
                 } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
                     self.ast_context[source_cty.ctype].kind
                 {
-                    self.f128_cast_to(val, target_ty_kind)
+                    // The `f128` crate only implements `Into<X> for f128` and not
+                    // `From<f128> for X` for some reason. So we have to use `Into::<T>::into()`
+                    // here, which is a bit ugly and unidiomatic.
+                    let target_type_rs = self.convert_type(target_cty.ctype)?;
+                    let type_args_rs = mk().angle_bracketed_args(vec![target_type_rs]);
+                    let callee_rs = mk().path_expr(vec![
+                        mk().path_segment_with_args("Into", type_args_rs),
+                        mk().path_segment("into"),
+                    ]);
+                    Ok(val.map(|val| mk().call_expr(callee_rs, vec![val])))
                 } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
                     val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
                 } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
@@ -4389,48 +4398,6 @@ impl<'c> Translation<'c> {
 
             CastKind::AtomicToNonAtomic | CastKind::NonAtomicToAtomic => Ok(val),
         }
-    }
-
-    /// Cast a f128 to some other int or float type
-    fn f128_cast_to(
-        &self,
-        val: WithStmts<Box<Expr>>,
-        target_ty_ctype: &CTypeKind,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.use_crate(ExternCrate::NumTraits);
-
-        self.with_cur_file_item_store(|item_store| {
-            item_store.add_use(true, vec!["num_traits".into()], "ToPrimitive");
-        });
-        let to_method_name = match target_ty_ctype {
-            CTypeKind::Float => "to_f32",
-            CTypeKind::Double => "to_f64",
-            CTypeKind::Char => "to_i8",
-            CTypeKind::UChar => "to_u8",
-            CTypeKind::Short => "to_i16",
-            CTypeKind::UShort => "to_u16",
-            CTypeKind::Int => "to_i32",
-            CTypeKind::UInt => "to_u32",
-            CTypeKind::Long => "to_i64",
-            CTypeKind::ULong => "to_u64",
-            CTypeKind::LongLong => "to_i64",
-            CTypeKind::ULongLong => "to_u64",
-            CTypeKind::Int128 => "to_i128",
-            CTypeKind::UInt128 => "to_u128",
-            _ => {
-                return Err(format_err!(
-                    "Tried casting long double to unsupported type: {:?}",
-                    target_ty_ctype
-                )
-                .into());
-            }
-        };
-
-        Ok(val.map(|val| {
-            let to_call = mk().method_call_expr(val, to_method_name, Vec::new());
-
-            mk().method_call_expr(to_call, "unwrap", Vec::new())
-        }))
     }
 
     pub fn implicit_default_expr(
