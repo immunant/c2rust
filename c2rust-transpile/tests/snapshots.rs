@@ -17,7 +17,7 @@ mod common;
 use common::config;
 
 /// Validate that the given C file compiles, then transpile it with the given config.
-fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
+fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig, extra_clang_args: &[&str]) {
     let status = Command::new("clang")
         .args([
             "-c",
@@ -25,6 +25,7 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
             "/dev/null",
             "-w", // Disable warnings.
         ])
+        .args(extra_clang_args)
         .arg(c_path)
         .status();
     assert!(status.unwrap().success());
@@ -35,8 +36,9 @@ fn compile_and_transpile_file(c_path: &Path, config: TranspilerConfig) {
         config,
         &temp_path,
         &[
-            "-w", // Disable warnings.
-        ],
+            &["-w"], // Disable warnings.
+            extra_clang_args,
+        ].concat(),
     );
 }
 
@@ -51,6 +53,7 @@ fn transpile_snapshot(
     expect_compile_error: bool,
     expect_translation_error: bool,
     imported_crates: &[&str],
+    extra_clang_args: &[&str],
 ) {
     let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
     let c_file_name = sanitize_file_name(&c_file_name);
@@ -76,7 +79,7 @@ fn transpile_snapshot(
     if expect_translation_error {
         cfg.fail_on_error = false;
     }
-    compile_and_transpile_file(c_path, cfg);
+    compile_and_transpile_file(c_path, cfg, extra_clang_args);
     let cwd = current_dir().unwrap();
     // The crate name can't have `.`s in it, so use the file stem.
     // This is also why we set it explicitly with `--crate-name`,
@@ -122,6 +125,7 @@ struct TranspileTest<'a> {
     expect_compile_error_edition_2024: bool,
     expect_translation_error: bool,
     imported_crates: Vec<&'a str>,
+    extra_clang_args: Vec<&'a str>,
 }
 
 fn transpile(c_file_name: &str) -> TranspileTest {
@@ -133,6 +137,7 @@ fn transpile(c_file_name: &str) -> TranspileTest {
         expect_compile_error_edition_2024: false,
         expect_translation_error: false,
         imported_crates: Default::default(),
+        extra_clang_args: Default::default(),
     }
 }
 
@@ -191,6 +196,11 @@ impl<'a> TranspileTest<'a> {
         self
     }
 
+    pub fn extra_clang_args(mut self, args: &[&'a str]) -> Self {
+        self.extra_clang_args.extend_from_slice(args);
+        self
+    }
+
     pub fn run(self) {
         let Self {
             c_file_name,
@@ -200,6 +210,7 @@ impl<'a> TranspileTest<'a> {
             expect_compile_error_edition_2024,
             expect_translation_error,
             imported_crates,
+            extra_clang_args,
         } = self;
 
         let specific_dir_prefix = [arch_specific.then_some("arch"), os_specific.then_some("os")]
@@ -252,6 +263,7 @@ impl<'a> TranspileTest<'a> {
             expect_compile_error_edition_2021,
             expect_translation_error,
             &imported_crates,
+            &extra_clang_args,
         );
         transpile_snapshot(
             &platform,
@@ -260,6 +272,7 @@ impl<'a> TranspileTest<'a> {
             expect_compile_error_edition_2024,
             expect_translation_error,
             &imported_crates,
+            &extra_clang_args,
         );
     }
 }
@@ -593,7 +606,7 @@ fn test_zero_init_typedef_reorg_imports() {
     let mut cfg = config(Edition2021);
     cfg.reorganize_definitions = true;
     cfg.disable_refactoring = true;
-    compile_and_transpile_file(c_path, cfg);
+    compile_and_transpile_file(c_path, cfg, &[]);
 
     let rs_path = c_path.with_extension("rs");
     rustc(&rs_path)
@@ -611,7 +624,7 @@ fn test_ssize_t_from_stdio() {
     // one included wins); otherwise translation units within one crate
     // disagree about what `ssize_t` is.
     let c_path = Path::new("tests/snapshots/ssize_t_stdio.c");
-    compile_and_transpile_file(c_path, config(Edition2021));
+    compile_and_transpile_file(c_path, config(Edition2021), &[]);
 
     let rs_path = c_path.with_extension("rs");
     let rs = fs::read_to_string(&rs_path).unwrap();
@@ -632,7 +645,7 @@ fn test_varargs() {
 }
 
 fn transpile_with_c_decl_map_snapshot(c_path: &Path) {
-    compile_and_transpile_file(c_path, config(Default::default()));
+    compile_and_transpile_file(c_path, config(Default::default()), &[]);
 
     let c_decls_path = c_path.with_extension("c_decls.json");
     let snapshot_name = format!("c_decls@{}", c_path.file_name().unwrap().to_str().unwrap());
