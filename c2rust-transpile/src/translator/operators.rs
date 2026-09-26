@@ -245,17 +245,19 @@ impl<'c> Translation<'c> {
         }
 
         // Now that we've translated the rhs, finish translating the assignment operator.
-        self.convert_assignment_operator_with_rhs(
-            ctx,
-            expected_type_id,
-            result_type_id,
-            op,
-            lhs,
-            rhs_type_id,
-            rhs_translation,
-            compute_lhs_type_id,
-            compute_res_type_id,
-        )
+        rhs_translation.and_then_try(|rhs_translation| {
+            self.convert_assignment_operator_with_rhs(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                op,
+                lhs,
+                rhs_type_id,
+                rhs_translation,
+                compute_lhs_type_id,
+                compute_res_type_id,
+            )
+        })
     }
 
     /// Translate an assignment binary operator, provided a pre-translated RHS expression
@@ -267,7 +269,7 @@ impl<'c> Translation<'c> {
         op: CBinOp,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
-        rhs_translation: WithStmts<Box<Expr>>,
+        rhs_translation: Box<Expr>,
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -303,7 +305,7 @@ impl<'c> Translation<'c> {
 
         if let Some(field_id) = bitfield_id {
             let ty = self.convert_type(lhs_type_id.ctype)?;
-            let rhs_expr = mk().cast_expr(rhs_translation.to_expr(), ty);
+            let rhs_expr = mk().cast_expr(rhs_translation, ty);
             return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
         }
 
@@ -327,22 +329,20 @@ impl<'c> Translation<'c> {
             })
         };
 
-        rhs_translation
-            .zip(lhs_translation)
-            .and_then_try(|(rhs, lhs)| {
-                self.make_assignment_operator(
-                    ctx,
-                    expected_type_id,
-                    result_type_id,
-                    op,
-                    lhs,
-                    lhs_type_id,
-                    rhs,
-                    rhs_type_id,
-                    compute_lhs_type_id,
-                    compute_res_type_id,
-                )
-            })
+        lhs_translation.and_then_try(|lhs| {
+            self.make_assignment_operator(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                op,
+                lhs,
+                lhs_type_id,
+                rhs_translation,
+                rhs_type_id,
+                compute_lhs_type_id,
+                compute_res_type_id,
+            )
+        })
     }
 
     fn make_assignment_operator(
@@ -683,7 +683,7 @@ impl<'c> Translation<'c> {
                 op,
                 arg,
                 one_type_id,
-                WithStmts::new_val(one),
+                one,
                 Some(compute_lhs_type_id),
                 Some(compute_res_type_id),
             )
