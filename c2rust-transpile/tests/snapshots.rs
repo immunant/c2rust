@@ -353,6 +353,20 @@ fn test_empty_init() {
 }
 
 #[test]
+fn test_empty_riscv32() {
+    transpile("empty_rv32.h")
+        .extra_clang_args(&["-target", "riscv32-unknown-elf"])
+        .run();
+}
+
+#[test]
+fn test_empty_riscv64() {
+    transpile("empty_rv64.h")
+        .extra_clang_args(&["-target", "riscv64-unknown-elf"])
+        .run();
+}
+
+#[test]
 fn test_enums() {
     transpile("enums.c").run();
 }
