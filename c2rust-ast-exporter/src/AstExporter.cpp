@@ -407,6 +407,10 @@ private:
             /* RISC-V vector types */
             || kind >= BuiltinType::RvvInt8mf8 && kind <= BuiltinType::RvvBool64
 #endif // CLANG_VERSION_MAJOR >= 13
+#if CLANG_VERSION_MAJOR >= 17
+            /* RISC-V vector tuple types, e.g. __rvv_int8mf8x2_t .. __rvv_float64m4x2_t */
+            || kind >= BuiltinType::RvvInt8mf8x2 && kind <= BuiltinType::RvvFloat64m4x2
+#endif // CLANG_VERSION_MAJOR >= 17
             ) {
 // Declare ElemType and ElemCount as needed by various Clang versions
 #if CLANG_VERSION_MAJOR >= 11
