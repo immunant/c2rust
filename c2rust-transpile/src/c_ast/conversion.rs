@@ -2224,35 +2224,39 @@ impl ConversionContext {
                     let target_dependent_macro: Option<String> = from_value(node.extras[2].clone())
                         .expect("Expected to find optional target-dependent macro name");
 
-                    typ = target_dependent_macro
-                        .as_deref()
-                        .and_then(|macro_name| {
-                            let kind = match macro_name {
-                                // Match names in the order Clang defines them.
-                                "__INTMAX_TYPE__" => CTypeKind::IntMax,
-                                "__UINTMAX_TYPE__" => CTypeKind::UIntMax,
-                                "__PTRDIFF_TYPE__" => CTypeKind::PtrDiff,
-                                "__INTPTR_TYPE__" => CTypeKind::IntPtr,
-                                "__SIZE_TYPE__" => CTypeKind::Size,
-                                "__WCHAR_TYPE__" => CTypeKind::WChar,
-                                // __WINT_TYPE__ is defined by Clang but has no obvious translation
-                                // __CHARn_TYPE__ for n ∈ {8, 16, 32} also lack obvious translation
-                                "__UINTPTR_TYPE__" => CTypeKind::UIntPtr,
-                                _ => {
-                                    log::debug!("Unknown target-dependent macro {macro_name}!");
-                                    return None;
-                                }
-                            };
-                            log::trace!("Selected kind {kind} for typedef {name}");
-                            Some(CQualTypeId::new(self.typed_context.type_for_kind(&kind)))
+                    let mut new_type_kind = None;
+
+                    fn type_kind_for_macro_name(macro_name: &str) -> Option<CTypeKind> {
+                        Some(match macro_name {
+                            // Match names in the order Clang defines them.
+                            "__INTMAX_TYPE__" => CTypeKind::IntMax,
+                            "__UINTMAX_TYPE__" => CTypeKind::UIntMax,
+                            "__PTRDIFF_TYPE__" => CTypeKind::PtrDiff,
+                            "__INTPTR_TYPE__" => CTypeKind::IntPtr,
+                            "__SIZE_TYPE__" => CTypeKind::Size,
+                            "__WCHAR_TYPE__" => CTypeKind::WChar,
+                            // __WINT_TYPE__ is defined by Clang but has no obvious translation
+                            // __CHARn_TYPE__ for n ∈ {8, 16, 32} also lack obvious translation
+                            "__UINTPTR_TYPE__" => CTypeKind::UIntPtr,
+                            _ => {
+                                log::debug!("Unknown target-dependent macro {macro_name}!");
+                                return None;
+                            }
                         })
-                        .unwrap_or(typ);
+                    }
+
+                    if let Some(kind) = target_dependent_macro
+                        .as_deref()
+                        .and_then(type_kind_for_macro_name)
+                    {
+                        new_type_kind = Some(kind);
+                    }
 
                     // Other fixed-size types are defined without special compiler involvement, by
                     // standard headers and their transitive includes. In these contexts, we
                     // recognize these typedefs by the name of the typedef type.
-                    let id_for_name = |name| -> Option<_> {
-                        let kind = match name {
+                    fn type_kind_for_typedef_name(name: &str) -> Option<CTypeKind> {
+                        Some(match name {
                             "intmax_t" => CTypeKind::IntMax,
                             "uintmax_t" => CTypeKind::UIntMax,
                             "intptr_t" => CTypeKind::IntPtr,
@@ -2285,10 +2289,9 @@ impl ConversionContext {
                                 log::debug!("Unknown fixed-size type typedef {name}!");
                                 return None;
                             }
-                        };
-                        log::trace!("Selected kind {kind} for typedef {name}");
-                        Some(CQualTypeId::new(self.typed_context.type_for_kind(&kind)))
-                    };
+                        })
+                    }
+
                     let file = self
                         .typed_context
                         .files
@@ -2313,9 +2316,16 @@ impl ConversionContext {
                                     .map(|s| s.starts_with("_int") || s.starts_with("_uint"))
                                     .unwrap_or(false)
                             {
-                                typ = id_for_name(&*name).unwrap_or(typ);
+                                if let Some(kind) = type_kind_for_typedef_name(&name) {
+                                    new_type_kind = Some(kind);
+                                }
                             }
                         }
+                    }
+
+                    if let Some(kind) = new_type_kind {
+                        log::trace!("Selected kind {kind} for typedef {name}");
+                        typ = CQualTypeId::new(self.typed_context.type_for_kind(&kind));
                     }
 
                     let typdef_decl = CDeclKind::Typedef {
