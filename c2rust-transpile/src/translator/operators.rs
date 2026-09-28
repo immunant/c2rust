@@ -618,35 +618,25 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad arg type"))?;
 
-        let one = match self.ast_context.resolve_type(arg_type.ctype).kind {
-            // TODO: If rust gets f16 support:
-            // CTypeKind::Half |
-            CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
-            CTypeKind::LongDouble | CTypeKind::Float128 => {
-                self.use_crate(ExternCrate::F128);
-
-                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                let args = vec![mk().lit_expr(mk().float_unsuffixed_lit("1."))];
-
-                mk().call_expr(fn_path, args)
-            }
-            _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
-        };
-
         let mut one_type_id = arg_type;
         let mut compute_lhs_type_id = arg_type;
         let mut compute_res_type_id = result_type_id;
 
-        match self.ast_context.resolve_type(arg_type.ctype).kind {
+        let one = match self.ast_context.resolve_type(arg_type.ctype).kind {
             CTypeKind::Pointer(..) => {
                 one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int));
+                mk().lit_expr(mk().int_unsuffixed_lit(1)).into()
             }
             CTypeKind::Enum(enum_id) => {
                 one_type_id = self.enum_underlying_type(enum_id);
                 compute_lhs_type_id = one_type_id;
                 compute_res_type_id = one_type_id;
+                mk().lit_expr(mk().int_unsuffixed_lit(1)).into()
             }
-            _ => {}
+            ref type_kind if type_kind.is_floating_type() => {
+                self.convert_floating_literal(ctx, None, one_type_id, 1.0, "1.0")?
+            }
+            _ => mk().lit_expr(mk().int_unsuffixed_lit(1)).into(),
         };
 
         // If we aren't going to be using the result, may as well do a simple pre-increment
@@ -654,17 +644,19 @@ impl<'c> Translation<'c> {
         let op = op.underlying_compound_assignment().unwrap();
 
         if dont_yield_old_value {
-            self.convert_assignment_operator_with_rhs(
-                ctx,
-                expected_type_id,
-                result_type_id,
-                op,
-                arg,
-                one_type_id,
-                one,
-                Some(compute_lhs_type_id),
-                Some(compute_res_type_id),
-            )
+            one.and_then_try(|one| {
+                self.convert_assignment_operator_with_rhs(
+                    ctx,
+                    expected_type_id,
+                    result_type_id,
+                    op,
+                    arg,
+                    one_type_id,
+                    one,
+                    Some(compute_lhs_type_id),
+                    Some(compute_res_type_id),
+                )
+            })
         } else {
             self.name_reference_write_read(ctx.used(), arg)?
                 .and_then(|lhs| {
@@ -678,18 +670,20 @@ impl<'c> Translation<'c> {
                     WithStmts::new(vec![save_old_val], (lhs, old_val_expr))
                 })
                 .and_then_try(|(lhs, old_val_expr)| {
-                    let val = self.make_assignment_operator(
-                        ctx.unused(),
-                        expected_type_id,
-                        result_type_id,
-                        op,
-                        lhs,
-                        arg_type,
-                        one,
-                        one_type_id,
-                        compute_lhs_type_id,
-                        compute_res_type_id,
-                    )?;
+                    let val = one.and_then_try(|one| {
+                        self.make_assignment_operator(
+                            ctx.unused(),
+                            expected_type_id,
+                            result_type_id,
+                            op,
+                            lhs,
+                            arg_type,
+                            one,
+                            one_type_id,
+                            compute_lhs_type_id,
+                            compute_res_type_id,
+                        )
+                    })?;
 
                     // Replace the assignment result with the old value
                     Ok(val.map(|_| old_val_expr))
