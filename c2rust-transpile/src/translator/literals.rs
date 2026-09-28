@@ -153,7 +153,7 @@ impl<'c> Translation<'c> {
         }
     }
 
-    fn convert_floating_literal(
+    pub(crate) fn convert_floating_literal(
         &self,
         ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
