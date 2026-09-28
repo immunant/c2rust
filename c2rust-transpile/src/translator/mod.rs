@@ -3553,7 +3553,9 @@ impl<'c> Translation<'c> {
                 }
             },
 
-            Literal(ty, ref kind) => self.convert_literal(ctx, override_ty.unwrap_or(ty), kind),
+            Literal(result_type_id, ref kind) => {
+                self.convert_literal(ctx, override_ty, result_type_id, kind)
+            }
 
             ImplicitCast(ty, expr, kind, opt_field_id, _)
             | ExplicitCast(ty, expr, kind, opt_field_id, _) => self.convert_cast(
