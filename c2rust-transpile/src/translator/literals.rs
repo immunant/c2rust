@@ -169,13 +169,17 @@ impl<'c> Translation<'c> {
         };
 
         literal_type_id = expected_type_id.unwrap_or(literal_type_id);
+        let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
+        let Some(literal_floating_kind) = literal_type_kind.floating_kind() else {
+            panic!("type of floating literal is not a floating type: {literal_type_kind:?}");
+        };
 
-        let val = match self.ast_context.resolve_type(literal_type_id.ctype).kind {
-            CTypeKind::Float => mk().lit_expr(mk().float_lit(&string, "f32")),
+        let val = match literal_floating_kind {
+            CFloatingKind::Float => mk().lit_expr(mk().float_lit(&string, "f32")),
 
-            CTypeKind::Double => mk().lit_expr(mk().float_lit(&string, "f64")),
+            CFloatingKind::Double => mk().lit_expr(mk().float_lit(&string, "f64")),
 
-            CTypeKind::LongDouble | CTypeKind::Float128 => {
+            CFloatingKind::LongDouble | CFloatingKind::Float128 => {
                 if ctx.is_const {
                     return Err(format_translation_err!(
                         None,
