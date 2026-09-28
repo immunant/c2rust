@@ -62,9 +62,12 @@ impl<'c> Translation<'c> {
     pub fn convert_literal(
         &self,
         ctx: ExprContext,
-        ty: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        literal_type_id: CQualTypeId,
         lit: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let ty = expected_type_id.unwrap_or(literal_type_id);
+
         match *lit {
             CLiteral::Integer(val, base) => Ok(WithStmts::new_val(
                 self.mk_int_lit(ctx, ty, val, base, false)?,
