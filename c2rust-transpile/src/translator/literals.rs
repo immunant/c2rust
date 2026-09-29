@@ -51,9 +51,10 @@ impl<'c> Translation<'c> {
             CLiteral::Integer(value, _) | CLiteral::Character(value) => ty_kind
                 .integer_kind()
                 .is_some_and(|integer_kind| integer_kind.is_guaranteed_in_range(value, is_negated)),
-            CLiteral::Floating(value, _) => ty_kind
-                .floating_kind()
-                .is_some_and(|floating_kind| floating_kind.is_guaranteed_in_range(value)),
+
+            // `convert_floating_literal` will handle incompatible types itself.
+            CLiteral::Floating(_, _) => true,
+
             _ => false,
         }
     }
@@ -169,12 +170,24 @@ impl<'c> Translation<'c> {
         };
 
         let target_type_id = expected_type_id.unwrap_or(literal_type_id);
-        literal_type_id = target_type_id;
 
         let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
-        let Some(literal_floating_kind) = literal_type_kind.floating_kind() else {
+        let Some(mut literal_floating_kind) = literal_type_kind.floating_kind() else {
             panic!("type of floating literal is not a floating type: {literal_type_kind:?}");
         };
+
+        if let Some(expected_type_id) = expected_type_id {
+            let expected_type_kind = &self.ast_context.resolve_type(expected_type_id.ctype).kind;
+
+            if let Some(expected_floating_kind) = expected_type_kind.floating_kind() {
+                if literal_floating_kind == expected_floating_kind
+                    || expected_floating_kind.is_guaranteed_in_range(value)
+                {
+                    literal_type_id = expected_type_id;
+                    literal_floating_kind = expected_floating_kind;
+                }
+            }
+        }
 
         // Rust only has `f32` and `f64` literals, so any other kinds must be translated as one of
         // those two, and then cast.
