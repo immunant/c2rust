@@ -1101,7 +1101,7 @@ impl<'a> Translation<'a> {
             // are generated when we are expecting to require a write, which will need
             // to make a method call with some input which we do not yet have access
             // to and will have to be handled elsewhere, IE `bf.set_a(1)`
-            if !ctx.is_bitfield_write {
+            if !ctx.is_bitfield_write() {
                 // Cases A and B above
                 val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
             }

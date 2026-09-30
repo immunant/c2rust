@@ -109,7 +109,7 @@ impl<'c> Translation<'c> {
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
-        let mutbl = if ctx.is_const && !pointee_cty.qualifiers.is_const {
+        let mutbl = if ctx.is_const() && !pointee_cty.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
@@ -243,7 +243,7 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        let simple_index_array = if ctx.is_address_needed {
+        let simple_index_array = if ctx.is_address_needed() {
             // We can't necessarily index into an array if we're using
             // that element to compute an address.
             None
@@ -525,7 +525,7 @@ impl<'c> Translation<'c> {
         let target_ty = self.convert_type(target_cty.ctype)?;
 
         if self.ast_context.is_function_pointer(target_cty.ctype) {
-            if ctx.is_const {
+            if ctx.is_const() {
                 return Err(format_translation_err!(
                     None,
                     "cannot transmute integers to Option<fn ...> in `const` context",
@@ -543,7 +543,7 @@ impl<'c> Translation<'c> {
         }
         // Rust 1.90: `const_strict_provenance` feature added
         // Rust 1.91: stabilized
-        else if ctx.is_const && self.tcfg.edition < RustEdition::Edition2024 {
+        else if ctx.is_const() && self.tcfg.edition < RustEdition::Edition2024 {
             if source_ty_kind.is_bool() {
                 self.use_crate(ExternCrate::Libc);
                 Ok(val.map(|mut val| {
@@ -631,7 +631,7 @@ impl<'c> Translation<'c> {
         target_cty: CQualTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if ctx.is_const {
+        if ctx.is_const() {
             return Err(format_translation_err!(
                 None,
                 "cannot observe pointer values in `const` context",
@@ -693,7 +693,7 @@ impl<'c> Translation<'c> {
             mk().method_call_expr(val, method, vec![])
         } else {
             // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
-            if ctx.is_const {
+            if ctx.is_const() {
                 return Err(format_translation_err!(
                     None,
                     "cannot check nullity of pointer in `const` context",
