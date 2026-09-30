@@ -125,7 +125,7 @@ impl<'c> Translation<'c> {
         target_cty: CQualTypeId,
         mut val: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if ctx.is_pattern {
+        if ctx.is_pattern() {
             return Err(TranslationError::generic(
                 "cast from enum is not supported in patterns",
             ));
@@ -161,7 +161,7 @@ impl<'c> Translation<'c> {
                 return Ok(WithStmts::new_val(val));
             }
 
-            if ctx.is_pattern {
+            if ctx.is_pattern() {
                 return Err(TranslationError::generic(
                     "cast from enum is not supported in patterns",
                 ));

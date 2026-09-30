@@ -262,7 +262,7 @@ impl<'c> Translation<'c> {
             }
         };
 
-        if ctx.is_const {
+        if ctx.is_const() {
             let zero_expr = mk().lit_expr(mk().int_lit(0, "u8"));
             let n_bytes_expr = mk().lit_expr(mk().int_lit(bytes, ""));
             let expr = mk().repeat_expr(zero_expr, n_bytes_expr);
@@ -295,7 +295,7 @@ impl<'c> Translation<'c> {
 
             // When used in a const context, we cannot call the standard functions since they
             // are not const and so we are forced to transmute
-            let call = if ctx.is_const {
+            let call = if ctx.is_const() {
                 is_unsafe = true;
                 let tuple = mk().tuple_expr(params);
                 transmute_expr(mk().infer_ty(), mk().infer_ty(), tuple)

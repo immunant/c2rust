@@ -171,7 +171,7 @@ impl<'c> Translation<'c> {
 
         // Find the first macro after the macro we're currently expanding, if any.
         let first_macro = macros
-            .splitn(2, |info| ctx.converting_macro == Some(info.macro_id))
+            .splitn(2, |info| ctx.converting_macro() == Some(info.macro_id))
             .last()
             .unwrap()
             .first();
