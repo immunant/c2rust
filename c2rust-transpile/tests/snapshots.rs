@@ -340,6 +340,11 @@ fn test_const_macro_bitfield() {
 }
 
 #[test]
+fn test_const_macro_deref() {
+    transpile("const_macro_deref.c").run();
+}
+
+#[test]
 fn test_empty_init() {
     transpile("empty_init.c").run();
 }

@@ -1,0 +1,54 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/const_macro_deref.2024.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unsafe_op_in_unsafe_fn,
+    unused_assignments,
+    unused_mut
+)]
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct regs {
+    pub data: ::core::ffi::c_uint,
+}
+pub const REG_ARRAY: *mut ::core::ffi::c_uint = ::core::ptr::with_exposed_provenance_mut::<
+    ::core::ffi::c_uint,
+>(0x40000000 as ::core::ffi::c_int as usize);
+pub const REG_STRUCT: *mut regs =
+    ::core::ptr::with_exposed_provenance_mut::<regs>(0x40000000 as ::core::ffi::c_int as usize);
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn set_bits() {
+    ::core::ptr::write_volatile(
+        ::core::ptr::with_exposed_provenance_mut::<::core::ffi::c_uint>(
+            0x40000000 as ::core::ffi::c_int as usize,
+        ),
+        ::core::ptr::read_volatile::<::core::ffi::c_uint>(
+            ::core::ptr::with_exposed_provenance_mut::<::core::ffi::c_uint>(
+                0x40000000 as ::core::ffi::c_int as usize,
+            ),
+        ) | 1 as ::core::ffi::c_uint,
+    );
+    ::core::ptr::write_volatile(
+        REG_ARRAY.offset(1isize),
+        ::core::ptr::read_volatile::<::core::ffi::c_uint>(REG_ARRAY.offset(1isize))
+            | 2 as ::core::ffi::c_uint,
+    );
+    ::core::ptr::write_volatile(
+        &raw mut (*REG_STRUCT).data,
+        ::core::ptr::read_volatile::<::core::ffi::c_uint>(&raw const (*REG_STRUCT).data)
+            | 4 as ::core::ffi::c_uint,
+    );
+}
+static mut counter: ::core::ffi::c_int = 0;
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn next_counter() -> ::core::ffi::c_int {
+    let c2rust_fresh0 = counter;
+    counter += 1;
+    return c2rust_fresh0;
+}
