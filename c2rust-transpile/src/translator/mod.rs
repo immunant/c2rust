@@ -2288,14 +2288,12 @@ impl<'c> Translation<'c> {
                     };
                 }
 
-                let ctx = ctx.static_();
-
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if self.static_initializer_is_uncompilable(initializer, typ) {
                     // Note: We don't pass `is_const` through here. Extracted initializers are run
                     // outside of the static initializer, in a non-const context.
-                    let ctx = ctx.not_const();
+                    let ctx = ctx.static_().not_const();
 
                     let ConvertedVariable { ty, mutbl: _, init } =
                         self.convert_variable(ctx, initializer, typ)?;
@@ -2654,7 +2652,7 @@ impl<'c> Translation<'c> {
         typ: CQualTypeId,
     ) -> TranslationResult<Vec<Box<Item>>> {
         let ConvertedVariable { ty, mutbl: _, init } =
-            self.convert_variable(ctx.const_(), initializer, typ)?;
+            self.convert_variable(ctx.static_().const_(), initializer, typ)?;
         let mut init = init?;
         let mut items = init
             .stmts_to_items()
@@ -2730,7 +2728,7 @@ impl<'c> Translation<'c> {
                     .get_span(SomeId::Decl(decl_id))
                     .unwrap_or_else(Span::call_site);
                 let items = self.convert_compilable_static(
-                    ctx.static_(),
+                    ctx,
                     mk().span(span).mutbl(),
                     &ident2,
                     initializer,
@@ -3223,7 +3221,7 @@ impl<'c> Translation<'c> {
 
             let elts = self.compute_size_of_type(ctx, expected_type_id, result_type_id, elts)?;
             return elts.and_then_try(|lhs| {
-                let len = self.convert_expr(ctx.not_static(), len, expected_type_id)?;
+                let len = self.convert_expr(ctx, len, expected_type_id)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
