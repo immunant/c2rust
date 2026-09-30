@@ -676,16 +676,7 @@ pub fn translate(
     preprocessed_definitions: &IndexMap<CDeclId, String>,
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
-    let ctx = ExprContext {
-        is_used: false,
-        is_const: false,
-        is_pattern: false,
-        is_static: false,
-        decay_ref: DecayRef::Default,
-        is_bitfield_write: false,
-        is_address_needed: false,
-        converting_macro: None,
-    };
+    let ctx = ExprContext::default();
 
     {
         t.locate_comments();
@@ -2571,7 +2562,7 @@ impl<'c> Translation<'c> {
                 // A `const` context is not "already unsafe" the way code within a `fn` is
                 // (since we translate all `fn`s as `unsafe`). Therefore, in `const` contexts,
                 // expose any underlying unsafety in the initializer with an `unsafe` block.
-                let init = if ctx.is_const {
+                let init = if ctx.is_const() {
                     init.wrap_unsafe()
                         .to_pure_expr()
                         .expect("init should not have any statements")
@@ -2580,7 +2571,7 @@ impl<'c> Translation<'c> {
                 };
 
                 let zeroed = self.implicit_default_expr(ctx.used(), typ.ctype)?;
-                let zeroed = if ctx.is_const {
+                let zeroed = if ctx.is_const() {
                     zeroed.wrap_unsafe().to_pure_expr()
                 } else {
                     zeroed.to_pure_expr()
@@ -3129,7 +3120,7 @@ impl<'c> Translation<'c> {
             }
         }
 
-        if ctx.is_pattern
+        if ctx.is_pattern()
             && !matches!(
                 expr_kind,
                 CExprKind::Paren(..)
@@ -3235,7 +3226,7 @@ impl<'c> Translation<'c> {
 
             ConstantExpr(ty, child, value) => {
                 if let Some(constant) = value {
-                    if ctx.is_pattern {
+                    if ctx.is_pattern() {
                         self.convert_expr(ctx, child, override_ty)
                     } else {
                         self.convert_constant(constant).map(WithStmts::new_val)
@@ -3549,7 +3540,7 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
             .kind;
-        if ctx.converting_macro.is_some() {
+        if ctx.is_converting_macro() {
             // TODO Determining which declarations have been declared within the scope of the const macro expr
             // vs. which are out-of-scope of the const macro is non-trivial,
             // so for now, we don't allow const macros referencing any declarations.
@@ -3579,7 +3570,7 @@ impl<'c> Translation<'c> {
             );
         }
 
-        if ctx.is_pattern {
+        if ctx.is_pattern() {
             return Err(TranslationError::generic(
                 "non-EnumConstant DeclRefs are not supported in patterns",
             ));
@@ -3607,7 +3598,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Function { parameters, .. } => {
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
-                if ctx.is_address_needed {
+                if ctx.is_address_needed() {
                     let ty = self.convert_type(result_type_id.ctype)?;
                     let actual_ty = self
                         .type_converter
@@ -3655,7 +3646,7 @@ impl<'c> Translation<'c> {
                 // but this requirement was removed in later versions of the
                 // `raw_ref_op` feature.
                 if (*has_static_duration || *has_thread_duration)
-                    && (self.tcfg.edition < Edition2024 || !ctx.is_address_needed)
+                    && (self.tcfg.edition < Edition2024 || !ctx.is_address_needed())
                 {
                     set_unsafe = true;
                 }
@@ -3898,7 +3889,7 @@ impl<'c> Translation<'c> {
             CastKind::ArrayToPointerDecay
             | CastKind::FunctionToPointerDecay
             | CastKind::BuiltinFnToFnPtr => {
-                ctx.is_address_needed = true;
+                ctx = ctx.address_needed();
             }
             _ => {}
         }
@@ -3942,7 +3933,7 @@ impl<'c> Translation<'c> {
         let mut expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
 
         // In patterns, skip over `ConstantExpr`s.
-        if ctx.is_pattern {
+        if ctx.is_pattern() {
             if let &CExprKind::ConstantExpr(_, expr_id, _) = expr_kind {
                 expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
             }
@@ -4060,7 +4051,7 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        if ctx.is_pattern
+        if ctx.is_pattern()
             && !matches!(
                 kind,
                 CastKind::ToVoid | CastKind::ConstCast | CastKind::IntegralCast
@@ -4091,7 +4082,7 @@ impl<'c> Translation<'c> {
             | CastKind::BooleanToSignedIntegral => {
                 let target_ty = self.convert_type(target_cty.ctype)?;
 
-                if ctx.is_pattern && !target_ty_kind.is_enum() {
+                if ctx.is_pattern() && !target_ty_kind.is_enum() {
                     return Err(TranslationError::generic(
                         "integral casts to non-enums are not supported in patterns",
                     ));
@@ -4105,7 +4096,7 @@ impl<'c> Translation<'c> {
                         // just be a no-op.
                         Ok(val)
                     } else {
-                        if ctx.is_const {
+                        if ctx.is_const() {
                             return Err(format_translation_err!(
                                 None,
                                 "f128 cannot be used in constants because \

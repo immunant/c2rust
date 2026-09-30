@@ -3,32 +3,32 @@ use indexmap::IndexSet;
 use crate::c_ast::CDeclId;
 
 /// Options that impact an expression and all of its subexpressions.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ExprContext {
     /// We will be referring to the expression by address. In this context we
     /// can't index arrays because they may legally go out of bounds. We also
     /// need to explicitly cast function references to fn() so we get their
     /// address in function pointer literals.
-    pub(crate) is_address_needed: bool,
+    is_address_needed: bool,
 
-    pub(crate) is_bitfield_write: bool,
+    is_bitfield_write: bool,
 
     /// In a Rust const context, for example in a static initializer or constant-like macro
     /// translation.
-    pub(crate) is_const: bool,
+    is_const: bool,
 
-    pub(crate) converting_macro: Option<CDeclId>,
+    converting_macro: Option<CDeclId>,
 
     pub(crate) decay_ref: DecayRef,
 
     /// In a context where a pattern is expected, such as for `match` arms.
     /// This restricts what kinds of expressions can be emitted.
-    pub(crate) is_pattern: bool,
+    is_pattern: bool,
 
     /// Evaluating a C global/static variable.
     /// This is usually in a const context, but doesn't have to be, for example with initializers
     /// that are executed by the `c2rust_run_static_initializers` function.
-    pub(crate) is_static: bool,
+    is_static: bool,
 
     /// Whether the result value of the expression is used in a larger expression.
     ///
@@ -50,10 +50,14 @@ pub struct ExprContext {
     /// - If an expression is pure (has no side effects), then it should inherit its `is_used` value
     /// from its parent expression: if the parent expression is going to be discarded, then so are
     /// all of its pure child expressions.
-    pub(crate) is_used: bool,
+    is_used: bool,
 }
 
 impl ExprContext {
+    pub(crate) fn is_address_needed(&self) -> bool {
+        self.is_address_needed
+    }
+
     pub(crate) fn address_needed(self) -> Self {
         Self {
             is_address_needed: true,
@@ -68,11 +72,19 @@ impl ExprContext {
         }
     }
 
+    pub(crate) fn is_bitfield_write(&self) -> bool {
+        self.is_bitfield_write
+    }
+
     pub(crate) fn bitfield_write(self) -> Self {
         Self {
             is_bitfield_write: true,
             ..self
         }
+    }
+
+    pub(crate) fn is_const(&self) -> bool {
+        self.is_const
     }
 
     pub(crate) fn const_(self) -> Self {
@@ -87,6 +99,10 @@ impl ExprContext {
             is_const: false,
             ..self
         }
+    }
+
+    pub(crate) fn is_converting_macro(&self) -> bool {
+        self.converting_macro.is_some()
     }
 
     /// Are we expanding the given macro in the current context?
@@ -108,6 +124,10 @@ impl ExprContext {
         }
     }
 
+    pub(crate) fn is_pattern(&self) -> bool {
+        self.is_pattern
+    }
+
     pub(crate) fn pattern(self) -> Self {
         Self {
             is_pattern: true,
@@ -120,6 +140,10 @@ impl ExprContext {
             is_pattern: false,
             ..self
         }
+    }
+
+    pub(crate) fn is_static(&self) -> bool {
+        self.is_static
     }
 
     pub(crate) fn static_(self) -> Self {
@@ -148,9 +172,10 @@ impl ExprContext {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DecayRef {
     Yes,
+    #[default]
     Default,
     No,
 }
