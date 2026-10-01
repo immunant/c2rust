@@ -18,6 +18,7 @@
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
+use crate::context::ExprContext;
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::{self, SpanExt};
 use c2rust_ast_printer::pprust;
