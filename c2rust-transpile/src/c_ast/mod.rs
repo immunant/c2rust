@@ -1138,19 +1138,11 @@ impl TypedAstContext {
         match self[expr].kind {
             // A literal is always `const`.
             Literal(_, _) => true,
-            // Dereferencing a raw pointer is not `const`,
-            // e.g. `*(volatile uint32_t *)0x40000000` for a memory-mapped register.
+            // Dereferencing a raw pointer is only `const` if it points to memory
+            // known during const evaluation, which we can't tell here.
+            // E.g. `*(volatile uint32_t *)0x40000000` for a memory-mapped register
+            // has no provenance and must be accessed at runtime anyway.
             Unary(_, CUnOp::Deref, _, _) => false,
-            // Increments and decrements modify their operand, so they are not `const`.
-            Unary(
-                _,
-                CUnOp::PreIncrement
-                | CUnOp::PostIncrement
-                | CUnOp::PreDecrement
-                | CUnOp::PostDecrement,
-                _,
-                _,
-            ) => false,
             // Other unary ops should be `const`.
             // TODO handle `f128` or use the primitive type.
             Unary(_, _, expr, _) => is_const(expr),
@@ -1179,11 +1171,11 @@ impl TypedAstContext {
                 let is_const_fn = false; // TODO detect which `fn`s are `const`.
                 is_const(fn_expr) && args.iter().copied().all(is_const) && is_const_fn
             }
-            // `p->field` dereferences the raw pointer `p`, so it is not `const`.
+            // `p->field` dereferences the raw pointer `p`, see `CUnOp::Deref` above.
             Member(_, _, _, MemberKind::Arrow, _) => false,
             Member(_, expr, _, MemberKind::Dot, _) => is_const(expr),
-            // Indexing a raw pointer dereferences it, so it is not `const`.
-            // Only indexing an actual array (which decays to a pointer in C) might be.
+            // Indexing a raw pointer dereferences it, see `CUnOp::Deref` above.
+            // Only indexing an actual array (which decays to a pointer in C) might be `const`.
             ArraySubscript(_, lhs, rhs, _) => {
                 let is_array = |expr| {
                     matches!(

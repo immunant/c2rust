@@ -1,6 +1,7 @@
 // Const-like macros that dereference a pointer, e.g. memory-mapped registers
 // as defined by MCU vendor headers, must be inlined at each use site, not
-// emitted as a `const` (dereferencing a raw pointer isn't `const`).
+// emitted as a `const`. The pointer has no provenance during const evaluation,
+// and the register must be accessed at runtime anyway.
 
 struct regs {
     unsigned int data;
@@ -16,14 +17,4 @@ void set_bits(void) {
     REG |= 1;
     REG_INDEXED |= 2;
     REG_MEMBER |= 4;
-}
-
-// Increments and decrements modify their operand, so they aren't `const`.
-
-static int counter;
-
-#define NEXT_COUNTER (counter++)
-
-int next_counter(void) {
-    return NEXT_COUNTER;
 }

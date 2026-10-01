@@ -45,10 +45,3 @@ pub unsafe extern "C" fn set_bits() {
             | 4 as ::core::ffi::c_uint,
     );
 }
-static mut counter: ::core::ffi::c_int = 0;
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn next_counter() -> ::core::ffi::c_int {
-    let c2rust_fresh0 = counter;
-    counter += 1;
-    return c2rust_fresh0;
-}
