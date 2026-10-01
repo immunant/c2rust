@@ -140,7 +140,7 @@ impl<'c> Translation<'c> {
                 let len = bytes_padded.len();
                 let val = mk().lit_expr(bytes_padded);
 
-                if ctx.needs_address && element_size == 1 {
+                if ctx.is_address_needed && element_size == 1 {
                     // Unlike in C, Rust string literals are already references by default.
                     // So if the address needs to be taken, just make a bare literal and let
                     // `convert_address_of_common` cast it to the appropriate type.
@@ -159,7 +159,7 @@ impl<'c> Translation<'c> {
                     // A transmute creates a temporary, which cannot have its address taken without
                     // creating dangling pointers. Wrap it inside an inline `const` block, so that
                     // it will be const-promoted to 'static.
-                    if ctx.needs_address {
+                    if ctx.is_address_needed {
                         self.use_feature("inline_const");
                         // An inline `const` block is its own safety context and does not inherit
                         // the surrounding `unsafe`, so the transmute needs an explicit `unsafe`
@@ -196,8 +196,8 @@ impl<'c> Translation<'c> {
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         // C compound literals are lvalues, but equivalent Rust expressions generally are not.
         // So if an address is needed, store it in an intermediate variable first.
-        if !ctx.needs_address || !ctx.is_used() || ctx.expanding_macro.is_some() {
-            return self.convert_expr(ctx.not_needs_address(), val, override_ty);
+        if !ctx.is_address_needed || !ctx.is_used() || ctx.converting_macro.is_some() {
+            return self.convert_expr(ctx.not_address_needed(), val, override_ty);
         }
 
         let fresh_name = self
@@ -208,7 +208,7 @@ impl<'c> Translation<'c> {
 
         // Translate the expression to be assigned to the fresh variable.
         // It will be assigned by value, so we don't need its address anymore.
-        let val = self.convert_expr(ctx.used().not_needs_address(), val, override_ty)?;
+        let val = self.convert_expr(ctx.used().not_address_needed(), val, override_ty)?;
 
         // If we are translating a static variable,
         // then the fresh variable should also be static.

@@ -683,8 +683,8 @@ pub fn translate(
         is_static: false,
         decay_ref: DecayRef::Default,
         is_bitfield_write: false,
-        needs_address: false,
-        expanding_macro: None,
+        is_address_needed: false,
+        converting_macro: None,
     };
 
     {
@@ -3549,7 +3549,7 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
             .kind;
-        if ctx.expanding_macro.is_some() {
+        if ctx.converting_macro.is_some() {
             // TODO Determining which declarations have been declared within the scope of the const macro expr
             // vs. which are out-of-scope of the const macro is non-trivial,
             // so for now, we don't allow const macros referencing any declarations.
@@ -3607,7 +3607,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Function { parameters, .. } => {
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
-                if ctx.needs_address {
+                if ctx.is_address_needed {
                     let ty = self.convert_type(result_type_id.ctype)?;
                     let actual_ty = self
                         .type_converter
@@ -3655,7 +3655,7 @@ impl<'c> Translation<'c> {
                 // but this requirement was removed in later versions of the
                 // `raw_ref_op` feature.
                 if (*has_static_duration || *has_thread_duration)
-                    && (self.tcfg.edition < Edition2024 || !ctx.needs_address)
+                    && (self.tcfg.edition < Edition2024 || !ctx.is_address_needed)
                 {
                     set_unsafe = true;
                 }
@@ -3898,7 +3898,7 @@ impl<'c> Translation<'c> {
             CastKind::ArrayToPointerDecay
             | CastKind::FunctionToPointerDecay
             | CastKind::BuiltinFnToFnPtr => {
-                ctx.needs_address = true;
+                ctx.is_address_needed = true;
             }
             _ => {}
         }

@@ -5,21 +5,21 @@ use crate::c_ast::CDeclId;
 /// Options that impact an expression and all of its subexpressions.
 #[derive(Debug, Clone, Copy)]
 pub struct ExprContext {
+    /// We will be referring to the expression by address. In this context we
+    /// can't index arrays because they may legally go out of bounds. We also
+    /// need to explicitly cast function references to fn() so we get their
+    /// address in function pointer literals.
+    pub(crate) is_address_needed: bool,
+
     pub(crate) is_bitfield_write: bool,
 
     /// In a Rust const context, for example in a static initializer or constant-like macro
     /// translation.
     pub(crate) is_const: bool,
 
+    pub(crate) converting_macro: Option<CDeclId>,
+
     pub(crate) decay_ref: DecayRef,
-
-    pub(crate) expanding_macro: Option<CDeclId>,
-
-    /// We will be referring to the expression by address. In this context we
-    /// can't index arrays because they may legally go out of bounds. We also
-    /// need to explicitly cast function references to fn() so we get their
-    /// address in function pointer literals.
-    pub(crate) needs_address: bool,
 
     /// In a context where a pattern is expected, such as for `match` arms.
     /// This restricts what kinds of expressions can be emitted.
@@ -54,6 +54,20 @@ pub struct ExprContext {
 }
 
 impl ExprContext {
+    pub(crate) fn address_needed(self) -> Self {
+        Self {
+            is_address_needed: true,
+            ..self
+        }
+    }
+
+    pub(crate) fn not_address_needed(self) -> Self {
+        Self {
+            is_address_needed: false,
+            ..self
+        }
+    }
+
     pub(crate) fn bitfield_write(self) -> Self {
         Self {
             is_bitfield_write: true,
@@ -75,38 +89,21 @@ impl ExprContext {
         }
     }
 
+    /// Are we expanding the given macro in the current context?
+    pub(crate) fn is_converting_macro_id(&self, mac: CDeclId) -> bool {
+        self.converting_macro == Some(mac)
+    }
+
+    pub(crate) fn converting_macro(self, mac: CDeclId) -> Self {
+        Self {
+            converting_macro: Some(mac),
+            ..self
+        }
+    }
+
     pub(crate) fn decay_ref(self) -> Self {
         Self {
             decay_ref: DecayRef::Yes,
-            ..self
-        }
-    }
-
-    /// Are we expanding the given macro in the current context?
-    pub(crate) fn expanding_macro(&self, mac: &CDeclId) -> bool {
-        match self.expanding_macro {
-            Some(expanding) => expanding == *mac,
-            None => false,
-        }
-    }
-
-    pub(crate) fn set_expanding_macro(self, mac: CDeclId) -> Self {
-        Self {
-            expanding_macro: Some(mac),
-            ..self
-        }
-    }
-
-    pub(crate) fn needs_address(self) -> Self {
-        Self {
-            needs_address: true,
-            ..self
-        }
-    }
-
-    pub(crate) fn not_needs_address(self) -> Self {
-        Self {
-            needs_address: false,
             ..self
         }
     }
