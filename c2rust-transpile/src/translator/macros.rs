@@ -68,7 +68,7 @@ impl<'c> Translation<'c> {
             ty: CTypeId,
         }
 
-        let ctx = ctx.const_().set_expanding_macro(macro_id);
+        let ctx = ctx.const_().set_converting_macro(macro_id);
         let canonical = self.ast_context.macro_expansions[&macro_id]
             .iter()
             .try_fold::<Option<ConvertedMacroExpr>, _, _>(None, |canonical, info| {
@@ -171,7 +171,7 @@ impl<'c> Translation<'c> {
 
         // Find the first macro after the macro we're currently expanding, if any.
         let first_macro = macros
-            .splitn(2, |info| ctx.expanding_macro(&info.macro_id))
+            .splitn(2, |info| ctx.converting_macro == Some(info.macro_id))
             .last()
             .unwrap()
             .first();
