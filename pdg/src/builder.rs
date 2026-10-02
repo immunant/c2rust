@@ -23,7 +23,7 @@ pub fn read_metadata(path: &Path) -> eyre::Result<Metadata> {
     Ok(Metadata::read(&bytes)?)
 }
 
-fn parent<'a, 'b>(e: &'a NodeKind, obj: &'b ProvenanceInfo) -> Option<&'b ProvenanceInfo> {
+fn parent<'b>(e: &NodeKind, obj: &'b ProvenanceInfo) -> Option<&'b ProvenanceInfo> {
     use NodeKind::*;
     match e {
         Alloc(..) | AddrOfLocal(..) | AddrOfSized(..) => None,
