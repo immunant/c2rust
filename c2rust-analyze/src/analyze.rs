@@ -382,7 +382,7 @@ fn mark_foreign_fixed<'tcx>(
     }
 }
 
-fn mark_all_statics_fixed<'tcx>(gacx: &mut GlobalAnalysisCtxt<'tcx>, asn: &mut Assignment) {
+fn mark_all_statics_fixed(gacx: &mut GlobalAnalysisCtxt<'_>, asn: &mut Assignment) {
     for (did, lty) in gacx.static_tys.iter() {
         make_ty_fixed(asn, lty);
 
@@ -2437,10 +2437,8 @@ fn pdg_update_permissions_with_callback<'tcx>(
 
 fn local_span(decl: &LocalDecl) -> Span {
     let mut span = decl.source_info.span;
-    if let LocalInfo::User(binding_form) = decl.local_info() {
-        if let BindingForm::Var(v) = binding_form {
-            span = v.pat_span;
-        }
+    if let LocalInfo::User(BindingForm::Var(v)) = decl.local_info() {
+        span = v.pat_span;
     }
     span
 }

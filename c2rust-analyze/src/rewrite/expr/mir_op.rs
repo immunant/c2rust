@@ -1575,11 +1575,10 @@ where
     /// any `self.emit` calls if the overall operation fails.
     pub fn try_build_cast_desc_desc(
         &mut self,
-        from: TypeDesc<'tcx>,
+        mut from: TypeDesc<'tcx>,
         to: TypeDesc<'tcx>,
     ) -> Result<(), String> {
         let orig_from = from;
-        let mut from = orig_from;
 
         // The `from` and `to` pointee types should only differ in their lifetimes.
         let from_pointee_erased = self.tcx.erase_regions(from.pointee_ty);

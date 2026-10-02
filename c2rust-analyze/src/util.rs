@@ -585,7 +585,7 @@ pub fn has_test_attr(tcx: TyCtxt, ldid: LocalDefId, attr: TestAttr) -> bool {
             AttrKind::DocComment(..) => continue,
         };
         let (a, b) = match &path.segments[..] {
-            &[ref a, ref b] => (a, b),
+            [a, b] => (a, b),
             _ => continue,
         };
         if a.ident.name == tool_sym && b.ident.name == name_sym {

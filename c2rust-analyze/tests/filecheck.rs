@@ -12,7 +12,7 @@ fn test(file_name: &str) {
     let file_check = FileCheck::resolve();
     let path = test_dir_for(file!(), true).join(file_name);
     let output_path = analyze.run(&path);
-    file_check.run(&path, &output_path);
+    file_check.run(&path, output_path);
 }
 
 macro_rules! define_test {

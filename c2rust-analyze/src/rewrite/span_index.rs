@@ -44,6 +44,6 @@ impl<T> SpanIndex<T> {
             // a prefix of `span` or have a different `SyntaxContext`; we ignore the values
             // associated with those spans.
             .filter(move |&&(s, _)| s == span)
-            .map(|&(_, ref t)| t)
+            .map(|(_, t)| t)
     }
 }
