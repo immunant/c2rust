@@ -65,7 +65,7 @@ impl<S: SpanLike> RewriteTree<S> {
     ) -> (Vec<RewriteTree<S>>, Vec<(S, Rewrite<S>, RewriteError<S>)>) {
         // Sort by start position and then by decreasing length, so that each parent span comes
         // before all its children.
-        rws.sort_by_key(|&(ref s, _)| (s.lo(), Reverse(s.hi() - s.lo())));
+        rws.sort_by_key(|(s, _)| (s.lo(), Reverse(s.hi() - s.lo())));
 
         // `stack` contains partially-built `RewriteTree`s, which might have more children that we
         // haven't seen yet.  Once we know that a node has no more children, we "commit" that node,
@@ -424,7 +424,7 @@ impl<S: Sink> Emitter<'_, S> {
                 self.emit_str("match ")?;
                 self.emit(expr, 0)?;
                 self.emit_str(" {\n")?;
-                for &(ref pat, ref body) in cases {
+                for (pat, body) in cases {
                     self.emit_str("    ")?;
                     self.emit_str(pat)?;
                     self.emit_str(" => ")?;

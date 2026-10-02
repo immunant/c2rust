@@ -113,8 +113,8 @@ impl<'a, 'tcx> Visitor<'tcx> for ShimCallVisitor<'a, 'tcx> {
 /// * The callee must have at least one non-`FIXED` pointer type in its signature.
 /// * The callee must not be a trait method.  Adding shims for trait methods is more complex than
 ///   handling free functions or inherent methods.
-pub fn gen_shim_call_rewrites<'tcx>(
-    gacx: &GlobalAnalysisCtxt<'tcx>,
+pub fn gen_shim_call_rewrites(
+    gacx: &GlobalAnalysisCtxt<'_>,
     asn: &Assignment,
 ) -> (Vec<(Span, Rewrite)>, HashSet<DefId>) {
     let tcx = gacx.tcx;
@@ -182,8 +182,8 @@ pub enum ManualShimCasts {
     Yes,
 }
 
-pub fn gen_shim_definition_rewrite<'tcx>(
-    gacx: &GlobalAnalysisCtxt<'tcx>,
+pub fn gen_shim_definition_rewrite(
+    gacx: &GlobalAnalysisCtxt<'_>,
     asn: &Assignment,
     def_id: DefId,
     manual_casts: ManualShimCasts,

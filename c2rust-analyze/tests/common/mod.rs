@@ -258,7 +258,7 @@ impl FileCheck {
             .unwrap_or_else(|| {
                 let llvm_config = find_llvm_config().expect("llvm-config not found");
                 let output = Command::new(llvm_config)
-                    .args(&["--bindir"])
+                    .args(["--bindir"])
                     .output()
                     .ok()
                     .filter(|output| output.status.success())
@@ -288,10 +288,7 @@ impl FileCheck {
 
 fn list_all_tests<C: FromIterator<String>>() -> C {
     let current_exe = env::current_exe().unwrap();
-    let output = Command::new(&current_exe)
-        .args(["--list"])
-        .output()
-        .unwrap();
+    let output = Command::new(current_exe).args(["--list"]).output().unwrap();
     let stdout = std::str::from_utf8(&output.stdout).unwrap();
     stdout
         .lines()

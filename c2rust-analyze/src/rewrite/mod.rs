@@ -206,7 +206,7 @@ impl Rewrite {
             Closure1(ref name, ref rw) => Closure1(String::clone(name), try_subst(rw)?),
             Match(ref expr, ref cases) => {
                 let mut new_cases = Vec::with_capacity(cases.len());
-                for &(ref pat, ref body) in cases {
+                for (pat, body) in cases {
                     new_cases.push((String::clone(pat), body.try_subst(subst)?));
                 }
                 Match(try_subst(expr)?, new_cases)
@@ -360,7 +360,7 @@ pub fn apply_rewrites(
                         UpdateFiles::Alongside => path.with_extension("new.rs"),
                         UpdateFiles::AlongsidePointwise(ref s) => {
                             let ext = format!("{}.rs", s);
-                            let p = path.with_extension(&ext);
+                            let p = path.with_extension(ext);
                             debug!("writing to {:?}", p);
                             p
                         }

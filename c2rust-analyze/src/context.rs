@@ -337,7 +337,6 @@ impl<'tcx> Debug for AdtMetadataTable<'tcx> {
                         .label
                         .iter()
                         .map(|p| format!("{:?}", p))
-                        .into_iter()
                         .chain(args.into_iter())
                         .collect::<Vec<_>>()
                         .join(",");
