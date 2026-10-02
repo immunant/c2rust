@@ -457,7 +457,7 @@ impl<'c> Translation<'c> {
             "null_mut"
         };
         let pointee_ty = self.convert_pointee_type(pointer_qty.ctype)?;
-        let type_args = mk().angle_bracketed_args(vec![pointee_ty.clone()]);
+        let type_args = mk().angle_bracketed_args(vec![pointee_ty]);
         let val = mk().call_expr(
             mk().abs_path_expr(vec![
                 mk().path_segment("core"),

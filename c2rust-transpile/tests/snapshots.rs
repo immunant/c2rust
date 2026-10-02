@@ -57,7 +57,7 @@ fn transpile_snapshot(
     extra_clang_args: &[&str],
 ) {
     let c_file_name = c_path.file_name().unwrap().to_str().unwrap();
-    let c_file_name = sanitize_file_name(&c_file_name);
+    let c_file_name = sanitize_file_name(c_file_name);
 
     // Some versions of clang can produce results different from their snapshots,
     // those tests append the clang version to the snapshot of the failing test.
@@ -285,11 +285,11 @@ fn generate_keywords_test() {
         "struct", "while", "do", "typeof", "char",
     ];
     let mut c_code = RUST_KEYWORDS
-        .into_iter()
+        .iter()
         .filter(|keyword| !c_keywords.contains(keyword))
         .map(|name| format!("void {name}(void) {{}}"))
         .join("\n\n");
-    c_code.push_str("\n");
+    c_code.push('\n');
     let c_path = Path::new("tests/snapshots/keywords.c");
     fs_err::write(c_path, c_code).unwrap();
 }
@@ -652,7 +652,7 @@ fn test_ssize_t_from_stdio() {
     compile_and_transpile_file(c_path, config(Edition2021), &[]);
 
     let rs_path = c_path.with_extension("rs");
-    let rs = fs::read_to_string(&rs_path).unwrap();
+    let rs = fs::read_to_string(rs_path).unwrap();
     assert!(
         rs.contains("pub type ssize_t = isize;"),
         "expected `ssize_t` to translate to `isize`, got:\n{rs}"

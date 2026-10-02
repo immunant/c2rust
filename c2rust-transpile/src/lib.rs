@@ -734,7 +734,7 @@ fn transpile_single(
 
     if let Some(decl_map) = maybe_decl_map {
         let decl_map_path = output_path.with_extension("c_decls.json");
-        let file = match File::create(&decl_map_path) {
+        let file = match File::create(decl_map_path) {
             Ok(file) => file,
             Err(e) => panic!(
                 "Unable to open file {} for writing: {}",

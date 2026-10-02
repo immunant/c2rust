@@ -787,7 +787,7 @@ impl<'c> Translation<'c> {
 
             stmts.push(mk().expr_stmt(mk().assign_expr(
                 mk().unary_expr(UnOp::Deref(Default::default()), out),
-                mk().ident_expr(&out_name),
+                mk().ident_expr(out_name),
             )));
 
             Ok(WithStmts::new(stmts, overflowed))

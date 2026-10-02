@@ -2408,7 +2408,7 @@ impl<'c> Translation<'c> {
             // `Debug` representation of the structured CFG), but this makes inspecting
             // the dump files easier.
             let path = format!("dumps/{fn_name}_structures_{suffix}.ron");
-            let mut file = std::fs::File::create(&path).unwrap();
+            let mut file = std::fs::File::create(path).unwrap();
 
             write!(&mut file, "{:#?}", structures).unwrap();
         }
@@ -2645,6 +2645,7 @@ impl<'c> Translation<'c> {
     /// Convert a static with a compilable initializer into its Rust items:
     /// any auxiliary items produced while converting the initializer, followed
     /// by the static item itself, built from `static_def`.
+    #[allow(clippy::vec_box)]
     fn convert_compilable_static(
         &self,
         ctx: ExprContext,
@@ -2835,9 +2836,9 @@ impl<'c> Translation<'c> {
                             .borrow()
                             .get(&fn_id)
                             .expect("cleanup function not registered with renamer");
-                        let cleanup_ident = mk().ident(&cleanup_name);
+                        let cleanup_ident = mk().ident(cleanup_name);
                         let var_ident = mk().ident(&rust_name);
-                        let guard_ident = mk().ident(&format!("_cleanup_{}", rust_name));
+                        let guard_ident = mk().ident(format!("_cleanup_{}", rust_name));
                         syn::parse_quote! {
                             let #guard_ident = CleanupGuard(
                                 &raw mut #var_ident as *mut _,
