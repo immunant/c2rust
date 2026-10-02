@@ -462,7 +462,7 @@ impl RelooperState {
 
                 if loops::match_loop_body(
                     desired_body,
-                    &strict_reachable_from,
+                    strict_reachable_from,
                     &mut body_blocks_copy,
                     &mut follow_blocks_copy,
                     &mut follow_entries_copy,

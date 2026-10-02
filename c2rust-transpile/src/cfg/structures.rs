@@ -1092,13 +1092,13 @@ fn not(bool_expr: &Expr) -> Box<Expr> {
 mod tests {
     use super::*;
 
-    type AST = StructuredAST<Box<Expr>, Pat, Label, Stmt>;
+    type Ast = StructuredAST<Box<Expr>, Pat, Label, Stmt>;
 
     fn label(id: u64) -> Label {
         Label::Synthetic(id)
     }
 
-    fn check(mut input: AST, expected: AST) {
+    fn check(mut input: Ast, expected: Ast) {
         cleanup_labels(&mut input, &None, &mut IndexSet::new());
         assert_eq!(input, expected);
     }
@@ -1107,11 +1107,11 @@ mod tests {
     fn test_removes_label_from_exit_targeting_current_loop() {
         // 'a: loop { break 'a; }  =>  loop { break; }
         check(
-            AST::mk_loop(
+            Ast::mk_loop(
                 Some(label(1)),
-                AST::mk_exit(ExitStyle::Break, Some(label(1))),
+                Ast::mk_exit(ExitStyle::Break, Some(label(1))),
             ),
-            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+            Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, None)),
         );
     }
 
@@ -1119,16 +1119,16 @@ mod tests {
     fn test_keeps_label_for_outer_loop_exit() {
         // 'a: loop { loop { break 'a; } }  =>  'a: loop { loop { break 'a; } }
         check(
-            AST::mk_loop(
+            Ast::mk_loop(
                 Some(label(1)),
-                AST::mk_loop(
+                Ast::mk_loop(
                     Some(label(2)),
-                    AST::mk_exit(ExitStyle::Break, Some(label(1))),
+                    Ast::mk_exit(ExitStyle::Break, Some(label(1))),
                 ),
             ),
-            AST::mk_loop(
+            Ast::mk_loop(
                 Some(label(1)),
-                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+                Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, Some(label(1)))),
             ),
         );
     }
@@ -1137,8 +1137,8 @@ mod tests {
     fn test_removes_unused_loop_label() {
         // 'a: loop { break; }  =>  loop { break; }
         check(
-            AST::mk_loop(Some(label(1)), AST::mk_exit(ExitStyle::Break, None)),
-            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+            Ast::mk_loop(Some(label(1)), Ast::mk_exit(ExitStyle::Break, None)),
+            Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, None)),
         );
     }
 
@@ -1146,11 +1146,11 @@ mod tests {
     fn test_block_unlabeled_loop_with_labeled_break() {
         // 'a: { loop { break 'a; } }  =>  loop { break; }
         check(
-            AST::mk_block(
+            Ast::mk_block(
                 label(1),
-                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+                Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, Some(label(1)))),
             ),
-            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+            Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, None)),
         );
     }
 
@@ -1158,14 +1158,14 @@ mod tests {
     fn test_block_labeled_loop_merges_labels() {
         // 'a: { 'b: loop { break 'b; } }  =>  loop { break; }
         check(
-            AST::mk_block(
+            Ast::mk_block(
                 label(1),
-                AST::mk_loop(
+                Ast::mk_loop(
                     Some(label(2)),
-                    AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                    Ast::mk_exit(ExitStyle::Break, Some(label(2))),
                 ),
             ),
-            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+            Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, None)),
         );
     }
 
@@ -1173,14 +1173,14 @@ mod tests {
     fn test_block_labeled_loop_with_outer_exit() {
         // 'a: { 'b: loop { break 'a; } }  =>  loop { break; }
         check(
-            AST::mk_block(
+            Ast::mk_block(
                 label(1),
-                AST::mk_loop(
+                Ast::mk_loop(
                     Some(label(2)),
-                    AST::mk_exit(ExitStyle::Break, Some(label(1))),
+                    Ast::mk_exit(ExitStyle::Break, Some(label(1))),
                 ),
             ),
-            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+            Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, None)),
         );
     }
 
@@ -1188,14 +1188,14 @@ mod tests {
     fn test_block_loop_with_external_exit() {
         // 'a: { 'b: loop { break 'c; } }  =>  loop { break 'c; }
         check(
-            AST::mk_block(
+            Ast::mk_block(
                 label(1),
-                AST::mk_loop(
+                Ast::mk_loop(
                     Some(label(2)),
-                    AST::mk_exit(ExitStyle::Break, Some(label(3))),
+                    Ast::mk_exit(ExitStyle::Break, Some(label(3))),
                 ),
             ),
-            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(3)))),
+            Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, Some(label(3)))),
         );
     }
 
@@ -1204,19 +1204,19 @@ mod tests {
         // Regression test: ensures block containing labeled loop preserves loop structure.
         // 'a: { 'b: loop { loop { break 'b; } } }  =>  'a: loop { loop { break 'a; } }
         check(
-            AST::mk_block(
+            Ast::mk_block(
                 label(1),
-                AST::mk_loop(
+                Ast::mk_loop(
                     Some(label(2)),
-                    AST::mk_loop(
+                    Ast::mk_loop(
                         Some(label(3)),
-                        AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                        Ast::mk_exit(ExitStyle::Break, Some(label(2))),
                     ),
                 ),
             ),
-            AST::mk_loop(
+            Ast::mk_loop(
                 Some(label(1)),
-                AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+                Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, Some(label(1)))),
             ),
         );
     }
@@ -1225,11 +1225,11 @@ mod tests {
     fn test_nested_blocks_merge_labels() {
         // 'a: { 'b: { break 'b; } }  =>  'a: { break 'a; }
         check(
-            AST::mk_block(
+            Ast::mk_block(
                 label(1),
-                AST::mk_block(label(2), AST::mk_exit(ExitStyle::Break, Some(label(2)))),
+                Ast::mk_block(label(2), Ast::mk_exit(ExitStyle::Break, Some(label(2)))),
             ),
-            AST::mk_block(label(1), AST::mk_exit(ExitStyle::Break, Some(label(1)))),
+            Ast::mk_block(label(1), Ast::mk_exit(ExitStyle::Break, Some(label(1)))),
         );
     }
 
@@ -1237,17 +1237,17 @@ mod tests {
     fn test_nested_blocks_with_loop() {
         // 'a: { 'b: { loop { break 'b; } } }  =>  loop { break; }
         check(
-            AST::mk_block(
+            Ast::mk_block(
                 label(1),
-                AST::mk_block(
+                Ast::mk_block(
                     label(2),
-                    AST::mk_loop(
+                    Ast::mk_loop(
                         Some(label(3)),
-                        AST::mk_exit(ExitStyle::Break, Some(label(2))),
+                        Ast::mk_exit(ExitStyle::Break, Some(label(2))),
                     ),
                 ),
             ),
-            AST::mk_loop(None, AST::mk_exit(ExitStyle::Break, None)),
+            Ast::mk_loop(None, Ast::mk_exit(ExitStyle::Break, None)),
         );
     }
 }

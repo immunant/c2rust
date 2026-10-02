@@ -71,10 +71,10 @@ pub struct CrateConfig<'lcmd> {
 /// Emit `Cargo.toml` and `lib.rs` for a library or `main.rs` for a binary.
 /// Returns the path to `lib.rs` or `main.rs` (or `None` if the output file
 /// existed already).
-pub fn emit_build_files<'lcmd>(
+pub fn emit_build_files(
     tcfg: &TranspilerConfig,
     build_dir: &Path,
-    crate_cfg: Option<CrateConfig<'lcmd>>,
+    crate_cfg: Option<CrateConfig<'_>>,
     workspace_members: Option<Vec<String>>,
 ) -> Option<PathBuf> {
     let mut reg = Handlebars::new();
@@ -350,7 +350,7 @@ fn main() {{
         maybe_write_to_file(&output_path, &output, tcfg.overwrite_existing);
 
         // Update the path written to `Cargo.toml`
-        m.path = Some(file_name.into());
+        m.path = Some(file_name);
         true
     });
 }
@@ -440,7 +440,7 @@ fn emit_lib_rs(
 /// on a nightly toolchain until the `c_variadics` feature is stable.
 fn emit_rust_toolchain(tcfg: &TranspilerConfig, build_dir: &Path) {
     let output_path = build_dir.join("rust-toolchain.toml");
-    let toolchain = tcfg.edition.toolchain().strip_prefix("+").unwrap();
+    let toolchain = tcfg.edition.toolchain().strip_prefix('+').unwrap();
     let output = format!(
         r#"
 [toolchain]
@@ -452,11 +452,11 @@ components = ["rustfmt"]
     maybe_write_to_file(&output_path, output, tcfg.overwrite_existing);
 }
 
-fn emit_cargo_toml<'lcmd>(
+fn emit_cargo_toml(
     tcfg: &TranspilerConfig,
     reg: &Handlebars,
     build_dir: &Path,
-    crate_cfg: &Option<CrateConfig<'lcmd>>,
+    crate_cfg: &Option<CrateConfig<'_>>,
     workspace_members: Option<Vec<String>>,
 ) {
     // rust_checks_path is gone because we don't want to refer to the source
