@@ -26,7 +26,7 @@ use syn::{
     Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
 };
 
-use crate::context::{DecayRef, ExprContext, FuncContext};
+use crate::context::{DecayRef, ExprContext, ExprTreeContext, FuncContext, ItemContext};
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
@@ -676,7 +676,7 @@ pub fn translate(
     preprocessed_definitions: &IndexMap<CDeclId, String>,
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
-    let ctx = ExprContext::default();
+    let ctx = ItemContext::default();
 
     {
         t.locate_comments();
@@ -1833,7 +1833,7 @@ impl<'c> Translation<'c> {
         (fn_item, static_item)
     }
 
-    fn convert_decl(&self, ctx: ExprContext, decl_id: CDeclId) -> TranslationResult<ConvertedDecl> {
+    fn convert_decl(&self, ctx: ItemContext, decl_id: CDeclId) -> TranslationResult<ConvertedDecl> {
         let decl = self
             .ast_context
             .get_decl(&decl_id)
@@ -1973,8 +1973,11 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
-                let ConvertedVariable { ty, mutbl, init: _ } =
-                    self.convert_variable(ctx.static_().const_(), None, typ)?;
+                let ConvertedVariable { ty, mutbl, init: _ } = self.convert_variable(
+                    ExprTreeContext::from(ctx).static_().const_(),
+                    None,
+                    typ,
+                )?;
                 let mut extern_item = mk_linkage(true, &new_name, ident, self.tcfg.edition)
                     .span(span)
                     .set_mutbl(mutbl);
@@ -2054,13 +2057,15 @@ impl<'c> Translation<'c> {
                 if self.static_initializer_is_uncompilable(initializer, typ) {
                     // Note: We don't pass `is_const` through here. Extracted initializers are run
                     // outside of the static initializer, in a non-const context.
-                    let ctx = ctx.static_().not_const();
+                    let ctx = ExprTreeContext::from(ctx).static_();
 
                     let ConvertedVariable { ty, mutbl: _, init } =
                         self.convert_variable(ctx, initializer, typ)?;
                     self.add_static_initializer_to_section(new_name, init?);
 
-                    let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
+                    let default_init = self
+                        .implicit_default_expr(ctx.used().into(), typ.ctype)?
+                        .to_expr();
                     let comment = String::from("// Initialized in c2rust_run_static_initializers");
                     let comment_pos = if span.is_dummy() {
                         None
@@ -2228,7 +2233,7 @@ impl<'c> Translation<'c> {
 
     fn convert_block_with_scope(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         name: &str,
         body_ids: &[CStmtId],
         ret_ty: Option<CQualTypeId>,
@@ -2405,14 +2410,17 @@ impl<'c> Translation<'c> {
     /// by the static item itself, built from `static_def`.
     fn convert_compilable_static(
         &self,
-        ctx: ExprContext,
+        ctx: ItemContext,
         static_def: Builder,
         name: &str,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
     ) -> TranslationResult<Vec<Box<Item>>> {
-        let ConvertedVariable { ty, mutbl: _, init } =
-            self.convert_variable(ctx.static_().const_(), initializer, typ)?;
+        let ConvertedVariable { ty, mutbl: _, init } = self.convert_variable(
+            ExprTreeContext::from(ctx).static_().const_(),
+            initializer,
+            typ,
+        )?;
         let mut init = init?;
         let mut items = init
             .stmts_to_items()
@@ -2427,7 +2435,7 @@ impl<'c> Translation<'c> {
 
     pub fn convert_decl_stmt_info(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         decl_id: CDeclId,
     ) -> TranslationResult<cfg::DeclStmtInfo> {
         if let CDeclKind::Variable {
@@ -2456,7 +2464,9 @@ impl<'c> Translation<'c> {
                     self.convert_variable(ctx, initializer, typ)?;
                 self.add_static_initializer_to_section(&ident2, init?.set_unsafe());
 
-                let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
+                let default_init = self
+                    .implicit_default_expr(ctx.used().into(), typ.ctype)?
+                    .to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2487,7 +2497,7 @@ impl<'c> Translation<'c> {
                     .get_span(SomeId::Decl(decl_id))
                     .unwrap_or_else(Span::call_site);
                 let items = self.convert_compilable_static(
-                    ctx,
+                    ctx.as_item_context(),
                     mk().span(span).mutbl(),
                     &ident2,
                     initializer,
@@ -2570,7 +2580,7 @@ impl<'c> Translation<'c> {
                     init.into_value()
                 };
 
-                let zeroed = self.implicit_default_expr(ctx.used(), typ.ctype)?;
+                let zeroed = self.implicit_default_expr(ctx.used().into(), typ.ctype)?;
                 let zeroed = if ctx.is_const() {
                     zeroed.wrap_unsafe().to_pure_expr()
                 } else {
@@ -2676,7 +2686,7 @@ impl<'c> Translation<'c> {
                 }
 
                 use ConvertedDecl::*;
-                let items = match self.convert_decl(ctx, decl_id)? {
+                let items = match self.convert_decl(ctx.as_item_context(), decl_id)? {
                     Item(item) => vec![item],
                     ForeignItem(item) => {
                         vec![mk()
@@ -2778,13 +2788,13 @@ impl<'c> Translation<'c> {
 
     fn convert_variable(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
-            Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
-            None => self.implicit_default_expr(ctx.used(), typ.ctype),
+            Some(x) => self.convert_expr(ctx.used().into(), x, Some(typ)),
+            None => self.implicit_default_expr(ctx.used().into(), typ.ctype),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
@@ -2925,7 +2935,7 @@ impl<'c> Translation<'c> {
     /// the given type.
     pub fn compute_variable_array_sizes(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         mut type_id: CTypeId,
     ) -> TranslationResult<Vec<Stmt>> {
         let mut stmts = vec![];
@@ -2939,7 +2949,7 @@ impl<'c> Translation<'c> {
 
                     // Convert this expression
                     let expr = self
-                        .convert_expr(ctx.used(), expr_id, None)?
+                        .convert_expr(ctx.used().into(), expr_id, None)?
                         .and_then(|expr| {
                             let name = self
                                 .renamer
@@ -3745,7 +3755,7 @@ impl<'c> Translation<'c> {
                     CStmtKind::Expr(expr_id) => {
                         let ret = cfg::ImplicitReturnType::StmtExpr(ctx, expr_id, lbl.clone());
                         self.convert_block_with_scope(
-                            ctx,
+                            ctx.as_tree_context(),
                             &name,
                             &substmt_ids[0..(n - 1)],
                             None,
@@ -3754,7 +3764,7 @@ impl<'c> Translation<'c> {
                     }
 
                     _ => self.convert_block_with_scope(
-                        ctx,
+                        ctx.as_tree_context(),
                         &name,
                         substmt_ids,
                         None,
@@ -3897,7 +3907,7 @@ impl<'c> Translation<'c> {
         let mut val = self.convert_expr(ctx, expr, None)?;
 
         if is_explicit {
-            let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
+            let stmts = self.compute_variable_array_sizes(ctx.as_tree_context(), ty.ctype)?;
             val = val.prepend_stmts(stmts);
         }
 
