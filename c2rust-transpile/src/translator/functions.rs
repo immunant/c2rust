@@ -8,7 +8,7 @@ use proc_macro2::{TokenStream, TokenTree};
 impl<'c> Translation<'c> {
     pub fn convert_function(
         &self,
-        ctx: ExprContext,
+        ctx: ItemContext,
         decl_id: CDeclId,
         span: Span,
         is_global: bool,
@@ -98,7 +98,7 @@ impl<'c> Translation<'c> {
 
     fn convert_function_inner(
         &self,
-        ctx: ExprContext,
+        ctx: ItemContext,
         span: Span,
         is_global: bool,
         is_inline: bool,
@@ -207,7 +207,8 @@ impl<'c> Translation<'c> {
 
                 let mut body_stmts = vec![];
                 for &(_, _, typ) in arguments {
-                    body_stmts.append(&mut self.compute_variable_array_sizes(ctx, typ.ctype)?);
+                    body_stmts
+                        .append(&mut self.compute_variable_array_sizes(ctx.into(), typ.ctype)?);
                 }
 
                 let body_ids = match self.ast_context.index(body).kind {
@@ -215,7 +216,7 @@ impl<'c> Translation<'c> {
                     _ => panic!("function body expects to be a compound statement"),
                 };
                 let mut converted_body =
-                    self.convert_block_with_scope(ctx, name, body_ids, return_type, ret)?;
+                    self.convert_block_with_scope(ctx.into(), name, body_ids, return_type, ret)?;
                 strip_tail_return(&mut converted_body);
 
                 // If `alloca` was used in the function body, include a variable to hold the
@@ -341,7 +342,7 @@ impl<'c> Translation<'c> {
 
     fn convert_function_param(
         &self,
-        ctx: ExprContext,
+        ctx: ItemContext,
         typ: CQualTypeId,
     ) -> TranslationResult<ConvertedFunctionParam> {
         if self.ast_context.is_va_list(typ.ctype) {
@@ -350,7 +351,7 @@ impl<'c> Translation<'c> {
             return Ok(ConvertedFunctionParam { mutbl, ty });
         }
 
-        self.convert_variable(ctx, None, typ)
+        self.convert_variable(ctx.into(), None, typ)
             .map(|ConvertedVariable { ty, mutbl, .. }| ConvertedFunctionParam { ty, mutbl })
     }
 
