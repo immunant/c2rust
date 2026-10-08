@@ -26,6 +26,7 @@ use syn::{
     Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
 };
 
+use crate::context::{DecayRef, ExprContext, ExprTreeContext, FuncContext, ItemContext};
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::comment_store::CommentStore;
 use crate::rust_ast::item_store::ItemStore;
@@ -74,230 +75,10 @@ struct Import {
     ident_name: String,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum DecayRef {
-    Yes,
-    Default,
-    No,
-}
-
-impl DecayRef {
-    // Here we give intrinsic meaning to default to equate to yes/true
-    // when actually evaluated
-    pub fn is_yes(&self) -> bool {
-        match self {
-            DecayRef::Yes => true,
-            DecayRef::Default => true,
-            DecayRef::No => false,
-        }
-    }
-
-    #[inline]
-    pub fn is_no(&self) -> bool {
-        !self.is_yes()
-    }
-
-    pub fn set_default_to_no(&mut self) {
-        if *self == DecayRef::Default {
-            *self = DecayRef::No;
-        }
-    }
-}
-
-impl From<bool> for DecayRef {
-    fn from(b: bool) -> Self {
-        match b {
-            true => DecayRef::Yes,
-            false => DecayRef::No,
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone)]
 pub enum ReplaceMode {
     None,
     Extern,
-}
-
-/// Options that impact an expression and all of its subexpressions.
-#[derive(Copy, Clone, Debug)]
-pub struct ExprContext {
-    /// Whether the result value of the expression is used in a larger expression.
-    ///
-    /// When the result value is not used in a particular context, only the side effects of the
-    /// expression matter. The `stmts` field of `WithStmts` should hold any statements with side
-    /// effects, and the `val` field is expected to be discarded. It should not appear in the final
-    /// transpiler output, and may be an expression that panics when evaluated.
-    ///
-    /// - `.unused()` should be called for the top-level expression of an `ExprStmt`, the increment
-    /// expression of a `for` loop, the `lhs` of a comma operator expression, and other such cases.
-    ///
-    /// - `.used()` should be called if an expression is needed to evaluate the side effects of a
-    /// parent expression, such as the arguments of a function call (unless the function is known to
-    /// be pure), the operands of an assignment expression, the expression of a `return` statement,
-    /// etc. An expression that sets `.used()` for one of its subexpressions should handle the case
-    /// that its own context has `!is_used`, by moving its side effects into the `stmts` field;
-    /// the `convert_side_effects_expr` helper can be used for this purpose.
-    ///
-    /// - If an expression is pure (has no side effects), then it should inherit its `is_used` value
-    /// from its parent expression: if the parent expression is going to be discarded, then so are
-    /// all of its pure child expressions.
-    is_used: bool,
-
-    /// In a Rust const context, for example in a static initializer or constant-like macro
-    /// translation.
-    is_const: bool,
-
-    /// In a context where a pattern is expected, such as for `match` arms.
-    /// This restricts what kinds of expressions can be emitted.
-    is_pattern: bool,
-
-    /// Evaluating a C global/static variable.
-    /// This is usually in a const context, but doesn't have to be, for example with initializers
-    /// that are executed by the `c2rust_run_static_initializers` function.
-    #[allow(dead_code)]
-    is_static: bool,
-
-    decay_ref: DecayRef,
-    is_bitfield_write: bool,
-
-    /// We will be referring to the expression by address. In this context we
-    /// can't index arrays because they may legally go out of bounds. We also
-    /// need to explicitly cast function references to fn() so we get their
-    /// address in function pointer literals.
-    needs_address: bool,
-
-    expanding_macro: Option<CDeclId>,
-}
-
-impl ExprContext {
-    pub fn used(self) -> Self {
-        ExprContext {
-            is_used: true,
-            ..self
-        }
-    }
-    pub fn unused(self) -> Self {
-        ExprContext {
-            is_used: false,
-            ..self
-        }
-    }
-    pub fn is_used(&self) -> bool {
-        self.is_used
-    }
-
-    pub fn decay_ref(self) -> Self {
-        ExprContext {
-            decay_ref: DecayRef::Yes,
-            ..self
-        }
-    }
-    pub fn const_(self) -> Self {
-        ExprContext {
-            is_const: true,
-            ..self
-        }
-    }
-    pub fn not_const(self) -> Self {
-        ExprContext {
-            is_const: false,
-            ..self
-        }
-    }
-    pub fn pattern(self) -> Self {
-        ExprContext {
-            is_pattern: true,
-            ..self
-        }
-    }
-    pub fn not_pattern(self) -> Self {
-        ExprContext {
-            is_pattern: false,
-            ..self
-        }
-    }
-    pub fn not_static(self) -> Self {
-        ExprContext {
-            is_static: false,
-            ..self
-        }
-    }
-    pub fn static_(self) -> Self {
-        ExprContext {
-            is_static: true,
-            ..self
-        }
-    }
-
-    pub fn bitfield_write(self) -> Self {
-        ExprContext {
-            is_bitfield_write: true,
-            ..self
-        }
-    }
-
-    pub fn needs_address(self) -> Self {
-        ExprContext {
-            needs_address: true,
-            ..self
-        }
-    }
-
-    pub fn not_needs_address(self) -> Self {
-        ExprContext {
-            needs_address: false,
-            ..self
-        }
-    }
-
-    /// Are we expanding the given macro in the current context?
-    pub fn expanding_macro(&self, mac: &CDeclId) -> bool {
-        match self.expanding_macro {
-            Some(expanding) => expanding == *mac,
-            None => false,
-        }
-    }
-    pub fn set_expanding_macro(self, mac: CDeclId) -> Self {
-        ExprContext {
-            expanding_macro: Some(mac),
-            ..self
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct FuncContext {
-    /// The name of the function we're currently translating
-    name: Option<String>,
-    /// The name we give to the Rust function argument corresponding
-    /// to the ellipsis in variadic C functions.
-    va_list_arg_name: Option<String>,
-    /// The va_list decls that are either `va_start`ed or `va_copy`ed.
-    va_list_decl_ids: Option<IndexSet<CDeclId>>,
-    /// The name we give to the Rust variable holding all allocations made with `alloca`.
-    alloca_allocations_name: Option<String>,
-}
-
-impl FuncContext {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn enter_new(&mut self, fn_name: &str) {
-        *self = Self {
-            name: Some(fn_name.to_string()),
-            ..Default::default()
-        };
-    }
-
-    pub fn get_name(&self) -> &str {
-        self.name.as_ref().unwrap()
-    }
-
-    pub fn get_va_list_arg_name(&self) -> &str {
-        self.va_list_arg_name.as_ref().unwrap()
-    }
 }
 
 struct ConvertedMacro {
@@ -895,16 +676,7 @@ pub fn translate(
     preprocessed_definitions: &IndexMap<CDeclId, String>,
 ) -> (String, Option<DeclMap>, PragmaVec, CrateSet) {
     let mut t = Translation::new(ast_context, tcfg, main_file);
-    let ctx = ExprContext {
-        is_used: false,
-        is_const: false,
-        is_pattern: false,
-        is_static: false,
-        decay_ref: DecayRef::Default,
-        is_bitfield_write: false,
-        needs_address: false,
-        expanding_macro: None,
-    };
+    let ctx = ItemContext::default();
 
     {
         t.locate_comments();
@@ -1997,24 +1769,13 @@ impl<'c> Translation<'c> {
         false
     }
 
-    fn add_static_initializer_to_section(
-        &self,
-        ctx: ExprContext,
-        name: &str,
-        typ: CQualTypeId,
-        init: &mut Box<Expr>,
-    ) -> TranslationResult<()> {
-        let mut default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
-
-        std::mem::swap(init, &mut default_init);
-
+    fn add_static_initializer_to_section(&self, name: &str, init: WithStmts<Box<Expr>>) {
+        let init = init.to_expr();
         let root_lhs_expr = mk().path_expr(vec![name]);
-        let assign_expr = mk().assign_expr(root_lhs_expr, default_init);
+        let assign_expr = mk().assign_expr(root_lhs_expr, init);
         let stmt = mk().expr_stmt(assign_expr);
 
         self.sectioned_static_initializers.borrow_mut().push(stmt);
-
-        Ok(())
     }
 
     fn generate_global_static_init(&mut self) -> (Box<Item>, Box<Item>) {
@@ -2072,7 +1833,7 @@ impl<'c> Translation<'c> {
         (fn_item, static_item)
     }
 
-    fn convert_decl(&self, ctx: ExprContext, decl_id: CDeclId) -> TranslationResult<ConvertedDecl> {
+    fn convert_decl(&self, ctx: ItemContext, decl_id: CDeclId) -> TranslationResult<ConvertedDecl> {
         let decl = self
             .ast_context
             .get_decl(&decl_id)
@@ -2212,8 +1973,11 @@ impl<'c> Translation<'c> {
                     .borrow()
                     .get(&decl_id)
                     .expect("Variables should already be renamed");
-                let ConvertedVariable { ty, mutbl, init: _ } =
-                    self.convert_variable(ctx.static_().const_(), None, typ)?;
+                let ConvertedVariable { ty, mutbl, init: _ } = self.convert_variable(
+                    ExprTreeContext::from(ctx).static_().const_(),
+                    None,
+                    typ,
+                )?;
                 let mut extern_item = mk_linkage(true, &new_name, ident, self.tcfg.edition)
                     .span(span)
                     .set_mutbl(mutbl);
@@ -2288,20 +2052,20 @@ impl<'c> Translation<'c> {
                     };
                 }
 
-                let ctx = ctx.static_();
-
                 // Collect problematic static initializers and offload them to sections for the linker
                 // to initialize for us
                 if self.static_initializer_is_uncompilable(initializer, typ) {
                     // Note: We don't pass `is_const` through here. Extracted initializers are run
                     // outside of the static initializer, in a non-const context.
-                    let ctx = ctx.not_const();
+                    let ctx = ExprTreeContext::from(ctx).static_();
 
                     let ConvertedVariable { ty, mutbl: _, init } =
                         self.convert_variable(ctx, initializer, typ)?;
+                    self.add_static_initializer_to_section(new_name, init?);
 
-                    let mut init = init?.to_expr();
-
+                    let default_init = self
+                        .implicit_default_expr(ctx.used().into(), typ.ctype)?
+                        .to_expr();
                     let comment = String::from("// Initialized in c2rust_run_static_initializers");
                     let comment_pos = if span.is_dummy() {
                         None
@@ -2318,12 +2082,11 @@ impl<'c> Translation<'c> {
                         )
                         .map(pos_to_span)
                         .unwrap_or(span);
+                    let static_item = static_def
+                        .span(span)
+                        .static_item(new_name, ty, default_init);
 
-                    self.add_static_initializer_to_section(ctx, new_name, typ, &mut init)?;
-
-                    Ok(ConvertedDecl::Item(
-                        static_def.span(span).static_item(new_name, ty, init),
-                    ))
+                    Ok(ConvertedDecl::Item(static_item))
                 } else {
                     let items = self.convert_compilable_static(
                         ctx,
@@ -2470,7 +2233,7 @@ impl<'c> Translation<'c> {
 
     fn convert_block_with_scope(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         name: &str,
         body_ids: &[CStmtId],
         ret_ty: Option<CQualTypeId>,
@@ -2647,14 +2410,17 @@ impl<'c> Translation<'c> {
     /// by the static item itself, built from `static_def`.
     fn convert_compilable_static(
         &self,
-        ctx: ExprContext,
+        ctx: ItemContext,
         static_def: Builder,
         name: &str,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
     ) -> TranslationResult<Vec<Box<Item>>> {
-        let ConvertedVariable { ty, mutbl: _, init } =
-            self.convert_variable(ctx.const_(), initializer, typ)?;
+        let ConvertedVariable { ty, mutbl: _, init } = self.convert_variable(
+            ExprTreeContext::from(ctx).static_().const_(),
+            initializer,
+            typ,
+        )?;
         let mut init = init?;
         let mut items = init
             .stmts_to_items()
@@ -2669,7 +2435,7 @@ impl<'c> Translation<'c> {
 
     pub fn convert_decl_stmt_info(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         decl_id: CDeclId,
     ) -> TranslationResult<cfg::DeclStmtInfo> {
         if let CDeclKind::Variable {
@@ -2696,7 +2462,11 @@ impl<'c> Translation<'c> {
                     })?;
                 let ConvertedVariable { ty, mutbl: _, init } =
                     self.convert_variable(ctx, initializer, typ)?;
-                let default_init = self.implicit_default_expr(ctx.used(), typ.ctype)?.to_expr();
+                self.add_static_initializer_to_section(&ident2, init?.set_unsafe());
+
+                let default_init = self
+                    .implicit_default_expr(ctx.used().into(), typ.ctype)?
+                    .to_expr();
                 let comment = String::from("// Initialized in c2rust_run_static_initializers");
                 let span = self
                     .comment_store
@@ -2708,9 +2478,6 @@ impl<'c> Translation<'c> {
                     .span(span)
                     .mutbl()
                     .static_item(&ident2, ty, default_init);
-                let mut init = init?.set_unsafe().to_expr();
-
-                self.add_static_initializer_to_section(ctx, &ident2, typ, &mut init)?;
                 self.items.borrow_mut()[&self.main_file].add_item(static_item);
 
                 return Ok(cfg::DeclStmtInfo::empty());
@@ -2730,7 +2497,7 @@ impl<'c> Translation<'c> {
                     .get_span(SomeId::Decl(decl_id))
                     .unwrap_or_else(Span::call_site);
                 let items = self.convert_compilable_static(
-                    ctx.static_(),
+                    ctx.as_item_context(),
                     mk().span(span).mutbl(),
                     &ident2,
                     initializer,
@@ -2805,7 +2572,7 @@ impl<'c> Translation<'c> {
                 // A `const` context is not "already unsafe" the way code within a `fn` is
                 // (since we translate all `fn`s as `unsafe`). Therefore, in `const` contexts,
                 // expose any underlying unsafety in the initializer with an `unsafe` block.
-                let init = if ctx.is_const {
+                let init = if ctx.is_const() {
                     init.wrap_unsafe()
                         .to_pure_expr()
                         .expect("init should not have any statements")
@@ -2813,8 +2580,8 @@ impl<'c> Translation<'c> {
                     init.into_value()
                 };
 
-                let zeroed = self.implicit_default_expr(ctx.used(), typ.ctype)?;
-                let zeroed = if ctx.is_const {
+                let zeroed = self.implicit_default_expr(ctx.used().into(), typ.ctype)?;
+                let zeroed = if ctx.is_const() {
                     zeroed.wrap_unsafe().to_pure_expr()
                 } else {
                     zeroed.to_pure_expr()
@@ -2919,7 +2686,7 @@ impl<'c> Translation<'c> {
                 }
 
                 use ConvertedDecl::*;
-                let items = match self.convert_decl(ctx, decl_id)? {
+                let items = match self.convert_decl(ctx.as_item_context(), decl_id)? {
                     Item(item) => vec![item],
                     ForeignItem(item) => {
                         vec![mk()
@@ -3021,13 +2788,13 @@ impl<'c> Translation<'c> {
 
     fn convert_variable(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         initializer: Option<CExprId>,
         typ: CQualTypeId,
     ) -> TranslationResult<ConvertedVariable> {
         let init = match initializer {
-            Some(x) => self.convert_expr(ctx.used(), x, Some(typ)),
-            None => self.implicit_default_expr(ctx.used(), typ.ctype),
+            Some(x) => self.convert_expr(ctx.used().into(), x, Some(typ)),
+            None => self.implicit_default_expr(ctx.used().into(), typ.ctype),
         };
 
         // Variable declarations for variable-length arrays use the type of a pointer to the
@@ -3168,7 +2935,7 @@ impl<'c> Translation<'c> {
     /// the given type.
     pub fn compute_variable_array_sizes(
         &self,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         mut type_id: CTypeId,
     ) -> TranslationResult<Vec<Stmt>> {
         let mut stmts = vec![];
@@ -3182,7 +2949,7 @@ impl<'c> Translation<'c> {
 
                     // Convert this expression
                     let expr = self
-                        .convert_expr(ctx.used(), expr_id, None)?
+                        .convert_expr(ctx.used().into(), expr_id, None)?
                         .and_then(|expr| {
                             let name = self
                                 .renamer
@@ -3223,7 +2990,7 @@ impl<'c> Translation<'c> {
 
             let elts = self.compute_size_of_type(ctx, expected_type_id, result_type_id, elts)?;
             return elts.and_then_try(|lhs| {
-                let len = self.convert_expr(ctx.not_static(), len, expected_type_id)?;
+                let len = self.convert_expr(ctx, len, expected_type_id)?;
                 Ok(len.map(|len| {
                     let rhs = cast_int(len, "usize", true);
                     mk().binary_expr(BinOp::Mul(Default::default()), lhs, rhs)
@@ -3363,7 +3130,7 @@ impl<'c> Translation<'c> {
             }
         }
 
-        if ctx.is_pattern
+        if ctx.is_pattern()
             && !matches!(
                 expr_kind,
                 CExprKind::Paren(..)
@@ -3469,7 +3236,7 @@ impl<'c> Translation<'c> {
 
             ConstantExpr(ty, child, value) => {
                 if let Some(constant) = value {
-                    if ctx.is_pattern {
+                    if ctx.is_pattern() {
                         self.convert_expr(ctx, child, override_ty)
                     } else {
                         self.convert_constant(constant).map(WithStmts::new_val)
@@ -3783,7 +3550,7 @@ impl<'c> Translation<'c> {
             .get_decl(&decl_id)
             .ok_or_else(|| format_err!("Missing declref {:?}", decl_id))?
             .kind;
-        if ctx.expanding_macro.is_some() {
+        if ctx.is_converting_macro() {
             // TODO Determining which declarations have been declared within the scope of the const macro expr
             // vs. which are out-of-scope of the const macro is non-trivial,
             // so for now, we don't allow const macros referencing any declarations.
@@ -3813,7 +3580,7 @@ impl<'c> Translation<'c> {
             );
         }
 
-        if ctx.is_pattern {
+        if ctx.is_pattern() {
             return Err(TranslationError::generic(
                 "non-EnumConstant DeclRefs are not supported in patterns",
             ));
@@ -3841,7 +3608,7 @@ impl<'c> Translation<'c> {
             CDeclKind::Function { parameters, .. } => {
                 // If we are referring to a function and need its address, we
                 // need to cast it to fn() to ensure that it has a real address.
-                if ctx.needs_address {
+                if ctx.is_address_needed() {
                     let ty = self.convert_type(result_type_id.ctype)?;
                     let actual_ty = self
                         .type_converter
@@ -3889,7 +3656,7 @@ impl<'c> Translation<'c> {
                 // but this requirement was removed in later versions of the
                 // `raw_ref_op` feature.
                 if (*has_static_duration || *has_thread_duration)
-                    && (self.tcfg.edition < Edition2024 || !ctx.needs_address)
+                    && (self.tcfg.edition < Edition2024 || !ctx.is_address_needed())
                 {
                     set_unsafe = true;
                 }
@@ -3988,7 +3755,7 @@ impl<'c> Translation<'c> {
                     CStmtKind::Expr(expr_id) => {
                         let ret = cfg::ImplicitReturnType::StmtExpr(ctx, expr_id, lbl.clone());
                         self.convert_block_with_scope(
-                            ctx,
+                            ctx.as_tree_context(),
                             &name,
                             &substmt_ids[0..(n - 1)],
                             None,
@@ -3997,7 +3764,7 @@ impl<'c> Translation<'c> {
                     }
 
                     _ => self.convert_block_with_scope(
-                        ctx,
+                        ctx.as_tree_context(),
                         &name,
                         substmt_ids,
                         None,
@@ -4132,7 +3899,7 @@ impl<'c> Translation<'c> {
             CastKind::ArrayToPointerDecay
             | CastKind::FunctionToPointerDecay
             | CastKind::BuiltinFnToFnPtr => {
-                ctx.needs_address = true;
+                ctx = ctx.address_needed();
             }
             _ => {}
         }
@@ -4140,7 +3907,7 @@ impl<'c> Translation<'c> {
         let mut val = self.convert_expr(ctx, expr, None)?;
 
         if is_explicit {
-            let stmts = self.compute_variable_array_sizes(ctx, ty.ctype)?;
+            let stmts = self.compute_variable_array_sizes(ctx.as_tree_context(), ty.ctype)?;
             val = val.prepend_stmts(stmts);
         }
 
@@ -4176,7 +3943,7 @@ impl<'c> Translation<'c> {
         let mut expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
 
         // In patterns, skip over `ConstantExpr`s.
-        if ctx.is_pattern {
+        if ctx.is_pattern() {
             if let &CExprKind::ConstantExpr(_, expr_id, _) = expr_kind {
                 expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
             }
@@ -4294,7 +4061,7 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        if ctx.is_pattern
+        if ctx.is_pattern()
             && !matches!(
                 kind,
                 CastKind::ToVoid | CastKind::ConstCast | CastKind::IntegralCast
@@ -4325,7 +4092,7 @@ impl<'c> Translation<'c> {
             | CastKind::BooleanToSignedIntegral => {
                 let target_ty = self.convert_type(target_cty.ctype)?;
 
-                if ctx.is_pattern && !target_ty_kind.is_enum() {
+                if ctx.is_pattern() && !target_ty_kind.is_enum() {
                     return Err(TranslationError::generic(
                         "integral casts to non-enums are not supported in patterns",
                     ));
@@ -4339,7 +4106,7 @@ impl<'c> Translation<'c> {
                         // just be a no-op.
                         Ok(val)
                     } else {
-                        if ctx.is_const {
+                        if ctx.is_const() {
                             return Err(format_translation_err!(
                                 None,
                                 "f128 cannot be used in constants because \

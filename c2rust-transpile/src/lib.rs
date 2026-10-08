@@ -6,6 +6,7 @@ pub mod build_files;
 pub mod c_ast;
 pub mod cfg;
 mod compile_cmds;
+mod context;
 pub mod convert_type;
 pub mod renamer;
 pub mod rust_ast;
