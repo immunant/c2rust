@@ -318,6 +318,11 @@ fn test_bool() {
 }
 
 #[test]
+fn test_builtin_types() {
+    transpile("builtin_types.c").run();
+}
+
+#[test]
 fn test_comments_only() {
     transpile("comments_only.c").run();
 }
