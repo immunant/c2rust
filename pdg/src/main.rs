@@ -401,7 +401,7 @@ mod tests {
         init();
         let mut cmd = Command::new("cargo");
         cmd.current_dir(repo_dir()?.join("analysis/tests/misc"))
-            .args(&["miri", "run", "--features", "miri"])
+            .args(["miri", "run", "--features", "miri"])
             .env("MIRIFLAGS", "");
         let status = cmd.status()?;
         ensure!(status.success(), eyre!("{cmd:?} failed: {status}"));

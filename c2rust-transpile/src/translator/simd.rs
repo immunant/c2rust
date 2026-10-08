@@ -289,7 +289,7 @@ impl<'c> Translation<'c> {
         ctype: CTypeId,
         len: usize,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let param_translation = self.convert_exprs(ctx, ids, None)?;
+        let param_translation = self.convert_exprs(ctx.used(), ids, None)?;
         param_translation.and_then_try(|mut params| {
             let mut is_unsafe = false;
 

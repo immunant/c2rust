@@ -342,7 +342,6 @@ pub unsafe extern "C" fn stmt_expr_inc() -> ::core::ffi::c_int {
     let mut b: *mut ::core::ffi::c_int = &raw mut a;
     ({
         *b += 1;
-        *b;
     });
     return ({
         *b += 1;
@@ -381,7 +380,7 @@ pub unsafe extern "C" fn use_local_value() -> ::core::ffi::c_int {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn use_portable_type(mut len: uintptr_t) -> bool {
-    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as ::core::ffi::c_int as uintptr_t);
+    return len <= (UINTPTR_MAX as uintptr_t).wrapping_div(2 as uintptr_t);
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ntlm_v2_blob_len(mut ntlm: *mut ntlmdata) -> ::core::ffi::c_uint {
