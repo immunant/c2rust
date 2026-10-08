@@ -2,6 +2,7 @@
 
 import json
 import logging
+import shlex
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -122,6 +123,36 @@ class CargoChecker:
         return "\n".join(errors) if errors else result.stderr
 
 
+class CommandChecker:
+    """
+    Runs a user-provided validation command (e.g. `cargo build`, `cargo test`,
+    or a custom script) in the crate's root directory. The command must exit
+    0 for the current state to be considered valid.
+    """
+
+    def __init__(self, command: Sequence[str], cwd: Path | None = None):
+        self.command = list(command)
+        self.cwd = cwd
+
+    def __call__(self) -> str | None:
+        result = subprocess.run(
+            self.command,
+            cwd=self.cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return None
+        output = "\n".join(
+            part for part in (result.stdout.strip(), result.stderr.strip()) if part
+        )
+        return (
+            f"validation command `{' '.join(self.command)}` failed with exit "
+            f"code {result.returncode}" + (f":\n{output}" if output else "")
+        )
+
+
 def find_manifest(rust_source_file: Path) -> Path | None:
     """Return the nearest Cargo.toml at or above the file's directory."""
     for directory in rust_source_file.resolve().parents:
@@ -132,15 +163,20 @@ def find_manifest(rust_source_file: Path) -> Path | None:
 
 
 class BaselineError(Exception):
-    """The crate failed cargo check before any rewrites were applied."""
+    """The crate failed validation before any rewrites were applied."""
 
 
-def make_validator(rust_source_file: Path) -> BatchValidator | None:
+def make_validator(
+    rust_source_file: Path, validate_cmds: Sequence[str] = ()
+) -> BatchValidator | None:
     """
     Build a validator for the crate containing `rust_source_file`, checking
-    first that the baseline compiles so a broken crate is not misattributed
-    to the rewrites. Returns None when there is no Cargo.toml to check
-    against; raises BaselineError when the baseline does not compile.
+    first that the baseline passes so a broken crate is not misattributed to
+    the rewrites. `validate_cmds` are extra shell commands (split with
+    `shlex`) run in the crate's root directory after `cargo check`; every
+    command must exit 0 for a state to be considered valid. Returns None
+    when there is no Cargo.toml to check against; raises BaselineError when
+    the baseline does not pass.
     """
     manifest_path = find_manifest(rust_source_file)
     if manifest_path is None:
@@ -150,12 +186,33 @@ def make_validator(rust_source_file: Path) -> BatchValidator | None:
         )
         return None
 
-    check = CargoChecker(manifest_path)
-    logging.info(f"Running baseline cargo check for {manifest_path}...")
-    error = check()
+    checks: list[Callable[[], str | None]] = [CargoChecker(manifest_path)]
+    checks.extend(
+        CommandChecker(shlex.split(cmd), cwd=manifest_path.parent)
+        for cmd in validate_cmds
+    )
+    combined = _first_error(checks)
+
+    logging.info(f"Running baseline checks for {manifest_path}...")
+    error = combined()
     if error is not None:
         raise BaselineError(
-            "Crate does not compile before postprocessing; "
+            "Crate does not pass baseline validation before postprocessing; "
             f"aborting without applying rewrites:\n{error}"
         )
-    return BatchValidator(check)
+    return BatchValidator(combined)
+
+
+def _first_error(
+    checks: Sequence[Callable[[], str | None]],
+) -> Callable[[], str | None]:
+    """Run each check in order, returning the first failure's description."""
+
+    def check() -> str | None:
+        for run in checks:
+            error = run()
+            if error is not None:
+                return error
+        return None
+
+    return check
