@@ -1491,7 +1491,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx, true, scrutinee)?
+                    .convert_condition(ctx.used(), true, scrutinee)?
                     .discard_unsafe();
                 wip.extend(stmts);
 
@@ -1564,7 +1564,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx, true, condition)?
+                    .convert_condition(ctx.used(), true, condition)?
                     .discard_unsafe();
                 let cond_val = translator
                     .ast_context
@@ -1643,7 +1643,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx, true, condition)?
+                    .convert_condition(ctx.used(), true, condition)?
                     .discard_unsafe();
                 let cond_val = translator
                     .ast_context
@@ -1698,7 +1698,7 @@ impl CfgBuilder {
                     // Condition
                     if let Some(cond) = condition {
                         let (stmts, val) = translator
-                            .convert_condition(ctx, true, cond)?
+                            .convert_condition(ctx.used(), true, cond)?
                             .discard_unsafe();
                         let cond_val = translator
                             .ast_context
@@ -2026,7 +2026,7 @@ impl CfgBuilder {
                         .kind;
 
                     if let CTypeKind::Enum(enum_id) = *castee_type_kind {
-                        if target_type_id == translator.enum_integral_type(enum_id) {
+                        if target_type_id == translator.enum_underlying_type(enum_id) {
                             expected_type_id = Some(castee_type_id);
                         }
                     }

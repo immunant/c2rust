@@ -29,4 +29,10 @@ void test_bool() {
 
     // Tests https://github.com/immunant/c2rust/issues/340
     int0 |= int1;
+
+    // Casts to/from other numeric types
+    // Regression test for https://github.com/immunant/c2rust/pull/2005#discussion_r4068559462
+    int1 += 1U;
+    int1 *= 2.0;
+    double d = int1;
 }
