@@ -32,7 +32,7 @@
 //! If we have a single entry point, and there are no back edges to that entry,
 //! then we can generate a simple structure. `Simple` structures contain a
 //! single basic block, and represent a straight-line sequence of instructions.
-//! All remaining blocks are then recursively relooped, with the immediate
+//! All remaining blocks are then iteratively relooped, with the immediate
 //! successors of the entry becoming the new entries for the rest of that
 //! portion of the CFG.
 //!
@@ -47,7 +47,7 @@
 //! If we have entries with back edges to them, then we can generate a `Loop`
 //! structure. Any nodes that can reach the entry become part of the loop body,
 //! with any remaining nodes becoming the follow blocks for the loop. The loop's
-//! contents are then relooped into the loops's body, and the follow blocks get
+//! contents are then relooped into the loop's body, and the follow blocks get
 //! relooped to be the logic that follows the loop.
 //!
 //! # Simplification and Nesting
@@ -73,6 +73,8 @@ pub fn reloop(
     use_c_multiple_info: bool,   // use the multiple information in the CFG (slower, but better)
     live_in: IndexSet<CDeclId>,  // declarations we assume are live going into this graph
 ) -> (Vec<Stmt>, Vec<Structure<Stmt>>) {
+    // `cfg.entries` is the CFG's single entry `Label`; `relooper` wants a set
+    // of entries so it can be reused uniformly for `Multiple` branches too.
     let entries = indexset![cfg.entries.clone()];
     let blocks: BasicBlocks = cfg
         .nodes
@@ -210,208 +212,224 @@ type BasicBlocks = IndexMap<Label, BasicBlock<StructureLabel<StmtOrDecl>, StmtOr
 type AdjacencyList = IndexMap<Label, IndexSet<Label>>;
 
 impl RelooperState {
-    /// Recursive helper for `reloop`.
+    /// Helper for `reloop`.
     ///
-    /// TODO: perhaps manually perform TCO?
+    /// Sequential chains — runs of `Simple` blocks, and the follow-blocks
+    /// after a `Multiple` — are processed with an explicit loop rather than
+    /// tail recursion, so large functions with long straight-line CFGs
+    /// cannot exhaust the stack (c2rust#1908). Recursion is still used for
+    /// the individual branches of a `Multiple` and inside `make_loop`, since
+    /// that recursion depth is bounded by nesting depth rather than block
+    /// count.
     fn relooper(
         &mut self,
-        entries: IndexSet<Label>, // current entry points into the CFG
-        mut blocks: BasicBlocks,  // the blocks in the sub-CFG considered
-        result: &mut Vec<Structure<StmtOrDecl>>, // the generated structures are appended to this
+        mut entries: IndexSet<Label>, // current entry points into the CFG
+        mut blocks: BasicBlocks,      // the blocks in the sub-CFG considered
+        result: &mut Vec<Structure<StmtOrDecl>>,
     ) {
-        // If there are no entries or blocks then we are at the end of a branch and
-        // there's nothing left to reloop.
-        if entries.is_empty() || blocks.is_empty() {
-            return;
-        }
-
-        // Map from each label to the set of labels that reach it. A label does not
-        // count as reaching itself unless there is an explicit back edge to that label.
-        //
-        // Some keys may not correspond to any blocks in the current set, since blocks
-        // may have successors that are outside the current set. Labels in the values
-        // set will always correspond to blocks in the current set.
-        //
-        // NOTE: We need to determine reachability using the current local set of
-        // blocks. Global reachability won't work here because when we're inside a loop
-        // body we don't want to consider back edges, which we strip before processing
-        // the loop body.
-        //
-        // TODO: If possible we should avoid recomputing this every time `relooper`
-        // recurses. I think the reachability information only meaningfully changes when
-        // we strip a back edge, so in theory we should only need to recompute this after
-        // processing a loop.
-        let strict_reachable_from = |blocks: &BasicBlocks| {
-            let local_successors = blocks
-                .iter()
-                .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
-                .collect();
-            flip_edges(transitive_closure(&local_successors))
-        };
-
-        // Handle our simple case of only 1 entry. If there's no back edge to the entry
-        // we generate a `Simple` structure, otherwise we make a loop.
-        if entries.len() == 1 {
-            let entry = entries.first().unwrap();
-            let has_back_edge = blocks.values().any(|block| block.has_successor(entry));
-
-            if !has_back_edge {
-                let bb = blocks
-                    .swap_remove(entry)
-                    .expect("Entry not present in current blocks");
-                let new_entries = bb.successors();
-                let BasicBlock {
-                    body,
-                    mut terminator,
-                    live,
-                    defined,
-                    span,
-                } = bb;
-
-                // Flag declarations for everything that is live going in but not already in scope.
-                //
-                // It is tempting to just place the declarations here, but it isn't that simple:
-                // they may end up also being live but not in scope elsewhere and we should _not_
-                // make a second declaration.
-                for l in live {
-                    if !self.in_scope(l) {
-                        self.add_to_top_scope(l);
-                        self.lifted.insert(l);
-                    }
-                }
-
-                // Being into scope things that are defined here
-                for d in defined {
-                    self.add_to_scope(d);
-                }
-
-                // Rewrite `GoTo`s to `ExitTo`s. This isn't strictly necessary, but it
-                // simplifies things down the line to only need to worry about `ExitTo`
-                // terminators.
-                for lbl in terminator.get_labels_mut() {
-                    if let StructureLabel::GoTo(label) = lbl {
-                        *lbl = StructureLabel::ExitTo(label.clone())
-                    }
-                }
-
-                result.push(Structure::Simple {
-                    entries,
-                    body,
-                    span,
-                    terminator,
-                });
-
-                self.relooper(new_entries, blocks, result);
-            } else {
-                self.make_loop(&strict_reachable_from(&blocks), blocks, entries, result);
+        loop {
+            // If there are no entries or blocks then we are at the end of a branch and
+            // there's nothing left to reloop.
+            if entries.is_empty() || blocks.is_empty() {
+                return;
             }
-            return;
-        }
 
-        let strict_reachable_from = strict_reachable_from(&blocks);
+            // Map from each label to the set of labels that reach it. A label does not
+            // count as reaching itself unless there is an explicit back edge to that label.
+            //
+            // Some keys may not correspond to any blocks in the current set, since blocks
+            // may have successors that are outside the current set. Labels in the values
+            // set will always correspond to blocks in the current set.
+            //
+            // NOTE: We need to determine reachability using the current local set of
+            // blocks. Global reachability won't work here because when we're inside a loop
+            // body we don't want to consider back edges, which we strip before processing
+            // the loop body.
+            //
+            // TODO: If possible we should avoid recomputing this every time `relooper`
+            // iterates. I think the reachability information only meaningfully changes when
+            // we strip a back edge, so in theory we should only need to recompute this after
+            // processing a loop.
+            let strict_reachable_from = |blocks: &BasicBlocks| {
+                let local_successors = blocks
+                    .iter()
+                    .map(|(lbl, bb)| (lbl.clone(), bb.successors()))
+                    .collect();
+                flip_edges(transitive_closure(&local_successors))
+            };
 
-        // Sanity check that we have entries that are in our current set of blocks. We
-        // may have entries that aren't present in our current blocks when we're inside
-        // the branch of a `Multiple`, but there must always be at least one present
-        // entry.
-        if !entries.iter().any(|entry| blocks.contains_key(entry)) {
-            panic!(
-                "No entries are in our current set of blocks, entries: {entries:?}, blocks: {:?}",
-                blocks.keys().collect::<Vec<_>>(),
+            // Handle our simple case of only 1 entry. If there's no back edge to the entry
+            // we generate a `Simple` structure, otherwise we make a loop.
+            if entries.len() == 1 {
+                let entry = entries.first().unwrap();
+                let has_back_edge = blocks.values().any(|block| block.has_successor(entry));
+
+                if !has_back_edge {
+                    let bb = blocks
+                        .swap_remove(entry)
+                        .expect("Entry not present in current blocks");
+                    let new_entries = bb.successors();
+                    let BasicBlock {
+                        body,
+                        mut terminator,
+                        live,
+                        defined,
+                        span,
+                    } = bb;
+
+                    // Flag declarations for everything that is live going in but not already in scope.
+                    //
+                    // It is tempting to just place the declarations here, but it isn't that simple:
+                    // they may end up also being live but not in scope elsewhere and we should _not_
+                    // make a second declaration.
+                    for l in live {
+                        if !self.in_scope(l) {
+                            self.add_to_top_scope(l);
+                            self.lifted.insert(l);
+                        }
+                    }
+
+                    // Bring into scope things that are defined here
+                    for d in defined {
+                        self.add_to_scope(d);
+                    }
+
+                    // Rewrite `GoTo`s to `ExitTo`s. This isn't strictly necessary, but it
+                    // simplifies things down the line to only need to worry about `ExitTo`
+                    // terminators.
+                    for lbl in terminator.get_labels_mut() {
+                        if let StructureLabel::GoTo(label) = lbl {
+                            *lbl = StructureLabel::ExitTo(label.clone())
+                        }
+                    }
+
+                    result.push(Structure::Simple {
+                        entries: entries.clone(),
+                        body,
+                        span,
+                        terminator,
+                    });
+
+                    // Continue processing the successors of the block we just
+                    // emitted instead of recursing. This keeps sequential runs
+                    // of `Simple` blocks from growing the stack (c2rust#1908).
+                    entries = new_entries;
+                    continue;
+                } else {
+                    self.make_loop(&strict_reachable_from(&blocks), blocks, entries, result);
+                }
+                return;
+            }
+
+            let strict_reachable_from = strict_reachable_from(&blocks);
+
+            // Sanity check that we have entries that are in our current set of blocks. We
+            // may have entries that aren't present in our current blocks when we're inside
+            // the branch of a `Multiple`, but there must always be at least one present
+            // entry.
+            if !entries.iter().any(|entry| blocks.contains_key(entry)) {
+                panic!(
+                    "No entries are in our current set of blocks, entries: {entries:?}, blocks: {:?}",
+                    blocks.keys().collect::<Vec<_>>(),
+                );
+            }
+
+            // Like `strict_reachable_from`, but entries also reach themselves.
+            let mut reachable_from = strict_reachable_from.clone();
+            for entry in &entries {
+                reachable_from
+                    .entry(entry.clone())
+                    .or_default()
+                    .insert(entry.clone());
+            }
+
+            // Calculate which blocks are reached by only one entry (including the entries
+            // themselves).
+            let singly_reached: AdjacencyList = flip_edges(
+                reachable_from
+                    .into_iter()
+                    .map(|(lbl, reached_from)| (lbl, &reached_from & &entries))
+                    .filter(|(_, reached_from)| reached_from.len() == 1)
+                    .collect(),
             );
-        }
 
-        // Like `strict_reachable_from`, but entries also reach themselves.
-        let mut reachable_from = strict_reachable_from.clone();
-        for entry in &entries {
-            reachable_from
-                .entry(entry.clone())
-                .or_default()
-                .insert(entry.clone());
-        }
+            // If we have any blocks that are only reachable from one entry, then we can
+            // create a `Multiple` structure.
+            if !singly_reached.is_empty() {
+                // Map from entry labels to the set of blocks only reachable from that entry,
+                // i.e. `singly_reached` but with the set of reachable labels replaced by the
+                // corresponding blocks. We also filter out any entries that aren't present in
+                // our current set of blocks, as we don't want branches for those entries.
+                let handled_entries: IndexMap<Label, BasicBlocks> = singly_reached
+                    .into_iter()
+                    .filter(|(lbl, _)| entries.contains(lbl) && blocks.contains_key(lbl))
+                    .map(|(lbl, within)| {
+                        let val = blocks
+                            .iter()
+                            .filter(|(k, _)| within.contains(*k))
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+                        (lbl, val)
+                    })
+                    .collect();
 
-        // Calculate which blocks are reached by only one entry (including the entries
-        // themselves).
-        let singly_reached: AdjacencyList = flip_edges(
-            reachable_from
-                .into_iter()
-                .map(|(lbl, reached_from)| (lbl, &reached_from & &entries))
-                .filter(|(_, reached_from)| reached_from.len() == 1)
-                .collect(),
-        );
+                // Entries that don't have any blocks that are only reachable from themselves.
+                let unhandled_entries: IndexSet<Label> = entries
+                    .iter()
+                    .filter(|&e| !handled_entries.contains_key(e))
+                    .cloned()
+                    .collect();
 
-        // If we have any blocks that are only reachable from one entry, then we can
-        // create a `Multiple` structure.
-        if !singly_reached.is_empty() {
-            // Map from entry labels to the set of blocks only reachable from that entry,
-            // i.e. `singly_reached` but with the set of reachable labels replaced by the
-            // corresponding blocks. We also filter out any entries that aren't present in
-            // our current set of blocks, as we don't want branches for those entries.
-            let handled_entries: IndexMap<Label, BasicBlocks> = singly_reached
-                .into_iter()
-                .filter(|(lbl, _)| entries.contains(lbl) && blocks.contains_key(lbl))
-                .map(|(lbl, within)| {
-                    let val = blocks
-                        .iter()
-                        .filter(|(k, _)| within.contains(*k))
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    (lbl, val)
-                })
-                .collect();
+                // Gather the set of all blocks that are only reachable from one entry
+                // (including the entries if they are only reachable from themselves).
+                let handled_blocks: BasicBlocks = handled_entries
+                    .values()
+                    .flatten()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
 
-            // Entries that don't have any blocks that are only reachable from themselves.
-            let unhandled_entries: IndexSet<Label> = entries
-                .iter()
-                .filter(|&e| !handled_entries.contains_key(e))
-                .cloned()
-                .collect();
+                // Gather the unhandled blocks, i.e. any blocks that are reachable from more
+                // than one entry. These become our "follow" blocks, i.e. the blocks that come
+                // after the `Multiple`.
+                let follow_blocks: BasicBlocks = blocks
+                    .into_iter()
+                    .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
+                    .collect();
 
-            // Gather the set of all blocks that are only reachable from one entry
-            // (including the entries if they are only reachable from themselves).
-            let handled_blocks: BasicBlocks = handled_entries
-                .values()
-                .flatten()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
+                // The entries for the follow blocks are our unhandled entries and any successors
+                // of handled blocks that are not themselves handled blocks.
+                let follow_entries: IndexSet<Label> =
+                    &unhandled_entries | &out_edges(&handled_blocks);
 
-            // Gather the unhandled blocks, i.e. any blocks that are reachable from more
-            // than one entry. These become our "follow" blocks, i.e. the blocks that come
-            // after the `Multiple`.
-            let follow_blocks: BasicBlocks = blocks
-                .into_iter()
-                .filter(|(lbl, _)| !handled_blocks.contains_key(lbl))
-                .collect();
+                // Reloop each set of handled blocks into their own structured control flow.
+                let branches: IndexMap<_, _> = handled_entries
+                    .into_iter()
+                    .map(|(lbl, blocks)| {
+                        let entries = indexset![lbl.clone()];
 
-            // The entries for the follow blocks are our unhandled entries and any successors
-            // of handled blocks that are not themselves handled blocks.
-            let follow_entries: IndexSet<Label> = &unhandled_entries | &out_edges(&handled_blocks);
+                        let mut structs = vec![];
+                        self.open_scope();
+                        self.relooper(entries, blocks, &mut structs);
+                        self.close_scope();
 
-            // Reloop each set of handled blocks into their own structured control flow.
-            let branches: IndexMap<_, _> = handled_entries
-                .into_iter()
-                .map(|(lbl, blocks)| {
-                    let entries = indexset![lbl.clone()];
+                        (lbl, structs)
+                    })
+                    .collect();
 
-                    let mut structs = vec![];
-                    self.open_scope();
-                    self.relooper(entries, blocks, &mut structs);
-                    self.close_scope();
+                result.push(Structure::Multiple { entries, branches });
 
-                    (lbl, structs)
-                })
-                .collect();
+                // Continue processing the follow blocks instead of recursing.
+                entries = follow_entries;
+                blocks = follow_blocks;
+                continue;
+            }
 
-            result.push(Structure::Multiple { entries, branches });
-
-            self.relooper(follow_entries, follow_blocks, result);
+            // If we couldn't make a `Multiple`, we have multiple entries and all entries
+            // can be reached by other entries. This means irreducible control flow, which
+            // we have to process by making a loop.
+            self.make_loop(&strict_reachable_from, blocks, entries, result);
             return;
         }
-
-        // If we couldn't make a `Multiple`, we have multiple entries and all entries
-        // can be reached by other entries. This means irreducible control flow, which
-        // we have to process by making a loop.
-        self.make_loop(&strict_reachable_from, blocks, entries, result);
     }
 
     fn make_loop(
@@ -462,7 +480,7 @@ impl RelooperState {
 
                 if loops::match_loop_body(
                     desired_body,
-                    &strict_reachable_from,
+                    strict_reachable_from,
                     &mut body_blocks_copy,
                     &mut follow_blocks_copy,
                     &mut follow_entries_copy,
@@ -483,14 +501,16 @@ impl RelooperState {
             // Gather the set of follow entries that only have a single in edge. These can
             // be inlined into a branch in one of the loop body nodes, so we want to pull
             // them into the loop.
-            let inlined = follow_entries
+            let inlined: Vec<Label> = follow_entries
                 .iter()
-                .filter(|&e| self.global_predecessors[e].len() == 1);
+                .filter(|&e| self.global_predecessors[e].len() == 1)
+                .cloned()
+                .collect();
 
             // Move all nodes dominated by an inlined node into the loop. This will include
             // the inlined node since all nodes dominate themself.
-            for inlined in inlined {
-                for dominated in &self.domination_sets[inlined] {
+            for entry in &inlined {
+                for dominated in &self.domination_sets[entry] {
                     let block = follow_blocks
                         .remove(dominated)
                         .expect("Dominated node not in follow blocks");
