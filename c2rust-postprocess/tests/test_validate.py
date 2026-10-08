@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import textwrap
 from pathlib import Path
@@ -47,7 +48,7 @@ def test_valid_batch_is_retained_with_one_check(source: Path) -> None:
     check = ContentCheck(source)
     candidates = [append_candidate(source, "a"), append_candidate(source, "b")]
 
-    accepted, rejected = BatchValidator(check).validate(candidates)
+    accepted, rejected = asyncio.run(BatchValidator(check).validate(candidates))
 
     assert accepted == candidates
     assert rejected == []
@@ -64,7 +65,7 @@ def test_mixed_batch_retains_only_valid_candidates(source: Path) -> None:
         append_candidate(source, "d"),
     ]
 
-    accepted, rejected = BatchValidator(check).validate(candidates)
+    accepted, rejected = asyncio.run(BatchValidator(check).validate(candidates))
 
     assert [c.identifier for c in accepted] == ["a", "c", "d"]
     assert [(c.identifier, error) for c, error in rejected] == [("BAD", "found BAD")]
@@ -72,8 +73,8 @@ def test_mixed_batch_retains_only_valid_candidates(source: Path) -> None:
 
 
 def test_single_rejected_candidate_restores_baseline_exactly(source: Path) -> None:
-    accepted, rejected = BatchValidator(ContentCheck(source)).validate(
-        [append_candidate(source, "BAD")]
+    accepted, rejected = asyncio.run(
+        BatchValidator(ContentCheck(source)).validate([append_candidate(source, "BAD")])
     )
 
     assert accepted == []
@@ -90,8 +91,10 @@ def test_interacting_candidates_reject_only_one(source: Path) -> None:
             return "x and y conflict"
         return None
 
-    accepted, rejected = BatchValidator(check).validate(
-        [append_candidate(source, "x"), append_candidate(source, "y")]
+    accepted, rejected = asyncio.run(
+        BatchValidator(check).validate(
+            [append_candidate(source, "x"), append_candidate(source, "y")]
+        )
     )
 
     assert [c.identifier for c in accepted] == ["x"]
@@ -104,7 +107,7 @@ def test_check_exception_restores_file(source: Path) -> None:
         raise RuntimeError("cargo crashed")
 
     with pytest.raises(RuntimeError, match="cargo crashed"):
-        BatchValidator(check).validate([append_candidate(source, "a")])
+        asyncio.run(BatchValidator(check).validate([append_candidate(source, "a")]))
     assert source.read_text() == "baseline\n"
 
 
@@ -117,13 +120,47 @@ def test_apply_exception_restores_file(source: Path) -> None:
         identifier="a", files=(source,), apply=broken_apply, invalidate=lambda: None
     )
     with pytest.raises(RuntimeError, match="merge failed"):
-        BatchValidator(ContentCheck(source)).validate([candidate])
+        asyncio.run(BatchValidator(ContentCheck(source)).validate([candidate]))
     assert source.read_text() == "baseline\n"
+
+
+@pytest.mark.parametrize("cancel_during", ["apply", "check"])
+def test_pending_cancellation_restores_file(source: Path, cancel_during: str) -> None:
+    check_calls = 0
+
+    async def run() -> None:
+        task = asyncio.current_task()
+        assert task is not None
+
+        def apply() -> None:
+            source.write_text("rewritten\n")
+            if cancel_during == "apply":
+                task.cancel()
+
+        def check() -> str | None:
+            nonlocal check_calls
+            check_calls += 1
+            assert source.read_text() == "rewritten\n"
+            if cancel_during == "check":
+                task.cancel()
+            return None
+
+        candidate = Candidate(
+            identifier="f", files=(source,), apply=apply, invalidate=lambda: None
+        )
+        await BatchValidator(check).validate([candidate])
+
+    # asyncio.run handles SIGINT by cancelling the main task; synchronous
+    # subprocess calls can return normally with that cancellation pending.
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(run())
+    assert source.read_text() == "baseline\n"
+    assert check_calls == (1 if cancel_during == "check" else 0)
 
 
 def test_empty_batch_runs_no_check(source: Path) -> None:
     check = ContentCheck(source)
-    assert BatchValidator(check).validate([]) == ([], [])
+    assert asyncio.run(BatchValidator(check).validate([])) == ([], [])
     assert check.calls == 0
 
 

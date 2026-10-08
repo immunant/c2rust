@@ -104,7 +104,7 @@ class CommentsTransform(AbstractTransform):
         super().__init__(SYSTEM_INSTRUCTION, cache, model)
         self.trim_transform = TrimTransform(cache, model)
 
-    def try_apply_ident(
+    async def try_apply_ident(
         self,
         rust_source_file: Path,
         rust_definition: str,
@@ -124,7 +124,7 @@ class CommentsTransform(AbstractTransform):
             logging.info(f"Skipping C function without comments: {identifier}")
             return None
 
-        match self.trim_transform.apply_ident(
+        match await self.trim_transform.apply_ident(
             rust_source_file=rust_source_file,
             rust_definition=rust_definition,
             c_definition=c_definition,
@@ -205,7 +205,7 @@ class CommentsTransform(AbstractTransform):
 
             return rust_fn
 
-        rust_fn = self.generate(identifier, messages, validate)
+        rust_fn = await self.generate(identifier, messages, validate)
         if rust_fn is None:
             return None
 

@@ -61,7 +61,7 @@ class TrimTransform(AbstractTransform):
     def __init__(self, cache: AbstractCache, model: AbstractGenerativeModel):
         super().__init__(SYSTEM_INSTRUCTION, cache, model)
 
-    def apply_ident(
+    async def apply_ident(
         self,
         rust_source_file: Path,
         rust_definition: str,
@@ -122,7 +122,7 @@ class TrimTransform(AbstractTransform):
             return trimmed
 
         try:
-            return self.generate(identifier, messages, validate)
+            return await self.generate(identifier, messages, validate)
         except TransformError as error:
             # Trimming is best-effort; callers fall back to the untrimmed input.
             logging.warning(f"{self.__class__.__name__}: {error}")

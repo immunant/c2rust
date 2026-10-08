@@ -13,7 +13,7 @@ class MockGenerativeModel(AbstractGenerativeModel):
     def __init__(self):
         super().__init__(id="mock-llm")
 
-    def generate_with_tools(
+    async def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
         tools: Iterable[Callable[..., Any]] = (),

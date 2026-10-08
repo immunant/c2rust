@@ -1,5 +1,6 @@
 """Transactional validation of applied rewrites via `cargo check`."""
 
+import asyncio
 import json
 import logging
 import subprocess
@@ -35,7 +36,7 @@ class BatchValidator:
     def __init__(self, check: Callable[[], str | None]):
         self._check = check
 
-    def validate(
+    async def validate(
         self, candidates: Sequence[Candidate]
     ) -> tuple[list[Candidate], list[tuple[Candidate, str]]]:
         """
@@ -56,7 +57,11 @@ class BatchValidator:
         try:
             for candidate in candidates:
                 candidate.apply()
+            # SIGINT cancels the main asyncio task. Observe cancellation from
+            # synchronous merges/checks while rollback is still possible.
+            await asyncio.sleep(0)
             error = self._check()
+            await asyncio.sleep(0)
             ok = error is None
         finally:
             # `finally` rather than `except Exception` so KeyboardInterrupt
@@ -75,8 +80,8 @@ class BatchValidator:
         # candidates, so interacting candidates are isolated correctly.
         logging.info(f"Check failed for batch of {len(candidates)}; bisecting")
         mid = len(candidates) // 2
-        accepted, rejected = self.validate(candidates[:mid])
-        right_accepted, right_rejected = self.validate(candidates[mid:])
+        accepted, rejected = await self.validate(candidates[:mid])
+        right_accepted, right_rejected = await self.validate(candidates[mid:])
         return accepted + right_accepted, rejected + right_rejected
 
 
