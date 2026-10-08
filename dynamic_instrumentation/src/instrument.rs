@@ -291,35 +291,30 @@ impl<'tcx> MutVisitor<'tcx> for RewriteAddressTakenLocals<'tcx> {
                 }
             }
             if let Some(term) = &block.terminator {
-                match &term.kind {
-                    TerminatorKind::Call {
-                        func: _,
-                        args: _,
-                        destination,
-                        target,
-                        ..
-                    } => {
-                        if destination
-                            .as_local()
-                            .filter(|l| self.address_taken.contains(l))
-                            .is_some()
-                        {
-                            if let Some(next_block) = target {
-                                // put into first statement of following block
-                                local_address_statements.push((
-                                    *destination,
-                                    Location {
-                                        block: *next_block,
-                                        statement_index: 0,
-                                    },
-                                ));
-                            }
+                if let TerminatorKind::Call {
+                    func: _,
+                    args: _,
+                    destination,
+                    target,
+                    ..
+                } = &term.kind
+                {
+                    if destination
+                        .as_local()
+                        .filter(|l| self.address_taken.contains(l))
+                        .is_some()
+                    {
+                        if let Some(next_block) = target {
+                            // put into first statement of following block
+                            local_address_statements.push((
+                                *destination,
+                                Location {
+                                    block: *next_block,
+                                    statement_index: 0,
+                                },
+                            ));
                         }
                     }
-                    // `DropAndReplace` no longer exists in target MIR. Its replacement
-                    // assignment is an ordinary `StatementKind::Assign`, handled by the
-                    // statement scan above after the preceding `Drop` terminator runs.
-                    _ => (),
                 }
             }
         }
@@ -807,10 +802,10 @@ fn mark_scopes_unsafe(scopes: &mut rustc_index::vec::IndexVec<SourceScope, Sourc
     }
 }
 
-fn instrument_body<'a, 'tcx>(
+fn instrument_body<'tcx>(
     state: &Instrumenter,
     tcx: TyCtxt<'tcx>,
-    body: &'a mut Body<'tcx>,
+    body: &mut Body<'tcx>,
     body_did: DefId,
 ) {
     let hooks = Hooks::new(tcx);

@@ -12,7 +12,7 @@ expression: cat tests/snapshots/os-specific/f128.c.2024.macos.rs
     unused_assignments,
     unused_mut
 )]
-use ::num_traits::{Float, ToPrimitive};
+use ::num_traits::Float;
 #[inline(always)]
 unsafe extern "C" fn __inline_isinff(mut __x: ::core::ffi::c_float) -> ::core::ffi::c_int {
     return (__x.abs() == ::core::f32::INFINITY) as ::core::ffi::c_int;
@@ -31,18 +31,18 @@ pub unsafe extern "C" fn long_double_test() {
     let mut zero: ::f128::f128 = ::f128::f128::ZERO;
     let mut add: ::f128::f128 = one + zero;
     let mut huge: ::f128::f128 = ::f128::f128::INFINITY;
-    let mut i: ::core::ffi::c_int = one.to_i32().unwrap();
-    let mut f: ::core::ffi::c_float = one.to_f32().unwrap();
+    let mut i: ::core::ffi::c_int = Into::<::core::ffi::c_int>::into(one);
+    let mut f: ::core::ffi::c_float = Into::<::core::ffi::c_float>::into(one);
     let mut cast_from_int: ::f128::f128 = ::f128::f128::new(i);
     let mut cast_from_float: ::f128::f128 = ::f128::f128::new(f);
     let mut is_inf: bool = if ::core::mem::size_of::<::f128::f128>()
         == ::core::mem::size_of::<::core::ffi::c_float>()
     {
-        __inline_isinff(huge.to_f32().unwrap())
+        __inline_isinff(Into::<::core::ffi::c_float>::into(huge))
     } else if ::core::mem::size_of::<::f128::f128>()
         == ::core::mem::size_of::<::core::ffi::c_double>()
     {
-        __inline_isinfd(huge.to_f64().unwrap())
+        __inline_isinfd(Into::<::core::ffi::c_double>::into(huge))
     } else {
         __inline_isinfl(huge)
     } != 0;

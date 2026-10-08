@@ -15,7 +15,7 @@ impl<'c> Translation<'c> {
         &self,
         enum_id: CEnumId,
         span: Span,
-        integral_type: CQualTypeId,
+        underlying_type_id: CQualTypeId,
         variants: &[CEnumConstantId],
     ) -> TranslationResult<ConvertedDecl> {
         let enum_name = &self
@@ -23,8 +23,8 @@ impl<'c> Translation<'c> {
             .borrow()
             .resolve_decl_name(enum_id)
             .expect("Enums should already be renamed");
-        let integral_type_rs = self.convert_type(integral_type.ctype)?;
-        let field = mk().pub_().enum_field(integral_type_rs);
+        let underlying_type_rs = self.convert_type(underlying_type_id.ctype)?;
+        let field = mk().pub_().enum_field(underlying_type_rs);
         let enum_item = mk()
             .span(span)
             .call_attr("derive", vec!["Clone", "Copy", "PartialEq", "Eq"])
@@ -36,6 +36,8 @@ impl<'c> Translation<'c> {
             return Ok(ConvertedDecl::Item(enum_item));
         }
 
+        let underlying_type_kind = &self.ast_context.resolve_type(underlying_type_id.ctype).kind;
+        let underlying_type_is_bool = underlying_type_kind.is_bool();
         let enum_type = mk().ident_ty("Self");
         let constants = variants
             .iter()
@@ -49,7 +51,8 @@ impl<'c> Translation<'c> {
                     enum_constant_id,
                     name,
                 );
-                let (span, init) = self.make_enum_constant_init(enum_constant_id);
+                let (span, init) =
+                    self.make_enum_constant_init(enum_constant_id, underlying_type_is_bool);
                 mk().span(span)
                     .pub_()
                     .const_impl_item(name_rs, enum_type.clone(), init)
@@ -62,14 +65,26 @@ impl<'c> Translation<'c> {
         Ok(ConvertedDecl::Items(vec![enum_item, impl_block]))
     }
 
-    fn make_enum_constant_init(&self, enum_constant_id: CEnumConstantId) -> (Span, Box<Expr>) {
+    fn make_enum_constant_init(
+        &self,
+        enum_constant_id: CEnumConstantId,
+        is_bool: bool,
+    ) -> (Span, Box<Expr>) {
         let value = match self.ast_context[enum_constant_id].kind {
             CDeclKind::EnumConstant { value, .. } => value,
             _ => panic!("{:?} does not point to an enum variant", enum_constant_id),
         };
         let value_rs = match value {
             ConstIntExpr::I(value) => signed_int_expr(value),
-            ConstIntExpr::U(value) => mk().lit_expr(mk().int_unsuffixed_lit(value as u128)),
+            ConstIntExpr::U(value) => {
+                let lit = if is_bool {
+                    mk().bool_lit(value != 0)
+                } else {
+                    mk().int_unsuffixed_lit(value as u128)
+                };
+
+                mk().lit_expr(lit)
+            }
         };
         let enum_id = self.ast_context.parents[&enum_constant_id];
         let init = self.enum_constructor_expr(enum_id, value_rs, true);
@@ -116,16 +131,16 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        // First extract the enum's inner type...
-        val = self.integer_from_enum(val);
+        // First extract the enum's underlying type...
+        val = self.make_enum_to_underlying_cast(val);
 
-        // Cast from the enum's integral type to the expected integral type.
-        let source_cty = self.enum_integral_type(enum_id);
+        // Cast from the underlying type to the expected type.
+        let source_cty = self.enum_underlying_type(enum_id);
         self.make_cast(ctx, source_cty, target_cty, WithStmts::new_val(val))
     }
 
-    /// Gets the inner integral value of an enum value.
-    pub fn integer_from_enum(&self, val: Box<Expr>) -> Box<Expr> {
+    /// Gets the underlying value of an enum value.
+    pub fn make_enum_to_underlying_cast(&self, val: Box<Expr>) -> Box<Expr> {
         mk().anon_field_expr(val, 0)
     }
 
@@ -152,14 +167,14 @@ impl<'c> Translation<'c> {
                 ));
             }
 
-            // Enum-to-enum casts need to be translated via the inner value as an intermediate.
-            val = self.integer_from_enum(val);
-            source_cty = self.enum_integral_type(source_enum_id);
+            // Enum-to-enum casts need to be translated via the underlying value as an intermediate.
+            val = self.make_enum_to_underlying_cast(val);
+            source_cty = self.enum_underlying_type(source_enum_id);
         }
 
-        let enum_integral_type = self.enum_integral_type(enum_id);
+        let underlying_type_id = self.enum_underlying_type(enum_id);
         let mut val = WithStmts::new_val(val);
-        val = self.make_cast(ctx, source_cty, enum_integral_type, val)?;
+        val = self.make_cast(ctx, source_cty, underlying_type_id, val)?;
         val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
 
         Ok(val)
@@ -172,7 +187,7 @@ impl<'c> Translation<'c> {
             return self.enum_constant_expr(enum_constant_id);
         }
 
-        let underlying_type_id = self.enum_integral_type(enum_id);
+        let underlying_type_id = self.enum_underlying_type(enum_id);
         let value = match self.ast_context.resolve_type(underlying_type_id.ctype).kind {
             CTypeKind::UInt => mk().lit_expr(mk().int_unsuffixed_lit((value as u32) as u128)),
             CTypeKind::ULong => mk().lit_expr(mk().int_unsuffixed_lit((value as u64) as u128)),
@@ -261,14 +276,14 @@ impl<'c> Translation<'c> {
         type_enum_id == constant_enum_id
     }
 
-    pub(crate) fn enum_integral_type(&self, enum_id: CEnumId) -> CQualTypeId {
+    pub(crate) fn enum_underlying_type(&self, enum_id: CEnumId) -> CQualTypeId {
         match self.ast_context[enum_id].kind {
             CDeclKind::Enum {
-                integral_type: Some(integral_type),
+                underlying_type_id: Some(underlying_type_id),
                 ..
-            } => integral_type,
+            } => underlying_type_id,
             _ => panic!(
-                "{:?} does not point to an integral `enum` declaration",
+                "{:?} does not point to a non-extern `enum` declaration",
                 enum_id
             ),
         }

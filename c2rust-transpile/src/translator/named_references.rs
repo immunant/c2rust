@@ -93,7 +93,7 @@ impl<'c> Translation<'c> {
 
         let is_pure = self.ast_context.is_expr_pure(reference);
         let read = |write| self.read(reference_ty, write);
-        let reference = self.convert_expr(ctx.used(), reference, Some(reference_ty))?;
+        let reference = self.convert_expr(ctx, reference, Some(reference_ty))?;
         reference.and_then_try(|reference| {
             if is_lvalue(&reference) && (is_pure || !uses_read) {
                 let rvalue = uses_read.then(|| read(reference.clone())).transpose()?;
