@@ -40,11 +40,6 @@ static mut c2rust_lvalue_4: [::core::ffi::c_char; 6] =
 #[unsafe(no_mangle)]
 pub static mut static_char_array_ptr: *mut [::core::ffi::c_char; 6] =
     &raw const c2rust_lvalue_4 as *mut [::core::ffi::c_char; 6];
-pub const SINGLE_INT: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
-pub const INT_ARRAY: [::core::ffi::c_int; 2] =
-    [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
-pub const CHAR_ARRAY: [::core::ffi::c_char; 6] =
-    unsafe { ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0") };
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn local_compound_literals() {
     let mut single_int: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
@@ -64,15 +59,23 @@ pub unsafe extern "C" fn local_compound_literals() {
     let mut c2rust_lvalue_9: [::core::ffi::c_char; 6] =
         ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
     let mut char_array_ptr: *mut [::core::ffi::c_char; 6] = &raw mut c2rust_lvalue_9;
-    let mut macro_single_int: ::core::ffi::c_int = SINGLE_INT;
-    let mut macro_single_int_ptr: *mut ::core::ffi::c_int =
-        &mut SINGLE_INT as *mut ::core::ffi::c_int;
-    let mut macro_int_ptr_to_array: *mut ::core::ffi::c_int = INT_ARRAY.as_mut_ptr();
-    let mut macro_char_ptr_to_array: *mut ::core::ffi::c_char = CHAR_ARRAY.as_mut_ptr();
-    let mut macro_int_array_ptr: *mut [::core::ffi::c_int; 2] =
-        &mut INT_ARRAY as *mut [::core::ffi::c_int; 2];
-    let mut macro_char_array_ptr: *mut [::core::ffi::c_char; 6] =
-        &mut CHAR_ARRAY as *mut [::core::ffi::c_char; 6];
+    let mut macro_single_int: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut c2rust_lvalue_10: ::core::ffi::c_int = 42 as ::core::ffi::c_int;
+    let mut macro_single_int_ptr: *mut ::core::ffi::c_int = &raw mut c2rust_lvalue_10;
+    let mut c2rust_lvalue_11: [::core::ffi::c_int; 2] =
+        [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
+    let mut macro_int_ptr_to_array: *mut ::core::ffi::c_int =
+        &raw mut c2rust_lvalue_11 as *mut ::core::ffi::c_int;
+    let mut c2rust_lvalue_12: [::core::ffi::c_char; 6] =
+        ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
+    let mut macro_char_ptr_to_array: *mut ::core::ffi::c_char =
+        &raw mut c2rust_lvalue_12 as *mut ::core::ffi::c_char;
+    let mut c2rust_lvalue_13: [::core::ffi::c_int; 2] =
+        [42 as ::core::ffi::c_int, 9001 as ::core::ffi::c_int];
+    let mut macro_int_array_ptr: *mut [::core::ffi::c_int; 2] = &raw mut c2rust_lvalue_13;
+    let mut c2rust_lvalue_14: [::core::ffi::c_char; 6] =
+        ::core::mem::transmute::<[u8; 6], [::core::ffi::c_char; 6]>(*b"hello\0");
+    let mut macro_char_array_ptr: *mut [::core::ffi::c_char; 6] = &raw mut c2rust_lvalue_14;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn deref_addrof() {
