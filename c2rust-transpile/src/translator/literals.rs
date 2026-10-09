@@ -4,7 +4,7 @@
 
 use super::*;
 use failure::format_err;
-use std::iter;
+use std::{borrow::Cow, iter};
 use syn::{Path, TypePath};
 
 impl<'c> Translation<'c> {
@@ -51,9 +51,10 @@ impl<'c> Translation<'c> {
             CLiteral::Integer(value, _) | CLiteral::Character(value) => ty_kind
                 .integer_kind()
                 .is_some_and(|integer_kind| integer_kind.is_guaranteed_in_range(value, is_negated)),
-            CLiteral::Floating(value, _) => ty_kind
-                .floating_kind()
-                .is_some_and(|floating_kind| floating_kind.is_guaranteed_in_range(value)),
+
+            // `convert_floating_literal` will handle incompatible types itself.
+            CLiteral::Floating(_, _) => true,
+
             _ => false,
         }
     }
@@ -62,9 +63,12 @@ impl<'c> Translation<'c> {
     pub fn convert_literal(
         &self,
         ctx: ExprContext,
-        ty: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        literal_type_id: CQualTypeId,
         lit: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let ty = expected_type_id.unwrap_or(literal_type_id);
+
         match *lit {
             CLiteral::Integer(val, base) => Ok(WithStmts::new_val(
                 self.mk_int_lit(ctx, ty, val, base, false)?,
@@ -99,34 +103,8 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(expr))
             }
 
-            CLiteral::Floating(val, ref c_str) => {
-                let str = if c_str.is_empty() {
-                    let mut buffer = dtoa::Buffer::new();
-                    buffer.format(val).to_string()
-                } else {
-                    c_str.to_owned()
-                };
-                let val = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::LongDouble | CTypeKind::Float128 => {
-                        if ctx.is_const {
-                            return Err(format_translation_err!(
-                                None,
-                                "f128 cannot be used in constants because `f128::f128::new` is not `const`",
-                            ));
-                        }
-
-                        self.use_crate(ExternCrate::F128);
-
-                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        let args = vec![mk().lit_expr(mk().float_unsuffixed_lit(&str))];
-
-                        mk().call_expr(fn_path, args)
-                    }
-                    CTypeKind::Double => mk().lit_expr(mk().float_lit(&str, "f64")),
-                    CTypeKind::Float => mk().lit_expr(mk().float_lit(&str, "f32")),
-                    ref k => panic!("Unsupported floating point literal type {:?}", k),
-                };
-                Ok(WithStmts::new_val(val))
+            CLiteral::Floating(value, ref string) => {
+                self.convert_floating_literal(ctx, expected_type_id, literal_type_id, value, string)
             }
 
             CLiteral::String(ref bytes, element_size) => {
@@ -174,6 +152,59 @@ impl<'c> Translation<'c> {
                 }
             }
         }
+    }
+
+    pub(crate) fn convert_floating_literal(
+        &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        mut literal_type_id: CQualTypeId,
+        value: f64,
+        string: &str,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let string: Cow<_> = if string.is_empty() {
+            let mut buffer = dtoa::Buffer::new();
+            Cow::Owned(buffer.format(value).to_string())
+        } else {
+            Cow::Borrowed(string)
+        };
+
+        let target_type_id = expected_type_id.unwrap_or(literal_type_id);
+
+        let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
+        let Some(mut literal_floating_kind) = literal_type_kind.floating_kind() else {
+            panic!("type of floating literal is not a floating type: {literal_type_kind:?}");
+        };
+
+        if let Some(expected_type_id) = expected_type_id {
+            let expected_type_kind = &self.ast_context.resolve_type(expected_type_id.ctype).kind;
+
+            if let Some(expected_floating_kind) = expected_type_kind.floating_kind() {
+                if literal_floating_kind == expected_floating_kind
+                    || expected_floating_kind.is_guaranteed_in_range(value)
+                {
+                    literal_type_id = expected_type_id;
+                    literal_floating_kind = expected_floating_kind;
+                }
+            }
+        }
+
+        // Rust only has `f32` and `f64` literals, so any other kinds must be translated as one of
+        // those two, and then cast.
+        let val = match literal_floating_kind {
+            CFloatingKind::Float => mk().lit_expr(mk().float_lit(&string, "f32")),
+
+            CFloatingKind::Double => mk().lit_expr(mk().float_lit(&string, "f64")),
+
+            CFloatingKind::LongDouble | CFloatingKind::Float128 => {
+                literal_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Double);
+                mk().lit_expr(mk().float_unsuffixed_lit(&string))
+            }
+
+            ref k => panic!("Unsupported floating point literal type {:?}", k),
+        };
+
+        self.make_cast(ctx, literal_type_id, target_type_id, val)
     }
 
     /// Returns the bytes of a string literal, including any additional zero bytes to pad the

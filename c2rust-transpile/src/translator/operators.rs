@@ -245,17 +245,19 @@ impl<'c> Translation<'c> {
         }
 
         // Now that we've translated the rhs, finish translating the assignment operator.
-        self.convert_assignment_operator_with_rhs(
-            ctx,
-            expected_type_id,
-            result_type_id,
-            op,
-            lhs,
-            rhs_type_id,
-            rhs_translation,
-            compute_lhs_type_id,
-            compute_res_type_id,
-        )
+        rhs_translation.and_then_try(|rhs_translation| {
+            self.convert_assignment_operator_with_rhs(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                op,
+                lhs,
+                rhs_type_id,
+                rhs_translation,
+                compute_lhs_type_id,
+                compute_res_type_id,
+            )
+        })
     }
 
     /// Translate an assignment binary operator, provided a pre-translated RHS expression
@@ -267,7 +269,7 @@ impl<'c> Translation<'c> {
         op: CBinOp,
         lhs: CExprId,
         rhs_type_id: CQualTypeId,
-        rhs_translation: WithStmts<Box<Expr>>,
+        rhs_translation: Box<Expr>,
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -303,7 +305,7 @@ impl<'c> Translation<'c> {
 
         if let Some(field_id) = bitfield_id {
             let ty = self.convert_type(lhs_type_id.ctype)?;
-            let rhs_expr = mk().cast_expr(rhs_translation.to_expr(), ty);
+            let rhs_expr = mk().cast_expr(rhs_translation, ty);
             return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
         }
 
@@ -329,22 +331,20 @@ impl<'c> Translation<'c> {
                 })
         };
 
-        rhs_translation
-            .zip(lhs_translation)
-            .and_then_try(|(rhs, lhs)| {
-                self.make_assignment_operator(
-                    ctx,
-                    expected_type_id,
-                    result_type_id,
-                    op,
-                    lhs,
-                    lhs_type_id,
-                    rhs,
-                    rhs_type_id,
-                    compute_lhs_type_id,
-                    compute_res_type_id,
-                )
-            })
+        lhs_translation.and_then_try(|lhs| {
+            self.make_assignment_operator(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                op,
+                lhs,
+                lhs_type_id,
+                rhs_translation,
+                rhs_type_id,
+                compute_lhs_type_id,
+                compute_res_type_id,
+            )
+        })
     }
 
     fn make_assignment_operator(
@@ -379,12 +379,7 @@ impl<'c> Translation<'c> {
             ) {
                 // Cast the lhs to the compute lhs type, do the compute, and then
                 // cast the compute result to the final lhs type.
-                let lhs = self.make_cast(
-                    ctx,
-                    lhs_type_id,
-                    compute_lhs_type_id,
-                    WithStmts::new_val(read.clone()),
-                )?;
+                let lhs = self.make_cast(ctx, lhs_type_id, compute_lhs_type_id, read.clone())?;
 
                 let val = lhs.and_then_try(|lhs| {
                     self.convert_binary_operator(
@@ -398,7 +393,9 @@ impl<'c> Translation<'c> {
                     )
                 })?;
 
-                let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
+                let val = val.and_then_try(|val| {
+                    self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)
+                })?;
 
                 if is_volatile {
                     val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
@@ -424,7 +421,7 @@ impl<'c> Translation<'c> {
                 ctx,
                 result_type_id,
                 expected_type_id.unwrap_or(result_type_id),
-                WithStmts::new_val(read),
+                read,
             )?
         } else {
             WithStmts::new_val(self.panic_or_err("assignment result is not supposed to be used"))
@@ -548,7 +545,9 @@ impl<'c> Translation<'c> {
         if let &CTypeKind::Pointer(pointee) = rhs_type {
             let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
             let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
-            self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
+            val.and_then_try(|val| {
+                self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
+            })
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
         } else if lhs_type.is_unsigned_integral_type() {
@@ -619,35 +618,25 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad arg type"))?;
 
-        let one = match self.ast_context.resolve_type(arg_type.ctype).kind {
-            // TODO: If rust gets f16 support:
-            // CTypeKind::Half |
-            CTypeKind::Float | CTypeKind::Double => mk().lit_expr(mk().float_unsuffixed_lit("1.")),
-            CTypeKind::LongDouble | CTypeKind::Float128 => {
-                self.use_crate(ExternCrate::F128);
-
-                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                let args = vec![mk().lit_expr(mk().float_unsuffixed_lit("1."))];
-
-                mk().call_expr(fn_path, args)
-            }
-            _ => mk().lit_expr(mk().int_unsuffixed_lit(1)),
-        };
-
         let mut one_type_id = arg_type;
         let mut compute_lhs_type_id = arg_type;
         let mut compute_res_type_id = result_type_id;
 
-        match self.ast_context.resolve_type(arg_type.ctype).kind {
+        let one = match self.ast_context.resolve_type(arg_type.ctype).kind {
             CTypeKind::Pointer(..) => {
                 one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int));
+                mk().lit_expr(mk().int_unsuffixed_lit(1)).into()
             }
             CTypeKind::Enum(enum_id) => {
                 one_type_id = self.enum_underlying_type(enum_id);
                 compute_lhs_type_id = one_type_id;
                 compute_res_type_id = one_type_id;
+                mk().lit_expr(mk().int_unsuffixed_lit(1)).into()
             }
-            _ => {}
+            ref type_kind if type_kind.is_floating_type() => {
+                self.convert_floating_literal(ctx, None, one_type_id, 1.0, "1.0")?
+            }
+            _ => mk().lit_expr(mk().int_unsuffixed_lit(1)).into(),
         };
 
         // If we aren't going to be using the result, may as well do a simple pre-increment
@@ -655,17 +644,19 @@ impl<'c> Translation<'c> {
         let op = op.underlying_compound_assignment().unwrap();
 
         if dont_yield_old_value {
-            self.convert_assignment_operator_with_rhs(
-                ctx,
-                expected_type_id,
-                result_type_id,
-                op,
-                arg,
-                one_type_id,
-                WithStmts::new_val(one),
-                Some(compute_lhs_type_id),
-                Some(compute_res_type_id),
-            )
+            one.and_then_try(|one| {
+                self.convert_assignment_operator_with_rhs(
+                    ctx,
+                    expected_type_id,
+                    result_type_id,
+                    op,
+                    arg,
+                    one_type_id,
+                    one,
+                    Some(compute_lhs_type_id),
+                    Some(compute_res_type_id),
+                )
+            })
         } else {
             self.name_reference_write_read(ctx.used(), arg)?
                 .and_then(|lhs| {
@@ -679,18 +670,20 @@ impl<'c> Translation<'c> {
                     WithStmts::new(vec![save_old_val], (lhs, old_val_expr))
                 })
                 .and_then_try(|(lhs, old_val_expr)| {
-                    let val = self.make_assignment_operator(
-                        ctx.unused(),
-                        expected_type_id,
-                        result_type_id,
-                        op,
-                        lhs,
-                        arg_type,
-                        one,
-                        one_type_id,
-                        compute_lhs_type_id,
-                        compute_res_type_id,
-                    )?;
+                    let val = one.and_then_try(|one| {
+                        self.make_assignment_operator(
+                            ctx.unused(),
+                            expected_type_id,
+                            result_type_id,
+                            op,
+                            lhs,
+                            arg_type,
+                            one,
+                            one_type_id,
+                            compute_lhs_type_id,
+                            compute_res_type_id,
+                        )
+                    })?;
 
                     // Replace the assignment result with the old value
                     Ok(val.map(|_| old_val_expr))
