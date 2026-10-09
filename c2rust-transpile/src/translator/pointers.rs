@@ -386,15 +386,44 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Pointer offset that casts its argument to isize
-    pub fn convert_pointer_offset(
+    /// Translate a pointer offset expression.
+    pub(crate) fn convert_pointer_offset(
         &self,
-        ptr: Box<Expr>,
-        offset: Box<Expr>,
-        pointee_cty: CTypeId,
+        ctx: ExprContext,
+        pointer: impl Into<IdOrExpr>,
+        offset: impl Into<IdOrExpr>,
         neg: bool,
-    ) -> WithStmts<Box<Expr>> {
-        self.make_pointer_offset(ptr, cast_int(offset, "isize", false), pointee_cty, neg)
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let pointer = pointer.into();
+        let pointer_type_id = pointer
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+        let pointer_type_kind = &self.ast_context.resolve_type(pointer_type_id.ctype).kind;
+        let pointee_type_id = match *pointer_type_kind {
+            CTypeKind::Pointer(pointee_type_id) => pointee_type_id,
+            // Variable arrays are represented as mutable pointers.
+            CTypeKind::VariableArray(element_type_id, _) => CQualTypeId::new(element_type_id),
+            _ => panic!("pointer argument does not have pointer type kind"),
+        };
+
+        // When we use methods on pointers (ie wrapping_offset_from or offset)
+        // we must ensure we have an explicit raw ptr for the self param, as
+        // self references do not decay
+        let pointer_rs = self.convert_expr(ctx.not_address_needed().decay_ref(), pointer, None)?;
+
+        let offset = offset.into();
+        let isize_type_id = self.ast_context.type_for_kind(&CTypeKind::IntPtr);
+        let offset_rs = self.convert_expr_with_cast(
+            ctx.not_address_needed(),
+            CQualTypeId::new(isize_type_id),
+            offset,
+        )?;
+
+        Ok(pointer_rs
+            .zip(offset_rs)
+            .and_then(|(pointer_rs, offset_rs)| {
+                self.make_pointer_offset(pointer_rs, offset_rs, pointee_type_id.ctype, neg)
+            }))
     }
 
     /// Creates a pointer offset expression. Assumes that `offset_rs` is of type `isize`.

@@ -518,17 +518,17 @@ impl<'c> Translation<'c> {
         let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        let expr_rs = if let &CTypeKind::Pointer(pointee) = rhs_type_kind {
+        let expr_rs = if let &CTypeKind::Pointer(_) = rhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             if op == CBinOp::Subtract {
                 self.convert_pointer_difference(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id))?
             } else {
-                self.convert_pointer_offset(rhs, lhs, pointee.ctype, false)
+                self.convert_pointer_offset(ctx, (rhs, rhs_type_id), (lhs, lhs_type_id), false)?
             }
-        } else if let &CTypeKind::Pointer(pointee) = lhs_type_kind {
+        } else if let &CTypeKind::Pointer(_) = lhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             let is_negative = op == CBinOp::Subtract;
-            self.convert_pointer_offset(lhs, rhs, pointee.ctype, is_negative)
+            self.convert_pointer_offset(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id), is_negative)?
         } else if lhs_type_kind.is_unsigned_integral_type() {
             WithStmts::new_val(mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs]))
         } else {
