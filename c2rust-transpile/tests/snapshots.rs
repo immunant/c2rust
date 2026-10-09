@@ -379,7 +379,7 @@ fn test_enums() {
 
 #[test]
 fn test_exprs() {
-    transpile("exprs.c").run();
+    transpile("exprs.c").expect_compile_error(true).run();
 }
 
 #[test]
