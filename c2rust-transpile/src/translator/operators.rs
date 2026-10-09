@@ -490,7 +490,7 @@ impl<'c> Translation<'c> {
         let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        if let &CTypeKind::Pointer(pointee) = rhs_type_kind {
+        if let &CTypeKind::Pointer(_) = rhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             if op == CBinOp::Subtract {
                 let val =
@@ -498,12 +498,12 @@ impl<'c> Translation<'c> {
                 let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
                 self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
             } else {
-                Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false))
+                self.convert_pointer_offset(ctx, (rhs, rhs_type_id), (lhs, lhs_type_id), false)
             }
-        } else if let &CTypeKind::Pointer(pointee) = lhs_type_kind {
+        } else if let &CTypeKind::Pointer(_) = lhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             let is_negative = op == CBinOp::Subtract;
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, is_negative))
+            self.convert_pointer_offset(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id), is_negative)
         } else if lhs_type_kind.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,
