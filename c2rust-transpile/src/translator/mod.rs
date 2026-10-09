@@ -3789,40 +3789,53 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Converts `expr_id` as if it were wrapped in an `ImplicitCast` expression.
+    /// If `expr` is an id, converts it as if it were wrapped in an `ImplicitCast` expression.
+    /// If it's a Rust expression, casts it with `make_cast`.
     pub(crate) fn convert_expr_with_cast(
         &self,
         ctx: ExprContext,
         target_type_id: CQualTypeId,
-        expr_id: CExprId,
+        expr: impl Into<IdOrExpr<CTypeId>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let source_type_id = self.ast_context[expr_id].kind.get_qual_type().unwrap();
+        match expr.into() {
+            IdOrExpr::Id(expr_id) => {
+                let source_type_id = self.ast_context[expr_id].kind.get_qual_type().unwrap();
 
-        let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
-        let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
+                let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
+                let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
 
-        let kind = CastKind::from_types(source_type_kind, target_type_kind).unwrap_or_else(|| {
-            warn!(
-                "Unknown CastKind for {source_type_kind:?} to {target_type_kind:?} cast. \
-                Defaulting to BitCast",
-            );
+                let kind =
+                    CastKind::from_types(source_type_kind, target_type_kind).unwrap_or_else(|| {
+                        warn!(
+                            "Unknown CastKind for {source_type_kind:?} to {target_type_kind:?} \
+                            cast. Defaulting to BitCast",
+                        );
 
-            CastKind::BitCast
-        });
+                        CastKind::BitCast
+                    });
 
-        self.convert_cast(ctx, None, target_type_id, expr_id, kind, None, false)
+                self.convert_cast(ctx, None, target_type_id, expr_id, kind, None, false)
+            }
+
+            IdOrExpr::Expr(expr_rs, source_type_id) => self.make_cast(
+                ctx,
+                CQualTypeId::new(source_type_id),
+                target_type_id,
+                WithStmts::new_val(expr_rs),
+            ),
+        }
     }
 
     pub(crate) fn convert_expr_with_optional_cast(
         &self,
         ctx: ExprContext,
         target_type_id: Option<CQualTypeId>,
-        expr_id: CExprId,
+        expr: impl Into<IdOrExpr<CTypeId>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if let Some(target_type_id) = target_type_id {
-            self.convert_expr_with_cast(ctx, target_type_id, expr_id)
+            self.convert_expr_with_cast(ctx, target_type_id, expr)
         } else {
-            self.convert_expr(ctx, expr_id, None)
+            self.convert_expr(ctx, expr.into(), None)
         }
     }
 
