@@ -566,8 +566,12 @@ impl<'c> Translation<'c> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        let expr_rs = if let &CTypeKind::Pointer(pointee) = rhs_type {
-            self.make_pointer_difference(lhs, rhs, pointee.ctype)
+        let expr_rs = if let CTypeKind::Pointer(_) = rhs_type {
+            self.convert_pointer_difference(
+                ctx,
+                (lhs, lhs_type_id.ctype),
+                (rhs, rhs_type_id.ctype),
+            )?
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
             self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false)
         } else if lhs_type.is_unsigned_integral_type() {

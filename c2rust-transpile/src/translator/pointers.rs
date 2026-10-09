@@ -420,24 +420,40 @@ impl<'c> Translation<'c> {
         WithStmts::new_val(expr).set_unsafe()
     }
 
-    /// Creates a pointer difference expression. Returns an expression of type `isize`.
-    pub(crate) fn make_pointer_difference(
+    /// Translate a pointer difference expression.
+    pub(crate) fn convert_pointer_difference(
         &self,
-        lhs_rs: Box<Expr>,
-        rhs_rs: Box<Expr>,
-        pointee_type_id: CTypeId,
-    ) -> WithStmts<Box<Expr>> {
-        let mut expr_rs = mk().method_call_expr(lhs_rs, "offset_from", vec![rhs_rs]);
+        ctx: ExprContext,
+        lhs: impl Into<IdOrExpr<CTypeId>>,
+        rhs: impl Into<IdOrExpr<CTypeId>>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let lhs = lhs.into();
+        let rhs = rhs.into();
+        let rhs_type_id = rhs
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+        let Some(rhs_pointee_type_id) = self.ast_context.get_pointee_qual_type(rhs_type_id) else {
+            panic!("rhs argument does not have pointer type kind");
+        };
+
+        let lhs_rs = self.convert_expr(ctx, lhs, None)?;
+        let rhs_rs = self.convert_expr(ctx, rhs, None)?;
+
+        let mut expr_rs = lhs_rs
+            .zip(rhs_rs)
+            .map(|(lhs_rs, rhs_rs)| mk().method_call_expr(lhs_rs, "offset_from", vec![rhs_rs]))
+            .set_unsafe();
 
         // If the pointee is a variable array type, the actual pointee type used by `offset_from`
         // will be its element type rather than the whole array. So we need to divide by the
         // variable holding the length of the array.
-        if let Some(sz) = self.compute_size_of_expr(pointee_type_id) {
+        if let Some(sz) = self.compute_size_of_expr(rhs_pointee_type_id.ctype) {
             let div_rs = cast_int(sz, "isize", false);
-            expr_rs = mk().binary_expr(BinOp::Div(Default::default()), expr_rs, div_rs);
+            expr_rs = expr_rs
+                .map(|expr_rs| mk().binary_expr(BinOp::Div(Default::default()), expr_rs, div_rs));
         }
 
-        WithStmts::new_val(expr_rs).set_unsafe()
+        Ok(expr_rs)
     }
 
     /// Construct an expression for a NULL at any type, including forward declarations,
