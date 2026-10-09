@@ -493,7 +493,8 @@ impl<'c> Translation<'c> {
         if let &CTypeKind::Pointer(pointee) = rhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             if op == CBinOp::Subtract {
-                let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
+                let val =
+                    self.convert_pointer_difference(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id))?;
                 let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
                 self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
             } else {
