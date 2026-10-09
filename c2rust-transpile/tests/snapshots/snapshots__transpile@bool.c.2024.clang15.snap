@@ -61,15 +61,13 @@ pub unsafe extern "C" fn test_bool() {
 pub unsafe extern "C" fn test_bool_operator() {
     let mut comp_int: ::core::ffi::c_int =
         ((1 as ::core::ffi::c_int) < 0 as ::core::ffi::c_int) as ::core::ffi::c_int;
-    let mut comp_long: ::core::ffi::c_long = ((1 as ::core::ffi::c_int) < 0 as ::core::ffi::c_int)
-        as ::core::ffi::c_int as ::core::ffi::c_long;
+    let mut comp_long: ::core::ffi::c_long =
+        ((1 as ::core::ffi::c_int) < 0 as ::core::ffi::c_int) as ::core::ffi::c_long;
     let mut logic_int: ::core::ffi::c_int = (false || false) as ::core::ffi::c_int;
-    let mut logic_long: ::core::ffi::c_long =
-        (false || false) as ::core::ffi::c_int as ::core::ffi::c_long;
+    let mut logic_long: ::core::ffi::c_long = (false || false) as ::core::ffi::c_long;
     let mut ptr: *mut ::core::ffi::c_void = ::core::ptr::null_mut::<::core::ffi::c_void>();
     let mut null_ptr_int: ::core::ffi::c_int = ptr.is_null() as ::core::ffi::c_int;
-    let mut null_ptr_long: ::core::ffi::c_long =
-        ptr.is_null() as ::core::ffi::c_int as ::core::ffi::c_long;
+    let mut null_ptr_long: ::core::ffi::c_long = ptr.is_null() as ::core::ffi::c_long;
     let mut not_int: ::core::ffi::c_int = true as ::core::ffi::c_int;
-    let mut not_long: ::core::ffi::c_long = true as ::core::ffi::c_int as ::core::ffi::c_long;
+    let mut not_long: ::core::ffi::c_long = true as ::core::ffi::c_long;
 }
