@@ -535,10 +535,20 @@ impl<'c> Translation<'c> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        let expr_rs = if let &CTypeKind::Pointer(pointee) = lhs_type {
-            self.convert_pointer_offset(lhs, rhs, pointee.ctype, false)
-        } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            self.convert_pointer_offset(rhs, lhs, pointee.ctype, false)
+        let expr_rs = if let &CTypeKind::Pointer(_) = lhs_type {
+            self.convert_pointer_offset(
+                ctx,
+                (lhs, lhs_type_id.ctype),
+                (rhs, rhs_type_id.ctype),
+                false,
+            )?
+        } else if let &CTypeKind::Pointer(_) = rhs_type {
+            self.convert_pointer_offset(
+                ctx,
+                (rhs, rhs_type_id.ctype),
+                (lhs, lhs_type_id.ctype),
+                false,
+            )?
         } else if lhs_type.is_unsigned_integral_type() {
             WithStmts::new_val(mk().method_call_expr(lhs, "wrapping_add", vec![rhs]))
         } else {
@@ -572,8 +582,13 @@ impl<'c> Translation<'c> {
                 (lhs, lhs_type_id.ctype),
                 (rhs, rhs_type_id.ctype),
             )?
-        } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            self.convert_pointer_offset(lhs, rhs, pointee.ctype, true)
+        } else if let &CTypeKind::Pointer(_) = lhs_type {
+            self.convert_pointer_offset(
+                ctx,
+                (lhs, lhs_type_id.ctype),
+                (rhs, rhs_type_id.ctype),
+                true,
+            )?
         } else if lhs_type.is_unsigned_integral_type() {
             WithStmts::new_val(mk().method_call_expr(lhs, "wrapping_sub", vec![rhs]))
         } else {

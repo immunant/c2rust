@@ -384,15 +384,42 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Pointer offset that casts its argument to isize
-    pub fn convert_pointer_offset(
+    /// Translate a pointer offset expression.
+    pub(crate) fn convert_pointer_offset(
         &self,
-        ptr: Box<Expr>,
-        offset: Box<Expr>,
-        pointee_cty: CTypeId,
+        ctx: ExprContext,
+        pointer: impl Into<IdOrExpr<CTypeId>>,
+        offset: impl Into<IdOrExpr<CTypeId>>,
         neg: bool,
-    ) -> WithStmts<Box<Expr>> {
-        self.make_pointer_offset(ptr, cast_int(offset, "isize", false), pointee_cty, neg)
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let pointer = pointer.into();
+        let pointer_type_id = pointer
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+        let pointer_type_kind = &self.ast_context.resolve_type(pointer_type_id).kind;
+        let pointee_type_id = match *pointer_type_kind {
+            CTypeKind::Pointer(pointee_type_id) => pointee_type_id,
+            // Variable arrays are represented as mutable pointers.
+            CTypeKind::VariableArray(element_type_id, _) => CQualTypeId::new(element_type_id),
+            _ => panic!("pointer argument does not have pointer type kind"),
+        };
+
+        // LHS must be ref decayed for the offset method call's self param
+        let pointer_rs = self.convert_expr(ctx.not_needs_address().decay_ref(), pointer, None)?;
+
+        let offset = offset.into();
+        let isize_type_id = self.ast_context.type_for_kind(&CTypeKind::IntPtr);
+        let offset_rs = self.convert_expr_with_cast(
+            ctx.not_needs_address(),
+            CQualTypeId::new(isize_type_id),
+            offset,
+        )?;
+
+        Ok(pointer_rs
+            .zip(offset_rs)
+            .and_then(|(pointer_rs, offset_rs)| {
+                self.make_pointer_offset(pointer_rs, offset_rs, pointee_type_id.ctype, neg)
+            }))
     }
 
     /// Creates a pointer offset expression. Assumes that `offset_rs` is of type `isize`.
