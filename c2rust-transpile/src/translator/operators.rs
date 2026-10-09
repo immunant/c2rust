@@ -640,7 +640,7 @@ impl<'c> Translation<'c> {
 
         match self.ast_context.resolve_type(arg_type.ctype).kind {
             CTypeKind::Pointer(..) => {
-                one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int));
+                one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::IntPtr));
             }
             CTypeKind::Enum(enum_id) => {
                 one_type_id = self.enum_underlying_type(enum_id);
