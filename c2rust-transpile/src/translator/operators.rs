@@ -478,30 +478,39 @@ impl<'c> Translation<'c> {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let is_unsigned_integral_type = self
-            .ast_context
-            .resolve_type(expr_type_id.ctype)
-            .kind
-            .is_unsigned_integral_type();
+        if matches!(op, CBinOp::Add) {
+            self.convert_addition(lhs_type, rhs_type, lhs, rhs)
+        } else if matches!(op, CBinOp::Subtract) {
+            self.convert_subtraction(ctx, expr_type_id, lhs_type, rhs_type, lhs, rhs)
+        } else {
+            let is_unsigned_integral_type = self
+                .ast_context
+                .resolve_type(expr_type_id.ctype)
+                .kind
+                .is_unsigned_integral_type();
 
-        Ok(WithStmts::new_val(match op {
-            CBinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
-            CBinOp::Subtract => {
-                return self.convert_subtraction(ctx, expr_type_id, lhs_type, rhs_type, lhs, rhs)
+            if op.is_arithmetic() && is_unsigned_integral_type {
+                Ok(WithStmts::new_val(mk().method_call_expr(
+                    lhs,
+                    op.wrapping_method(),
+                    vec![rhs],
+                )))
+            } else {
+                let mut expr_rs = mk().binary_expr(BinOp::from(op), lhs, rhs);
+
+                if op.is_comparison() {
+                    expr_rs = bool_to_int(expr_rs);
+                } else {
+                    assert!(
+                        op.is_arithmetic() || op.is_bitwise() || op.is_bitshift(),
+                        "Translation of binary operator {:?}",
+                        op
+                    )
+                }
+
+                Ok(WithStmts::new_val(expr_rs))
             }
-
-            op if op.is_arithmetic() && is_unsigned_integral_type => {
-                mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs])
-            }
-
-            op if op.is_arithmetic() || op.is_bitwise() || op.is_bitshift() => {
-                mk().binary_expr(BinOp::from(op), lhs, rhs)
-            }
-
-            op if op.is_comparison() => bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs)),
-
-            op => unimplemented!("Translation of binary operator {:?}", op),
-        }))
+        }
     }
 
     fn convert_addition(
