@@ -36,3 +36,18 @@ void test_bool() {
     int1 *= 2.0;
     double d = int1;
 }
+
+void test_bool_operator(void) {
+    int comp_int = 1 < 0;
+    long comp_long = 1 < 0;
+
+    int logic_int = 0 || 0;
+    long logic_long = 0 || 0;
+
+    void *ptr = 0;
+    int null_ptr_int = ptr == 0;
+    long null_ptr_long = ptr == 0;
+
+    int not_int = !0;
+    long not_long = !0;
+}
