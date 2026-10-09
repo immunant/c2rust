@@ -529,8 +529,9 @@ impl<'c> Translation<'c> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        if let &CTypeKind::Pointer(pointee) = rhs_type {
-            let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
+        if let CTypeKind::Pointer(..) = rhs_type {
+            let val =
+                self.convert_pointer_difference(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id))?;
             let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
             self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
