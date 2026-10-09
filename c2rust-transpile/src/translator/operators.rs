@@ -521,7 +521,7 @@ impl<'c> Translation<'c> {
         let expr_rs = if let &CTypeKind::Pointer(pointee) = rhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             if op == CBinOp::Subtract {
-                self.make_pointer_difference(lhs, rhs, pointee.ctype)
+                self.convert_pointer_difference(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id))?
             } else {
                 self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false)
             }
