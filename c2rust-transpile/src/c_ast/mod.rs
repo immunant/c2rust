@@ -518,6 +518,48 @@ impl TypedAstContext {
         }
     }
 
+    /// Returns whether a cast from `source_type_id` to `target_type_id` is a cast from a `mut`
+    /// pointer to a `const` pointer, with the same pointee type and otherwise the same qualifiers.
+    pub(crate) fn is_mut_to_const_pointer_cast(
+        &self,
+        source_type_id: CTypeId,
+        target_type_id: CTypeId,
+    ) -> bool {
+        let source_type_kind = &self.resolve_type(source_type_id).kind;
+        let target_type_kind = &self.resolve_type(target_type_id).kind;
+
+        // Only pointer-to-pointer casts.
+        let CTypeKind::Pointer(source_pointee_type_id) = *source_type_kind else {
+            return false;
+        };
+        let CTypeKind::Pointer(target_pointee_type_id) = *target_type_kind else {
+            return false;
+        };
+
+        let CQualTypeId {
+            qualifiers: mut source_qualifiers,
+            ctype: source_ctype,
+        } = source_pointee_type_id;
+        let CQualTypeId {
+            qualifiers: mut target_qualifiers,
+            ctype: target_ctype,
+        } = target_pointee_type_id;
+
+        // Only mut to const casts.
+        if source_qualifiers.is_const || !target_qualifiers.is_const {
+            return false;
+        }
+
+        // Are the pointee types and the qualifiers other than `is_const` equal?
+        source_qualifiers.is_const = false;
+        target_qualifiers.is_const = false;
+        self.types_eq(
+            source_ctype,
+            target_ctype,
+            &TypedAstContext::resolve_type_id,
+        ) && source_qualifiers == target_qualifiers
+    }
+
     /// Predicate for struct, union, and enum declarations without
     /// bodies. These forward declarations are suitable for use as
     /// the targets of pointers
@@ -2152,7 +2194,6 @@ pub enum CastKind {
     IntegralComplexCast,
     IntegralComplexToFloatingComplex,
     BuiltinFnToFnPtr,
-    ConstCast,
     VectorSplat,
     AtomicToNonAtomic,
     NonAtomicToAtomic,

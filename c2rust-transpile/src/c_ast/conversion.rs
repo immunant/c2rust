@@ -160,7 +160,6 @@ fn parse_cast_kind(kind: &str) -> CastKind {
         "IntegralComplexCast" => CastKind::IntegralComplexCast,
         "IntegralComplexToFloatingComplex" => CastKind::IntegralComplexToFloatingComplex,
         "BuiltinFnToFnPtr" => CastKind::BuiltinFnToFnPtr,
-        "ConstCast" => CastKind::ConstCast,
         "VectorSplat" => CastKind::VectorSplat,
         "AtomicToNonAtomic" => CastKind::AtomicToNonAtomic,
         "NonAtomicToAtomic" => CastKind::NonAtomicToAtomic,
