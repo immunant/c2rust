@@ -117,7 +117,7 @@ fn build_format_macro(
         // Peel off any casts and retrieve the inner string
         match ep.kind {
             ExprKind::Lit(ref l) => break l,
-            ExprKind::Cast(ref e, _) | ExprKind::Type(ref e, _) => ep = &*e,
+            ExprKind::Cast(ref e, _) | ExprKind::Type(ref e, _) => ep = e,
             // `e.as_ptr()` or `e.as_mut_ptr()` => e
             ExprKind::MethodCall(ref call)
                 if call.args.is_empty()
@@ -251,7 +251,7 @@ impl Transform for ConvertPrintfs {
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
             if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
-                match (&*fi.ident.as_str(), &fi.kind) {
+                match (fi.ident.as_str(), &fi.kind) {
                     ("printf", ForeignItemKind::Fn(_)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
                     }
