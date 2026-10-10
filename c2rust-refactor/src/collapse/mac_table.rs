@@ -476,10 +476,10 @@ impl<T: CollectMacros> CollectMacros for Spanned<T> {
 impl<T: CollectMacros + Debug> CollectMacros for Option<T> {
     fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {
         match (old, new) {
-            (&Some(ref old), &Some(ref new)) => {
+            (Some(old), Some(new)) => {
                 <T as CollectMacros>::collect_macros(old, new, cx);
             }
-            (&None, &None) => {}
+            (None, None) => {}
             (_, _) => panic!(
                 "mismatch between unexpanded and expanded ASTs \n  old: {:?}\n  new: {:?}",
                 old, new

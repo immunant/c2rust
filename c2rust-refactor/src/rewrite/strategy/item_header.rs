@@ -342,23 +342,23 @@ fn rewrite_arg_list_with_tokens(
 }
 
 pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
-    let &Item {
-        ident: ref ident1,
-        attrs: ref attrs1,
-        id: ref id1,
-        kind: ref kind1,
-        vis: ref vis1,
-        span: ref span1,
-        tokens: ref tokens1,
+    let Item {
+        ident: ident1,
+        attrs: attrs1,
+        id: id1,
+        kind: kind1,
+        vis: vis1,
+        span: span1,
+        tokens: tokens1,
     } = old;
-    let &Item {
-        ident: ref ident2,
-        attrs: ref attrs2,
-        id: ref id2,
-        kind: ref kind2,
-        vis: ref vis2,
-        span: ref span2,
-        tokens: ref _tokens2,
+    let Item {
+        ident: ident2,
+        attrs: attrs2,
+        id: id2,
+        kind: kind2,
+        vis: vis2,
+        span: span2,
+        tokens: _tokens2,
     } = new;
 
     match (kind1, kind2) {

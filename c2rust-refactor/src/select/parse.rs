@@ -77,7 +77,7 @@ impl<'a> Stream<'a> {
 
     fn maybe_expect(&mut self, expect: &TokenKind) -> bool {
         let found = match self.peek() {
-            Some(&TokenTree::Token(ref tok, _)) => &tok.kind == expect,
+            Some(TokenTree::Token(tok, _)) => &tok.kind == expect,
             _ => false,
         };
         if found {

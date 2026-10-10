@@ -81,7 +81,7 @@ impl<T: NtMatch> NtMatch for Spanned<T> {
 impl<T: NtMatch> NtMatch for Option<T> {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
         match (old, new) {
-            (&Some(ref old), &Some(ref new)) => {
+            (Some(old), Some(new)) => {
                 <T as NtMatch>::nt_match(old, new, cx);
             }
             (_, _) => {}
