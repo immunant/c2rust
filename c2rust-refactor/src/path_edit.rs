@@ -90,7 +90,7 @@ where
                 e.kind = ExprKind::Path(new_qself, new_path);
             }
 
-            hir::ExprKind::Struct(ref qpath, _, _) => {
+            hir::ExprKind::Struct(qpath, _, _) => {
                 // Bail out early if it's not really a path type in the original AST.
                 match e.kind {
                     // Technically still a struct expression, but the struct to use is referenced
@@ -170,11 +170,9 @@ where
         hir_qpath: &hir::QPath,
     ) -> (Option<P<QSelf>>, Path) {
         match *hir_qpath {
-            hir::QPath::Resolved(_, ref hir_path) => {
-                (self.callback)(id, qself, path, &[hir_path.res])
-            }
+            hir::QPath::Resolved(_, hir_path) => (self.callback)(id, qself, path, &[hir_path.res]),
 
-            hir::QPath::TypeRelative(ref hir_ty, _) => {
+            hir::QPath::TypeRelative(hir_ty, _) => {
                 // If the path is type-relative, then no `DefId` is available for the whole path.
                 // However, we might still be able to do something with the base `Ty`.  Pop off the
                 // last segment, which is the name of the associated item, and recursively try to

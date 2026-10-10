@@ -151,7 +151,7 @@ fn all_whitespace(s: &str, col: CharPos) -> Option<usize> {
 // From librustc_ast::util::comments
 fn trim_whitespace_prefix(s: &str, col: CharPos) -> &str {
     let len = s.len();
-    match all_whitespace(&s, col) {
+    match all_whitespace(s, col) {
         Some(col) => {
             if col < len {
                 &s[col..]

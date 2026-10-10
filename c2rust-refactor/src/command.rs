@@ -94,11 +94,11 @@ impl ParsedNodes {
 
 impl Visit for ParsedNodes {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
-        self.exprs.iter().for_each(|x| (&**x).visit(v));
-        self.pats.iter().for_each(|x| (&**x).visit(v));
-        self.tys.iter().for_each(|x| (&**x).visit(v));
+        self.exprs.iter().for_each(|x| (**x).visit(v));
+        self.pats.iter().for_each(|x| (**x).visit(v));
+        self.tys.iter().for_each(|x| (**x).visit(v));
         self.stmts.iter().for_each(|x| x.visit(v));
-        self.items.iter().for_each(|x| (&**x).visit(v));
+        self.items.iter().for_each(|x| (**x).visit(v));
     }
 }
 
@@ -343,7 +343,7 @@ impl RefactorState {
             // Expand all the Unloaded modules ourselves
             // since rustc folded that operation into expansion
             if need_load {
-                load_modules(&mut *cs.krate.borrow_mut(), &session.parse_sess, source_map);
+                load_modules(&mut cs.krate.borrow_mut(), &session.parse_sess, source_map);
             }
 
             let unexpanded = cs.krate().clone();

@@ -176,7 +176,7 @@ impl<T: Rewrite> Rewrite for Spanned<T> {
 impl<T: Rewrite> Rewrite for Option<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         match (old, new) {
-            (&Some(ref x1), &Some(ref x2)) => Rewrite::rewrite(x1, x2, rcx),
+            (Some(x1), Some(x2)) => Rewrite::rewrite(x1, x2, rcx),
             (&None, &None) => true,
             (_, _) => false,
         }
@@ -208,13 +208,13 @@ impl<T: MaybeRewriteSeq> Rewrite for [T] {
 
 impl<T: MaybeRewriteSeq> Rewrite for Vec<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
-        <[T] as Rewrite>::rewrite(&old, &new, rcx)
+        <[T] as Rewrite>::rewrite(old, new, rcx)
     }
 }
 
 impl<T: MaybeRewriteSeq> Rewrite for ThinVec<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
-        <[T] as Rewrite>::rewrite(&old, &new, rcx)
+        <[T] as Rewrite>::rewrite(old, new, rcx)
     }
 }
 

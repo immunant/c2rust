@@ -72,7 +72,7 @@ impl Transform for ReconstructForRange {
                 $body:MultiStmt;
                 $incr:Stmt;
             }"#;
-        let pat = mcx.parse_stmts(&pat_str);
+        let pat = mcx.parse_stmts(pat_str);
 
         let lt_cond = mcx.parse_expr("$i < $end:Expr");
         let le_cond = mcx.parse_expr("$i <= $end:Expr");
@@ -137,7 +137,7 @@ impl Transform for ReconstructForRange {
             let tables = tcx.typeck_body(parent_body_id);
             let infcx = tcx.infer_ctxt().build();
             ExprUseVisitor::new(&mut delegate, &infcx, parent_did, ParamEnv::empty(), tables)
-                .consume_body(&parent_body);
+                .consume_body(parent_body);
             assert!(delegate.writes_inside_loop > 0);
             debug!(
                 "Loop variable '{:?}' writes:{} reads:{}",
@@ -165,7 +165,7 @@ impl Transform for ReconstructForRange {
             };
 
             let step = mcx.bindings.get::<_, P<Expr>>("$step").unwrap();
-            let repl_step = match (is_one_expr(&*step), range_excl) {
+            let repl_step = match (is_one_expr(step), range_excl) {
                 (true, true) => range_one_excl.clone(),
                 (true, false) => range_one_incl.clone(),
                 (false, true) => range_step_excl.clone(),

@@ -86,7 +86,7 @@ impl TryMatch for Expr {
 
         if let ExprKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
-            return match &name.as_str() as &str {
+            return match name.as_str() as &str {
                 "marked" => mcx.do_marked(
                     &mac.args,
                     |p| p.parse_expr().map(|p| p.into_inner()),
@@ -116,7 +116,7 @@ impl TryMatch for Pat {
         // TODO: do we want to allow top-level or-patterns here?
         if let PatKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
-            return match &name.as_str() as &str {
+            return match name.as_str() as &str {
                 "marked" => mcx.do_marked(
                     &mac.args,
                     |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
@@ -143,7 +143,7 @@ impl TryMatch for Ty {
 
         if let TyKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
-            return match &name.as_str() as &str {
+            return match name.as_str() as &str {
                 "marked" => {
                     mcx.do_marked(&mac.args, |p| p.parse_ty().map(|p| p.into_inner()), target)
                 }
@@ -236,7 +236,7 @@ fn default_option_match<T: TryMatch>(
     mcx: &mut MatchCtxt,
 ) -> matcher::Result<()> {
     match (pattern, target) {
-        (&Some(ref x), &Some(ref y)) => mcx.try_match(x, y),
+        (Some(x), Some(y)) => mcx.try_match(x, y),
         (&None, &None) => Ok(()),
         (_, _) => Err(matcher::Error::VariantMismatch),
     }
@@ -254,7 +254,7 @@ impl<T: TryMatch> TryMatch for Option<T> {
 impl<T: TryMatch + PatternSymbol> TryMatch for Option<T> {
     fn try_match(&self, target: &Option<T>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         match (self, target) {
-            (&Some(ref x), None) if mcx.is_opt_binding(x) => mcx.capture_opt_none(x),
+            (Some(x), None) if mcx.is_opt_binding(x) => mcx.capture_opt_none(x),
             _ => default_option_match(self, target, mcx),
         }
     }
@@ -263,7 +263,7 @@ impl<T: TryMatch + PatternSymbol> TryMatch for Option<T> {
 impl<T: TryMatch + PatternSymbol> TryMatch for Option<P<T>> {
     fn try_match(&self, target: &Option<P<T>>, mcx: &mut MatchCtxt) -> matcher::Result<()> {
         match (self, target) {
-            (&Some(ref x), None) if mcx.is_opt_binding(&**x) => mcx.capture_opt_none(&**x),
+            (Some(x), None) if mcx.is_opt_binding(&**x) => mcx.capture_opt_none(&**x),
             _ => default_option_match(self, target, mcx),
         }
     }

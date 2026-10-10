@@ -338,7 +338,7 @@ fn label_tys<'lty, 'a: 'lty, 'tcx: 'a>(
         hir_map: cx.hir_map(),
         ltt,
     };
-    type_map::map_types(&cx.hir_map(), source, krate, |_, ast_ty, lty| {
+    type_map::map_types(cx.hir_map(), source, krate, |_, ast_ty, lty| {
         // Note that AST `Ty` nodes don't have `HirId`s, so we index everything by the old `NodeId`
         // instead.
         ty_nodes.insert(cx.hir_map().node_to_hir_id(ast_ty.id), lty);
@@ -416,7 +416,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn block_lty(&self, b: &Block) -> LTy<'lty, 'tcx> {
         match b.expr {
-            Some(ref e) => self.expr_lty(e),
+            Some(e) => self.expr_lty(e),
             None => self.prim_lty("()"),
         }
     }
@@ -462,8 +462,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn def_lty(&self, id: DefId) -> LTy<'lty, 'tcx> {
-        *self
-            .defs
+        self.defs
             .borrow_mut()
             .entry(id)
             .or_insert_with(|| self.compute_def_lty(id))
@@ -510,11 +509,11 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
                 // For a `FnDef`, retrieve the `LFnSig` for the given `DefId` and apply the
                 // labeled substs recorded in `LTy.args`.
                 let sig = self.def_sig(*id);
-                self.ltt.subst(sig.inputs[idx], &lty.args)
+                self.ltt.subst(sig.inputs[idx], lty.args)
             }
             IrTyKind::FnPtr(_) => {
                 // For a `FnPtr`, `lty.args` records the labeled input and output types.
-                &lty.args[idx]
+                lty.args[idx]
             }
             // TODO: Closure
             _ => panic!("fn_input: not a fn type"),
@@ -526,9 +525,9 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
         match lty.ty.kind() {
             IrTyKind::FnDef(id, _) => {
                 let sig = self.def_sig(*id);
-                self.ltt.subst(sig.output, &lty.args)
+                self.ltt.subst(sig.output, lty.args)
             }
-            IrTyKind::FnPtr(_) => &lty.args[lty.args.len() - 1],
+            IrTyKind::FnPtr(_) => lty.args[lty.args.len() - 1],
             // TODO: Closure
             _ => panic!("fn_output: not a fn type"),
         }
@@ -574,7 +573,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
         for field in &variant.fields {
             if field.ident(self.tcx).name == name {
                 let base = self.def_lty(field.did);
-                return self.ltt.subst(base, &struct_ty.args);
+                return self.ltt.subst(base, struct_ty.args);
             }
         }
         panic!("field_lty: no field `{}` in {:?}", name, struct_ty);
@@ -611,13 +610,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         // explicit.)
 
         match e.kind {
-            ExprKind::Array(ref es) => {
+            ExprKind::Array(es) => {
                 for e in &es[..] {
                     self.ltt.unify(rty.args[0], self.expr_lty(e));
                 }
             }
 
-            ExprKind::Call(ref func, ref args) => {
+            ExprKind::Call(func, ref args) => {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
@@ -654,13 +653,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 self.ltt.unify(rty, sig.output);
             }
 
-            ExprKind::Tup(ref es) => {
+            ExprKind::Tup(es) => {
                 for (expected, e) in rty.args.iter().zip(es.iter()) {
                     self.ltt.unify(expected, self.expr_lty(e));
                 }
             }
 
-            ExprKind::Binary(ref op, ref a, ref b) => match op.node {
+            ExprKind::Binary(ref op, a, b) => match op.node {
                 Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr | Shl | Shr => {
                     self.ltt.unify(rty, self.expr_lty(a));
                     self.ltt.unify(rty, self.expr_lty(b));
@@ -676,7 +675,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 }
             },
 
-            ExprKind::Unary(op, ref a) => match op {
+            ExprKind::Unary(op, a) => match op {
                 UnOp::Deref => self.ltt.unify(rty, self.expr_lty(a).args[0]),
                 UnOp::Not => self.ltt.unify(rty, self.expr_lty(a)),
                 UnOp::Neg => self.ltt.unify(rty, self.expr_lty(a)),
@@ -684,12 +683,12 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
             ExprKind::Lit(..) => {} // Nothing to unify
 
-            ExprKind::Cast(_, ref ty) => {
+            ExprKind::Cast(_, ty) => {
                 self.ltt.unify(rty, self.ty_lty(ty));
                 // Ignore the expr type, since it has no connection to `rty`.
             }
 
-            ExprKind::Type(ref e, ref ty) => {
+            ExprKind::Type(e, ty) => {
                 self.ltt.unify(rty, self.expr_lty(e));
                 self.ltt.unify(rty, self.ty_lty(ty));
             }
@@ -710,29 +709,29 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
             ExprKind::Closure(..) => {} // TODO
 
-            ExprKind::Block(ref b, _) => {
+            ExprKind::Block(b, _) => {
                 self.ltt.unify(rty, self.block_lty(b));
             }
 
-            ExprKind::Assign(ref lhs, ref rhs, _) => {
+            ExprKind::Assign(lhs, rhs, _) => {
                 self.ltt.unify(self.expr_lty(lhs), self.expr_lty(rhs));
                 self.ltt.unify(rty, self.prim_lty("()"));
             }
 
             ExprKind::AssignOp(..) => {} // TODO
 
-            ExprKind::Field(ref e, ref field) => {
+            ExprKind::Field(e, ref field) => {
                 // TODO: tuples
                 self.ltt
                     .unify(rty, self.field_lty(self.expr_lty(e), field.name));
             }
 
-            ExprKind::Index(ref _arr, ref _idx) => {} // TODO
+            ExprKind::Index(_arr, _idx) => {} // TODO
 
             ExprKind::Path(ref path) => {
                 // TODO: many more subcases need handling here
                 match *path {
-                    QPath::Resolved(_, ref path) => {
+                    QPath::Resolved(_, path) => {
                         if let Some(def_id) = path.res.opt_def_id() {
                             self.ltt.unify(rty, self.def_lty(def_id));
                         }
@@ -741,7 +740,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 }
             }
 
-            ExprKind::AddrOf(_, _, ref e) => {
+            ExprKind::AddrOf(_, _, e) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             }
 
@@ -758,26 +757,26 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 // function's return type)
             }
 
-            ExprKind::Yield(ref _result, _source) => {
+            ExprKind::Yield(_result, _source) => {
                 // TODO: handle result == Some(x) case
             }
 
             ExprKind::InlineAsm(..) => {}
 
-            ExprKind::Struct(_, ref fields, ref base) => {
+            ExprKind::Struct(_, fields, ref base) => {
                 for field in &fields[..] {
                     self.ltt.unify(
                         self.field_lty(rty, field.ident.name),
-                        self.expr_lty(&field.expr),
+                        self.expr_lty(field.expr),
                     );
                 }
 
-                if let Some(ref base) = *base {
+                if let Some(base) = *base {
                     self.ltt.unify(rty, self.expr_lty(base));
                 }
             }
 
-            ExprKind::Repeat(ref e, _) => {
+            ExprKind::Repeat(e, _) => {
                 self.ltt.unify(rty.args[0], self.expr_lty(e));
             }
 
@@ -843,7 +842,7 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
             PatKind::Binding(_, node_id, _, ref opt_pat) => {
                 let lty = self.node_lty(self.hir_map.hir_to_node_id(node_id));
                 self.ltt.unify(rty, lty);
-                if let Some(ref p) = *opt_pat {
+                if let Some(p) = *opt_pat {
                     self.ltt.unify(rty, self.pat_lty(p));
                 }
             }
@@ -856,18 +855,18 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
             PatKind::Path(..) => {} // TODO
 
-            PatKind::Tuple(ref ps, dotdot) if dotdot.as_opt_usize().is_none() => {
+            PatKind::Tuple(ps, dotdot) if dotdot.as_opt_usize().is_none() => {
                 for (expected, p) in rty.args.iter().zip(ps.iter()) {
                     self.ltt.unify(expected, self.pat_lty(p));
                 }
             }
-            PatKind::Tuple(ref _ps, _dotdot) => todo!("Tuple pattern with .."),
+            PatKind::Tuple(_ps, _dotdot) => todo!("Tuple pattern with .."),
 
-            PatKind::Box(ref p) => {
+            PatKind::Box(p) => {
                 self.ltt.unify(rty.args[0], self.pat_lty(p));
             }
 
-            PatKind::Ref(ref p, _) => {
+            PatKind::Ref(p, _) => {
                 self.ltt.unify(rty.args[0], self.pat_lty(p));
             }
 
@@ -882,12 +881,12 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
     }
 
     fn visit_local(&mut self, l: &'hir Local) {
-        if let Some(ref ty) = l.ty {
-            self.ltt.unify(self.pat_lty(&l.pat), self.ty_lty(ty));
+        if let Some(ty) = l.ty {
+            self.ltt.unify(self.pat_lty(l.pat), self.ty_lty(ty));
         }
 
-        if let Some(ref e) = l.init {
-            self.ltt.unify(self.pat_lty(&l.pat), self.expr_lty(e));
+        if let Some(e) = l.init {
+            self.ltt.unify(self.pat_lty(l.pat), self.expr_lty(e));
         }
 
         intravisit::walk_local(self, l);
@@ -918,16 +917,16 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         // the argument types that appear in the `DefId` signature.
         for (i, ast_ty) in decl.inputs.iter().enumerate() {
             let lty = self.ty_lty(ast_ty);
-            self.ltt.unify(lty, self.pat_lty(&body.params[i].pat));
+            self.ltt.unify(lty, self.pat_lty(body.params[i].pat));
             self.ltt.unify(lty, sig.inputs[i]);
         }
 
         // Unify the return type annotation with the body expr type and the signature return type.
         let out_lty = match decl.output {
-            FnRetTy::Return(ref ty) => self.ty_lty(ty),
+            FnRetTy::Return(ty) => self.ty_lty(ty),
             FnRetTy::DefaultReturn(_) => self.prim_lty("()"),
         };
-        self.ltt.unify(out_lty, self.expr_lty(&body.value));
+        self.ltt.unify(out_lty, self.expr_lty(body.value));
         self.ltt.unify(out_lty, sig.output);
 
         intravisit::walk_fn(self, kind, decl, body_id, id);
@@ -936,14 +935,14 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
     fn visit_field_def(&mut self, field: &'hir FieldDef) {
         // Unify the field's type annotation with the definition type.
         let def_id = field.def_id.to_def_id();
-        self.ltt.unify(self.ty_lty(&field.ty), self.def_lty(def_id));
+        self.ltt.unify(self.ty_lty(field.ty), self.def_lty(def_id));
         intravisit::walk_field_def(self, field);
     }
 
     fn visit_foreign_item(&mut self, i: &'hir ForeignItem) {
         let def_id = i.hir_id().owner.def_id.to_def_id();
         match i.kind {
-            ForeignItemKind::Fn(ref decl, _, _) => {
+            ForeignItemKind::Fn(decl, _, _) => {
                 let sig = self.def_sig(def_id);
 
                 for (i, ast_ty) in decl.inputs.iter().enumerate() {
@@ -952,13 +951,13 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 }
 
                 let out_lty = match decl.output {
-                    FnRetTy::Return(ref ty) => self.ty_lty(ty),
+                    FnRetTy::Return(ty) => self.ty_lty(ty),
                     FnRetTy::DefaultReturn(_) => self.prim_lty("()"),
                 };
                 self.ltt.unify(out_lty, sig.output);
             }
 
-            ForeignItemKind::Static(ref ty, _) => {
+            ForeignItemKind::Static(ty, _) => {
                 self.ltt.unify(self.ty_lty(ty), self.def_lty(def_id));
             }
 
@@ -997,7 +996,7 @@ pub fn analyze<'a, 'tcx: 'a>(
     } = v;
 
     // Construct labeled types for each `ast::Ty` in the program.
-    let ty_nodes = label_tys(&cx, &ltt, krate);
+    let ty_nodes = label_tys(cx, &ltt, krate);
 
     // Construct labeled types for primitive operations.
     let prims = prim_tys(cx.ty_ctxt(), &ltt);

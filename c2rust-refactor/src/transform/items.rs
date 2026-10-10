@@ -49,7 +49,7 @@ impl Transform for RenameRegex {
             }
 
             let name = i.ident.name.as_str();
-            let new_name = re.replace(&name, &self.repl as &str);
+            let new_name = re.replace(name, &self.repl as &str);
             if let Cow::Owned(new_name) = new_name {
                 new_idents.insert(cx.hir_map().node_to_hir_id(i.id), mk().ident(&new_name));
 

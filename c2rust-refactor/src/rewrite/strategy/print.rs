@@ -413,7 +413,7 @@ impl<T: RecoverChildren> RecoverChildren for Spanned<T> {
 impl<T: RecoverChildren> RecoverChildren for Option<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         match (reparsed, new) {
-            (&Some(ref x1), &Some(ref x2)) => {
+            (Some(x1), Some(x2)) => {
                 RecoverChildren::recover_children(x1, x2, rcx);
             }
             (_, _) => {}
@@ -422,7 +422,7 @@ impl<T: RecoverChildren> RecoverChildren for Option<T> {
 
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
         match (reparsed, new) {
-            (&Some(ref x1), &Some(ref x2)) => {
+            (Some(x1), Some(x2)) => {
                 RecoverChildren::recover_node_and_children(x1, x2, rcx);
             }
             (_, _) => {}
@@ -504,29 +504,29 @@ impl<T: RecoverChildren> RecoverChildren for [T] {
 
 impl<T: RecoverChildren> RecoverChildren for Vec<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        <[T] as RecoverChildren>::recover_children(&reparsed, &new, rcx)
+        <[T] as RecoverChildren>::recover_children(reparsed, new, rcx)
     }
 
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        <[T] as RecoverChildren>::recover_node_and_children(&reparsed, &new, rcx)
+        <[T] as RecoverChildren>::recover_node_and_children(reparsed, new, rcx)
     }
 
     fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        <[T] as RecoverChildren>::recover_node_restricted(old_span, &reparsed, &new, rcx)
+        <[T] as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
     }
 }
 
 impl<T: RecoverChildren> RecoverChildren for ThinVec<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        <[T] as RecoverChildren>::recover_children(&reparsed, &new, rcx)
+        <[T] as RecoverChildren>::recover_children(reparsed, new, rcx)
     }
 
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        <[T] as RecoverChildren>::recover_node_and_children(&reparsed, &new, rcx)
+        <[T] as RecoverChildren>::recover_node_and_children(reparsed, new, rcx)
     }
 
     fn recover_node_restricted(old_span: Span, reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        <[T] as RecoverChildren>::recover_node_restricted(old_span, &reparsed, &new, rcx)
+        <[T] as RecoverChildren>::recover_node_restricted(old_span, reparsed, new, rcx)
     }
 }
 
@@ -856,7 +856,7 @@ impl RewriteAt for Item {
                 // collection type.
                 <[P<Item>] as RecoverChildren>::recover_children(
                     &reparsed,
-                    &m_items,
+                    m_items,
                     rcx.enter(&mut rw),
                 );
                 rcx.record(rw);

@@ -61,8 +61,7 @@ impl<'a> MutVisitor for LoadModules<'a> {
                     panic!("unable to load module file {mod_file_path:?}");
                 }
 
-                let mut parser =
-                    new_parser_from_file(&self.parse_sess, &mod_file_path, Some(*span));
+                let mut parser = new_parser_from_file(self.parse_sess, &mod_file_path, Some(*span));
                 let (mut inner_attrs, items, inner_span) = parser
                     .parse_mod(&token::Eof)
                     .expect("failed to parse {mod_file_path:?}");

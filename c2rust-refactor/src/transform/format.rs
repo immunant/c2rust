@@ -117,7 +117,7 @@ fn build_format_macro(
         // Peel off any casts and retrieve the inner string
         match ep.kind {
             ExprKind::Lit(ref l) => break l,
-            ExprKind::Cast(ref e, _) | ExprKind::Type(ref e, _) => ep = &*e,
+            ExprKind::Cast(ref e, _) | ExprKind::Type(ref e, _) => ep = e,
             // `e.as_ptr()` or `e.as_mut_ptr()` => e
             ExprKind::MethodCall(ref call)
                 if call.args.is_empty()
@@ -131,7 +131,7 @@ fn build_format_macro(
     };
     let lit_kind = LitKind::from_token_lit(*lit).unwrap();
     let s = expect!([lit_kind]
-        LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
+        LitKind::Str(s, _) => (s.as_str() as &str).to_owned(),
         LitKind::ByteStr(ref b, _) => str::from_utf8(b).unwrap().to_owned());
 
     let mut new_s = String::with_capacity(s.len());
@@ -251,7 +251,7 @@ impl Transform for ConvertPrintfs {
         let mut stderr_defs = HashSet::<DefId>::new();
         visit_nodes(krate, |fi: &ForeignItem| {
             if crate::util::contains_name(&fi.attrs, sym::no_mangle) {
-                match (&*fi.ident.as_str(), &fi.kind) {
+                match (fi.ident.as_str(), &fi.kind) {
                     ("printf", ForeignItemKind::Fn(_)) => {
                         printf_defs.insert(cx.node_def_id(fi.id));
                     }
@@ -271,7 +271,7 @@ impl Transform for ConvertPrintfs {
                     if args.len() < 1 {
                         return smallvec![s];
                     }
-                    match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
+                    match (cx.try_resolve_expr(f), cx.try_resolve_expr(&args[0])) {
                         (Some(ref f_id), Some(ref arg0_id))
                             if fprintf_defs.contains(f_id) && stderr_defs.contains(arg0_id) =>
                         {

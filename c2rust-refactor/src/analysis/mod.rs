@@ -22,7 +22,7 @@ pub mod type_eq;
 fn register_test_analysis_type_eq(reg: &mut Registry) {
     reg.register("test_analysis_type_eq", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
-            let result = type_eq::analyze(&cx, &st.krate());
+            let result = type_eq::analyze(cx, &st.krate());
             info!("{:?}", result);
         }))
     });
@@ -39,8 +39,8 @@ fn register_test_analysis_ownership(reg: &mut Registry) {
     reg.register("test_analysis_ownership", |_args| {
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
             let arena = DroplessArena::default();
-            let results = ownership::analyze(&st, &cx, &arena);
-            ownership::dump_results(&cx, &results);
+            let results = ownership::analyze(st, cx, &arena);
+            ownership::dump_results(cx, &results);
         }))
     });
 }
@@ -71,7 +71,7 @@ fn register_mark_related_types(reg: &mut Registry) {
     reg.register("mark_related_types", |args| {
         let label = args.get(0).map_or("target", |x| x).into_symbol();
         Box::new(DriverCommand::new(Phase::Phase3, move |st, cx| {
-            let ty_class = type_eq::analyze(&cx, &st.krate());
+            let ty_class = type_eq::analyze(cx, &st.krate());
 
             let mut related_classes = HashSet::new();
             for &(id, l) in st.marks().iter() {

@@ -172,7 +172,7 @@ impl Transform for RetypeArgument {
             let mut rewritten_nodes = HashSet::new();
             fl.body.as_mut().map(|b| {
                 MutVisitNodes::visit(b, |e: &mut P<Expr>| {
-                    if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
+                    if let Some(hir_id) = cx.try_resolve_expr_to_hid(e) {
                         if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
                             rewritten_nodes.insert(e.id);
                             let mut bnd = Bindings::new();
@@ -189,7 +189,7 @@ impl Transform for RetypeArgument {
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `wrap` to call the function whose args we're changing.
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return);
+            let callee = match_or!([cx.opt_callee(e)] Some(x) => x; return);
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return);
             let wrap_target = |target: &mut P<Expr>| {
                 let mut bnd = Bindings::new();
@@ -278,7 +278,7 @@ impl Transform for RetypeReturn {
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `unwrap` to call the function whose args we're changing.
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return);
+            let callee = match_or!([cx.opt_callee(e)] Some(x) => x; return);
             if !mod_fns.contains(&callee) {
                 return;
             }
@@ -412,7 +412,7 @@ impl Transform for RetypeStatic {
             if !crate::matches!([e.kind] ExprKind::Path(..))
                 || handled_ids.contains(&e.id)
                 || !cx
-                    .try_resolve_expr(&e)
+                    .try_resolve_expr(e)
                     .map_or(false, |did| mod_statics.contains(&did))
             {
                 return;
@@ -428,7 +428,7 @@ impl Transform for RetypeStatic {
                     .unwrap_or_else(|| {
                         panic!(
                             "need conv_lval_mut to handle LvalueMut expression `{}`",
-                            pprust::expr_to_string(&e)
+                            pprust::expr_to_string(e)
                         )
                     })
                     .subst(st, cx, &bnd),
@@ -619,8 +619,8 @@ where
         fold_expr_with_context(e, lr_expr::Context::Rvalue, |e, context| {
             match e.kind {
                 ExprKind::Path(..) => {
-                    if let Some(&(ref old_ty, ref new_ty)) = cx
-                        .try_resolve_expr_to_hid(&e)
+                    if let Some((old_ty, new_ty)) = cx
+                        .try_resolve_expr_to_hid(e)
                         .and_then(|hid| changed_defs.get(&cx.hir_map().hir_to_node_id(hid)))
                     {
                         *e = transmute(e.clone(), context, new_ty, old_ty);
@@ -638,7 +638,7 @@ where
                                 .find(|f| f.ident(cx.ty_ctxt()) == *name)
                                 .expect(&format!("Couldn't find struct field {}", name))
                                 .did;
-                            if let Some(&(ref old_ty, ref new_ty)) = cx
+                            if let Some((old_ty, new_ty)) = cx
                                 .hir_map()
                                 .as_local_node_id(did)
                                 .and_then(|id| changed_defs.get(&id))
@@ -652,7 +652,7 @@ where
 
                 ExprKind::Call(_, ref args) => {
                     if let Some(func_id) = cx
-                        .opt_callee(&e)
+                        .opt_callee(e)
                         .and_then(|did| cx.hir_map().as_local_node_id(did))
                     {
                         if changed_funcs.contains(&func_id) {
@@ -660,7 +660,7 @@ where
                                 .iter()
                                 .enumerate()
                                 .map(|(i, a)| {
-                                    if let Some(&(ref old_ty, ref new_ty)) =
+                                    if let Some((old_ty, new_ty)) =
                                         changed_inputs.get(&(func_id, i))
                                     {
                                         transmute(
@@ -677,7 +677,7 @@ where
                             expect!([e.kind]
                                     ExprKind::Call(_, ref mut args) => *args = new_args);
 
-                            if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&func_id) {
+                            if let Some((old_ty, new_ty)) = changed_outputs.get(&func_id) {
                                 *e = transmute(e.clone(), context, new_ty, old_ty);
                             }
                         }
@@ -694,7 +694,7 @@ where
     // (3) Wrap output expressions from functions whose return types were modified.
 
     mut_visit_fns(krate, |fl| {
-        if let Some(&(ref old_ty, ref new_ty)) = changed_outputs.get(&fl.id) {
+        if let Some((old_ty, new_ty)) = changed_outputs.get(&fl.id) {
             fl.body.as_mut().map(|b| {
                 fold_output_exprs(b, true, |e| {
                     *e = transmute(e.clone(), lr_expr::Context::Rvalue, old_ty, new_ty);
@@ -1258,7 +1258,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
             // TODO: addr-ptr-cast
 
             // Semantics preserving numeric-casts
-            (&Int(ref from_int), &Int(ref to_int)) => {
+            (Int(from_int), Int(to_int)) => {
                 match (from_int.bit_width(), to_int.bit_width()) {
                     (Some(from), Some(to)) if from > to => {
                         // Truncating
@@ -1274,7 +1274,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     },
                 }
             },
-            (&Uint(ref from_int), &Uint(ref to_int)) => {
+            (Uint(from_int), Uint(to_int)) => {
                 match (from_int.bit_width(), to_int.bit_width()) {
                     (Some(from), Some(to)) if from > to => {
                         // Truncating
@@ -1290,7 +1290,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     },
                 }
             },
-            (&Uint(ref from_int), &Int(ref to_int)) => {
+            (Uint(from_int), Int(to_int)) => {
                 match (from_int.bit_width(), to_int.bit_width()) {
                     (Some(from), Some(to)) if from > to - 1 => {
                         // Truncating
@@ -1310,7 +1310,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     },
                 }
             },
-            (&Int(ref from_int), &Uint(ref to_int)) => {
+            (Int(from_int), Uint(to_int)) => {
                 match (from_int.bit_width(), to_int.bit_width()) {
                     (Some(from), Some(to)) if from - 1 > to => {
                         // Truncating
@@ -1330,7 +1330,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                     },
                 }
             },
-            (&Float(ref from_float), &Float(ref to_float)) => {
+            (Float(from_float), Float(to_float)) => {
                 // Can cast from smaller to larger float
                 from_float.bit_width() < to_float.bit_width()
             },

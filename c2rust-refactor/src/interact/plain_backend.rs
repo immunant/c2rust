@@ -106,7 +106,7 @@ fn decode_message(line: &str) -> Result<ToServer, String> {
         };
     }
 
-    Ok(match &kind as &str {
+    Ok(match kind as &str {
         "add-mark" => ToServer::AddMark {
             file: get_conv!(String),
             line: get_conv!(u32),

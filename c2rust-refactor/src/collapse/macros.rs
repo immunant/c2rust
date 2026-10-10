@@ -92,7 +92,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                         e, info.expanded,
                     )
                 });
-                self.collect_token_rewrites(info.id, old, &e as &Expr);
+                self.collect_token_rewrites(info.id, old, e as &Expr);
                 let new_e = mk().id(e.id).span(root_callsite_span(e.span)).mac_expr(mac);
                 trace!("collapse: {:?} -> {:?}", e, new_e);
                 self.record_matched_ids(e.id, new_e.id);
@@ -113,7 +113,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                         p, info.expanded,
                     )
                 });
-                self.collect_token_rewrites(info.id, old, &p as &Pat);
+                self.collect_token_rewrites(info.id, old, p as &Pat);
                 let new_p = mk().id(p.id).span(root_callsite_span(p.span)).mac_pat(mac);
                 trace!("collapse: {:?} -> {:?}", p, new_p);
                 self.record_matched_ids(p.id, new_p.id);
@@ -134,7 +134,7 @@ impl<'a> MutVisitor for CollapseMacros<'a> {
                         t, info.expanded,
                     )
                 });
-                self.collect_token_rewrites(info.id, old, &t as &Ty);
+                self.collect_token_rewrites(info.id, old, t as &Ty);
                 let new_t = mk().id(t.id).span(root_callsite_span(t.span)).mac_ty(mac);
                 trace!("collapse: {:?} -> {:?}", t, new_t);
                 self.record_matched_ids(t.id, new_t.id);

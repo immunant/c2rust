@@ -327,7 +327,7 @@ impl Transform for CanonicalizeStructs {
             if let Some(&canon_def_id) = def[0]
                 .opt_def_id()
                 .as_ref()
-                .and_then(|x| removed_id_map.get(&x))
+                .and_then(|x| removed_id_map.get(x))
             {
                 (None, cx.def_path(canon_def_id))
             } else {
