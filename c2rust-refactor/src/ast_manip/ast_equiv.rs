@@ -222,14 +222,14 @@ impl<T: AstEquiv> AstEquiv for ThinVec<T> {
 impl<T: AstEquiv> AstEquiv for Option<T> {
     fn ast_equiv(&self, other: &Option<T>) -> bool {
         match (self, other) {
-            (&Some(ref x), &Some(ref y)) => x.ast_equiv(y),
+            (Some(x), Some(y)) => x.ast_equiv(y),
             (&None, &None) => true,
             (_, _) => false,
         }
     }
     fn unnamed_equiv(&self, other: &Option<T>) -> bool {
         match (self, other) {
-            (&Some(ref x), &Some(ref y)) => x.unnamed_equiv(y),
+            (Some(x), Some(y)) => x.unnamed_equiv(y),
             (&None, &None) => true,
             (_, _) => false,
         }
@@ -263,22 +263,22 @@ impl AstEquiv for Ident {
     fn ast_equiv(&self, other: &Self) -> bool {
         // Exhaustiveness check
         match self {
-            &Ident {
-                name: ref _name,
-                span: ref _span,
+            Ident {
+                name: _name,
+                span: _span,
             } => {}
         }
 
         // Comparison
         match (self, other) {
             (
-                &Ident {
-                    name: ref name1,
-                    span: ref span1,
+                Ident {
+                    name: name1,
+                    span: span1,
                 },
-                &Ident {
-                    name: ref name2,
-                    span: ref span2,
+                Ident {
+                    name: name2,
+                    span: span2,
                 },
             ) => AstEquiv::ast_equiv(name1, name2) && AstEquiv::ast_equiv(span1, span2) && true,
         }

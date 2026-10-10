@@ -176,7 +176,7 @@ impl<T: Rewrite> Rewrite for Spanned<T> {
 impl<T: Rewrite> Rewrite for Option<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
         match (old, new) {
-            (&Some(ref x1), &Some(ref x2)) => Rewrite::rewrite(x1, x2, rcx),
+            (Some(x1), Some(x2)) => Rewrite::rewrite(x1, x2, rcx),
             (&None, &None) => true,
             (_, _) => false,
         }

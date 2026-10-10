@@ -209,7 +209,7 @@ impl InteractState {
 
 fn filename_to_str(filename: &FileName) -> String {
     match filename {
-        &FileName::Real(ref rfn) => rfn
+        FileName::Real(rfn) => rfn
             .to_string_lossy(rustc_span::FileNameDisplayPreference::Local)
             .into_owned(),
         // TODO: FileName::Macros is gone, do we need an alternative?
