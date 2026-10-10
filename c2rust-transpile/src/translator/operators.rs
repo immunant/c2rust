@@ -27,8 +27,8 @@ impl<'c> Translation<'c> {
             }
 
             op if op.is_logical() => {
-                let lhs = self.convert_condition(ctx.used(), true, lhs)?;
-                let rhs = self.convert_condition(ctx.used(), true, rhs)?;
+                let lhs = self.convert_scalar_to_bool_cast(ctx.used(), lhs, true)?;
+                let rhs = self.convert_scalar_to_bool_cast(ctx.used(), rhs, true)?;
                 Ok(lhs
                     .map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
                     .and_then(|out| {
@@ -138,26 +138,10 @@ impl<'c> Translation<'c> {
                         let is_null = op == CBinOp::EqualEqual;
 
                         if self.ast_context.is_null_expr(lhs) {
-                            let val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
-                            let val = val.try_map(|rhs_rs| {
-                                self.convert_pointer_is_null(
-                                    ctx,
-                                    rhs_type_id.ctype,
-                                    rhs_rs,
-                                    is_null,
-                                )
-                            })?;
+                            let val = self.convert_pointer_is_null(rhs_ctx, rhs, is_null)?;
                             return Ok(val.map(bool_to_int));
                         } else if self.ast_context.is_null_expr(rhs) {
-                            let val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                            let val = val.try_map(|lhs_rs| {
-                                self.convert_pointer_is_null(
-                                    ctx,
-                                    lhs_type_id.ctype,
-                                    lhs_rs,
-                                    is_null,
-                                )
-                            })?;
+                            let val = self.convert_pointer_is_null(ctx, lhs, is_null)?;
                             return Ok(val.map(bool_to_int));
                         }
                     }
@@ -594,7 +578,7 @@ impl<'c> Translation<'c> {
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
 
             CUnOp::Not => {
-                let val = self.convert_condition(ctx, false, arg)?;
+                let val = self.convert_scalar_to_bool_cast(ctx, arg, false)?;
                 Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
             }
             CUnOp::Extension => self.convert_expr(ctx, arg, expected_type_id),
