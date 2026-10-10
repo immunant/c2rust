@@ -120,7 +120,7 @@ impl<'a, 'tcx, F: IlltypedFolder<'tcx>> MutVisitor for FoldIlltyped<'a, 'tcx, F>
         }
 
         // We need the whole `Expr` to do this lookup, so it can't happen inside the match.
-        let opt_fn_sig = self.cx.opt_callee_fn_sig(&e);
+        let opt_fn_sig = self.cx.opt_callee_fn_sig(e);
 
         let tcx = self.cx.ty_ctxt();
 
@@ -346,8 +346,7 @@ fn handle_struct<'tcx, F>(
 fn resolve_struct_path(cx: &RefactorCtxt, id: NodeId) -> Option<Res> {
     let node = match_or!([cx.hir_map().find(id)] Some(x) => x; return None);
     let expr = match_or!([node] hir::Node::Expr(e) => e; return None);
-    let qpath: &hir::QPath =
-        match_or!([expr.kind] hir::ExprKind::Struct(ref q, ..) => q; return None);
+    let qpath: &hir::QPath = match_or!([expr.kind] hir::ExprKind::Struct(q, ..) => q; return None);
     let path = match_or!([qpath] hir::QPath::Resolved(_, ref path) => path; return None);
     Some(path.res)
 }

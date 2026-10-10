@@ -131,7 +131,7 @@ fn build_format_macro(
     };
     let lit_kind = LitKind::from_token_lit(*lit).unwrap();
     let s = expect!([lit_kind]
-        LitKind::Str(s, _) => (&s.as_str() as &str).to_owned(),
+        LitKind::Str(s, _) => (s.as_str() as &str).to_owned(),
         LitKind::ByteStr(ref b, _) => str::from_utf8(b).unwrap().to_owned());
 
     let mut new_s = String::with_capacity(s.len());

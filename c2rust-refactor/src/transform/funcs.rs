@@ -275,7 +275,7 @@ impl Transform for ToMethod {
                 let recv = args.remove(arg_idx);
 
                 e.kind = ExprKind::MethodCall(Box::new(MethodCall {
-                    seg: mk().path_segment(&info.ident),
+                    seg: mk().path_segment(info.ident),
                     receiver: recv,
                     args,
                     span: DUMMY_SP,
@@ -283,7 +283,7 @@ impl Transform for ToMethod {
             } else {
                 // There is no `self` argument, but change the function reference to the new path.
                 let mut new_path = cx.def_path(cx.node_def_id(dest.id));
-                new_path.segments.push(mk().path_segment(&info.ident));
+                new_path.segments.push(mk().path_segment(info.ident));
 
                 e.kind = ExprKind::Call(mk().path_expr(new_path), args);
             }
@@ -685,7 +685,7 @@ impl Transform for WrapExtern {
                     let body = mk().block(vec![
                         mk().expr_stmt(mk().call_expr(mk().path_expr(func_path), arg_exprs))
                     ]);
-                    m_items.push(mk().pub_().unsafe_().fn_item(&f.ident, decl, Some(body)));
+                    m_items.push(mk().pub_().unsafe_().fn_item(f.ident, decl, Some(body)));
                 }
 
                 let m_kind = ModKind::Loaded(m_items, m_inline, m_spans);

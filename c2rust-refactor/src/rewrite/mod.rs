@@ -210,7 +210,7 @@ impl<'s> RewriteCtxt<'s> {
     }
 
     pub fn comments(&self) -> &'s CommentMap {
-        &self.comment_map
+        self.comment_map
     }
 
     pub fn fresh_start(&self) -> Span {

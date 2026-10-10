@@ -27,7 +27,7 @@ struct MarkUseVisitor<'a, 'tcx: 'a> {
 impl<'a, 'tcx> MarkUseVisitor<'a, 'tcx> {
     fn handle_qpath(&mut self, use_id: NodeId, hp: &hir::QPath) {
         match hp {
-            &hir::QPath::Resolved(_, ref path) => {
+            &hir::QPath::Resolved(_, path) => {
                 if let Some(def_id) = path.res.opt_def_id() {
                     if let Some(id) = self.cx.hir_map().as_local_node_id(def_id) {
                         if self.st.marked(id, self.label) {
@@ -72,7 +72,7 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
             }
 
             ExprKind::Struct(_) => {
-                expect!([hir.kind] hir::ExprKind::Struct(ref hp, _, _) => {
+                expect!([hir.kind] hir::ExprKind::Struct(hp, _, _) => {
                     info!("looking at ExprKind::Struct {:?}", x);
                     self.handle_qpath(x.id, hp);
                 });

@@ -186,13 +186,13 @@ impl<'a> Stream<'a> {
             inner.last()?;
             Ok(filt)
         } else {
-            match &self.name()?.as_str() as &str {
+            match self.name()?.as_str() as &str {
                 "kind" => {
                     let mut inner = self.parens()?;
                     let kind_str = inner.name()?;
                     inner.last()?;
 
-                    let kind = match NodeKind::from_str(&kind_str.as_str()) {
+                    let kind = match NodeKind::from_str(kind_str.as_str()) {
                         Ok(k) => k,
                         Err(_) => fail!("invalid node kind `{}`", kind_str.as_str()),
                     };
@@ -204,7 +204,7 @@ impl<'a> Stream<'a> {
                     let subkind_str = inner.name()?;
                     inner.last()?;
 
-                    let subkind = match ItemLikeKind::from_str(&subkind_str.as_str()) {
+                    let subkind = match ItemLikeKind::from_str(subkind_str.as_str()) {
                         Ok(k) => k,
                         Err(_) => fail!("invalid itemlike kind `{}`", subkind_str.as_str()),
                     };
@@ -226,7 +226,7 @@ impl<'a> Stream<'a> {
                     inner.last()?;
 
                     let seg_count = match seg_count_lit.kind {
-                        LitKind::Integer => match usize::from_str(&seg_count_lit.symbol.as_str()) {
+                        LitKind::Integer => match usize::from_str(seg_count_lit.symbol.as_str()) {
                             Ok(i) => i,
                             Err(e) => fail!("error parsing integer: {}", e),
                         },
@@ -250,7 +250,7 @@ impl<'a> Stream<'a> {
                         l => fail!("expected string literal, but got {:?}", l),
                     };
                     // First, make sure `s` parses as a regex on its own
-                    let _ = match Regex::new(&s.as_str()) {
+                    let _ = match Regex::new(s.as_str()) {
                         Ok(r) => r,
                         Err(e) => fail!("invalid regex: {}", e),
                     };
@@ -377,7 +377,7 @@ impl<'a> Stream<'a> {
     }
 
     fn select_op(&mut self) -> PResult<SelectOp> {
-        let op = match &self.name()?.as_str() as &str {
+        let op = match self.name()?.as_str() as &str {
             "marked" => {
                 let mut inner = self.parens()?;
                 let label = inner.name()?;

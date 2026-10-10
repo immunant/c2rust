@@ -64,7 +64,7 @@ pub fn register_commands(reg: &mut Registry) {
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
     let arena = DroplessArena::default();
-    let analysis = ownership::analyze(&st, &cx, &arena);
+    let analysis = ownership::analyze(st, cx, &arena);
 
     struct AnnotateFolder<'a, 'tcx: 'a> {
         label: Symbol,
@@ -326,7 +326,7 @@ fn build_variant_attr(group: &str) -> Attribute {
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_split_variants(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
     let arena = DroplessArena::default();
-    let ana = ownership::analyze(&st, &cx, &arena);
+    let ana = ownership::analyze(st, cx, &arena);
 
     // Map from ExprPath/ExprMethodCall span to function ref idx within the caller.
     let mut span_fref_idx = HashMap::new();
@@ -540,7 +540,7 @@ fn callee_new_name(
 /// See `analysis/ownership/README.md` for details on ownership inference.
 fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let arena = DroplessArena::default();
-    let ana = ownership::analyze(&st, &cx, &arena);
+    let ana = ownership::analyze(st, cx, &arena);
 
     struct AnalysisTypeSource<'lty, 'tcx: 'lty> {
         ana: &'lty ownership::AnalysisResult<'lty, 'tcx>,
@@ -620,23 +620,18 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
     let s_mut = "mut".into_symbol();
     let s_move = "move".into_symbol();
 
-    type_map::map_types(
-        &cx.hir_map(),
-        source,
-        &st.krate(),
-        |_source, ast_ty, lty| {
-            let p = match lty.label {
-                Some(x) => x,
-                None => return,
-            };
+    type_map::map_types(cx.hir_map(), source, &st.krate(), |_source, ast_ty, lty| {
+        let p = match lty.label {
+            Some(x) => x,
+            None => return,
+        };
 
-            let label = match p {
-                ConcretePerm::Read => s_ref,
-                ConcretePerm::Write => s_mut,
-                ConcretePerm::Move => s_move,
-            };
+        let label = match p {
+            ConcretePerm::Read => s_ref,
+            ConcretePerm::Write => s_mut,
+            ConcretePerm::Move => s_move,
+        };
 
-            st.add_mark(ast_ty.id, label);
-        },
-    );
+        st.add_mark(ast_ty.id, label);
+    });
 }

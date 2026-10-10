@@ -129,7 +129,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
     /// Run the reorganization pass
     pub fn run(&mut self, krate: &mut Crate) {
-        self.find_destination_modules(&krate);
+        self.find_destination_modules(krate);
 
         // let mut module_items = HashMap::new();
         let mut header_decls = self.remove_header_items(krate);
@@ -381,7 +381,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             }
 
                             if let Some((decl_def_id, impl_type_path)) =
-                                impl_parent_decl(&self.cx, &r#impl)
+                                impl_parent_decl(self.cx, r#impl)
                             {
                                 match impls.entry(decl_def_id) {
                                     Entry::Occupied(_) => warn!(
@@ -439,7 +439,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     // resolvable still exists.
                     self.collect_bitfield_attr_tys(mod_items);
 
-                    let needed_items = keep_items(&mod_items);
+                    let needed_items = keep_items(mod_items);
 
                     mod_items.retain(|item| {
                         if needed_items.contains(&item.id) {
@@ -514,8 +514,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             };
 
             let decl_ids = declarations.remove_matching_defs(ns, item.ident, |decl| match decl {
-                DeclKind::Item(decl) => self.cx.compatible_types(&decl, item, true),
-                DeclKind::ForeignItem(foreign, _) => foreign_equiv(&foreign, item),
+                DeclKind::Item(decl) => self.cx.compatible_types(decl, item, true),
+                DeclKind::ForeignItem(foreign, _) => foreign_equiv(foreign, item),
             });
             if !decl_ids.is_empty() {
                 let def_id = self.cx.node_def_id(item.id);
@@ -806,10 +806,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
         // Add path mappings for all defs in matching_defs
         for (old_def, mut new_def) in &matching_defs {
-            while let Some(other) = matching_defs.get(&new_def) {
+            while let Some(other) = matching_defs.get(new_def) {
                 new_def = other;
             }
-            if let Some(mapping) = self.path_mapping.get(&new_def).cloned() {
+            if let Some(mapping) = self.path_mapping.get(new_def).cloned() {
                 self.path_mapping.insert(*old_def, mapping);
             }
         }
@@ -843,7 +843,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             if let ItemKind::ForeignMod(m) = &mut item.kind {
                                 let abi = m
                                     .abi
-                                    .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
+                                    .and_then(|abi| abi::lookup(abi.symbol.as_str()))
                                     .unwrap_or(Abi::Rust);
                                 m.items.retain(|item| {
                                     match declarations.find_foreign_item(item, abi) {
@@ -1066,7 +1066,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             let cast_id = e.id;
             let (val, ty) = match_or!([&mut e.kind] ExprKind::Cast(val, ty) => (val, ty); return);
             let val = match_or!([&val.kind] ExprKind::AddrOf(_, _mutbl, val) => val; return);
-            let old_def_id = match_or!([self.cx.try_resolve_expr(&val)] Some(id) => id; return);
+            let old_def_id = match_or!([self.cx.try_resolve_expr(val)] Some(id) => id; return);
             let replacement = match_or!([self.path_mapping.get(&old_def_id)] Some(x) => x; return);
             let new_def_id = match_or!([replacement.def] Some(id) => id; return);
             let val_ty = self.cx.def_type(new_def_id);
@@ -1170,7 +1170,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                                     .use_simple_item(path, None::<String>),
                                             );
                                         }
-                                    } else if is_relative_path(&path) {
+                                    } else if is_relative_path(path) {
                                         // Canonicalize a new path from the crate root. Will rewrite
                                         // any relative paths that we may have moved into absolute
                                         // paths.
@@ -1812,7 +1812,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                 for item in f.items.iter() {
                     let abi = f
                         .abi
-                        .and_then(|abi| abi::lookup(&abi.symbol.as_str()))
+                        .and_then(|abi| abi::lookup(abi.symbol.as_str()))
                         .unwrap_or(Abi::Rust);
                     self.insert_foreign_item(item.clone(), abi, parent_header.clone());
                 }
@@ -1976,7 +1976,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     a.parent_header
                         .ident
                         .as_str()
-                        .cmp(&b.parent_header.ident.as_str())
+                        .cmp(b.parent_header.ident.as_str())
                 }
             }
         });
@@ -2076,7 +2076,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
 
                     DeclKind::ForeignItem(existing_foreign, _) => {
                         if let ForeignItemKind::TyAlias(_) = &existing_foreign.kind {
-                            if foreign_equiv(&existing_foreign, &item) {
+                            if foreign_equiv(existing_foreign, item) {
                                 // This item is equivalent to an existing foreign item,
                                 // modulo visibility.
                                 return ContainsDecl::Equivalent(existing_decl);
@@ -2099,7 +2099,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         // Replace a use with a real definition, but a use of
                         // an internal definition takes precedence over a foreign one.
                         (ItemKind::Use(..), _) => {
-                            if is_use_of_foreign(&item, &self.cx) {
+                            if is_use_of_foreign(item, self.cx) {
                                 return ContainsDecl::Definition(existing_decl);
                             }
                             return ContainsDecl::Use(existing_decl);
@@ -2113,7 +2113,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         // Otherwise make sure these items are structurally
                         // equivalent.
                         _ => {
-                            if self.cx.compatible_types(&item, &existing_item, true)
+                            if self.cx.compatible_types(item, existing_item, true)
                                 && impl_is_compatible(existing_decl)
                             {
                                 return ContainsDecl::Equivalent(existing_decl);
@@ -2125,12 +2125,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                         if let ItemKind::Use(..) = item.kind {
                             // If the import refers to an existing foreign item, do
                             // not replace it.
-                            if is_use_of_foreign(&item, &self.cx) {
+                            if is_use_of_foreign(item, self.cx) {
                                 return ContainsDecl::Definition(existing_decl);
                             }
                             return ContainsDecl::Equivalent(existing_decl);
                         }
-                        if foreign_equiv(&existing_foreign, &item) {
+                        if foreign_equiv(existing_foreign, item) {
                             return ContainsDecl::Equivalent(existing_decl);
                         }
                     }
@@ -2162,12 +2162,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                 }
                 match &existing_decl.kind {
                     DeclKind::Item(existing_item) => {
-                        if foreign_equiv(&item, &existing_item) {
+                        if foreign_equiv(item, existing_item) {
                             return ContainsDecl::Equivalent(existing_decl);
                         } else if let ItemKind::Use(_) = existing_item.kind {
                             // A use takes precedence over a foreign declaration
                             // unless the use also refers to a foreign.
-                            if is_use_of_foreign(&existing_item, &self.cx) {
+                            if is_use_of_foreign(existing_item, self.cx) {
                                 return ContainsDecl::Definition(existing_decl);
                             }
                             return ContainsDecl::Equivalent(existing_decl);

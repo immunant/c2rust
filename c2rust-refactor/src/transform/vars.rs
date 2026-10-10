@@ -133,7 +133,7 @@ impl Transform for SinkLets {
                 cx: cx,
                 locals: &locals,
             };
-            visit::walk_crate(&mut v, &krate);
+            visit::walk_crate(&mut v, krate);
             v.block_locals
         };
 
@@ -379,7 +379,7 @@ impl Transform for FoldLetAssign {
                 let assign_info = match curs.next().kind {
                     StmtKind::Semi(ref e) => match e.kind {
                         ExprKind::Assign(ref lhs, ref rhs, _) => {
-                            if let Some(hir_id) = cx.try_resolve_expr_to_hid(&lhs) {
+                            if let Some(hir_id) = cx.try_resolve_expr_to_hid(lhs) {
                                 if local_pos.contains_key(&hir_id) {
                                     if is_self_ref(cx, hir_id, rhs) {
                                         None
@@ -432,7 +432,7 @@ impl Transform for FoldLetAssign {
 fn is_self_ref(cx: &RefactorCtxt, lhs: HirId, rhs: &Expr) -> bool {
     let mut is_self_ref = false;
     visit_nodes(rhs, |e: &Expr| {
-        if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
+        if let Some(hir_id) = cx.try_resolve_expr_to_hid(e) {
             if hir_id == lhs {
                 is_self_ref = true;
             }

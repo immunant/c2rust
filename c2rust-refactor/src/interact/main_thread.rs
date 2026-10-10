@@ -97,7 +97,7 @@ impl InteractState {
                 let (id, mark_info) = self
                     .run_compiler(driver::Phase::Phase2, |krate, cx| {
                         let info = pick_node::pick_node_at_loc(
-                            &krate,
+                            krate,
                             cx.session(),
                             kind,
                             &file,
@@ -120,7 +120,7 @@ impl InteractState {
                                 start_col: lo.col.0 as u32,
                                 end_line: hi.line as u32,
                                 end_col: hi.col.0 as u32,
-                                labels: vec![(&label.as_str() as &str).to_owned()],
+                                labels: vec![(label.as_str() as &str).to_owned()],
                             },
                         )
                     })
@@ -142,7 +142,7 @@ impl InteractState {
                 let mut labels = Vec::new();
                 for &(mark_id, label) in &*self.state.marks() {
                     if mark_id == id {
-                        labels.push((&label.as_str() as &str).to_owned());
+                        labels.push((label.as_str() as &str).to_owned());
                     }
                 }
                 labels.sort();
@@ -173,7 +173,7 @@ impl InteractState {
                 let msg = self
                     .state
                     .transform_crate(driver::Phase::Phase2, |st, cx| {
-                        let infos = collect_mark_infos(&st.marks(), &st.krate(), &cx);
+                        let infos = collect_mark_infos(&st.marks(), &st.krate(), cx);
                         MarkList { infos }
                     })
                     .expect("Failed to run compiler");
@@ -184,7 +184,7 @@ impl InteractState {
                 let mut buffers = self.buffers_available.lock().unwrap();
                 *buffers = files
                     .into_iter()
-                    .filter_map(|x| fs::canonicalize(&x).ok())
+                    .filter_map(|x| fs::canonicalize(x).ok())
                     .collect();
             }
 
@@ -243,7 +243,7 @@ fn collect_mark_infos(
                 labels: vec![],
             }
         });
-        info.labels.push((&label.as_str() as &str).to_owned());
+        info.labels.push((label.as_str() as &str).to_owned());
     }
 
     let mut infos_vec = Vec::with_capacity(infos.len());

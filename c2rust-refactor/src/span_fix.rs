@@ -134,7 +134,7 @@ impl MutVisitor for FixFormat {
         } else if self.ctxt.in_format && crate::matches!([e.kind] ExprKind::Match(..)) {
             let new_ctxt = self.ctxt.enter_match(e.span);
             self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))
-        } else if !self.ctxt.in_format && self.is_format_entry(&e) {
+        } else if !self.ctxt.in_format && self.is_format_entry(e) {
             trace!("ENTERING format! at {:?}", e);
             let new_ctxt = self.ctxt.enter_format(e.span);
             self.descend(new_ctxt, |this| mut_visit::noop_visit_expr(e, this))

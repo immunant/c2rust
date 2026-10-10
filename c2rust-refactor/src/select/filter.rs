@@ -239,7 +239,7 @@ pub fn matches_filter(
             .vis()
             .map_or(false, |v| crate::matches!([v.kind] VisibilityKind::Public)),
         Filter::Mutable => node.mutbl().map_or(false, |m| m == Mutability::Mut),
-        Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(&n.as_str())),
+        Filter::Name(ref re) => node.name().map_or(false, |n| re.is_match(n.as_str())),
         Filter::PathPrefix(drop_segs, ref expect_path) => {
             if !reflect::can_reflect_path(cx, node.id()) {
                 return false;

@@ -94,7 +94,7 @@ impl Transform for InsertRemoveArgs {
             let mut mk_arg = || {
                 let arg = mk().arg(
                     mk().tuple_ty::<P<Ty>>(vec![]),
-                    mk().ident_pat(&format!("new_arg{}", counter)),
+                    mk().ident_pat(format!("new_arg{}", counter)),
                 );
                 counter += 1;
                 arg
