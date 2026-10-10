@@ -54,6 +54,7 @@ jobs:
         git submodule update --init --checkout tests/integration/tests/libxml2/repo
         git submodule update --init --checkout tests/integration/tests/python2/repo
         git submodule update --init --checkout tests/integration/tests/libmcs/repo
+        git submodule update --init --checkout tests/integration/tests/sqlite/repo
 
     - uses: astral-sh/setup-uv@v6
 
@@ -75,6 +76,7 @@ jobs:
             bear                    \
             build-essential         \
             cmake                   \
+            jq                      \
             libbrotli-dev           \
             libbz2-dev              \
             libclang-${{ matrix.clang-version }}-dev \
@@ -126,7 +128,7 @@ jobs:
         export PATH=$PWD/target/release:$PWD/c2rust-postprocess:$HOME/.local/bin:$PATH
         echo "PATH=$PATH"
         export C2RUST_DIR=$PWD
-        ./tests/integration/test.py --refactor-jobs 1 curl json-c libgit2 lua nginx zstd libxml2 python2 libmcs
+        ./tests/integration/test.py --refactor-jobs 1 curl json-c libgit2 lua nginx zstd libxml2 python2 libmcs sqlite
 
     - uses: actions/upload-artifact@v4
       with:
