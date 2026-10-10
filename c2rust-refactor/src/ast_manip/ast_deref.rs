@@ -33,13 +33,13 @@ impl<T: AstDeref> AstDeref for Spanned<T> {
 impl<T> AstDeref for Vec<T> {
     type Target = [T];
     fn ast_deref(&self) -> &Self::Target {
-        &**self
+        self
     }
 }
 
 impl<T> AstDeref for ThinVec<T> {
     type Target = [T];
     fn ast_deref(&self) -> &Self::Target {
-        &**self
+        self
     }
 }

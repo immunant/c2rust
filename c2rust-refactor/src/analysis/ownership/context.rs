@@ -141,7 +141,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
     pub fn static_ty(&mut self, did: DefId) -> LTy<'lty, 'tcx> {
         let assign = &mut self.static_assign;
         match self.static_summ.entry(did) {
-            Entry::Vacant(e) => *e.insert(self.lcx.label(
+            Entry::Vacant(e) => e.insert(self.lcx.label(
                 self.tcx.type_of(did).subst_identity(),
                 &mut |ty| match ty.kind() {
                     TyKind::Ref(_, _, _) | TyKind::RawPtr(_) => {
@@ -152,7 +152,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
                 },
             )),
 
-            Entry::Occupied(e) => *e.get(),
+            Entry::Occupied(e) => e.get(),
         }
     }
 
