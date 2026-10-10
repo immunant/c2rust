@@ -343,7 +343,7 @@ impl RefactorState {
             // Expand all the Unloaded modules ourselves
             // since rustc folded that operation into expansion
             if need_load {
-                load_modules(&mut *cs.krate.borrow_mut(), &session.parse_sess, source_map);
+                load_modules(&mut cs.krate.borrow_mut(), &session.parse_sess, source_map);
             }
 
             let unexpanded = cs.krate().clone();
