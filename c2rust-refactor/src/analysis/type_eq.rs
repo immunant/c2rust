@@ -462,8 +462,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn def_lty(&self, id: DefId) -> LTy<'lty, 'tcx> {
-        *self
-            .defs
+        self.defs
             .borrow_mut()
             .entry(id)
             .or_insert_with(|| self.compute_def_lty(id))

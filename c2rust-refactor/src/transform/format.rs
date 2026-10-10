@@ -271,7 +271,7 @@ impl Transform for ConvertPrintfs {
                     if args.len() < 1 {
                         return smallvec![s];
                     }
-                    match (cx.try_resolve_expr(f), cx.try_resolve_expr(&*args[0])) {
+                    match (cx.try_resolve_expr(f), cx.try_resolve_expr(&args[0])) {
                         (Some(ref f_id), Some(ref arg0_id))
                             if fprintf_defs.contains(f_id) && stderr_defs.contains(arg0_id) =>
                         {
