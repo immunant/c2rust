@@ -68,6 +68,10 @@ pub unsafe extern "C" fn pointer_arithmetic() {
     let mut p2: *mut ::core::ffi::c_int = &raw mut i2 as *mut ::core::ffi::c_int;
     let mut diff: ptrdiff_t = p1.offset_from(p2);
     let mut diff_int: ::core::ffi::c_int = p1.offset_from(p2) as ::core::ffi::c_int;
+    let mut unsigned_long_pointer: *mut ::core::ffi::c_ulong =
+        ::core::ptr::null_mut::<::core::ffi::c_ulong>();
+    let mut size_pointer: *mut size_t =
+        unsigned_long_pointer.offset(1 as ::core::ffi::c_int as isize) as *mut size_t;
 }
 #[no_mangle]
 pub unsafe extern "C" fn assign_result() {
