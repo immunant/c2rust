@@ -499,9 +499,9 @@ impl<'c> Translation<'c> {
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, false, false))
+            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, false))
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false))
+            Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false))
         } else if lhs_type.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,
@@ -535,7 +535,7 @@ impl<'c> Translation<'c> {
             let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
             self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
+            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true))
         } else if lhs_type.is_unsigned_integral_type() {
             Ok(WithStmts::new_val(mk().method_call_expr(
                 lhs,

@@ -294,7 +294,6 @@ impl<'c> Translation<'c> {
 
             let array_rs = self.convert_expr(ctx.not_needs_address(), array_id, None)?;
 
-            // Don't dereference the offset if we're still within the variable portion
             let val = if let Some(elt_type_id) = var_elt_type_id {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
                 let offset_rs = self.convert_expr_with_cast(
@@ -302,9 +301,19 @@ impl<'c> Translation<'c> {
                     CQualTypeId::new(target_type_id),
                     offset_id,
                 )?;
-                array_rs.zip(offset_rs).and_then(|(array_rs, offset_rs)| {
-                    self.make_pointer_offset(array_rs, offset_rs, elt_type_id, false, deref)
-                })
+                let mut expr_rs = array_rs.zip(offset_rs).and_then(|(array_rs, offset_rs)| {
+                    self.make_pointer_offset(array_rs, offset_rs, elt_type_id, false)
+                });
+
+                let elt_type_kind = &self.ast_context.resolve_type(elt_type_id).kind;
+
+                // Don't dereference the offset if we're still within the variable portion
+                if deref && !matches!(elt_type_kind, &CTypeKind::VariableArray(_, Some(_))) {
+                    expr_rs = expr_rs
+                        .map(|expr_rs| mk().unary_expr(UnOp::Deref(Default::default()), expr_rs));
+                }
+
+                expr_rs
             } else {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
                 let offset_rs = self.convert_expr_with_cast(
@@ -344,14 +353,15 @@ impl<'c> Translation<'c> {
             let mut val = pointer_rs
                 .zip(offset_rs)
                 .and_then(|(pointer_rs, offset_rs)| {
-                    self.make_pointer_offset(
-                        pointer_rs,
-                        offset_rs,
-                        pointee_type_id.ctype,
-                        false,
-                        deref,
-                    )
+                    self.make_pointer_offset(pointer_rs, offset_rs, pointee_type_id.ctype, false)
                 });
+
+            let pointee_type_kind = &self.ast_context.resolve_type(pointee_type_id.ctype).kind;
+
+            // Don't dereference the offset if we're still within the variable portion
+            if deref && !matches!(pointee_type_kind, &CTypeKind::VariableArray(_, Some(_))) {
+                val = val.map(|val| mk().unary_expr(UnOp::Deref(Default::default()), val));
+            }
 
             if lrvalue.is_rvalue() {
                 let source_type_id = if deref {
@@ -381,15 +391,8 @@ impl<'c> Translation<'c> {
         offset: Box<Expr>,
         pointee_cty: CTypeId,
         neg: bool,
-        deref: bool,
     ) -> WithStmts<Box<Expr>> {
-        self.make_pointer_offset(
-            ptr,
-            cast_int(offset, "isize", false),
-            pointee_cty,
-            neg,
-            deref,
-        )
+        self.make_pointer_offset(ptr, cast_int(offset, "isize", false), pointee_cty, neg)
     }
 
     /// Creates a pointer offset expression. Assumes that `offset_rs` is of type `isize`.
@@ -399,25 +402,18 @@ impl<'c> Translation<'c> {
         mut offset_rs: Box<Expr>,
         pointee_type_id: CTypeId,
         neg: bool,
-        mut deref: bool,
     ) -> WithStmts<Box<Expr>> {
         if let Some(mul) = self.compute_size_of_expr(pointee_type_id) {
             let mul = cast_int(mul, "isize", false);
             offset_rs = mk().binary_expr(BinOp::Mul(Default::default()), offset_rs, mul);
-            deref = false;
         }
 
         if neg {
             offset_rs = neg_expr(offset_rs);
         }
 
-        let mut expr = mk().method_call_expr(pointer_rs, "offset", vec![offset_rs]);
-
-        if deref {
-            expr = mk().unary_expr(UnOp::Deref(Default::default()), expr);
-        }
-
-        WithStmts::new_val(expr).set_unsafe()
+        WithStmts::new_val(mk().method_call_expr(pointer_rs, "offset", vec![offset_rs]))
+            .set_unsafe()
     }
 
     /// Translate a pointer difference expression.
