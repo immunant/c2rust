@@ -273,7 +273,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             // when that offset falls inside a multi-byte character.
             let header_ident = declaration.parent_header.ident.as_str();
             let module_ident = dest_module_info.orig_ident.as_str();
-            match header_ident.strip_prefix(&*module_ident) {
+            match header_ident.strip_prefix(module_ident) {
                 Some(ext) => ext.is_empty() || ext == "_h",
                 None => false,
             }
