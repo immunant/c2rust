@@ -542,6 +542,16 @@ fn test_reorganize_forward_decl_with_local_definition() {
         .test();
 }
 
+/// A macro and a struct sharing a name live in different namespaces and do
+/// not collide, so the struct must still move into the module holding the
+/// macro rather than being banished to a new `thing_h` module.
+#[test]
+fn test_reorganize_macro_namespace() {
+    refactor("reorganize_definitions")
+        .named("reorganize_macro_namespace.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_multi_namespace() {
     refactor("reorganize_definitions")
