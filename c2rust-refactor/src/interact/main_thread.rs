@@ -140,7 +140,7 @@ impl InteractState {
                 let id = NodeId::from_usize(id);
 
                 let mut labels = Vec::new();
-                for &(mark_id, label) in &*self.state.marks() {
+                for &(mark_id, label) in self.state.marks() {
                     if mark_id == id {
                         labels.push((label.as_str() as &str).to_owned());
                     }
