@@ -94,11 +94,11 @@ impl ParsedNodes {
 
 impl Visit for ParsedNodes {
     fn visit<'ast, V: Visitor<'ast>>(&'ast self, v: &mut V) {
-        self.exprs.iter().for_each(|x| (&**x).visit(v));
-        self.pats.iter().for_each(|x| (&**x).visit(v));
-        self.tys.iter().for_each(|x| (&**x).visit(v));
+        self.exprs.iter().for_each(|x| (**x).visit(v));
+        self.pats.iter().for_each(|x| (**x).visit(v));
+        self.tys.iter().for_each(|x| (**x).visit(v));
         self.stmts.iter().for_each(|x| x.visit(v));
-        self.items.iter().for_each(|x| (&**x).visit(v));
+        self.items.iter().for_each(|x| (**x).visit(v));
     }
 }
 

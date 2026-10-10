@@ -208,13 +208,13 @@ impl<T: MaybeRewriteSeq> Rewrite for [T] {
 
 impl<T: MaybeRewriteSeq> Rewrite for Vec<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
-        <[T] as Rewrite>::rewrite(&old, &new, rcx)
+        <[T] as Rewrite>::rewrite(old, new, rcx)
     }
 }
 
 impl<T: MaybeRewriteSeq> Rewrite for ThinVec<T> {
     fn rewrite(old: &Self, new: &Self, rcx: RewriteCtxtRef) -> bool {
-        <[T] as Rewrite>::rewrite(&old, &new, rcx)
+        <[T] as Rewrite>::rewrite(old, new, rcx)
     }
 }
 

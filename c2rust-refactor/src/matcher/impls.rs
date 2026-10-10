@@ -86,7 +86,7 @@ impl TryMatch for Expr {
 
         if let ExprKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
-            return match &name.as_str() as &str {
+            return match name.as_str() as &str {
                 "marked" => mcx.do_marked(
                     &mac.args,
                     |p| p.parse_expr().map(|p| p.into_inner()),
@@ -116,7 +116,7 @@ impl TryMatch for Pat {
         // TODO: do we want to allow top-level or-patterns here?
         if let PatKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
-            return match &name.as_str() as &str {
+            return match name.as_str() as &str {
                 "marked" => mcx.do_marked(
                     &mac.args,
                     |p| p.parse_pat_no_top_alt(None).map(|p| p.into_inner()),
@@ -143,7 +143,7 @@ impl TryMatch for Ty {
 
         if let TyKind::MacCall(ref mac) = self.kind {
             let name = macro_name(mac);
-            return match &name.as_str() as &str {
+            return match name.as_str() as &str {
                 "marked" => {
                     mcx.do_marked(&mac.args, |p| p.parse_ty().map(|p| p.into_inner()), target)
                 }

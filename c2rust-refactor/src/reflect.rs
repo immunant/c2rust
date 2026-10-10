@@ -334,7 +334,7 @@ pub fn anon_const_to_expr(hir_map: &HirMap, def_id: DefId) -> P<Expr> {
     // TODO: This used to be hir_map.krate().body(body_id).
     // Is the replacement correct?
     let body = hir_map.body(body_id);
-    hir_expr_to_expr(&body.value)
+    hir_expr_to_expr(body.value)
 }
 
 fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
@@ -347,11 +347,11 @@ fn hir_expr_to_expr(e: &hir::Expr) -> P<Expr> {
     // change the rewriter's text-recovery decisions and is a separate,
     // deliberate improvement.
     match e.kind {
-        Binary(op, ref a, ref b) => {
+        Binary(op, a, b) => {
             let op: BinOpKind = op.node.into();
             mk().binary_expr(op, hir_expr_to_expr(a), hir_expr_to_expr(b))
         }
-        Unary(op, ref a) => mk().unary_expr(op.as_str(), hir_expr_to_expr(a)),
+        Unary(op, a) => mk().unary_expr(op.as_str(), hir_expr_to_expr(a)),
         Lit(ref l) => mk().span(l.span).lit_expr(l.clone()),
         ref k => panic!("unsupported variant in hir_expr_to_expr: {:?}", k),
     }
@@ -416,12 +416,12 @@ fn register_test_reflect(reg: &mut Registry) {
                 MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
                     let ty = cx.node_type(e.id);
 
-                    let new_expr = if let IrTyKind::FnDef(def_id, ref substs) = ty.kind() {
+                    let new_expr = if let IrTyKind::FnDef(def_id, substs) = ty.kind() {
                         let substs = substs.types().collect::<Vec<_>>();
                         let (qself, path) =
                             reflector.reflect_def_path_inner(*def_id, Some(&substs));
                         mk().qpath_expr(qself, path)
-                    } else if let Some(def_id) = cx.try_resolve_expr(&e) {
+                    } else if let Some(def_id) = cx.try_resolve_expr(e) {
                         let parent = cx
                             .hir_map()
                             .get_parent_item(cx.hir_map().node_to_hir_id(e.id));

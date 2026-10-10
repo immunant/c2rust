@@ -172,7 +172,7 @@ impl Transform for RetypeArgument {
             let mut rewritten_nodes = HashSet::new();
             fl.body.as_mut().map(|b| {
                 MutVisitNodes::visit(b, |e: &mut P<Expr>| {
-                    if let Some(hir_id) = cx.try_resolve_expr_to_hid(&e) {
+                    if let Some(hir_id) = cx.try_resolve_expr_to_hid(e) {
                         if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
                             rewritten_nodes.insert(e.id);
                             let mut bnd = Bindings::new();
@@ -189,7 +189,7 @@ impl Transform for RetypeArgument {
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `wrap` to call the function whose args we're changing.
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return);
+            let callee = match_or!([cx.opt_callee(e)] Some(x) => x; return);
             let mod_args = match_or!([mod_fns.get(&callee)] Some(x) => x; return);
             let wrap_target = |target: &mut P<Expr>| {
                 let mut bnd = Bindings::new();
@@ -278,7 +278,7 @@ impl Transform for RetypeReturn {
         // We don't need any protection against infinite recursion here, because it doesn't make
         // sense for `unwrap` to call the function whose args we're changing.
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
-            let callee = match_or!([cx.opt_callee(&e)] Some(x) => x; return);
+            let callee = match_or!([cx.opt_callee(e)] Some(x) => x; return);
             if !mod_fns.contains(&callee) {
                 return;
             }
@@ -412,7 +412,7 @@ impl Transform for RetypeStatic {
             if !crate::matches!([e.kind] ExprKind::Path(..))
                 || handled_ids.contains(&e.id)
                 || !cx
-                    .try_resolve_expr(&e)
+                    .try_resolve_expr(e)
                     .map_or(false, |did| mod_statics.contains(&did))
             {
                 return;
@@ -428,7 +428,7 @@ impl Transform for RetypeStatic {
                     .unwrap_or_else(|| {
                         panic!(
                             "need conv_lval_mut to handle LvalueMut expression `{}`",
-                            pprust::expr_to_string(&e)
+                            pprust::expr_to_string(e)
                         )
                     })
                     .subst(st, cx, &bnd),
@@ -620,7 +620,7 @@ where
             match e.kind {
                 ExprKind::Path(..) => {
                     if let Some(&(ref old_ty, ref new_ty)) = cx
-                        .try_resolve_expr_to_hid(&e)
+                        .try_resolve_expr_to_hid(e)
                         .and_then(|hid| changed_defs.get(&cx.hir_map().hir_to_node_id(hid)))
                     {
                         *e = transmute(e.clone(), context, new_ty, old_ty);
@@ -652,7 +652,7 @@ where
 
                 ExprKind::Call(_, ref args) => {
                     if let Some(func_id) = cx
-                        .opt_callee(&e)
+                        .opt_callee(e)
                         .and_then(|did| cx.hir_map().as_local_node_id(did))
                     {
                         if changed_funcs.contains(&func_id) {

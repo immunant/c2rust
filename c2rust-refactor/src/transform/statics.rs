@@ -134,7 +134,7 @@ impl Transform for CollectToStruct {
                     None => return,
                 };
 
-            if cx.resolve_expr(&orig) != static_id {
+            if cx.resolve_expr(orig) != static_id {
                 return;
             }
 
@@ -369,7 +369,7 @@ impl Transform for Localize {
 
                 // Update uses of statics.
                 MutVisitNodes::visit(&mut fl.body, |e: &mut P<Expr>| {
-                    if let Some(def_id) = cx.try_resolve_expr(&e) {
+                    if let Some(def_id) = cx.try_resolve_expr(e) {
                         if let Some(info) = statics.get(&def_id) {
                             *e = mk().unary_expr("*", mk().ident_expr(info.arg_name));
                             return;
@@ -380,7 +380,7 @@ impl Transform for Localize {
                 // Update calls to other marked functions.
                 MutVisitNodes::visit(&mut fl.body, |e: &mut P<Expr>| {
                     if let ExprKind::Call(func, args) = &mut e.kind {
-                        if let Some(func_id) = cx.try_resolve_expr(&func) {
+                        if let Some(func_id) = cx.try_resolve_expr(func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
                                 for &static_id in func_static_ids {
                                     args.push(mk().ident_expr(statics[&static_id].arg_name));
@@ -393,7 +393,7 @@ impl Transform for Localize {
                 // Update calls only.
                 MutVisitNodes::visit(&mut fl.body, |e: &mut P<Expr>| {
                     if let ExprKind::Call(func, args) = &mut e.kind {
-                        if let Some(func_id) = cx.try_resolve_expr(&func) {
+                        if let Some(func_id) = cx.try_resolve_expr(func) {
                             if let Some(func_static_ids) = fn_statics.get(&func_id) {
                                 for &static_id in func_static_ids {
                                     let info = &statics[&static_id];

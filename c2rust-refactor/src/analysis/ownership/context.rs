@@ -126,7 +126,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, arena: &'lty DroplessArena) -> Ctxt<'lty, 'tcx> {
         Ctxt {
             tcx,
-            lcx: LabeledTyCtxt::new(&arena),
+            lcx: LabeledTyCtxt::new(arena),
             arena,
 
             static_summ: HashMap::new(),

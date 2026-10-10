@@ -275,8 +275,8 @@ pub fn get_mono_sigs(
     Vec<IndexVec<Var, ConcretePerm>>,
     IndexVec<Var, ConcretePerm>,
 ) {
-    let is_out = infer_outputs(&summ);
-    let is_bounded = upper_bounded_vars(&summ);
+    let is_out = infer_outputs(summ);
+    let is_bounded = upper_bounded_vars(summ);
 
     let mut assigns = Vec::new();
 

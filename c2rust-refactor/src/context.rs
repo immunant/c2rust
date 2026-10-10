@@ -1407,11 +1407,11 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         let unit_ty = mk().tuple_ty::<P<rustc_ast::Ty>>(vec![]);
         let ty1 = match &decl1.output {
             FnRetTy::Default(..) => &unit_ty,
-            FnRetTy::Ty(ty) => &ty,
+            FnRetTy::Ty(ty) => ty,
         };
         let ty2 = match &decl2.output {
             FnRetTy::Default(..) => &unit_ty,
-            FnRetTy::Ty(ty) => &ty,
+            FnRetTy::Ty(ty) => ty,
         };
 
         self.structural_eq_ast_tys(ty1, ty2, true)
@@ -1826,8 +1826,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 }
                 // warning: we're ignore lifetime and const generic params
 
-                let def1 = self.def_mapping.and_then(|m| m.get(&fn1)).unwrap_or(&fn1);
-                let def2 = self.def_mapping.and_then(|m| m.get(&fn2)).unwrap_or(&fn2);
+                let def1 = self.def_mapping.and_then(|m| m.get(fn1)).unwrap_or(fn1);
+                let def2 = self.def_mapping.and_then(|m| m.get(fn2)).unwrap_or(fn2);
                 def1 == def2
             }
 

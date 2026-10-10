@@ -364,7 +364,7 @@ pub fn register_commands(reg: &mut Registry) {
     reg.register("pick_node", |args| {
         let args = args.to_owned();
         Box::new(DriverCommand::new(Phase::Phase2, move |st, cx| {
-            pick_node_command(&st.krate(), &cx, &args);
+            pick_node_command(&st.krate(), cx, &args);
         }))
     });
 }
