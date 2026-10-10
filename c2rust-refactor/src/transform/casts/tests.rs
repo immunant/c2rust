@@ -112,12 +112,12 @@ fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
             }
         }
 
-        let x = BV::new_const(&ctx, "x", ty_bit_width(tys[0], pw));
+        let x = BV::new_const(ctx, "x", ty_bit_width(tys[0], pw));
         let y = cast_tys(x.clone(), &tys[..], pw);
         let z = cast_tys(x.clone(), &min_tys[..], pw);
 
         // Check the full type list against the minimized one
-        let solver = Solver::new(&ctx);
+        let solver = Solver::new(ctx);
         solver.assert(&z._eq(&y).not());
         if solver.check() == SatResult::Unsat {
             true

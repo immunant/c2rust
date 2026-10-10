@@ -196,7 +196,7 @@ fn get_rustup_path(rustc: &Path) -> Option<PathBuf> {
     // Otherwise, check for a rustup binary installed alongside rustc.  If they're the same size,
     // we assume they're the same file (hardlinked or copied).
     let rustup = rustc.with_file_name("rustup");
-    let rustc_meta = fs::metadata(&rustc).ok()?;
+    let rustc_meta = fs::metadata(rustc).ok()?;
     let rustup_meta = fs::metadata(&rustup).ok()?;
     if rustc_meta.len() == rustup_meta.len() {
         return Some(rustup);
@@ -261,7 +261,7 @@ fn cargo_config() -> Config {
 
 fn setup_cargo<'cfg>(config: &'cfg Config) -> (CompileOptions, Workspace<'cfg>) {
     let mode = CompileMode::Check { test: false };
-    let mut compile_opts = CompileOptions::new(&config, mode).unwrap();
+    let mut compile_opts = CompileOptions::new(config, mode).unwrap();
 
     // The Rust toolchain for our transpiled files is different
     // from the version we use for the tools themselves (transpiler, refactor)
@@ -269,7 +269,7 @@ fn setup_cargo<'cfg>(config: &'cfg Config) -> (CompileOptions, Workspace<'cfg>) 
     compile_opts.honor_rust_version = false;
 
     let manifest_path = find_root_manifest_for_wd(config.cwd()).unwrap();
-    let ws = Workspace::new(&manifest_path, &config).unwrap();
+    let ws = Workspace::new(&manifest_path, config).unwrap();
 
     (compile_opts, ws)
 }
@@ -344,7 +344,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
             _on_stdout_line: &mut dyn FnMut(&str) -> CargoResult<()>,
             _on_stderr_line: &mut dyn FnMut(&str) -> CargoResult<()>,
         ) -> CargoResult<()> {
-            self.maybe_record_cmd(&cmd, &id, target);
+            self.maybe_record_cmd(cmd, &id, target);
             self.default
                 .exec(cmd, id, target, mode, &mut |_| Ok(()), &mut |_| Ok(()))
         }

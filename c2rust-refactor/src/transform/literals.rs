@@ -163,7 +163,7 @@ impl Transform for RemoveLiteralSuffixes {
             unif: ut::UnificationTable::new(),
             lit_nodes: HashMap::new(),
         };
-        visit::walk_crate(&mut uv, &krate);
+        visit::walk_crate(&mut uv, krate);
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let id = e.id;
@@ -176,7 +176,7 @@ impl Transform for RemoveLiteralSuffixes {
                         LitTySource::Actual(_) => {
                             // We have a type somewhere else, so remove
                             // the suffix from this literal
-                            if let Some(new_lit) = remove_suffix(&lit) {
+                            if let Some(new_lit) = remove_suffix(lit) {
                                 *lit = new_lit;
                             }
                         }
@@ -200,7 +200,7 @@ impl Transform for RemoveLiteralSuffixes {
                             match (needs_suffix, &ty.kind()) {
                                 (false, sty::TyKind::Int(ty::IntTy::I32))
                                 | (false, sty::TyKind::Float(ty::FloatTy::F64)) => {
-                                    if let Some(new_lit) = remove_suffix(&lit) {
+                                    if let Some(new_lit) = remove_suffix(lit) {
                                         *lit = new_lit;
                                     }
                                 }
@@ -286,15 +286,13 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
         seen.insert(hash_key);
 
         match (kt1.get(), kt2.get()) {
-            (LitTyKeyNode::Node(ref ch1), LitTyKeyNode::Node(ref ch2))
-                if ch1.len() == ch2.len() =>
-            {
+            (LitTyKeyNode::Node(ch1), LitTyKeyNode::Node(ch2)) if ch1.len() == ch2.len() => {
                 for (ch1_kt, ch2_kt) in ch1.iter().zip(ch2.iter()) {
                     self.unify_key_trees_internal(ch1_kt, ch2_kt, seen);
                 }
             }
 
-            (LitTyKeyNode::Node(ref ch), LitTyKeyNode::Leaf(_)) if ch.len() == 1 => {
+            (LitTyKeyNode::Node(ch), LitTyKeyNode::Leaf(_)) if ch.len() == 1 => {
                 // Example: `_xmlSchemaValDate::mon_day_hour_min` (a `[u8; 3]` bitfield backing
                 // array).  The HIR/type-side key tree still records the array wrapper as
                 // `Node([Leaf(u8)])`, whereas the expression we see in the derived accessor is a
@@ -313,7 +311,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.unify_key_trees_internal(ch[0], kt2, seen);
             }
 
-            (LitTyKeyNode::Leaf(_), LitTyKeyNode::Node(ref ch)) if ch.len() == 1 => {
+            (LitTyKeyNode::Leaf(_), LitTyKeyNode::Node(ch)) if ch.len() == 1 => {
                 // Symmetric case: the expression retained the wrapper (e.g. literal array) while
                 // the type-derived tree collapsed to the inner key.
                 self.unify_key_trees_internal(kt1, ch[0], seen);
@@ -348,19 +346,19 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
     fn hir_ty_to_key_tree(&mut self, ty: &hir::Ty) -> LitTyKeyTree<'kt, 'tcx> {
         // TODO: use the HirId cache???
         match ty.kind {
-            hir::TyKind::Path(hir::QPath::Resolved(_, ref path)) => {
+            hir::TyKind::Path(hir::QPath::Resolved(_, path)) => {
                 self.res_to_key_tree(path.res, path.span)
             }
             // TODO: handle TypeRelative paths
-            hir::TyKind::Slice(ref ty)
-            | hir::TyKind::Array(ref ty, _)
-            | hir::TyKind::Ptr(hir::MutTy { ref ty, .. })
-            | hir::TyKind::Ref(_, hir::MutTy { ref ty, .. }) => {
+            hir::TyKind::Slice(ty)
+            | hir::TyKind::Array(ty, _)
+            | hir::TyKind::Ptr(hir::MutTy { ty, .. })
+            | hir::TyKind::Ref(_, hir::MutTy { ty, .. }) => {
                 let ty_kt = self.hir_ty_to_key_tree(ty);
                 self.new_node(&[ty_kt])
             }
 
-            hir::TyKind::Tup(ref elems) => {
+            hir::TyKind::Tup(elems) => {
                 let ch = elems
                     .iter()
                     .map(|ty| self.hir_ty_to_key_tree(ty))
@@ -459,7 +457,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // TODO: we used to be able to handle Rc/Arc as well
-            sty::TyKind::Adt(ref adt_ref, ref substs) if adt_ref.is_box() => {
+            sty::TyKind::Adt(ref adt_ref, substs) if adt_ref.is_box() => {
                 // Ignore the actual structure for these types, and just
                 // use the inner type as the single child
                 let inner_ty = substs.type_at(0);
@@ -467,7 +465,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                 self.replace_with_node(new_node, &[ty_kt]);
             }
 
-            sty::TyKind::Adt(ref adt_def, ref substs) => {
+            sty::TyKind::Adt(ref adt_def, substs) => {
                 let ch = adt_def
                     .all_fields()
                     .map(|field| {
@@ -502,7 +500,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
             }
 
             // TODO: Closure
-            sty::TyKind::Tuple(ref elems) => {
+            sty::TyKind::Tuple(elems) => {
                 let ch = elems
                     .iter()
                     .map(|ty| self.ty_to_key_tree_internal(ty, mach_actual, seen))
@@ -838,7 +836,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
                                 );
                             }
                         }
-                        (Some(ch), sty::TyKind::Tuple(ref tys)) => {
+                        (Some(ch), sty::TyKind::Tuple(tys)) => {
                             assert!(ch.len() == tys.len());
                             if let Ok(idx) = ident.as_str().parse::<usize>() {
                                 self.unify_key_trees(kt, ch[idx]);
@@ -1105,7 +1103,7 @@ impl<'ast, 'a, 'kt, 'tcx> Visitor<'ast> for UnifyVisitor<'a, 'kt, 'tcx> {
         if let Some(ref ty) = l.ty {
             self.visit_ty(ty);
         }
-        if let Some(ref init) = l.kind.init() {
+        if let Some(init) = l.kind.init() {
             let key_tree = if let Some(ref ty) = l.ty {
                 self.ast_ty_to_key_tree(ty)
             } else {

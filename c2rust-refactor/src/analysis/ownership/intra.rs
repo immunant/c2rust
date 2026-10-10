@@ -335,7 +335,7 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
             TyKind::Adt(adt, _substs) => {
                 let field_def = &adt.variants()[v].fields[f];
                 let poly_ty = self.static_ty(field_def.did);
-                self.ilcx.subst(poly_ty, &base_ty.args)
+                self.ilcx.subst(poly_ty, base_ty.args)
             }
             TyKind::Tuple(_tys_) => base_ty.args[f.index()],
             _ => unimplemented!(),

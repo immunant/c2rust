@@ -53,8 +53,8 @@ impl<'ast> CollapseInfo<'ast> {
         let (mac_table, matched_ids) = collect_macro_invocations(unexpanded, expanded);
         node_map.add_edges(&matched_ids);
         node_map.add_edges(&[(CRATE_NODE_ID, CRATE_NODE_ID)]);
-        let cfg_attr_info = collect_cfg_attrs(&unexpanded);
-        let deleted_info = collect_deleted_nodes(&unexpanded, &node_map, &mac_table);
+        let cfg_attr_info = collect_cfg_attrs(unexpanded);
+        let deleted_info = collect_deleted_nodes(unexpanded, node_map, &mac_table);
         match_nonterminal_ids(node_map, &mac_table);
 
         node_map.transfer_marks(&mut cs.marks_mut());

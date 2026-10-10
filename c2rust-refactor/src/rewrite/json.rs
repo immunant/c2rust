@@ -94,12 +94,12 @@ impl<'a> MarkVisitor<'a> {
             "orig_id" => self.node_id_map.get(&id).map(|&id| id.as_usize()),
             "kind" => kind,
             "name" => if let Some(name) = name {
-                (&name.as_str() as &str).into()
+                (name.as_str() as &str).into()
             } else {
                 json::Null
             },
             "labels" => JsonValue::Array(
-                marks.iter().map(|&x| (&x.as_str() as &str).into()).collect()),
+                marks.iter().map(|&x| (x.as_str() as &str).into()).collect()),
         });
     }
 
