@@ -17,7 +17,7 @@ fn check_for_missing_tests() {
 fn test(file_name: &str) {
     let analyze = Analyze::resolve();
     let path = test_dir_for(file!(), true).join(file_name);
-    analyze.run(&path);
+    analyze.run(path);
 }
 
 macro_rules! define_test {
@@ -57,7 +57,7 @@ fn lighttpd_minimal() {
     cmd.arg("--manifest-path").arg(manifest_path);
 
     let output_path = dir.join("analysis.txt");
-    let output_stdout = File::create(&output_path).unwrap();
+    let output_stdout = File::create(output_path).unwrap();
     let output_stderr = File::try_clone(&output_stdout).unwrap();
     cmd.stdout(output_stdout.into_parts().0)
         .stderr(output_stderr.into_parts().0);
@@ -81,7 +81,7 @@ fn with_pdg_file() {
     Analyze::resolve().run_with(
         "../analysis/tests/minimal/src/main.rs",
         |cmd| {
-            cmd.env("PDG_FILE", &pdg_path).args(&[
+            cmd.env("PDG_FILE", &pdg_path).args([
                 "--crate-name",
                 "c2rust_analysis_tests_minimal",
                 "-C",

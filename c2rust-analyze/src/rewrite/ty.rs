@@ -225,14 +225,14 @@ fn deconstruct_hir_ty<'a, 'tcx>(
         // Types with arguments
         (&ty::TyKind::Array(_, _), &hir::TyKind::Array(arg_ty, _)) => Some(vec![arg_ty]),
         (&ty::TyKind::Slice(_), &hir::TyKind::Slice(arg_ty)) => Some(vec![arg_ty]),
-        (&ty::TyKind::RawPtr(tm), &hir::TyKind::Ptr(ref hir_mt)) => {
+        (&ty::TyKind::RawPtr(tm), hir::TyKind::Ptr(hir_mt)) => {
             if hir_mt.mutbl == tm.mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
                 None
             }
         }
-        (&ty::TyKind::Ref(_, _, mutbl), &hir::TyKind::Ref(_, ref hir_mt)) => {
+        (&ty::TyKind::Ref(_, _, mutbl), hir::TyKind::Ref(_, hir_mt)) => {
             if hir_mt.mutbl == mutbl.convert() {
                 Some(vec![hir_mt.ty])
             } else {
@@ -255,7 +255,7 @@ fn deconstruct_hir_ty<'a, 'tcx>(
                     // this situation occurs when there are hidden type arguments
                     // such as the allocator `std::alloc::Global` type argument in `Vec`
                     debug!("warning: extra MIR type argument for {adt_def:?}:");
-                    for mir_arg in substs.types().into_iter().skip(type_args.len()) {
+                    for mir_arg in substs.types().skip(type_args.len()) {
                         debug!("\t{:?}", mir_arg)
                     }
                 } else if type_args.len() != substs.types().count() {
