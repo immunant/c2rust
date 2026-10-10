@@ -78,39 +78,39 @@ where
         (self.callback)(&mut self.source, ast_ty, ty);
 
         match (&ast_ty.kind, ty.kind()) {
-            (&TyKind::Slice(ref elem), ResolvedTyKind::Slice) => self.record_ty(ty.arg(0), elem),
-            (&TyKind::Array(ref elem, _), ResolvedTyKind::Array) => self.record_ty(ty.arg(0), elem),
-            (&TyKind::Ptr(ref mty), ResolvedTyKind::RawPtr) => self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::Ref(_, ref mty), ResolvedTyKind::Ref)
-            | (&TyKind::Ptr(ref mty), ResolvedTyKind::Ref) => self.record_ty(ty.arg(0), &mty.ty),
-            (&TyKind::BareFn(ref fn_ty), ResolvedTyKind::FnPtr) => {
+            (TyKind::Slice(elem), ResolvedTyKind::Slice) => self.record_ty(ty.arg(0), elem),
+            (TyKind::Array(elem, _), ResolvedTyKind::Array) => self.record_ty(ty.arg(0), elem),
+            (TyKind::Ptr(mty), ResolvedTyKind::RawPtr) => self.record_ty(ty.arg(0), &mty.ty),
+            (TyKind::Ref(_, mty), ResolvedTyKind::Ref)
+            | (TyKind::Ptr(mty), ResolvedTyKind::Ref) => self.record_ty(ty.arg(0), &mty.ty),
+            (TyKind::BareFn(fn_ty), ResolvedTyKind::FnPtr) => {
                 assert!(ty.num_args() == fn_ty.decl.inputs.len() + 1);
                 for (i, arg) in fn_ty.decl.inputs.iter().enumerate() {
                     self.record_ty(ty.arg(i), &arg.ty);
                 }
                 self.record_function_ret_ty(ty.arg(fn_ty.decl.inputs.len()), &fn_ty.decl.output);
             }
-            (&TyKind::Never, ResolvedTyKind::Never) => {}
-            (&TyKind::Tup(ref elems), ResolvedTyKind::Tuple) => {
+            (TyKind::Never, ResolvedTyKind::Never) => {}
+            (TyKind::Tup(elems), ResolvedTyKind::Tuple) => {
                 for (i, ast_ty) in elems.iter().enumerate() {
                     self.record_ty(ty.arg(i), ast_ty);
                 }
             }
-            (&TyKind::Path(ref qself, ref path), _) => {
+            (TyKind::Path(qself, path), _) => {
                 // TyKind::Path could resolve to absolutely anything, since resolution includes
                 // expanding type aliases.  So this case gets special handling.
                 self.record_path_ty(ty, qself.as_deref(), path);
             }
-            (&TyKind::TraitObject(..), ResolvedTyKind::Dynamic) => {} // TODO
+            (TyKind::TraitObject(..), ResolvedTyKind::Dynamic) => {} // TODO
             // `Paren` should never appear, but just in case...
-            (&TyKind::Paren(ref ast_ty), _) => self.record_ty(ty, ast_ty),
+            (TyKind::Paren(ast_ty), _) => self.record_ty(ty, ast_ty),
             // No case for TyTypeof - it can't be written in source programs currently
 
             // These cases have no internal structure to recurse on.
-            (&TyKind::CVarArgs, _) => {}
-            (&TyKind::Infer, _) => {}
-            (&TyKind::ImplicitSelf, _) => {}
-            (&TyKind::MacCall(_), _) => {}
+            (TyKind::CVarArgs, _) => {}
+            (TyKind::Infer, _) => {}
+            (TyKind::ImplicitSelf, _) => {}
+            (TyKind::MacCall(_), _) => {}
 
             (_, _) => {
                 panic!(

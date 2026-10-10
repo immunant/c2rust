@@ -2697,9 +2697,9 @@ pub fn mk() -> Builder {
 /// libsyntax bug.
 fn has_rightmost_cast(expr: &Expr) -> bool {
     match &expr.kind {
-        &ExprKind::Cast(..) => true,
-        &ExprKind::Unary(_, ref arg) => has_rightmost_cast(&**arg),
-        &ExprKind::Binary(_, _, ref rhs) => has_rightmost_cast(&**rhs),
+        ExprKind::Cast(..) => true,
+        ExprKind::Unary(_, arg) => has_rightmost_cast(&**arg),
+        ExprKind::Binary(_, _, rhs) => has_rightmost_cast(&**rhs),
         _ => false,
     }
 }

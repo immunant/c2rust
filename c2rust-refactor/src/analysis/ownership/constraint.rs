@@ -250,7 +250,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     pub fn import(&mut self, other: &ConstraintSet<'lty>) {
         debug!("IMPORT {} constraints", other.less.len());
         self.less
-            .extend(other.less.iter().cloned().filter(|&(ref a, ref b)| {
+            .extend(other.less.iter().cloned().filter(|(a, b)| {
                 debug!("IMPORT CONSTRAINT: {:?} <= {:?}", a, b);
                 true
             }));

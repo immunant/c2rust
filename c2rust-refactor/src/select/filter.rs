@@ -261,16 +261,16 @@ pub fn matches_filter(
             .attrs()
             .map_or(false, |attrs| crate::util::contains_name(attrs, name)),
         Filter::Matches(ref pat) => match (node, pat) {
-            (AnyNode::Expr(target), &AnyPattern::Expr(ref pattern)) => {
+            (AnyNode::Expr(target), AnyPattern::Expr(pattern)) => {
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok()
             }
-            (AnyNode::Pat(target), &AnyPattern::Pat(ref pattern)) => {
+            (AnyNode::Pat(target), AnyPattern::Pat(pattern)) => {
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok()
             }
-            (AnyNode::Ty(target), &AnyPattern::Ty(ref pattern)) => {
+            (AnyNode::Ty(target), AnyPattern::Ty(pattern)) => {
                 MatchCtxt::from_match(st, cx, &**pattern, target).is_ok()
             }
-            (AnyNode::Stmt(target), &AnyPattern::Stmt(ref pattern)) => {
+            (AnyNode::Stmt(target), AnyPattern::Stmt(pattern)) => {
                 MatchCtxt::from_match(st, cx, pattern, target).is_ok()
             }
             _ => false,
