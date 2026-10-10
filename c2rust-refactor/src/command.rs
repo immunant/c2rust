@@ -735,6 +735,14 @@ impl CommandState {
         self.node_id_counter.next()
     }
 
+    /// Register a `NodeId` handed out by `next_node_id` as belonging to a node
+    /// this command built itself, the same way ids of parsed nodes are
+    /// registered. Without this the `NodeMap` never learns the node exists, so
+    /// anything keyed on it - `add_comment` in particular - is dropped.
+    pub fn register_new_node_id(&self, id: NodeId) {
+        self.new_parsed_node_ids.borrow_mut().push(id);
+    }
+
     /// Transfer marks on `old` to a fresh NodeId, and return that fresh NodeId.
     pub fn transfer_marks(&self, old: NodeId) -> NodeId {
         let new = self.next_node_id();
