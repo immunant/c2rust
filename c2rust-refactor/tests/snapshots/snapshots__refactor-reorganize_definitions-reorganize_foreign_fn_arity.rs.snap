@@ -11,11 +11,13 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 
 pub mod decl_h {
     extern "C" {
+
         pub fn takes_args(x: libc::c_int) -> libc::c_int;
 
         #[link_name = "takes_args"]
         pub fn takes_args_1(x: libc::c_int, y: libc::c_int) -> libc::c_int;
     }
+
     use ::libc;
 }
 extern crate libc;
