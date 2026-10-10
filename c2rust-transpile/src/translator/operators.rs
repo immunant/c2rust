@@ -524,12 +524,12 @@ impl<'c> Translation<'c> {
                     (rhs, rhs_type_id.ctype),
                 )?
             } else {
-                self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false)
+                self.convert_pointer_offset(rhs, lhs, pointee.ctype, false)
             }
         } else if let &CTypeKind::Pointer(pointee) = lhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             let is_negative = op == CBinOp::Subtract;
-            self.convert_pointer_offset(lhs, rhs, pointee.ctype, is_negative, false)
+            self.convert_pointer_offset(lhs, rhs, pointee.ctype, is_negative)
         } else if lhs_type_kind.is_unsigned_integral_type() {
             WithStmts::new_val(mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs]))
         } else {
