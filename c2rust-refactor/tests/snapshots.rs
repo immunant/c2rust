@@ -479,6 +479,15 @@ fn test_reorganize_foreign_fn_arity() {
         .test();
 }
 
+/// Two foreign declarations whose parameters are spelled the same but name
+/// different types describe different functions and must not be merged.
+#[test]
+fn test_reorganize_foreign_fn_type_identity() {
+    refactor("reorganize_definitions")
+        .named("reorganize_foreign_fn_type_identity.rs")
+        .test();
+}
+
 /// A foreign item, `static` or `fn`, that is renamed to avoid a collision must
 /// keep naming the symbol it linked against before the rename.
 #[test]
