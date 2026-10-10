@@ -42,6 +42,10 @@ void pointer_arithmetic(void) {
     int *p2 = i2;
     ptrdiff_t diff = p1 - p2;
     int diff_int = p1 - p2;
+
+    // The result type is different from the expected type.
+    unsigned long *unsigned_long_pointer = 0;
+    size_t *size_pointer = unsigned_long_pointer + 1;
 }
 
 void assign_result(void) {

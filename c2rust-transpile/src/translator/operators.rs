@@ -7,7 +7,7 @@ impl<'c> Translation<'c> {
         &self,
         mut ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
-        result_type_id: CQualTypeId,
+        mut result_type_id: CQualTypeId,
         op: CBinOp,
         lhs: CExprId,
         rhs: CExprId,
@@ -29,15 +29,19 @@ impl<'c> Translation<'c> {
             op if op.is_logical() => {
                 let lhs = self.convert_condition(ctx.used(), true, lhs)?;
                 let rhs = self.convert_condition(ctx.used(), true, rhs)?;
-                Ok(lhs
-                    .map(|x| bool_to_int(mk().binary_expr(BinOp::from(op), x, rhs.to_expr())))
+                let expr_rs = lhs
+                    .map(|x| mk().binary_expr(BinOp::from(op), x, rhs.to_expr()))
                     .and_then(|out| {
                         self.convert_side_effects_expr(
                             ctx,
                             WithStmts::new_val(out),
                             "Binary expression is not supposed to be used",
                         )
-                    }))
+                    });
+
+                let expected_type_id = expected_type_id.unwrap_or(result_type_id);
+                result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
+                self.make_cast(ctx, result_type_id, expected_type_id, expr_rs)
             }
 
             // No sequence-point cases
@@ -91,6 +95,7 @@ impl<'c> Translation<'c> {
                         // Ops like division and bitxor accept inputs of their expected result type.
                         lhs_type_id = expr_type_id;
                         rhs_type_id = expr_type_id;
+                        result_type_id = expr_type_id;
                     } else if op.input_types_same() && lhs_resolved_ty.kind != rhs_resolved_ty.kind
                     {
                         // Ops like comparisons require argument types to match, but the result type
@@ -110,6 +115,7 @@ impl<'c> Translation<'c> {
                         rhs_type_id = ty;
                     } else if matches!(op, ShiftLeft | ShiftRight) {
                         lhs_type_id = expr_type_id;
+                        result_type_id = expr_type_id;
                     }
                 }
 
@@ -136,6 +142,7 @@ impl<'c> Translation<'c> {
                     // have to rely on `trait PartialEq` as much and it is also more idiomatic.
                     if matches!(op, CBinOp::EqualEqual | CBinOp::NotEqual) {
                         let is_null = op == CBinOp::EqualEqual;
+                        let expected_type_id = expected_type_id.unwrap_or(result_type_id);
 
                         if self.ast_context.is_null_expr(lhs) {
                             let val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
@@ -147,7 +154,9 @@ impl<'c> Translation<'c> {
                                     is_null,
                                 )
                             })?;
-                            return Ok(val.map(bool_to_int));
+
+                            result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
+                            return self.make_cast(ctx, result_type_id, expected_type_id, val);
                         } else if self.ast_context.is_null_expr(rhs) {
                             let val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
                             let val = val.try_map(|lhs_rs| {
@@ -158,7 +167,9 @@ impl<'c> Translation<'c> {
                                     is_null,
                                 )
                             })?;
-                            return Ok(val.map(bool_to_int));
+
+                            result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
+                            return self.make_cast(ctx, result_type_id, expected_type_id, val);
                         }
                     }
 
@@ -168,7 +179,8 @@ impl<'c> Translation<'c> {
                     lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
                         self.convert_binary_operator(
                             ctx,
-                            expr_type_id,
+                            expected_type_id,
+                            result_type_id,
                             op,
                             lhs_type_id,
                             rhs_type_id,
@@ -389,6 +401,7 @@ impl<'c> Translation<'c> {
                 let val = lhs.and_then_try(|lhs| {
                     self.convert_binary_operator(
                         ctx,
+                        Some(lhs_type_id),
                         compute_res_type_id,
                         underlying_op,
                         compute_lhs_type_id,
@@ -397,8 +410,6 @@ impl<'c> Translation<'c> {
                         rhs,
                     )
                 })?;
-
-                let val = self.make_cast(ctx, compute_res_type_id, lhs_type_id, val)?;
 
                 if is_volatile {
                     val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
@@ -471,41 +482,67 @@ impl<'c> Translation<'c> {
     fn convert_binary_operator(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        mut result_type_id: CQualTypeId,
         op: CBinOp,
         lhs_type: CQualTypeId,
         rhs_type: CQualTypeId,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let is_unsigned_integral_type = self
-            .ast_context
-            .resolve_type(expr_type_id.ctype)
-            .kind
-            .is_unsigned_integral_type();
+        if matches!(op, CBinOp::Add) {
+            self.convert_addition(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                lhs_type,
+                rhs_type,
+                lhs,
+                rhs,
+            )
+        } else if matches!(op, CBinOp::Subtract) {
+            self.convert_subtraction(
+                ctx,
+                expected_type_id,
+                result_type_id,
+                lhs_type,
+                rhs_type,
+                lhs,
+                rhs,
+            )
+        } else {
+            let is_unsigned_integral_type = self
+                .ast_context
+                .resolve_type(result_type_id.ctype)
+                .kind
+                .is_unsigned_integral_type();
+            let expected_type_id = expected_type_id.unwrap_or(result_type_id);
 
-        Ok(WithStmts::new_val(match op {
-            CBinOp::Add => return self.convert_addition(lhs_type, rhs_type, lhs, rhs),
-            CBinOp::Subtract => {
-                return self.convert_subtraction(ctx, expr_type_id, lhs_type, rhs_type, lhs, rhs)
-            }
-
-            op if op.is_arithmetic() && is_unsigned_integral_type => {
+            let expr_rs = if op.is_arithmetic() && is_unsigned_integral_type {
                 mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs])
-            }
-
-            op if op.is_arithmetic() || op.is_bitwise() || op.is_bitshift() => {
+            } else if op.is_arithmetic() || op.is_bitwise() || op.is_bitshift() {
                 mk().binary_expr(BinOp::from(op), lhs, rhs)
-            }
+            } else if op.is_comparison() {
+                result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
+                mk().binary_expr(BinOp::from(op), lhs, rhs)
+            } else {
+                unimplemented!("Translation of binary operator {:?}", op)
+            };
 
-            op if op.is_comparison() => bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs)),
-
-            op => unimplemented!("Translation of binary operator {:?}", op),
-        }))
+            self.make_cast(
+                ctx,
+                result_type_id,
+                expected_type_id,
+                WithStmts::new_val(expr_rs),
+            )
+        }
     }
 
     fn convert_addition(
         &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
@@ -514,29 +551,29 @@ impl<'c> Translation<'c> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, false, false))
+        let expr_rs = if let &CTypeKind::Pointer(pointee) = lhs_type {
+            self.convert_pointer_offset(lhs, rhs, pointee.ctype, false, false)
         } else if let &CTypeKind::Pointer(pointee) = rhs_type {
-            Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false))
+            self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false)
         } else if lhs_type.is_unsigned_integral_type() {
-            Ok(WithStmts::new_val(mk().method_call_expr(
-                lhs,
-                "wrapping_add",
-                vec![rhs],
-            )))
+            WithStmts::new_val(mk().method_call_expr(lhs, "wrapping_add", vec![rhs]))
         } else {
-            Ok(WithStmts::new_val(mk().binary_expr(
-                BinOp::Add(Default::default()),
-                lhs,
-                rhs,
-            )))
-        }
+            WithStmts::new_val(mk().binary_expr(BinOp::Add(Default::default()), lhs, rhs))
+        };
+
+        self.make_cast(
+            ctx,
+            result_type_id,
+            expected_type_id.unwrap_or(result_type_id),
+            expr_rs,
+        )
     }
 
     fn convert_subtraction(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         lhs_type_id: CQualTypeId,
         rhs_type_id: CQualTypeId,
         lhs: Box<Expr>,
@@ -545,32 +582,29 @@ impl<'c> Translation<'c> {
         let lhs_type = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
         let rhs_type = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        if let &CTypeKind::Pointer(pointee) = rhs_type {
-            let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
-            let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
-            self.make_cast(ctx, CQualTypeId::new(source_type_id), expr_type_id, val)
+        let expr_rs = if let &CTypeKind::Pointer(pointee) = rhs_type {
+            self.make_pointer_difference(lhs, rhs, pointee.ctype)
         } else if let &CTypeKind::Pointer(pointee) = lhs_type {
-            Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false))
+            self.convert_pointer_offset(lhs, rhs, pointee.ctype, true, false)
         } else if lhs_type.is_unsigned_integral_type() {
-            Ok(WithStmts::new_val(mk().method_call_expr(
-                lhs,
-                "wrapping_sub",
-                vec![rhs],
-            )))
+            WithStmts::new_val(mk().method_call_expr(lhs, "wrapping_sub", vec![rhs]))
         } else {
-            Ok(WithStmts::new_val(mk().binary_expr(
-                BinOp::Sub(Default::default()),
-                lhs,
-                rhs,
-            )))
-        }
+            WithStmts::new_val(mk().binary_expr(BinOp::Sub(Default::default()), lhs, rhs))
+        };
+
+        self.make_cast(
+            ctx,
+            result_type_id,
+            expected_type_id.unwrap_or(result_type_id),
+            expr_rs,
+        )
     }
 
     pub fn convert_unary_operator(
         &self,
         ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
-        result_type_id: CQualTypeId,
+        mut result_type_id: CQualTypeId,
         op: CUnOp,
         arg: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
@@ -595,7 +629,10 @@ impl<'c> Translation<'c> {
 
             CUnOp::Not => {
                 let val = self.convert_condition(ctx, false, arg)?;
-                Ok(val.map(|x| mk().cast_expr(x, mk().abs_path_ty(vec!["core", "ffi", "c_int"]))))
+                let expected_type_id = expected_type_id.unwrap_or(result_type_id);
+
+                result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
+                self.make_cast(ctx, result_type_id, expected_type_id, val)
             }
             CUnOp::Extension => self.convert_expr(ctx, arg, expected_type_id),
             CUnOp::Real | CUnOp::Imag | CUnOp::Coawait => {
@@ -640,7 +677,7 @@ impl<'c> Translation<'c> {
 
         match self.ast_context.resolve_type(arg_type.ctype).kind {
             CTypeKind::Pointer(..) => {
-                one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Int));
+                one_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::IntPtr));
             }
             CTypeKind::Enum(enum_id) => {
                 one_type_id = self.enum_underlying_type(enum_id);
