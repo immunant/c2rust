@@ -462,18 +462,10 @@ impl<'c> Translation<'c> {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if matches!(op, CBinOp::Add | CBinOp::Subtract) {
+        if op.is_arithmetic() {
             self.convert_arithmetic_operator(ctx, expr_type_id, op, lhs_type, rhs_type, lhs, rhs)
         } else {
-            let is_unsigned_integral_type = self
-                .ast_context
-                .resolve_type(expr_type_id.ctype)
-                .kind
-                .is_unsigned_integral_type();
-
-            let expr_rs = if op.is_arithmetic() && is_unsigned_integral_type {
-                mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs])
-            } else if op.is_arithmetic() || op.is_bitwise() || op.is_bitshift() {
+            let expr_rs = if op.is_bitwise() || op.is_bitshift() {
                 mk().binary_expr(BinOp::from(op), lhs, rhs)
             } else if op.is_comparison() {
                 bool_to_int(mk().binary_expr(BinOp::from(op), lhs, rhs))
@@ -499,6 +491,7 @@ impl<'c> Translation<'c> {
         let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         if let &CTypeKind::Pointer(pointee) = rhs_type_kind {
+            assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             if op == CBinOp::Subtract {
                 let val = self.make_pointer_difference(lhs, rhs, pointee.ctype);
                 let source_type_id = self.ast_context.type_for_kind(&CTypeKind::PtrDiff);
@@ -507,6 +500,7 @@ impl<'c> Translation<'c> {
                 Ok(self.convert_pointer_offset(rhs, lhs, pointee.ctype, false, false))
             }
         } else if let &CTypeKind::Pointer(pointee) = lhs_type_kind {
+            assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             let is_negative = op == CBinOp::Subtract;
             Ok(self.convert_pointer_offset(lhs, rhs, pointee.ctype, is_negative, false))
         } else if lhs_type_kind.is_unsigned_integral_type() {
