@@ -1156,12 +1156,17 @@ pub struct CalleeInfo<'tcx> {
 
 type DefMapping = HashMap<DefId, DefId>;
 
+#[derive(Clone, Copy)]
 pub struct TypeCompare<'a, 'tcx: 'a, 'b> {
     cx: &'a RefactorCtxt<'a, 'tcx>,
 
     /// Mapping from old DefId to new DefId for defs that have been replaced
     /// after types were resolved.
     def_mapping: Option<&'b DefMapping>,
+
+    /// Require array lengths to match exactly, instead of letting a
+    /// zero-length array match an array of any length.
+    exact_array_lens: bool,
 }
 
 impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
@@ -1169,6 +1174,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         Self {
             cx,
             def_mapping: None,
+            exact_array_lens: false,
         }
     }
 
@@ -1176,6 +1182,21 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         Self {
             cx,
             def_mapping: Some(def_mapping),
+            exact_array_lens: false,
+        }
+    }
+
+    /// Return a copy of this comparison that requires array lengths to match
+    /// exactly.
+    ///
+    /// The zero-length leniency exists for an `extern` array declaration,
+    /// which C lets omit the length that its definition gives. Nothing else
+    /// makes a zero-length array interchangeable with a longer one: they are
+    /// distinct Rust types, and Rust will not coerce between them.
+    fn with_exact_array_lens(self) -> Self {
+        Self {
+            exact_array_lens: true,
+            ..self
         }
     }
 
@@ -1387,6 +1408,11 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
     /// Compare two function declarations for equivalent argument and return types,
     /// ignoring argument names.
     pub fn compatible_fn_prototypes(&self, decl1: &FnDecl, decl2: &FnDecl) -> bool {
+        // A parameter or return type is passed by value at every call site, so
+        // the two signatures have to agree on it exactly; the zero-length
+        // array leniency only holds for an `extern` array declaration.
+        let strict_cmp = self.with_exact_array_lens();
+
         // `zip` below stops at the shorter parameter list, so the lengths have
         // to be compared separately. Otherwise a declaration is compatible
         // with any other one that merely extends it, which is exactly the
@@ -1398,7 +1424,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         }
 
         let mut args = decl1.inputs.iter().zip(decl2.inputs.iter());
-        if !args.all(|(arg1, arg2)| self.structural_eq_ast_tys(&arg1.ty, &arg2.ty, true)) {
+        if !args.all(|(arg1, arg2)| strict_cmp.structural_eq_ast_tys(&arg1.ty, &arg2.ty, true)) {
             return false;
         }
 
@@ -1414,12 +1440,16 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             FnRetTy::Ty(ty) => &ty,
         };
 
-        self.structural_eq_ast_tys(ty1, ty2, true)
+        strict_cmp.structural_eq_ast_tys(ty1, ty2, true)
     }
 
     /// Compare two ty function signatures for equivalent argument and return
     /// types, ignoring argument names.
     pub fn compatible_fn_sigs(&self, sig1: &FnSig<'tcx>, sig2: &FnSig<'tcx>) -> bool {
+        // See `compatible_fn_prototypes` for why a signature compares array
+        // lengths exactly.
+        let strict_cmp = self.with_exact_array_lens();
+
         if sig1.inputs().len() != sig2.inputs().len() {
             return false;
         }
@@ -1429,14 +1459,14 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         }
 
         for (&arg_ty1, &arg_ty2) in sig1.inputs().iter().zip(sig2.inputs().iter()) {
-            if !self.structural_eq_tys_with_vis(arg_ty1, arg_ty2) {
+            if !strict_cmp.structural_eq_tys_with_vis(arg_ty1, arg_ty2) {
                 return false;
             }
         }
 
         let out_ty1 = sig1.output();
         let out_ty2 = sig2.output();
-        self.structural_eq_tys_with_vis(out_ty1, out_ty2)
+        strict_cmp.structural_eq_tys_with_vis(out_ty1, out_ty2)
     }
 
     /// Compare two AST types for structural equivalence, ignoring names.
@@ -1568,7 +1598,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 // array types with global array definitions, but it should be
                 // apply in practice as we translate empty extern array lengths
                 // into 0 length extern arrays.
-                if len1 != len2 && len1 != Some(0) && len2 != Some(0) {
+                let lenient = !self.exact_array_lens && (len1 == Some(0) || len2 == Some(0));
+                if len1 != len2 && !lenient {
                     trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
                     return false;
                 }
