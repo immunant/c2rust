@@ -348,18 +348,36 @@ where
                 // There's an item on the right corresponding to nothing on the left.
                 // Insert the item before the current item on the left, rewriting
                 // recursively.
+                //
+                // Rewrites and deletions of the neighboring old items claim
+                // their comment-extended spans, so anchor the insertion
+                // outside those extended spans; an insertion inside one
+                // would conflict with it. Inserting exactly at the extended
+                // start of the next item is fine: `cleanup_rewrites` orders
+                // the insertion before the following rewrite.
+                let extended_span = |idx: usize| {
+                    let span = ast(&old[idx]).splice_span();
+                    match old_ids[idx] {
+                        SeqItemId::Node(id) => extend_span_comments(&id, span, &rcx),
+                        _ => span,
+                    }
+                };
                 let before = if i > 0 {
-                    ast(&old[i - 1]).splice_span()
+                    extended_span(i - 1)
                 } else {
                     outer_span.shrink_to_lo()
                 };
                 let after = if i < old.len() {
-                    ast(&old[i]).splice_span()
+                    extended_span(i)
                 } else {
                     outer_span.shrink_to_hi()
                 };
 
-                let old_span = if is_rewritable(before) {
+                let old_span = if i == 0 && i < old.len() && is_rewritable(after) {
+                    // The outer span's start may fall inside the first item's
+                    // comment-extended span; insert before the comments.
+                    after.with_hi(after.lo())
+                } else if is_rewritable(before) {
                     before.with_lo(before.hi())
                 } else if is_rewritable(after) {
                     after.with_hi(after.lo())
@@ -460,18 +478,30 @@ where
                 // There's an item on the right corresponding to nothing on the left.
                 // Insert the item before the current item on the left, rewriting
                 // recursively.
+                //
+                // As in `rewrite_seq`, anchor the insertion outside the
+                // neighbors' comment-extended spans, which their own
+                // rewrites and deletions claim.
+                let extended_span = |idx: usize| match old_ids[idx] {
+                    SeqItemId::Node(id) => extend_span_comments(&id, old_spans[idx], &rcx),
+                    _ => old_spans[idx],
+                };
                 let before = if i > 0 {
-                    old_spans[i - 1]
+                    extended_span(i - 1)
                 } else {
                     outer_span.shrink_to_lo()
                 };
                 let after = if i < old.len() {
-                    old_spans[i]
+                    extended_span(i)
                 } else {
                     outer_span.shrink_to_hi()
                 };
 
-                let old_span = if is_rewritable(before) {
+                let old_span = if i == 0 && i < old.len() && is_rewritable(after) {
+                    // The outer span's start may fall inside the first item's
+                    // comment-extended span; insert before the comments.
+                    after.with_hi(after.lo())
+                } else if is_rewritable(before) {
                     before.with_lo(before.hi())
                 } else if is_rewritable(after) {
                     after.with_hi(after.lo())
