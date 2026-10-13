@@ -1136,26 +1136,36 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     .into_iter()
                     .flat_map(|item: P<Item>| -> SmallVec<[P<Item>; 1]> {
                         let mut items = smallvec![];
-                        if let ItemKind::Use(_) = &item.kind {
+                        if let ItemKind::Use(use_tree) = &item.kind {
                             if let Some((path, def_ids)) = multi_namespace_uses.get(&item.id) {
-                                // The retained import uses the first (type/value/
-                                // macro ordered) resolution. Determine where that
-                                // resolution lives even when it was not remapped.
-                                let other_mod_id = remapped_paths
-                                    .get(&item.id)
-                                    .map(|&(mod_id, _)| mod_id)
-                                    .or_else(|| {
-                                        let ldid = def_ids.first()?.1.as_local()?;
-                                        let mod_hir_id =
-                                            self.cx.ty_ctxt().parent_module_from_def_id(ldid);
-                                        Some(self.cx.hir_map().local_def_id_to_node_id(mod_hir_id))
-                                    })
-                                    .unwrap_or(DUMMY_NODE_ID);
+                                // Every synthesized import must bind the same
+                                // name as the import it was split from, so a
+                                // `use ... as alias;` stays bound as `alias`.
+                                let rename = match use_tree.kind {
+                                    UseTreeKind::Simple(rename) => rename,
+                                    _ => None,
+                                };
+                                // The retained import was rewritten (by the path
+                                // folding above) to the path of its first (type/
+                                // value/macro ordered) resolution. Reconstruct
+                                // that path and add an import for each remaining
+                                // resolution the retained path does not cover.
+                                // Parent module NodeIds cannot decide coverage:
+                                // DUMMY_NODE_ID stands for every external module,
+                                // so only path equality proves it.
+                                let first_def = def_ids.first().unwrap().1;
+                                let retained_path = match self.path_mapping.get(&first_def) {
+                                    Some(replacement) => replacement.path.clone(),
+                                    None if is_relative_path(&path) => {
+                                        self.cx.def_qpath(first_def).1
+                                    }
+                                    None => path.clone(),
+                                };
                                 for &(namespace, def_id) in &def_ids[1..] {
                                     if let Some(Replacement { path, parent, .. }) =
                                         self.path_mapping.get(&def_id)
                                     {
-                                        if other_mod_id != *parent {
+                                        if !path.ast_equiv(&retained_path) {
                                             let new_node_id = self.st.next_node_id();
                                             let inserted = remapped_paths
                                                 .insert(new_node_id, (*parent, def_id))
@@ -1166,8 +1176,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                                 smallvec![(namespace, *parent)],
                                             );
                                             items.push(
-                                                mk().id(new_node_id)
-                                                    .use_simple_item(path, None::<String>),
+                                                mk().id(new_node_id).use_simple_item(path, rename),
                                             );
                                         }
                                     } else if is_relative_path(&path) {
@@ -1181,7 +1190,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                                 .cx
                                                 .hir_map()
                                                 .local_def_id_to_node_id(mod_hir_id);
-                                            if other_mod_id != mod_id {
+                                            let target_path = self.cx.def_path(def_id);
+                                            if !target_path.ast_equiv(&retained_path) {
                                                 let new_node_id = self.st.next_node_id();
                                                 let inserted = remapped_paths
                                                     .insert(new_node_id, (mod_id, def_id))
@@ -1191,10 +1201,10 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                                     new_node_id,
                                                     smallvec![(namespace, mod_id)],
                                                 );
-                                                items.push(mk().id(new_node_id).use_simple_item(
-                                                    self.cx.def_path(def_id),
-                                                    None::<String>,
-                                                ));
+                                                items.push(
+                                                    mk().id(new_node_id)
+                                                        .use_simple_item(target_path, rename),
+                                                );
                                             }
                                         }
                                     }
@@ -1206,8 +1216,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     })
                     .collect();
 
-                // Mapping from ident to the module we are importing that ident from
-                let mut uses: PerNS<HashMap<Ident, NodeId>> = PerNS::default();
+                // Mapping from ident to the module we are importing that ident
+                // from and the path of the import that supplies it
+                let mut uses: PerNS<HashMap<Ident, (NodeId, Path)>> = PerNS::default();
                 mod_items.retain(|item| {
                     if let ItemKind::Use(u) = &item.kind {
                         match u.kind {
@@ -1269,10 +1280,12 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                             let mut redundant = true;
                             for &(namespace, target_module) in &targets {
                                 match uses[namespace].get(&u.ident()) {
-                                    Some(&previous_module) if previous_module == target_module => {
+                                    Some(&(previous_module, _))
+                                        if previous_module == target_module =>
+                                    {
                                         continue
                                     }
-                                    Some(&previous_module) => panic!(
+                                    Some(&(previous_module, _)) => panic!(
                                         "Conflicting imports of {:?} from {:?} and {:?}",
                                         u.ident(),
                                         previous_module,
@@ -1283,15 +1296,23 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
 
                                 // If the same local import path was retained
                                 // for another namespace, it resolves this one
-                                // too. DUMMY_NODE_ID represents every external
+                                // too. Same ident and module are not enough:
+                                // a split import can bind one name to two
+                                // different paths in the same module.
+                                // DUMMY_NODE_ID represents every external
                                 // module and cannot prove path equality.
                                 let same_import_kept = target_module != DUMMY_NODE_ID
                                     && [Namespace::TypeNS, Namespace::ValueNS, Namespace::MacroNS]
                                         .iter()
                                         .any(|&other_namespace| {
                                             other_namespace != namespace
-                                                && uses[other_namespace].get(&u.ident())
-                                                    == Some(&target_module)
+                                                && uses[other_namespace].get(&u.ident()).map_or(
+                                                    false,
+                                                    |(previous_module, previous_path)| {
+                                                        *previous_module == target_module
+                                                            && previous_path.ast_equiv(&u.prefix)
+                                                    },
+                                                )
                                         });
                                 if !same_import_kept {
                                     redundant = false;
@@ -1301,7 +1322,8 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                                 return false;
                             }
                             for &(namespace, target_module) in &targets {
-                                uses[namespace].insert(u.ident(), target_module);
+                                uses[namespace]
+                                    .insert(u.ident(), (target_module, u.prefix.clone()));
                             }
                         }
                     }
