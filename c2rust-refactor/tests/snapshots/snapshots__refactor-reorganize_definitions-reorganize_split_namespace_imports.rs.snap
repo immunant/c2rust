@@ -10,6 +10,7 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 
 pub mod stdlib {
     extern "C" {
+
         pub fn item(v: *const crate::stdlib::item) -> i32;
     }
     #[derive(Copy, Clone)]

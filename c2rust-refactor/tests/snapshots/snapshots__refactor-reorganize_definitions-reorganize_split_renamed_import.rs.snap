@@ -27,20 +27,19 @@ pub mod other {
 }
 
 pub mod dest {
+
+    // =============== BEGIN dest_h ================
     extern "C" {
+
         pub static tick: i32;
     }
-    // =============== BEGIN dest_h ================
-
     // A type and a value sharing the `tick` spelling. Both move into
-
     // `dest`, but the struct is renamed to `tick_1` by the collision
-
     // with other.h while the static keeps its name, so their new paths
-
     // differ even though they land in the same module.
     #[derive(Copy, Clone)]
     #[repr(C)]
+
     pub struct tick_1 {
         pub x: i32,
     }

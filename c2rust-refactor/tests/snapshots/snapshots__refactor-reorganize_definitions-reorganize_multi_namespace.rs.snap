@@ -10,6 +10,7 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 
 pub mod dest_h {
     extern "C" {
+
         pub fn tick(x: i32) -> i32;
     }
 }
