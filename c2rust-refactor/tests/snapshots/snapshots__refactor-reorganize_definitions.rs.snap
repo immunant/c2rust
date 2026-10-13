@@ -96,7 +96,7 @@ pub mod bar {
     type FooInt = i32;
 
     #[no_mangle]
-    static mut Bar: crate::bar::bar_t = crate::bar::bar_t {
+    pub(crate) static mut Bar: crate::bar::bar_t = crate::bar::bar_t {
         alloc: 0 as *mut libc::c_char,
         data: 0 as *mut libc::c_char,
         i: 0,
