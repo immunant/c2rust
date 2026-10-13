@@ -11,11 +11,13 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 
 pub mod io_h {
     extern "C" {
+
         pub fn fill(b: *mut crate::io_h::buf) -> libc::c_int;
 
         #[link_name = "fill"]
         pub fn fill_1(b: *mut crate::io_h::buf_1) -> libc::c_int;
     }
+
     use ::libc;
 
     #[repr(C)]
