@@ -274,7 +274,7 @@ fn is_mut_t(ty: &Ty) -> bool {
 /// so that ownership analysis can reason about them properly
 // TODO: When we want to add more constraints to functions here, we should make this
 // more generic
-fn register_std_constraints<'a, 'tcx>(ctxt: &mut Ctxt<'_, 'tcx>, tctxt: TyCtxt<'tcx>) {
+fn register_std_constraints<'tcx>(ctxt: &mut Ctxt<'_, 'tcx>, tctxt: TyCtxt<'tcx>) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
         let fn_name_path = def_path_string_no_crate(tctxt, *def_id);
 

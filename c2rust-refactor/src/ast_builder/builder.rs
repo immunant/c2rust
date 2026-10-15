@@ -90,7 +90,7 @@ impl<'a> Make<Extern> for &'a str {
     }
 }
 
-impl<'a> Make<Extern> for Abi {
+impl Make<Extern> for Abi {
     fn make(self, mk: &Builder) -> Extern {
         Extern::from_abi(Some(mk.clone().str_lit(self.name())), DUMMY_SP)
     }
@@ -170,13 +170,13 @@ impl<I: Make<Ident>> Make<Lifetime> for I {
     }
 }
 
-impl<'a> Make<LitIntType> for IntTy {
+impl Make<LitIntType> for IntTy {
     fn make(self, _mk: &Builder) -> LitIntType {
         LitIntType::Signed(self)
     }
 }
 
-impl<'a> Make<LitIntType> for UintTy {
+impl Make<LitIntType> for UintTy {
     fn make(self, _mk: &Builder) -> LitIntType {
         LitIntType::Unsigned(self)
     }
@@ -429,7 +429,7 @@ impl<L: Make<MetaItemLit>> Make<MetaItemKind> for L {
     }
 }
 
-impl<'a, S> Make<Lit> for S
+impl<S> Make<Lit> for S
 where
     S: IntoSymbol,
 {
@@ -463,7 +463,7 @@ impl Make<Lit> for u128 {
     }
 }
 
-impl<'a, S> Make<MetaItemLit> for S
+impl<S> Make<MetaItemLit> for S
 where
     S: IntoSymbol,
 {

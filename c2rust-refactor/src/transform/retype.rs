@@ -1565,7 +1565,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
 /// Will `from_ty` coerce to `to_ty`?
 /// Based on rules described in <https://doc.rust-lang.org/nomicon/coercions.html>.
-fn can_coerce<'a, 'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+fn can_coerce<'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     use rustc_type_ir::sty::TyKind::*;
 
     // We won't necessarily have matching regions if we created new expressions

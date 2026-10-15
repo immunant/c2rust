@@ -139,7 +139,7 @@ enum DoubleCastAction {
 }
 
 // Check and decide what to do for a double-cast, e.g., `$e as $ty1 as $ty2`
-fn check_double_cast<'tcx>(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> DoubleCastAction {
+fn check_double_cast(e_ty: SimpleTy, t1_ty: SimpleTy, t2_ty: SimpleTy) -> DoubleCastAction {
     // WARNING!!! This set of operations is verified for soundness
     // using Z3. If you make any changes, please re-run the verifier using
     // `cargo test --package c2rust-refactor`
@@ -462,7 +462,7 @@ impl ConstantValue {
     }
 }
 
-fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
+fn eval_const(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
     match e.kind {
         ExprKind::Lit(ref lit) => {
             match LitKind::from_token_lit(*lit).ok()? {
