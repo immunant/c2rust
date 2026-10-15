@@ -314,7 +314,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     }
                 });
             };
-            for item in &items[..] {
+            for item in items {
                 match &item.kind {
                     ItemKind::Fn(box Fn { body: Some(_), .. }) => {
                         keep_items.insert(item.id);
@@ -331,7 +331,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             }
 
             // This assume the complex uses have been split apart already
-            for item in &items[..] {
+            for item in items {
                 if let ItemKind::Use(tree) = &item.kind {
                     if used_idents.contains(&tree.ident()) {
                         keep_items.insert(item.id);

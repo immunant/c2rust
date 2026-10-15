@@ -8,7 +8,7 @@ use rustc_span::symbol::{Ident, Symbol};
 fn push_hir_mod_children(tcx: TyCtxt, m: &Mod, children: &mut Vec<(Symbol, Res<!>)>) {
     use rustc_hir::ItemKind::*;
 
-    for &iid in &m.item_ids[..] {
+    for &iid in m.item_ids {
         let node = tcx.hir().get(iid.hir_id());
         let item = expect!([node] Node::Item(i) => i);
         let item_did = item.owner_id.def_id;
@@ -45,7 +45,7 @@ fn push_hir_foreign_mod_children(
     items: &[ForeignItemRef],
     children: &mut Vec<(Symbol, Res<!>)>,
 ) {
-    for fi in &items[..] {
+    for fi in items {
         let did = fi.id.owner_id.def_id.to_def_id();
         let def = tcx.def_kind(did);
         children.push((fi.ident.name, Res::Def(def, did)));
