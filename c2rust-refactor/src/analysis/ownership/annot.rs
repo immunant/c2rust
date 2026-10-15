@@ -150,14 +150,10 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {
-        match i.kind {
-            // TODO: Foreign statics?
-            ast::ForeignItemKind::Fn(..) => {
-                if !i.attrs.is_empty() {
-                    self.def_attrs.push((i.id, &i.attrs));
-                }
+        if let ast::ForeignItemKind::Fn(..) = i.kind {
+            if !i.attrs.is_empty() {
+                self.def_attrs.push((i.id, &i.attrs));
             }
-            _ => {}
         }
 
         visit::walk_foreign_item(self, i);

@@ -92,11 +92,8 @@ where
 
             hir::ExprKind::Struct(qpath, _, _) => {
                 // Bail out early if it's not really a path type in the original AST.
-                match e.kind {
-                    // Technically still a struct expression, but the struct to use is referenced
-                    // via lang item, not by name.
-                    ExprKind::Range(_, _, _) => return,
-                    _ => {}
+                if let ExprKind::Range(_, _, _) = e.kind {
+                    return;
                 }
 
                 let path = expect!([&mut e.kind] ExprKind::Struct(se) => &mut se.path);
@@ -115,22 +112,16 @@ where
 
     pub fn alter_ty_path(&mut self, t: &mut P<Ty>, hir: &hir::Ty) {
         let id = t.id;
-        match hir.kind {
-            hir::TyKind::Path(ref qpath) => {
-                // Bail out early if it's not really a path type in the original AST.
-                match t.peel_refs().kind {
-                    TyKind::ImplicitSelf => return,
-                    _ => {}
-                }
-
-                unpack!([&mut t.kind] TyKind::Path(qself, path));
-                let (new_qself, new_path) =
-                    self.handle_qpath(id, qself.clone(), path.clone(), qpath);
-                *qself = new_qself;
-                *path = new_path;
+        if let hir::TyKind::Path(ref qpath) = hir.kind {
+            // Bail out early if it's not really a path type in the original AST.
+            if let TyKind::ImplicitSelf = t.peel_refs().kind {
+                return;
             }
 
-            _ => {}
+            unpack!([&mut t.kind] TyKind::Path(qself, path));
+            let (new_qself, new_path) = self.handle_qpath(id, qself.clone(), path.clone(), qpath);
+            *qself = new_qself;
+            *path = new_path;
         }
     }
 

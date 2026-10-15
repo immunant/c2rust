@@ -1329,18 +1329,15 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 if self.cx.item_namespaces(item1).contains(&Namespace::TypeNS)
                     && self.cx.item_namespaces(item2).contains(&Namespace::TypeNS)
                 {
-                    match (
+                    if let (Some(ty1), Some(ty2)) = (
                         self.cx.opt_node_type(item1.id),
                         self.cx.opt_node_type(item2.id),
                     ) {
-                        (Some(ty1), Some(ty2)) => {
-                            if match_vis {
-                                return self.structural_eq_tys_with_vis(ty1, ty2);
-                            } else {
-                                return self.structural_eq_tys(ty1, ty2);
-                            }
+                        if match_vis {
+                            return self.structural_eq_tys_with_vis(ty1, ty2);
+                        } else {
+                            return self.structural_eq_tys(ty1, ty2);
                         }
-                        _ => {}
                     }
                 }
 

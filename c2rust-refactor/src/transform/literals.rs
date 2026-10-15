@@ -43,19 +43,15 @@ impl Transform for ByteStrToStr {
                 return;
             }
 
-            match &mut e.kind {
-                ExprKind::Lit(l) => match LitKind::from_token_lit(*l) {
-                    Ok(LitKind::ByteStr(ref bs, _)) => {
-                        let s = String::from_utf8(bs.to_vec()).unwrap();
-                        *l = Lit::new(
-                            token::LitKind::Str,
-                            escape_string_symbol(Symbol::intern(&s)),
-                            None,
-                        );
-                    }
-                    _ => {}
-                },
-                _ => {}
+            if let ExprKind::Lit(l) = &mut e.kind {
+                if let Ok(LitKind::ByteStr(ref bs, _)) = LitKind::from_token_lit(*l) {
+                    let s = String::from_utf8(bs.to_vec()).unwrap();
+                    *l = Lit::new(
+                        token::LitKind::Str,
+                        escape_string_symbol(Symbol::intern(&s)),
+                        None,
+                    );
+                }
             }
         })
     }
@@ -87,8 +83,8 @@ impl Transform for RemoveNullTerminator {
                 return;
             }
 
-            match &mut e.kind {
-                ExprKind::Lit(l) => match LitKind::from_token_lit(*l) {
+            if let ExprKind::Lit(l) = &mut e.kind {
+                match LitKind::from_token_lit(*l) {
                     Ok(LitKind::ByteStr(ref bs, style)) if bs.last() == Some(&0) => {
                         let bytes = &bs[..bs.len() - 1];
                         let (kind, symbol) = match style {
@@ -113,8 +109,7 @@ impl Transform for RemoveNullTerminator {
                         }
                     }
                     _ => {}
-                },
-                _ => {}
+                }
             }
         });
     }
@@ -167,54 +162,51 @@ impl Transform for RemoveLiteralSuffixes {
 
         MutVisitNodes::visit(krate, |e: &mut P<Expr>| {
             let id = e.id;
-            match &mut e.kind {
-                ExprKind::Lit(ref mut lit) => {
-                    let key = match_or!([uv.lit_nodes.get(&id)]
-                                        Some(x) => x; return);
-                    let source = uv.unif.probe_value(*key);
-                    match source {
-                        LitTySource::Actual(_) => {
-                            // We have a type somewhere else, so remove
-                            // the suffix from this literal
-                            if let Some(new_lit) = remove_suffix(lit) {
-                                *lit = new_lit;
-                            }
+            if let ExprKind::Lit(ref mut lit) = &mut e.kind {
+                let key = match_or!([uv.lit_nodes.get(&id)]
+                                    Some(x) => x; return);
+                let source = uv.unif.probe_value(*key);
+                match source {
+                    LitTySource::Actual(_) => {
+                        // We have a type somewhere else, so remove
+                        // the suffix from this literal
+                        if let Some(new_lit) = remove_suffix(lit) {
+                            *lit = new_lit;
                         }
+                    }
 
-                        LitTySource::Suffix(ty, needs_suffix) => {
-                            assert!(lit.suffix.is_some());
-                            // We have a set of literals with no other type source,
-                            // so the first one (this one) gets a suffix to make it typed,
-                            // and the rest lose their suffixes
-                            // TODO: if our current literal set is all floats,
-                            // and there is one that's integer-like and we can't remove
-                            // its suffix (see above), and at the same time it's safe to
-                            // remove the suffix on the current one, then we should do that
-                            uv.unif
-                                .unify_var_value(*key, LitTySource::Actual(ty))
-                                .expect("failed to unify");
+                    LitTySource::Suffix(ty, needs_suffix) => {
+                        assert!(lit.suffix.is_some());
+                        // We have a set of literals with no other type source,
+                        // so the first one (this one) gets a suffix to make it typed,
+                        // and the rest lose their suffixes
+                        // TODO: if our current literal set is all floats,
+                        // and there is one that's integer-like and we can't remove
+                        // its suffix (see above), and at the same time it's safe to
+                        // remove the suffix on the current one, then we should do that
+                        uv.unif
+                            .unify_var_value(*key, LitTySource::Actual(ty))
+                            .expect("failed to unify");
 
-                            // Special case: if `ty` is `i32` or `f64`,
-                            // then we can remove the suffix, since those
-                            // are the default inference types
-                            match (needs_suffix, &ty.kind()) {
-                                (false, sty::TyKind::Int(ty::IntTy::I32))
-                                | (false, sty::TyKind::Float(ty::FloatTy::F64)) => {
-                                    if let Some(new_lit) = remove_suffix(lit) {
-                                        *lit = new_lit;
-                                    }
+                        // Special case: if `ty` is `i32` or `f64`,
+                        // then we can remove the suffix, since those
+                        // are the default inference types
+                        match (needs_suffix, &ty.kind()) {
+                            (false, sty::TyKind::Int(ty::IntTy::I32))
+                            | (false, sty::TyKind::Float(ty::FloatTy::F64)) => {
+                                if let Some(new_lit) = remove_suffix(lit) {
+                                    *lit = new_lit;
                                 }
-                                _ => {}
                             }
+                            _ => {}
                         }
+                    }
 
-                        LitTySource::Unknown(needs_suffix) => {
-                            // We should never wind up here
-                            assert!(!needs_suffix);
-                        }
-                    };
-                }
-                _ => {}
+                    LitTySource::Unknown(needs_suffix) => {
+                        // We should never wind up here
+                        assert!(!needs_suffix);
+                    }
+                };
             }
         });
     }

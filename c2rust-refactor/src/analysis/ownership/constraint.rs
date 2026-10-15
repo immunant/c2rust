@@ -352,9 +352,8 @@ impl<'lty> ConstraintSet<'lty> {
     /// This function may return a lower result than necessary due to imprecise reasoning about
     /// `Min`.
     pub fn lower_bound(&self, p: Perm<'lty>) -> ConcretePerm {
-        match p {
-            Perm::Concrete(p) => return p,
-            _ => {}
+        if let Perm::Concrete(p) = p {
+            return p;
         }
 
         let mut bound = ConcretePerm::Read;
@@ -375,9 +374,8 @@ impl<'lty> ConstraintSet<'lty> {
     /// This function may return a higher result than necessary due to imprecise reasoning about
     /// `Min`.
     pub fn upper_bound(&self, p: Perm<'lty>) -> ConcretePerm {
-        match p {
-            Perm::Concrete(p) => return p,
-            _ => {}
+        if let Perm::Concrete(p) = p {
+            return p;
         }
 
         let mut bound = ConcretePerm::Move;
@@ -553,15 +551,12 @@ impl<'lty> ConstraintSet<'lty> {
         let mut edit = self.edit();
 
         while let Some((a, b)) = edit.next() {
-            match b {
-                Perm::Min(ps) => {
-                    debug!("expand: {:?} <= {:?}", a, b);
-                    edit.remove(a, b);
-                    for &p in ps {
-                        edit.add(a, p);
-                    }
+            if let Perm::Min(ps) = b {
+                debug!("expand: {:?} <= {:?}", a, b);
+                edit.remove(a, b);
+                for &p in ps {
+                    edit.add(a, p);
                 }
-                _ => {}
             }
         }
     }
