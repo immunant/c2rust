@@ -162,13 +162,13 @@ impl Transform for LinkIncompleteTypes {
         let mut incomplete_to_name = HashMap::new();
 
         visit_nodes(krate, |i: &Item| {
-            let complete = match i.kind {
-                ItemKind::Struct(..) => true,
-                ItemKind::Union(..) => true,
-                ItemKind::Enum(..) => true,
-                ItemKind::TyAlias(..) => true,
-                _ => false,
-            };
+            let complete = matches!(
+                i.kind,
+                ItemKind::Struct(..)
+                    | ItemKind::Union(..)
+                    | ItemKind::Enum(..)
+                    | ItemKind::TyAlias(..)
+            );
 
             if complete {
                 let def_id = cx.node_def_id(i.id);
@@ -181,10 +181,7 @@ impl Transform for LinkIncompleteTypes {
 
         // (2) Find incomplete type definitions (extern types), and index them by name.
         visit_nodes(krate, |i: &ForeignItem| {
-            let incomplete = match i.kind {
-                ForeignItemKind::TyAlias(_) => true,
-                _ => false,
-            };
+            let incomplete = matches!(i.kind, ForeignItemKind::TyAlias(_));
 
             if incomplete {
                 let def_id = cx.node_def_id(i.id);

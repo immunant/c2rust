@@ -217,10 +217,10 @@ pub fn gather_comments(sess: &ParseSess, path: FileName, src: String) -> Vec<Com
             }
             rustc_lexer::TokenKind::BlockComment { doc_style, .. } => {
                 if doc_style.is_none() {
-                    let code_to_the_right = match text[pos + token.len as usize..].chars().next() {
-                        Some('\r') | Some('\n') => false,
-                        _ => true,
-                    };
+                    let code_to_the_right = !matches!(
+                        text[pos + token.len as usize..].chars().next(),
+                        Some('\r') | Some('\n')
+                    );
                     let style = match (code_to_the_left, code_to_the_right) {
                         (true, true) | (false, true) => Mixed,
                         (false, false) => Isolated,
