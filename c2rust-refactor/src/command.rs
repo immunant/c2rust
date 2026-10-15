@@ -388,16 +388,15 @@ impl RefactorState {
             };
 
             // Run the transform
-            let r =
-                match phase {
-                    Phase::Phase1 => {
-                        let cx = RefactorCtxt::new_phase_1(session);
+            let r = match phase {
+                Phase::Phase1 => {
+                    let cx = RefactorCtxt::new_phase_1(session);
 
-                        f(&cs, &cx)
-                    }
+                    f(&cs, &cx)
+                }
 
-                    Phase::Phase2 => {
-                        let r = queries.global_ctxt()?.enter(|tcx| {
+                Phase::Phase2 => {
+                    queries.global_ctxt()?.enter(|tcx| {
                             let (
                                 partial_res_map,
                                 node_id_to_def_id,
@@ -430,13 +429,11 @@ impl RefactorState {
                             // is dropped, so the next command cannot interpret stale crate numbers.
                             update_dollar_crate_names(tcx);
                             result
-                        });
+                        })
+                }
 
-                        r
-                    }
-
-                    Phase::Phase3 => {
-                        let r = queries.global_ctxt()?.enter(|tcx| {
+                Phase::Phase3 => {
+                    queries.global_ctxt()?.enter(|tcx| {
                             let (
                                 partial_res_map,
                                 node_id_to_def_id,
@@ -469,11 +466,9 @@ impl RefactorState {
                             // See the Phase 2 path above.
                             update_dollar_crate_names(tcx);
                             result
-                        });
-
-                        r
-                    }
-                };
+                        })
+                }
+            };
 
             node_map.init(cs.new_parsed_node_ids.get_mut().drain(..));
 

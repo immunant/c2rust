@@ -29,7 +29,7 @@ pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let krate = replace_expr(
+        replace_expr(
             st,
             cx,
             krate,
@@ -46,8 +46,7 @@ impl Transform for ReconstructWhile {
                     $body:MultiStmt;
                 }
             "#,
-        );
-        krate
+        )
     }
 }
 
