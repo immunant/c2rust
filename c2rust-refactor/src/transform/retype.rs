@@ -170,7 +170,7 @@ impl Transform for RetypeArgument {
             // see `x` again in the recursive call.  We keep track of which nodes have already been
             // rewritten so that we don't end up with a stack overflow.
             let mut rewritten_nodes = HashSet::new();
-            fl.body.as_mut().map(|b| {
+            if let Some(b) = fl.body.as_mut() {
                 MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                     if let Some(hir_id) = cx.try_resolve_expr_to_hid(e) {
                         if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
@@ -181,7 +181,7 @@ impl Transform for RetypeArgument {
                         }
                     }
                 })
-            });
+            }
         });
 
         // (2) Rewrite callsites of modified functions.
@@ -262,13 +262,13 @@ impl Transform for RetypeReturn {
             fl.decl.output = FnRetTy::Ty(new_ty.clone());
 
             // Rewrite output expressions using `wrap`.
-            fl.body.as_mut().map(|b| {
+            if let Some(b) = fl.body.as_mut() {
                 fold_output_exprs(b, true, |e| {
                     let mut bnd = Bindings::new();
                     bnd.add("__old", e.clone());
                     *e = wrap.clone().subst(st, cx, &bnd);
                 })
-            });
+            }
 
             mod_fns.insert(cx.node_def_id(fl.id));
         });
@@ -689,11 +689,11 @@ where
 
     mut_visit_fns(krate, |fl| {
         if let Some((old_ty, new_ty)) = changed_outputs.get(&fl.id) {
-            fl.body.as_mut().map(|b| {
+            if let Some(b) = fl.body.as_mut() {
                 fold_output_exprs(b, true, |e| {
                     *e = transmute(e.clone(), lr_expr::Context::Rvalue, old_ty, new_ty);
                 })
-            });
+            }
         }
     });
 }
