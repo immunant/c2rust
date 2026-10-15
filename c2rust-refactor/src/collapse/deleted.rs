@@ -291,9 +291,7 @@ impl<'a, 'ast> MutVisitor for RestoreDeletedNodes<'a, 'ast> {
 /// Convert a flat vector of `DeletedNode`s into a map keyed on parent `NodeId`.
 ///
 /// This preserves relative order inside each sub-`Vec`.
-fn index_deleted_nodes<'ast>(
-    vec: Vec<DeletedNode<'ast>>,
-) -> HashMap<NodeId, Vec<DeletedNode<'ast>>> {
+fn index_deleted_nodes(vec: Vec<DeletedNode<'_>>) -> HashMap<NodeId, Vec<DeletedNode<'_>>> {
     let mut map = HashMap::new();
     for dn in vec {
         map.entry(dn.parent).or_insert_with(Vec::new).push(dn);

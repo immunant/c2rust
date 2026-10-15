@@ -253,7 +253,7 @@ impl<'lty, 'a: 'lty, 'tcx: 'a> Ctxt<'lty, 'tcx> {
         }
     }
 
-    pub fn mono_ids<'b>(&'b self) -> MonoIds<'b> {
+    pub fn mono_ids(&self) -> MonoIds<'_> {
         MonoIds {
             inner: self.monos.keys(),
         }

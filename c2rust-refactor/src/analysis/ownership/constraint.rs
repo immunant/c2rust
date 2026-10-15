@@ -217,12 +217,7 @@ pub struct ConstraintSet<'lty> {
 
 /// Return a pair of bounds, suitable for use with `BTreeSet::range`, covering all pairs of
 /// permissions whose first element is `p`.
-fn perm_range<'lty, 'tcx>(
-    p: Perm<'lty>,
-) -> (
-    Bound<(Perm<'lty>, Perm<'lty>)>,
-    Bound<(Perm<'lty>, Perm<'lty>)>,
-) {
+fn perm_range<'tcx>(p: Perm<'_>) -> (Bound<(Perm<'_>, Perm<'_>)>, Bound<(Perm<'_>, Perm<'_>)>) {
     (
         Bound::Included((p, Perm::read())),
         Bound::Included((p, Perm::LocalVar(Var(!0)))),

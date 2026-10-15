@@ -42,7 +42,7 @@ fn ty_bit_width(ty: SimpleTy, pw: PointerWidth) -> u32 {
     }
 }
 
-fn cast_bv<'bv>(bv: BV<'bv>, from_ty: SimpleTy, to_ty: SimpleTy, pw: PointerWidth) -> BV<'bv> {
+fn cast_bv(bv: BV<'_>, from_ty: SimpleTy, to_ty: SimpleTy, pw: PointerWidth) -> BV<'_> {
     let from_width = ty_bit_width(from_ty, pw);
     let to_width = ty_bit_width(to_ty, pw);
     if to_width == from_width {
