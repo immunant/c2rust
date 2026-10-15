@@ -1,0 +1,34 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_higher_ranked_callbacks.rs --edition 2021
+---
+#![feature(c_variadic, extern_types, register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code, unused_imports)]
+
+pub mod api_h {
+    extern "C" {
+        pub type CallbackContext;
+    }
+    #[repr(C)]
+    pub struct Api {
+        pub append:
+            Option<unsafe extern "C" fn(*mut crate::api_h::CallbackContext, core::ffi::VaList)>,
+    }
+}
+pub mod first {}
+
+pub mod extension {
+
+    #[no_mangle]
+    pub unsafe extern "C" fn init(_: *const crate::api_h::Api) {}
+}
+
+pub mod caller {
+
+    pub unsafe fn call() {
+        crate::extension::init(core::ptr::null::<crate::api_h::Api>());
+    }
+}
+
+fn main() {}

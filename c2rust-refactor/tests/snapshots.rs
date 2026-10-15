@@ -127,6 +127,31 @@ impl<'a> RefactorTest<'a> {
     }
 }
 
+/// Lets fixtures use the real `c2rust_bitfields` derive. Cargo builds the
+/// dev-dependency next to this test binary; any build of it will do.
+fn bitfields_args() -> Vec<String> {
+    let deps = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_owned();
+    let rlib = fs_err::read_dir(&deps)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            let name = path.file_name().unwrap().to_str().unwrap();
+            name.starts_with("libc2rust_bitfields-") && name.ends_with(".rlib")
+        })
+        .max_by_key(|path| fs_err::metadata(path).unwrap().modified().unwrap())
+        .expect("the c2rust-bitfields dev-dependency should be built");
+    vec![
+        "-L".into(),
+        format!("dependency={}", deps.display()),
+        "--extern".into(),
+        format!("c2rust_bitfields={}", rlib.display()),
+    ]
+}
+
 #[allow(clippy::too_many_arguments)]
 fn test_refactor(
     command: &str,
@@ -140,6 +165,7 @@ fn test_refactor(
 ) {
     let tests_dir = Path::new("tests/snapshots");
     let old_path = tests_dir.join(path);
+    let extra_args = bitfields_args();
 
     rustfmt(&old_path)
         .edition(edition)
@@ -148,6 +174,7 @@ fn test_refactor(
         .run();
     rustc(&old_path)
         .edition(edition)
+        .args(&extra_args)
         .expect_error(old_expect_compile_error)
         .run();
 
@@ -166,7 +193,13 @@ fn test_refactor(
                 .map(|arg| arg.to_owned())
                 .collect(),
         }],
-        rustc_args: RustcArgSource::CmdLine(rustc_args.map(|arg| arg.to_owned()).to_vec()),
+        rustc_args: RustcArgSource::CmdLine(
+            rustc_args
+                .map(|arg| arg.to_owned())
+                .into_iter()
+                .chain(extra_args.iter().cloned())
+                .collect(),
+        ),
         cursors: Default::default(),
         marks: Default::default(),
         plugins: Default::default(),
@@ -182,6 +215,7 @@ fn test_refactor(
         .run();
     rustc(&new_path)
         .edition(edition)
+        .args(&extra_args)
         .expect_error(new_expect_compile_error)
         .run();
 
@@ -460,14 +494,24 @@ fn test_reorganize_assoc_items() {
         .test();
 }
 
-/// The inputs don't compile standalone because the `bitfield` attribute
-/// comes from the `c2rust_bitfields` derive crate, which isn't available
-/// to plain `rustc` here.
+#[test]
+fn test_reorganize_bitfield_callbacks() {
+    refactor("reorganize_definitions")
+        .named("reorganize_bitfield_callbacks.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_bitfield_ty() {
     refactor("reorganize_definitions")
         .named("reorganize_bitfield_ty.rs")
-        .expect_compile_error(true)
+        .test();
+}
+
+#[test]
+fn test_reorganize_callback_binders() {
+    refactor("reorganize_definitions")
+        .named("reorganize_callback_binders.rs")
         .test();
 }
 
@@ -497,6 +541,20 @@ fn test_reorganize_foreign_types() {
 }
 
 #[test]
+fn test_reorganize_forward_decl_with_local_definition() {
+    refactor("reorganize_definitions")
+        .named("reorganize_forward_decl_with_local_definition.rs")
+        .test();
+}
+
+#[test]
+fn test_reorganize_higher_ranked_callbacks() {
+    refactor("reorganize_definitions")
+        .named("reorganize_higher_ranked_callbacks.rs")
+        .test();
+}
+
+#[test]
 fn test_reorganize_identical_data_enums() {
     refactor("reorganize_definitions")
         .named("reorganize_identical_data_enums.rs")
@@ -504,9 +562,9 @@ fn test_reorganize_identical_data_enums() {
 }
 
 #[test]
-fn test_reorganize_forward_decl_with_local_definition() {
+fn test_reorganize_moved_local_types() {
     refactor("reorganize_definitions")
-        .named("reorganize_forward_decl_with_local_definition.rs")
+        .named("reorganize_moved_local_types.rs")
         .test();
 }
 
@@ -545,6 +603,13 @@ fn test_reorganize_self_import_destination() {
 fn test_reorganize_split_namespace_imports() {
     refactor("reorganize_definitions")
         .named("reorganize_split_namespace_imports.rs")
+        .test();
+}
+
+#[test]
+fn test_reorganize_va_list_struct() {
+    refactor("reorganize_definitions")
+        .named("reorganize_va_list_struct.rs")
         .test();
 }
 

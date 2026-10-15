@@ -39,6 +39,7 @@ kstring = "=2.0.0" # v2.0.0 has a MSRV of 1.59, while v2.0.1 has a MSRV of 1.73,
 c2rust-build-paths = { path = "../c2rust-build-paths", version = "0.22.1" }
 
 [dev-dependencies]
+c2rust-bitfields = { path = "../c2rust-bitfields", version = "0.22.1" }
 z3 = "0.12.0"
 quickcheck = "0.9.0"
 rand = "0.7"
