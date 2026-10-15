@@ -393,7 +393,7 @@ fn do_split_variants(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.body.as_mut().map(|b| {
+                if let Some(b) = fl.body.as_mut() {
                     MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                         let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                              Some(&x) => x; return);
@@ -419,7 +419,7 @@ fn do_split_variants(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
                         let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
                         rename_callee(e, &new_name);
                     })
-                });
+                }
 
                 fls.push(fl);
             }
