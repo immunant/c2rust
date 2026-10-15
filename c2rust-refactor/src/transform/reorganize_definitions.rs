@@ -27,7 +27,7 @@ use crate::ast_builder::mk;
 use crate::ast_manip::util::{
     is_c2rust_attr, is_exported, is_relative_path, join_visibility, namespace, split_uses,
 };
-use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
+use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisit, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -818,7 +818,16 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // each module
         let mut module_item_decls: IndexMap<NodeId, HeaderDeclarations> = module_items
             .into_iter()
-            .map(|(module_id, items)| {
+            .map(|(module_id, mut items)| {
+                for decl in &mut items {
+                    match &mut decl.kind {
+                        DeclKind::Item(item) => self.qualify_unmoved_paths(item),
+                        DeclKind::ForeignItem(item, _) => self.qualify_unmoved_paths(item),
+                    }
+                    if let Some(r#impl) = &mut decl.r#impl {
+                        self.qualify_unmoved_paths(&mut r#impl.item);
+                    }
+                }
                 let mut decls = HeaderDeclarations::new(self.cx);
                 decls.extend(items);
                 (module_id, decls)
@@ -960,6 +969,30 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             item.attrs
                 .retain(|attr| !is_c2rust_attr(attr, "header_src"));
             smallvec![item]
+        });
+    }
+
+    /// Moving a declaration can separate it from imports retained by header
+    /// functions, or from imports subsumed by another declaration. Qualify
+    /// references to source-local items that have no replacement of their own.
+    fn qualify_unmoved_paths<T: MutVisit>(&self, item: &mut T) {
+        let tcx = self.cx.ty_ctxt();
+        fold_resolved_paths_with_id(item, self.cx, |_, qself, path, defs| {
+            if qself.is_none() && path.segments.len() == 1 {
+                if let Some(def_id) = defs[0].opt_def_id() {
+                    // Generic parameters, associated items, and block-local
+                    // items cannot be named by a path from the crate root.
+                    if def_id.is_local()
+                        && tcx.def_kind(tcx.parent(def_id)) == DefKind::Mod
+                        && !self.path_mapping.contains_key(&def_id)
+                    {
+                        let mut qualified = self.cx.def_path(def_id);
+                        qualified.segments.last_mut().unwrap().args = path.segments[0].args.clone();
+                        return (None, qualified);
+                    }
+                }
+            }
+            (qself, path)
         });
     }
 
