@@ -30,8 +30,7 @@ pub struct OnePlusOne;
 
 impl Transform for OnePlusOne {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let krate = replace_expr(st, cx, krate, "2", "1 + 1");
-        krate
+        replace_expr(st, cx, krate, "2", "1 + 1")
     }
 }
 
@@ -46,8 +45,7 @@ pub struct FPlusOne;
 
 impl Transform for FPlusOne {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let krate = replace_expr(st, cx, krate, "f(__x)", "__x + 1");
-        krate
+        replace_expr(st, cx, krate, "f(__x)", "__x + 1")
     }
 }
 
@@ -62,8 +60,7 @@ pub struct ReplaceStmts(pub String, pub String);
 
 impl Transform for ReplaceStmts {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let krate = replace_stmts(st, cx, krate, &self.0, &self.1);
-        krate
+        replace_stmts(st, cx, krate, &self.0, &self.1)
     }
 }
 
