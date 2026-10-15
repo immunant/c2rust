@@ -823,7 +823,7 @@ impl Transform for WrapApi {
 
             // Generate the wrapper.  It gets an `#[export_name]`  attr and the original function's
             // old ABI.
-            let wrapper_decl = decl.clone().map(|decl| {
+            let wrapper_decl = decl.map(|decl| {
                 let new_inputs = decl
                     .inputs
                     .iter()
@@ -882,7 +882,7 @@ impl Transform for WrapApi {
             let hir_id = match_or!([cx.res_to_hir_id(&d[0])] Some(x) => x; return (q, p));
             let name = match_or!([wrapper_map.get(&hir_id)] Some(x) => x; return (q, p));
 
-            let mut new_path = p.clone();
+            let mut new_path = p;
             new_path.segments.pop();
             new_path.segments.push(mk().path_segment(name));
             (q, new_path)
