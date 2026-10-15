@@ -76,11 +76,11 @@ impl RestoreCfgAttrs {
                 "RESTORE ATTRS {:?} onto {:?}",
                 cfg_attrs
                     .iter()
-                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
+                    .map(rustc_ast_pretty::pprust::attribute_to_string)
                     .collect::<Vec<_>>(),
                 x.attrs()
                     .iter()
-                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
+                    .map(rustc_ast_pretty::pprust::attribute_to_string)
                     .collect::<Vec<_>>()
             );
             x.visit_attrs(|attrs| {
@@ -93,7 +93,7 @@ impl RestoreCfgAttrs {
                 "  attrs changed to {:?}",
                 x.attrs()
                     .iter()
-                    .map(|a| rustc_ast_pretty::pprust::attribute_to_string(a))
+                    .map(rustc_ast_pretty::pprust::attribute_to_string)
                     .collect::<Vec<_>>()
             );
         }
