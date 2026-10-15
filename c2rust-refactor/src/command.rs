@@ -243,7 +243,7 @@ impl RefactorState {
     }
 
     pub fn drain_commands(&mut self) -> Vec<String> {
-        mem::replace(&mut self.commands, vec![])
+        std::mem::take(&mut self.commands)
     }
 
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
