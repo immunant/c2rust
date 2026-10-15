@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
-use std::mem;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -127,7 +126,7 @@ impl FileIO for RealFileIO {
             .iter()
             .any(|&mode| mode.write_rewrites_json())
         {
-            let js = mem::replace(&mut state.rewrites_json, Vec::new());
+            let js = std::mem::take(&mut state.rewrites_json);
             let s = json::stringify_pretty(JsonValue::Array(js), 2);
             fs::write(
                 Path::new(&format!("rewrites.{}.json", state.rewrite_counter)),
