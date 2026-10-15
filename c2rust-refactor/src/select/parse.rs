@@ -138,7 +138,7 @@ impl<'a> Stream<'a> {
             .map_err(|e| format!("error parsing path as expr: {:?}", e.message))?;
         let path = match path_expr.into_inner().kind {
             ExprKind::Path(None, p) => p,
-            kind @ _ => return Err(format!("error converting expr to path: {:?}", kind)),
+            kind => return Err(format!("error converting expr to path: {:?}", kind)),
         };
         self.toks = p
             .parse_all_token_trees()

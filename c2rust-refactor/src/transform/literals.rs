@@ -147,7 +147,7 @@ fn remove_suffix(lit: &Lit) -> Option<Lit> {
             // `3f64 + 5` is not valid Rust code
             token::LitKind::Integer => None,
 
-            k @ _ => panic!("unexpected token kind: {:?}", k),
+            k => panic!("unexpected token kind: {:?}", k),
         },
 
         _ => None,
@@ -323,7 +323,7 @@ impl<'a, 'kt, 'tcx> UnifyVisitor<'a, 'kt, 'tcx> {
 
             (LitTyKeyNode::Empty, _) | (_, LitTyKeyNode::Empty) => {}
 
-            (kt1 @ _, kt2 @ _) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2),
+            (kt1, kt2) => panic!("mismatched key trees: {:?} != {:?}", kt1, kt2),
         }
     }
 

@@ -427,7 +427,7 @@ fn rewrite_token_stream(ts: TokenStream, bt: &mut BindingTypes) -> TokenStream {
                 TokenTree::Delimited(sp, delim, dts)
             }
 
-            tt @ _ => tt,
+            tt => tt,
         };
         tokens.push(new_tt);
     }

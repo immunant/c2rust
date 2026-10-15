@@ -13,7 +13,7 @@ macro_rules! match_or_else {
     ([$e:expr] $($arm_pat:pat => $arm_body:expr),*; $or_else:expr) => {
         match $e {
             $( $arm_pat => $arm_body, )*
-            ref x @ _ => $or_else(x),
+            ref x => $or_else(x),
         }
     };
 }

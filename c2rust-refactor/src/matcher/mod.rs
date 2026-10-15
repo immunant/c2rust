@@ -260,7 +260,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
                     Err(Error::NonlinearMismatch)
                 }
             }
-            bt @ _ => panic!("expected optional binding, got {:?}", bt),
+            bt => panic!("expected optional binding, got {:?}", bt),
         }
     }
     /// Try to capture an ident.  Returns `Ok(true)` if it captured, `Ok(false)` if `pattern` is
