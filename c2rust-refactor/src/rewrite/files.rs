@@ -265,18 +265,12 @@ pub fn print_diff(s1: &str, s2: &str) {
 fn print_hunk(buf: &VecDeque<diff::Result<&str>>, l_start: usize, r_start: usize) {
     let l_size = buf
         .iter()
-        .filter(|r| match r {
-            diff::Result::Right(_) => false,
-            _ => true,
-        })
+        .filter(|r| !matches!(r, diff::Result::Right(_)))
         .count();
 
     let r_size = buf
         .iter()
-        .filter(|r| match r {
-            diff::Result::Left(_) => false,
-            _ => true,
-        })
+        .filter(|r| !matches!(r, diff::Result::Left(_)))
         .count();
 
     println!("@@ -{},{} +{},{} @@", l_start, l_size, r_start, r_size);

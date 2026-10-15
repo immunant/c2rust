@@ -240,10 +240,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             Some(x) => x,
             None => return false,
         };
-        match self.types.get(&sym) {
-            Some(&bindings::Type::Optional(_)) => true,
-            _ => false,
-        }
+        matches!(self.types.get(&sym), Some(&bindings::Type::Optional(_)))
     }
 
     fn capture_opt_none<P: PatternSymbol>(&mut self, pattern: &P) -> Result<()> {

@@ -880,10 +880,7 @@ where
 /// "read" part will revert the crate to its original form.
 fn register_commit(reg: &mut Registry) {
     reg.register("commit", |args| {
-        let git_commit = match args.get(0) {
-            Some(arg) if arg == "git" => true,
-            _ => false,
-        };
+        let git_commit = matches!(args.get(0), Some(arg) if arg == "git");
         Box::new(FuncCommand(move |rs: &mut RefactorState| {
             let clean = if git_commit {
                 let result = process::Command::new("git")
