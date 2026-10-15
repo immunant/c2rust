@@ -191,8 +191,7 @@ pub fn handle_attrs<'tcx>(
         let mut is_variant = false;
         if let Some(attr) = attrs
             .iter()
-            .filter(|a| a.has_name(Symbol::intern("ownership_variant_of")))
-            .next()
+            .find(|a| a.has_name(Symbol::intern("ownership_variant_of")))
         {
             let meta = match_or!([attr.meta()] Some(x) => x;
                     panic!("bad meta item in #[ownership_variant_of] (for {:?})", def_id));
