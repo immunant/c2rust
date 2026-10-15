@@ -262,8 +262,7 @@ pub fn make_compiler(
         register_lints: config.register_lints,
     };
 
-    let compiler = unsafe { mem::transmute(compiler) };
-    compiler
+    unsafe { mem::transmute(compiler) }
 }
 
 fn make_parser<'a>(sess: &'a Session, src: &str) -> Parser<'a> {
