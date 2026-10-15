@@ -22,6 +22,12 @@ attempts to produce fully safe and idiomatic Rust; not a replacement for these e
 - `c2rust-postprocess path/to/transpiled_rust.rs`, or
 - `uv run postprocess path/to/transpiled_rust.rs`
 
+Up to four functions in each Rust file are processed concurrently by default.
+Use `-j 8` / `--jobs 8` to change the limit, or `-j 1` to process serially.
+Each function's trimming and comment transfer still run in order. Files and
+transform passes also run in order, and rewrites are applied and checked only
+after all functions in a file finish. Existing cached responses are reused.
+
 ## Excluding/Filtering
 
 `c2rust-postprocess` has a few ways to filter/exclude the function identifiers that are processed.

@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -109,12 +110,14 @@ class RecordingCache(AbstractCache):
 
 def apply_trim(c_definition: CDefinition, cache: AbstractCache) -> str | None:
     transform = TrimTransform(cache=cache, model=MockGenerativeModel())
-    return transform.apply_ident(
-        rust_source_file=Path("unused.rs"),
-        rust_definition="fn f() {}",
-        c_definition=c_definition,
-        identifier="f",
-        update_rust=False,
+    return asyncio.run(
+        transform.apply_ident(
+            rust_source_file=Path("unused.rs"),
+            rust_definition="fn f() {}",
+            c_definition=c_definition,
+            identifier="f",
+            update_rust=False,
+        )
     )
 
 
