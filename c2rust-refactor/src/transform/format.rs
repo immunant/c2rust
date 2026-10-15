@@ -487,10 +487,10 @@ struct Parser<'a, F: FnMut(Piece)> {
 impl<'a, F: FnMut(Piece)> Parser<'a, F> {
     fn new(s: &'a str, callback: F) -> Parser<'a, F> {
         Parser {
-            s: s,
+            s,
             sb: s.as_bytes(),
             pos: 0,
-            callback: callback,
+            callback,
         }
     }
 

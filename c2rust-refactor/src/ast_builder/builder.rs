@@ -553,7 +553,7 @@ impl Builder {
 
     pub fn vis<V: Make<Visibility>>(self, vis: V) -> Self {
         let vis = vis.make(&self);
-        Builder { vis: vis, ..self }
+        Builder { vis, ..self }
     }
 
     pub fn pub_(self) -> Self {
@@ -569,10 +569,7 @@ impl Builder {
 
     pub fn set_mutbl<M: Make<Mutability>>(self, mutbl: M) -> Self {
         let mutbl = mutbl.make(&self);
-        Builder {
-            mutbl: mutbl,
-            ..self
-        }
+        Builder { mutbl, ..self }
     }
 
     pub fn mutbl(self) -> Self {
@@ -581,10 +578,7 @@ impl Builder {
 
     pub fn unsafety<U: Make<Unsafe>>(self, unsafety: U) -> Self {
         let unsafety = unsafety.make(&self);
-        Builder {
-            unsafety: unsafety,
-            ..self
-        }
+        Builder { unsafety, ..self }
     }
 
     pub fn unsafe_(self) -> Self {
@@ -593,10 +587,7 @@ impl Builder {
 
     pub fn constness<C: Make<Const>>(self, constness: C) -> Self {
         let constness = constness.make(&self);
-        Builder {
-            constness: constness,
-            ..self
-        }
+        Builder { constness, ..self }
     }
 
     pub fn const_(self) -> Self {
@@ -605,12 +596,12 @@ impl Builder {
 
     pub fn extern_<A: Make<Extern>>(self, ext: A) -> Self {
         let ext = ext.make(&self);
-        Builder { ext: ext, ..self }
+        Builder { ext, ..self }
     }
 
     pub fn span<S: Make<Span>>(self, span: S) -> Self {
         let span = span.make(&self);
-        Builder { span: span, ..self }
+        Builder { span, ..self }
     }
 
     /// Set the `NodeId` of the constructed AST.
@@ -619,7 +610,7 @@ impl Builder {
     /// NodeIds to be identical in other ways as well.  For best results, only call this method
     /// with fresh NodeIds, like those returned by `st.next_node_id()`.
     pub fn id(self, id: NodeId) -> Self {
-        Builder { id: id, ..self }
+        Builder { id, ..self }
     }
 
     pub fn str_attr<K, V>(mut self, key: K, value: V) -> Self
@@ -646,10 +637,7 @@ impl Builder {
             })),
             span: DUMMY_SP,
         });
-        Builder {
-            attrs: attrs,
-            ..self
-        }
+        Builder { attrs, ..self }
     }
 
     pub fn single_attr<K>(mut self, key: K) -> Self
@@ -672,10 +660,7 @@ impl Builder {
             })),
             span: DUMMY_SP,
         });
-        Builder {
-            attrs: attrs,
-            ..self
-        }
+        Builder { attrs, ..self }
     }
 
     pub fn call_attr<K, V>(mut self, func: K, arguments: Vec<V>) -> Self
@@ -734,10 +719,7 @@ impl Builder {
             })),
             span: DUMMY_SP,
         });
-        Builder {
-            attrs: attrs,
-            ..self
-        }
+        Builder { attrs, ..self }
     }
 
     // Path segments with parameters
@@ -779,7 +761,7 @@ impl Builder {
             .collect();
         AngleBracketedArgs {
             span: self.span,
-            args: args,
+            args,
         }
     }
 
@@ -1262,7 +1244,7 @@ impl Builder {
         let expr = expr.make(&self);
         ExprField {
             ident,
-            expr: expr,
+            expr,
             span: self.span,
             is_shorthand: false,
             attrs: self.attrs,
@@ -1614,7 +1596,7 @@ impl Builder {
         P(Ty {
             id: self.id,
             kind: TyKind::Ptr(MutTy {
-                ty: ty,
+                ty,
                 mutbl: self.mutbl,
             }),
             span: self.span,
@@ -1632,7 +1614,7 @@ impl Builder {
             kind: TyKind::Ref(
                 None,
                 MutTy {
-                    ty: ty,
+                    ty,
                     mutbl: self.mutbl,
                 },
             ),
@@ -1653,7 +1635,7 @@ impl Builder {
             kind: TyKind::Ref(
                 Some(lt),
                 MutTy {
-                    ty: ty,
+                    ty,
                     mutbl: self.mutbl,
                 },
             ),
@@ -1822,10 +1804,10 @@ impl Builder {
         P(Item {
             ident: name,
             attrs,
-            id: id,
-            kind: kind,
-            vis: vis,
-            span: span,
+            id,
+            kind,
+            vis,
+            span,
             tokens: None,
         })
     }
@@ -2276,10 +2258,10 @@ impl Builder {
         P(ForeignItem {
             ident: name,
             attrs,
-            id: id,
-            kind: kind,
-            vis: vis,
-            span: span,
+            id,
+            kind,
+            vis,
+            span,
             tokens: None,
         })
     }
@@ -2353,7 +2335,7 @@ impl Builder {
             ident: Some(ident),
             vis: self.vis,
             id: self.id,
-            ty: ty,
+            ty,
             attrs: self.attrs,
             is_placeholder: false,
         }
@@ -2369,7 +2351,7 @@ impl Builder {
             ident: None,
             vis: self.vis,
             id: self.id,
-            ty: ty,
+            ty,
             attrs: self.attrs,
             is_placeholder: false,
         }
@@ -2383,7 +2365,7 @@ impl Builder {
     {
         let stmts = stmts.into_iter().map(|s| s.make(&self)).collect();
         P(Block {
-            stmts: stmts,
+            stmts,
             id: self.id,
             rules: match self.unsafety {
                 Unsafe::Yes(_) => BlockCheckMode::Unsafe(UnsafeSource::UserProvided),
@@ -2427,8 +2409,8 @@ impl Builder {
         let pat = pat.make(&self);
         Param {
             attrs: ThinVec::new(),
-            ty: ty,
-            pat: pat,
+            ty,
+            pat,
             id: self.id,
             span: DUMMY_SP,
             is_placeholder: false,
@@ -2452,7 +2434,7 @@ impl Builder {
         let ident = ident.make(&self);
         GenericParam {
             attrs: self.attrs,
-            ident: ident,
+            ident,
             id: self.id,
             bounds: vec![],
             kind: GenericParamKind::Type { default: None },
@@ -2517,8 +2499,8 @@ impl Builder {
         let path = path.make(&self);
         let kind = kind.make(&self);
         MetaItem {
-            path: path,
-            kind: kind,
+            path,
+            kind,
             span: DUMMY_SP,
         }
     }
@@ -2553,7 +2535,7 @@ impl Builder {
     {
         let path = path.make(&self);
         MacCall {
-            path: path,
+            path,
             args: P(DelimArgs {
                 dspan: DelimSpan::dummy(),
                 delim: MacDelimiter::Parenthesis,

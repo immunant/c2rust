@@ -551,7 +551,7 @@ where
     }
 
     let mut f = ChangeTypeFolder {
-        retype: retype,
+        retype,
         changed_inputs: HashMap::new(),
         changed_outputs: HashMap::new(),
         changed_funcs: HashSet::new(),
@@ -597,7 +597,7 @@ where
         T: MutVisit,
         F: FnMut(&mut P<Expr>),
     {
-        let mut f = ExprFolder { callback: callback };
+        let mut f = ExprFolder { callback };
         x.visit(&mut f)
     }
 

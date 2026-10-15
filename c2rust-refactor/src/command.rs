@@ -216,7 +216,7 @@ impl RefactorState {
             compiler,
             cmd_reg,
             file_io,
-            marks: marks,
+            marks,
 
             commands: vec![],
 

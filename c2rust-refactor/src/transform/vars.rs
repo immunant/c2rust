@@ -130,7 +130,7 @@ impl Transform for SinkLets {
             let mut v = BlockLocalsVisitor {
                 cur: HashMap::new(),
                 block_locals: HashMap::new(),
-                cx: cx,
+                cx,
                 locals: &locals,
             };
             visit::walk_crate(&mut v, krate);
@@ -338,7 +338,7 @@ impl Transform for FoldLetAssign {
             let mut v = StmtLocalsVisitor {
                 cur: HashSet::new(),
                 stmt_locals: HashMap::new(),
-                cx: cx,
+                cx,
                 locals: &locals,
             };
             visit::walk_crate(&mut v, krate);

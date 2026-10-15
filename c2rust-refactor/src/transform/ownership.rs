@@ -177,10 +177,10 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
 
     st.map_krate(|krate| {
         krate.visit(&mut AnnotateFolder {
-            label: label,
+            label,
             ana: analysis,
             hir_map: cx.hir_map(),
-            st: st,
+            st,
         })
     });
 }
@@ -301,7 +301,7 @@ fn make_attr(name: &str, args: AttrArgs) -> Attribute {
         kind: AttrKind::Normal(P(NormalAttr {
             item: AttrItem {
                 path: mk().path(vec![name]),
-                args: args,
+                args,
                 tokens: None,
             },
             tokens: None,
