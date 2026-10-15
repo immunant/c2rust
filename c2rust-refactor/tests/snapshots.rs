@@ -464,10 +464,26 @@ fn test_reorganize_assoc_items() {
 /// comes from the `c2rust_bitfields` derive crate, which isn't available
 /// to plain `rustc` here.
 #[test]
+fn test_reorganize_bitfield_callbacks() {
+    refactor("reorganize_definitions")
+        .named("reorganize_bitfield_callbacks.rs")
+        .expect_compile_error(true)
+        .test();
+}
+
+/// Like `test_reorganize_bitfield_callbacks`, requires the bitfield derive.
+#[test]
 fn test_reorganize_bitfield_ty() {
     refactor("reorganize_definitions")
         .named("reorganize_bitfield_ty.rs")
         .expect_compile_error(true)
+        .test();
+}
+
+#[test]
+fn test_reorganize_callback_binders() {
+    refactor("reorganize_definitions")
+        .named("reorganize_callback_binders.rs")
         .test();
 }
 
@@ -511,9 +527,23 @@ fn test_reorganize_forward_decl_with_local_definition() {
 }
 
 #[test]
+fn test_reorganize_higher_ranked_callbacks() {
+    refactor("reorganize_definitions")
+        .named("reorganize_higher_ranked_callbacks.rs")
+        .test();
+}
+
+#[test]
 fn test_reorganize_multi_namespace() {
     refactor("reorganize_definitions")
         .named("reorganize_multi_namespace.rs")
+        .test();
+}
+
+#[test]
+fn test_reorganize_moved_local_types() {
+    refactor("reorganize_definitions")
+        .named("reorganize_moved_local_types.rs")
         .test();
 }
 
@@ -545,6 +575,13 @@ fn test_reorganize_self_import_destination() {
 fn test_reorganize_split_namespace_imports() {
     refactor("reorganize_definitions")
         .named("reorganize_split_namespace_imports.rs")
+        .test();
+}
+
+#[test]
+fn test_reorganize_va_list_struct() {
+    refactor("reorganize_definitions")
+        .named("reorganize_va_list_struct.rs")
         .test();
 }
 

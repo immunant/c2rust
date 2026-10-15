@@ -1,0 +1,72 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_va_list_struct.rs --edition 2021
+---
+#![feature(c_variadic, register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code)]
+
+pub mod s_h {
+    #[derive()]
+    #[repr(C)]
+    pub struct S<'a> {
+        pub ap: ::core::ffi::VaListImpl<'a>,
+    }
+
+    #[repr(C)]
+
+    pub struct Ref<'a> {
+        pub r: &'a (),
+    }
+
+    #[repr(C)]
+
+    pub struct Order<'a, 'b> {
+        pub p: crate::Pair<'a, 'b>,
+    }
+    // Swapping which parameter each use refers to must keep these separate.
+    #[repr(C)]
+
+    pub struct Order_1<'a, 'b> {
+        pub p: crate::Pair<'b, 'a>,
+    }
+
+    #[repr(C)]
+
+    pub struct RefOrder<'a, 'b> {
+        pub x: &'a (),
+        pub y: &'b (),
+    }
+
+    #[repr(C)]
+
+    pub struct RefOrder_1<'a, 'b> {
+        pub x: &'b (),
+        pub y: &'a (),
+    }
+}
+pub struct Pair<'a, 'b>(pub &'a (), pub &'b ());
+
+pub mod first {
+
+    pub fn use_first(
+        _s: Option<&crate::s_h::S>,
+        _r: crate::s_h::Ref,
+        _o: crate::s_h::Order,
+        _ro: crate::s_h::RefOrder,
+    ) {
+    }
+}
+
+pub mod second {
+
+    pub fn use_second(
+        _s: Option<&crate::s_h::S>,
+        _r: crate::s_h::Ref,
+        _o: crate::s_h::Order_1,
+        _ro: crate::s_h::RefOrder_1,
+    ) {
+    }
+}
+
+fn main() {}
