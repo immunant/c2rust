@@ -192,7 +192,7 @@ fn build_static_attr(ty: PTy) -> Option<Attribute> {
             args.push(perm_token(p));
         }
     });
-    let args = delimited(args).into();
+    let args = delimited(args);
     Some(make_attr("ownership_static", args))
 }
 
