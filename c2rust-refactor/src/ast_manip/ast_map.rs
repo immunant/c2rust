@@ -10,7 +10,7 @@ pub fn map_ast_into<'s, T: Visit>(x: &'s T, map: &mut AstMap<'s>) {
     x.visit(&mut MapAstInto { map })
 }
 
-pub fn map_ast<'s, T: Visit>(x: &'s T) -> AstMap<'s> {
+pub fn map_ast<T: Visit>(x: &T) -> AstMap<'_> {
     let mut m = AstMap::new();
     map_ast_into(x, &mut m);
     m
@@ -20,7 +20,7 @@ pub fn map_ast_into_unified<'s, T: Visit>(x: &'s T, map: &mut UnifiedAstMap<'s>)
     x.visit(&mut MapAstIntoUnified { map })
 }
 
-pub fn map_ast_unified<'s, T: Visit>(x: &'s T) -> UnifiedAstMap<'s> {
+pub fn map_ast_unified<T: Visit>(x: &T) -> UnifiedAstMap<'_> {
     let mut m = UnifiedAstMap::new();
     map_ast_into_unified(x, &mut m);
     m
