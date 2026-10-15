@@ -11,12 +11,15 @@ from pathlib import Path
 
 from postprocess.cache import DirectoryCache, FrozenCache
 from postprocess.exclude_list import IdentifierExcludeList, format_exclude_entries
-from postprocess.models import api_key_from_env, get_model_by_id
+from postprocess.models import (
+    AbstractGenerativeModel,
+    api_key_from_env,
+    get_model_by_id,
+)
 from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
 from postprocess.transforms.base import TransformError, TransformResult
-from postprocess.transforms.comments import AbstractGenerativeModel
 from postprocess.utils import existing_file
 from postprocess.validate import BaselineError, make_validator
 
@@ -131,9 +134,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "in sorted order (default: comments)"
         ),
     )
-
-    # TODO: add option to select model
-    # TODO: add option to configure cache
 
     return parser
 
