@@ -55,7 +55,7 @@ impl Transform for ShortenImportedPaths {
                             continue;
                         };
                         if let Some(did) = res.opt_def_id() {
-                            let key = (item_mod_ldid, ns, use_info.ident.clone());
+                            let key = (item_mod_ldid, ns, use_info.ident);
                             let value = (id, did);
                             all_uses.insert(key, value);
                         }

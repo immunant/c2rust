@@ -290,7 +290,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add(sym, target.clone());
+        let ok = self.bindings.try_add(sym, *target);
         if ok {
             Ok(true)
         } else {
@@ -307,7 +307,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
         // Labels use lifetime syntax, but are `Ident`s instead of `Lifetime`s.
         match self.types.get(&sym) {
             Some(&bindings::Type::Optional(bindings::Type::Ident)) => {
-                let ok = self.bindings.try_add(sym, Some(target.ident.clone()));
+                let ok = self.bindings.try_add(sym, Some(target.ident));
                 let res = if ok {
                     Ok(true)
                 } else {
@@ -322,7 +322,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add(sym, target.ident.clone());
+        let ok = self.bindings.try_add(sym, target.ident);
         if ok {
             Ok(true)
         } else {
@@ -363,7 +363,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             _ => return Ok(false),
         }
 
-        let ok = self.bindings.try_add(sym, target.clone());
+        let ok = self.bindings.try_add(sym, *target);
         if ok {
             Ok(true)
         } else {

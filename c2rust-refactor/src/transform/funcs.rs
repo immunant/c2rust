@@ -667,7 +667,7 @@ impl Transform for WrapExtern {
                         .iter()
                         .zip(arg_names.iter())
                         .map(|(old, name)| Param {
-                            pat: mk().ident_pat(name.clone()),
+                            pat: mk().ident_pat(*name),
                             ..old.clone()
                         })
                         .collect::<Vec<_>>();

@@ -152,7 +152,7 @@ impl<'s> UnifiedAstMap<'s> {
     where
         &'s T: TryFrom<AstNodeRef<'s>>,
     {
-        self.0.get(id).and_then(|x| x.clone().try_into().ok())
+        self.0.get(id).and_then(|x| (*x).try_into().ok())
     }
 }
 
