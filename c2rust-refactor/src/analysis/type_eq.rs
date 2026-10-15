@@ -221,7 +221,7 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
     }
 }
 
-impl<'lty, 'a, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
+impl<'lty, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     // Visit every itemlike with a BodyId, and call `handle_body` on each.
 
     fn visit_item(&mut self, item: &'hir Item) {
@@ -580,7 +580,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 }
 
-impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
+impl<'lty, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {

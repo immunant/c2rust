@@ -43,7 +43,7 @@ where
     }
 }
 
-impl<'tcx> fmt::Debug for PrettyLabel<bool> {
+impl fmt::Debug for PrettyLabel<bool> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         if self.0 {
             write!(fmt, "T")

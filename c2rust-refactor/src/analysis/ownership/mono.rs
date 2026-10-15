@@ -78,7 +78,7 @@ fn for_each_output_assignment<F>(
         callback: &'lty mut F,
     }
 
-    impl<'lty, 'tcx, F> State<'lty, F>
+    impl<'lty, F> State<'lty, F>
     where
         F: FnMut(&IndexVec<Var, Option<ConcretePerm>>),
     {
@@ -136,7 +136,7 @@ fn find_input_assignment(
         assignment: IndexVec<Var, ConcretePerm>,
     }
 
-    impl<'lty, 'tcx> State<'lty> {
+    impl<'lty> State<'lty> {
         fn walk_vars(&mut self, cur: Var) -> bool {
             if cur >= self.max {
                 return true;
@@ -205,7 +205,7 @@ fn find_local_assignment(summ: &FuncSumm) -> Option<IndexVec<Var, ConcretePerm>>
         assignment: IndexVec<Var, ConcretePerm>,
     }
 
-    impl<'lty, 'tcx> State<'lty> {
+    impl<'lty> State<'lty> {
         fn walk_vars(&mut self, cur: Var) -> bool {
             if cur >= self.max {
                 return true;

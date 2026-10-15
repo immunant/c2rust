@@ -73,7 +73,7 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
         st: &'a CommandState,
     }
 
-    impl<'lty, 'a, 'tcx> AnnotateFolder<'a, 'tcx> {
+    impl<'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map
                 .opt_local_def_id_from_node_id(id)
@@ -118,7 +118,7 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
         }
     }
 
-    impl<'lty, 'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
+    impl<'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
         fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             if !self.st.marked(i.id, self.label) {
                 return mut_visit::noop_flat_map_item(i, self);

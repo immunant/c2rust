@@ -323,7 +323,7 @@ impl<'a, 'tcx> Reflector<'a, 'tcx> {
 }
 
 /// Build an AST representing a `ty::Ty`.
-pub fn reflect_tcx_ty<'a, 'gcx, 'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
+pub fn reflect_tcx_ty<'tcx>(tcx: TyCtxt<'tcx>, ty: ty::Ty<'tcx>) -> P<Ty> {
     Reflector::new(tcx).reflect_ty(ty)
 }
 
