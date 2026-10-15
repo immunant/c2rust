@@ -29,7 +29,7 @@ pub enum Perm<'lty> {
     LocalVar(Var),
 }
 
-impl<'lty, 'tcx> Perm<'lty> {
+impl<'lty> Perm<'lty> {
     pub fn read() -> Perm<'lty> {
         Perm::Concrete(ConcretePerm::Read)
     }
@@ -217,14 +217,14 @@ pub struct ConstraintSet<'lty> {
 
 /// Return a pair of bounds, suitable for use with `BTreeSet::range`, covering all pairs of
 /// permissions whose first element is `p`.
-fn perm_range<'tcx>(p: Perm<'_>) -> (Bound<(Perm<'_>, Perm<'_>)>, Bound<(Perm<'_>, Perm<'_>)>) {
+fn perm_range(p: Perm<'_>) -> (Bound<(Perm<'_>, Perm<'_>)>, Bound<(Perm<'_>, Perm<'_>)>) {
     (
         Bound::Included((p, Perm::read())),
         Bound::Included((p, Perm::LocalVar(Var(!0)))),
     )
 }
 
-impl<'lty, 'tcx> ConstraintSet<'lty> {
+impl<'lty> ConstraintSet<'lty> {
     pub fn new() -> ConstraintSet<'lty> {
         ConstraintSet {
             less: BTreeSet::new(),
@@ -529,7 +529,7 @@ impl<'a, 'lty> EditConstraintSet<'a, 'lty> {
     }
 }
 
-impl<'lty, 'tcx> ConstraintSet<'lty> {
+impl<'lty> ConstraintSet<'lty> {
     /// Remove constraints that are obviously useless, like `READ <= p`.
     pub fn remove_useless(&mut self) {
         let mut edit = self.edit();
@@ -687,7 +687,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     {
         // Collect all atomic permissions that appear in the constraint set.
         let mut atomic_perms = HashSet::new();
-        fn collect_atomic<'lty, 'tcx>(p: Perm<'lty>, dest: &mut HashSet<Perm<'lty>>) {
+        fn collect_atomic<'lty>(p: Perm<'lty>, dest: &mut HashSet<Perm<'lty>>) {
             match p {
                 Perm::Min(ps) => {
                     for &p in ps {
