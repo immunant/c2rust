@@ -65,7 +65,7 @@ thread_local!(static Z3_CONFIG: Config = {
     c.set_model_generation(true);
     c
 });
-thread_local!(static Z3_CONTEXT: Context = Z3_CONFIG.with(|cfg| Context::new(cfg)));
+thread_local!(static Z3_CONTEXT: Context = Z3_CONFIG.with(Context::new));
 
 #[test]
 fn test_cast_i32_u32_ssize() {

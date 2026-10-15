@@ -983,7 +983,7 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                     Replacement {
                         def: replacement
                             .def
-                            .and_then(|def| get_ctor(def))
+                            .and_then(get_ctor)
                             .map(LocalDefId::to_def_id),
                         ..replacement.clone()
                     },
