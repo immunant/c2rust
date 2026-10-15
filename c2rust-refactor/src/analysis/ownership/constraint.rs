@@ -644,7 +644,7 @@ impl<'lty> ConstraintSet<'lty> {
                     .unwrap();
                 debug!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
                 edit.add(p, b);
-            } else if to_remove.len() > 0 {
+            } else if !to_remove.is_empty() {
                 edit.remove(a, b);
                 let ps = ps
                     .iter()
