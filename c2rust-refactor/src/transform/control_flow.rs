@@ -250,10 +250,8 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
             } else {
                 self.writes_inside_loop += 1;
             }
-        } else {
-            if !self.node_inside_loop(cmt.hir_id) {
-                self.reads_outside_loop += 1;
-            }
+        } else if !self.node_inside_loop(cmt.hir_id) {
+            self.reads_outside_loop += 1;
         }
     }
 
