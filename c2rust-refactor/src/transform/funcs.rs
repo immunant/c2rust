@@ -484,15 +484,13 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
     fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         let i = if self.st.marked(i.id, "target") {
             i.map(|mut i| {
-                match i.kind {
-                    ItemKind::Fn(box Fn {
-                        ref mut sig,
-                        body: Some(ref mut body),
-                        ..
-                    }) => {
-                        sink_unsafe(&mut sig.header.unsafety, body);
-                    }
-                    _ => {}
+                if let ItemKind::Fn(box Fn {
+                    ref mut sig,
+                    body: Some(ref mut body),
+                    ..
+                }) = i.kind
+                {
+                    sink_unsafe(&mut sig.header.unsafety, body);
                 }
                 i
             })
@@ -505,15 +503,13 @@ impl<'a> MutVisitor for SinkUnsafeFolder<'a> {
 
     fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         if self.st.marked(i.id, "target") {
-            match i.kind {
-                AssocItemKind::Fn(box Fn {
-                    sig: FnSig { ref mut header, .. },
-                    body: Some(ref mut body),
-                    ..
-                }) => {
-                    sink_unsafe(&mut header.unsafety, body);
-                }
-                _ => {}
+            if let AssocItemKind::Fn(box Fn {
+                sig: FnSig { ref mut header, .. },
+                body: Some(ref mut body),
+                ..
+            }) = i.kind
+            {
+                sink_unsafe(&mut header.unsafety, body);
             }
         }
 
@@ -605,17 +601,13 @@ impl Transform for WrapExtern {
                 return;
             }
 
-            match fi.kind {
-                ForeignItemKind::Fn(box Fn { ref sig, .. }) => {
-                    fns.push(FuncInfo {
-                        id: fi.id,
-                        def_id: cx.node_def_id(fi.id),
-                        ident: fi.ident,
-                        decl: sig.decl.clone(),
-                    });
-                }
-
-                _ => {}
+            if let ForeignItemKind::Fn(box Fn { ref sig, .. }) = fi.kind {
+                fns.push(FuncInfo {
+                    id: fi.id,
+                    def_id: cx.node_def_id(fi.id),
+                    ident: fi.ident,
+                    decl: sig.decl.clone(),
+                });
             }
         });
 

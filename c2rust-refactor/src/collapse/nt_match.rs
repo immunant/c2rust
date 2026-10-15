@@ -80,11 +80,8 @@ impl<T: NtMatch> NtMatch for Spanned<T> {
 
 impl<T: NtMatch> NtMatch for Option<T> {
     fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {
-        match (old, new) {
-            (Some(old), Some(new)) => {
-                <T as NtMatch>::nt_match(old, new, cx);
-            }
-            (_, _) => {}
+        if let (Some(old), Some(new)) = (old, new) {
+            <T as NtMatch>::nt_match(old, new, cx);
         }
     }
 }

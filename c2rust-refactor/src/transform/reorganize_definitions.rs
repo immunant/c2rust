@@ -1759,14 +1759,11 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                 if !decl.namespaces.contains(&namespace) {
                     return true;
                 }
-                match &decl.kind {
-                    DeclKind::Item(decl) => {
-                        // Don't match use statements
-                        if let ItemKind::Use(_) = decl.kind {
-                            return true;
-                        }
+                if let DeclKind::Item(decl) = &decl.kind {
+                    // Don't match use statements
+                    if let ItemKind::Use(_) = decl.kind {
+                        return true;
                     }
-                    _ => {}
                 }
                 if predicate(&decl.kind) {
                     matches.push(decl.def_id);

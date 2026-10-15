@@ -246,19 +246,17 @@ pub fn print_diff(s1: &str, s2: &str) {
         }
     }
 
-    match state {
-        State::Hunk {
-            unchanged_limit,
-            l_start,
-            r_start,
-        } => {
-            if unchanged_limit < CONTEXT {
-                let end = buf.len() - (CONTEXT - unchanged_limit);
-                buf.truncate(end);
-            }
-            print_hunk(&buf, l_start, r_start);
+    if let State::Hunk {
+        unchanged_limit,
+        l_start,
+        r_start,
+    } = state
+    {
+        if unchanged_limit < CONTEXT {
+            let end = buf.len() - (CONTEXT - unchanged_limit);
+            buf.truncate(end);
         }
-        _ => {}
+        print_hunk(&buf, l_start, r_start);
     }
 }
 

@@ -91,8 +91,8 @@ impl Transform for RemoveRedundantCasts {
                     }
                 }
 
-                ExprKind::Unary(UnOp::Neg, ref expr) => match expr.kind {
-                    ExprKind::Lit(ref lit) => {
+                ExprKind::Unary(UnOp::Neg, ref expr) => {
+                    if let ExprKind::Lit(ref lit) = expr.kind {
                         // `-X_ty1 as ty2` => `-X_ty2`
                         let new_lit = replace_suffix(lit, SimpleTy::from(ot_ty));
                         if let Some(nl) = new_lit {
@@ -114,8 +114,7 @@ impl Transform for RemoveRedundantCasts {
                             return;
                         }
                     }
-                    _ => {}
-                },
+                }
 
                 // TODO: unary/binaryop op + cast, e.g., `(x as i32 + y as i32) as i8`
                 _ => {}
