@@ -309,21 +309,11 @@ impl<T> Cursor<T> {
         let mut depth = 0;
         for m in &self.left_marks {
             depth += m.depth;
-            info!(
-                "  mark {} at (L) {} / {}",
-                m.name,
-                pos - depth as usize,
-                len
-            );
+            info!("  mark {} at (L) {} / {}", m.name, pos - depth, len);
         }
         for m in &self.right_marks {
             depth += m.depth;
-            info!(
-                "  mark {} at (R) {} / {}",
-                m.name,
-                pos + depth as usize,
-                len
-            );
+            info!("  mark {} at (R) {} / {}", m.name, pos + depth, len);
         }
     }
 }

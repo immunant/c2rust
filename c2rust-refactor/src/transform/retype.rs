@@ -1366,7 +1366,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 ty::IntTy::I16 => (i16::min_value() as i64 as i128, i16::max_value() as i128),
                 ty::IntTy::I32 => (i32::min_value() as i64 as i128, i32::max_value() as i128),
                 ty::IntTy::I64 => (i64::min_value() as i128, i64::max_value() as i128),
-                ty::IntTy::I128 => (i128::min_value() as i128, i128::max_value()),
+                ty::IntTy::I128 => (i128::min_value(), i128::max_value()),
             }
         }
 

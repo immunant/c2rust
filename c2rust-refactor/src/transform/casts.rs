@@ -294,7 +294,7 @@ impl SimpleTy {
             SimpleTy::Int(16, false) => u16::max_value() as u128,
             SimpleTy::Int(32, false) => u32::max_value() as u128,
             SimpleTy::Int(64, false) => u64::max_value() as u128,
-            SimpleTy::Int(128, false) => u128::max_value() as u128,
+            SimpleTy::Int(128, false) => u128::max_value(),
             SimpleTy::Int(8, true) => i8::max_value() as u128,
             SimpleTy::Int(16, true) => i16::max_value() as u128,
             SimpleTy::Int(32, true) => i32::max_value() as u128,
@@ -513,9 +513,7 @@ fn eval_const<'tcx>(e: P<Expr>, cx: &RefactorCtxt) -> Option<ConstantValue> {
                     Some(ConstantValue::Uint(i as u64 as u128))
                 }
 
-                LitKind::Int(i, LitIntType::Unsigned(UintTy::U128)) => {
-                    Some(ConstantValue::Uint(i as u128))
-                }
+                LitKind::Int(i, LitIntType::Unsigned(UintTy::U128)) => Some(ConstantValue::Uint(i)),
 
                 LitKind::Float(f, LitFloatType::Suffixed(FloatTy::F32)) => {
                     let fv = f.as_str().parse::<f32>().ok()?;
