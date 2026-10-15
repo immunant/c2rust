@@ -440,10 +440,10 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             // The first two go in a specific order.  If multiple qualifiers are added (for
             // example, both `unsafe` and `extern`), we need to add them in the right order.
 
-            if !vis1.kind.ast_equiv(&vis2.kind) {
-                if !record_visibility_rewrite(vis1, *span1, reparsed.vis.span, rcx.borrow()) {
-                    return false;
-                }
+            if !vis1.kind.ast_equiv(&vis2.kind)
+                && !record_visibility_rewrite(vis1, *span1, reparsed.vis.span, rcx.borrow())
+            {
+                return false;
             }
 
             if sig1.header.constness != sig2.header.constness {
@@ -479,10 +479,10 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             let src2: String = <Item as PrintParse>::to_string(new);
             let reparsed = Item::<ItemKind>::parse(rcx.session(), &src2);
 
-            if !vis1.kind.ast_equiv(&vis2.kind) {
-                if !record_visibility_rewrite(vis1, *span1, reparsed.vis.span, rcx.borrow()) {
-                    return false;
-                }
+            if !vis1.kind.ast_equiv(&vis2.kind)
+                && !record_visibility_rewrite(vis1, *span1, reparsed.vis.span, rcx.borrow())
+            {
+                return false;
             }
 
             if ident1 != ident2 {
