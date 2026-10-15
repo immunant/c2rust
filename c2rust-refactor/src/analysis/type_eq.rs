@@ -411,7 +411,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn opt_unadjusted_expr_lty(&self, e: &Expr) -> Option<LTy<'lty, 'tcx>> {
-        self.unadjusted_nodes.get(&e.hir_id).map(|&x| x)
+        self.unadjusted_nodes.get(&e.hir_id).copied()
     }
 
     fn block_lty(&self, b: &Block) -> LTy<'lty, 'tcx> {
