@@ -56,7 +56,7 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
     }
 
     pub fn get(&self, id: NodeId) -> Option<&'s T> {
-        self.nodes.get(&id).map(|&x| x)
+        self.nodes.get(&id).copied()
     }
 
     pub fn len(&self) -> usize {
