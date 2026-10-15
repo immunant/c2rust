@@ -178,10 +178,7 @@ pub fn build_inst_cset<'lty>(
         });
     }
 
-    cset.retain_perms(cx.arena, |p| match p {
-        Perm::StaticVar(_) => false,
-        _ => true,
-    });
+    cset.retain_perms(cx.arena, |p| !matches!(p, Perm::StaticVar(_)));
 
     cset.simplify(cx.arena);
 

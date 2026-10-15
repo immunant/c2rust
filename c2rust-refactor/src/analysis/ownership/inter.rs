@@ -121,9 +121,8 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
         cset.remove_useless();
         cset.simplify_min_lhs(self.cx.arena);
 
-        cset.retain_perms(self.cx.arena, |p| match p {
-            Perm::LocalVar(_) | Perm::InstVar(_) => false,
-            _ => true,
+        cset.retain_perms(self.cx.arena, |p| {
+            !matches!(p, Perm::LocalVar(_) | Perm::InstVar(_))
         });
 
         debug!("  simplified constraints:");
@@ -149,9 +148,8 @@ impl<'c, 'lty, 'tcx> InterCtxt<'c, 'lty, 'tcx> {
         }
 
         // Simplify away static vars too.
-        cset.retain_perms(self.cx.arena, |p| match p {
-            Perm::LocalVar(_) | Perm::InstVar(_) | Perm::StaticVar(_) => false,
-            _ => true,
+        cset.retain_perms(self.cx.arena, |p| {
+            !matches!(p, Perm::LocalVar(_) | Perm::InstVar(_) | Perm::StaticVar(_))
         });
 
         cset.simplify(self.cx.arena);

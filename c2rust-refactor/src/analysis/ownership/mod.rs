@@ -166,22 +166,10 @@ fn is_fn(hir_map: &HirMap, def_id: DefId) -> bool {
     };
 
     match n {
-        Node::Item(i) => match i.kind {
-            hir::ItemKind::Fn(..) => true,
-            _ => false,
-        },
-        Node::ForeignItem(i) => match i.kind {
-            hir::ForeignItemKind::Fn(..) => true,
-            _ => false,
-        },
-        Node::TraitItem(i) => match i.kind {
-            hir::TraitItemKind::Fn(..) => true,
-            _ => false,
-        },
-        Node::ImplItem(i) => match i.kind {
-            hir::ImplItemKind::Fn(..) => true,
-            _ => false,
-        },
+        Node::Item(i) => matches!(i.kind, hir::ItemKind::Fn(..)),
+        Node::ForeignItem(i) => matches!(i.kind, hir::ForeignItemKind::Fn(..)),
+        Node::TraitItem(i) => matches!(i.kind, hir::TraitItemKind::Fn(..)),
+        Node::ImplItem(i) => matches!(i.kind, hir::ImplItemKind::Fn(..)),
         _ => false,
     }
 }

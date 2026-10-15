@@ -165,13 +165,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         visit_nodes(krate, |i: &Item| {
             if let ItemKind::Mod(_, ModKind::Loaded(mod_items, _, _)) = &i.kind {
                 if !has_source_header(&i.attrs)
-                    && mod_items.iter().any(|child| {
-                        if let ItemKind::Mod(_, _) = child.kind {
-                            false
-                        } else {
-                            true
-                        }
-                    })
+                    && mod_items
+                        .iter()
+                        .any(|child| !matches!(child.kind, ItemKind::Mod(_, _)))
                 {
                     self.modules.insert(i.id, ModuleInfo::from_item(i, self.cx));
                 }
@@ -1561,10 +1557,7 @@ impl MovedDecl {
     }
 
     fn is_foreign(&self) -> bool {
-        match &self.kind {
-            DeclKind::ForeignItem(..) => true,
-            _ => false,
-        }
+        matches!(&self.kind, DeclKind::ForeignItem(..))
     }
 
     fn visibility(&self) -> &Visibility {
@@ -2285,11 +2278,7 @@ fn parse_source_header(attrs: &[Attribute]) -> Option<(String, usize)> {
 }
 
 fn is_nested(tree: &UseTree) -> bool {
-    if let UseTreeKind::Nested(..) = &tree.kind {
-        true
-    } else {
-        false
-    }
+    matches!(&tree.kind, UseTreeKind::Nested(..))
 }
 
 /// Return the value of the `ty = "..."` argument of a
