@@ -247,7 +247,7 @@ impl Transform for CanonicalizeExterns {
         let lib_path = self
             .path
             .split("::")
-            .map(|s| Ident::from_str(s))
+            .map(Ident::from_str)
             .collect::<Vec<_>>();
         let lib = resolve::resolve_absolute(tcx, &lib_path);
 
