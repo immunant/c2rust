@@ -262,26 +262,23 @@ include!(concat!(env!("OUT_DIR"), "/ast_equiv_gen.inc.rs"));
 impl AstEquiv for Ident {
     fn ast_equiv(&self, other: &Self) -> bool {
         // Exhaustiveness check
-        match self {
-            Ident {
-                name: _name,
-                span: _span,
-            } => {}
-        }
+        let Ident {
+            name: _name,
+            span: _span,
+        } = self;
 
         // Comparison
-        match (self, other) {
-            (
-                Ident {
-                    name: name1,
-                    span: span1,
-                },
-                Ident {
-                    name: name2,
-                    span: span2,
-                },
-            ) => AstEquiv::ast_equiv(name1, name2) && AstEquiv::ast_equiv(span1, span2) && true,
-        }
+        let (
+            Ident {
+                name: name1,
+                span: span1,
+            },
+            Ident {
+                name: name2,
+                span: span2,
+            },
+        ) = (self, other);
+        AstEquiv::ast_equiv(name1, name2) && AstEquiv::ast_equiv(span1, span2) && true
     }
 
     fn unnamed_equiv(&self, other: &Self) -> bool {
