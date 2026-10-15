@@ -450,12 +450,8 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     // Functions for accessing the def ty/sig caches
 
     fn compute_def_lty(&self, id: DefId) -> LTy<'lty, 'tcx> {
-        match self.tcx.hir().get_if_local(id) {
-            // TODO: is the switch from Binding to Pat correct?
-            Some(Node::Pat(p)) => {
-                return self.pat_lty(p);
-            }
-            _ => {}
+        if let Some(Node::Pat(p)) = self.tcx.hir().get_if_local(id) {
+            return self.pat_lty(p);
         }
 
         self.ltt.label(self.tcx.type_of(id).subst_identity())
@@ -730,13 +726,10 @@ impl<'lty, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
             ExprKind::Path(ref path) => {
                 // TODO: many more subcases need handling here
-                match *path {
-                    QPath::Resolved(_, path) => {
-                        if let Some(def_id) = path.res.opt_def_id() {
-                            self.ltt.unify(rty, self.def_lty(def_id));
-                        }
+                if let QPath::Resolved(_, path) = *path {
+                    if let Some(def_id) = path.res.opt_def_id() {
+                        self.ltt.unify(rty, self.def_lty(def_id));
                     }
-                    _ => {}
                 }
             }
 

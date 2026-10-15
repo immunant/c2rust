@@ -84,9 +84,8 @@ impl Transform for RemoveUnnecessaryRefs {
 }
 
 fn remove_ref(expr: &mut P<Expr>) {
-    match &expr.kind {
-        ExprKind::AddrOf(BorrowKind::Ref, _, inner) => *expr = inner.clone(),
-        _ => {}
+    if let ExprKind::AddrOf(BorrowKind::Ref, _, inner) = &expr.kind {
+        *expr = inner.clone()
     }
 }
 
