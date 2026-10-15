@@ -1,6 +1,9 @@
 use log::{info, log_enabled, warn, Level};
 use rustc_ast::ptr::P;
+use rustc_ast::token::{Nonterminal, Token, TokenKind};
+use rustc_ast::tokenstream::{Spacing, TokenTree};
 use rustc_ast::*;
+use rustc_data_structures::sync::Lrc;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{Instance, Ty, TyCtxt, TyKind};
@@ -45,14 +48,36 @@ pub fn fix_users(
     }
     let mut ty_replace_map: HashMap<(DefId, TyLoc), (Ty, Ty)> = HashMap::new();
     let mut changed_fns: HashSet<DefId> = HashSet::new();
+    // Complete extern arrays replaced by incomplete ones, with the mutability
+    // of the replacement static.
+    let mut complete_arrays: HashMap<DefId, Mutability> = HashMap::new();
 
     for (&old_did, &new_did) in replace_map {
         let old_ty = cx.def_type(old_did);
         let new_ty = cx.def_type(new_did);
 
         if !crate::matches!([old_ty.kind()] TyKind::FnDef(..)) {
+            // Replacing an incomplete extern array with its complete
+            // definition needs no value cast (Rust does not allow casts
+            // between arrays).
+            let compatible = if tcx.is_foreign_item(old_did) {
+                ty_compare.compatible_foreign_decl_tys(old_ty, new_ty)
+            } else {
+                ty_compare.structural_eq_tys(old_ty, new_ty)
+            };
             // Non-fn items are easy to handle.
-            if !ty_compare.structural_eq_tys(old_ty, new_ty) {
+            if !compatible {
+                // Users of a complete extern array index and measure it with
+                // its complete length, so keep that view of the incomplete
+                // replacement.
+                if tcx.is_foreign_item(old_did)
+                    && tcx.is_foreign_item(new_did)
+                    && ty_compare.compatible_foreign_decl_tys(new_ty, old_ty)
+                {
+                    if let Some(mutbl) = tcx.static_mutability(new_did) {
+                        complete_arrays.insert(old_did, mutbl);
+                    }
+                }
                 ty_replace_map.insert((old_did, TyLoc::Whole), (old_ty, new_ty));
             }
             continue;
@@ -129,7 +154,10 @@ pub fn fix_users(
             // cast around the whole thing.  (This should only be true for statics.)
             if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Whole)) {
                 // The rewritten expr has type `new_ty`, but its context expects `old_ty`.
-                *e = make_cast(cx, &reflector, e.clone(), old_ty);
+                *e = match complete_arrays.get(&old_did) {
+                    Some(&mutbl) => make_complete_array_place(&reflector, e.clone(), old_ty, mutbl),
+                    None => make_cast(cx, &reflector, e.clone(), old_ty),
+                };
             }
         }
 
@@ -169,6 +197,38 @@ pub fn fix_users(
             }
         }
     });
+}
+
+/// Rust does not allow casts between arrays, so view an incomplete extern
+/// array through a pointer to its complete type instead, building
+/// `*(::core::ptr::addr_of!(expr) as *const [T; N])` (or the `mut` variant).
+/// Unlike a reference, the raw pointer is not limited to the zero-length
+/// declared type.
+fn make_complete_array_place<'tcx>(
+    reflector: &Reflector<'_, 'tcx>,
+    expr: P<Expr>,
+    ty: Ty<'tcx>,
+    mutbl: Mutability,
+) -> P<Expr> {
+    let addr_of = match mutbl {
+        Mutability::Not => "addr_of",
+        Mutability::Mut => "addr_of_mut",
+    };
+    let span = expr.span;
+    let expr_tt = TokenTree::Token(
+        Token {
+            kind: TokenKind::Interpolated(Lrc::new(Nonterminal::NtExpr(expr))),
+            span,
+        },
+        Spacing::Alone,
+    );
+    let ptr = mk().mac_expr(mk().mac(
+        vec!["", "core", "ptr", addr_of],
+        vec![expr_tt],
+        MacDelimiter::Parenthesis,
+    ));
+    let ptr_ty = mk().set_mutbl(mutbl).ptr_ty(reflector.reflect_ty(ty));
+    mk().unary_expr(UnOp::Deref, mk().cast_expr(ptr, ptr_ty))
 }
 
 fn make_cast<'a, 'tcx>(
