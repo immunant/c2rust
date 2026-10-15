@@ -619,7 +619,7 @@ impl<'lty, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                     matches!(ty.kind(), ty::TyKind::Closure(..))
                 }
                 if is_closure(func_lty.ty)
-                    || (func_lty.args.len() > 0 && is_closure(func_lty.args[0].ty))
+                    || (!func_lty.args.is_empty() && is_closure(func_lty.args[0].ty))
                 {
                     intravisit::walk_expr(self, e);
                     return;
