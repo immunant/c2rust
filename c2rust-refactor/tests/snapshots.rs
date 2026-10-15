@@ -533,6 +533,13 @@ fn test_reorganize_higher_ranked_callbacks() {
 }
 
 #[test]
+fn test_reorganize_incomplete_array() {
+    refactor("reorganize_definitions")
+        .named("reorganize_incomplete_array.rs")
+        .test();
+}
+
+#[test]
 fn test_reorganize_multi_namespace() {
     refactor("reorganize_definitions")
         .named("reorganize_multi_namespace.rs")
