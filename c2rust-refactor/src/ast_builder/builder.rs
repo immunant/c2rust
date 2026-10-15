@@ -2443,7 +2443,7 @@ impl Builder {
         }
     }
 
-    pub fn ty<T>(self, kind: TyKind) -> Ty {
+    pub fn ty(self, kind: TyKind) -> Ty {
         Ty {
             id: self.id,
             kind,
