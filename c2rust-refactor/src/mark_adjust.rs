@@ -128,15 +128,11 @@ impl<'a, 'tcx, 's> Visitor<'s> for MarkUseVisitor<'a, 'tcx> {
             return;
         };
 
-        match x.kind {
-            ast::TyKind::Path(_, _) => {
-                expect!([hir.kind] hir::TyKind::Path(ref hp) => {
-                    info!("looking at TyPath {:?}", x);
-                    self.handle_qpath(x.id, hp);
-                });
-            }
-
-            _ => {}
+        if let ast::TyKind::Path(_, _) = x.kind {
+            expect!([hir.kind] hir::TyKind::Path(ref hp) => {
+                info!("looking at TyPath {:?}", x);
+                self.handle_qpath(x.id, hp);
+            });
         }
 
         visit::walk_ty(self, x);
@@ -194,27 +190,23 @@ pub fn find_field_uses<T: Visit>(
 
     // Fields can only appear in exprs, so we don't need a whole Visitor impl.
     visit_nodes(target, |e: &Expr| {
-        match e.kind {
-            ExprKind::Field(ref obj, ref ident) => {
-                if ident.name != field {
-                    return;
-                }
-
-                // Use the adjusted type to catch field accesses through autoderef.
-                let ty = cx.adjusted_node_type(obj.id);
-                let def = match_or!([ty.kind()] TyKind::Adt(def, _) => def; return);
-                if let Some(id) = cx.hir_map().as_local_node_id(def.did()) {
-                    if st.marked(id, label) {
-                        st.add_mark(e.id, label);
-                    }
-                }
+        // TODO: Also handle uses in ExprKind::Struct.  (This case is more complicated since we
+        // need to resolve the `Struct` node's `Path`.  Also, the `Field` node type
+        // (representing field uses) does not have a NodeId of its own, so it's unclear where
+        // we should put the resulting mark.)
+        if let ExprKind::Field(ref obj, ref ident) = e.kind {
+            if ident.name != field {
+                return;
             }
 
-            // TODO: Also handle uses in ExprKind::Struct.  (This case is more complicated since we
-            // need to resolve the `Struct` node's `Path`.  Also, the `Field` node type
-            // (representing field uses) does not have a NodeId of its own, so it's unclear where
-            // we should put the resulting mark.)
-            _ => {}
+            // Use the adjusted type to catch field accesses through autoderef.
+            let ty = cx.adjusted_node_type(obj.id);
+            let def = match_or!([ty.kind()] TyKind::Adt(def, _) => def; return);
+            if let Some(id) = cx.hir_map().as_local_node_id(def.did()) {
+                if st.marked(id, label) {
+                    st.add_mark(e.id, label);
+                }
+            }
         }
     });
 

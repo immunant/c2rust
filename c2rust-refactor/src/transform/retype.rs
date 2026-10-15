@@ -346,17 +346,14 @@ impl Transform for RetypeStatic {
             }
 
             smallvec![i.map(|mut i| {
-                match i.kind {
-                    ItemKind::Static(ref mut item) => {
-                        item.ty = new_ty.clone();
-                        if let Some(init) = &mut item.expr {
-                            let mut bnd = Bindings::new();
-                            bnd.add("__old", init.clone());
-                            *init = rev_conv_assign.clone().subst(st, cx, &bnd);
-                        }
-                        mod_statics.insert(cx.node_def_id(i.id));
+                if let ItemKind::Static(ref mut item) = i.kind {
+                    item.ty = new_ty.clone();
+                    if let Some(init) = &mut item.expr {
+                        let mut bnd = Bindings::new();
+                        bnd.add("__old", init.clone());
+                        *init = rev_conv_assign.clone().subst(st, cx, &bnd);
                     }
-                    _ => {}
+                    mod_statics.insert(cx.node_def_id(i.id));
                 }
                 i
             })]
@@ -367,12 +364,9 @@ impl Transform for RetypeStatic {
                 return smallvec![fi];
             }
 
-            match fi.kind {
-                ForeignItemKind::Static(ref mut ty, _, _) => {
-                    *ty = new_ty.clone();
-                    mod_statics.insert(cx.node_def_id(fi.id));
-                }
-                _ => {}
+            if let ForeignItemKind::Static(ref mut ty, _, _) = fi.kind {
+                *ty = new_ty.clone();
+                mod_statics.insert(cx.node_def_id(fi.id));
             }
             smallvec![fi]
         });
@@ -1036,9 +1030,8 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
         for arg in inputs {
             self.map_type(&mut arg.ty);
         }
-        match output {
-            FnRetTy::Ty(ty) => self.map_type(ty),
-            _ => {}
+        if let FnRetTy::Ty(ty) = output {
+            self.map_type(ty)
         }
     }
 

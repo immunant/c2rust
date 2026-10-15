@@ -80,9 +80,8 @@ impl<'tcx> fmt::Debug for PrettyLabel<PrintVar<'tcx>> {
                 write!(fmt, "#min(")?;
                 let mut first = true;
                 for &p in ps {
-                    match p {
-                        Perm::Concrete(_) => continue,
-                        _ => {}
+                    if let Perm::Concrete(_) = p {
+                        continue;
                     }
                     if !first {
                         write!(fmt, ", ")?;

@@ -135,42 +135,38 @@ pub fn fix_users(
 
         // TODO: handle assignments to replaced extern statics
 
-        match &e.kind {
-            ExprKind::Call(ref f, _) => {
-                if let Some(&old_did) = path_ids.get(&f.id) {
-                    // This expr is a call to a rewritten extern fn.  Add casts around args and around
-                    // the whole expression, as directed by `ty_replace_map`.
-                    let arg_count = expect!([e.kind] ExprKind::Call(_, ref a) => a.len());
-                    info!("rewriting call - e = {:?}", e);
+        if let ExprKind::Call(ref f, _) = &e.kind {
+            if let Some(&old_did) = path_ids.get(&f.id) {
+                // This expr is a call to a rewritten extern fn.  Add casts around args and around
+                // the whole expression, as directed by `ty_replace_map`.
+                let arg_count = expect!([e.kind] ExprKind::Call(_, ref a) => a.len());
+                info!("rewriting call - e = {:?}", e);
 
-                    for i in 0..arg_count {
-                        let k = (old_did, TyLoc::Arg(i));
-                        if let Some(&(_old_ty, new_ty)) = ty_replace_map.get(&k) {
-                            expect!([e.kind] ExprKind::Call(_, ref mut args) => {
-                                if let Some(ty) = cx.opt_node_type(args[i].id) {
-                                    if ty_compare.eq_tys(ty, new_ty) {
-                                        // We don't need to convert this type, it already matches
-                                        return;
-                                    }
+                for i in 0..arg_count {
+                    let k = (old_did, TyLoc::Arg(i));
+                    if let Some(&(_old_ty, new_ty)) = ty_replace_map.get(&k) {
+                        expect!([e.kind] ExprKind::Call(_, ref mut args) => {
+                            if let Some(ty) = cx.opt_node_type(args[i].id) {
+                                if ty_compare.eq_tys(ty, new_ty) {
+                                    // We don't need to convert this type, it already matches
+                                    return;
                                 }
-                                // The new fn requires `new_ty`, where the old one needed `old_ty`.
-                                // TODO: fix paths in new_ty based on replacement_map
-                                let new_arg = make_cast(cx, &reflector, args[i].clone(), new_ty);
-                                args[i] = new_arg;
-                            });
-                            info!("  arg {} - rewrote e = {:?}", i, e);
-                        }
-                    }
-
-                    if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
-                        // The new fn returns `new_ty`, where the old context requires `old_ty`.
-                        *e = make_cast(cx, &reflector, e.clone(), old_ty);
-                        info!("  return - rewrote e = {:?}", e);
+                            }
+                            // The new fn requires `new_ty`, where the old one needed `old_ty`.
+                            // TODO: fix paths in new_ty based on replacement_map
+                            let new_arg = make_cast(cx, &reflector, args[i].clone(), new_ty);
+                            args[i] = new_arg;
+                        });
+                        info!("  arg {} - rewrote e = {:?}", i, e);
                     }
                 }
-            }
 
-            _ => {}
+                if let Some(&(old_ty, _new_ty)) = ty_replace_map.get(&(old_did, TyLoc::Ret)) {
+                    // The new fn returns `new_ty`, where the old context requires `old_ty`.
+                    *e = make_cast(cx, &reflector, e.clone(), old_ty);
+                    info!("  return - rewrote e = {:?}", e);
+                }
+            }
         }
     });
 }

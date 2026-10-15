@@ -254,22 +254,19 @@ impl Transform for Localize {
                 return smallvec![i];
             }
 
-            match i.kind {
-                ItemKind::Static(ref item) => {
-                    let def_id = cx.node_def_id(i.id);
-                    let arg_name_str = format!("{}_", i.ident.name.as_str());
-                    let arg_name = (&arg_name_str as &str).into_symbol();
-                    statics.insert(
-                        def_id,
-                        StaticInfo {
-                            name: i.ident,
-                            arg_name,
-                            ty: item.ty.clone(),
-                            mutbl: item.mutability,
-                        },
-                    );
-                }
-                _ => {}
+            if let ItemKind::Static(ref item) = i.kind {
+                let def_id = cx.node_def_id(i.id);
+                let arg_name_str = format!("{}_", i.ident.name.as_str());
+                let arg_name = (&arg_name_str as &str).into_symbol();
+                statics.insert(
+                    def_id,
+                    StaticInfo {
+                        name: i.ident,
+                        arg_name,
+                        ty: item.ty.clone(),
+                        mutbl: item.mutability,
+                    },
+                );
             }
 
             smallvec![i]
@@ -469,21 +466,18 @@ impl Transform for StaticToLocal {
                 return smallvec![i];
             }
 
-            match i.kind {
-                ItemKind::Static(ref item) => {
-                    let def_id = cx.node_def_id(i.id);
-                    statics.insert(
-                        def_id,
-                        StaticInfo {
-                            name: i.ident,
-                            ty: item.ty.clone(),
-                            mutbl: item.mutability,
-                            expr: item.expr.clone(),
-                        },
-                    );
-                    return smallvec![];
-                }
-                _ => {}
+            if let ItemKind::Static(ref item) = i.kind {
+                let def_id = cx.node_def_id(i.id);
+                statics.insert(
+                    def_id,
+                    StaticInfo {
+                        name: i.ident,
+                        ty: item.ty.clone(),
+                        mutbl: item.mutability,
+                        expr: item.expr.clone(),
+                    },
+                );
+                return smallvec![];
             }
 
             smallvec![i]

@@ -371,9 +371,8 @@ impl Transform for SetMutability {
             fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
                 if self.st.marked(i.id, "target") {
                     i = i.map(|mut i| {
-                        match i.kind {
-                            ItemKind::Static(ref mut item) => item.mutability = self.mutbl,
-                            _ => {}
+                        if let ItemKind::Static(ref mut item) = i.kind {
+                            item.mutability = self.mutbl
                         }
                         i
                     });
@@ -386,9 +385,8 @@ impl Transform for SetMutability {
                 mut i: P<ForeignItem>,
             ) -> SmallVec<[P<ForeignItem>; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.kind {
-                        ForeignItemKind::Static(_, ref mut is_mutbl, _) => *is_mutbl = self.mutbl,
-                        _ => {}
+                    if let ForeignItemKind::Static(_, ref mut is_mutbl, _) = i.kind {
+                        *is_mutbl = self.mutbl
                     }
                 }
                 mut_visit::noop_flat_map_foreign_item(i, self)
@@ -437,11 +435,8 @@ impl Transform for SetUnsafety {
 
             fn flat_map_trait_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
                 if self.st.marked(i.id, "target") {
-                    match i.kind {
-                        AssocItemKind::Fn(box Fn { ref mut sig, .. }) => {
-                            sig.header.unsafety = self.unsafety
-                        }
-                        _ => {}
+                    if let AssocItemKind::Fn(box Fn { ref mut sig, .. }) = i.kind {
+                        sig.header.unsafety = self.unsafety
                     }
                 }
                 mut_visit::noop_flat_map_assoc_item(i, self)
