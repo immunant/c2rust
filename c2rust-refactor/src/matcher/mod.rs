@@ -197,8 +197,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
     /// Try to match `target` against `pat`, updating `self.bindings` with the results.
     pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result<()> {
-        let r = pat.try_match(target, self);
-        r
+        pat.try_match(target, self)
     }
 
     /// Build a new `MatchCtxt`, and try to match `target` against `pat` in that context.
