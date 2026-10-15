@@ -181,7 +181,7 @@ impl PrintParse for Attribute {
                         span,
                     );
                     p.bump();
-                    return Ok(attr);
+                    Ok(attr)
                 }
                 _ => p.parse_attribute(InnerAttrPolicy::Permitted),
             }

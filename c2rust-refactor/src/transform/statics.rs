@@ -372,7 +372,6 @@ impl Transform for Localize {
                     if let Some(def_id) = cx.try_resolve_expr(e) {
                         if let Some(info) = statics.get(&def_id) {
                             *e = mk().unary_expr("*", mk().ident_expr(info.arg_name));
-                            return;
                         }
                     }
                 });

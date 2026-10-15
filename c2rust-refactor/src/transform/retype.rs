@@ -1045,7 +1045,7 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
     /// Replace marked struct field types with their new types
     fn flat_map_field_def(&mut self, mut field: FieldDef) -> SmallVec<[FieldDef; 1]> {
         self.map_type(&mut field.ty);
-        return mut_visit::noop_flat_map_field_def(field, self);
+        mut_visit::noop_flat_map_field_def(field, self)
     }
 
     /// Remove all local variable types forcing type inference to update their

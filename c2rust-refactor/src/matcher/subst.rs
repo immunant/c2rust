@@ -61,7 +61,6 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
                     Some(Some(i)) => l.ident = *i,
                     Some(None) => {
                         *ol = None;
-                        return;
                     }
                     None => {}
                 }

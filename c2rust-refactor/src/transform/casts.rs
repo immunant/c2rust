@@ -123,7 +123,6 @@ impl Transform for RemoveRedundantCasts {
             if oe_ty == ot_ty {
                 debug!("no-op cast");
                 *ast = oe.clone();
-                return;
             }
         })
     }
