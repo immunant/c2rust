@@ -639,8 +639,7 @@ impl<'lty> ConstraintSet<'lty> {
                     .iter()
                     .cloned()
                     .enumerate()
-                    .filter(|&(i, _)| !to_remove.contains(&i))
-                    .next()
+                    .find(|&(i, _)| !to_remove.contains(&i))
                     .unwrap();
                 debug!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
                 edit.add(p, b);
