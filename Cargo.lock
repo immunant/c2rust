@@ -443,6 +443,7 @@ version = "0.22.1"
 dependencies = [
  "bincode",
  "c2rust-analysis-rt",
+ "c2rust-bitfields",
  "c2rust-build-paths",
  "c2rust-macros",
  "c2rust-rust-tools",

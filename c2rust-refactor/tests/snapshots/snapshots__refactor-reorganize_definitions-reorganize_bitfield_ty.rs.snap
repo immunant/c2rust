@@ -9,7 +9,11 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 #![allow(unused_imports)]
 
 pub mod data_h {
+    use c2rust_bitfields::BitfieldStruct;
+
+    #[derive(BitfieldStruct)]
     #[repr(C)]
+
     pub struct data_t {
         #[bitfield(name = "flag", ty = "crate::setup_h::bit", bits = "0..=0")]
         #[bitfield(name = "wide", ty = "::core::ffi::c_uint", bits = "1..=3")]

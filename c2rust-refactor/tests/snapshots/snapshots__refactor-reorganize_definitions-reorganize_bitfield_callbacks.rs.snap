@@ -1,0 +1,180 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_bitfield_callbacks.rs --edition 2021
+---
+#![feature(extern_types, register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code)]
+
+pub mod bits_h {
+    extern "C" {
+        pub type CallbackContext;
+    }
+    use crate::second::accessors as types;
+
+    use crate::types_h::Accessor_1 as Imported;
+
+    use c2rust_bitfields::BitfieldStruct;
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct DifferentBits {
+        #[bitfield(name = "flag", ty = "::core::primitive::u32", bits = "0..=0")]
+        pub tag: [u8; 1],
+        pub callback: for<'a> unsafe extern "C" fn(*mut crate::bits_h::CallbackContext, &'a ()),
+    }
+    // Identical storage does not imply identical generated accessors.
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct DifferentBits_1 {
+        #[bitfield(name = "flag", ty = "::core::primitive::u32", bits = "1..=1")]
+        pub tag: [u8; 1],
+        pub callback: for<'a> unsafe extern "C" fn(*mut crate::bits_h::CallbackContext, &'a ()),
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct SameBits {
+        #[bitfield(name = "flag", ty = "crate::bits_h::C2Rust_Unnamed_0", bits = "0..=0")]
+        pub tag: [u8; 1],
+        pub callback: for<'a> unsafe extern "C" fn(*mut crate::bits_h::CallbackContext, &'a ()),
+    }
+
+    pub type C2Rust_Unnamed_0 = u32;
+
+    pub type Word = u32;
+
+    pub type Word_1 = i32;
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct DifferentType {
+        #[bitfield(name = "flag", ty = "crate::bits_h::Word", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct DifferentType_1 {
+        #[bitfield(name = "flag", ty = "crate::bits_h::Word_1", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    pub type i16 = i32;
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct RelativeDiff {
+        #[bitfield(name = "flag", ty = "crate::types_h::Accessor", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct RelativeDiff_1 {
+        #[bitfield(name = "flag", ty = "crate::types_h::Accessor_1", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct ImportDiff {
+        #[bitfield(name = "flag", ty = "crate::types_h::Accessor", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct ImportDiff_1 {
+        #[bitfield(name = "flag", ty = "crate::types_h::Accessor_1", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct ModuleImportDiff {
+        #[bitfield(name = "flag", ty = "crate::types_h::Accessor", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct ModuleImportDiff_1 {
+        #[bitfield(name = "flag", ty = "crate::types_h::Accessor_1", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct ShadowDiff {
+        #[bitfield(name = "flag", ty = "::core::primitive::i16", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct ShadowDiff_1 {
+        #[bitfield(name = "flag", ty = "crate::bits_h::i16", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct MixedSame {
+        #[bitfield(name = "flag", ty = "crate::bits_h::Word", bits = "0..=0")]
+        #[bitfield(name = "other", ty = "::core::primitive::u32", bits = "1..=1")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct MixedExternal {
+        #[bitfield(name = "flag", ty = "::core::ffi::c_uint", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+
+    #[derive(BitfieldStruct)]
+    #[repr(C)]
+
+    pub struct ExternalSame {
+        #[bitfield(name = "flag", ty = "::std::ffi::c_char", bits = "0..=0")]
+        pub tag: [u8; 1],
+    }
+}
+pub mod types_h {
+    pub type Accessor = u16;
+
+    pub type Accessor_1 = i32;
+}
+pub mod first {
+
+    pub mod accessors {
+        pub use crate::types_h::Accessor;
+        pub use core::primitive::u32 as Builtin;
+    }
+}
+
+pub mod second {
+
+    pub mod accessors {
+        pub use crate::types_h::Accessor_1;
+        pub use core::primitive::u32 as Builtin;
+    }
+}
+
+fn main() {}

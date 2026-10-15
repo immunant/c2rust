@@ -13,10 +13,12 @@ pub mod foo {
 
     #[c2rust::header_src = "/home/user/some/workspace/foobar/data.h:6"]
     pub mod data_h {
+        use c2rust_bitfields::BitfieldStruct;
         // The string paths in the `bitfield` attributes below resolve
         // through this import.
         use super::setup_h::bit;
 
+        #[derive(BitfieldStruct)]
         #[repr(C)]
         #[c2rust::src_loc = "4:0"]
         pub struct data_t {
@@ -43,7 +45,9 @@ pub mod bar {
     #[c2rust::header_src = "/home/user/some/workspace/foobar/data.h:6"]
     pub mod data_h {
         use super::setup_h::bit;
+        use c2rust_bitfields::BitfieldStruct;
 
+        #[derive(BitfieldStruct)]
         #[repr(C)]
         #[c2rust::src_loc = "4:0"]
         pub struct data_t {

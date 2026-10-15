@@ -151,6 +151,7 @@ pub struct Rustc<'a> {
     crate_name: Option<&'a str>,
     expect_error: bool,
     imported_crates: &'a [&'a str],
+    args: &'a [String],
 }
 
 pub fn rustc(rs_path: &Path) -> Rustc {
@@ -160,6 +161,7 @@ pub fn rustc(rs_path: &Path) -> Rustc {
         crate_name: None,
         expect_error: false,
         imported_crates: Default::default(),
+        args: Default::default(),
     }
 }
 
@@ -189,6 +191,11 @@ impl<'a> Rustc<'a> {
         }
     }
 
+    /// Extra arguments, such as `--extern`s.
+    pub fn args(self, args: &'a [String]) -> Self {
+        Self { args, ..self }
+    }
+
     pub fn run(self) {
         let Self {
             rs_path,
@@ -196,10 +203,18 @@ impl<'a> Rustc<'a> {
             crate_name,
             expect_error,
             imported_crates,
+            args,
         } = self;
         let crate_name =
             crate_name.unwrap_or_else(|| rs_path.file_stem().unwrap().to_str().unwrap());
-        run_rustc(rs_path, edition, crate_name, expect_error, imported_crates);
+        run_rustc(
+            rs_path,
+            edition,
+            crate_name,
+            expect_error,
+            imported_crates,
+            args,
+        );
     }
 }
 
@@ -209,6 +224,7 @@ fn run_rustc(
     crate_name: &str,
     expect_error: bool,
     imported_crates: &[&str],
+    args: &[String],
 ) {
     let rs = fs_err::read_to_string(rs_path).unwrap();
     for imported_crate in imported_crates {
@@ -231,6 +247,7 @@ fn run_rustc(
         "-o",
     ]);
     cmd.args([&rlib_path, rs_path]);
+    cmd.args(args);
     let output = cmd.output().unwrap();
     let status = output.status;
     if status.success() {

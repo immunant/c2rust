@@ -27,7 +27,7 @@ use crate::ast_builder::mk;
 use crate::ast_manip::util::{
     is_c2rust_attr, is_exported, is_relative_path, join_visibility, namespace, split_uses,
 };
-use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisitNodes};
+use crate::ast_manip::{visit_nodes, AstEquiv, FlatMapNodes, MutVisit, MutVisitNodes};
 use crate::command::{CommandState, Registry};
 use crate::driver::Phase;
 use crate::path_edit::fold_resolved_paths_with_id;
@@ -68,7 +68,7 @@ pub struct Reorganizer<'a, 'tcx: 'a> {
     // literals that `update_paths` cannot see, and the imports that resolved
     // them do not survive the move, so `update_bitfield_attr_tys` rewrites
     // the strings using this map.
-    bitfield_ty_defs: HashMap<NodeId, HashMap<String, DefId>>,
+    bitfield_ty_defs: HashMap<NodeId, HashMap<String, BitfieldTy>>,
 
     // Counter used by `unique_ident`
     ident_counter: HashMap<Ident, usize>,
@@ -814,7 +814,16 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
         // each module
         let mut module_item_decls: IndexMap<NodeId, HeaderDeclarations> = module_items
             .into_iter()
-            .map(|(module_id, items)| {
+            .map(|(module_id, mut items)| {
+                for decl in &mut items {
+                    match &mut decl.kind {
+                        DeclKind::Item(item) => self.qualify_unmoved_paths(item),
+                        DeclKind::ForeignItem(item, _) => self.qualify_unmoved_paths(item),
+                    }
+                    if let Some(r#impl) = &mut decl.r#impl {
+                        self.qualify_unmoved_paths(&mut r#impl.item);
+                    }
+                }
                 let mut decls = HeaderDeclarations::new(self.cx);
                 decls.extend(items);
                 (module_id, decls)
@@ -956,6 +965,37 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             item.attrs
                 .retain(|attr| !is_c2rust_attr(attr, "header_src"));
             smallvec![item]
+        });
+    }
+
+    /// Moving a declaration can separate it from imports retained by header
+    /// functions, or from imports subsumed by another declaration. Qualify
+    /// references to source-local items that have no replacement of their own.
+    fn qualify_unmoved_paths<T: MutVisit>(&self, item: &mut T) {
+        let tcx = self.cx.ty_ctxt();
+        fold_resolved_paths_with_id(item, self.cx, |_, qself, path, defs| {
+            if qself.is_none() && path.segments.len() == 1 {
+                if let Some(def_id) = defs[0].opt_def_id().filter(|def_id| def_id.is_local()) {
+                    // Items declared in an `extern` block are children of the
+                    // block, but are named through the enclosing module.
+                    let Some(mut parent) = tcx.opt_parent(def_id) else {
+                        return (qself, path);
+                    };
+                    if tcx.def_kind(parent) == DefKind::ForeignMod {
+                        parent = tcx.parent(parent);
+                    }
+                    // Generic parameters, associated items, and block-local
+                    // items cannot be named by a path from the crate root.
+                    if tcx.def_kind(parent) == DefKind::Mod
+                        && !self.path_mapping.contains_key(&def_id)
+                    {
+                        let mut qualified = self.cx.def_path(def_id);
+                        qualified.segments.last_mut().unwrap().args = path.segments[0].args.clone();
+                        return (None, qualified);
+                    }
+                }
+            }
+            (qself, path)
         });
     }
 
@@ -1313,26 +1353,6 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
     /// These paths resolve against the scope of the module they were written
     /// in, which does not survive the reorganization.
     fn collect_bitfield_attr_tys(&mut self, mod_items: &[P<Item>]) {
-        let mut type_ns_defs: HashMap<Symbol, DefId> = HashMap::new();
-        for item in mod_items {
-            if let ItemKind::Use(tree) = &item.kind {
-                let type_res = self
-                    .cx
-                    .resolved_imports_for_item(item)
-                    .into_iter()
-                    .find(|&(namespace, _)| namespace == Namespace::TypeNS);
-                if let Some((_, resolution)) = type_res {
-                    if let Some(def_id) = resolution.opt_def_id() {
-                        type_ns_defs.insert(tree.ident().name, def_id);
-                    }
-                }
-            } else if item.ident.name != kw::Empty
-                && self.cx.item_namespaces(item).contains(&Namespace::TypeNS)
-            {
-                type_ns_defs.insert(item.ident.name, self.cx.node_def_id(item.id));
-            }
-        }
-
         for item in mod_items {
             let fields = match &item.kind {
                 ItemKind::Struct(vdata, _) | ItemKind::Union(vdata, _) => vdata.fields(),
@@ -1345,14 +1365,9 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         Some(ty_str) => ty_str,
                         None => continue,
                     };
-                    if ty_str.contains("::") {
-                        // Multi-segment paths are either already absolute or
-                        // beyond what we can resolve here.
-                        continue;
-                    }
-                    match type_ns_defs.get(&Symbol::intern(&ty_str)) {
-                        Some(&def_id) => {
-                            ty_defs.insert(ty_str, def_id);
+                    match self.resolve_bitfield_ty(self.cx.node_def_id(item.id), &ty_str) {
+                        Some(target) => {
+                            ty_defs.insert(ty_str, target);
                         }
                         None => warn!(
                             "could not resolve `ty = \"{}\"` of a bitfield in {:?}",
@@ -1392,28 +1407,17 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
                         Some(ty_str) => ty_str,
                         None => continue,
                     };
-                    let def_id = match ty_defs.get(&ty_str) {
-                        Some(&def_id) => def_id,
+                    let new_ty = match ty_defs.get(&ty_str) {
+                        Some(BitfieldTy::AbsolutePath(path)) => path.clone(),
+                        Some(BitfieldTy::Def(def_id)) => {
+                            let path = match self.path_mapping.get(def_id) {
+                                Some(replacement) => replacement.path.clone(),
+                                None => self.cx.def_path(*def_id),
+                            };
+                            pprust::path_to_string(&path)
+                        }
                         None => continue,
                     };
-                    let path = match self.path_mapping.get(&def_id) {
-                        Some(replacement) => replacement.path.clone(),
-                        None => {
-                            // The target did not move; use its original
-                            // absolute path.
-                            let (qself, path) = self.cx.def_qpath(def_id);
-                            if qself.is_some() {
-                                warn!(
-                                    "cannot express bitfield `ty = \"{}\"` target {:?} \
-                                     as a plain path",
-                                    ty_str, def_id,
-                                );
-                                continue;
-                            }
-                            path
-                        }
-                    };
-                    let new_ty = pprust::path_to_string(&path);
                     if new_ty != ty_str {
                         *attr = replace_bitfield_ty(attr, &new_ty);
                     }
@@ -1422,6 +1426,111 @@ impl<'a, 'tcx> Reorganizer<'a, 'tcx> {
             smallvec![item]
         });
     }
+
+    /// Look up a type-namespace binding in the original module, including imports.
+    fn module_type_binding(&self, module: DefId, name: Symbol) -> Option<Res> {
+        let tcx = self.cx.ty_ctxt();
+        let imports = if let Some(local) = module.as_local() {
+            for &child in tcx.module_children_non_reexports(local) {
+                let kind = tcx.def_kind(child);
+                if kind.ns() == Some(Namespace::TypeNS)
+                    && tcx.opt_item_name(child.to_def_id()) == Some(name)
+                {
+                    return Some(Res::Def(kind, child.to_def_id()));
+                }
+            }
+            tcx.module_children_reexports(local)
+        } else {
+            tcx.module_children(module)
+        };
+        imports
+            .iter()
+            .find(|child| child.ident.name == name && child.res.ns() == Some(Namespace::TypeNS))
+            .map(|child| child.res.expect_non_local())
+    }
+
+    /// Resolve a module-relative accessor path using the original bindings. Extern-prelude
+    /// paths keep their public spelling, which can differ from the underlying definition path.
+    fn resolve_bitfield_ty(&self, owner: DefId, path: &str) -> Option<BitfieldTy> {
+        let tcx = self.cx.ty_ctxt();
+        // Qualify primitives so that a type of the same name cannot shadow them.
+        let primitive = |ty: hir::PrimTy| {
+            BitfieldTy::AbsolutePath(format!("::core::primitive::{}", ty.name_str()))
+        };
+        let mut module = owner;
+        while tcx.def_kind(module) != DefKind::Mod {
+            module = tcx.opt_parent(module)?;
+        }
+        let root = module.krate.as_def_id();
+        let mut segments = path.split("::").peekable();
+        let first = segments.next()?;
+        let mut binding = match first {
+            "" => return Some(BitfieldTy::AbsolutePath(path.to_owned())),
+            "crate" => Res::Def(DefKind::Mod, root),
+            "self" => Res::Def(DefKind::Mod, module),
+            "super" => {
+                module = tcx.opt_parent(module)?;
+                while segments.peek() == Some(&"super") {
+                    segments.next();
+                    module = tcx.opt_parent(module)?;
+                }
+                Res::Def(DefKind::Mod, module)
+            }
+            _ => {
+                let name = Symbol::intern(first);
+                if let Some(binding) = self.module_type_binding(module, name) {
+                    binding
+                } else if segments.peek().is_none() {
+                    return hir::PrimTy::from_name(name).map(primitive);
+                } else {
+                    // The extern prelude is consulted only after module-local bindings.
+                    let standard_crate = !tcx.has_attr(root, sym::no_core)
+                        && (first == "core"
+                            || (first == "std" && !tcx.has_attr(root, sym::no_std)));
+                    let extern_arg = tcx
+                        .sess
+                        .opts
+                        .externs
+                        .get(first)
+                        .map_or(false, |e| e.add_prelude);
+                    let extern_item = root.as_local().map_or(false, |root| {
+                        tcx.module_children_reexports(root).iter().any(|child| {
+                            child.ident.name == name
+                                && matches!(
+                                    child.reexport_chain.first(),
+                                    Some(rustc_middle::metadata::Reexport::ExternCrate(_))
+                                )
+                        })
+                    });
+                    return (standard_crate || extern_arg || extern_item)
+                        .then(|| BitfieldTy::AbsolutePath(format!("::{path}")));
+                }
+            }
+        };
+        for segment in segments {
+            let Res::Def(DefKind::Mod, module) = binding else { return None };
+            binding = self.module_type_binding(module, Symbol::intern(segment))?;
+        }
+        match binding {
+            Res::Def(
+                DefKind::TyAlias
+                | DefKind::Enum
+                | DefKind::Struct
+                | DefKind::Union
+                | DefKind::ForeignTy,
+                id,
+            ) => Some(BitfieldTy::Def(id)),
+            Res::PrimTy(ty) => Some(primitive(ty)),
+            _ => None,
+        }
+    }
+}
+
+/// A bitfield attribute stores an accessor type as a string, outside rustc's typed AST.
+enum BitfieldTy {
+    Def(DefId),
+    /// A path that names the same type from any module.
+    AbsolutePath(String),
 }
 
 #[derive(Clone, Debug)]
