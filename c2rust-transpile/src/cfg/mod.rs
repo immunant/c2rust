@@ -18,6 +18,7 @@
 
 use crate::c_ast::iterators::{DFExpr, SomeId};
 use crate::c_ast::CLabelId;
+use crate::context::{ExprContext, ExprTreeContext};
 use crate::diagnostics::TranslationResult;
 use crate::rust_ast::{self, SpanExt};
 use c2rust_ast_printer::pprust;
@@ -556,7 +557,7 @@ impl Cfg<Label, StmtOrDecl> {
     /// Completely process a statement into a control flow graph.
     pub fn from_stmts(
         translator: &Translation,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         stmt_ids: &[CStmtId],
         ret: ImplicitReturnType,
         ret_ty: Option<CQualTypeId>,
@@ -1373,7 +1374,7 @@ impl CfgBuilder {
     fn convert_stmts_help(
         &mut self,
         translator: &Translation,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
         stmt_ids: &[CStmtId],                // C statements to translate
         in_tail: Option<ImplicitReturnType>, // Are we in tail position (is there anything to fallthrough to)?
         entry: Label,                        // Current WIP block
@@ -1406,7 +1407,7 @@ impl CfgBuilder {
     fn convert_stmt_help(
         &mut self,
         translator: &Translation,
-        ctx: ExprContext,
+        ctx: ExprTreeContext,
 
         // C statement to translate
         stmt_id: CStmtId,
@@ -1462,7 +1463,8 @@ impl CfgBuilder {
             }
 
             CStmtKind::Return(expr) => {
-                let val = match expr.map(|i| translator.convert_expr(ctx.used(), i, ret_ty)) {
+                let val = match expr.map(|i| translator.convert_expr(ctx.used().into(), i, ret_ty))
+                {
                     Some(r) => Some(r?),
                     None => None,
                 };
@@ -1491,7 +1493,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx.used(), true, scrutinee)?
+                    .convert_condition(ctx.used().into(), true, scrutinee)?
                     .discard_unsafe();
                 wip.extend(stmts);
 
@@ -1564,7 +1566,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx.used(), true, condition)?
+                    .convert_condition(ctx.used().into(), true, condition)?
                     .discard_unsafe();
                 let cond_val = translator
                     .ast_context
@@ -1643,7 +1645,7 @@ impl CfgBuilder {
 
                 // Condition
                 let (stmts, val) = translator
-                    .convert_condition(ctx.used(), true, condition)?
+                    .convert_condition(ctx.used().into(), true, condition)?
                     .discard_unsafe();
                 let cond_val = translator
                     .ast_context
@@ -1698,7 +1700,7 @@ impl CfgBuilder {
                     // Condition
                     if let Some(cond) = condition {
                         let (stmts, val) = translator
-                            .convert_condition(ctx.used(), true, cond)?
+                            .convert_condition(ctx.used().into(), true, cond)?
                             .discard_unsafe();
                         let cond_val = translator
                             .ast_context
@@ -1743,7 +1745,7 @@ impl CfgBuilder {
                         None => slf.add_block(incr_entry, BasicBlock::new_jump(cond_entry)),
                         Some(incr) => {
                             let incr_stmts = translator
-                                .convert_expr(ctx.unused(), incr, None)?
+                                .convert_expr(ctx.unused().into(), incr, None)?
                                 .into_stmts();
                             let mut incr_wip = slf.new_wip_block(incr_entry);
                             incr_wip.extend(incr_stmts);
@@ -1859,7 +1861,7 @@ impl CfgBuilder {
                     Err(mut wip) => {
                         wip.extend(
                             translator
-                                .convert_expr(ctx.unused(), expr, None)?
+                                .convert_expr(ctx.unused().into(), expr, None)?
                                 .into_stmts(),
                         );
 
@@ -1926,7 +1928,7 @@ impl CfgBuilder {
 
                 let pat = translator
                     .convert_expr_with_optional_cast(
-                        ctx.const_().pattern().used(),
+                        ctx.const_().pattern().used().into(),
                         switch_case.expected_type_id,
                         case_expr,
                     )
@@ -2033,7 +2035,11 @@ impl CfgBuilder {
                 }
 
                 let (stmts, val) = translator
-                    .convert_expr_with_optional_cast(ctx.used(), expected_type_id, scrutinee)?
+                    .convert_expr_with_optional_cast(
+                        ctx.used().into(),
+                        expected_type_id,
+                        scrutinee,
+                    )?
                     .discard_unsafe();
                 wip.extend(stmts);
 
