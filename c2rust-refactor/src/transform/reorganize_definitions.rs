@@ -1897,7 +1897,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     (item.clone(), abi),
                     new_def_id,
                     smallvec![namespace],
-                    parent_header.clone(),
+                    parent_header,
                     None,
                 );
                 if unnamed {
@@ -1914,7 +1914,7 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                     (item.clone(), abi),
                     new_def_id,
                     smallvec![namespace],
-                    parent_header.clone(),
+                    parent_header,
                     None,
                 );
                 Some((existing_def_id, new_def_id))

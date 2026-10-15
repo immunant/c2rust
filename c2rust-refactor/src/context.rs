@@ -181,7 +181,7 @@ impl<'def, 'hir> SpanToHirMapper<'def, 'hir> {
                 context = context.with_symbol(Some(sym));
             }
 
-            let _old_context_id = self.context_to_hir_map.insert((ns, context.clone()), id);
+            let _old_context_id = self.context_to_hir_map.insert((ns, context), id);
         }
     }
 }
