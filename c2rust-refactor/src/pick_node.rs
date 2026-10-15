@@ -204,13 +204,10 @@ impl NodeKind {
     pub fn contains(self, other: NodeKind) -> bool {
         match self {
             NodeKind::Any => true,
-            NodeKind::ItemLike => match other {
-                NodeKind::Item
-                | NodeKind::TraitItem
-                | NodeKind::ImplItem
-                | NodeKind::ForeignItem => true,
-                _ => false,
-            },
+            NodeKind::ItemLike => matches!(
+                other,
+                NodeKind::Item | NodeKind::TraitItem | NodeKind::ImplItem | NodeKind::ForeignItem
+            ),
             _ => self == other,
         }
     }
@@ -269,13 +266,11 @@ pub fn pick_node(krate: &Crate, kind: NodeKind, pos: BytePos) -> Option<NodeInfo
     krate.visit(&mut v);
 
     // If the cursor falls inside the crate's module, then mark the crate itself.
-    if v.node_info.is_none() {
-        if krate.spans.inner_span.contains(v.target) {
-            v.node_info = Some(NodeInfo {
-                id: CRATE_NODE_ID,
-                span: krate.spans.inner_span,
-            });
-        }
+    if v.node_info.is_none() && krate.spans.inner_span.contains(v.target) {
+        v.node_info = Some(NodeInfo {
+            id: CRATE_NODE_ID,
+            span: krate.spans.inner_span,
+        });
     }
 
     v.node_info

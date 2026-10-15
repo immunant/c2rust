@@ -412,20 +412,14 @@ impl<T: RecoverChildren> RecoverChildren for Spanned<T> {
 
 impl<T: RecoverChildren> RecoverChildren for Option<T> {
     fn recover_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        match (reparsed, new) {
-            (Some(x1), Some(x2)) => {
-                RecoverChildren::recover_children(x1, x2, rcx);
-            }
-            (_, _) => {}
+        if let (Some(x1), Some(x2)) = (reparsed, new) {
+            RecoverChildren::recover_children(x1, x2, rcx);
         }
     }
 
     fn recover_node_and_children(reparsed: &Self, new: &Self, rcx: RewriteCtxtRef) {
-        match (reparsed, new) {
-            (Some(x1), Some(x2)) => {
-                RecoverChildren::recover_node_and_children(x1, x2, rcx);
-            }
-            (_, _) => {}
+        if let (Some(x1), Some(x2)) = (reparsed, new) {
+            RecoverChildren::recover_node_and_children(x1, x2, rcx);
         }
     }
 
@@ -734,42 +728,34 @@ fn create_file_for_module(
             ) {
                 path.pop();
                 path.push(path_attr.to_string());
-            } else {
-                if sess
-                    .local_crate_source_file()
-                    .as_ref()
-                    .map_or(false, |f| *f == path)
-                {
-                    path.pop();
-                    if path.file_name().map_or(true, |path| path != "src") {
-                        path.push("src");
+            } else if sess
+                .local_crate_source_file()
+                .as_ref()
+                .map_or(false, |f| *f == path)
+            {
+                path.pop();
+                if path.file_name().map_or(true, |path| path != "src") {
+                    path.push("src");
 
-                        // Attempt to create the output directory, if it doesn't
-                        // exist
-                        let _ = fs::create_dir_all(&path);
+                    // Attempt to create the output directory, if it doesn't
+                    // exist
+                    let _ = fs::create_dir_all(&path);
 
-                        // Add a #[path = "..."] attribute
-                        path_attr = Some(attr::mk_attr_name_value_str(
-                            &sess.parse_sess.attr_id_generator,
-                            AttrStyle::Outer,
-                            Symbol::intern("path"),
-                            Symbol::intern(&format!(
-                                "src{}{}",
-                                path::MAIN_SEPARATOR,
-                                mod_file_name,
-                            )),
-                            DUMMY_SP,
-                        ));
-                    }
-                } else {
-                    if path.file_name().unwrap() == "mod.rs" {
-                        path.pop();
-                    } else {
-                        let parent_name = path.file_stem().unwrap().to_os_string();
-                        path.pop();
-                        path.push(parent_name);
-                    }
+                    // Add a #[path = "..."] attribute
+                    path_attr = Some(attr::mk_attr_name_value_str(
+                        &sess.parse_sess.attr_id_generator,
+                        AttrStyle::Outer,
+                        Symbol::intern("path"),
+                        Symbol::intern(&format!("src{}{}", path::MAIN_SEPARATOR, mod_file_name,)),
+                        DUMMY_SP,
+                    ));
                 }
+            } else if path.file_name().unwrap() == "mod.rs" {
+                path.pop();
+            } else {
+                let parent_name = path.file_stem().unwrap().to_os_string();
+                path.pop();
+                path.push(parent_name);
             }
             path.push(mod_file_name);
             path

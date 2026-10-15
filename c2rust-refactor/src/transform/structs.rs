@@ -89,7 +89,7 @@ impl Transform for MergeUpdates {
         fold_blocks(krate, |curs| {
             loop {
                 // Find a struct update.
-                curs.advance_until(|s| is_struct_update(s));
+                curs.advance_until(is_struct_update);
                 if curs.eof() {
                     break;
                 }

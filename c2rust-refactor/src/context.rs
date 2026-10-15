@@ -814,8 +814,7 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
             .find(id)
             .unwrap_or_else(|| panic!("Couldn't find HIR node for {:?}", id));
         let hir_item = expect!([hir_node] hir::Node::Item(i) => i);
-        let path = expect!([&hir_item.kind] hir::ItemKind::Use(path, _) => path);
-        path
+        expect!([&hir_item.kind] hir::ItemKind::Use(path, _) => path)
     }
 
     /// Attempt to resolve a `Use` item id to the `hir::Path` of the imported
@@ -988,13 +987,11 @@ impl<'a, 'tcx> RefactorCtxt<'a, 'tcx> {
 // Option. If it can panic, it will just panic on an invalid NodeId.
 impl<'hir> HirMap<'hir> {
     fn opt_ast_res(&self, id: NodeId) -> Option<Res> {
-        let result = self
-            .partial_res_map
+        self.partial_res_map
             .get(&id)?
             .full_res()?
             .apply_id(|id| self.opt_node_to_hir_id(id).ok_or(()))
-            .ok();
-        result
+            .ok()
     }
 
     /// Map a crate NodeId to HirId, if possible. Only accepts NodeIds that were
@@ -1329,18 +1326,15 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 if self.cx.item_namespaces(item1).contains(&Namespace::TypeNS)
                     && self.cx.item_namespaces(item2).contains(&Namespace::TypeNS)
                 {
-                    match (
+                    if let (Some(ty1), Some(ty2)) = (
                         self.cx.opt_node_type(item1.id),
                         self.cx.opt_node_type(item2.id),
                     ) {
-                        (Some(ty1), Some(ty2)) => {
-                            if match_vis {
-                                return self.structural_eq_tys_with_vis(ty1, ty2);
-                            } else {
-                                return self.structural_eq_tys(ty1, ty2);
-                            }
+                        if match_vis {
+                            return self.structural_eq_tys_with_vis(ty1, ty2);
+                        } else {
+                            return self.structural_eq_tys(ty1, ty2);
                         }
-                        _ => {}
                     }
                 }
 

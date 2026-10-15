@@ -243,7 +243,7 @@ impl RefactorState {
     }
 
     pub fn drain_commands(&mut self) -> Vec<String> {
-        mem::replace(&mut self.commands, vec![])
+        std::mem::take(&mut self.commands)
     }
 
     /// Load the crate from disk.  This also resets a bunch of internal state, since we won't be
@@ -264,7 +264,7 @@ impl RefactorState {
     /// later `save_crate`s will simply keep using the original source text (even if it no longer
     /// matches the text on disk) as the basis for rewriting.
     pub fn save_crate(&mut self) {
-        if let None = self.krate {
+        if self.krate.is_none() {
             return;
         }
 
@@ -388,16 +388,15 @@ impl RefactorState {
             };
 
             // Run the transform
-            let r =
-                match phase {
-                    Phase::Phase1 => {
-                        let cx = RefactorCtxt::new_phase_1(session);
+            let r = match phase {
+                Phase::Phase1 => {
+                    let cx = RefactorCtxt::new_phase_1(session);
 
-                        f(&cs, &cx)
-                    }
+                    f(&cs, &cx)
+                }
 
-                    Phase::Phase2 => {
-                        let r = queries.global_ctxt()?.enter(|tcx| {
+                Phase::Phase2 => {
+                    queries.global_ctxt()?.enter(|tcx| {
                             let (
                                 partial_res_map,
                                 node_id_to_def_id,
@@ -430,13 +429,11 @@ impl RefactorState {
                             // is dropped, so the next command cannot interpret stale crate numbers.
                             update_dollar_crate_names(tcx);
                             result
-                        });
+                        })
+                }
 
-                        r
-                    }
-
-                    Phase::Phase3 => {
-                        let r = queries.global_ctxt()?.enter(|tcx| {
+                Phase::Phase3 => {
+                    queries.global_ctxt()?.enter(|tcx| {
                             let (
                                 partial_res_map,
                                 node_id_to_def_id,
@@ -469,11 +466,9 @@ impl RefactorState {
                             // See the Phase 2 path above.
                             update_dollar_crate_names(tcx);
                             result
-                        });
-
-                        r
-                    }
-                };
+                        })
+                }
+            };
 
             node_map.init(cs.new_parsed_node_ids.get_mut().drain(..));
 
@@ -880,10 +875,7 @@ where
 /// "read" part will revert the crate to its original form.
 fn register_commit(reg: &mut Registry) {
     reg.register("commit", |args| {
-        let git_commit = match args.get(0) {
-            Some(arg) if arg == "git" => true,
-            _ => false,
-        };
+        let git_commit = matches!(args.get(0), Some(arg) if arg == "git");
         Box::new(FuncCommand(move |rs: &mut RefactorState| {
             let clean = if git_commit {
                 let result = process::Command::new("git")

@@ -76,9 +76,9 @@ mac_node_ref_getters! {
 }
 
 pub trait AsMacNodeRef: Clone + Sized {
-    fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a>;
-    fn from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> &'a Self;
-    fn clone_from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> Self {
+    fn as_mac_node_ref(&self) -> MacNodeRef<'_>;
+    fn from_mac_node_ref(r: MacNodeRef<'_>) -> &Self;
+    fn clone_from_mac_node_ref(r: MacNodeRef<'_>) -> Self {
         (*Self::from_mac_node_ref(r)).clone()
     }
 }
@@ -87,11 +87,11 @@ macro_rules! as_mac_node_ref_impls {
     ($($Ty:ident,)*) => {
         $(
             impl AsMacNodeRef for $Ty {
-                fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
+                fn as_mac_node_ref(&self) -> MacNodeRef<'_> {
                     MacNodeRef::$Ty(self)
                 }
 
-                fn from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> &'a Self {
+                fn from_mac_node_ref(r: MacNodeRef<'_>) -> &Self {
                     match r {
                         MacNodeRef::$Ty(r) => r,
                         _ => panic!(concat!("bad MacNodeRef kind (expected ",
@@ -110,15 +110,15 @@ as_mac_node_ref_impls! {
 }
 
 impl<T: AsMacNodeRef + ?Sized + 'static> AsMacNodeRef for P<T> {
-    fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
+    fn as_mac_node_ref(&self) -> MacNodeRef<'_> {
         <T as AsMacNodeRef>::as_mac_node_ref(self)
     }
 
-    fn from_mac_node_ref<'a>(_r: MacNodeRef<'a>) -> &'a Self {
+    fn from_mac_node_ref(_r: MacNodeRef<'_>) -> &Self {
         panic!("can't get reference to P<T>")
     }
 
-    fn clone_from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> Self {
+    fn clone_from_mac_node_ref(r: MacNodeRef<'_>) -> Self {
         P(<T as AsMacNodeRef>::clone_from_mac_node_ref(r))
     }
 }
@@ -326,11 +326,8 @@ where
                     cx.record_macro_with_id(invoc_id, new.as_mac_node_ref());
 
                     // Recurse into children so they get added to the node map.
-                    match invoc {
-                        InvocKind::Attrs(..) => {
-                            CollectMacros::collect_macros(old, new, cx);
-                        }
-                        _ => {}
+                    if let InvocKind::Attrs(..) = invoc {
+                        CollectMacros::collect_macros(old, new, cx);
                     }
                 }
                 cx.record_node_id_match(old.get_node_id(), new.get_node_id());
@@ -373,38 +370,35 @@ fn get_child_invoc<'a>(
 }
 
 fn is_derived<'a>(invoc: InvocKind<'a>, new: MacNodeRef<'a>) -> bool {
-    match invoc {
-        InvocKind::Attrs(..) => {
-            let attrs = match new {
-                MacNodeRef::Item(i) => {
+    if let InvocKind::Attrs(..) = invoc {
+        let attrs = match new {
+            MacNodeRef::Item(i) => {
+                if is_structural_derive(i) {
+                    return true;
+                }
+                Some(&i.attrs[..])
+            }
+            MacNodeRef::Stmt(s) => match &s.kind {
+                StmtKind::Local(l) => Some(&l.attrs[..]),
+                StmtKind::Item(i) => {
                     if is_structural_derive(i) {
                         return true;
                     }
                     Some(&i.attrs[..])
                 }
-                MacNodeRef::Stmt(s) => match &s.kind {
-                    StmtKind::Local(l) => Some(&l.attrs[..]),
-                    StmtKind::Item(i) => {
-                        if is_structural_derive(i) {
-                            return true;
-                        }
-                        Some(&i.attrs[..])
-                    }
-                    StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
-                    StmtKind::MacCall(..) => None,
-                    StmtKind::Empty => None,
-                },
-                MacNodeRef::Expr(e) => Some(&e.attrs[..]),
-                MacNodeRef::AssocItem(i) => Some(&i.attrs[..]),
-                _ => None,
-            };
-            if let Some(attrs) = attrs {
-                if crate::util::contains_name(attrs, sym::automatically_derived) {
-                    return true;
-                }
+                StmtKind::Expr(e) | StmtKind::Semi(e) => Some(&e.attrs[..]),
+                StmtKind::MacCall(..) => None,
+                StmtKind::Empty => None,
+            },
+            MacNodeRef::Expr(e) => Some(&e.attrs[..]),
+            MacNodeRef::AssocItem(i) => Some(&i.attrs[..]),
+            _ => None,
+        };
+        if let Some(attrs) = attrs {
+            if crate::util::contains_name(attrs, sym::automatically_derived) {
+                return true;
             }
         }
-        _ => {}
     }
     false
 }
@@ -414,18 +408,16 @@ fn is_structural_derive(i: &Item) -> bool {
     // from derive(PartialEq) not being marked with an
     // automatically_derived attribute. TODO: remove this when
     // StructuralPartialEq is labeled with the right attribute.
-    match &i.kind {
-        ItemKind::Impl(box Impl {
-            of_trait: Some(traitref),
-            ..
-        }) => {
-            if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
-                || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
-            {
-                return true;
-            }
+    if let ItemKind::Impl(box Impl {
+        of_trait: Some(traitref),
+        ..
+    }) = &i.kind
+    {
+        if path_eq(&traitref.path, &["$crate", "marker", "StructuralPartialEq"])
+            || path_eq(&traitref.path, &["$crate", "marker", "StructuralEq"])
+        {
+            return true;
         }
-        _ => {}
     }
     false
 }

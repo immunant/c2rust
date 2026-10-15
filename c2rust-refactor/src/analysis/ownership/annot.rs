@@ -64,10 +64,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> TypeSource for LTySource<'c, 'lty, 'tcx> {
     }
 }
 
-pub fn handle_marks<'a, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'tcx>,
+pub fn handle_marks<'tcx>(
+    cx: &mut Ctxt<'_, 'tcx>,
     st: &CommandState,
-    dcx: &RefactorCtxt<'a, 'tcx>,
+    dcx: &RefactorCtxt<'_, 'tcx>,
 ) {
     let mut fixed_vars = Vec::new();
     {
@@ -150,14 +150,10 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 
     fn visit_foreign_item(&mut self, i: &'ast ast::ForeignItem) {
-        match i.kind {
-            // TODO: Foreign statics?
-            ast::ForeignItemKind::Fn(..) => {
-                if !i.attrs.is_empty() {
-                    self.def_attrs.push((i.id, &i.attrs));
-                }
+        if let ast::ForeignItemKind::Fn(..) = i.kind {
+            if !i.attrs.is_empty() {
+                self.def_attrs.push((i.id, &i.attrs));
             }
-            _ => {}
         }
 
         visit::walk_foreign_item(self, i);
@@ -172,10 +168,10 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'tcx>,
+pub fn handle_attrs<'tcx>(
+    cx: &mut Ctxt<'_, 'tcx>,
     st: &CommandState,
-    dcx: &RefactorCtxt<'a, 'tcx>,
+    dcx: &RefactorCtxt<'_, 'tcx>,
 ) {
     let krate = st.krate();
     let mut v = AttrVisitor {
@@ -195,8 +191,7 @@ pub fn handle_attrs<'a, 'tcx, 'lty>(
         let mut is_variant = false;
         if let Some(attr) = attrs
             .iter()
-            .filter(|a| a.has_name(Symbol::intern("ownership_variant_of")))
-            .next()
+            .find(|a| a.has_name(Symbol::intern("ownership_variant_of")))
         {
             let meta = match_or!([attr.meta()] Some(x) => x;
                     panic!("bad meta item in #[ownership_variant_of] (for {:?})", def_id));
@@ -402,7 +397,7 @@ fn parse_mono_sig(
 ) -> Result<(String, IndexVec<Var, ConcretePerm>), &'static str> {
     let args = meta_item_list(meta)?;
 
-    if args.len() == 0 {
+    if args.is_empty() {
         return Err("expected variant name in #[ownership_mono]");
     }
 

@@ -197,8 +197,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
 
     /// Try to match `target` against `pat`, updating `self.bindings` with the results.
     pub fn try_match<T: TryMatch>(&mut self, pat: &T, target: &T) -> Result<()> {
-        let r = pat.try_match(target, self);
-        r
+        pat.try_match(target, self)
     }
 
     /// Build a new `MatchCtxt`, and try to match `target` against `pat` in that context.
@@ -240,10 +239,7 @@ impl<'a, 'tcx> MatchCtxt<'a, 'tcx> {
             Some(x) => x,
             None => return false,
         };
-        match self.types.get(&sym) {
-            Some(&bindings::Type::Optional(_)) => true,
-            _ => false,
-        }
+        matches!(self.types.get(&sym), Some(&bindings::Type::Optional(_)))
     }
 
     fn capture_opt_none<P: PatternSymbol>(&mut self, pattern: &P) -> Result<()> {
