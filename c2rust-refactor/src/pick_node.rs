@@ -204,13 +204,10 @@ impl NodeKind {
     pub fn contains(self, other: NodeKind) -> bool {
         match self {
             NodeKind::Any => true,
-            NodeKind::ItemLike => match other {
-                NodeKind::Item
-                | NodeKind::TraitItem
-                | NodeKind::ImplItem
-                | NodeKind::ForeignItem => true,
-                _ => false,
-            },
+            NodeKind::ItemLike => matches!(
+                other,
+                NodeKind::Item | NodeKind::TraitItem | NodeKind::ImplItem | NodeKind::ForeignItem
+            ),
             _ => self == other,
         }
     }

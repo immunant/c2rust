@@ -132,10 +132,7 @@ impl Transform for RenameUnnamed {
 
         // 1. Rename Anonymous types to the unique Ident
         FlatMapNodes::visit(krate, |i: P<Item>| {
-            let is_module = match i.kind {
-                ItemKind::Mod(..) => true,
-                _ => false,
-            };
+            let is_module = matches!(i.kind, ItemKind::Mod(..));
 
             if !has_unnamed(&i.ident) || is_module {
                 return smallvec![i];

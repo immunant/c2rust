@@ -466,10 +466,10 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn compute_def_sig(&self, id: DefId) -> LFnSig<'lty, 'tcx> {
         let sig = self.tcx.fn_sig(id).subst_identity();
-        let is_extern = match sig.skip_binder().abi {
-            Abi::Rust | Abi::RustIntrinsic | Abi::RustCall => false,
-            _ => true,
-        };
+        let is_extern = !matches!(
+            sig.skip_binder().abi,
+            Abi::Rust | Abi::RustIntrinsic | Abi::RustCall
+        );
 
         if !is_extern {
             self.ltt.label_sig(sig.skip_binder())
@@ -616,11 +616,7 @@ impl<'lty, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
-                    if let ty::TyKind::Closure(..) = ty.kind() {
-                        true
-                    } else {
-                        false
-                    }
+                    matches!(ty.kind(), ty::TyKind::Closure(..))
                 }
                 if is_closure(func_lty.ty)
                     || (func_lty.args.len() > 0 && is_closure(func_lty.args[0].ty))

@@ -111,9 +111,11 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
         }
 
         fn clean_attrs(&self, attrs: &mut ThinVec<Attribute>) {
-            attrs.retain(|a| match a.name_or_empty().as_str() {
-                "ownership_mono" | "ownership_constraints" | "ownership_static" => false,
-                _ => true,
+            attrs.retain(|a| {
+                !matches!(
+                    a.name_or_empty().as_str(),
+                    "ownership_mono" | "ownership_constraints" | "ownership_static"
+                )
             });
         }
     }
