@@ -71,14 +71,14 @@ macro_rules! gen_visit_node_impl {
             fn visit_nodes<T, F>(target: &T, callback: F)
                     where T: Visit,
                           F: FnMut(&Self) {
-                let mut f = $NodeVisitor { callback: callback };
+                let mut f = $NodeVisitor { callback };
                 target.visit(&mut f)
             }
 
             fn visit_nodes_post<T, F>(target: &T, callback: F)
                     where T: Visit,
                           F: FnMut(&Self) {
-                let mut f = $NodeVisitorPost { callback: callback };
+                let mut f = $NodeVisitorPost { callback };
                 target.visit(&mut f)
             }
         }

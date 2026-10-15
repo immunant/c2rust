@@ -180,10 +180,7 @@ impl Transform for ToMethod {
             inputs.insert(0, mk().self_arg(self_kind));
 
             // Update `decl`
-            f.sig.decl = f.sig.decl.clone().map(|fd| FnDecl {
-                inputs: inputs,
-                ..fd
-            });
+            f.sig.decl = f.sig.decl.clone().map(|fd| FnDecl { inputs, ..fd });
 
             // Rewrite references to the marked argument within the function body.
 

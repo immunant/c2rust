@@ -705,8 +705,8 @@ macro_rules! gen_pattern_impl {
             {
                 let mut f = $PatternFolder {
                     pattern: self,
-                    init_mcx: init_mcx,
-                    callback: callback,
+                    init_mcx,
+                    callback,
                 };
                 target.visit(&mut f)
             }
@@ -756,8 +756,8 @@ macro_rules! gen_pattern_impl {
             {
                 let mut f = $PatternFolder {
                     pattern: self,
-                    init_mcx: init_mcx,
-                    callback: callback,
+                    init_mcx,
+                    callback,
                 };
                 target.visit(&mut f)
             }

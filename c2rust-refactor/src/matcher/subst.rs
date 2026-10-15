@@ -320,11 +320,7 @@ macro_rules! subst_impl {
     ($ty:ty, $fold_func:ident) => {
         impl Subst for $ty {
             fn subst(mut self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self {
-                let mut f = SubstFolder {
-                    st: st,
-                    cx: cx,
-                    bindings: bindings,
-                };
+                let mut f = SubstFolder { st, cx, bindings };
                 self.visit(&mut f);
                 self
             }
@@ -336,11 +332,7 @@ macro_rules! multi_subst_impl {
     ($ty:ty, $fold_func:ident) => {
         impl Subst for Vec<$ty> {
             fn subst(self, st: &CommandState, cx: &RefactorCtxt, bindings: &Bindings) -> Self {
-                let mut f = SubstFolder {
-                    st: st,
-                    cx: cx,
-                    bindings: bindings,
-                };
+                let mut f = SubstFolder { st, cx, bindings };
                 let mut results = Vec::with_capacity(self.len());
                 for x in self {
                     results.extend_from_slice(&x.flat_map(&mut f));

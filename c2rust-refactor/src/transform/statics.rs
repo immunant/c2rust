@@ -263,7 +263,7 @@ impl Transform for Localize {
                         def_id,
                         StaticInfo {
                             name: i.ident,
-                            arg_name: arg_name,
+                            arg_name,
                             ty: item.ty.clone(),
                             mutbl: item.mutability,
                         },
