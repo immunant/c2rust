@@ -377,7 +377,7 @@ impl<S: Make<PathSegment>> Make<Path> for Vec<S> {
 
 impl Make<TokenStream> for Vec<TokenTree> {
     fn make(self, _mk: &Builder) -> TokenStream {
-        self.into_iter().collect::<TokenStream>().into()
+        self.into_iter().collect::<TokenStream>()
     }
 }
 
@@ -870,7 +870,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Array(args),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -886,7 +886,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Call(func, args),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -911,7 +911,7 @@ impl Builder {
                 span: DUMMY_SP,
             })),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -925,7 +925,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Tup(exprs.into()),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -951,7 +951,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Binary(op_, lhs, rhs),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -967,7 +967,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Unary(op, a),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -981,7 +981,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Lit(lit),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -998,7 +998,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Cast(e, t),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1014,7 +1014,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Type(e, t),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1028,7 +1028,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Block(blk, None),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1044,7 +1044,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             kind: ExprKind::Block(blk, Some(lbl)),
             span: DUMMY_SP,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1060,7 +1060,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Assign(lhs, rhs, DUMMY_SP),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1078,7 +1078,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::AssignOp(op, lhs, rhs),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1094,7 +1094,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Index(lhs, rhs),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1115,7 +1115,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Path(qself, path),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1133,7 +1133,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Repeat(expr, n),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1147,7 +1147,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Paren(e),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1169,7 +1169,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::AddrOf(BorrowKind::Ref, self.mutbl, e),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1183,7 +1183,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::MacCall(P(mac)),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1202,7 +1202,7 @@ impl Builder {
                 rest: StructRest::None,
             })),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1232,7 +1232,7 @@ impl Builder {
                 rest: base,
             })),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1248,7 +1248,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Field(val, field),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1265,7 +1265,7 @@ impl Builder {
             expr: expr,
             span: self.span,
             is_shorthand: false,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             id: self.id,
             is_placeholder: false,
         }
@@ -1281,7 +1281,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Match(cond, arms),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1374,7 +1374,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::If(cond, then_case, else_case),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1395,7 +1395,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::While(cond, body, label),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1414,7 +1414,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Loop(body, label, DUMMY_SP),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1437,7 +1437,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::ForLoop(pat, expr, body, label),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -1447,7 +1447,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Err,
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -2413,7 +2413,7 @@ impl Builder {
             id: DUMMY_NODE_ID,
             kind: ExprKind::Break(label, value),
             span: DUMMY_SP,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -2451,7 +2451,7 @@ impl Builder {
     {
         let ident = ident.make(&self);
         GenericParam {
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             ident: ident,
             id: self.id,
             bounds: vec![],
@@ -2476,7 +2476,7 @@ impl Builder {
         Ma: Make<AttrArgs>,
     {
         let path = path.make(&self);
-        let args = args.make(&self).into();
+        let args = args.make(&self);
         Attribute {
             id: AttrId::from_u32(0),
             style,
@@ -2602,7 +2602,7 @@ impl Builder {
             ty,
             kind,
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         }
     }
@@ -2616,7 +2616,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Ret(val),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -2633,7 +2633,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Continue(label),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -2650,7 +2650,7 @@ impl Builder {
             id: self.id,
             kind: ExprKind::Break(label, None),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }
@@ -2682,7 +2682,7 @@ impl Builder {
                 fn_arg_span: DUMMY_SP,
             })),
             span: self.span,
-            attrs: self.attrs.into(),
+            attrs: self.attrs,
             tokens: None,
         })
     }

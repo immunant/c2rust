@@ -476,7 +476,7 @@ fn rewrite_tokens(
                 new_tts.push(TokenTree::Delimited(
                     sp,
                     delim,
-                    rewrite_tokens(invoc_id, tts.into_trees(), rewrites).into(),
+                    rewrite_tokens(invoc_id, tts.into_trees(), rewrites),
                 ));
             }
         }
