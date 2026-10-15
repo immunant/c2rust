@@ -398,7 +398,7 @@ fn parse_mono_sig(
 ) -> Result<(String, IndexVec<Var, ConcretePerm>), &'static str> {
     let args = meta_item_list(meta)?;
 
-    if args.len() == 0 {
+    if args.is_empty() {
         return Err("expected variant name in #[ownership_mono]");
     }
 
