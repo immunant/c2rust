@@ -1,0 +1,21 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_incomplete_array.rs --edition 2021
+---
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code)]
+
+pub mod definition {
+    #[no_mangle]
+    pub static TABLE: [u8; 3] = [10, 20, 30];
+}
+
+pub mod caller {
+
+    pub unsafe fn get(index: usize) -> u8 {
+        *crate::definition::TABLE.as_ptr().add(index)
+    }
+}
+
+fn main() {}

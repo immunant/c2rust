@@ -158,14 +158,17 @@ fn test_refactor(
 
     lib_main(Options {
         rewrite_modes: vec![OutputMode::Alongside],
-        commands: vec![RefactorCommand {
-            name: command.to_owned(),
-            args: command_args
-                .iter()
-                .copied()
-                .map(|arg| arg.to_owned())
-                .collect(),
-        }],
+        // As on the command line, `;` separates chained commands.
+        commands: [command]
+            .into_iter()
+            .chain(command_args.iter().copied())
+            .collect::<Vec<_>>()
+            .split(|&arg| arg == ";")
+            .map(|command| RefactorCommand {
+                name: command[0].to_owned(),
+                args: command[1..].iter().map(|&arg| arg.to_owned()).collect(),
+            })
+            .collect(),
         rustc_args: RustcArgSource::CmdLine(rustc_args.map(|arg| arg.to_owned()).to_vec()),
         cursors: Default::default(),
         marks: Default::default(),
@@ -258,6 +261,22 @@ fn test_autoretype_method() {
 fn test_bitcast_retype() {
     refactor("bitcast_retype")
         .command_args(&["i32", "u32"])
+        .test();
+}
+
+/// Users of a complete extern array keep its length when it is replaced by an
+/// incomplete declaration of the same symbol.
+#[test]
+fn test_canonicalize_externs_incomplete_array() {
+    refactor("select")
+        .named("canonicalize_externs_incomplete_array.rs")
+        .command_args(&[
+            "target",
+            "item(user); desc(foreign_item);",
+            ";",
+            "canonicalize_externs",
+            "lib",
+        ])
         .test();
 }
 
@@ -530,6 +549,13 @@ fn test_reorganize_forward_decl_with_local_definition() {
 fn test_reorganize_higher_ranked_callbacks() {
     refactor("reorganize_definitions")
         .named("reorganize_higher_ranked_callbacks.rs")
+        .test();
+}
+
+#[test]
+fn test_reorganize_incomplete_array() {
+    refactor("reorganize_definitions")
+        .named("reorganize_incomplete_array.rs")
         .test();
 }
 

@@ -1464,6 +1464,27 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
         self.structural_eq_tys_impl(ty1, ty2, false, &mut seen)
     }
 
+    /// Compare the type of a foreign declaration with the type of its
+    /// definition, ignoring names and visibility.
+    ///
+    /// C allows an incomplete array declaration such as `extern int x[];` to
+    /// refer to a complete definition such as `int x[3];`. We translate the
+    /// incomplete array as `[T; 0]`, so it matches an array of any length with
+    /// the same element type. This applies only to the declared type itself:
+    /// zero-length fields are part of an ADT's layout, so nested array lengths
+    /// must still match exactly.
+    pub fn compatible_foreign_decl_tys(&self, decl_ty: Ty<'tcx>, def_ty: Ty<'tcx>) -> bool {
+        if let (TyKind::Array(decl_elem, decl_len), TyKind::Array(def_elem, _)) =
+            (decl_ty.kind(), def_ty.kind())
+        {
+            let tcx = self.cx.ty_ctxt();
+            if decl_len.try_eval_target_usize(tcx, ParamEnv::empty()) == Some(0) {
+                return self.structural_eq_tys(*decl_elem, *def_elem);
+            }
+        }
+        self.structural_eq_tys(decl_ty, def_ty)
+    }
+
     /// Compare two Ty types for structural equivalence, ignoring names but matching visibility.
     fn structural_eq_tys_with_vis(&self, ty1: Ty<'tcx>, ty2: Ty<'tcx>) -> bool {
         // We have to track which def ids we've seen so we don't recurse
@@ -1582,7 +1603,7 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 let len2 = n2.try_eval_target_usize(tcx, ParamEnv::empty());
                 // Zero-length fields are part of an ADT's layout, not a
                 // wildcard. Incomplete extern arrays are handled separately
-                // when matching a foreign declaration to its definition.
+                // by `compatible_foreign_decl_tys`.
                 if len1 != len2 || (len1.is_none() && n1 != n2) {
                     trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
                     return false;
