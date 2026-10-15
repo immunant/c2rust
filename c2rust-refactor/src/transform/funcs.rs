@@ -192,7 +192,7 @@ impl Transform for ToMethod {
                     Some(hir_id) => {
                         if hir_id == arg_hir_id {
                             assert!(qself.is_none());
-                            return (None, mk().path(vec!["self"]));
+                            (None, mk().path(vec!["self"]))
                         } else {
                             (qself, path)
                         }
