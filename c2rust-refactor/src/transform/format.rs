@@ -268,7 +268,7 @@ impl Transform for ConvertPrintfs {
         FlatMapNodes::visit(krate, |s: Stmt| match s.kind {
             StmtKind::Semi(ref expr) => {
                 if let ExprKind::Call(ref f, ref args) = expr.kind {
-                    if args.len() < 1 {
+                    if args.is_empty() {
                         return smallvec![s];
                     }
                     match (cx.try_resolve_expr(f), cx.try_resolve_expr(&args[0])) {
