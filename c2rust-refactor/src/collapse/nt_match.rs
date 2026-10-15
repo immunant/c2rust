@@ -190,7 +190,7 @@ impl AsNonterminal for Lifetime {
 
 impl AsNonterminal for TokenLit {
     fn as_nonterminal(&self) -> Nonterminal {
-        Nonterminal::NtLiteral(mk().lit_expr(self.clone()))
+        Nonterminal::NtLiteral(mk().lit_expr(*self))
     }
 }
 

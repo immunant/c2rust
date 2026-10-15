@@ -1531,7 +1531,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
                 return self.try_retype(expr, expected);
             }
             ExprKind::Lit(lit) => {
-                if let Some(e) = self.retype_int_lit(lit.clone(), expected.clone()) {
+                if let Some(e) = self.retype_int_lit(*lit, expected.clone()) {
                     *expr = e;
                     return true;
                 }

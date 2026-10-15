@@ -87,7 +87,7 @@ fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
 
     Z3_CONTEXT.with(|ctx| {
         // Build a minimized list of types with double casts removed
-        let mut min_tys = vec![tys[0].clone()];
+        let mut min_tys = vec![tys[0]];
         for ty in &tys[1..] {
             assert!(!min_tys.is_empty());
             if *ty == min_tys[min_tys.len() - 1] {
@@ -95,7 +95,7 @@ fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
                 continue;
             }
             if min_tys.len() < 2 {
-                min_tys.push(ty.clone());
+                min_tys.push(*ty);
                 continue;
             }
             let last2 = &min_tys[min_tys.len() - 2..];
@@ -104,10 +104,10 @@ fn verify_double_cast(pw: PointerWidth, tys: Vec<SimpleTy>) -> bool {
                     min_tys.pop();
                 }
                 DoubleCastAction::RemoveInner => {
-                    *min_tys.last_mut().unwrap() = ty.clone();
+                    *min_tys.last_mut().unwrap() = *ty;
                 }
                 DoubleCastAction::KeepBoth => {
-                    min_tys.push(ty.clone());
+                    min_tys.push(*ty);
                 }
             }
         }

@@ -1298,7 +1298,7 @@ impl Builder {
             style: StrStyle::Cooked,
             suffix: None,
             span: self.span,
-            symbol_unescaped: symbol.clone(),
+            symbol_unescaped: symbol,
             symbol,
         }
     }
