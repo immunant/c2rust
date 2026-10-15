@@ -314,11 +314,9 @@ impl<'lty> ConstraintSet<'lty> {
 
         while let Some(cur) = queue.pop_front() {
             for &(_, next) in map.range(perm_range(cur)) {
-                if !seen.contains(&next) {
-                    if f(next) {
-                        seen.insert(next);
-                        queue.push_back(next);
-                    }
+                if !seen.contains(&next) && f(next) {
+                    seen.insert(next);
+                    queue.push_back(next);
                 }
             }
         }

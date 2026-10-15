@@ -1084,18 +1084,16 @@ impl<'a, 'tcx> RestoreAnnotationsFolder<'a, 'tcx> {
 
 impl<'a, 'tcx> MutVisitor for RestoreAnnotationsFolder<'a, 'tcx> {
     fn visit_local(&mut self, local: &mut P<Local>) {
-        if local.ty.is_none() {
-            if self.type_annotations.contains_key(&local.span) {
-                let new_ty = self.cx.node_type(local.id);
-                // Reflect the type back to an AST type. Since
-                // we don't (yet) have a way to determine if an
-                // AST Ty is equivalent to a TyCtxt Ty, we just
-                // drop the old type and recreate it. Ideally we
-                // would only change the old AST Ty if it was
-                // changed in retyping.
-                let new_ast_ty = reflect_tcx_ty(self.cx.ty_ctxt(), new_ty);
-                local.ty = Some(new_ast_ty);
-            }
+        if local.ty.is_none() && self.type_annotations.contains_key(&local.span) {
+            let new_ty = self.cx.node_type(local.id);
+            // Reflect the type back to an AST type. Since
+            // we don't (yet) have a way to determine if an
+            // AST Ty is equivalent to a TyCtxt Ty, we just
+            // drop the old type and recreate it. Ideally we
+            // would only change the old AST Ty if it was
+            // changed in retyping.
+            let new_ast_ty = reflect_tcx_ty(self.cx.ty_ctxt(), new_ty);
+            local.ty = Some(new_ast_ty);
         }
     }
 }
