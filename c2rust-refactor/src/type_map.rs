@@ -336,7 +336,7 @@ where
 /// Try to match up `ast::Ty` nodes in the source with higher-level type representations provided
 /// by `source`.  The callback will be passed matching pairs of AST-level and higher-level type
 /// representations.
-pub fn map_types<'tcx, S, F>(hir_map: &HirMap<'tcx>, source: S, krate: &Crate, callback: F)
+pub fn map_types<S, F>(hir_map: &HirMap<'_>, source: S, krate: &Crate, callback: F)
 where
     S: TypeSource,
     F: FnMut(&mut S, &Ty, S::Type),

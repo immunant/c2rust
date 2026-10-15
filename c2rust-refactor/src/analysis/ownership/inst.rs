@@ -158,8 +158,8 @@ pub fn find_instantiations(cx: &mut Ctxt) {
     }
 }
 
-pub fn build_inst_cset<'lty, 'tcx>(
-    cx: &'lty Ctxt<'lty, 'tcx>,
+pub fn build_inst_cset<'lty>(
+    cx: &'lty Ctxt<'lty, '_>,
     variant: &VariantSumm<'lty>,
     assign: &IndexVec<Var, ConcretePerm>,
 ) -> ConstraintSet<'lty> {

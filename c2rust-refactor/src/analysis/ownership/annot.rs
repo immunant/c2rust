@@ -64,10 +64,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> TypeSource for LTySource<'c, 'lty, 'tcx> {
     }
 }
 
-pub fn handle_marks<'a, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'tcx>,
+pub fn handle_marks<'tcx>(
+    cx: &mut Ctxt<'_, 'tcx>,
     st: &CommandState,
-    dcx: &RefactorCtxt<'a, 'tcx>,
+    dcx: &RefactorCtxt<'_, 'tcx>,
 ) {
     let mut fixed_vars = Vec::new();
     {
@@ -172,10 +172,10 @@ impl<'ast> Visitor<'ast> for AttrVisitor<'ast> {
     }
 }
 
-pub fn handle_attrs<'a, 'tcx, 'lty>(
-    cx: &mut Ctxt<'lty, 'tcx>,
+pub fn handle_attrs<'tcx>(
+    cx: &mut Ctxt<'_, 'tcx>,
     st: &CommandState,
-    dcx: &RefactorCtxt<'a, 'tcx>,
+    dcx: &RefactorCtxt<'_, 'tcx>,
 ) {
     let krate = st.krate();
     let mut v = AttrVisitor {

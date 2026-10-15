@@ -152,7 +152,7 @@ impl NodeMap {
         new_map
     }
 
-    pub fn transfer<'a>(&'a self, id: NodeId) -> impl Iterator<Item = NodeId> + 'a {
+    pub fn transfer(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         let lo = (id, NodeId::from_u32(0));
         let hi = (id, NodeId::MAX);
 

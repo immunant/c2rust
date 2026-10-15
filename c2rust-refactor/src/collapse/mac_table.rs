@@ -76,9 +76,9 @@ mac_node_ref_getters! {
 }
 
 pub trait AsMacNodeRef: Clone + Sized {
-    fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a>;
-    fn from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> &'a Self;
-    fn clone_from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> Self {
+    fn as_mac_node_ref(&self) -> MacNodeRef<'_>;
+    fn from_mac_node_ref(r: MacNodeRef<'_>) -> &Self;
+    fn clone_from_mac_node_ref(r: MacNodeRef<'_>) -> Self {
         (*Self::from_mac_node_ref(r)).clone()
     }
 }
@@ -87,11 +87,11 @@ macro_rules! as_mac_node_ref_impls {
     ($($Ty:ident,)*) => {
         $(
             impl AsMacNodeRef for $Ty {
-                fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
+                fn as_mac_node_ref(&self) -> MacNodeRef<'_> {
                     MacNodeRef::$Ty(self)
                 }
 
-                fn from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> &'a Self {
+                fn from_mac_node_ref(r: MacNodeRef<'_>) -> &Self {
                     match r {
                         MacNodeRef::$Ty(r) => r,
                         _ => panic!(concat!("bad MacNodeRef kind (expected ",
@@ -110,15 +110,15 @@ as_mac_node_ref_impls! {
 }
 
 impl<T: AsMacNodeRef + ?Sized + 'static> AsMacNodeRef for P<T> {
-    fn as_mac_node_ref<'a>(&'a self) -> MacNodeRef<'a> {
+    fn as_mac_node_ref(&self) -> MacNodeRef<'_> {
         <T as AsMacNodeRef>::as_mac_node_ref(self)
     }
 
-    fn from_mac_node_ref<'a>(_r: MacNodeRef<'a>) -> &'a Self {
+    fn from_mac_node_ref(_r: MacNodeRef<'_>) -> &Self {
         panic!("can't get reference to P<T>")
     }
 
-    fn clone_from_mac_node_ref<'a>(r: MacNodeRef<'a>) -> Self {
+    fn clone_from_mac_node_ref(r: MacNodeRef<'_>) -> Self {
         P(<T as AsMacNodeRef>::clone_from_mac_node_ref(r))
     }
 }

@@ -188,7 +188,7 @@ fn is_fn(hir_map: &HirMap, def_id: DefId) -> bool {
 
 /// Run the intraprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_intra<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>, tcx: TyCtxt<'tcx>) {
+fn analyze_intra<'tcx>(cx: &mut Ctxt<'_, 'tcx>, hir_map: &HirMap<'tcx>, tcx: TyCtxt<'tcx>) {
     for &def_id in tcx.mir_keys(()).iter() {
         let def_id = def_id.to_def_id();
 
@@ -213,7 +213,7 @@ fn analyze_intra<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>, 
 /// Add conservative assignments for extern functions that we can't
 /// analyze. Results are written back into the first variant for each external
 /// function in the `Ctxt`.
-fn analyze_externs<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>) {
+fn analyze_externs<'tcx>(cx: &mut Ctxt<'_, 'tcx>, hir_map: &HirMap<'tcx>) {
     for (def_id, func_summ) in cx.funcs_mut() {
         if func_summ.cset_provided {
             continue;
@@ -252,7 +252,7 @@ fn analyze_externs<'tcx, 'lty>(cx: &mut Ctxt<'lty, 'tcx>, hir_map: &HirMap<'tcx>
 
 /// Run the interprocedural step of polymorphic signature inference.  Results are written back into
 /// the `Ctxt`.
-fn analyze_inter<'lty, 'tcx>(cx: &mut Ctxt<'lty, 'tcx>) {
+fn analyze_inter(cx: &mut Ctxt<'_, '_>) {
     let mut inter_cx = InterCtxt::new(cx);
     inter_cx.process();
     inter_cx.finish();
@@ -274,7 +274,7 @@ fn is_mut_t(ty: &Ty) -> bool {
 /// so that ownership analysis can reason about them properly
 // TODO: When we want to add more constraints to functions here, we should make this
 // more generic
-fn register_std_constraints<'a, 'tcx, 'lty>(ctxt: &mut Ctxt<'lty, 'tcx>, tctxt: TyCtxt<'tcx>) {
+fn register_std_constraints<'a, 'tcx>(ctxt: &mut Ctxt<'_, 'tcx>, tctxt: TyCtxt<'tcx>) {
     for (def_id, func_summ) in ctxt.funcs_mut() {
         let fn_name_path = def_path_string_no_crate(tctxt, *def_id);
 

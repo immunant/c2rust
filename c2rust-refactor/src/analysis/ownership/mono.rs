@@ -18,8 +18,8 @@ pub fn infer_outputs(summ: &FuncSumm) -> IndexVec<Var, bool> {
         }
     }
 
-    fn walk_input<'lty, 'tcx>(
-        ty: LTy<'lty, 'tcx>,
+    fn walk_input<'lty>(
+        ty: LTy<'lty, '_>,
         is_out: &mut IndexVec<Var, bool>,
         cset: &ConstraintSet<'lty>,
     ) {
