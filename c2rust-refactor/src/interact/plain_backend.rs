@@ -30,7 +30,7 @@ where
         let mut in_ = in_.lock();
 
         let mut line = String::new();
-        while let Ok(_) = in_.read_line(&mut line) {
+        while in_.read_line(&mut line).is_ok() {
             // Drop trailing '\n'
             let end = line.len() - 1;
             let msg = decode_message(&line[..end]).unwrap();

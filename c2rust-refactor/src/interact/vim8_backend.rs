@@ -33,7 +33,7 @@ where
         let mut in_ = in_.lock();
 
         let mut line = String::new();
-        while let Ok(_) = in_.read_line(&mut line) {
+        while in_.read_line(&mut line).is_ok() {
             let json = json::parse(&line).unwrap();
             let msg = decode_message(json).unwrap();
             info!("received: {:?}", msg);

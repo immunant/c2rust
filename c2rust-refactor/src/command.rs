@@ -264,7 +264,7 @@ impl RefactorState {
     /// later `save_crate`s will simply keep using the original source text (even if it no longer
     /// matches the text on disk) as the basis for rewriting.
     pub fn save_crate(&mut self) {
-        if let None = self.krate {
+        if self.krate.is_none() {
             return;
         }
 
