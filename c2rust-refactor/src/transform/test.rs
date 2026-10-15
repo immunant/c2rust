@@ -290,7 +290,7 @@ pub fn register_commands(reg: &mut Registry) {
         let mut remove_idxs = HashSet::new();
 
         for part in args[0].split(",") {
-            if part == "" {
+            if part.is_empty() {
                 continue;
             }
             let idx = usize::from_str(part).unwrap();
@@ -298,7 +298,7 @@ pub fn register_commands(reg: &mut Registry) {
         }
 
         for part in args[1].split(",") {
-            if part == "" {
+            if part.is_empty() {
                 continue;
             }
             let idx = usize::from_str(part).unwrap();
