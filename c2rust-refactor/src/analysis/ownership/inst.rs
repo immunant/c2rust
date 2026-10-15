@@ -1,6 +1,5 @@
 use std::cmp;
 use std::iter;
-use std::mem;
 use std::usize;
 
 use log::{debug, log_enabled, warn, Level};
@@ -65,7 +64,7 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
             return vec![];
         }
 
-        let inst_sel = mem::replace(&mut self.inst_sel, Vec::new());
+        let inst_sel = std::mem::take(&mut self.inst_sel);
         inst_sel.into_iter().map(|i| i.unwrap()).collect::<Vec<_>>()
     }
 

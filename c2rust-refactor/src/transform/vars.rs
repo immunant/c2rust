@@ -108,7 +108,7 @@ impl Transform for SinkLets {
             }
 
             fn visit_block(&mut self, b: &'ast Block) {
-                let old_cur = mem::replace(&mut self.cur, HashMap::new());
+                let old_cur = std::mem::take(&mut self.cur);
                 visit::walk_block(self, b);
                 let uses = mem::replace(&mut self.cur, old_cur);
                 for &id in uses.keys() {
@@ -119,7 +119,7 @@ impl Transform for SinkLets {
             }
 
             fn visit_item(&mut self, i: &'ast Item) {
-                let old_cur = mem::replace(&mut self.cur, HashMap::new());
+                let old_cur = std::mem::take(&mut self.cur);
                 visit::walk_item(self, i);
                 // Discard collected uses.  They aren't meaningful outside the item body.
                 self.cur = old_cur;
@@ -316,7 +316,7 @@ impl Transform for FoldLetAssign {
             }
 
             fn visit_stmt(&mut self, s: &'ast Stmt) {
-                let old_cur = mem::replace(&mut self.cur, HashSet::new());
+                let old_cur = std::mem::take(&mut self.cur);
                 visit::walk_stmt(self, s);
                 let uses = mem::replace(&mut self.cur, old_cur);
                 for &id in &uses {
@@ -327,7 +327,7 @@ impl Transform for FoldLetAssign {
             }
 
             fn visit_item(&mut self, i: &'ast Item) {
-                let old_cur = mem::replace(&mut self.cur, HashSet::new());
+                let old_cur = std::mem::take(&mut self.cur);
                 visit::walk_item(self, i);
                 // Discard collected uses.  They aren't meaningful outside the item body.
                 self.cur = old_cur;
