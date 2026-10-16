@@ -3,7 +3,7 @@ use rustc_ast::ptr::P;
 use rustc_ast::*;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::{Instance, Ty, TyCtxt, TyKind};
+use rustc_middle::ty::{Instance, ParamEnv, Ty, TyCtxt, TyKind};
 use rustc_span::symbol::Ident;
 use std::collections::{HashMap, HashSet};
 
@@ -51,8 +51,21 @@ pub fn fix_users(
         let new_ty = cx.def_type(new_did);
 
         if !crate::matches!([old_ty.kind()] TyKind::FnDef(..)) {
+            // An incomplete C extern array is translated as [T; 0]. Replacing
+            // it with its complete definition needs no value cast (Rust does
+            // not allow casts between arrays). Keep this exception local to
+            // foreign declarations: zero-length ADT fields must still compare
+            // strictly because their lengths affect the containing layout.
+            let incomplete_array = match (old_ty.kind(), new_ty.kind()) {
+                (TyKind::Array(old_elem, old_len), TyKind::Array(new_elem, _)) => {
+                    tcx.is_foreign_item(old_did)
+                        && old_len.try_eval_target_usize(tcx, ParamEnv::empty()) == Some(0)
+                        && ty_compare.structural_eq_tys(*old_elem, *new_elem)
+                }
+                _ => false,
+            };
             // Non-fn items are easy to handle.
-            if !ty_compare.structural_eq_tys(old_ty, new_ty) {
+            if !incomplete_array && !ty_compare.structural_eq_tys(old_ty, new_ty) {
                 ty_replace_map.insert((old_did, TyLoc::Whole), (old_ty, new_ty));
             }
             continue;
