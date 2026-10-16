@@ -420,6 +420,11 @@ fn test_remove_paren() {
 }
 
 #[test]
+fn test_remove_redundant_let_types() {
+    refactor("remove_redundant_let_types").test();
+}
+
+#[test]
 fn test_remove_unused_labels() {
     refactor("remove_unused_labels").test();
 }
