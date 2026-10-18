@@ -2526,17 +2526,17 @@ impl ConversionContext {
                 {
                     let name = from_value::<String>(node.extras[0].clone())
                         .expect("Macros must have a name");
-                    let raw_params = from_value::<Vec<Value>>(node.extras[1].clone())
-                        .expect("Macros must have a parameter list");
-                    let params: Vec<String> = raw_params
-                        .into_iter()
-                        .map(|v| from_value(v).expect("param name"))
+                    let parameters = node
+                        .children
+                        .iter()
+                        .flatten()
+                        .map(|&child| self.visit_decl(child))
                         .collect();
 
                     let mac_object = match node.tag {
                         ASTEntryTag::TagMacroObjectDef => CDeclKind::MacroObject { name },
                         ASTEntryTag::TagMacroFunctionDef => {
-                            CDeclKind::MacroFunction { name, params }
+                            CDeclKind::MacroFunction { name, parameters }
                         }
                         _ => unreachable!("Unexpected tag for macro"),
                     };
@@ -2548,6 +2548,15 @@ impl ConversionContext {
                     // doesn't put them in top_nodes, but we do need to process
                     // them early.
                     self.typed_context.c_decls_top.push(CDeclId(new_id));
+                }
+
+                ASTEntryTag::TagMacroParameterDef if expected_ty & DECL != 0 => {
+                    let name = from_value::<String>(node.extras[0].clone())
+                        .expect("Macro parameters must have a name");
+                    let decl_kind = CDeclKind::MacroParameter { name };
+
+                    self.add_decl(new_id, located(node, decl_kind));
+                    self.processed_nodes.insert(new_id, OTHER_DECL);
                 }
 
                 ASTEntryTag::TagNonCanonicalDecl if expected_ty & DECL != 0 => {

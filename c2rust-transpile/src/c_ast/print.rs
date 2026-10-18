@@ -656,8 +656,26 @@ impl<W: Write> Printer<W> {
                 self.writer.write_fmt(format_args!("#define {} ", name))?;
             }
 
-            MacroFunction { name, .. } => {
-                self.writer.write_fmt(format_args!("#define {}() ", name))?;
+            MacroFunction { name, parameters } => {
+                self.writer.write_fmt(format_args!("#define {}(", name))?;
+                self.indent();
+                for parameter in parameters {
+                    match context.c_decls.get(parameter).map(|l| &l.kind) {
+                        Some(MacroParameter { .. }) => {
+                            self.pad()?;
+                            self.print_decl(*parameter, false, false, context)?;
+                            self.writer.write_all(b",\n")?;
+                        }
+                        _ => panic!("Function argument is not MacroParameter"),
+                    }
+                }
+                self.dedent();
+                self.pad()?;
+                self.writer.write_all(b")")?;
+            }
+
+            MacroParameter { name } => {
+                self.writer.write_fmt(format_args!("{}", name))?;
             }
 
             &NonCanonicalDecl { canonical_decl } => {

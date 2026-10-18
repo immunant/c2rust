@@ -1018,6 +1018,28 @@ class TranslateASTVisitor final
                   });
         for (auto &I : macro_vec) {
             auto &Mac = I.first;
+            std::vector<const void *> childIds;
+
+            // Encode the parameters as their own nodes.
+            for (size_t i = 0; i != Mac->getNumParams(); ++i) {
+                const void* parameter_id = getMacroParameterId(Mac, i);
+                childIds.push_back(parameter_id);
+
+                encode_entry_raw(
+                    parameter_id,
+                    TagMacroParameterDef,
+                    SourceRange(),
+                    QualType(),
+                    false,
+                    false,
+                    false,
+                    std::vector<const void *>(),
+                    [Mac, i](CborEncoder *local) {
+                        cbor_encode_string(local, Mac->params()[i]->getName().str());
+                    }
+                );
+            }
+
             auto &Info = I.second;
             auto Name = Info.Name;
             ASTEntryTag tag;
@@ -1026,24 +1048,25 @@ class TranslateASTVisitor final
             else
                 tag = TagMacroObjectDef;
 
-            std::vector<const void *> childIds;
             auto range = SourceRange(Mac->getDefinitionLoc(), Mac->getDefinitionEndLoc());
             // Extend the range to include the entire final token.
             expandSpanToFinalChar(range, Context);
             encode_entry_raw(Mac, tag, range, QualType(), false,
                              false, false, childIds, [Name, Mac](CborEncoder *local) {
                 cbor_encode_string(local, Name.str());
-
-                CborEncoder array;
-                cbor_encoder_create_array(local, &array, Mac->getNumParams());
-
-                for (auto IdentifierInfo : Mac->params()) {
-                    cbor_encode_string(&array, IdentifierInfo->getName().str());
-                }
-
-                cbor_encoder_close_container(local, &array);
             });
 
+        }
+    }
+
+    const void* getMacroParameterId(MacroInfo* macro, size_t parameter_index) {
+        if (parameter_index >= macro->getNumParams()) {
+            return nullptr;
+        } else {
+            // We use a second-level pointer that points into the array of `IdentifierInfo*`,
+            // rather than the `IdentifierInfo *` directly, because the identifier pointer may
+            // not be globally unique to this macro and could be shared with other stuff.
+            return macro->param_begin() + parameter_index;
         }
     }
 

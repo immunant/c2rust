@@ -1900,8 +1900,12 @@ pub enum CDeclKind {
 
     MacroFunction {
         name: String,
-        params: Vec<String>,
+        parameters: Vec<CDeclId>,
         // replacements: Vec<CExprId>,
+    },
+
+    MacroParameter {
+        name: String,
     },
 
     NonCanonicalDecl {
