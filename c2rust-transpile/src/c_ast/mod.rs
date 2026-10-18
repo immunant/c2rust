@@ -135,7 +135,7 @@ pub(crate) struct MacroInvocationInfo {
     /// If `macro_id` is a functional macro, the value of the known named arguments that were
     /// passed to the macro. This is not guaranteed to hold every argument the macro needs, only
     /// those that were found and exported by the C++ exporter.
-    pub(crate) arguments: HashMap<String, CExprId>,
+    pub(crate) arguments: HashMap<CDeclId, CExprId>,
 }
 
 /// Comments associated with a typed AST context

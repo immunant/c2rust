@@ -743,13 +743,13 @@ class TranslateASTVisitor final
     struct MacroInvocationInfo {
         uint32_t key;
         MacroInfo* macro;
-        StringRef parameter;
+        const void* parameter;
     };
 
     // This stores a raw encoding of the macro call site SourceLocation, since
     // SourceLocation isn't hashable.
     // TODO: Can this be made to use `unordered_set` for speed?
-    std::set<std::pair<unsigned, const StringRef>> macroCallSites;
+    std::set<std::pair<unsigned, const void*>> macroCallSites;
     SmallVector<MacroInvocationInfo, 1> curMacroInvocationStack;
     StringRef curMacroInvocationSource;
 
@@ -843,8 +843,8 @@ class TranslateASTVisitor final
                 cbor_encode_uint(&expansionEnc, I->key);
                 cbor_encode_uint(&expansionEnc, uintptr_t(I->macro));
 
-                if (!I->parameter.empty()) {
-                    cbor_encode_string(&expansionEnc, I->parameter.str());
+                if (I->parameter) {
+                    cbor_encode_uint(&expansionEnc, uintptr_t(I->parameter));
                 } else {
                     cbor_encode_null(&expansionEnc);
                 }
@@ -937,14 +937,14 @@ class TranslateASTVisitor final
                          isVaList(ast, T), encodeMacroInvocations, childIds, extra);
     }
 
-    bool VisitMacro(StringRef name, StringRef parameter, SourceLocation loc, MacroInfo *mac, Expr *E) {
+    bool VisitMacro(StringRef name, const void* parameter, SourceLocation loc, MacroInfo *mac, Expr *E) {
         // TODO: handle builtin macros
         if (mac->isBuiltinMacro())
             return false;
         // If this isn't the first time we've seen this macro call site, we
         // shouldn't associate this expression with the macro as it is a subexpr
         // of a previously seen expression.
-        std::pair<unsigned, StringRef> key { loc.getRawEncoding(), parameter };
+        std::pair<unsigned, const void*> key { loc.getRawEncoding(), parameter };
         if (!macroCallSites.insert(key).second)
             return false;
         auto &info = macros[mac];
@@ -1472,16 +1472,15 @@ class TranslateASTVisitor final
 
         for (auto &elem : ExpansionStack) {
             auto loc = elem.range.getBegin();
-            StringRef parameter;
+            const IdentifierInfo* parameter = nullptr;
 
             if (elem.isParameter) {
-                auto IdentifierInfo = getIdentifierInfo(loc);
+                parameter = getIdentifierInfo(loc);
 
-                if (!IdentifierInfo) {
+                if (!parameter) {
                     return true;
                 }
 
-                parameter = IdentifierInfo->getName();
                 loc = Mgr.getImmediateExpansionRange(loc).getBegin();
             }
 
@@ -1497,8 +1496,15 @@ class TranslateASTVisitor final
                 return true;
             }
 
-            if (VisitMacro(IdentifierInfo->getName(), parameter, loc, MacroInfo, E)) {
-                MacroInvocationInfo info = { loc.getRawEncoding(), MacroInfo, parameter };
+            const void* parameter_id = nullptr;
+
+            if (parameter) {
+                size_t index = MacroInfo->getParameterNum(parameter);
+                parameter_id = getMacroParameterId(MacroInfo, index);
+            }
+
+            if (VisitMacro(IdentifierInfo->getName(), parameter_id, loc, MacroInfo, E)) {
+                MacroInvocationInfo info = { loc.getRawEncoding(), MacroInfo, parameter_id };
                 curMacroInvocationStack.push_back(info);
             }
         }

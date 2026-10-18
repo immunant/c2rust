@@ -1074,9 +1074,10 @@ impl ConversionContext {
                     let &MacroInvocationInfoRaw {
                         key,
                         macro_id,
-                        ref parameter,
+                        param_id,
                     } = info;
 
+                    let param_id = param_id.map(|param_id| self.visit_decl(param_id));
                     let macro_id = CDeclId(self.visit_node_type(macro_id, MACRO_DECL));
 
                     // Is this a macro invocation ID we've seen previously?
@@ -1092,9 +1093,9 @@ impl ConversionContext {
                     assert_eq!(macro_id, info.macro_id);
 
                     // Fill in the values that were provided in the `MacroInvocationInfoRaw`.
-                    if let Some(parameter) = parameter {
+                    if let Some(param_id) = param_id {
                         // This expression is an argument for a functional macro.
-                        info.arguments.insert(parameter.clone(), expr_id);
+                        info.arguments.insert(param_id, expr_id);
                     } else {
                         // This expression is the result of a macro expansion.
                         assert!(
