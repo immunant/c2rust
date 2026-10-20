@@ -105,8 +105,8 @@ impl Transform for ReconstructForRange {
                     return;
                 }
             };
-            if !mcx.try_match(&*i_plus_eq, &incr).is_ok()
-                && !mcx.try_match(&*i_eq_plus, &incr).is_ok()
+            if mcx.try_match(&*i_plus_eq, &incr).is_err()
+                && mcx.try_match(&*i_eq_plus, &incr).is_err()
             {
                 return;
             }
