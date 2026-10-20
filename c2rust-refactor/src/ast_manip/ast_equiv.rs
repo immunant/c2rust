@@ -278,7 +278,7 @@ impl AstEquiv for Ident {
                 span: span2,
             },
         ) = (self, other);
-        AstEquiv::ast_equiv(name1, name2) && AstEquiv::ast_equiv(span1, span2) && true
+        AstEquiv::ast_equiv(name1, name2) && AstEquiv::ast_equiv(span1, span2)
     }
 
     fn unnamed_equiv(&self, other: &Self) -> bool {
