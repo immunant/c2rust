@@ -470,8 +470,7 @@ pub fn rewrite(old: &Item, new: &Item, mut rcx: RewriteCtxtRef) -> bool {
             let ok = Rewrite::rewrite(attrs1, attrs2, rcx.borrow())
                 && Rewrite::rewrite(id1, id2, rcx.borrow())
                 && Rewrite::rewrite(kind1, kind2, rcx.borrow())
-                && Rewrite::rewrite(span1, span2, rcx.borrow())
-                && true;
+                && Rewrite::rewrite(span1, span2, rcx.borrow());
             if !ok {
                 return false;
             }
