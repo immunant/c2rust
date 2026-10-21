@@ -3,6 +3,91 @@ use std::iter::FromIterator;
 use std::mem;
 use syn::{Block, Expr, Item, Stmt};
 
+#[derive(Debug, Clone)]
+pub(crate) struct Tagged<T> {
+    val: T,
+    is_unsafe: bool,
+}
+
+impl<T> Tagged<T> {
+    pub(crate) fn new(val: T) -> Self {
+        Tagged {
+            val,
+            is_unsafe: false,
+        }
+    }
+
+    pub(crate) fn is_unsafe(&self) -> bool {
+        self.is_unsafe
+    }
+
+    pub(crate) fn set_unsafe(mut self) -> Self {
+        self.is_unsafe = true;
+        self
+    }
+
+    pub(crate) fn discard_unsafe(self) -> T {
+        self.val
+    }
+
+    pub(crate) fn map<U>(self, f: impl FnOnce(T) -> U) -> Tagged<U> {
+        Tagged {
+            val: f(self.val),
+            is_unsafe: self.is_unsafe,
+        }
+    }
+
+    pub(crate) fn flat_map<U>(self, f: impl FnOnce(T) -> U) -> <Tagged<U> as Flattenable>::Output
+    where
+        Tagged<U>: Flattenable,
+    {
+        self.map(f).flatten()
+    }
+
+    pub(crate) fn zip<U>(self, next: Tagged<U>) -> Tagged<(T, U)> {
+        Tagged {
+            val: (self.val, next.val),
+            is_unsafe: self.is_unsafe || next.is_unsafe,
+        }
+    }
+}
+
+pub(crate) type TaggedExpr = Tagged<Box<Expr>>;
+
+impl TaggedExpr {
+    /// If `is_unsafe` is true, wraps `val` in an `unsafe` block and unsets `is_unsafe`.
+    pub(crate) fn wrap_unsafe(mut self) -> Self {
+        if mem::take(&mut self.is_unsafe) {
+            self.val = mk().unsafe_block_expr(vec![mk().expr_stmt(self.val)]);
+        }
+
+        self
+    }
+
+    /// If `is_unsafe` is true, wraps `val` in an `unsafe` block. Then returns `val`.
+    pub(crate) fn into_wrapped_expr(self) -> Box<Expr> {
+        self.wrap_unsafe().val
+    }
+}
+
+impl<T> From<T> for Tagged<T> {
+    fn from(value: T) -> Self {
+        Tagged::new(value)
+    }
+}
+
+impl<T> Flattenable for Tagged<Tagged<T>> {
+    type Output = Tagged<T>;
+
+    fn flatten(self) -> Self::Output {
+        let Tagged { val, is_unsafe } = self;
+        Tagged {
+            val: val.val,
+            is_unsafe: is_unsafe || val.is_unsafe,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WithStmts<T> {
     stmts: Vec<Stmt>,
@@ -31,28 +116,14 @@ impl<T> WithStmts<T> {
     where
         F: FnOnce(T) -> WithStmts<U>,
     {
-        let mut next = f(self.val);
-        let mut stmts = self.stmts;
-        stmts.append(&mut next.stmts);
-        WithStmts {
-            val: next.val,
-            stmts,
-            is_unsafe: self.is_unsafe || next.is_unsafe,
-        }
+        self.flat_map(f)
     }
 
     pub fn and_then_try<U, E, F>(self, f: F) -> Result<WithStmts<U>, E>
     where
         F: FnOnce(T) -> Result<WithStmts<U>, E>,
     {
-        let mut next = f(self.val)?;
-        let mut stmts = self.stmts;
-        stmts.append(&mut next.stmts);
-        Ok(WithStmts {
-            val: next.val,
-            stmts,
-            is_unsafe: self.is_unsafe || next.is_unsafe,
-        })
+        self.try_flat_map(f)
     }
 
     pub fn map<U, F>(self, f: F) -> WithStmts<U>
@@ -75,6 +146,23 @@ impl<T> WithStmts<T> {
             stmts: self.stmts,
             is_unsafe: self.is_unsafe,
         })
+    }
+
+    pub(crate) fn flat_map<U>(self, f: impl FnOnce(T) -> U) -> <WithStmts<U> as Flattenable>::Output
+    where
+        WithStmts<U>: Flattenable,
+    {
+        self.map(f).flatten()
+    }
+
+    pub(crate) fn try_flat_map<U, E>(
+        self,
+        f: impl FnOnce(T) -> Result<U, E>,
+    ) -> Result<<WithStmts<U> as Flattenable>::Output, E>
+    where
+        WithStmts<U>: Flattenable,
+    {
+        Ok(self.try_map(f)?.flatten())
     }
 
     pub fn zip<U>(self, mut next: WithStmts<U>) -> WithStmts<(T, U)> {
@@ -197,6 +285,65 @@ impl WithStmts<Box<Expr>> {
     }
 }
 
+impl<T> From<Tagged<T>> for WithStmts<T> {
+    fn from(value: Tagged<T>) -> Self {
+        let is_unsafe = value.is_unsafe();
+        WithStmts {
+            stmts: vec![],
+            val: value.discard_unsafe(),
+            is_unsafe,
+        }
+    }
+}
+
+impl<T> Flattenable for WithStmts<WithStmts<T>> {
+    type Output = WithStmts<T>;
+
+    fn flatten(self) -> Self::Output {
+        let WithStmts {
+            mut stmts,
+            val,
+            is_unsafe,
+        } = self;
+        stmts.extend(val.stmts);
+        WithStmts {
+            val: val.val,
+            stmts,
+            is_unsafe: is_unsafe || val.is_unsafe,
+        }
+    }
+}
+
+impl<T> Flattenable for WithStmts<Tagged<T>> {
+    type Output = WithStmts<T>;
+
+    fn flatten(self) -> Self::Output {
+        let WithStmts {
+            stmts,
+            val,
+            is_unsafe,
+        } = self;
+        WithStmts {
+            val: val.val,
+            stmts,
+            is_unsafe: is_unsafe || val.is_unsafe,
+        }
+    }
+}
+
+impl<T> Flattenable for Tagged<WithStmts<T>> {
+    type Output = WithStmts<T>;
+
+    fn flatten(self) -> Self::Output {
+        let Tagged { val, is_unsafe } = self;
+        WithStmts {
+            val: val.val,
+            stmts: val.stmts,
+            is_unsafe: is_unsafe || val.is_unsafe,
+        }
+    }
+}
+
 impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
     fn from_iter<I: IntoIterator<Item = WithStmts<T>>>(value: I) -> Self {
         let mut stmts = vec![];
@@ -209,4 +356,9 @@ impl<T> FromIterator<WithStmts<T>> for WithStmts<Vec<T>> {
         }
         WithStmts::new(stmts, res).merge_unsafe(is_unsafe)
     }
+}
+
+pub(crate) trait Flattenable {
+    type Output;
+    fn flatten(self) -> Self::Output;
 }
