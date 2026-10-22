@@ -4394,7 +4394,7 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            CastKind::BitCast | CastKind::NoOp | CastKind::ConstCast => {
+            CastKind::BitCast | CastKind::NoOp => {
                 if !is_explicit
                     && self
                         .ast_context
