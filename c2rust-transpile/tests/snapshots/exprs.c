@@ -73,3 +73,34 @@ void bypass_cast_with_typedef(void) {
     int_t (*pftr_implicit)(int) = pfi;
     int_t (*pftr_explicit)(int) = (int_t (*)(int)) pfi;
 }
+
+#define P ((int *)0)
+
+void mut_to_const_ptr_cast(int cond, const int *c, int *m, int **mm) {
+    // Implicit BitCast
+    int bit_cast = c == m;
+    const int* conditional = cond ? c : m;
+
+    // Mutable pointer in macro
+    int macro = c == P;
+
+    // Mutable borrow
+    const int *borrow = &cond;
+
+    // Mutable array element
+    const int *array[] = { m };
+
+    // Other qualifiers differ, so it's no longer treated as mut-to-const
+    const volatile int *vol = m;
+
+    // Const coming through a typedef isn't seen by is_mut_to_const_pointer_cast
+    typedef const int cint;
+    cint *td[] = { m };
+
+    // Only the outer pointer level gains const
+    int *const *ptr_ptr = mm;
+}
+
+// Mutable borrow of global/static
+int global;
+const int *global_ptr = &global;

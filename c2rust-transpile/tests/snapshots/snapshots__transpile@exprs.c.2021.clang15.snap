@@ -32,6 +32,7 @@ impl C2Rust_Unnamed {
     pub const B: Self = Self(1);
     pub const C: Self = Self(2);
 }
+pub type cint = ::core::ffi::c_int;
 #[no_mangle]
 pub unsafe extern "C" fn unsigned_compound_desugaring() {
     let mut i: ::core::ffi::c_int = 0 as ::core::ffi::c_int;
@@ -94,3 +95,30 @@ pub unsafe extern "C" fn bypass_cast_with_typedef() {
     let mut pftr_implicit: Option<unsafe extern "C" fn(::core::ffi::c_int) -> int_t> = pfi;
     let mut pftr_explicit: Option<unsafe extern "C" fn(::core::ffi::c_int) -> int_t> = pfi;
 }
+pub const P: *mut ::core::ffi::c_int = ::core::ptr::null_mut::<::core::ffi::c_int>();
+#[no_mangle]
+pub unsafe extern "C" fn mut_to_const_ptr_cast(
+    mut cond: ::core::ffi::c_int,
+    mut c: *const ::core::ffi::c_int,
+    mut m: *mut ::core::ffi::c_int,
+    mut mm: *mut *mut ::core::ffi::c_int,
+) {
+    let mut bit_cast: ::core::ffi::c_int =
+        (c == m as *const ::core::ffi::c_int) as ::core::ffi::c_int;
+    let mut conditional: *const ::core::ffi::c_int = if cond != 0 {
+        c
+    } else {
+        m as *const ::core::ffi::c_int
+    };
+    let mut r#macro: ::core::ffi::c_int = c.is_null() as ::core::ffi::c_int;
+    let mut borrow: *const ::core::ffi::c_int = &raw mut cond as *const ::core::ffi::c_int;
+    let mut array: [*const ::core::ffi::c_int; 1] = [m as *const ::core::ffi::c_int];
+    let mut vol: *const ::core::ffi::c_int = m as *const ::core::ffi::c_int;
+    let mut td: [*const cint; 1] = [m as *const cint];
+    let mut ptr_ptr: *const *mut ::core::ffi::c_int = mm as *const *mut ::core::ffi::c_int;
+}
+#[no_mangle]
+pub static mut global: ::core::ffi::c_int = 0;
+#[no_mangle]
+pub static mut global_ptr: *const ::core::ffi::c_int =
+    unsafe { &raw const global as *mut ::core::ffi::c_int as *const ::core::ffi::c_int };
