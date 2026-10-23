@@ -111,10 +111,10 @@ impl<'a> Stream<'a> {
     }
 
     fn maybe_parens(&mut self) -> Option<Stream<'a>> {
-        let has_parens = match self.peek() {
-            Some(&TokenTree::Delimited(_, Delimiter::Parenthesis, _)) => true,
-            _ => false,
-        };
+        let has_parens = matches!(
+            self.peek(),
+            Some(&TokenTree::Delimited(_, Delimiter::Parenthesis, _))
+        );
 
         if has_parens {
             Some(self.parens().unwrap())

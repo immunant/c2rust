@@ -4,7 +4,6 @@ use rustc_ast::{AttrId, NodeId, DUMMY_NODE_ID};
 use rustc_span::source_map::symbol::Symbol;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::mem;
 use std::ops::Bound::Included;
 use std::ops::Deref;
 
@@ -36,7 +35,7 @@ impl NodeMap {
     pub fn commit(&mut self) {
         let mut new_id_map = HashMap::new();
         trace!("committing edges");
-        for (id2, id3) in mem::replace(&mut self.pending_edges, BTreeSet::new()) {
+        for (id2, id3) in std::mem::take(&mut self.pending_edges) {
             if id2 == DUMMY_NODE_ID || id3 == DUMMY_NODE_ID {
                 continue;
             }
@@ -152,7 +151,7 @@ impl NodeMap {
         new_map
     }
 
-    pub fn transfer<'a>(&'a self, id: NodeId) -> impl Iterator<Item = NodeId> + 'a {
+    pub fn transfer(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         let lo = (id, NodeId::from_u32(0));
         let hi = (id, NodeId::MAX);
 

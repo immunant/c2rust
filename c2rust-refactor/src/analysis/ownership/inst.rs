@@ -1,6 +1,5 @@
 use std::cmp;
 use std::iter;
-use std::mem;
 use std::usize;
 
 use log::{debug, log_enabled, warn, Level};
@@ -65,7 +64,7 @@ impl<'lty, 'tcx> InstCtxt<'lty, 'tcx> {
             return vec![];
         }
 
-        let inst_sel = mem::replace(&mut self.inst_sel, Vec::new());
+        let inst_sel = std::mem::take(&mut self.inst_sel);
         inst_sel.into_iter().map(|i| i.unwrap()).collect::<Vec<_>>()
     }
 
@@ -158,8 +157,8 @@ pub fn find_instantiations(cx: &mut Ctxt) {
     }
 }
 
-pub fn build_inst_cset<'lty, 'tcx>(
-    cx: &'lty Ctxt<'lty, 'tcx>,
+pub fn build_inst_cset<'lty>(
+    cx: &'lty Ctxt<'lty, '_>,
     variant: &VariantSumm<'lty>,
     assign: &IndexVec<Var, ConcretePerm>,
 ) -> ConstraintSet<'lty> {
@@ -178,10 +177,7 @@ pub fn build_inst_cset<'lty, 'tcx>(
         });
     }
 
-    cset.retain_perms(cx.arena, |p| match p {
-        Perm::StaticVar(_) => false,
-        _ => true,
-    });
+    cset.retain_perms(cx.arena, |p| !matches!(p, Perm::StaticVar(_)));
 
     cset.simplify(cx.arena);
 

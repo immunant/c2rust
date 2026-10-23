@@ -29,7 +29,7 @@ pub enum Perm<'lty> {
     LocalVar(Var),
 }
 
-impl<'lty, 'tcx> Perm<'lty> {
+impl<'lty> Perm<'lty> {
     pub fn read() -> Perm<'lty> {
         Perm::Concrete(ConcretePerm::Read)
     }
@@ -217,19 +217,14 @@ pub struct ConstraintSet<'lty> {
 
 /// Return a pair of bounds, suitable for use with `BTreeSet::range`, covering all pairs of
 /// permissions whose first element is `p`.
-fn perm_range<'lty, 'tcx>(
-    p: Perm<'lty>,
-) -> (
-    Bound<(Perm<'lty>, Perm<'lty>)>,
-    Bound<(Perm<'lty>, Perm<'lty>)>,
-) {
+fn perm_range(p: Perm<'_>) -> (Bound<(Perm<'_>, Perm<'_>)>, Bound<(Perm<'_>, Perm<'_>)>) {
     (
         Bound::Included((p, Perm::read())),
         Bound::Included((p, Perm::LocalVar(Var(!0)))),
     )
 }
 
-impl<'lty, 'tcx> ConstraintSet<'lty> {
+impl<'lty> ConstraintSet<'lty> {
     pub fn new() -> ConstraintSet<'lty> {
         ConstraintSet {
             less: BTreeSet::new(),
@@ -319,11 +314,9 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
 
         while let Some(cur) = queue.pop_front() {
             for &(_, next) in map.range(perm_range(cur)) {
-                if !seen.contains(&next) {
-                    if f(next) {
-                        seen.insert(next);
-                        queue.push_back(next);
-                    }
+                if !seen.contains(&next) && f(next) {
+                    seen.insert(next);
+                    queue.push_back(next);
                 }
             }
         }
@@ -357,9 +350,8 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     /// This function may return a lower result than necessary due to imprecise reasoning about
     /// `Min`.
     pub fn lower_bound(&self, p: Perm<'lty>) -> ConcretePerm {
-        match p {
-            Perm::Concrete(p) => return p,
-            _ => {}
+        if let Perm::Concrete(p) = p {
+            return p;
         }
 
         let mut bound = ConcretePerm::Read;
@@ -380,9 +372,8 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     /// This function may return a higher result than necessary due to imprecise reasoning about
     /// `Min`.
     pub fn upper_bound(&self, p: Perm<'lty>) -> ConcretePerm {
-        match p {
-            Perm::Concrete(p) => return p,
-            _ => {}
+        if let Perm::Concrete(p) = p {
+            return p;
         }
 
         let mut bound = ConcretePerm::Move;
@@ -534,7 +525,7 @@ impl<'a, 'lty> EditConstraintSet<'a, 'lty> {
     }
 }
 
-impl<'lty, 'tcx> ConstraintSet<'lty> {
+impl<'lty> ConstraintSet<'lty> {
     /// Remove constraints that are obviously useless, like `READ <= p`.
     pub fn remove_useless(&mut self) {
         let mut edit = self.edit();
@@ -558,15 +549,12 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
         let mut edit = self.edit();
 
         while let Some((a, b)) = edit.next() {
-            match b {
-                Perm::Min(ps) => {
-                    debug!("expand: {:?} <= {:?}", a, b);
-                    edit.remove(a, b);
-                    for &p in ps {
-                        edit.add(a, p);
-                    }
+            if let Perm::Min(ps) = b {
+                debug!("expand: {:?} <= {:?}", a, b);
+                edit.remove(a, b);
+                for &p in ps {
+                    edit.add(a, p);
                 }
-                _ => {}
             }
         }
     }
@@ -651,12 +639,11 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
                     .iter()
                     .cloned()
                     .enumerate()
-                    .filter(|&(i, _)| !to_remove.contains(&i))
-                    .next()
+                    .find(|&(i, _)| !to_remove.contains(&i))
                     .unwrap();
                 debug!("replace {:?} <= {:?} with {:?} <= {:?}", a, b, p, b);
                 edit.add(p, b);
-            } else if to_remove.len() > 0 {
+            } else if !to_remove.is_empty() {
                 edit.remove(a, b);
                 let ps = ps
                     .iter()
@@ -692,7 +679,7 @@ impl<'lty, 'tcx> ConstraintSet<'lty> {
     {
         // Collect all atomic permissions that appear in the constraint set.
         let mut atomic_perms = HashSet::new();
-        fn collect_atomic<'lty, 'tcx>(p: Perm<'lty>, dest: &mut HashSet<Perm<'lty>>) {
+        fn collect_atomic<'lty>(p: Perm<'lty>, dest: &mut HashSet<Perm<'lty>>) {
             match p {
                 Perm::Min(ps) => {
                     for &p in ps {

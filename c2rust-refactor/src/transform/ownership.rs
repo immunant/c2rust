@@ -73,7 +73,7 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
         st: &'a CommandState,
     }
 
-    impl<'lty, 'a, 'tcx> AnnotateFolder<'a, 'tcx> {
+    impl<'a, 'tcx> AnnotateFolder<'a, 'tcx> {
         fn static_attr_for(&self, id: NodeId) -> Option<Attribute> {
             self.hir_map
                 .opt_local_def_id_from_node_id(id)
@@ -111,14 +111,16 @@ fn do_annotate(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
         }
 
         fn clean_attrs(&self, attrs: &mut ThinVec<Attribute>) {
-            attrs.retain(|a| match a.name_or_empty().as_str() {
-                "ownership_mono" | "ownership_constraints" | "ownership_static" => false,
-                _ => true,
+            attrs.retain(|a| {
+                !matches!(
+                    a.name_or_empty().as_str(),
+                    "ownership_mono" | "ownership_constraints" | "ownership_static"
+                )
             });
         }
     }
 
-    impl<'lty, 'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
+    impl<'a, 'tcx> MutVisitor for AnnotateFolder<'a, 'tcx> {
         fn flat_map_item(&mut self, i: P<Item>) -> SmallVec<[P<Item>; 1]> {
             if !self.st.marked(i.id, self.label) {
                 return mut_visit::noop_flat_map_item(i, self);
@@ -391,7 +393,7 @@ fn do_split_variants(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
                 fl.attrs.push(build_mono_attr(&mr.suffix, &mr.assign));
                 fl.attrs.push(build_variant_attr(&path_str));
 
-                fl.body.as_mut().map(|b| {
+                if let Some(b) = fl.body.as_mut() {
                     MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                         let fref_idx = match_or!([span_fref_idx.get(&e.span)]
                                              Some(&x) => x; return);
@@ -417,7 +419,7 @@ fn do_split_variants(st: &CommandState, cx: &RefactorCtxt, label: Symbol) {
                         let new_name = callee_new_name(cx, &ana, dest, dest_mono_idx);
                         rename_callee(e, &new_name);
                     })
-                });
+                }
 
                 fls.push(fl);
             }

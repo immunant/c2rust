@@ -170,7 +170,7 @@ impl Transform for RetypeArgument {
             // see `x` again in the recursive call.  We keep track of which nodes have already been
             // rewritten so that we don't end up with a stack overflow.
             let mut rewritten_nodes = HashSet::new();
-            fl.body.as_mut().map(|b| {
+            if let Some(b) = fl.body.as_mut() {
                 MutVisitNodes::visit(b, |e: &mut P<Expr>| {
                     if let Some(hir_id) = cx.try_resolve_expr_to_hid(e) {
                         if changed_args.contains(&hir_id) && !rewritten_nodes.contains(&e.id) {
@@ -181,7 +181,7 @@ impl Transform for RetypeArgument {
                         }
                     }
                 })
-            });
+            }
         });
 
         // (2) Rewrite callsites of modified functions.
@@ -262,13 +262,13 @@ impl Transform for RetypeReturn {
             fl.decl.output = FnRetTy::Ty(new_ty.clone());
 
             // Rewrite output expressions using `wrap`.
-            fl.body.as_mut().map(|b| {
+            if let Some(b) = fl.body.as_mut() {
                 fold_output_exprs(b, true, |e| {
                     let mut bnd = Bindings::new();
                     bnd.add("__old", e.clone());
                     *e = wrap.clone().subst(st, cx, &bnd);
                 })
-            });
+            }
 
             mod_fns.insert(cx.node_def_id(fl.id));
         });
@@ -346,17 +346,14 @@ impl Transform for RetypeStatic {
             }
 
             smallvec![i.map(|mut i| {
-                match i.kind {
-                    ItemKind::Static(ref mut item) => {
-                        item.ty = new_ty.clone();
-                        if let Some(init) = &mut item.expr {
-                            let mut bnd = Bindings::new();
-                            bnd.add("__old", init.clone());
-                            *init = rev_conv_assign.clone().subst(st, cx, &bnd);
-                        }
-                        mod_statics.insert(cx.node_def_id(i.id));
+                if let ItemKind::Static(ref mut item) = i.kind {
+                    item.ty = new_ty.clone();
+                    if let Some(init) = &mut item.expr {
+                        let mut bnd = Bindings::new();
+                        bnd.add("__old", init.clone());
+                        *init = rev_conv_assign.clone().subst(st, cx, &bnd);
                     }
-                    _ => {}
+                    mod_statics.insert(cx.node_def_id(i.id));
                 }
                 i
             })]
@@ -367,12 +364,9 @@ impl Transform for RetypeStatic {
                 return smallvec![fi];
             }
 
-            match fi.kind {
-                ForeignItemKind::Static(ref mut ty, _, _) => {
-                    *ty = new_ty.clone();
-                    mod_statics.insert(cx.node_def_id(fi.id));
-                }
-                _ => {}
+            if let ForeignItemKind::Static(ref mut ty, _, _) = fi.kind {
+                *ty = new_ty.clone();
+                mod_statics.insert(cx.node_def_id(fi.id));
             }
             smallvec![fi]
         });
@@ -695,11 +689,11 @@ where
 
     mut_visit_fns(krate, |fl| {
         if let Some((old_ty, new_ty)) = changed_outputs.get(&fl.id) {
-            fl.body.as_mut().map(|b| {
+            if let Some(b) = fl.body.as_mut() {
                 fold_output_exprs(b, true, |e| {
                     *e = transmute(e.clone(), lr_expr::Context::Rvalue, old_ty, new_ty);
                 })
-            });
+            }
         }
     });
 }
@@ -1036,9 +1030,8 @@ impl<'a> MutVisitor for RetypePrepFolder<'a> {
         for arg in inputs {
             self.map_type(&mut arg.ty);
         }
-        match output {
-            FnRetTy::Ty(ty) => self.map_type(ty),
-            _ => {}
+        if let FnRetTy::Ty(ty) = output {
+            self.map_type(ty)
         }
     }
 
@@ -1091,18 +1084,16 @@ impl<'a, 'tcx> RestoreAnnotationsFolder<'a, 'tcx> {
 
 impl<'a, 'tcx> MutVisitor for RestoreAnnotationsFolder<'a, 'tcx> {
     fn visit_local(&mut self, local: &mut P<Local>) {
-        if local.ty.is_none() {
-            if self.type_annotations.contains_key(&local.span) {
-                let new_ty = self.cx.node_type(local.id);
-                // Reflect the type back to an AST type. Since
-                // we don't (yet) have a way to determine if an
-                // AST Ty is equivalent to a TyCtxt Ty, we just
-                // drop the old type and recreate it. Ideally we
-                // would only change the old AST Ty if it was
-                // changed in retyping.
-                let new_ast_ty = reflect_tcx_ty(self.cx.ty_ctxt(), new_ty);
-                local.ty = Some(new_ast_ty);
-            }
+        if local.ty.is_none() && self.type_annotations.contains_key(&local.span) {
+            let new_ty = self.cx.node_type(local.id);
+            // Reflect the type back to an AST type. Since
+            // we don't (yet) have a way to determine if an
+            // AST Ty is equivalent to a TyCtxt Ty, we just
+            // drop the old type and recreate it. Ideally we
+            // would only change the old AST Ty if it was
+            // changed in retyping.
+            let new_ast_ty = reflect_tcx_ty(self.cx.ty_ctxt(), new_ty);
+            local.ty = Some(new_ast_ty);
         }
     }
 }
@@ -1565,7 +1556,7 @@ impl<'a, 'tcx, 'b> RetypeIteration<'a, 'tcx, 'b> {
 
 /// Will `from_ty` coerce to `to_ty`?
 /// Based on rules described in <https://doc.rust-lang.org/nomicon/coercions.html>.
-fn can_coerce<'a, 'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+fn can_coerce<'tcx>(from_ty: ty::Ty<'tcx>, to_ty: ty::Ty<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
     use rustc_type_ir::sty::TyKind::*;
 
     // We won't necessarily have matching regions if we created new expressions
