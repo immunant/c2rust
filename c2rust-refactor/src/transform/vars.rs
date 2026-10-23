@@ -491,10 +491,56 @@ impl Transform for UninitToDefault {
 ///
 /// Usage: `remove_redundant_let_types`
 ///
-/// Removes types from all `let` statements where the initializer's type matches the declared one,
-/// so the latter can be omitted and inferred.
+/// Removes types from `let` statements when the initializer determines the same
+/// type without the annotation. Keep annotations for initializers whose type may
+/// depend on context, such as unsuffixed literals, paths, and generic calls.
 /// For example, replace `let x: u32 = 1u32;` with `let x = 1u32;`
 pub struct RemoveRedundantLetTypes;
+
+/// A conservative syntactic proof that removing an expected type will not change
+/// an initializer's type. The typeck results alone cannot prove this: they already
+/// include inference from the annotation we are considering removing.
+fn initializer_has_independent_type(e: &Expr, cx: &RefactorCtxt) -> bool {
+    // Coercions can occur inside aggregates as well as at the outer initializer.
+    // For example, `let p: (*const u8,) = (0 as *mut u8,);` needs its annotation.
+    let Some(ty) = cx.opt_node_type(e.id) else {
+        return false;
+    };
+    if Some(ty) != cx.opt_adjusted_node_type(e.id) {
+        return false;
+    }
+
+    match &e.kind {
+        ExprKind::Lit(lit) => match LitKind::from_token_lit(*lit) {
+            Ok(LitKind::Int(_, LitIntType::Unsuffixed))
+            | Ok(LitKind::Float(_, LitFloatType::Unsuffixed))
+            | Err(_) => false,
+            Ok(_) => true,
+        },
+        ExprKind::Cast(_, ty) => {
+            // `as *const _` still needs context to determine its pointee type.
+            struct FindInfer(bool);
+            impl<'ast> Visitor<'ast> for FindInfer {
+                fn visit_ty(&mut self, ty: &'ast Ty) {
+                    self.0 |= matches!(ty.kind, rustc_ast::TyKind::Infer);
+                    visit::walk_ty(self, ty);
+                }
+            }
+            let mut find_infer = FindInfer(false);
+            find_infer.visit_ty(ty);
+            !find_infer.0
+        }
+        ExprKind::Paren(e) | ExprKind::Unary(UnOp::Neg | UnOp::Not, e) => {
+            initializer_has_independent_type(e, cx)
+        }
+        ExprKind::Tup(es) => es.iter().all(|e| initializer_has_independent_type(e, cx)),
+        ExprKind::Array(es) => {
+            !es.is_empty() && es.iter().all(|e| initializer_has_independent_type(e, cx))
+        }
+        ExprKind::Repeat(e, _) => initializer_has_independent_type(e, cx),
+        _ => false,
+    }
+}
 
 impl Transform for RemoveRedundantLetTypes {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
@@ -504,7 +550,10 @@ impl Transform for RemoveRedundantLetTypes {
         let repl = mcx.parse_stmts("let $pat = $init;");
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let e = mcx.bindings.get::<_, P<Expr>>("$init").unwrap();
-            let e_ty = cx.adjusted_node_type(e.id);
+            if !initializer_has_independent_type(&e, cx) {
+                return;
+            }
+            let e_ty = cx.node_type(e.id);
             let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
 
             let t = mcx.bindings.get::<_, P<Ty>>("$ty").unwrap();

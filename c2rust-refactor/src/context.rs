@@ -16,11 +16,11 @@ use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::{self as hir, BodyId, HirId, Node};
 use rustc_index::vec::IndexVec;
 use rustc_middle::hir::{map as hir_map, nested_filter};
-use rustc_middle::ty::subst::InternalSubsts;
+use rustc_middle::ty::subst::{GenericArgKind, InternalSubsts};
 use rustc_middle::ty::{EarlyBinder, FnSig, ParamEnv, PolyFnSig, Ty, TyCtxt, TyKind};
 use rustc_session::config::CrateType;
 use rustc_session::Session;
-use rustc_span::Span;
+use rustc_span::{Span, Symbol};
 use smallvec::{smallvec, SmallVec};
 
 use crate::ast_builder::mk;
@@ -1506,11 +1506,34 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     return false;
                 }
 
-                if substs1.types().count() != substs2.types().count()
-                    || !substs1
-                        .types()
-                        .zip(substs2.types())
-                        .all(|(ty1, ty2)| self.structural_eq_tys_impl(ty1, ty2, match_vis, seen))
+                // Equal fields do not make packed, aligned, or differently
+                // represented types interchangeable. The per-definition seed
+                // only affects layout when randomization is enabled.
+                let mut repr1 = def1.repr();
+                let mut repr2 = def2.repr();
+                if !repr1.can_randomize_type_layout() {
+                    repr1.field_shuffle_seed = 0;
+                }
+                if !repr2.can_randomize_type_layout() {
+                    repr2.field_shuffle_seed = 0;
+                }
+                if repr1 != repr2 {
+                    return false;
+                }
+
+                if substs1.len() != substs2.len()
+                    || !substs1.iter().zip(substs2.iter()).all(|(arg1, arg2)| {
+                        match (arg1.unpack(), arg2.unpack()) {
+                            (GenericArgKind::Type(ty1), GenericArgKind::Type(ty2)) => {
+                                self.structural_eq_tys_impl(ty1, ty2, match_vis, seen)
+                            }
+                            (GenericArgKind::Lifetime(r1), GenericArgKind::Lifetime(r2)) => {
+                                r1 == r2
+                            }
+                            (GenericArgKind::Const(c1), GenericArgKind::Const(c2)) => c1 == c2,
+                            _ => false,
+                        }
+                    })
                 {
                     trace!(
                         "Substituted types don't match between {:?} and {:?}",
@@ -1519,8 +1542,6 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                     );
                     return false;
                 }
-                // warning: we're ignore lifetime and const generic params
-
                 if let Some(mapping) = self.def_mapping {
                     if mapping.contains_key(&def1.did()) || mapping.contains_key(&def2.did()) {
                         // structural_eq_defs_impl will look up the defs in the
@@ -1552,6 +1573,8 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                                     |(field1, field2)| {
                                         field1.ident(tcx).unnamed_equiv(&field2.ident(tcx))
                                             && (!match_vis || field1.vis == field2.vis)
+                                            && self
+                                                .equivalent_bitfield_attrs(field1.did, field2.did)
                                             && self.structural_eq_defs_impl(
                                                 field1.did, field2.did, match_vis, seen,
                                             )
@@ -1563,12 +1586,10 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             (TyKind::Array(ty1, n1), TyKind::Array(ty2, n2)) => {
                 let len1 = n1.try_eval_target_usize(tcx, ParamEnv::empty());
                 let len2 = n2.try_eval_target_usize(tcx, ParamEnv::empty());
-                // We allow 0 length arrays to match any length arrays. This
-                // isn't exactly the C definition of compatible extern global
-                // array types with global array definitions, but it should be
-                // apply in practice as we translate empty extern array lengths
-                // into 0 length extern arrays.
-                if len1 != len2 && len1 != Some(0) && len2 != Some(0) {
+                // Zero-length fields are part of an ADT's layout, not a
+                // wildcard. Incomplete extern arrays are handled separately
+                // when matching a foreign declaration to its definition.
+                if len1 != len2 || (len1.is_none() && n1 != n2) {
                     trace!("Array lengths don't match: {:?} and {:?}", n1, n2);
                     return false;
                 }
@@ -1619,17 +1640,20 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
             }
 
             (TyKind::FnPtr(fn1), TyKind::FnPtr(fn2)) => {
-                let (fn1, fn2) = match (fn1.no_bound_vars(), fn2.no_bound_vars()) {
-                    (Some(x), Some(y)) => (x, y),
-                    _ => {
-                        trace!("Function pointers have bound vars: {:?} and {:?}", fn1, fn2);
-                        return false;
-                    }
-                };
+                // C callbacks taking VaList have higher-ranked lifetimes.
+                // Compare their binders modulo names, preserving which uses
+                // share a lifetime (including uses in generic arguments).
+                let fn1 = tcx.anonymize_bound_vars(*fn1);
+                let fn2 = tcx.anonymize_bound_vars(*fn2);
+                if fn1.bound_vars() != fn2.bound_vars() {
+                    return false;
+                }
+                let (fn1, fn2) = (fn1.skip_binder(), fn2.skip_binder());
 
                 if fn1.inputs().len() != fn2.inputs().len()
                     || fn1.c_variadic != fn2.c_variadic
                     || fn1.abi != fn2.abi
+                    || fn1.unsafety != fn2.unsafety
                 {
                     trace!(
                         "Function pointers attributes don't match: {:?} and {:?}",
@@ -1690,6 +1714,22 @@ impl<'a, 'tcx, 'b> TypeCompare<'a, 'tcx, 'b> {
                 false
             }
         }
+    }
+
+    /// Bitfield accessors are generated from attributes, so equal backing
+    /// arrays alone do not establish equivalent field names, types, or offsets.
+    fn equivalent_bitfield_attrs(&self, did1: DefId, did2: DefId) -> bool {
+        let tcx = self.cx.ty_ctxt();
+        let bitfield = Symbol::intern("bitfield");
+        let attrs1: Vec<_> = tcx
+            .get_attrs(did1, bitfield)
+            .map(|attr| attr.meta())
+            .collect();
+        let attrs2: Vec<_> = tcx
+            .get_attrs(did2, bitfield)
+            .map(|attr| attr.meta())
+            .collect();
+        attrs1.ast_equiv(&attrs2)
     }
 
     fn structural_eq_defs_impl(
