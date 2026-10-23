@@ -26,8 +26,8 @@ attempts to produce fully safe and idiomatic Rust; not a replacement for these e
 
 `c2rust-postprocess` has a few ways to filter/exclude the function identifiers that are processed.
 
-`--ident-filter` simply takes a regex.
-Anything matching the regex is filtered out of being processed.
+`--ident-filter` takes a regex.
+Only identifiers matching the regex are processed.
 This is very useful for on-the-fly filtering that's easy to change quickly.
 
 `--exclude-file` is for more granular, more permanent filtering/exclusion.
@@ -70,4 +70,3 @@ uv run pytest -v tests/test_utils.py # filter tests to run
 
 - `uv run ruff format` to format
 - `uv run ruff check --fix .` to lint
-

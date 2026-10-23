@@ -40,18 +40,12 @@ class IdentifierExcludeList:
             path = check_isinstance(path, str)
             identifiers = check_isinstance(identifiers, list)
             identifiers = [check_isinstance(ident, str) for ident in identifiers]
-            path = Path(path)
-            existing_identifiers = self.paths.get(path)
-            if existing_identifiers is None:
-                self.paths[path] = set(identifiers)
-            else:
-                existing_identifiers.update(*identifiers)
+            path = (src_path.parent / path).resolve()
+            self.paths.setdefault(path, set()).update(identifiers)
 
     def contains(self, path: Path, identifier: str) -> bool:
         # No `src_path` means an empty exclude list.
         if self.src_path is None:
             return False
-        # Consider paths relative to `src_path`, the location of the exclude file.
-        rel_path: Path = path.relative_to(self.src_path.parent)
-        identifiers = self.paths.get(rel_path, set())
+        identifiers = self.paths.get(path.resolve(), set())
         return identifier in identifiers
