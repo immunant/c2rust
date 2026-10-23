@@ -38,7 +38,7 @@ pub unsafe extern "C" fn from_address(mut address: ::core::ffi::c_ulong) -> *mut
     return ::core::ptr::from_exposed_addr_mut::<::core::ffi::c_void>(address as usize)
         as *mut Opaque;
 }
-static mut static_sentinel: *const Opaque = 8 as ::core::ffi::c_int as *const Opaque;
+static mut static_sentinel: *const Opaque = 8 as ::core::ffi::c_int as usize as *const Opaque;
 #[no_mangle]
 pub unsafe extern "C" fn get_static_sentinel() -> *const Opaque {
     return static_sentinel;
