@@ -292,19 +292,17 @@ impl<'c> Translation<'c> {
                 ref other => panic!("Unexpected array type {:?}", other),
             };
 
-            let array_rs = self.convert_expr(ctx.not_needs_address(), array_id, None)?;
-
-            // Don't dereference the offset if we're still within the variable portion
             let val = if let Some(elt_type_id) = var_elt_type_id {
-                let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
-                let offset_rs = self.convert_expr_with_cast(
-                    ctx.not_needs_address(),
-                    CQualTypeId::new(target_type_id),
-                    offset_id,
-                )?;
-                array_rs.zip(offset_rs).and_then(|(array_rs, offset_rs)| {
-                    self.make_pointer_offset(array_rs, offset_rs, elt_type_id, false, deref)
-                })
+                let mut expr_rs = self.convert_pointer_offset(ctx, array_id, offset_id, false)?;
+                let elt_type_kind = &self.ast_context.resolve_type(elt_type_id).kind;
+
+                // Don't dereference the offset if we're still within the variable portion
+                if deref && !matches!(elt_type_kind, &CTypeKind::VariableArray(_, Some(_))) {
+                    expr_rs = expr_rs
+                        .map(|expr_rs| mk().unary_expr(UnOp::Deref(Default::default()), expr_rs));
+                }
+
+                expr_rs
             } else {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
                 let offset_rs = self.convert_expr_with_cast(
@@ -312,6 +310,7 @@ impl<'c> Translation<'c> {
                     CQualTypeId::new(target_type_id),
                     offset_id,
                 )?;
+                let array_rs = self.convert_expr(ctx.not_needs_address(), array_id, None)?;
                 array_rs
                     .zip(offset_rs)
                     .map(|(array_rs, offset_rs)| mk().index_expr(array_rs, offset_rs))
@@ -331,27 +330,13 @@ impl<'c> Translation<'c> {
                 }
             };
 
-            // LHS must be ref decayed for the offset method call's self param
-            let pointer_rs =
-                self.convert_expr(ctx.not_needs_address().decay_ref(), pointer_id, None)?;
-            let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
-            let offset_rs = self.convert_expr_with_cast(
-                ctx.not_needs_address(),
-                CQualTypeId::new(target_type_id),
-                offset_id,
-            )?;
+            let mut val = self.convert_pointer_offset(ctx, pointer_id, offset_id, false)?;
+            let pointee_type_kind = &self.ast_context.resolve_type(pointee_type_id.ctype).kind;
 
-            let mut val = pointer_rs
-                .zip(offset_rs)
-                .and_then(|(pointer_rs, offset_rs)| {
-                    self.make_pointer_offset(
-                        pointer_rs,
-                        offset_rs,
-                        pointee_type_id.ctype,
-                        false,
-                        deref,
-                    )
-                });
+            // Don't dereference the offset if we're still within the variable portion
+            if deref && !matches!(pointee_type_kind, &CTypeKind::VariableArray(_, Some(_))) {
+                val = val.map(|val| mk().unary_expr(UnOp::Deref(Default::default()), val));
+            }
 
             if lrvalue.is_rvalue() {
                 let source_type_id = if deref {
@@ -374,70 +359,89 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Pointer offset that casts its argument to isize
-    pub fn convert_pointer_offset(
+    /// Translate a pointer offset expression.
+    pub(crate) fn convert_pointer_offset(
         &self,
-        ptr: Box<Expr>,
-        offset: Box<Expr>,
-        pointee_cty: CTypeId,
+        ctx: ExprContext,
+        pointer: impl Into<IdOrExpr>,
+        offset: impl Into<IdOrExpr>,
         neg: bool,
-        deref: bool,
-    ) -> WithStmts<Box<Expr>> {
-        self.make_pointer_offset(
-            ptr,
-            cast_int(offset, "isize", false),
-            pointee_cty,
-            neg,
-            deref,
-        )
-    }
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let pointer = pointer.into();
+        let pointer_type_id = pointer
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+        let pointer_type_kind = &self.ast_context.resolve_type(pointer_type_id.ctype).kind;
+        let pointee_type_id = match *pointer_type_kind {
+            CTypeKind::Pointer(pointee_type_id) => pointee_type_id,
+            // Variable arrays are represented as mutable pointers.
+            CTypeKind::VariableArray(element_type_id, _) => CQualTypeId::new(element_type_id),
+            _ => panic!("pointer argument does not have pointer type kind"),
+        };
 
-    /// Creates a pointer offset expression. Assumes that `offset_rs` is of type `isize`.
-    pub(crate) fn make_pointer_offset(
-        &self,
-        pointer_rs: Box<Expr>,
-        mut offset_rs: Box<Expr>,
-        pointee_type_id: CTypeId,
-        neg: bool,
-        mut deref: bool,
-    ) -> WithStmts<Box<Expr>> {
-        if let Some(mul) = self.compute_size_of_expr(pointee_type_id) {
+        // LHS must be ref decayed for the offset method call's self param
+        let pointer_rs = self.convert_expr(ctx.not_needs_address().decay_ref(), pointer, None)?;
+
+        let offset = offset.into();
+        let isize_type_id = self.ast_context.type_for_kind(&CTypeKind::IntPtr);
+        let mut offset_rs = self.convert_expr_with_cast(
+            ctx.not_needs_address(),
+            CQualTypeId::new(isize_type_id),
+            offset,
+        )?;
+
+        if let Some(mul) = self.compute_size_of_expr(pointee_type_id.ctype) {
             let mul = cast_int(mul, "isize", false);
-            offset_rs = mk().binary_expr(BinOp::Mul(Default::default()), offset_rs, mul);
-            deref = false;
+            offset_rs = offset_rs
+                .map(|offset_rs| mk().binary_expr(BinOp::Mul(Default::default()), offset_rs, mul));
         }
 
         if neg {
-            offset_rs = neg_expr(offset_rs);
+            offset_rs = offset_rs.map(neg_expr);
         }
 
-        let mut expr = mk().method_call_expr(pointer_rs, "offset", vec![offset_rs]);
-
-        if deref {
-            expr = mk().unary_expr(UnOp::Deref(Default::default()), expr);
-        }
-
-        WithStmts::new_val(expr).set_unsafe()
+        Ok(pointer_rs
+            .zip(offset_rs)
+            .map(|(pointer_rs, offset_rs)| {
+                mk().method_call_expr(pointer_rs, "offset", vec![offset_rs])
+            })
+            .set_unsafe())
     }
 
-    /// Creates a pointer difference expression. Returns an expression of type `isize`.
-    pub(crate) fn make_pointer_difference(
+    /// Translate a pointer difference expression.
+    pub(crate) fn convert_pointer_difference(
         &self,
-        lhs_rs: Box<Expr>,
-        rhs_rs: Box<Expr>,
-        pointee_type_id: CTypeId,
-    ) -> WithStmts<Box<Expr>> {
-        let mut expr_rs = mk().method_call_expr(lhs_rs, "offset_from", vec![rhs_rs]);
+        ctx: ExprContext,
+        lhs: impl Into<IdOrExpr>,
+        rhs: impl Into<IdOrExpr>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let lhs = lhs.into();
+        let rhs = rhs.into();
+        let rhs_type_id = rhs
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+        let Some(rhs_pointee_type_id) = self.ast_context.get_pointee_qual_type(rhs_type_id.ctype) else {
+            panic!("rhs argument does not have pointer type kind");
+        };
+
+        let lhs_rs = self.convert_expr(ctx, lhs, None)?;
+        let rhs_rs = self.convert_expr(ctx, rhs, None)?;
+
+        let mut expr_rs = lhs_rs
+            .zip(rhs_rs)
+            .map(|(lhs_rs, rhs_rs)| mk().method_call_expr(lhs_rs, "offset_from", vec![rhs_rs]))
+            .set_unsafe();
 
         // If the pointee is a variable array type, the actual pointee type used by `offset_from`
         // will be its element type rather than the whole array. So we need to divide by the
         // variable holding the length of the array.
-        if let Some(sz) = self.compute_size_of_expr(pointee_type_id) {
+        if let Some(sz) = self.compute_size_of_expr(rhs_pointee_type_id.ctype) {
             let div_rs = cast_int(sz, "isize", false);
-            expr_rs = mk().binary_expr(BinOp::Div(Default::default()), expr_rs, div_rs);
+            expr_rs = expr_rs
+                .map(|expr_rs| mk().binary_expr(BinOp::Div(Default::default()), expr_rs, div_rs));
         }
 
-        WithStmts::new_val(expr_rs).set_unsafe()
+        Ok(expr_rs)
     }
 
     /// Construct an expression for a NULL at any type, including forward declarations,
