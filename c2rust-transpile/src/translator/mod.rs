@@ -2354,6 +2354,9 @@ impl<'c> Translation<'c> {
             // macros yet.
             MacroFunction { .. } => Ok(ConvertedDecl::NoItem),
 
+            // MacroParameter is translated as part of MacroFunction.
+            MacroParameter { .. } => Ok(ConvertedDecl::NoItem),
+
             // Do not translate non-canonical decls. They will be translated at
             // their canonical declaration.
             NonCanonicalDecl { .. } => Ok(ConvertedDecl::NoItem),
