@@ -4394,85 +4394,75 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            CastKind::BitCast | CastKind::NoOp => {
-                if !is_explicit
-                    && self
-                        .ast_context
-                        .is_mut_to_const_pointer_cast(source_cty.ctype, target_cty.ctype)
-                {
-                    Ok(val)
-                } else {
-                    self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
-                }
-            }
-
-            CastKind::IntegralToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
-            }
-
-            CastKind::PointerToIntegral => {
-                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
-            }
-
             CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
-            | CastKind::BooleanToSignedIntegral => {
-                let target_ty = self.convert_type(target_cty.ctype)?;
-
-                if ctx.is_pattern && !target_ty_kind.is_enum() {
+            | CastKind::BooleanToSignedIntegral
+            | CastKind::BitCast
+            | CastKind::NoOp
+            | CastKind::IntegralToPointer
+            | CastKind::PointerToIntegral => {
+                if ctx.is_pattern
+                    && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
+                {
                     return Err(TranslationError::generic(
-                        "integral casts to non-enums are not supported in patterns",
+                        "only casts from integers to enums are supported in patterns",
                     ));
                 }
 
-                if let CTypeKind::LongDouble | CTypeKind::Float128 = target_ty_kind {
-                    if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                        self.ast_context[source_cty.ctype].kind
-                    {
-                        // These are both converted to `f128`, so a cast between the two should
-                        // just be a no-op.
-                        Ok(val)
-                    } else {
-                        if ctx.is_const {
-                            return Err(format_translation_err!(
-                                None,
-                                "f128 cannot be used in constants because \
-                                `f128::f128::new` is not `const`",
-                            ));
+                match (source_ty_kind, target_ty_kind) {
+                    (CTypeKind::Pointer(..), CTypeKind::Pointer(..)) => {
+                        if !is_explicit
+                            && self
+                                .ast_context
+                                .is_mut_to_const_pointer_cast(source_cty.ctype, target_cty.ctype)
+                        {
+                            Ok(val)
+                        } else {
+                            val.and_then_try(|val| {
+                                self.convert_pointer_to_pointer_cast(
+                                    ctx,
+                                    target_cty,
+                                    (val, source_cty),
+                                )
+                            })
                         }
-
-                        self.use_crate(ExternCrate::F128);
-
-                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        Ok(val.map(|val| mk().call_expr(fn_path, vec![val])))
                     }
-                } else if let CTypeKind::LongDouble | CTypeKind::Float128 =
-                    self.ast_context[source_cty.ctype].kind
-                {
-                    // The `f128` crate only implements `Into<X> for f128` and not
-                    // `From<f128> for X` for some reason. So we have to use `Into::<T>::into()`
-                    // here, which is a bit ugly and unidiomatic.
-                    let target_type_rs = self.convert_type(target_cty.ctype)?;
-                    let type_args_rs = mk().angle_bracketed_args(vec![target_type_rs]);
-                    let callee_rs = mk().path_expr(vec![
-                        mk().path_segment_with_args("Into", type_args_rs),
-                        mk().path_segment("into"),
-                    ]);
-                    Ok(val.map(|val| mk().call_expr(callee_rs, vec![val])))
-                } else if let &CTypeKind::Enum(enum_id) = target_ty_kind {
-                    val.and_then_try(|val| self.convert_cast_to_enum(ctx, source_cty, enum_id, val))
-                } else if target_ty_kind.is_floating_type() && source_ty_kind.is_bool() {
-                    Ok(val.map(|val| {
-                        mk().cast_expr(mk().cast_expr(val, mk().path_ty(vec!["u8"])), target_ty)
-                    }))
-                } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
-                    val.and_then_try(|val| {
-                        self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
-                    })
-                } else {
-                    Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+
+                    (CTypeKind::Enum(..), _) => val.and_then_try(|val| {
+                        self.convert_cast_from_enum(ctx, target_cty, (val, source_cty))
+                    }),
+
+                    (CTypeKind::Pointer(..), _) => val.and_then_try(|val| {
+                        self.convert_pointer_to_integral_cast(ctx, target_cty, (val, source_cty))
+                    }),
+
+                    (_, &CTypeKind::Enum(enum_id)) => val.and_then_try(|val| {
+                        self.convert_cast_to_enum(ctx, enum_id, (val, source_cty))
+                    }),
+
+                    (_, CTypeKind::Pointer(..)) => val.and_then_try(|val| {
+                        self.convert_integral_to_pointer_cast(ctx, target_cty, (val, source_cty))
+                    }),
+
+                    (CTypeKind::Bool, _) if target_ty_kind.is_numeric() => {
+                        val.and_then_try(|val| {
+                            self.convert_numeric_to_numeric_cast(ctx, target_cty, (val, source_cty))
+                        })
+                    }
+
+                    _ if source_ty_kind.is_numeric() && target_ty_kind.is_numeric() => val
+                        .and_then_try(|val| {
+                            self.convert_numeric_to_numeric_cast(ctx, target_cty, (val, source_cty))
+                        }),
+
+                    _ => Err(format_err!(
+                        "cast between unsupported type kinds:\n\
+                        source_type_kind = {source_ty_kind:?}\n\
+                        target_type_kind = {target_ty_kind:?}"
+                    )
+                    .into()),
                 }
             }
 
@@ -4519,6 +4509,81 @@ impl<'c> Translation<'c> {
             )),
 
             CastKind::AtomicToNonAtomic | CastKind::NonAtomicToAtomic => Ok(val),
+        }
+    }
+
+    /// Converts a cast between two numeric types, or from `bool` to a numeric type.
+    fn convert_numeric_to_numeric_cast(
+        &self,
+        ctx: ExprContext,
+        target_type_id: CQualTypeId,
+        expr: impl Into<IdOrExpr>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let expr = expr.into();
+        let source_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+
+        let source_type_kind = &self.ast_context.resolve_type(source_type_id.ctype).kind;
+        let target_type_kind = &self.ast_context.resolve_type(target_type_id.ctype).kind;
+
+        match (source_type_kind, target_type_kind) {
+            (CTypeKind::Bool, _) if target_type_kind.is_floating_type() => {
+                // `bool` can't be cast directly to a floating type. Cast it to `u8` first.
+                let mut expr_rs = self.convert_expr(ctx, expr, None)?;
+
+                let u8_type_id =
+                    CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::UInt8));
+                let u8_type_rs = self.convert_type(u8_type_id.ctype)?;
+                expr_rs = expr_rs.map(|expr_rs| mk().cast_expr(expr_rs, u8_type_rs));
+
+                expr_rs.and_then_try(|expr_rs| {
+                    self.convert_numeric_to_numeric_cast(ctx, target_type_id, (expr_rs, u8_type_id))
+                })
+            }
+
+            (
+                CTypeKind::LongDouble | CTypeKind::Float128,
+                CTypeKind::LongDouble | CTypeKind::Float128,
+            ) => {
+                // These are both converted to `f128`, so a cast between the two should
+                // just be a no-op.
+                self.convert_expr(ctx, expr, None)
+            }
+
+            (CTypeKind::LongDouble | CTypeKind::Float128, _) => {
+                let expr_rs = self.convert_expr(ctx, expr, None)?;
+
+                let target_type_rs = self.convert_type(target_type_id.ctype)?;
+                let type_args_rs = mk().angle_bracketed_args(vec![target_type_rs]);
+                let callee_rs = mk().path_expr(vec![
+                    mk().path_segment_with_args("Into", type_args_rs),
+                    mk().path_segment("into"),
+                ]);
+                Ok(expr_rs.map(|expr_rs| mk().call_expr(callee_rs, vec![expr_rs])))
+            }
+
+            (_, CTypeKind::LongDouble | CTypeKind::Float128) => {
+                if ctx.is_const {
+                    return Err(format_translation_err!(
+                        None,
+                        "f128 cannot be used in constants because `f128::f128::new` is not `const`",
+                    ));
+                }
+
+                let expr_rs = self.convert_expr(ctx, expr, None)?;
+
+                self.use_crate(ExternCrate::F128);
+                let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
+                Ok(expr_rs.map(|expr_rs| mk().call_expr(fn_path, vec![expr_rs])))
+            }
+
+            _ => {
+                let expr_rs = self.convert_expr(ctx, expr, None)?;
+
+                let target_type_rs = self.convert_type(target_type_id.ctype)?;
+                Ok(expr_rs.map(|expr_rs| mk().cast_expr(expr_rs, target_type_rs)))
+            }
         }
     }
 
