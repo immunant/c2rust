@@ -126,54 +126,47 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                if !ctx.is_used() {
-                    Ok(self
-                        .convert_expr(ctx, lhs, Some(lhs_type_id))?
-                        .and_then_try(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
-                        .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
-                } else {
-                    let rhs_ctx = ctx;
+                let rhs_ctx = ctx;
 
-                    // When we use methods on pointers (ie wrapping_offset_from or offset)
-                    // we must ensure we have an explicit raw ptr for the self param, as
-                    // self references do not decay
-                    if op.is_pointer_arithmetic() {
-                        let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+                // When we use methods on pointers (ie wrapping_offset_from or offset)
+                // we must ensure we have an explicit raw ptr for the self param, as
+                // self references do not decay
+                if op.is_pointer_arithmetic() {
+                    let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
 
-                        if let CTypeKind::Pointer(_) = ty_kind {
-                            ctx = ctx.decay_ref();
-                        }
+                    if let CTypeKind::Pointer(_) = ty_kind {
+                        ctx = ctx.decay_ref();
                     }
-
-                    // Using `.is_none()` and `.is_some()` for null comparison means we don't
-                    // have to rely on `trait PartialEq` as much and it is also more idiomatic.
-                    if matches!(op, CBinOp::EqualEqual | CBinOp::NotEqual) {
-                        let is_null = op == CBinOp::EqualEqual;
-
-                        if self.ast_context.is_null_expr(lhs) {
-                            let val = self.convert_pointer_is_null(rhs_ctx, rhs, is_null)?;
-                            return Ok(val.map(bool_to_int));
-                        } else if self.ast_context.is_null_expr(rhs) {
-                            let val = self.convert_pointer_is_null(ctx, lhs, is_null)?;
-                            return Ok(val.map(bool_to_int));
-                        }
-                    }
-
-                    let lhs_val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                    let rhs_val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
-
-                    lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
-                        self.convert_binary_operator(
-                            ctx,
-                            expr_type_id,
-                            op,
-                            lhs_type_id,
-                            rhs_type_id,
-                            lhs_val,
-                            rhs_val,
-                        )
-                    })
                 }
+
+                // Using `.is_none()` and `.is_some()` for null comparison means we don't
+                // have to rely on `trait PartialEq` as much and it is also more idiomatic.
+                if matches!(op, CBinOp::EqualEqual | CBinOp::NotEqual) {
+                    let is_null = op == CBinOp::EqualEqual;
+
+                    if self.ast_context.is_null_expr(lhs) {
+                        let val = self.convert_pointer_is_null(rhs_ctx, rhs, is_null)?;
+                        return Ok(val.map(bool_to_int));
+                    } else if self.ast_context.is_null_expr(rhs) {
+                        let val = self.convert_pointer_is_null(ctx, lhs, is_null)?;
+                        return Ok(val.map(bool_to_int));
+                    }
+                }
+
+                let lhs_val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
+                let rhs_val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
+
+                lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
+                    self.convert_binary_operator(
+                        ctx,
+                        expr_type_id,
+                        op,
+                        lhs_type_id,
+                        rhs_type_id,
+                        lhs_val,
+                        rhs_val,
+                    )
+                })
             }
         }
     }
