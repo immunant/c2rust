@@ -13,7 +13,7 @@ use crate::{
         cast_int, neg_expr, transmute_expr, unwrap_function_pointer, ExprContext, Translation,
     },
     with_stmts::WithStmts,
-    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind, ExternCrate,
+    CExprId, CExprKind, CLiteral, CQualTypeId, CTypeId, CTypeKind, CastKind,
 };
 
 impl<'c> Translation<'c> {
@@ -481,53 +481,47 @@ impl<'c> Translation<'c> {
             .convert_pointee(&self.ast_context, type_id)
     }
 
-    pub fn convert_pointer_to_pointer_cast(
+    pub(crate) fn convert_pointer_to_pointer_cast(
         &self,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        ctx: ExprContext,
+        target_type_id: CQualTypeId,
+        expr: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if self.ast_context.is_function_pointer(target_cty.ctype)
-            || self.ast_context.is_function_pointer(source_cty.ctype)
+        let expr = expr.into();
+        let source_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+
+        let target_type_rs = self.convert_type(target_type_id.ctype)?;
+
+        if self.ast_context.is_function_pointer(target_type_id.ctype)
+            || self.ast_context.is_function_pointer(source_type_id.ctype)
         {
-            let source_ty = self
-                .type_converter
-                .borrow_mut()
-                .convert(&self.ast_context, source_cty.ctype)?;
-            let target_ty = self
-                .type_converter
-                .borrow_mut()
-                .convert(&self.ast_context, target_cty.ctype)?;
+            let expr_rs = self.convert_expr(ctx, expr, None)?;
 
-            if source_ty == target_ty {
-                return Ok(val);
-            }
-
-            self.import_type(source_cty.ctype);
-            self.import_type(target_cty.ctype);
-
-            Ok(val.and_then(|val| {
-                WithStmts::new_val(transmute_expr(source_ty, target_ty, val)).set_unsafe()
-            }))
+            let source_type_rs = self.convert_type(source_type_id.ctype)?;
+            Ok(expr_rs
+                .map(|expr_rs| transmute_expr(source_type_rs, target_type_rs, expr_rs))
+                .set_unsafe())
         } else {
-            // Normal case
-            let target_ty = self.convert_type(target_cty.ctype)?;
-            Ok(val.map(|val| mk().cast_expr(val, target_ty)))
+            let expr_rs = self.convert_expr(ctx, expr, None)?;
+
+            Ok(expr_rs.map(|expr_rs| mk().cast_expr(expr_rs, target_type_rs)))
         }
     }
 
-    /// Makes a cast from an integer, enum or boolean type to a pointer.
-    pub fn convert_integral_to_pointer_cast(
+    pub(crate) fn convert_integral_to_pointer_cast(
         &self,
         ctx: ExprContext,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        target_type_id: CQualTypeId,
+        expr: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
-        let target_ty = self.convert_type(target_cty.ctype)?;
+        // First cast the value to `usize`.
+        let usize_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::UIntPtr));
+        let mut expr_rs = self.convert_expr(ctx, expr, Some(usize_type_id))?;
 
-        if self.ast_context.is_function_pointer(target_cty.ctype) {
+        // Then convert the `usize` into a pointer.
+        if self.ast_context.is_function_pointer(target_type_id.ctype) {
             if ctx.is_const {
                 return Err(format_translation_err!(
                     None,
@@ -535,48 +529,21 @@ impl<'c> Translation<'c> {
                 ));
             }
 
-            self.use_crate(ExternCrate::Libc);
-            Ok(val.and_then(|mut val| {
-                // First cast the integer to pointer size
-                let intptr_t = mk().abs_path_ty(vec!["libc", "intptr_t"]);
-                val = mk().cast_expr(val, intptr_t.clone());
-
-                WithStmts::new_val(transmute_expr(intptr_t, target_ty, val)).set_unsafe()
-            }))
+            let usize_type_rs = self.convert_type(usize_type_id.ctype)?;
+            let target_type_rs = self.convert_type(target_type_id.ctype)?;
+            Ok(expr_rs
+                .map(|expr_rs| transmute_expr(usize_type_rs, target_type_rs, expr_rs))
+                .set_unsafe())
         }
         // Rust 1.90: `const_strict_provenance` feature added
         // Rust 1.91: stabilized
         else if ctx.is_const && self.tcfg.edition < RustEdition::Edition2024 {
-            if source_ty_kind.is_bool() {
-                self.use_crate(ExternCrate::Libc);
-                Ok(val.map(|mut val| {
-                    // First cast the boolean to pointer size
-                    val = mk().cast_expr(val, mk().abs_path_ty(vec!["libc", "size_t"]));
-                    mk().cast_expr(val, target_ty)
-                }))
-            } else if let &CTypeKind::Enum(enum_id) = source_ty_kind {
-                val.and_then_try(|val| self.convert_cast_from_enum(ctx, enum_id, target_cty, val))
-            } else {
-                Ok(val.map(|val| mk().cast_expr(val, target_ty)))
-            }
+            let target_type_rs = self.convert_type(target_type_id.ctype)?;
+            Ok(expr_rs.map(|expr_rs| mk().cast_expr(expr_rs, target_type_rs)))
         } else {
-            // First cast the value to `usize`.
-            let source_type_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
-            let size_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
-
-            let val = if let &CTypeKind::Enum(enum_id) = source_type_kind {
-                val.and_then_try(|val| {
-                    self.convert_cast_from_enum(ctx, enum_id, CQualTypeId::new(size_type_id), val)
-                })?
-            } else {
-                let size_type_rs = self.convert_type(size_type_id)?;
-                val.map(|val| mk().cast_expr(val, size_type_rs))
-            };
-
-            // Then convert the `usize` into a pointer.
             let pointee_type_id = self
                 .ast_context
-                .get_pointee_qual_type(target_cty.ctype)
+                .get_pointee_qual_type(target_type_id.ctype)
                 .expect("target type must be a pointer");
             let mutability = pointee_type_id.mutability();
 
@@ -614,25 +581,22 @@ impl<'c> Translation<'c> {
                 mk().path_segment("ptr"),
                 mk().path_segment_with_args(fn_name, type_args),
             ]);
-            let val = val.map(|val| {
-                let ptr = mk().call_expr(fn_expr, vec![val]);
-                if is_opaque {
-                    mk().cast_expr(ptr, target_ty)
-                } else {
-                    ptr
-                }
-            });
+            expr_rs = expr_rs.map(|expr_rs| mk().call_expr(fn_expr, vec![expr_rs]));
 
-            Ok(val)
+            if is_opaque {
+                let target_type_rs = self.convert_type(target_type_id.ctype)?;
+                expr_rs = expr_rs.map(|expr_rs| mk().cast_expr(expr_rs, target_type_rs));
+            }
+
+            Ok(expr_rs)
         }
     }
 
-    pub fn convert_pointer_to_integral_cast(
+    pub(crate) fn convert_pointer_to_integral_cast(
         &self,
         ctx: ExprContext,
-        source_cty: CQualTypeId,
-        target_cty: CQualTypeId,
-        val: WithStmts<Box<Expr>>,
+        target_type_id: CQualTypeId,
+        expr: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if ctx.is_const {
             return Err(format_translation_err!(
@@ -641,16 +605,25 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        let target_type_rs = self.convert_type(target_cty.ctype)?;
+        let expr = expr.into();
+        let source_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
 
-        if self.ast_context.is_function_pointer(source_cty.ctype) {
-            let source_ty = self.convert_type(source_cty.ctype)?;
+        // First convert the pointer to `usize`.
+        let usize_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::UIntPtr));
 
-            Ok(val.and_then(|val| {
-                WithStmts::new_val(transmute_expr(source_ty, target_type_rs, val)).set_unsafe()
-            }))
+        let expr_rs = if self.ast_context.is_function_pointer(source_type_id.ctype) {
+            let expr_rs = self.convert_expr(ctx, expr, None)?;
+
+            let source_type_rs = self.convert_type(source_type_id.ctype)?;
+            let usize_type_rs = self.convert_type(usize_type_id.ctype)?;
+            expr_rs
+                .map(|expr_rs| transmute_expr(source_type_rs, usize_type_rs, expr_rs))
+                .set_unsafe()
         } else {
-            // First convert the pointer to `usize`.
+            let expr_rs = self.convert_expr(ctx, expr, None)?;
+
             let method_name = match self.tcfg.edition {
                 RustEdition::Edition2021 => {
                     // Rust 1.76: feature name changed to `exposed_provenance`
@@ -662,26 +635,11 @@ impl<'c> Translation<'c> {
                 }
                 RustEdition::Edition2024 => "expose_provenance",
             };
+            expr_rs.map(|expr_rs| mk().method_call_expr(expr_rs, method_name, vec![]))
+        };
 
-            let val = val.map(|val| mk().method_call_expr(val, method_name, vec![]));
-
-            // Then cast the `usize` to the target type.
-            let size_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
-            let target_ty_kind = &self.ast_context.resolve_type(target_cty.ctype).kind;
-
-            if let &CTypeKind::Enum(enum_decl_id) = target_ty_kind {
-                val.and_then_try(|val| {
-                    self.convert_cast_to_enum(
-                        ctx,
-                        CQualTypeId::new(size_type_id),
-                        enum_decl_id,
-                        val,
-                    )
-                })
-            } else {
-                Ok(val.map(|val| mk().cast_expr(val, target_type_rs)))
-            }
-        }
+        // Then cast the `usize` to the target type.
+        self.make_cast(ctx, usize_type_id, target_type_id, expr_rs)
     }
 
     pub(crate) fn convert_pointer_is_null(
