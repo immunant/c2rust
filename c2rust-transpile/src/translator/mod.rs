@@ -4394,31 +4394,15 @@ impl<'c> Translation<'c> {
         }
 
         match kind {
-            CastKind::BitCast | CastKind::NoOp => {
-                if !is_explicit
-                    && self
-                        .ast_context
-                        .is_mut_to_const_pointer_cast(source_cty.ctype, target_cty.ctype)
-                {
-                    Ok(val)
-                } else {
-                    self.convert_pointer_to_pointer_cast(source_cty, target_cty, val)
-                }
-            }
-
-            CastKind::IntegralToPointer => {
-                self.convert_integral_to_pointer_cast(ctx, source_cty, target_cty, val)
-            }
-
-            CastKind::PointerToIntegral => {
-                self.convert_pointer_to_integral_cast(ctx, source_cty, target_cty, val)
-            }
-
             CastKind::IntegralCast
             | CastKind::FloatingCast
             | CastKind::FloatingToIntegral
             | CastKind::IntegralToFloating
-            | CastKind::BooleanToSignedIntegral => {
+            | CastKind::BooleanToSignedIntegral
+            | CastKind::BitCast
+            | CastKind::NoOp
+            | CastKind::IntegralToPointer
+            | CastKind::PointerToIntegral => {
                 if ctx.is_pattern && !target_ty_kind.is_enum() {
                     return Err(TranslationError::generic(
                         "integral casts to non-enums are not supported in patterns",
@@ -4426,12 +4410,38 @@ impl<'c> Translation<'c> {
                 }
 
                 match (source_ty_kind, target_ty_kind) {
+                    (CTypeKind::Pointer(..), CTypeKind::Pointer(..)) => {
+                        if !is_explicit
+                            && self
+                                .ast_context
+                                .is_mut_to_const_pointer_cast(source_cty.ctype, target_cty.ctype)
+                        {
+                            Ok(val)
+                        } else {
+                            val.and_then_try(|val| {
+                                self.convert_pointer_to_pointer_cast(
+                                    ctx,
+                                    target_cty,
+                                    (val, source_cty),
+                                )
+                            })
+                        }
+                    }
+
                     (&CTypeKind::Enum(enum_id), _) => val.and_then_try(|val| {
                         self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
                     }),
 
+                    (CTypeKind::Pointer(..), _) => val.and_then_try(|val| {
+                        self.convert_pointer_to_integral_cast(ctx, target_cty, (val, source_cty))
+                    }),
+
                     (_, &CTypeKind::Enum(enum_id)) => val.and_then_try(|val| {
                         self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
+                    }),
+
+                    (_, CTypeKind::Pointer(..)) => val.and_then_try(|val| {
+                        self.convert_integral_to_pointer_cast(ctx, target_cty, (val, source_cty))
                     }),
 
                     (CTypeKind::Bool, _) if target_ty_kind.is_numeric() => {
