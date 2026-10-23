@@ -457,9 +457,11 @@ impl<'c> Translation<'c> {
             | CastKind::NoOp
             | CastKind::IntegralToPointer
             | CastKind::PointerToIntegral => {
-                if ctx.is_pattern && !target_ty_kind.is_enum() {
+                if ctx.is_pattern
+                    && !(source_ty_kind.is_integral_type() && target_ty_kind.is_enum())
+                {
                     return Err(TranslationError::generic(
-                        "integral casts to non-enums are not supported in patterns",
+                        "only casts from integers to enums are supported in patterns",
                     ));
                 }
 
@@ -482,8 +484,8 @@ impl<'c> Translation<'c> {
                         }
                     }
 
-                    (&CTypeKind::Enum(enum_id), _) => val.and_then_try(|val| {
-                        self.convert_cast_from_enum(ctx, enum_id, target_cty, val)
+                    (CTypeKind::Enum(..), _) => val.and_then_try(|val| {
+                        self.convert_cast_from_enum(ctx, target_cty, (val, source_cty))
                     }),
 
                     (CTypeKind::Pointer(..), _) => val.and_then_try(|val| {
@@ -491,7 +493,7 @@ impl<'c> Translation<'c> {
                     }),
 
                     (_, &CTypeKind::Enum(enum_id)) => val.and_then_try(|val| {
-                        self.convert_cast_to_enum(ctx, source_cty, enum_id, val)
+                        self.convert_cast_to_enum(ctx, enum_id, (val, source_cty))
                     }),
 
                     (_, CTypeKind::Pointer(..)) => val.and_then_try(|val| {
