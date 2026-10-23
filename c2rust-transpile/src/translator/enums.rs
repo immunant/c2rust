@@ -1,8 +1,10 @@
 use c2rust_ast_builder::mk;
+use failure::format_err;
 use proc_macro2::Span;
 use syn::{Expr, Pat};
 
 use crate::c_ast::iterators::SomeId;
+use crate::translator::IdOrExpr;
 use crate::{
     diagnostics::TranslationResult,
     translator::{signed_int_expr, ConvertedDecl, ExprContext, Translation, TranslationError},
@@ -106,24 +108,26 @@ impl<'c> Translation<'c> {
         expr_type_id: CQualTypeId,
         enum_constant_id: CEnumConstantId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let val = self.enum_constant_expr(enum_constant_id);
+        let mut val = self.enum_constant_expr(enum_constant_id);
 
         if self.enum_constant_matches_type(expr_type_id.ctype, enum_constant_id) {
             return Ok(WithStmts::new_val(val));
         }
 
+        val = self.make_enum_to_underlying_cast(val);
+
         // Add a cast to the expected integral type.
         let enum_id = self.ast_context.parents[&enum_constant_id];
-        self.convert_cast_from_enum(ctx, enum_id, expr_type_id, val)
+        let underlying_type_id = self.enum_underlying_type(enum_id);
+        self.make_cast(ctx, underlying_type_id, expr_type_id, val.into())
     }
 
-    /// Translate a cast where the source type, but not the target type, is an `enum` type.
-    pub fn convert_cast_from_enum(
+    /// Translate a cast where the source type is an `enum` type.
+    pub(crate) fn convert_cast_from_enum(
         &self,
         ctx: ExprContext,
-        enum_id: CEnumId,
-        target_cty: CQualTypeId,
-        mut val: Box<Expr>,
+        target_type_id: CQualTypeId,
+        expr: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if ctx.is_pattern {
             return Err(TranslationError::generic(
@@ -131,12 +135,19 @@ impl<'c> Translation<'c> {
             ));
         }
 
+        let expr = expr.into();
+        let source_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+
         // First extract the enum's underlying type...
-        val = self.make_enum_to_underlying_cast(val);
+        let mut expr_rs = self.convert_expr(ctx, expr, None)?;
+        expr_rs = expr_rs.map(|expr_rs| self.make_enum_to_underlying_cast(expr_rs));
 
         // Cast from the underlying type to the expected type.
-        let source_cty = self.enum_underlying_type(enum_id);
-        self.make_cast(ctx, source_cty, target_cty, WithStmts::new_val(val))
+        let enum_id = self.enum_id_from_type(source_type_id.ctype);
+        let underlying_type_id = self.enum_underlying_type(enum_id);
+        self.make_cast(ctx, underlying_type_id, target_type_id, expr_rs)
     }
 
     /// Gets the underlying value of an enum value.
@@ -145,39 +156,24 @@ impl<'c> Translation<'c> {
     }
 
     /// Translates a cast where the target type is an `enum` type.
-    pub fn convert_cast_to_enum(
+    pub(crate) fn convert_cast_to_enum(
         &self,
         ctx: ExprContext,
-        mut source_cty: CQualTypeId,
         enum_id: CEnumId,
-        mut val: Box<Expr>,
+        expr: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        // We could be casting from enum to enum...
-        if let CTypeKind::Enum(source_enum_id) =
-            self.ast_context.resolve_type(source_cty.ctype).kind
-        {
-            // Casting to ourselves, the audacity!
-            if source_enum_id == enum_id {
-                return Ok(WithStmts::new_val(val));
-            }
+        let expr = expr.into();
+        let source_type_id = expr
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
 
-            if ctx.is_pattern {
-                return Err(TranslationError::generic(
-                    "cast from enum is not supported in patterns",
-                ));
-            }
-
-            // Enum-to-enum casts need to be translated via the underlying value as an intermediate.
-            val = self.make_enum_to_underlying_cast(val);
-            source_cty = self.enum_underlying_type(source_enum_id);
-        }
-
+        // First cast the value to the enum's underlying type.
+        let mut expr_rs = self.convert_expr(ctx, expr, None)?;
         let underlying_type_id = self.enum_underlying_type(enum_id);
-        let mut val = WithStmts::new_val(val);
-        val = self.make_cast(ctx, source_cty, underlying_type_id, val)?;
-        val = val.map(|val| self.enum_constructor_expr(enum_id, val, false));
+        expr_rs = self.make_cast(ctx, source_type_id, underlying_type_id, expr_rs)?;
 
-        Ok(val)
+        // Then construct an enum from the underlying value.
+        Ok(expr_rs.map(|expr_rs| self.enum_constructor_expr(enum_id, expr_rs, false)))
     }
 
     /// Given an integer value this attempts to either generate the corresponding enum
@@ -262,6 +258,13 @@ impl<'c> Translation<'c> {
         self.add_import(enum_id, &enum_name);
 
         mk().tuple_struct_pat(enum_name.as_str(), None, vec![value])
+    }
+
+    fn enum_id_from_type(&self, type_id: CTypeId) -> CEnumId {
+        match self.ast_context.resolve_type(type_id).kind {
+            CTypeKind::Enum(enum_id) => enum_id,
+            _ => panic!("{type_id:?} is not an enum type"),
+        }
     }
 
     pub(crate) fn enum_constant_matches_type(
