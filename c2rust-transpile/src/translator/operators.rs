@@ -68,6 +68,8 @@ impl<'c> Translation<'c> {
                         "bad lhs type for assignment"
                     )
                 })?;
+                let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+
                 let rhs_kind = &self.ast_context.index_unwrap_parens(rhs).kind;
                 let mut rhs_type_id = rhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
@@ -75,22 +77,18 @@ impl<'c> Translation<'c> {
                         "bad rhs type for assignment"
                     )
                 })?;
+                let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
                 // If this operation will (in Rust) take args of the same type, then propagate our
                 // expected type down to the translation of our argument expressions.
-                let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-                let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
-                let expr_type_kind = &self.ast_context.index(expr_type_id.ctype).kind;
-
-                // Addition and subtraction can accept one pointer argument for .offset(), in which
-                // case we don't want to homogenize arg types.
-                if !lhs_type_kind.is_pointer()
-                    && !rhs_type_kind.is_pointer()
-                    && !expr_type_kind.is_pointer()
-                {
-                    if op.is_arithmetic() {
+                if op.is_arithmetic() {
+                    // Addition and subtraction can accept one pointer argument for .offset(),
+                    // in which case we don't want to homogenize arg types.
+                    if !(lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer()) {
                         lhs_type_id = expr_type_id;
                         rhs_type_id = expr_type_id;
+
+                        let expr_type_kind = &self.ast_context.index(expr_type_id.ctype).kind;
 
                         // For complex arithmetic, complex and real values can be mixed.
                         if let &CTypeKind::Complex(result_scalar_type_id) = expr_type_kind {
@@ -102,28 +100,31 @@ impl<'c> Translation<'c> {
                                 rhs_type_id.ctype = result_scalar_type_id;
                             }
                         }
-                    } else if op.is_bitwise() {
-                        lhs_type_id = expr_type_id;
-                        rhs_type_id = expr_type_id;
-                    } else if op.input_types_same() && lhs_type_kind != rhs_type_kind {
-                        // Ops like comparisons require argument types to match, but the result type
-                        // doesn't inform us what type to choose. Select a synthetic definition of a
-                        // portable rust type (e.g. u64 or usize) if either arg is one.
-                        trace!(
-                            "Binary op arg types differ: {:?} vs {:?}",
-                            lhs_type_kind,
-                            rhs_type_kind
-                        );
-                        let ty = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
-                            lhs_type_id
-                        } else {
-                            rhs_type_id
-                        };
-                        lhs_type_id = ty;
-                        rhs_type_id = ty;
-                    } else if matches!(op, ShiftLeft | ShiftRight) {
-                        lhs_type_id = expr_type_id;
                     }
+                } else if op.is_bitwise() {
+                    lhs_type_id = expr_type_id;
+                    rhs_type_id = expr_type_id;
+                } else if op.is_bitshift() {
+                    lhs_type_id = expr_type_id;
+                } else if op.is_comparison()
+                    && !(lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer())
+                    && lhs_type_kind != rhs_type_kind
+                {
+                    // Comparisons require argument types to match, but the result type
+                    // doesn't inform us what type to choose. Select a synthetic definition of a
+                    // portable rust type (e.g. u64 or usize) if either arg is one.
+                    trace!(
+                        "Binary op arg types differ: {:?} vs {:?}",
+                        lhs_type_kind,
+                        rhs_type_kind
+                    );
+                    let chosen_type_id = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
+                        lhs_type_id
+                    } else {
+                        rhs_type_id
+                    };
+                    lhs_type_id = chosen_type_id;
+                    rhs_type_id = chosen_type_id;
                 }
 
                 let rhs_ctx = ctx;

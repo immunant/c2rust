@@ -2644,15 +2644,6 @@ impl CBinOp {
             _ => return None,
         })
     }
-
-    /// Does the rust equivalent of this operator have type (T, T) -> U?
-    pub fn input_types_same(&self) -> bool {
-        self.is_arithmetic()
-            || self.is_bitwise()
-            || self.is_logical()
-            || self.is_comparison()
-            || self.is_assignment()
-    }
 }
 
 impl From<CBinOp> for BinOp {
