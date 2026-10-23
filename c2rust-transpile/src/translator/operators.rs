@@ -64,14 +64,14 @@ impl<'c> Translation<'c> {
                 }
 
                 let lhs_kind = &self.ast_context.index_unwrap_parens(lhs).kind;
-                let mut lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
+                let lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
                         self.ast_context.display_loc(lhs_loc),
                         "bad lhs type for assignment"
                     )
                 })?;
                 let rhs_kind = &self.ast_context.index_unwrap_parens(rhs).kind;
-                let mut rhs_type_id = rhs_kind.get_qual_type().ok_or_else(|| {
+                let rhs_type_id = rhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
                         self.ast_context.display_loc(rhs_loc),
                         "bad rhs type for assignment"
@@ -82,14 +82,16 @@ impl<'c> Translation<'c> {
                 // expected type down to the translation of our argument expressions.
                 let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
                 let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
+                let mut lhs_expected_type_id = None;
+                let mut rhs_expected_type_id = None;
 
                 if op.is_arithmetic() {
                     // Addition and subtraction can accept one pointer argument for .offset(),
                     // in which case we don't want to homogenize arg types.
                     if !(lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer()) {
                         result_type_id = expected_type_id.unwrap_or(result_type_id);
-                        lhs_type_id = result_type_id;
-                        rhs_type_id = result_type_id;
+                        let lhs_expected_type_id = lhs_expected_type_id.insert(result_type_id);
+                        let rhs_expected_type_id = rhs_expected_type_id.insert(result_type_id);
 
                         let result_type_kind =
                             &self.ast_context.resolve_type(result_type_id.ctype).kind;
@@ -97,21 +99,21 @@ impl<'c> Translation<'c> {
                         // For complex arithmetic, complex and real values can be mixed.
                         if let &CTypeKind::Complex(result_scalar_type_id) = result_type_kind {
                             if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
-                                lhs_type_id.ctype = result_scalar_type_id;
+                                lhs_expected_type_id.ctype = result_scalar_type_id;
                             }
 
                             if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
-                                rhs_type_id.ctype = result_scalar_type_id;
+                                rhs_expected_type_id.ctype = result_scalar_type_id;
                             }
                         }
                     }
                 } else if op.is_bitwise() {
                     result_type_id = expected_type_id.unwrap_or(result_type_id);
-                    lhs_type_id = result_type_id;
-                    rhs_type_id = result_type_id;
+                    lhs_expected_type_id = Some(result_type_id);
+                    rhs_expected_type_id = Some(result_type_id);
                 } else if op.is_bitshift() {
                     result_type_id = expected_type_id.unwrap_or(result_type_id);
-                    lhs_type_id = result_type_id;
+                    lhs_expected_type_id = Some(result_type_id);
                 } else if op.is_comparison()
                     && !(lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer())
                     && lhs_type_kind != rhs_type_kind
@@ -129,8 +131,8 @@ impl<'c> Translation<'c> {
                     } else {
                         rhs_type_id
                     };
-                    lhs_type_id = ty;
-                    rhs_type_id = ty;
+                    lhs_expected_type_id = Some(ty);
+                    rhs_expected_type_id = Some(ty);
                 }
 
                 let rhs_ctx = ctx;
@@ -163,8 +165,8 @@ impl<'c> Translation<'c> {
                     }
                 }
 
-                let lhs_val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                let rhs_val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
+                let lhs_val = self.convert_expr(ctx, lhs, lhs_expected_type_id)?;
+                let rhs_val = self.convert_expr(rhs_ctx, rhs, rhs_expected_type_id)?;
 
                 lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
                     self.convert_binary_operator(
