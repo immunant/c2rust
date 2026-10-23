@@ -48,6 +48,13 @@ def existing_file(value: str) -> Path:
     raise argparse.ArgumentTypeError(f"{value!r} is not a readable file")
 
 
+def positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return number
+
+
 # TODO: test
 def get_compile_commands(compile_commands_path: Path) -> list[dict[str, Any]]:
     try:

@@ -16,10 +16,14 @@ class AbstractGenerativeModel(ABC):
         return self._id
 
     @abstractmethod
-    def generate_with_tools(
+    async def generate_with_tools(
         self,
         messages: list[dict[str, Any]],
         tools: Iterable[Callable[..., Any]] = (),
         max_tool_loops: int = 5,
     ) -> str | None:
         pass
+
+    async def aclose(self) -> None:
+        """Release any resources held by the model client."""
+        return None
