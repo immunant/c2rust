@@ -5,7 +5,7 @@ use super::*;
 impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
         result_type_id: CQualTypeId,
         op: CBinOp,
@@ -53,114 +53,111 @@ impl<'c> Translation<'c> {
             ),
 
             _ => {
-                // Comparing references to pointers isn't consistently supported by rust
-                // and so we need to decay references to pointers to do so. See
-                // https://github.com/rust-lang/rust/issues/53772. This might be removable
-                // once the above issue is resolved.
-                if op == CBinOp::EqualEqual || op == CBinOp::NotEqual {
-                    ctx = ctx.decay_ref();
-                }
-
                 let lhs_kind = &self.ast_context.index_unwrap_parens(lhs).kind;
-                let mut lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
+                let lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
                         self.ast_context.display_loc(lhs_loc),
                         "bad lhs type for assignment"
                     )
                 })?;
+                let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+
                 let rhs_kind = &self.ast_context.index_unwrap_parens(rhs).kind;
-                let mut rhs_type_id = rhs_kind.get_qual_type().ok_or_else(|| {
+                let rhs_type_id = rhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
                         self.ast_context.display_loc(rhs_loc),
                         "bad rhs type for assignment"
                     )
                 })?;
+                let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
                 // If this operation will (in Rust) take args of the same type, then propagate our
                 // expected type down to the translation of our argument expressions.
-                let lhs_resolved_ty = self.ast_context.resolve_type(lhs_type_id.ctype);
-                let rhs_resolved_ty = self.ast_context.resolve_type(rhs_type_id.ctype);
-                let expr_ty_kind = &self.ast_context.index(expr_type_id.ctype).kind;
-                // Addition and subtraction can accept one pointer argument for .offset(), in which
-                // case we don't want to homogenize arg types.
-                if !lhs_resolved_ty.kind.is_pointer()
-                    && !rhs_resolved_ty.kind.is_pointer()
-                    && !expr_ty_kind.is_pointer()
-                {
-                    if op.all_types_same() {
-                        // Ops like division and bitxor accept inputs of their expected result type.
-                        lhs_type_id = expr_type_id;
-                        rhs_type_id = expr_type_id;
-                    } else if op.input_types_same() && lhs_resolved_ty.kind != rhs_resolved_ty.kind
-                    {
-                        // Ops like comparisons require argument types to match, but the result type
+                let mut lhs_expected_type_id = None;
+                let mut rhs_expected_type_id = None;
+                let mut lhs_ctx = ctx;
+
+                if op.is_arithmetic() {
+                    // Addition and subtraction can accept one pointer argument for .offset(),
+                    // in which case we don't want to homogenize arg types.
+                    if lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer() {
+                        // When we use methods on pointers (ie wrapping_offset_from or offset)
+                        // we must ensure we have an explicit raw ptr for the self param, as
+                        // self references do not decay
+                        lhs_ctx = lhs_ctx.decay_ref();
+                    } else {
+                        let lhs_expected_type_id = lhs_expected_type_id.insert(expr_type_id);
+                        let rhs_expected_type_id = rhs_expected_type_id.insert(expr_type_id);
+
+                        let expr_type_kind = &self.ast_context.index(expr_type_id.ctype).kind;
+
+                        // For complex arithmetic, complex and real values can be mixed.
+                        if let &CTypeKind::Complex(result_scalar_type_id) = expr_type_kind {
+                            if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
+                                lhs_expected_type_id.ctype = result_scalar_type_id;
+                            }
+
+                            if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                                rhs_expected_type_id.ctype = result_scalar_type_id;
+                            }
+                        }
+                    }
+                } else if op.is_bitwise() {
+                    lhs_expected_type_id = Some(expr_type_id);
+                    rhs_expected_type_id = Some(expr_type_id);
+                } else if op.is_bitshift() {
+                    lhs_expected_type_id = Some(expr_type_id);
+                } else if op.is_comparison() {
+                    if lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer() {
+                        // Comparing references to pointers isn't consistently supported by rust
+                        // and so we need to decay references to pointers to do so. See
+                        // https://github.com/rust-lang/rust/issues/53772. This might be removable
+                        // once the above issue is resolved.
+                        lhs_ctx = lhs_ctx.decay_ref();
+                        let is_null = op == CBinOp::EqualEqual;
+
+                        // Using `.is_none()` and `.is_some()` for null comparison means we don't
+                        // have to rely on `trait PartialEq` as much and it is also more idiomatic.
+                        if self.ast_context.is_null_expr(lhs) {
+                            let val = self.convert_pointer_is_null(ctx, rhs, is_null)?;
+                            return Ok(val.map(bool_to_int));
+                        } else if self.ast_context.is_null_expr(rhs) {
+                            let val = self.convert_pointer_is_null(lhs_ctx, lhs, is_null)?;
+                            return Ok(val.map(bool_to_int));
+                        }
+                    } else if lhs_type_kind != rhs_type_kind {
+                        // Comparisons require argument types to match, but the result type
                         // doesn't inform us what type to choose. Select a synthetic definition of a
                         // portable rust type (e.g. u64 or usize) if either arg is one.
                         trace!(
                             "Binary op arg types differ: {:?} vs {:?}",
-                            lhs_resolved_ty.kind,
-                            rhs_resolved_ty.kind
+                            lhs_type_kind,
+                            rhs_type_kind
                         );
-                        let ty = if CTypeKind::PULLBACK_KINDS.contains(&lhs_resolved_ty.kind) {
+                        let chosen_type_id = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
                             lhs_type_id
                         } else {
                             rhs_type_id
                         };
-                        lhs_type_id = ty;
-                        rhs_type_id = ty;
-                    } else if matches!(op, ShiftLeft | ShiftRight) {
-                        lhs_type_id = expr_type_id;
+                        lhs_expected_type_id = Some(chosen_type_id);
+                        rhs_expected_type_id = Some(chosen_type_id);
                     }
                 }
 
-                if !ctx.is_used() {
-                    Ok(self
-                        .convert_expr(ctx, lhs, Some(lhs_type_id))?
-                        .and_then_try(|_| self.convert_expr(ctx, rhs, Some(rhs_type_id)))?
-                        .map(|_| self.panic_or_err("Binary expression is not supposed to be used")))
-                } else {
-                    let rhs_ctx = ctx;
+                let lhs_val = self.convert_expr(lhs_ctx, lhs, lhs_expected_type_id)?;
+                let rhs_val = self.convert_expr(ctx, rhs, rhs_expected_type_id)?;
 
-                    // When we use methods on pointers (ie wrapping_offset_from or offset)
-                    // we must ensure we have an explicit raw ptr for the self param, as
-                    // self references do not decay
-                    if op.is_pointer_arithmetic() {
-                        let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-
-                        if let CTypeKind::Pointer(_) = ty_kind {
-                            ctx = ctx.decay_ref();
-                        }
-                    }
-
-                    // Using `.is_none()` and `.is_some()` for null comparison means we don't
-                    // have to rely on `trait PartialEq` as much and it is also more idiomatic.
-                    if matches!(op, CBinOp::EqualEqual | CBinOp::NotEqual) {
-                        let is_null = op == CBinOp::EqualEqual;
-
-                        if self.ast_context.is_null_expr(lhs) {
-                            let val = self.convert_pointer_is_null(rhs_ctx, rhs, is_null)?;
-                            return Ok(val.map(bool_to_int));
-                        } else if self.ast_context.is_null_expr(rhs) {
-                            let val = self.convert_pointer_is_null(ctx, lhs, is_null)?;
-                            return Ok(val.map(bool_to_int));
-                        }
-                    }
-
-                    let lhs_val = self.convert_expr(ctx, lhs, Some(lhs_type_id))?;
-                    let rhs_val = self.convert_expr(rhs_ctx, rhs, Some(rhs_type_id))?;
-
-                    lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
-                        self.convert_binary_operator(
-                            ctx,
-                            expr_type_id,
-                            op,
-                            lhs_type_id,
-                            rhs_type_id,
-                            lhs_val,
-                            rhs_val,
-                        )
-                    })
-                }
+                lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
+                    self.convert_binary_operator(
+                        ctx,
+                        expr_type_id,
+                        op,
+                        lhs_type_id,
+                        rhs_type_id,
+                        lhs_val,
+                        rhs_val,
+                    )
+                })
             }
         }
     }
@@ -200,15 +197,15 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
 
-        // First, translate the rhs. Then, if it must match the lhs but doesn't, add a cast.
+        // First, translate the rhs.
         let mut rhs_translation = self.convert_expr(ctx.used(), rhs, Some(rhs_type_id))?;
+        let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+        let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
+
         let lhs_rhs_types_must_match = {
-            let lhs_resolved_ty = &self.ast_context.resolve_type(lhs_type_id.ctype);
-            let rhs_resolved_ty = &self.ast_context.resolve_type(rhs_type_id.ctype);
             // Addition and subtraction can accept one pointer argument for .offset(), in which
             // case we don't want to homogenize arg types.
-            let neither_ptr =
-                !lhs_resolved_ty.kind.is_pointer() && !rhs_resolved_ty.kind.is_pointer();
+            let neither_ptr = !lhs_type_kind.is_pointer() && !rhs_type_kind.is_pointer();
 
             op.underlying_assignment().map_or(true, |op| {
                 if op.is_pointer_arithmetic() {
@@ -219,11 +216,19 @@ impl<'c> Translation<'c> {
             })
         };
         if lhs_rhs_types_must_match {
+            // If the rhs must match the lhs but doesn't, add a cast.
             // For compound assignment, use the compute type; for regular assignment, use lhs type
-            let effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
+            let mut effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
+
+            // For complex arithmetic, complex and real values can be mixed.
+            if let &CTypeKind::Complex(lhs_scalar_type_id) = lhs_type_kind {
+                if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                    effective_lhs_ty.ctype = lhs_scalar_type_id;
+                }
+            }
+
             if effective_lhs_ty.ctype != rhs_type_id.ctype {
-                let new_rhs_ty =
-                    self.convert_type(compute_lhs_type_id.unwrap_or(lhs_type_id).ctype)?;
+                let new_rhs_ty = self.convert_type(effective_lhs_ty.ctype)?;
                 rhs_translation = rhs_translation.map(|val| mk().cast_expr(val, new_rhs_ty));
             }
         }
