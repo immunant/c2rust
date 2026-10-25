@@ -208,7 +208,9 @@ impl<'c> Translation<'c> {
                     self.ast_context.resolve_type(cqual_type.ctype).kind
                 {
                     Ok(unwrap_function_pointer(val))
-                } else if let Some(_vla) = self.compute_size_of_expr(cqual_type.ctype) {
+                } else if let Some(_vla) =
+                    self.make_variable_array_size_multiplier(cqual_type.ctype)
+                {
                     Ok(val)
                 } else {
                     Ok(mk().unary_expr(UnOp::Deref(Default::default()), val))
@@ -401,7 +403,7 @@ impl<'c> Translation<'c> {
         neg: bool,
         mut deref: bool,
     ) -> WithStmts<Box<Expr>> {
-        if let Some(mul) = self.compute_size_of_expr(pointee_type_id) {
+        if let Some(mul) = self.make_variable_array_size_multiplier(pointee_type_id) {
             let mul = cast_int(mul, "isize", false);
             offset_rs = mk().binary_expr(BinOp::Mul(Default::default()), offset_rs, mul);
             deref = false;
@@ -432,7 +434,7 @@ impl<'c> Translation<'c> {
         // If the pointee is a variable array type, the actual pointee type used by `offset_from`
         // will be its element type rather than the whole array. So we need to divide by the
         // variable holding the length of the array.
-        if let Some(sz) = self.compute_size_of_expr(pointee_type_id) {
+        if let Some(sz) = self.make_variable_array_size_multiplier(pointee_type_id) {
             let div_rs = cast_int(sz, "isize", false);
             expr_rs = mk().binary_expr(BinOp::Div(Default::default()), expr_rs, div_rs);
         }
