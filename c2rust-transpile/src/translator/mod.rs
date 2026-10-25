@@ -2144,6 +2144,7 @@ impl<'c> Translation<'c> {
                 is_global,
                 is_inline,
                 is_extern,
+                is_inline_externally_visible,
                 typ,
                 ref name,
                 ref parameters,
@@ -2151,7 +2152,17 @@ impl<'c> Translation<'c> {
                 ref attrs,
                 ..
             } => self.convert_function(
-                ctx, decl_id, span, is_global, is_inline, is_extern, typ, name, parameters, body,
+                ctx,
+                decl_id,
+                span,
+                is_global,
+                is_inline,
+                is_extern,
+                is_inline_externally_visible,
+                typ,
+                name,
+                parameters,
+                body,
                 attrs,
             ),
 

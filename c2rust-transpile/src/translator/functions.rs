@@ -14,6 +14,7 @@ impl<'c> Translation<'c> {
         is_global: bool,
         is_inline: bool,
         is_extern: bool,
+        is_inline_externally_visible: bool,
         typ: CTypeId,
         name: &str,
         parameters: &[CDeclId],
@@ -68,6 +69,7 @@ impl<'c> Translation<'c> {
             is_main,
             is_variadic,
             is_extern,
+            is_inline_externally_visible,
             new_name,
             name,
             &args,
@@ -85,6 +87,7 @@ impl<'c> Translation<'c> {
                 is_main,
                 is_variadic,
                 is_extern,
+                is_inline_externally_visible,
                 new_name,
                 name,
                 &args,
@@ -105,6 +108,7 @@ impl<'c> Translation<'c> {
         is_main: bool,
         is_variadic: bool,
         is_extern: bool,
+        is_inline_externally_visible: bool,
         new_name: &str,
         name: &str,
         arguments: &[(CDeclId, String, CQualTypeId)],
@@ -251,9 +255,14 @@ impl<'c> Translation<'c> {
                 }
 
                 // c99 extern inline functions should be pub, but not gnu_inline attributed
-                // extern inlines, which become subject to their gnu89 visibility (private)
-                let is_extern_inline =
-                    is_inline && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline);
+                // extern inlines, which become subject to their gnu89 visibility (private).
+                // A c99 inline definition is also externally visible when any other
+                // declaration of the function in the TU is non-inline or `extern`
+                // (e.g. a plain prototype), which clang reports via
+                // `is_inline_externally_visible`.
+                let is_extern_inline = is_inline
+                    && (is_extern || is_inline_externally_visible)
+                    && !attrs.contains(&c_ast::Attribute::GnuInline);
 
                 // Only add linkage attributes if the function is `extern`
                 let mut mk_ = if is_main {
@@ -303,7 +312,7 @@ impl<'c> Translation<'c> {
                     //   even if the `inline` keyword isn't present
                     // * gnu_inline instead applies gnu89 rules. extern inline will not emit an
                     //   externally visible function.
-                    if is_global && is_extern && !attrs.contains(&c_ast::Attribute::GnuInline) {
+                    if is_global && is_extern_inline {
                         self.use_feature("linkage");
                         // ensures that public inlined rust function can be used in other modules
                         mk_ = mk_.str_attr("linkage", "external");

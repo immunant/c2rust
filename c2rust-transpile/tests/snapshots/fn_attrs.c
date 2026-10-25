@@ -17,6 +17,12 @@ extern void inline __attribute__((always_inline)) always_inline_extern(void) {}
 extern void inline __attribute__((__gnu_inline__)) gnu_inline_extern(void) {}
 extern void inline __attribute__((gnu_inline, always_inline)) always_inline_gnu_inline_extern(void) {}
 extern void inline __attribute__((gnu_inline)) gnu_inline_non_canonical_definition_extern(void) {}
+// A c99 inline definition is externally visible if the function is also declared
+// without `inline` in the same translation unit.
+void inline_with_prototype(void);
+void inline inline_with_prototype(void) {}
+void inline_with_prototype_unused(void);
+void inline inline_with_prototype_unused(void) {}
 
 // Skipped to keep this a platform-independent test.
 // #ifndef __APPLE__
@@ -40,6 +46,7 @@ void ensure_use(void) {
     gnu_inline_extern();
     always_inline_gnu_inline_extern();
     gnu_inline_non_canonical_definition_extern();
+    inline_with_prototype();
 
 // #ifndef __APPLE__
 //     aliased_fn();
