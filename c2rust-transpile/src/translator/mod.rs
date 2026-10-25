@@ -3204,10 +3204,10 @@ impl<'c> Translation<'c> {
 
     // Compute the offset multiplier for variable length array indexing
     // Rust type: usize
-    pub fn compute_size_of_expr(&self, type_id: CTypeId) -> Option<Box<Expr>> {
+    pub fn make_variable_array_size_multiplier(&self, type_id: CTypeId) -> Option<Box<Expr>> {
         match self.ast_context.resolve_type(type_id).kind {
             CTypeKind::VariableArray(elts, Some(counts)) => {
-                let opt_esize = self.compute_size_of_expr(elts);
+                let opt_esize = self.make_variable_array_size_multiplier(elts);
                 let csize_name = self
                     .renamer
                     .borrow()
@@ -3518,7 +3518,8 @@ impl<'c> Translation<'c> {
                             let inner_size =
                                 self.compute_size_of_type(ctx, override_ty, result_type_id, inner)?;
 
-                            if let Some(sz) = self.compute_size_of_expr(arg_ty.ctype) {
+                            if let Some(sz) = self.make_variable_array_size_multiplier(arg_ty.ctype)
+                            {
                                 inner_size.map(|x| {
                                     mk().binary_expr(BinOp::Mul(Default::default()), sz, x)
                                 })
@@ -4576,7 +4577,7 @@ impl<'c> Translation<'c> {
 
             // Find base element type of potentially nested arrays
             let inner = self.variable_array_base_type(elt);
-            let count = self.compute_size_of_expr(ty_id).unwrap();
+            let count = self.make_variable_array_size_multiplier(ty_id).unwrap();
             Ok(self
                 .implicit_default_expr(ctx, inner)?
                 .map(|val| vec_expr(val, count)))
