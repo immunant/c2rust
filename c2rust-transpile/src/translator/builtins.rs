@@ -31,7 +31,7 @@ enum NanFloat {
     F32,
     /// `double`
     F64,
-    /// `long double`, which we translate to `f128::f128` (IEEE binary128)
+    /// `long double` and `__float128`, which we translate to `f128::f128` (IEEE binary128)
     F128,
 }
 
@@ -106,7 +106,7 @@ impl<'c> Translation<'c> {
         }))
     }
 
-    /// Convert a call to `__builtin_nan{,f,l}` or `__builtin_nans{,f,l}`.
+    /// Convert a call to `__builtin_nan{,f,l,f128}` or `__builtin_nans{,f,l,f128}`.
     ///
     /// Clang folds these to a constant when the payload is a string literal it can parse,
     /// and otherwise emits a call to the libm function of the same name. We fold the same
@@ -238,7 +238,7 @@ impl<'c> Translation<'c> {
             "__builtin_huge_val" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
             )),
-            "__builtin_huge_vall" => {
+            "__builtin_huge_vall" | "__builtin_huge_valf128" => {
                 self.use_crate(ExternCrate::F128);
 
                 Ok(WithStmts::new_val(
@@ -251,7 +251,7 @@ impl<'c> Translation<'c> {
             "__builtin_inf" => Ok(WithStmts::new_val(
                 mk().abs_path_expr(vec!["core", "f64", "INFINITY"]),
             )),
-            "__builtin_infl" => {
+            "__builtin_infl" | "__builtin_inff128" => {
                 self.use_crate(ExternCrate::F128);
 
                 Ok(WithStmts::new_val(
@@ -264,7 +264,7 @@ impl<'c> Translation<'c> {
             "__builtin_nan" => {
                 self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F64, false)
             }
-            "__builtin_nanl" => {
+            "__builtin_nanl" | "__builtin_nanf128" => {
                 self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F128, false)
             }
             "__builtin_nansf" => {
@@ -273,7 +273,7 @@ impl<'c> Translation<'c> {
             "__builtin_nans" => {
                 self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F64, true)
             }
-            "__builtin_nansl" => {
+            "__builtin_nansl" | "__builtin_nansf128" => {
                 self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F128, true)
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
