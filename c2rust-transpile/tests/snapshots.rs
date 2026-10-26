@@ -449,6 +449,11 @@ fn test_main_fn() {
 }
 
 #[test]
+fn test_nan() {
+    transpile("nan.c").expect_unresolved_import("f128").run();
+}
+
+#[test]
 fn test_opaque_pointer_casts() {
     transpile("opaque_pointer_casts.c").run();
 }

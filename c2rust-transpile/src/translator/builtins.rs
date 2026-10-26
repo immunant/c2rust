@@ -24,6 +24,70 @@ enum LibcFnArgType {
     Int,
 }
 
+/// The IEEE format of the result of a `__builtin_nan*` builtin.
+#[derive(Copy, Clone)]
+enum NanFloat {
+    /// `float`
+    F32,
+    /// `double`
+    F64,
+    /// `long double`, which we translate to `f128::f128` (IEEE binary128)
+    F128,
+}
+
+impl NanFloat {
+    /// The number of explicitly stored significand bits and of exponent bits.
+    fn layout(self) -> (u32, u32) {
+        match self {
+            NanFloat::F32 => (23, 8),
+            NanFloat::F64 => (52, 11),
+            NanFloat::F128 => (112, 15),
+        }
+    }
+
+    /// The bits of the NaN with this payload, as computed by LLVM's `APFloat::makeNaN`.
+    fn nan_bits(self, payload: u128, signaling: bool) -> u128 {
+        let (significand_bits, exponent_bits) = self.layout();
+        let quiet_bit = 1 << (significand_bits - 1);
+        let mut significand = payload & ((1 << significand_bits) - 1);
+        if signaling {
+            significand &= !quiet_bit;
+            // An all-zero significand would be an infinity, so set the next bit down.
+            if significand == 0 {
+                significand = quiet_bit >> 1;
+            }
+        } else {
+            significand |= quiet_bit;
+        }
+        let exponent = ((1 << exponent_bits) - 1) << significand_bits;
+        exponent | significand
+    }
+}
+
+/// Parse a `__builtin_nan*` payload the way clang does: as an integer with an
+/// auto-detected radix (LLVM's `StringRef::getAsInteger(0, ..)`), with the empty
+/// string meaning 0. Only the low 128 bits are kept, which is all a payload can use.
+/// Returns `None` where clang would not fold the builtin to a constant.
+fn parse_nan_payload(s: &[u8]) -> Option<u128> {
+    if s.is_empty() {
+        return Some(0);
+    }
+    let (radix, digits) = match s {
+        [b'0', b'x' | b'X', rest @ ..] => (16, rest),
+        [b'0', b'b' | b'B', rest @ ..] => (2, rest),
+        [b'0', b'o', rest @ ..] => (8, rest),
+        [b'0', d, ..] if d.is_ascii_digit() => (8, &s[1..]),
+        _ => (10, s),
+    };
+    if digits.is_empty() {
+        return None;
+    }
+    digits.iter().try_fold(0u128, |acc, &c| {
+        let digit = char::from(c).to_digit(radix)?;
+        Some(acc.wrapping_mul(radix.into()).wrapping_add(digit.into()))
+    })
+}
+
 impl<'c> Translation<'c> {
     /// Convert a call to a rotate builtin.
     fn convert_builtin_rotate(
@@ -40,6 +104,104 @@ impl<'c> Translation<'c> {
             let method_call_expr = mk().method_call_expr(arg0, rotate_method_name, vec![arg1]);
             WithStmts::new_val(method_call_expr)
         }))
+    }
+
+    /// Convert a call to `__builtin_nan{,f,l}` or `__builtin_nans{,f,l}`.
+    ///
+    /// Clang folds these to a constant when the payload is a string literal it can parse,
+    /// and otherwise emits a call to the libm function of the same name. We fold the same
+    /// cases to the same bits, in the format we translate the type to (binary128 for
+    /// `long double`, which isn't what e.g. x87 uses). Otherwise, the quiet variants fall
+    /// back to the default NaN: that is what libm returns for a malformed payload, but not
+    /// necessarily for one only known at runtime. There is no libm `nans`, so an unfoldable
+    /// signaling NaN is an error.
+    fn convert_builtin_nan(
+        &self,
+        ctx: ExprContext,
+        src_loc: &Option<SrcSpan>,
+        builtin_name: &str,
+        args: &[CExprId],
+        float: NanFloat,
+        signaling: bool,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let arg = self.ast_context.unwrap_cast_expr(args[0]);
+        let payload = match self.ast_context[arg].kind {
+            CExprKind::Literal(_, CLiteral::String(ref bytes, 1)) => parse_nan_payload(bytes),
+            _ => None,
+        };
+        if let Some(payload) = payload {
+            return Ok(self.convert_nan_bits(float, float.nan_bits(payload, signaling)));
+        }
+
+        let msg = "payload is not a string literal clang can fold";
+        if signaling {
+            return Err(format_translation_err!(
+                self.ast_context.display_loc(src_loc),
+                "{builtin_name} {msg}",
+            ));
+        }
+        if let Some(loc) = self.ast_context.display_loc(src_loc) {
+            warn!("{loc}: {builtin_name} {msg}; emitting the default NaN");
+        } else {
+            warn!("{builtin_name} {msg}; emitting the default NaN");
+        }
+        // Keep any side effects of the payload expression.
+        let payload = self.convert_expr(ctx.unused(), args[0], None)?;
+        Ok(payload.and_then(|_| self.convert_nan_bits(float, float.nan_bits(0, false))))
+    }
+
+    /// Build a NaN of the given format from its bits.
+    fn convert_nan_bits(&self, float: NanFloat, bits: u128) -> WithStmts<Box<Expr>> {
+        match float {
+            // Rust doesn't guarantee the bits of `NAN`, but in practice it is the default
+            // quiet NaN, and it is more readable for the common case (e.g. C's `NAN`).
+            NanFloat::F32 if bits == 0x7fc0_0000 => {
+                WithStmts::new_val(mk().abs_path_expr(vec!["core", "f32", "NAN"]))
+            }
+            NanFloat::F64 if bits == 0x7ff8_0000_0000_0000 => {
+                WithStmts::new_val(mk().abs_path_expr(vec!["core", "f64", "NAN"]))
+            }
+            NanFloat::F32 => self.convert_float_from_bits("f32", "u32", bits),
+            NanFloat::F64 => self.convert_float_from_bits("f64", "u64", bits),
+            NanFloat::F128 => {
+                self.use_crate(ExternCrate::F128);
+
+                // `f128::f128` has no public bit-pattern constructor (and its `NAN` has a
+                // different payload than clang's), but it is a `#[repr(C)]` wrapper around
+                // its native-endian bytes.
+                let bits = mk().lit_expr(mk().int_unsuffixed_lit(format!("{bits:#x}")));
+                WithStmts::new_val(transmute_expr(
+                    mk().path_ty(vec!["u128"]),
+                    mk().abs_path_ty(vec!["f128", "f128"]),
+                    bits,
+                ))
+                .set_unsafe()
+            }
+        }
+    }
+
+    /// Build a float from its bit pattern, usable in `static` initializers.
+    /// `from_bits` is only `const` since Rust 1.83, so older editions, whose pinned toolchain
+    /// predates that, use a `transmute`.
+    fn convert_float_from_bits(
+        &self,
+        float_ty: &'static str,
+        bits_ty: &'static str,
+        bits: u128,
+    ) -> WithStmts<Box<Expr>> {
+        let bits = mk().lit_expr(mk().int_unsuffixed_lit(format!("{bits:#x}")));
+        if self.tcfg.edition < Edition2024 {
+            WithStmts::new_val(transmute_expr(
+                mk().path_ty(vec![bits_ty]),
+                mk().path_ty(vec![float_ty]),
+                bits,
+            ))
+            .set_unsafe()
+        } else {
+            WithStmts::new_val(
+                mk().call_expr(mk().path_expr(vec![float_ty, "from_bits"]), vec![bits]),
+            )
+        }
     }
 
     /// Convert a call to a builtin function to a Rust expression
@@ -96,18 +258,23 @@ impl<'c> Translation<'c> {
                     mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
                 ))
             }
-            "__builtin_nanf" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f32", "NAN"]),
-            )),
-            "__builtin_nan" => Ok(WithStmts::new_val(
-                mk().abs_path_expr(vec!["core", "f64", "NAN"]),
-            )),
+            "__builtin_nanf" => {
+                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F32, false)
+            }
+            "__builtin_nan" => {
+                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F64, false)
+            }
             "__builtin_nanl" => {
-                self.use_crate(ExternCrate::F128);
-
-                Ok(WithStmts::new_val(
-                    mk().abs_path_expr(vec!["f128", "f128", "NAN"]),
-                ))
+                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F128, false)
+            }
+            "__builtin_nansf" => {
+                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F32, true)
+            }
+            "__builtin_nans" => {
+                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F64, true)
+            }
+            "__builtin_nansl" => {
+                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F128, true)
             }
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 self.import_num_traits(args[0])?;
@@ -837,5 +1004,51 @@ impl<'c> Translation<'c> {
                 &format!("__builtin_{} not used", name),
             ))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nan_payloads_parse_like_clang() {
+        assert_eq!(parse_nan_payload(b""), Some(0));
+        assert_eq!(parse_nan_payload(b"0"), Some(0));
+        assert_eq!(parse_nan_payload(b"12"), Some(12));
+        assert_eq!(parse_nan_payload(b"010"), Some(8));
+        assert_eq!(parse_nan_payload(b"0x1F"), Some(31));
+        assert_eq!(parse_nan_payload(b"0X1f"), Some(31));
+        assert_eq!(parse_nan_payload(b"0b101"), Some(5));
+        assert_eq!(parse_nan_payload(b"0o17"), Some(15));
+        assert_eq!(parse_nan_payload(b"0B11"), Some(3));
+        // Only the low 128 bits are kept.
+        assert_eq!(
+            parse_nan_payload(b"0x1ffffffffffffffffffffffffffffffff"),
+            Some(u128::MAX)
+        );
+        assert_eq!(parse_nan_payload(b"0x"), None);
+        assert_eq!(parse_nan_payload(b"08"), None);
+        assert_eq!(parse_nan_payload(b"0O17"), None);
+        assert_eq!(parse_nan_payload(b"-1"), None);
+        assert_eq!(parse_nan_payload(b" 1"), None);
+        assert_eq!(parse_nan_payload(b"xyz"), None);
+        assert_eq!(parse_nan_payload(b"1\x002"), None);
+    }
+
+    #[test]
+    fn nan_bits_match_clang() {
+        use NanFloat::*;
+        assert_eq!(F32.nan_bits(0, false), 0x7fc00000);
+        assert_eq!(F64.nan_bits(0, false), 0x7ff8000000000000);
+        assert_eq!(F64.nan_bits(1, false), 0x7ff8000000000001);
+        assert_eq!(F32.nan_bits(0, true), 0x7fa00000);
+        assert_eq!(F32.nan_bits(7, true), 0x7f800007);
+        assert_eq!(F64.nan_bits(0, true), 0x7ff4000000000000);
+        assert_eq!(F64.nan_bits(1, true), 0x7ff0000000000001);
+        // The quiet bit is cleared, leaving an all-zero significand.
+        assert_eq!(F64.nan_bits(0x8000000000000, true), 0x7ff4000000000000);
+        assert_eq!(F128.nan_bits(0, false), 0x7fff8000000000000000000000000000);
+        assert_eq!(F128.nan_bits(0, true), 0x7fff4000000000000000000000000000);
     }
 }

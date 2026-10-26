@@ -1,0 +1,41 @@
+---
+source: c2rust-transpile/tests/snapshots.rs
+expression: cat tests/snapshots/nan.2021.clang15.rs
+---
+#![allow(
+    clippy::missing_safety_doc,
+    dead_code,
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    unused_assignments,
+    unused_mut
+)]
+extern "C" {
+    fn next_payload() -> *const ::core::ffi::c_char;
+}
+#[no_mangle]
+pub static mut static_nansf: ::core::ffi::c_float =
+    unsafe { ::core::mem::transmute::<u32, f32>(0x7fa00000) };
+#[no_mangle]
+pub static mut static_nans: ::core::ffi::c_double =
+    unsafe { ::core::mem::transmute::<u64, f64>(0x7ff4000000000000) };
+#[no_mangle]
+pub unsafe extern "C" fn nan_payloads() {
+    let mut qf: ::core::ffi::c_float = ::core::f32::NAN;
+    let mut qd: ::core::ffi::c_double = ::core::f64::NAN;
+    let mut ql: ::f128::f128 =
+        ::core::mem::transmute::<u128, ::f128::f128>(0x7fff8000000000000000000000000000);
+    let mut sf: ::core::ffi::c_float = ::core::mem::transmute::<u32, f32>(0x7fa00000);
+    let mut sd: ::core::ffi::c_double = ::core::mem::transmute::<u64, f64>(0x7ff4000000000000);
+    let mut sl: ::f128::f128 =
+        ::core::mem::transmute::<u128, ::f128::f128>(0x7fff4000000000000000000000000000);
+    let mut q1: ::core::ffi::c_double = ::core::mem::transmute::<u64, f64>(0x7ff8000000000001);
+    let mut s1: ::core::ffi::c_double = ::core::mem::transmute::<u64, f64>(0x7ff000000000001f);
+    let mut s2: ::core::ffi::c_float = ::core::mem::transmute::<u32, f32>(0x7f800008);
+    let mut s3: ::core::ffi::c_double = ::core::mem::transmute::<u64, f64>(0x7ff4000000000000);
+    let mut q2: ::core::ffi::c_float = ::core::f32::NAN;
+    let mut q3: ::core::ffi::c_double = ::core::f64::NAN;
+    next_payload();
+    let mut q4: ::core::ffi::c_double = ::core::f64::NAN;
+}
