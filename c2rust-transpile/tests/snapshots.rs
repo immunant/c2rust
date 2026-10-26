@@ -383,6 +383,14 @@ fn test_exprs() {
 }
 
 #[test]
+fn test_f128_builtins() {
+    transpile("f128_builtins.c")
+        .extra_clang_args(&["-target", "x86_64-unknown-linux-gnu"])
+        .expect_unresolved_import("f128")
+        .run();
+}
+
+#[test]
 fn test_factorial() {
     transpile("factorial.c").run();
 }
@@ -446,6 +454,11 @@ fn test_macros() {
 #[test]
 fn test_main_fn() {
     transpile("main_fn.c").run();
+}
+
+#[test]
+fn test_nan() {
+    transpile("nan.c").expect_unresolved_import("f128").run();
 }
 
 #[test]
