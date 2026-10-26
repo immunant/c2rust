@@ -316,24 +316,22 @@ fn maybe_get_type(c: &mut TokenTreeCursor) -> Type {
             }
             _ => false,
         };
-        match c.look_ahead(c_idx) {
-            Some(TokenTree::Token(
-                Token {
-                    kind: TokenKind::Ident(ty_ident, _),
-                    ..
-                },
-                _,
-            )) => {
-                if let Some(ty) = Type::from_ast_ident(*ty_ident) {
-                    c.nth(c_idx);
-                    if is_optional {
-                        return Type::Optional(ty.interned());
-                    } else {
-                        return ty;
-                    }
+        if let Some(TokenTree::Token(
+            Token {
+                kind: TokenKind::Ident(ty_ident, _),
+                ..
+            },
+            _,
+        )) = c.look_ahead(c_idx)
+        {
+            if let Some(ty) = Type::from_ast_ident(*ty_ident) {
+                c.nth(c_idx);
+                if is_optional {
+                    return Type::Optional(ty.interned());
+                } else {
+                    return ty;
                 }
             }
-            _ => {}
         }
     }
     Type::Unknown

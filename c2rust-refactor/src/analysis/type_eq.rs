@@ -221,7 +221,7 @@ impl<'lty, 'tcx> ExprPatVisitor<'lty, 'tcx> {
     }
 }
 
-impl<'lty, 'a, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
+impl<'lty, 'hir> Visitor<'hir> for ExprPatVisitor<'lty, 'hir> {
     // Visit every itemlike with a BodyId, and call `handle_body` on each.
 
     fn visit_item(&mut self, item: &'hir Item) {
@@ -411,7 +411,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 
     fn opt_unadjusted_expr_lty(&self, e: &Expr) -> Option<LTy<'lty, 'tcx>> {
-        self.unadjusted_nodes.get(&e.hir_id).map(|&x| x)
+        self.unadjusted_nodes.get(&e.hir_id).copied()
     }
 
     fn block_lty(&self, b: &Block) -> LTy<'lty, 'tcx> {
@@ -450,12 +450,8 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     // Functions for accessing the def ty/sig caches
 
     fn compute_def_lty(&self, id: DefId) -> LTy<'lty, 'tcx> {
-        match self.tcx.hir().get_if_local(id) {
-            // TODO: is the switch from Binding to Pat correct?
-            Some(Node::Pat(p)) => {
-                return self.pat_lty(p);
-            }
-            _ => {}
+        if let Some(Node::Pat(p)) = self.tcx.hir().get_if_local(id) {
+            return self.pat_lty(p);
         }
 
         self.ltt.label(self.tcx.type_of(id).subst_identity())
@@ -470,10 +466,10 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
 
     fn compute_def_sig(&self, id: DefId) -> LFnSig<'lty, 'tcx> {
         let sig = self.tcx.fn_sig(id).subst_identity();
-        let is_extern = match sig.skip_binder().abi {
-            Abi::Rust | Abi::RustIntrinsic | Abi::RustCall => false,
-            _ => true,
-        };
+        let is_extern = !matches!(
+            sig.skip_binder().abi,
+            Abi::Rust | Abi::RustIntrinsic | Abi::RustCall
+        );
 
         if !is_extern {
             self.ltt.label_sig(sig.skip_binder())
@@ -580,7 +576,7 @@ impl<'lty, 'tcx> UnifyVisitor<'lty, 'tcx> {
     }
 }
 
-impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
+impl<'lty, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
     type NestedFilter = nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
@@ -620,14 +616,10 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
                 let func_lty = self.expr_lty(func);
 
                 fn is_closure(ty: ty::Ty) -> bool {
-                    if let ty::TyKind::Closure(..) = ty.kind() {
-                        true
-                    } else {
-                        false
-                    }
+                    matches!(ty.kind(), ty::TyKind::Closure(..))
                 }
                 if is_closure(func_lty.ty)
-                    || (func_lty.args.len() > 0 && is_closure(func_lty.args[0].ty))
+                    || (!func_lty.args.is_empty() && is_closure(func_lty.args[0].ty))
                 {
                     intravisit::walk_expr(self, e);
                     return;
@@ -730,13 +722,10 @@ impl<'lty, 'a, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
 
             ExprKind::Path(ref path) => {
                 // TODO: many more subcases need handling here
-                match *path {
-                    QPath::Resolved(_, path) => {
-                        if let Some(def_id) = path.res.opt_def_id() {
-                            self.ltt.unify(rty, self.def_lty(def_id));
-                        }
+                if let QPath::Resolved(_, path) = *path {
+                    if let Some(def_id) = path.res.opt_def_id() {
+                        self.ltt.unify(rty, self.def_lty(def_id));
                     }
-                    _ => {}
                 }
             }
 

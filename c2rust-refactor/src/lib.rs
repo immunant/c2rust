@@ -259,7 +259,7 @@ fn cargo_config() -> Config {
     config
 }
 
-fn setup_cargo<'cfg>(config: &'cfg Config) -> (CompileOptions, Workspace<'cfg>) {
+fn setup_cargo(config: &Config) -> (CompileOptions, Workspace<'_>) {
     let mode = CompileMode::Check { test: false };
     let mut compile_opts = CompileOptions::new(config, mode).unwrap();
 
@@ -331,7 +331,7 @@ fn get_rustc_cargo_args(target_type: CargoTarget) -> Vec<RustcArgs> {
     }
 
     impl Executor for LoggingExecutor {
-        fn init<'a, 'cfg>(&self, cx: &Context<'a, 'cfg>, unit: &Unit) {
+        fn init(&self, cx: &Context<'_, '_>, unit: &Unit) {
             self.default.init(cx, unit);
         }
 

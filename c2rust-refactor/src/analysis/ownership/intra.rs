@@ -182,10 +182,8 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
         self.cset.remove_useless();
         self.cset.simplify_min_lhs(self.cx.arena);
 
-        self.cset.retain_perms(self.cx.arena, |p| match p {
-            Perm::LocalVar(_) => false,
-            _ => true,
-        });
+        self.cset
+            .retain_perms(self.cx.arena, |p| !matches!(p, Perm::LocalVar(_)));
 
         self.cset.simplify(self.cx.arena);
 
@@ -198,10 +196,10 @@ impl<'c, 'lty, 'a: 'lty, 'tcx: 'a> IntraCtxt<'c, 'lty, 'a, 'tcx> {
 
         // ITy -> LTy
         let mut f = |&l: &Label<'lty>| match l {
-            Label::Ptr(p) => p.as_var().into_iter().find(|pv| match pv {
-                PermVar::Local(_) => true,
-                _ => false,
-            }),
+            Label::Ptr(p) => p
+                .as_var()
+                .into_iter()
+                .find(|pv| matches!(pv, PermVar::Local(_))),
             _ => None,
         };
 

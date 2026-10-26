@@ -29,7 +29,7 @@ pub struct ReconstructWhile;
 
 impl Transform for ReconstructWhile {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
-        let krate = replace_expr(
+        replace_expr(
             st,
             cx,
             krate,
@@ -46,8 +46,7 @@ impl Transform for ReconstructWhile {
                     $body:MultiStmt;
                 }
             "#,
-        );
-        krate
+        )
     }
 }
 
@@ -106,8 +105,8 @@ impl Transform for ReconstructForRange {
                     return;
                 }
             };
-            if !mcx.try_match(&*i_plus_eq, &incr).is_ok()
-                && !mcx.try_match(&*i_eq_plus, &incr).is_ok()
+            if mcx.try_match(&*i_plus_eq, &incr).is_err()
+                && mcx.try_match(&*i_eq_plus, &incr).is_err()
             {
                 return;
             }
@@ -250,10 +249,8 @@ impl<'a, 'hir, 'tcx> Delegate<'tcx> for ForRangeDelegate<'a, 'hir> {
             } else {
                 self.writes_inside_loop += 1;
             }
-        } else {
-            if !self.node_inside_loop(cmt.hir_id) {
-                self.reads_outside_loop += 1;
-            }
+        } else if !self.node_inside_loop(cmt.hir_id) {
+            self.reads_outside_loop += 1;
         }
     }
 

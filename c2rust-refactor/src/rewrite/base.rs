@@ -187,7 +187,6 @@ impl<A: Rewrite, B: Rewrite> Rewrite for (A, B) {
     fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {
         <A as Rewrite>::rewrite(&old.0, &new.0, rcx.borrow())
             && <B as Rewrite>::rewrite(&old.1, &new.1, rcx.borrow())
-            && true
     }
 }
 
@@ -196,7 +195,6 @@ impl<A: Rewrite, B: Rewrite, C: Rewrite> Rewrite for (A, B, C) {
         <A as Rewrite>::rewrite(&old.0, &new.0, rcx.borrow())
             && <B as Rewrite>::rewrite(&old.1, &new.1, rcx.borrow())
             && <C as Rewrite>::rewrite(&old.2, &new.2, rcx.borrow())
-            && true
     }
 }
 
