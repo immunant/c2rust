@@ -1,0 +1,145 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_callback_binders.rs --edition 2021
+---
+#![feature(extern_types, register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code, improper_ctypes_definitions)]
+
+pub mod callbacks_h {
+    extern "C" {
+        pub type CallbackContext;
+    }
+    #[repr(C)]
+    pub struct Relationships {
+        pub f: for<'a, 'b> unsafe fn(
+            *mut crate::callbacks_h::CallbackContext,
+            crate::Pair<'a, 'a>,
+            &'b (),
+        ),
+    }
+    // Equal binder counts do not imply equal lifetime relationships.
+    #[repr(C)]
+
+    pub struct Relationships_1 {
+        pub f: for<'a, 'b> unsafe fn(
+            *mut crate::callbacks_h::CallbackContext,
+            crate::Pair<'a, 'b>,
+            &'b (),
+        ),
+    }
+
+    #[repr(C)]
+
+    pub struct Nested {
+        pub f: for<'a> unsafe fn(
+            *mut crate::callbacks_h::CallbackContext,
+            &'a (),
+            for<'b> fn(&'a (), &'b ()),
+        ),
+    }
+    // Swapping the outer and inner lifetime must keep these separate.
+    #[repr(C)]
+
+    pub struct Nested_1 {
+        pub f: for<'a> unsafe fn(
+            *mut crate::callbacks_h::CallbackContext,
+            &'a (),
+            for<'b> fn(&'b (), &'a ()),
+        ),
+    }
+
+    #[repr(C)]
+
+    pub struct Equivalent {
+        pub f: for<'a> unsafe fn(
+            *mut crate::callbacks_h::CallbackContext,
+            &'a (),
+            for<'b> fn(&'a (), &'b ()),
+        ),
+    }
+
+    #[repr(C)]
+
+    pub struct Safety {
+        pub f: for<'a> fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct Safety_1 {
+        pub f: for<'a> unsafe fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct Abi {
+        pub f: for<'a> unsafe extern "C" fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct Abi_1 {
+        pub f: for<'a> unsafe fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct Constants {
+        pub f: for<'a> unsafe fn(*mut crate::callbacks_h::CallbackContext, &'a crate::Marker<1>),
+    }
+
+    #[repr(C)]
+
+    pub struct Constants_1 {
+        pub f: for<'a> unsafe fn(*mut crate::callbacks_h::CallbackContext, &'a crate::Marker<2>),
+    }
+
+    #[repr(C)]
+
+    pub struct Packed {
+        pub tag: u8,
+        pub f: for<'a> unsafe extern "C" fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C, packed)]
+
+    pub struct Packed_1 {
+        pub tag: u8,
+        pub f: for<'a> unsafe extern "C" fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct Aligned {
+        pub f: for<'a> unsafe extern "C" fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C, align(32))]
+
+    pub struct Aligned_1 {
+        pub f: for<'a> unsafe extern "C" fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct ArrayLength {
+        pub tag: [[u64; 0]; 1],
+        pub f: for<'a> unsafe extern "C" fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct ArrayLength_1 {
+        pub tag: [[u64; 1]; 1],
+        pub f: for<'a> unsafe extern "C" fn(*mut crate::callbacks_h::CallbackContext, &'a ()),
+    }
+}
+pub struct Pair<'a, 'b>(pub &'a (), pub &'b ());
+pub struct Marker<const N: usize>;
+
+pub mod first {}
+
+pub mod second {}
+
+fn main() {}
