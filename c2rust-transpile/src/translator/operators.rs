@@ -572,7 +572,9 @@ impl<'c> Translation<'c> {
             CUnOp::Deref => self.convert_deref(ctx, expr_type_id, arg),
             CUnOp::Plus => self.convert_expr(ctx, arg, expected_type_id), // promotion is explicit in the clang AST
 
-            CUnOp::Negate => self.convert_negate_operator(ctx, expr_type_id, arg),
+            CUnOp::Negate => {
+                self.convert_negate_operator(ctx, expected_type_id, result_type_id, arg)
+            }
             CUnOp::Complement => Ok(self
                 .convert_expr(ctx, arg, expected_type_id)?
                 .map(|a| mk().unary_expr(UnOp::Not(Default::default()), a))),
@@ -677,9 +679,11 @@ impl<'c> Translation<'c> {
     fn convert_negate_operator(
         &self,
         ctx: ExprContext,
-        expr_type_id: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
         arg_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let expr_type_id = expected_type_id.unwrap_or(result_type_id);
         let is_unsigned_integral_type = self
             .ast_context
             .resolve_type(expr_type_id.ctype)
@@ -689,7 +693,7 @@ impl<'c> Translation<'c> {
         if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false, false) = (
             &self.ast_context.index_unwrap_parens(arg_id).kind,
             is_unsigned_integral_type,
-            self.expr_is_expanded_macro(ctx, arg_id, Some(expr_type_id)),
+            self.expr_is_expanded_macro(ctx, arg_id, expected_type_id),
         ) {
             // If we are negating a literal, generate a negated literal directly.
             // This will create an expression like `-1 as ty` without parentheses,
@@ -697,7 +701,7 @@ impl<'c> Translation<'c> {
             let val = self.mk_int_lit(ctx, expr_type_id, val, base, true)?;
             Ok(WithStmts::new_val(val))
         } else {
-            let val = self.convert_expr(ctx, arg_id, Some(expr_type_id))?;
+            let val = self.convert_expr(ctx, arg_id, expected_type_id)?;
             let val = val.map(|val| {
                 if is_unsigned_integral_type {
                     wrapping_neg_expr(val)
