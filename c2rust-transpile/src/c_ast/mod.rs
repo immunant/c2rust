@@ -122,6 +122,10 @@ pub struct TypedAstContext {
 
     pub va_list_kind: BuiltinVaListKind,
     pub target: String,
+
+    /// Maps the `PULLBACK_KINDS` to the compiler-provided type that they had originally.
+    /// If a key is not present, it means that the compiler did not provide that type.
+    replaced_type_kinds: HashMap<CTypeKind, CTypeKind>,
 }
 
 /// Information about a single macro invocation.
@@ -1310,6 +1314,7 @@ impl TypedAstContext {
 
     fn replace_pullback_kinds(&mut self) {
         let mut replacements: HashMap<CDeclId, CDecl> = HashMap::new();
+        let mut replaced_type_kinds: HashMap<CTypeKind, CTypeKind> = HashMap::new();
 
         for (&decl_id, decl) in self.iter_decls() {
             let CDeclKind::Typedef {
@@ -1427,7 +1432,20 @@ impl TypedAstContext {
 
             if let Some(kind) = new_type_kind {
                 log::trace!("Selected kind {kind} for typedef {name}");
-                typ = CQualTypeId::new(self.type_for_kind(&kind));
+                let new_type_id = CQualTypeId::new(self.type_for_kind(&kind));
+
+                use std::collections::hash_map::Entry;
+                let old_type_kind = self.resolve_type(typ.ctype).kind.clone();
+                match replaced_type_kinds.entry(kind) {
+                    Entry::Occupied(entry) => {
+                        assert_eq!(*entry.into_mut(), old_type_kind);
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(old_type_kind);
+                    }
+                }
+
+                typ = new_type_id;
             }
 
             let new_typedef_kind = CDeclKind::Typedef {
@@ -1442,6 +1460,8 @@ impl TypedAstContext {
         for (decl_id, decl) in replacements {
             self.c_decls[&decl_id] = decl;
         }
+
+        self.replaced_type_kinds = replaced_type_kinds;
     }
 
     /// Eliminates typedefs in various ways. Currently does the following:
