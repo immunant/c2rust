@@ -167,6 +167,7 @@ impl<'c> Translation<'c> {
             "__builtin_isinf_sign" => {
                 let zero = self.convert_integer_literal(
                     ctx.used(),
+                    None,
                     target_type_id,
                     0,
                     IntBase::Dec,
@@ -174,6 +175,7 @@ impl<'c> Translation<'c> {
                 )?;
                 let one = self.convert_integer_literal(
                     ctx.used(),
+                    None,
                     target_type_id,
                     1,
                     IntBase::Dec,
@@ -181,6 +183,7 @@ impl<'c> Translation<'c> {
                 )?;
                 let minus_one = self.convert_integer_literal(
                     ctx.used(),
+                    None,
                     target_type_id,
                     1,
                     IntBase::Dec,
@@ -191,27 +194,25 @@ impl<'c> Translation<'c> {
 
                 // isinf_sign(x) -> fabs(x) == infinity ? (signbit(x) ? -1 : 1) : 0
                 let val = self.convert_expr(ctx, args[0], None)?;
-                val.map(|x| {
-                    let inner_cond = mk().method_call_expr(x.clone(), "is_sign_positive", vec![]);
-                    let one_block = mk().block(vec![mk().expr_stmt(one)]);
-                    let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
-                    let outer_cond = mk().method_call_expr(x, "is_infinite", vec![]);
-                    let inner_ifte_block = mk().block(vec![mk().expr_stmt(inner_ifte)]);
-                    mk().ifte_expr(outer_cond, inner_ifte_block, Some(zero))
-                })
+                val.zip(zero)
+                    .zip(one)
+                    .zip(minus_one)
+                    .map(|(((val, zero), one), minus_one)| {
+                        let inner_cond =
+                            mk().method_call_expr(val.clone(), "is_sign_positive", vec![]);
+                        let one_block = mk().block(vec![mk().expr_stmt(one)]);
+                        let inner_ifte = mk().ifte_expr(inner_cond, one_block, Some(minus_one));
+                        let outer_cond = mk().method_call_expr(val, "is_infinite", vec![]);
+                        let inner_ifte_block = mk().block(vec![mk().expr_stmt(inner_ifte)]);
+                        mk().ifte_expr(outer_cond, inner_ifte_block, Some(zero))
+                    })
             }
             "__builtin_flt_rounds" => {
                 // LLVM simply lowers this to the constant one which means
                 // that floats are rounded to the nearest number.
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
                 source_type_id = target_type_id;
-                WithStmts::new_val(self.convert_integer_literal(
-                    ctx,
-                    target_type_id,
-                    1,
-                    IntBase::Dec,
-                    false,
-                )?)
+                self.convert_integer_literal(ctx, None, target_type_id, 1, IntBase::Dec, false)?
             }
             "__builtin_expect" => self.convert_expr(ctx, args[0], None)?,
 
@@ -313,13 +314,7 @@ impl<'c> Translation<'c> {
             // the specified value of the -O option. "
             "__builtin_constant_p" => {
                 source_type_id = target_type_id;
-                WithStmts::new_val(self.convert_integer_literal(
-                    ctx,
-                    target_type_id,
-                    0,
-                    IntBase::Dec,
-                    false,
-                )?)
+                self.convert_integer_literal(ctx, None, target_type_id, 0, IntBase::Dec, false)?
             }
 
             "__builtin_object_size" => {
@@ -343,29 +338,33 @@ impl<'c> Translation<'c> {
                 );
                 let zero = self.convert_integer_literal(
                     ctx.used(),
+                    None,
                     result_type_id,
                     0,
                     IntBase::Dec,
                     false,
                 )?;
 
-                ptr_arg.zip(type_arg).map(|(_ptr_arg, type_arg)| {
-                    let type_and_2 = mk().binary_expr(
-                        BinOp::BitAnd(Default::default()),
-                        type_arg,
-                        mk().lit_expr(mk().int_lit(2, "")),
-                    );
-                    let if_cond = mk().binary_expr(
-                        BinOp::Eq(Default::default()),
-                        type_and_2,
-                        mk().lit_expr(mk().int_lit(0, "")),
-                    );
-                    mk().ifte_expr(
-                        if_cond,
-                        mk().block(vec![mk().expr_stmt(minus_one)]),
-                        Some(zero),
-                    )
-                })
+                ptr_arg
+                    .zip(type_arg)
+                    .zip(zero)
+                    .map(|((_ptr_arg, type_arg), zero)| {
+                        let type_and_2 = mk().binary_expr(
+                            BinOp::BitAnd(Default::default()),
+                            type_arg,
+                            mk().lit_expr(mk().int_lit(2, "")),
+                        );
+                        let if_cond = mk().binary_expr(
+                            BinOp::Eq(Default::default()),
+                            type_and_2,
+                            mk().lit_expr(mk().int_lit(0, "")),
+                        );
+                        mk().ifte_expr(
+                            if_cond,
+                            mk().block(vec![mk().expr_stmt(minus_one)]),
+                            Some(zero),
+                        )
+                    })
             }
 
             "__builtin_va_start" => {
