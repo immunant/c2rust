@@ -3,9 +3,9 @@ use crate::diagnostics::diag;
 use c2rust_ast_exporter::clang_ast::*;
 use failure::err_msg;
 use serde_bytes::ByteBuf;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::vec::Vec;
+use std::{collections::HashMap, ffi::OsStr};
 
 use super::Located;
 use crate::diagnostics::{Diagnostic, TranslationError, TranslationErrorKind};
@@ -2224,35 +2224,64 @@ impl ConversionContext {
                     let target_dependent_macro: Option<String> = from_value(node.extras[2].clone())
                         .expect("Expected to find optional target-dependent macro name");
 
-                    typ = target_dependent_macro
-                        .as_deref()
-                        .and_then(|macro_name| {
-                            let kind = match macro_name {
-                                // Match names in the order Clang defines them.
-                                "__INTMAX_TYPE__" => CTypeKind::IntMax,
-                                "__UINTMAX_TYPE__" => CTypeKind::UIntMax,
-                                "__PTRDIFF_TYPE__" => CTypeKind::PtrDiff,
-                                "__INTPTR_TYPE__" => CTypeKind::IntPtr,
-                                "__SIZE_TYPE__" => CTypeKind::Size,
-                                "__WCHAR_TYPE__" => CTypeKind::WChar,
-                                // __WINT_TYPE__ is defined by Clang but has no obvious translation
-                                // __CHARn_TYPE__ for n ∈ {8, 16, 32} also lack obvious translation
-                                "__UINTPTR_TYPE__" => CTypeKind::UIntPtr,
-                                _ => {
-                                    log::debug!("Unknown target-dependent macro {macro_name}!");
-                                    return None;
-                                }
-                            };
-                            log::trace!("Selected kind {kind} for typedef {name}");
-                            Some(CQualTypeId::new(self.typed_context.type_for_kind(&kind)))
+                    let mut new_type_kind = None;
+
+                    fn type_kind_for_macro_name(macro_name: &str) -> Option<CTypeKind> {
+                        Some(match macro_name {
+                            // Match names in the order Clang defines them.
+                            "__INTMAX_TYPE__" => CTypeKind::IntMax,
+                            "__UINTMAX_TYPE__" => CTypeKind::UIntMax,
+                            "__PTRDIFF_TYPE__" => CTypeKind::PtrDiff,
+                            "__INTPTR_TYPE__" => CTypeKind::IntPtr,
+                            "__SIZE_TYPE__" => CTypeKind::Size,
+                            "__WCHAR_TYPE__" => CTypeKind::WChar,
+                            // __WINT_TYPE__ is defined by Clang but has no obvious translation
+                            // __CHARn_TYPE__ for n ∈ {8, 16, 32} also lack obvious translation
+                            "__UINTPTR_TYPE__" => CTypeKind::UIntPtr,
+                            _ => {
+                                log::debug!("Unknown target-dependent macro {macro_name}!");
+                                return None;
+                            }
                         })
-                        .unwrap_or(typ);
+                    }
+
+                    fn is_candidate_header(file_name: &OsStr, typedef_name: &str) -> bool {
+                        file_name == "stdint.h"
+                            || file_name == "types.h"
+                            // glibc also declares `ssize_t` in these headers; whichever
+                            // header a TU includes first provides the typedef.
+                            || ((file_name == "stdio.h" || file_name == "unistd.h")
+                                && typedef_name == "ssize_t")
+                            || file_name
+                                .to_str()
+                                .map(|s| s.starts_with("__stddef_"))
+                                .unwrap_or(false)
+                        // for macos
+                            || file_name == "_types.h"
+                            || file_name
+                                .to_str()
+                                .map(|s| s.starts_with("_int") || s.starts_with("_uint"))
+                                .unwrap_or(false)
+                    }
 
                     // Other fixed-size types are defined without special compiler involvement, by
                     // standard headers and their transitive includes. In these contexts, we
                     // recognize these typedefs by the name of the typedef type.
-                    let id_for_name = |name| -> Option<_> {
-                        let kind = match name {
+                    let type_kind_for_typedef_name = |loc: &SrcSpan,
+                                                      typedef_name: &str|
+                     -> Option<CTypeKind> {
+                        let file_name = self
+                            .typed_context
+                            .files
+                            .get(self.typed_context.file_map[loc.fileid as usize])
+                            .and_then(|file| file.path.as_ref())
+                            .and_then(|path| path.file_name());
+
+                        if file_name.map_or(true, |file| !is_candidate_header(file, typedef_name)) {
+                            return None;
+                        }
+
+                        Some(match typedef_name {
                             "intmax_t" => CTypeKind::IntMax,
                             "uintmax_t" => CTypeKind::UIntMax,
                             "intptr_t" => CTypeKind::IntPtr,
@@ -2285,37 +2314,21 @@ impl ConversionContext {
                                 log::debug!("Unknown fixed-size type typedef {name}!");
                                 return None;
                             }
-                        };
-                        log::trace!("Selected kind {kind} for typedef {name}");
-                        Some(CQualTypeId::new(self.typed_context.type_for_kind(&kind)))
+                        })
                     };
-                    let file = self
-                        .typed_context
-                        .files
-                        .get(self.typed_context.file_map[node.loc.fileid as usize]);
-                    let file = file.unwrap();
-                    if let Some(path) = file.path.as_ref() {
-                        if let Some(filename) = path.file_name() {
-                            if filename == "stdint.h"
-                                || filename == "types.h"
-                                // glibc also declares `ssize_t` in these headers; whichever
-                                // header a TU includes first provides the typedef.
-                                || ((filename == "stdio.h" || filename == "unistd.h")
-                                    && name == "ssize_t")
-                                || filename
-                                    .to_str()
-                                    .map(|s| s.starts_with("__stddef_"))
-                                    .unwrap_or(false)
-                            // for macos
-                                || filename == "_types.h"
-                                || filename
-                                    .to_str()
-                                    .map(|s| s.starts_with("_int") || s.starts_with("_uint"))
-                                    .unwrap_or(false)
-                            {
-                                typ = id_for_name(&*name).unwrap_or(typ);
-                            }
-                        }
+
+                    if let Some(kind) = target_dependent_macro
+                        .as_deref()
+                        .and_then(type_kind_for_macro_name)
+                    {
+                        new_type_kind = Some(kind);
+                    } else if let Some(kind) = type_kind_for_typedef_name(&node.loc, &name) {
+                        new_type_kind = Some(kind);
+                    }
+
+                    if let Some(kind) = new_type_kind {
+                        log::trace!("Selected kind {kind} for typedef {name}");
+                        typ = CQualTypeId::new(self.typed_context.type_for_kind(&kind));
                     }
 
                     let typdef_decl = CDeclKind::Typedef {
