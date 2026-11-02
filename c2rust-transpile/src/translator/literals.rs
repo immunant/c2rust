@@ -8,42 +8,6 @@ use std::{borrow::Cow, iter};
 use syn::{Path, TypePath};
 
 impl<'c> Translation<'c> {
-    /// Generate an integer literal corresponding to the given type, value, and base.
-    pub fn mk_int_lit(
-        &self,
-        ctx: ExprContext,
-        ty: CQualTypeId,
-        val: u64,
-        base: IntBase,
-        negative: bool,
-    ) -> TranslationResult<Box<Expr>> {
-        let target_ty = self.convert_type(ty.ctype)?;
-        let suffix = numeric_literal_suffix(&target_ty);
-        let is_suffix = suffix.is_some();
-
-        let mut lit_str = match base {
-            IntBase::Dec => format!("{val}"),
-            IntBase::Hex => format!("0x{val:x}"),
-            IntBase::Oct => format!("0o{val:o}"),
-        };
-
-        if let Some(suffix) = suffix {
-            lit_str.push_str(&suffix);
-        }
-
-        let mut expr = mk().lit_expr(mk().float_unsuffixed_lit(&lit_str));
-
-        if negative {
-            expr = neg_expr(expr);
-        }
-
-        Ok(if is_suffix || ctx.is_pattern {
-            expr
-        } else {
-            mk().cast_expr(expr, target_ty)
-        })
-    }
-
     /// Return whether the literal can be directly translated as this type.
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId, is_negated: bool) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
@@ -71,7 +35,7 @@ impl<'c> Translation<'c> {
 
         match *lit {
             CLiteral::Integer(val, base) => Ok(WithStmts::new_val(
-                self.mk_int_lit(ctx, ty, val, base, false)?,
+                self.convert_integer_literal(ctx, ty, val, base, false)?,
             )),
 
             CLiteral::Character(val) => {
@@ -152,6 +116,42 @@ impl<'c> Translation<'c> {
                 }
             }
         }
+    }
+
+    /// Generate an integer literal corresponding to the given type, value, and base.
+    pub(crate) fn convert_integer_literal(
+        &self,
+        ctx: ExprContext,
+        ty: CQualTypeId,
+        val: u64,
+        base: IntBase,
+        negative: bool,
+    ) -> TranslationResult<Box<Expr>> {
+        let target_ty = self.convert_type(ty.ctype)?;
+        let suffix = numeric_literal_suffix(&target_ty);
+        let is_suffix = suffix.is_some();
+
+        let mut lit_str = match base {
+            IntBase::Dec => format!("{val}"),
+            IntBase::Hex => format!("0x{val:x}"),
+            IntBase::Oct => format!("0o{val:o}"),
+        };
+
+        if let Some(suffix) = suffix {
+            lit_str.push_str(&suffix);
+        }
+
+        let mut expr = mk().lit_expr(mk().float_unsuffixed_lit(&lit_str));
+
+        if negative {
+            expr = neg_expr(expr);
+        }
+
+        Ok(if is_suffix || ctx.is_pattern {
+            expr
+        } else {
+            mk().cast_expr(expr, target_ty)
+        })
     }
 
     pub(crate) fn convert_floating_literal(

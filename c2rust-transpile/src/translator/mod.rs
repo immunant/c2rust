@@ -3566,13 +3566,15 @@ impl<'c> Translation<'c> {
                 .map_err(|e| e.add_loc(self.ast_context.display_loc(src_loc))),
 
             OffsetOf(ty, ref kind) => match kind {
-                OffsetOfKind::Constant(val) => Ok(WithStmts::new_val(self.mk_int_lit(
-                    ctx,
-                    override_ty.unwrap_or(ty),
-                    *val,
-                    IntBase::Dec,
-                    false,
-                )?)),
+                OffsetOfKind::Constant(val) => {
+                    Ok(WithStmts::new_val(self.convert_integer_literal(
+                        ctx,
+                        override_ty.unwrap_or(ty),
+                        *val,
+                        IntBase::Dec,
+                        false,
+                    )?))
+                }
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
                     self.use_crate(ExternCrate::Memoffset);
 
