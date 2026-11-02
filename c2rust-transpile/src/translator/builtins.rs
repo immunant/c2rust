@@ -165,10 +165,27 @@ impl<'c> Translation<'c> {
                 val.map(|x| mk().method_call_expr(x, seg, vec![]))
             }
             "__builtin_isinf_sign" => {
-                let zero = self.mk_int_lit(ctx.used(), target_type_id, 0, IntBase::Dec, false)?;
-                let one = self.mk_int_lit(ctx.used(), target_type_id, 1, IntBase::Dec, false)?;
-                let minus_one =
-                    self.mk_int_lit(ctx.used(), target_type_id, 1, IntBase::Dec, true)?;
+                let zero = self.convert_integer_literal(
+                    ctx.used(),
+                    target_type_id,
+                    0,
+                    IntBase::Dec,
+                    false,
+                )?;
+                let one = self.convert_integer_literal(
+                    ctx.used(),
+                    target_type_id,
+                    1,
+                    IntBase::Dec,
+                    false,
+                )?;
+                let minus_one = self.convert_integer_literal(
+                    ctx.used(),
+                    target_type_id,
+                    1,
+                    IntBase::Dec,
+                    true,
+                )?;
                 self.import_num_traits(args[0])?;
                 source_type_id = target_type_id;
 
@@ -188,7 +205,13 @@ impl<'c> Translation<'c> {
                 // that floats are rounded to the nearest number.
                 // https://github.com/llvm-mirror/llvm/blob/master/lib/CodeGen/IntrinsicLowering.cpp#L470
                 source_type_id = target_type_id;
-                WithStmts::new_val(self.mk_int_lit(ctx, target_type_id, 1, IntBase::Dec, false)?)
+                WithStmts::new_val(self.convert_integer_literal(
+                    ctx,
+                    target_type_id,
+                    1,
+                    IntBase::Dec,
+                    false,
+                )?)
             }
             "__builtin_expect" => self.convert_expr(ctx, args[0], None)?,
 
@@ -290,7 +313,13 @@ impl<'c> Translation<'c> {
             // the specified value of the -O option. "
             "__builtin_constant_p" => {
                 source_type_id = target_type_id;
-                WithStmts::new_val(self.mk_int_lit(ctx, target_type_id, 0, IntBase::Dec, false)?)
+                WithStmts::new_val(self.convert_integer_literal(
+                    ctx,
+                    target_type_id,
+                    0,
+                    IntBase::Dec,
+                    false,
+                )?)
             }
 
             "__builtin_object_size" => {
@@ -312,7 +341,13 @@ impl<'c> Translation<'c> {
                     neg_expr(mk().lit_expr(mk().int_lit(1, "isize"))),
                     result_type_rs,
                 );
-                let zero = self.mk_int_lit(ctx.used(), result_type_id, 0, IntBase::Dec, false)?;
+                let zero = self.convert_integer_literal(
+                    ctx.used(),
+                    result_type_id,
+                    0,
+                    IntBase::Dec,
+                    false,
+                )?;
 
                 ptr_arg.zip(type_arg).map(|(_ptr_arg, type_arg)| {
                     let type_and_2 = mk().binary_expr(
