@@ -24,46 +24,6 @@ enum LibcFnArgType {
     Int,
 }
 
-/// The IEEE format of the result of a `__builtin_nan*` builtin.
-#[derive(Copy, Clone)]
-enum NanFloat {
-    /// `float`
-    F32,
-    /// `double`
-    F64,
-    /// `long double` and `__float128`, which we translate to `f128::f128` (IEEE binary128)
-    F128,
-}
-
-impl NanFloat {
-    /// The number of explicitly stored significand bits and of exponent bits.
-    fn layout(self) -> (u32, u32) {
-        match self {
-            NanFloat::F32 => (23, 8),
-            NanFloat::F64 => (52, 11),
-            NanFloat::F128 => (112, 15),
-        }
-    }
-
-    /// The bits of the NaN with this payload, as computed by LLVM's `APFloat::makeNaN`.
-    fn nan_bits(self, payload: u128, signaling: bool) -> u128 {
-        let (significand_bits, exponent_bits) = self.layout();
-        let quiet_bit = 1 << (significand_bits - 1);
-        let mut significand = payload & ((1 << significand_bits) - 1);
-        if signaling {
-            significand &= !quiet_bit;
-            // An all-zero significand would be an infinity, so set the next bit down.
-            if significand == 0 {
-                significand = quiet_bit >> 1;
-            }
-        } else {
-            significand |= quiet_bit;
-        }
-        let exponent = ((1 << exponent_bits) - 1) << significand_bits;
-        exponent | significand
-    }
-}
-
 /// Parse a `__builtin_nan*` payload the way clang does: as an integer with an
 /// auto-detected radix (LLVM's `StringRef::getAsInteger(0, ..)`), with the empty
 /// string meaning 0. Only the low 128 bits are kept, which is all a payload can use.
@@ -121,16 +81,24 @@ impl<'c> Translation<'c> {
         src_loc: &Option<SrcSpan>,
         builtin_name: &str,
         args: &[CExprId],
-        float: NanFloat,
+        float: CFloatingKind,
         signaling: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        // We can't emit 16-bit floats yet.
+        if matches!(float, CFloatingKind::Half | CFloatingKind::BFloat16) {
+            return Err(format_translation_err!(
+                self.ast_context.display_loc(src_loc),
+                "Unimplemented builtin {builtin_name}",
+            ));
+        }
+
         let arg = self.ast_context.unwrap_cast_expr(args[0]);
         let payload = match self.ast_context[arg].kind {
             CExprKind::Literal(_, CLiteral::String(ref bytes, 1)) => parse_nan_payload(bytes),
             _ => None,
         };
         if let Some(payload) = payload {
-            return Ok(self.convert_nan_bits(float, float.nan_bits(payload, signaling)));
+            return Ok(self.convert_nan_bits(float, payload, signaling));
         }
 
         let msg = "payload is not a string literal clang can fold";
@@ -147,23 +115,31 @@ impl<'c> Translation<'c> {
         }
         // Keep any side effects of the payload expression.
         let payload = self.convert_expr(ctx.unused(), args[0], None)?;
-        Ok(payload.and_then(|_| self.convert_nan_bits(float, float.nan_bits(0, false))))
+        let nan = self.convert_nan_bits(float, 0, false);
+        Ok(payload.and_then(|_| nan))
     }
 
-    /// Build a NaN of the given format from its bits.
-    fn convert_nan_bits(&self, float: NanFloat, bits: u128) -> WithStmts<Box<Expr>> {
+    /// Build a NaN of the given type with this payload.
+    /// The 16-bit types are rejected by [`Self::convert_builtin_nan`].
+    fn convert_nan_bits(
+        &self,
+        float: CFloatingKind,
+        payload: u128,
+        signaling: bool,
+    ) -> WithStmts<Box<Expr>> {
+        let bits = float.nan_bits(payload, signaling);
         match float {
             // Rust doesn't guarantee the bits of `NAN`, but in practice it is the default
             // quiet NaN, and it is more readable for the common case (e.g. C's `NAN`).
-            NanFloat::F32 if bits == 0x7fc0_0000 => {
+            CFloatingKind::Float if bits == 0x7fc0_0000 => {
                 WithStmts::new_val(mk().abs_path_expr(vec!["core", "f32", "NAN"]))
             }
-            NanFloat::F64 if bits == 0x7ff8_0000_0000_0000 => {
+            CFloatingKind::Double if bits == 0x7ff8_0000_0000_0000 => {
                 WithStmts::new_val(mk().abs_path_expr(vec!["core", "f64", "NAN"]))
             }
-            NanFloat::F32 => self.convert_float_from_bits("f32", "u32", bits),
-            NanFloat::F64 => self.convert_float_from_bits("f64", "u64", bits),
-            NanFloat::F128 => {
+            CFloatingKind::Float => self.convert_float_from_bits("f32", "u32", bits),
+            CFloatingKind::Double => self.convert_float_from_bits("f64", "u64", bits),
+            CFloatingKind::LongDouble | CFloatingKind::Float128 => {
                 self.use_crate(ExternCrate::F128);
 
                 // `f128::f128` has no public bit-pattern constructor (and its `NAN` has a
@@ -176,6 +152,9 @@ impl<'c> Translation<'c> {
                     bits,
                 ))
                 .set_unsafe()
+            }
+            CFloatingKind::Half | CFloatingKind::BFloat16 => {
+                unreachable!("16-bit NaN builtins are rejected by convert_builtin_nan")
             }
         }
     }
@@ -258,24 +237,70 @@ impl<'c> Translation<'c> {
                     mk().abs_path_expr(vec!["f128", "f128", "INFINITY"]),
                 ))
             }
-            "__builtin_nanf" => {
-                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F32, false)
-            }
-            "__builtin_nan" => {
-                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F64, false)
-            }
-            "__builtin_nanl" | "__builtin_nanf128" => {
-                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F128, false)
-            }
-            "__builtin_nansf" => {
-                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F32, true)
-            }
-            "__builtin_nans" => {
-                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F64, true)
-            }
-            "__builtin_nansl" | "__builtin_nansf128" => {
-                self.convert_builtin_nan(ctx, src_loc, builtin_name, args, NanFloat::F128, true)
-            }
+            "__builtin_nanf" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::Float,
+                false,
+            ),
+            "__builtin_nan" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::Double,
+                false,
+            ),
+            "__builtin_nanl" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::LongDouble,
+                false,
+            ),
+            "__builtin_nanf128" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::Float128,
+                false,
+            ),
+            "__builtin_nansf" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::Float,
+                true,
+            ),
+            "__builtin_nans" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::Double,
+                true,
+            ),
+            "__builtin_nansl" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::LongDouble,
+                true,
+            ),
+            "__builtin_nansf128" => self.convert_builtin_nan(
+                ctx,
+                src_loc,
+                builtin_name,
+                args,
+                CFloatingKind::Float128,
+                true,
+            ),
             "__builtin_signbit" | "__builtin_signbitf" | "__builtin_signbitl" => {
                 self.import_num_traits(args[0])?;
 
@@ -1034,21 +1059,5 @@ mod tests {
         assert_eq!(parse_nan_payload(b" 1"), None);
         assert_eq!(parse_nan_payload(b"xyz"), None);
         assert_eq!(parse_nan_payload(b"1\x002"), None);
-    }
-
-    #[test]
-    fn nan_bits_match_clang() {
-        use NanFloat::*;
-        assert_eq!(F32.nan_bits(0, false), 0x7fc00000);
-        assert_eq!(F64.nan_bits(0, false), 0x7ff8000000000000);
-        assert_eq!(F64.nan_bits(1, false), 0x7ff8000000000001);
-        assert_eq!(F32.nan_bits(0, true), 0x7fa00000);
-        assert_eq!(F32.nan_bits(7, true), 0x7f800007);
-        assert_eq!(F64.nan_bits(0, true), 0x7ff4000000000000);
-        assert_eq!(F64.nan_bits(1, true), 0x7ff0000000000001);
-        // The quiet bit is cleared, leaving an all-zero significand.
-        assert_eq!(F64.nan_bits(0x8000000000000, true), 0x7ff4000000000000);
-        assert_eq!(F128.nan_bits(0, false), 0x7fff8000000000000000000000000000);
-        assert_eq!(F128.nan_bits(0, true), 0x7fff4000000000000000000000000000);
     }
 }
