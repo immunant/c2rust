@@ -34,9 +34,14 @@ impl<'c> Translation<'c> {
         let ty = expected_type_id.unwrap_or(literal_type_id);
 
         match *lit {
-            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(
-                self.convert_integer_literal(ctx, ty, val, base, false)?,
-            )),
+            CLiteral::Integer(val, base) => self.convert_integer_literal(
+                ctx,
+                expected_type_id,
+                literal_type_id,
+                val,
+                base,
+                false,
+            ),
 
             CLiteral::Character(val) => {
                 let val = val as u32;
@@ -122,19 +127,21 @@ impl<'c> Translation<'c> {
     pub(crate) fn convert_integer_literal(
         &self,
         ctx: ExprContext,
-        ty: CQualTypeId,
-        val: u64,
+        expected_type_id: Option<CQualTypeId>,
+        mut literal_type_id: CQualTypeId,
+        value: u64,
         base: IntBase,
-        negative: bool,
-    ) -> TranslationResult<Box<Expr>> {
-        let target_ty = self.convert_type(ty.ctype)?;
-        let suffix = numeric_literal_suffix(&target_ty);
+        is_negated: bool,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        literal_type_id = expected_type_id.unwrap_or(literal_type_id);
+        let literal_type_rs = self.convert_type(literal_type_id.ctype)?;
+        let suffix = numeric_literal_suffix(&literal_type_rs);
         let is_suffix = suffix.is_some();
 
         let mut lit_str = match base {
-            IntBase::Dec => format!("{val}"),
-            IntBase::Hex => format!("0x{val:x}"),
-            IntBase::Oct => format!("0o{val:o}"),
+            IntBase::Dec => format!("{value}"),
+            IntBase::Hex => format!("0x{value:x}"),
+            IntBase::Oct => format!("0o{value:o}"),
         };
 
         if let Some(suffix) = suffix {
@@ -143,15 +150,15 @@ impl<'c> Translation<'c> {
 
         let mut expr = mk().lit_expr(mk().float_unsuffixed_lit(&lit_str));
 
-        if negative {
+        if is_negated {
             expr = neg_expr(expr);
         }
 
-        Ok(if is_suffix || ctx.is_pattern {
-            expr
-        } else {
-            mk().cast_expr(expr, target_ty)
-        })
+        if !is_suffix && !ctx.is_pattern {
+            expr = mk().cast_expr(expr, literal_type_rs);
+        }
+
+        Ok(expr.into())
     }
 
     pub(crate) fn convert_floating_literal(

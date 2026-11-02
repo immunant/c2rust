@@ -3567,13 +3567,7 @@ impl<'c> Translation<'c> {
 
             OffsetOf(ty, ref kind) => match kind {
                 OffsetOfKind::Constant(val) => {
-                    Ok(WithStmts::new_val(self.convert_integer_literal(
-                        ctx,
-                        override_ty.unwrap_or(ty),
-                        *val,
-                        IntBase::Dec,
-                        false,
-                    )?))
+                    self.convert_integer_literal(ctx, override_ty, ty, *val, IntBase::Dec, false)
                 }
                 OffsetOfKind::Variable(qty, field_id, expr_id) => {
                     self.use_crate(ExternCrate::Memoffset);
