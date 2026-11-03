@@ -3955,6 +3955,14 @@ impl<'c> Translation<'c> {
                 return self.make_cast(ctx, source_ty.not_volatile(), target_ty, val);
             }
 
+            CastKind::ToUnion => {
+                return self.convert_union_literal(
+                    ctx,
+                    opt_field_id.expect("Missing field ID in union cast"),
+                    Some(expr),
+                );
+            }
+
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
             | CastKind::PointerToBoolean => {
@@ -4007,7 +4015,6 @@ impl<'c> Translation<'c> {
             val,
             Some(expr),
             Some(kind),
-            opt_field_id,
             is_explicit,
         )
     }
@@ -4109,16 +4116,7 @@ impl<'c> Translation<'c> {
         target_type_id: CQualTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        self.make_cast_full(
-            ctx,
-            source_type_id,
-            target_type_id,
-            val,
-            None,
-            None,
-            None,
-            false,
-        )
+        self.make_cast_full(ctx, source_type_id, target_type_id, val, None, None, false)
     }
 
     pub fn make_cast_full(
@@ -4129,7 +4127,6 @@ impl<'c> Translation<'c> {
         val: WithStmts<Box<Expr>>,
         expr: Option<CExprId>,
         kind: Option<CastKind>,
-        opt_field_id: Option<CFieldId>,
         is_explicit: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let source_ty_kind = &self.ast_context.resolve_type(source_cty.ctype).kind;
@@ -4263,7 +4260,9 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(self.null_ptr(target_cty.ctype)?))
             }
 
-            CastKind::ToUnion => self.convert_cast_to_union(val, opt_field_id),
+            CastKind::ToUnion => {
+                panic!("ToUnion casts must be handled in convert_cast")
+            }
 
             CastKind::IntegralToBoolean
             | CastKind::FloatingToBoolean
