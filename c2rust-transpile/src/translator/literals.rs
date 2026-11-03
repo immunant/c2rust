@@ -359,12 +359,10 @@ impl<'c> Translation<'c> {
             CTypeKind::Struct(struct_id) => {
                 self.convert_struct_literal(ctx, struct_id, ids.as_ref())
             }
-            CTypeKind::Union(union_id) => self.convert_union_literal(
+            CTypeKind::Union(..) => self.convert_union_literal(
                 ctx,
-                union_id,
-                ids.as_ref(),
-                result_type_id,
-                opt_union_field_id,
+                opt_union_field_id.expect("union field ID"),
+                ids.first().copied(),
             ),
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)
