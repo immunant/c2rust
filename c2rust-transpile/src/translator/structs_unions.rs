@@ -1112,30 +1112,6 @@ impl<'a> Translation<'a> {
 
         Ok(val)
     }
-
-    pub fn convert_cast_to_union(
-        &self,
-        val: WithStmts<Box<Expr>>,
-        opt_field_id: Option<CFieldId>,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let field_id = opt_field_id.expect("Missing field ID in union cast");
-        let union_id = self.ast_context.parents[&field_id];
-
-        let union_name = self
-            .type_converter
-            .borrow()
-            .resolve_decl_name(union_id)
-            .expect("required union name");
-        let field_name = self
-            .type_converter
-            .borrow()
-            .resolve_field_name(Some(union_id), field_id)
-            .expect("field name required");
-
-        Ok(val.map(|x| {
-            mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
-        }))
-    }
 }
 
 #[allow(clippy::large_enum_variant)]
