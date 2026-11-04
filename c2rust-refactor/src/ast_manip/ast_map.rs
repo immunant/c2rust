@@ -58,10 +58,6 @@ impl<'s, T: ?Sized> NodeTable<'s, T> {
     pub fn get(&self, id: NodeId) -> Option<&'s T> {
         self.nodes.get(&id).copied()
     }
-
-    pub fn len(&self) -> usize {
-        self.nodes.len()
-    }
 }
 
 /// A lookup table for finding nodes within an AST or AST fragment.

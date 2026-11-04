@@ -226,7 +226,7 @@ fn perm_range(p: Perm<'_>) -> (Bound<(Perm<'_>, Perm<'_>)>, Bound<(Perm<'_>, Per
 }
 
 impl<'lty> ConstraintSet<'lty> {
-    pub fn new() -> ConstraintSet<'lty> {
+    pub(crate) fn new() -> ConstraintSet<'lty> {
         ConstraintSet {
             less: BTreeSet::new(),
             greater: BTreeSet::new(),
@@ -489,7 +489,7 @@ pub struct EditConstraintSet<'a, 'lty> {
 
 impl<'a, 'lty> EditConstraintSet<'a, 'lty> {
     /// Obtain the next constraint if there are any left to be processed.
-    pub fn next(&mut self) -> Option<(Perm<'lty>, Perm<'lty>)> {
+    pub(crate) fn next(&mut self) -> Option<(Perm<'lty>, Perm<'lty>)> {
         while let Some((a, b)) = self.to_visit.pop_front() {
             if self.cset.less.contains(&(a, b)) {
                 return Some((a, b));

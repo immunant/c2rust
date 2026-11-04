@@ -20,7 +20,7 @@ pub struct NodeMap {
 }
 
 impl NodeMap {
-    pub fn new() -> NodeMap {
+    pub(crate) fn new() -> NodeMap {
         NodeMap {
             id_map: HashMap::new(),
 

@@ -21,7 +21,7 @@ pub struct BindingTypes {
 }
 
 impl BindingTypes {
-    pub fn new() -> BindingTypes {
+    pub(crate) fn new() -> BindingTypes {
         BindingTypes {
             types: HashMap::new(),
         }
@@ -70,7 +70,7 @@ pub struct Bindings {
 }
 
 impl Bindings {
-    pub fn new() -> Bindings {
+    pub(crate) fn new() -> Bindings {
         Bindings {
             map: HashMap::new(),
         }
