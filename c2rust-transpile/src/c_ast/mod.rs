@@ -3447,6 +3447,41 @@ impl CFloatingKind {
             BFloat16 => todo!("bf16 range"),
         }
     }
+
+    /// The number of explicitly stored significand bits and of exponent bits
+    /// of the format this floating-point type is translated to.
+    pub(crate) fn layout(self) -> (u32, u32) {
+        use CFloatingKind::*;
+        match self {
+            Float => (23, 8),
+            Double => (52, 11),
+
+            // Both are translated to `f128::f128` (binary128).
+            LongDouble | Float128 => (112, 15),
+
+            // IEEE binary16.
+            Half => (10, 5),
+            BFloat16 => (7, 8),
+        }
+    }
+
+    /// The bits of the NaN with this payload, as computed by LLVM's `APFloat::makeNaN`.
+    pub(crate) fn nan_bits(self, payload: u128, signaling: bool) -> u128 {
+        let (significand_bits, exponent_bits) = self.layout();
+        let quiet_bit = 1 << (significand_bits - 1);
+        let mut significand = payload & ((1 << significand_bits) - 1);
+        if signaling {
+            significand &= !quiet_bit;
+            // An all-zero significand would be an infinity, so set the next bit down.
+            if significand == 0 {
+                significand = quiet_bit >> 1;
+            }
+        } else {
+            significand |= quiet_bit;
+        }
+        let exponent = ((1 << exponent_bits) - 1) << significand_bits;
+        exponent | significand
+    }
 }
 
 impl Display for CFloatingKind {
@@ -3766,5 +3801,37 @@ c = {c}
 
         // This should not panic.
         locs.sort_unstable_by_key(|&loc| ctx.cmp_loc_include(loc));
+    }
+
+    #[test]
+    fn nan_bits_match_clang() {
+        use CFloatingKind::*;
+        assert_eq!(Float.nan_bits(0, false), 0x7fc00000);
+        assert_eq!(Double.nan_bits(0, false), 0x7ff8000000000000);
+        assert_eq!(Double.nan_bits(1, false), 0x7ff8000000000001);
+        assert_eq!(Float.nan_bits(0, true), 0x7fa00000);
+        assert_eq!(Float.nan_bits(7, true), 0x7f800007);
+        assert_eq!(Double.nan_bits(0, true), 0x7ff4000000000000);
+        assert_eq!(Double.nan_bits(1, true), 0x7ff0000000000001);
+        // The quiet bit is cleared, leaving an all-zero significand.
+        assert_eq!(Double.nan_bits(0x8000000000000, true), 0x7ff4000000000000);
+        for binary128 in [LongDouble, Float128] {
+            assert_eq!(
+                binary128.nan_bits(0, false),
+                0x7fff8000000000000000000000000000
+            );
+            assert_eq!(
+                binary128.nan_bits(0, true),
+                0x7fff4000000000000000000000000000
+            );
+        }
+        assert_eq!(Half.nan_bits(0, false), 0x7e00);
+        assert_eq!(Half.nan_bits(1, false), 0x7e01);
+        assert_eq!(Half.nan_bits(0, true), 0x7d00);
+        assert_eq!(Half.nan_bits(1, true), 0x7c01);
+        assert_eq!(BFloat16.nan_bits(0, false), 0x7fc0);
+        assert_eq!(BFloat16.nan_bits(1, false), 0x7fc1);
+        assert_eq!(BFloat16.nan_bits(0, true), 0x7fa0);
+        assert_eq!(BFloat16.nan_bits(1, true), 0x7f81);
     }
 }
