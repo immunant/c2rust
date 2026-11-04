@@ -26,6 +26,7 @@ pub struct Reflector<'a, 'tcx> {
 
     /// Mapping from old DefId to new DefId for defs that have been replaced
     /// after types were resolved.
+    #[allow(clippy::type_complexity)]
     def_mapping: Option<&'a HashMap<DefId, (Option<P<QSelf>>, Path)>>,
 }
 

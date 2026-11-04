@@ -217,6 +217,7 @@ pub struct ConstraintSet<'lty> {
 
 /// Return a pair of bounds, suitable for use with `BTreeSet::range`, covering all pairs of
 /// permissions whose first element is `p`.
+#[allow(clippy::type_complexity)]
 fn perm_range(p: Perm<'_>) -> (Bound<(Perm<'_>, Perm<'_>)>, Bound<(Perm<'_>, Perm<'_>)>) {
     (
         Bound::Included((p, Perm::read())),

@@ -127,6 +127,7 @@ impl<'a> RefactorTest<'a> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn test_refactor(
     command: &str,
     command_args: &[&str],

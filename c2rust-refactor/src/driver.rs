@@ -69,6 +69,7 @@ impl<'a, 'tcx: 'a> RefactorCtxt<'a, 'tcx> {
         RefactorCtxt::new(sess, None, None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_phase_2_3(
         sess: &'a Session,
         max_node_id: NodeId,
@@ -216,6 +217,7 @@ where
 pub struct Compiler {
     pub sess: Lrc<Session>,
     pub codegen_backend: Lrc<Box<dyn CodegenBackend>>,
+    #[allow(clippy::type_complexity)]
     register_lints: Option<Box<dyn Fn(&Session, &mut LintStore) + Send + Sync>>,
     override_queries:
         Option<fn(&Session, &mut ty::query::Providers, &mut ty::query::ExternProviders)>,
