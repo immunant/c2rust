@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             os: Linux
             arch: x86_64
             clang-version: 18
