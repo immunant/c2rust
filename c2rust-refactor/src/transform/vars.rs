@@ -3,9 +3,12 @@ use rustc_ast::mut_visit::{self, MutVisitor};
 use rustc_ast::ptr::P;
 use rustc_ast::visit::{self, Visitor};
 use rustc_ast::*;
-use rustc_hir::def_id::LOCAL_CRATE;
-use rustc_hir::HirId;
-use rustc_middle::ty::{ParamEnv, TyKind};
+use rustc_hir::def::{CtorKind, DefKind, Res};
+use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use rustc_hir::intravisit;
+use rustc_hir::{self as hir, HirId, Node};
+use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, AutoBorrowMutability};
+use rustc_middle::ty::{ParamEnv, TyKind, TypeckResults};
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::mem;
@@ -491,10 +494,148 @@ impl Transform for UninitToDefault {
 ///
 /// Usage: `remove_redundant_let_types`
 ///
-/// Removes types from all `let` statements where the initializer's type matches the declared one,
-/// so the latter can be omitted and inferred.
+/// Removes the type from `let` statements whose initializer would have the same
+/// type without it. Annotations are kept when the initializer's type could depend
+/// on them, as for unsuffixed literals, generic calls, coercions, and locals whose
+/// own types are inferred.
 /// For example, replace `let x: u32 = 1u32;` with `let x = 1u32;`
 pub struct RemoveRedundantLetTypes;
+
+/// A conservative syntactic proof that removing an expected type will not change
+/// an initializer's type. The typeck results alone cannot prove this: they already
+/// include inference from the annotation we are considering removing.
+struct IndependentType<'a, 'tcx> {
+    cx: &'a RefactorCtxt<'a, 'tcx>,
+    tables: &'tcx TypeckResults<'tcx>,
+    /// Results of [`Self::local`], shared across the crate so each binding is walked once.
+    locals: &'a mut HashMap<HirId, bool>,
+}
+
+impl<'a, 'tcx> IndependentType<'a, 'tcx> {
+    /// Like [`Self::expr`], but also rejects coercions, which can occur inside
+    /// aggregates and operands as well as at the outer initializer. For example,
+    /// `let p: (*const u8,) = (0 as *mut u8,);` needs its annotation, and so does
+    /// `let r: &mut u8 = x;`, which reborrows `x` instead of moving it. An expression
+    /// of type `!` gets a `NeverToAny` adjustment even without an expected type.
+    fn uncoerced(&mut self, e: &hir::Expr) -> bool {
+        let uncoerced = match self.tables.expr_adjustments(e) {
+            [] => true,
+            // Reborrowing a shared reference, as in `let s: &str = "hello";`, is the same
+            // as copying it.
+            [Adjustment {
+                kind: Adjust::Deref(None),
+                ..
+            }, Adjustment {
+                kind: Adjust::Borrow(AutoBorrow::Ref(_, AutoBorrowMutability::Not)),
+                ..
+            }] => self.tables.expr_ty(e).ref_mutability() == Some(Mutability::Not),
+            _ => false,
+        };
+        uncoerced && self.expr(e)
+    }
+
+    fn expr(&mut self, e: &hir::Expr) -> bool {
+        match e.kind {
+            hir::ExprKind::Lit(ref lit) => lit.node.is_suffixed() || !lit.node.is_numeric(),
+            // `as *const _` still needs context to determine its pointee type.
+            hir::ExprKind::Cast(_, ty) => !has_infer(ty),
+            // The result follows from the operand's type, including through auto-deref.
+            hir::ExprKind::Unary(_, e) | hir::ExprKind::Field(e, _) => self.expr(e),
+            hir::ExprKind::Tup(es) => es.iter().all(|e| self.uncoerced(e)),
+            hir::ExprKind::Array(es) => !es.is_empty() && es.iter().all(|e| self.uncoerced(e)),
+            hir::ExprKind::Repeat(e, len) => {
+                !matches!(len, hir::ArrayLen::Infer(..)) && self.uncoerced(e)
+            }
+            // Fields and `..base` get their expected types from the definition, so the
+            // annotation can only affect them through a generic ADT's type arguments.
+            hir::ExprKind::Struct(..) => match self.tables.expr_ty(e).kind() {
+                TyKind::Adt(adt, _) => self.non_generic(adt.did()),
+                _ => false,
+            },
+            hir::ExprKind::Path(ref qpath) => match self.tables.qpath_res(qpath, e.hir_id) {
+                Res::Local(id) => self.local(id),
+                Res::Def(
+                    DefKind::Const
+                    | DefKind::AssocConst
+                    | DefKind::Static(_)
+                    | DefKind::Ctor(_, CtorKind::Const),
+                    def_id,
+                ) => self.non_generic(def_id),
+                _ => false,
+            },
+            // A non-generic callee has a fixed signature, and the callee or receiver is
+            // checked without an expected type.
+            hir::ExprKind::Call(callee, _) => match self.tables.expr_ty(callee).kind() {
+                TyKind::FnDef(def_id, _) => self.non_generic(*def_id),
+                _ => false,
+            },
+            hir::ExprKind::MethodCall(..) => self
+                .tables
+                .type_dependent_def_id(e.hir_id)
+                .is_some_and(|def_id| self.non_generic(def_id)),
+            // `&&`, `||`, and comparisons are always `bool`. Other operators, built-in or
+            // overloaded, have an output type determined by their operand types.
+            hir::ExprKind::Binary(op, lhs, rhs) => {
+                op.node.is_lazy()
+                    || op.node.is_comparison()
+                    || (self.uncoerced(lhs) && self.uncoerced(rhs))
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether a local's type is fixed by its declaration rather than inferred from
+    /// its uses. In `let a = 0; let b: u64 = a;`, the annotation on `b` is what makes
+    /// `a` a `u64`.
+    fn local(&mut self, id: HirId) -> bool {
+        if let Some(&independent) = self.locals.get(&id) {
+            return independent;
+        }
+        let hir = self.cx.ty_ctxt().hir();
+        // A binding nested in a pattern gets its type from the whole pattern.
+        let mut parents = hir.parent_iter(id).map(|(_, node)| node);
+        let independent = match parents.find(|node| !matches!(node, Node::Pat(_))) {
+            Some(Node::Local(local)) => match local.ty {
+                Some(ty) => !has_infer(ty),
+                None => local.init.is_some_and(|init| self.uncoerced(init)),
+            },
+            // Unlike closure parameters, function parameters always have explicit types.
+            Some(Node::Param(_)) => matches!(
+                parents.next(),
+                Some(Node::Item(_) | Node::ImplItem(_) | Node::TraitItem(_))
+            ),
+            _ => false,
+        };
+        self.locals.insert(id, independent);
+        independent
+    }
+
+    /// Also checks the parent impl's or trait's parameters. Lifetime parameters are
+    /// ignored, since they don't affect the erased type.
+    fn non_generic(&self, def_id: DefId) -> bool {
+        let tcx = self.cx.ty_ctxt();
+        !tcx.generics_of(def_id).requires_monomorphization(tcx)
+    }
+}
+
+fn has_infer(ty: &hir::Ty) -> bool {
+    struct FindInfer(bool);
+    impl<'v> intravisit::Visitor<'v> for FindInfer {
+        fn visit_ty(&mut self, ty: &'v hir::Ty<'v>) {
+            self.0 |= matches!(ty.kind, hir::TyKind::Infer);
+            intravisit::walk_ty(self, ty);
+        }
+        fn visit_infer(&mut self, _: &'v hir::InferArg) {
+            self.0 = true;
+        }
+        fn visit_array_length(&mut self, len: &'v hir::ArrayLen) {
+            self.0 |= matches!(len, hir::ArrayLen::Infer(..));
+        }
+    }
+    let mut find_infer = FindInfer(false);
+    intravisit::Visitor::visit_ty(&mut find_infer, ty);
+    find_infer.0
+}
 
 impl Transform for RemoveRedundantLetTypes {
     fn transform(&self, krate: &mut Crate, st: &CommandState, cx: &RefactorCtxt) {
@@ -502,15 +643,28 @@ impl Transform for RemoveRedundantLetTypes {
         let mut mcx = MatchCtxt::new(st, cx);
         let pat = mcx.parse_stmts("let $pat:Pat : $ty:Ty = $init:Expr;");
         let repl = mcx.parse_stmts("let $pat = $init;");
+        let mut independent_locals = HashMap::new();
         mut_visit_match_with(mcx, pat, krate, |ast, mcx| {
             let e = mcx.bindings.get::<_, P<Expr>>("$init").unwrap();
-            let e_ty = cx.adjusted_node_type(e.id);
+            let Some(Node::Expr(e)) = cx.hir_map().find(e.id) else {
+                return;
+            };
+            let parent = cx.hir_map().get_parent_item(e.hir_id);
+            if !tcx.has_typeck_results(parent.to_def_id()) {
+                return;
+            }
+            let tables = tcx.typeck(parent);
+            // Anon consts, such as array lengths, have their own typeck results, unlike closures.
+            let Some(e_ty) = tables.expr_ty_opt(e) else {
+                return;
+            };
             let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
 
             let t = mcx.bindings.get::<_, P<Ty>>("$ty").unwrap();
             let t_ty = cx.adjusted_node_type(t.id);
             let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
-            if e_ty == t_ty {
+            let locals = &mut independent_locals;
+            if e_ty == t_ty && (IndependentType { cx, tables, locals }).uncoerced(e) {
                 *ast = repl.clone().subst(st, cx, &mcx.bindings);
             }
         })
