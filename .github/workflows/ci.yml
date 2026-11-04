@@ -124,6 +124,10 @@ jobs:
           # It's important that we keep `RUSTFLAGS` consistent between different steps
           # so that we don't have to rebuild everything.
           echo "RUSTFLAGS=-Clink-arg=-L/opt/homebrew/lib -Clink-arg=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
+          # Homebrew's `rustup` puts wrapper scripts on `PATH`, which `c2rust-refactor`
+          # doesn't recognize as rustup proxies, so it can't find the toolchain sysroot.
+          # Use the underlying proxy symlinks instead.
+          echo "$(brew --prefix rustup)/libexec/bin" >> $GITHUB_PATH
 
       - name: cargo build --release
         run: |
