@@ -11,7 +11,7 @@ expression: cat tests/snapshots/arrays.2021.clang15.rs
     unused_assignments,
     unused_mut
 )]
-#![feature(raw_ref_op)]
+#![feature(ptr_from_ref, raw_ref_op)]
 extern "C" {
     static mut my_array: [::core::ffi::c_int; 1];
     static mut my_indexes: [::core::ffi::c_int; 1];
@@ -100,10 +100,10 @@ pub unsafe extern "C" fn entry() {
     let mut const_char_lit_ptr: *const ::core::ffi::c_char =
         b"abc\0".as_ptr() as *const ::core::ffi::c_char;
     let mut const_char_lit_array_ptr: *const [::core::ffi::c_char; 4] =
-        b"abc\0" as *const [u8; 4] as *const [::core::ffi::c_char; 4];
+        ::core::ptr::from_ref(b"abc\0") as *const [::core::ffi::c_char; 4];
     let mut char_lit_ptr: *mut ::core::ffi::c_char =
         b"abc\0".as_ptr() as *const ::core::ffi::c_char as *mut ::core::ffi::c_char;
-    let mut char_lit_array_ptr: *mut [::core::ffi::c_char; 4] = b"abc\0" as *const [u8; 4]
+    let mut char_lit_array_ptr: *mut [::core::ffi::c_char; 4] = ::core::ptr::from_ref(b"abc\0")
         as *const [::core::ffi::c_char; 4]
         as *mut [::core::ffi::c_char; 4];
     let mut past_end: *mut ::core::ffi::c_char = (&raw mut static_char_array
