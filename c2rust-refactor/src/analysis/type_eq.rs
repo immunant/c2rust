@@ -605,6 +605,7 @@ impl<'lty, 'hir> Visitor<'hir> for UnifyVisitor<'lty, 'hir> {
         // whole analysis to run over MIR.  At that level, operator-overload method calls are fully
         // explicit.)
 
+        #[allow(clippy::collapsible_match)]
         match e.kind {
             ExprKind::Array(es) => {
                 for e in es {
