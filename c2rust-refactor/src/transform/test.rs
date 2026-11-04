@@ -286,7 +286,7 @@ pub fn register_commands(reg: &mut Registry) {
         let mut insert_idxs = HashMap::new();
         let mut remove_idxs = HashSet::new();
 
-        for part in args[0].split(",") {
+        for part in args[0].split(',') {
             if part.is_empty() {
                 continue;
             }
@@ -294,7 +294,7 @@ pub fn register_commands(reg: &mut Registry) {
             *insert_idxs.entry(idx).or_insert(0) += 1;
         }
 
-        for part in args[1].split(",") {
+        for part in args[1].split(',') {
             if part.is_empty() {
                 continue;
             }

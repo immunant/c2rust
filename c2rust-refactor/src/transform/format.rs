@@ -171,12 +171,13 @@ fn build_format_macro(
     while new_s.ends_with('\0') {
         new_s.pop();
     }
-    let macro_name = if new_s.ends_with('\n') && ln_macro_name.is_some() {
+    let macro_name = match ln_macro_name {
         // Format string ends with "\n", call println!/eprintln! versions instead
-        new_s.pop();
-        ln_macro_name.unwrap()
-    } else {
-        macro_name
+        Some(ln_macro_name) if new_s.ends_with('\n') => {
+            new_s.pop();
+            ln_macro_name
+        }
+        _ => macro_name,
     };
 
     let new_fmt_str_expr = mk().span(old_fmt_str_expr.span).lit_expr(&new_s);

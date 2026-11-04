@@ -80,7 +80,7 @@ impl<'a> Make<Visibility> for &'a str {
 
 impl<'a> Make<Abi> for &'a str {
     fn make(self, _mk: &Builder) -> Abi {
-        abi::lookup(self).expect(&format!("unrecognized string for Abi: {:?}", self))
+        abi::lookup(self).unwrap_or_else(|| panic!("unrecognized string for Abi: {:?}", self))
     }
 }
 
@@ -2515,7 +2515,7 @@ impl Builder {
     // Convert the current internal list of outer attributes
     // into a vector of inner attributes, e.g.:
     // `#[foo]` => `#![foo]`
-    pub fn as_inner_attrs(self) -> AttrVec {
+    pub fn into_inner_attrs(self) -> AttrVec {
         self.attrs
             .into_iter()
             .map(|outer_attr| Attribute {

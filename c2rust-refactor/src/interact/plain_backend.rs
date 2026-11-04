@@ -85,11 +85,11 @@ fn encode_message(msg: ToClient) -> String {
 
 #[allow(unreachable_code)]
 fn decode_message(line: &str) -> Result<ToServer, String> {
-    let mut parts = line.split(" ");
+    let mut parts = line.split(' ');
 
     let kind = match parts.next() {
         Some(x) => x,
-        None => return Err(format!("expected message kind")),
+        None => return Err("expected message kind".into()),
     };
 
     macro_rules! get_conv {

@@ -191,8 +191,8 @@ impl Transform for SinkLets {
         // it back in its original block.  The result is that this pass has the additional effect
         // of removing unused locals.
         let remove_local_ids = locals
-            .iter()
-            .map(|(_, info)| info.old_node_id)
+            .values()
+            .map(|info| info.old_node_id)
             .collect::<HashSet<_>>();
 
         MutVisitNodes::visit(krate, |b: &mut P<Block>| {

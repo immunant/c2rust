@@ -48,7 +48,7 @@ impl BindingTypes {
                         e.insert(yty);
                     }
                     _ => {
-                        assert!(false, "tried to set type of {:?} to {:?}, but its type is already set to {:?}",
+                        unreachable!("tried to set type of {:?} to {:?}, but its type is already set to {:?}",
                                 name, ty, old_ty);
                     }
                 }
