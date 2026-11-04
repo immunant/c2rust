@@ -18,7 +18,7 @@ jobs:
       # Keep both matrices in sync so this workflow can restore those caches.
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             os: Linux
             arch: x86_64
             clang-version: 18
