@@ -578,6 +578,7 @@ impl<'lty, 'tcx> From<Ctxt<'lty, 'tcx>> for AnalysisResult<'lty, 'tcx> {
                 }
             }
 
+            #[allow(clippy::needless_range_loop)]
             for idx in 0..func.num_monos {
                 let mono = cx.get_mono_summ(def_id, idx);
 
