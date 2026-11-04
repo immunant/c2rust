@@ -797,7 +797,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn new() -> Registry {
+    pub(crate) fn new() -> Registry {
         Registry {
             commands: HashMap::new(),
         }

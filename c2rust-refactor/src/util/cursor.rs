@@ -39,7 +39,7 @@ pub struct Mark(usize);
 
 #[allow(dead_code)]
 impl<T> Cursor<T> {
-    pub fn new() -> Cursor<T> {
+    pub(crate) fn new() -> Cursor<T> {
         Cursor {
             left: Vec::new(),
             right: Vec::new(),
