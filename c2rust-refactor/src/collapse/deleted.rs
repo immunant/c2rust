@@ -209,7 +209,7 @@ impl<'a, 'ast> RestoreDeletedNodes<'a, 'ast> {
         let counter = self.counter;
         let node_map = &mut *self.node_map;
         let mut push_ins_after = |nodes: &mut ThinVec<_>, id| {
-            for dn in ins_after.remove(&id).into_iter().flat_map(|x| x) {
+            for dn in ins_after.remove(&id).into_iter().flatten() {
                 let mut n = T::clone_from_mac_node_ref(dn.node);
                 number_nodes_with(&mut n, counter);
 

@@ -70,8 +70,7 @@ impl<'a, 'tcx> SubstFolder<'a, 'tcx> {
 
     fn subst_token_stream_bindings(&mut self, ts: TokenStream) -> TokenStream {
         let mut trees = Vec::new();
-        let mut c = ts.into_trees();
-        while let Some(tt) = c.next() {
+        for tt in ts.into_trees() {
             if let TokenTree::Token(
                 Token {
                     kind: TokenKind::Ident(ident, _is_raw),
@@ -257,8 +256,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             );
             unwrap_or_panic_tts(parser.parse_stmt(ForceCollect::No), &mcs.mac.args, "Stmt")
                 .into_iter()
-                .map(|s| mut_visit::noop_flat_map_stmt(s, self))
-                .flatten()
+                .flat_map(|s| mut_visit::noop_flat_map_stmt(s, self))
                 .collect()
         } else {
             mut_visit::noop_flat_map_stmt(s, self)
@@ -282,8 +280,7 @@ impl<'a, 'tcx> MutVisitor for SubstFolder<'a, 'tcx> {
             );
             unwrap_or_panic_tts(parser.parse_item(ForceCollect::No), &mc.args, "Item")
                 .into_iter()
-                .map(|i| mut_visit::noop_flat_map_item(i, self))
-                .flatten()
+                .flat_map(|i| mut_visit::noop_flat_map_item(i, self))
                 .collect()
         } else {
             mut_visit::noop_flat_map_item(i, self)

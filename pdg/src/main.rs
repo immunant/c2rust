@@ -327,7 +327,7 @@ mod tests {
         let guard = CARGO_RUN_C2RUST_INSTRUMENT.lock().unwrap();
         let mut cmd = Command::new("cargo");
         cmd.current_dir(repo_dir()?)
-            .args(&[
+            .args([
                 "run",
                 "--bin",
                 "c2rust-instrument",
@@ -339,11 +339,11 @@ mod tests {
                 "--metadata",
             ])
             .arg(&metadata_path)
-            .args(&["--runtime-path"])
+            .args(["--runtime-path"])
             .arg(&runtime_path)
-            .args(&["--", "run", "--manifest-path"])
+            .args(["--", "run", "--manifest-path"])
             .arg(&manifest_path)
-            .args(&["--profile", profile.name()])
+            .args(["--profile", profile.name()])
             .arg("--")
             .args(args)
             .env("METADATA_FILE", &metadata_path)

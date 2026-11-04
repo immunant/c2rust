@@ -573,13 +573,7 @@ fn do_mark_pointers(st: &CommandState, cx: &RefactorCtxt) {
             let lcx = LabeledTyCtxt::new(self.ana.arena());
 
             let sig = {
-                let mut f = |l: &Option<_>| {
-                    if let Some(v) = *l {
-                        Some(mr.assign[v])
-                    } else {
-                        None
-                    }
-                };
+                let mut f = |l: &Option<_>| (*l).map(|v| mr.assign[v]);
                 ownership::FnSig {
                     inputs: lcx.relabel_slice(fr.sig.inputs, &mut f),
                     output: lcx.relabel(fr.sig.output, &mut f),

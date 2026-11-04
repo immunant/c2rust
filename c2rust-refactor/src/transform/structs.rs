@@ -207,12 +207,7 @@ impl Transform for Rename {
 }
 
 fn is_struct(i: &Item) -> bool {
-    if let ItemKind::Struct(ref vd, _) = i.kind {
-        if let VariantData::Struct(..) = *vd {
-            return true;
-        }
-    }
-    false
+    matches!(i.kind, ItemKind::Struct(VariantData::Struct(..), _))
 }
 
 pub fn register_commands(reg: &mut Registry) {
