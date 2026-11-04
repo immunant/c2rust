@@ -1,0 +1,285 @@
+fn main() {
+    // Unsuffixed numeric literals and generic calls need the expected type.
+    let mut scalar: u64 = 0;
+    scalar = scalar.wrapping_add(1);
+    let mut array: [u8; 2] = [0; 2];
+    array[0] = array[0].wrapping_add(1);
+    let float: f32 = 0.;
+    assert_eq!(float.abs(), 0.);
+    let args: Vec<Vec<u8>> = ["arg"].iter().map(|s| s.as_bytes().to_vec()).collect();
+    assert_eq!(args.len(), 1);
+
+    // The annotation also supplies types through local paths and aggregates.
+    let source = 0;
+    let from_local: u64 = source;
+    assert_eq!(std::mem::size_of_val(&from_local), 8);
+    let tuple: (u64, f32) = (0, 0.);
+    let empty: [u8; 0] = [];
+    assert_eq!(std::mem::size_of_val(&tuple.0), 8);
+    assert_eq!(empty.len(), 0);
+
+    // Preserve coercions at both the outer initializer and aggregate elements.
+    let mut pointer: *const u8 = 0 as *mut u8;
+    pointer = std::ptr::null::<u8>();
+    let mut pointers: [*const u8; 1] = [0 as *mut u8];
+    pointers[0] = std::ptr::null::<u8>();
+    let mut pointer_tuple: (*const u8,) = (0 as *mut u8,);
+    pointer_tuple.0 = std::ptr::null::<u8>();
+    let mut slice: &[u8] = b"a";
+    slice = b"longer";
+    let mut slices: (&[u8],) = (b"a",);
+    slices.0 = b"longer";
+    let mut callback: fn(u8) -> u8 = |x| x;
+    callback = |x| x + 1;
+    assert_eq!(callback(1), 2);
+    let mut target = 0u8;
+    let raw: *mut u8 = &mut target;
+    assert!(!raw.is_null());
+
+    // A cast containing `_` is not an independent source of type information.
+    let inferred_pointer: *const u8 = 0 as *const _;
+    assert!(inferred_pointer.is_null());
+
+    // Remove annotations already supplied by the initializer, including through type aliases.
+    type Word = u64;
+    let fixed: Word = 1u64;
+    let cast: Word = 1 as Word;
+    let negative: i64 = -1i64;
+    let boolean: bool = !false;
+    let character: char = 'a';
+    let string: &str = "hello";
+    let bytes: &[u8; 2] = b"hi";
+    let fixed_array: [u8; 2] = [1u8, 2u8];
+    let fixed_repeat: [u8; 2] = [1u8; 2];
+    let fixed_tuple: (u64, f32) = (1u64, 0f32);
+    let unit: () = ();
+}
+
+struct S {
+    a: i32,
+    b: f32,
+}
+
+impl S {
+    fn new() -> Self {
+        S { a: 0, b: 0. }
+    }
+
+    fn get(&self) -> i32 {
+        self.a
+    }
+
+    fn make<T: Default>(&self) -> T {
+        T::default()
+    }
+}
+
+union U {
+    a: u32,
+    b: f32,
+}
+
+enum E {
+    V { x: u64 },
+}
+
+struct Unit;
+
+struct Pair(i32, i32);
+
+struct W<T> {
+    x: T,
+}
+
+impl<T: Default> W<T> {
+    fn new() -> Self {
+        W { x: T::default() }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct M(u8);
+
+impl std::ops::Add for M {
+    type Output = u16;
+
+    fn add(self, other: M) -> u16 {
+        self.0 as u16 + other.0 as u16
+    }
+}
+
+struct Any;
+
+impl<T> std::ops::Add<T> for Any {
+    type Output = T;
+
+    fn add(self, rhs: T) -> T {
+        rhs
+    }
+}
+
+fn diverge() -> ! {
+    loop {}
+}
+
+const K: u64 = 1;
+static ST: i32 = 0;
+
+fn g(a: i32) -> i32 {
+    a
+}
+
+fn id<T>(x: T) -> T {
+    x
+}
+
+// Paths have fixed types when they name parameters, annotated `let`s, `let`s whose
+// initializers have independent types, constants, or statics.
+fn paths(param: u64, r: &mut u8) {
+    let from_param: u64 = param;
+    let annotated: i32 = 0;
+    let from_annotated: i32 = annotated;
+    let suffixed = 1u8;
+    let from_suffixed: u8 = suffixed;
+    let (first, second): (i32, f32) = (0, 0.);
+    let from_pattern: f32 = second;
+    let constant: u64 = K;
+    let static_value: i32 = ST;
+    let assoc_const: u32 = u32::MAX;
+
+    // Keep annotations that determine an inferred local's type.
+    let partial: Vec<_> = Vec::new();
+    let from_partial: Vec<u64> = partial;
+    let closure = |x| {
+        let from_closure_param: u64 = x;
+        from_closure_param
+    };
+    assert_eq!(std::mem::size_of_val(&closure(0)), 8);
+
+    // Keep a reborrow, which would otherwise become a move.
+    let reborrow: &mut u8 = r;
+    *reborrow = 1;
+    *r = 2;
+}
+
+// A non-generic struct, union, or variant has its type regardless of its fields.
+fn aggregates(s: S) {
+    let literal: S = S { a: 0, b: 0. };
+    let with_base: S = S { a: 1, ..s };
+    let union_literal: U = U { a: 0 };
+    let variant: E = E::V { x: 0 };
+    let unit_struct: Unit = Unit;
+    let tuple_struct: Pair = Pair(0, 0);
+
+    // A generic ADT gets its type arguments from the annotation.
+    let generic: W<u64> = W { x: 0 };
+    assert_eq!(std::mem::size_of_val(&generic.x), 8);
+    let none: Option<u64> = None;
+    let some: Option<u64> = Some(0);
+    assert_eq!(std::mem::size_of_val(&some), 16);
+}
+
+// Field types follow from the base's type, including through auto-deref.
+fn fields(s: S, r: &S, tuple: (u64, f32), w: W<u64>) {
+    let field: i32 = s.a;
+    let auto_deref: f32 = r.b;
+    let tuple_field: u64 = tuple.0;
+    let generic_field: u64 = w.x;
+
+    // Keep the annotation when it determines the base's type.
+    let inferred = W { x: 0 };
+    let inferred_field: u64 = inferred.x;
+    assert_eq!(std::mem::size_of_val(&inferred.x), 8);
+}
+
+// Non-generic functions, methods, and constructors return fixed types.
+fn calls(s: S, n: u64) {
+    let call: i32 = g(0);
+    let assoc_fn: S = S::new();
+    let method: i32 = s.get();
+    let inherent: u32 = n.count_ones();
+    let literal_receiver: u32 = 1u32.wrapping_add(2);
+
+    // Generic callees, including through their impl or trait, get their type arguments
+    // from the annotation.
+    let generic_call: u64 = id(0);
+    assert_eq!(std::mem::size_of_val(&generic_call), 8);
+    let generic_impl: W<u64> = W::new();
+    let generic_method: u64 = s.make();
+    let trait_method: u64 = Default::default();
+    let literal_into: u64 = 1u32.into();
+}
+
+// Operators on independently typed operands, including overloaded ones, have fixed
+// types, and comparisons and lazy boolean operators are always `bool`.
+fn operators(a: i32, b: i32, m: M) {
+    let sum: i32 = a + b;
+    let cast_operand: i32 = a * 2 as i32;
+    let shifted: i32 = a << 1u8;
+    let overloaded: u16 = m + m;
+    let compared: bool = 1 == 2;
+    let both: bool = a < b && Default::default();
+
+    // Literal operands get their type from the annotation.
+    let literal_sum: u64 = 1 + 2;
+    let literal_shift: u64 = 1 << a;
+    assert_eq!(std::mem::size_of_val(&literal_sum), 8);
+    assert_eq!(std::mem::size_of_val(&literal_shift), 8);
+}
+
+// An operand of type `!`, directly or through a local, is coerced to an inference
+// variable that only the annotation determines. Without it, these sums would be `()`.
+fn diverging_operand() {
+    let sum: u64 = Any + diverge();
+}
+
+fn diverging_local() {
+    let never = diverge();
+    let sum: u64 = Any + never;
+}
+
+// An initializer of type `!` is itself coerced to the annotated type.
+fn diverging_init() {
+    let never: u64 = diverge();
+}
+
+// Initializers inside closures are checked with their enclosing function.
+fn closures() {
+    let closure = || {
+        let fixed: u64 = 1u64;
+        let unsuffixed: u64 = 1;
+        fixed + unsuffixed
+    };
+    assert_eq!(closure(), 2);
+}
+
+// Array lengths have their own typeck results, so their annotations are conservatively kept.
+fn nested_bodies() {
+    let array = [0u8; {
+        let len: usize = 3usize;
+        len
+    }];
+    assert_eq!(array.len(), 3);
+}
+
+// Parentheses don't appear in the HIR, so the inner expression is checked.
+#[allow(unused_parens)]
+fn parenthesized() {
+    let paren: u32 = (1u32);
+}
+
+extern "C" {
+    fn abs(x: i32) -> i32;
+}
+
+// Dereferences follow from the pointer's type, and foreign functions aren't generic.
+unsafe fn pointers(p: *const S, q: *mut i32) {
+    let deref: i32 = *q;
+    let deref_field: i32 = (*p).a;
+    let foreign_call: i32 = abs(-1);
+
+    // Keep the annotation when it determines what a generic `Box` holds.
+    let boxed = Box::new(0);
+    let unboxed: u64 = *boxed;
+    assert_eq!(std::mem::size_of_val(&unboxed), 8);
+}
