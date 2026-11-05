@@ -4,56 +4,22 @@
 
 use super::*;
 use failure::format_err;
-use std::iter;
+use std::{borrow::Cow, iter};
 use syn::{Path, TypePath};
 
 impl<'c> Translation<'c> {
-    /// Generate an integer literal corresponding to the given type, value, and base.
-    pub fn mk_int_lit(
-        &self,
-        ctx: ExprContext,
-        ty: CQualTypeId,
-        val: u64,
-        base: IntBase,
-        negative: bool,
-    ) -> TranslationResult<Box<Expr>> {
-        let target_ty = self.convert_type(ty.ctype)?;
-        let suffix = numeric_literal_suffix(&target_ty);
-        let is_suffix = suffix.is_some();
-
-        let mut lit_str = match base {
-            IntBase::Dec => format!("{val}"),
-            IntBase::Hex => format!("0x{val:x}"),
-            IntBase::Oct => format!("0o{val:o}"),
-        };
-
-        if let Some(suffix) = suffix {
-            lit_str.push_str(&suffix);
-        }
-
-        let mut expr = mk().lit_expr(mk().float_unsuffixed_lit(&lit_str));
-
-        if negative {
-            expr = neg_expr(expr);
-        }
-
-        Ok(if is_suffix || ctx.is_pattern {
-            expr
-        } else {
-            mk().cast_expr(expr, target_ty)
-        })
-    }
-
     /// Return whether the literal can be directly translated as this type.
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId, is_negated: bool) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
-            CLiteral::Integer(value, _) | CLiteral::Character(value) => ty_kind
+            CLiteral::Character(value) => ty_kind
                 .integer_kind()
                 .is_some_and(|integer_kind| integer_kind.is_guaranteed_in_range(value, is_negated)),
-            CLiteral::Floating(value, _) => ty_kind
-                .floating_kind()
-                .is_some_and(|floating_kind| floating_kind.is_guaranteed_in_range(value)),
+
+            // `convert_integer_literal` and `convert_floating_literal` will handle incompatible
+            // types themselves.
+            CLiteral::Integer(_, _) | CLiteral::Floating(_, _) => true,
+
             _ => false,
         }
     }
@@ -62,13 +28,21 @@ impl<'c> Translation<'c> {
     pub fn convert_literal(
         &self,
         ctx: ExprContext,
-        ty: CQualTypeId,
+        expected_type_id: Option<CQualTypeId>,
+        literal_type_id: CQualTypeId,
         lit: &CLiteral,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let ty = expected_type_id.unwrap_or(literal_type_id);
+
         match *lit {
-            CLiteral::Integer(val, base) => Ok(WithStmts::new_val(
-                self.mk_int_lit(ctx, ty, val, base, false)?,
-            )),
+            CLiteral::Integer(val, base) => self.convert_integer_literal(
+                ctx,
+                expected_type_id,
+                literal_type_id,
+                val,
+                base,
+                false,
+            ),
 
             CLiteral::Character(val) => {
                 let val = val as u32;
@@ -99,34 +73,8 @@ impl<'c> Translation<'c> {
                 Ok(WithStmts::new_val(expr))
             }
 
-            CLiteral::Floating(val, ref c_str) => {
-                let str = if c_str.is_empty() {
-                    let mut buffer = dtoa::Buffer::new();
-                    buffer.format(val).to_string()
-                } else {
-                    c_str.to_owned()
-                };
-                let val = match self.ast_context.resolve_type(ty.ctype).kind {
-                    CTypeKind::LongDouble | CTypeKind::Float128 => {
-                        if ctx.is_const {
-                            return Err(format_translation_err!(
-                                None,
-                                "f128 cannot be used in constants because `f128::f128::new` is not `const`",
-                            ));
-                        }
-
-                        self.use_crate(ExternCrate::F128);
-
-                        let fn_path = mk().abs_path_expr(vec!["f128", "f128", "new"]);
-                        let args = vec![mk().lit_expr(mk().float_unsuffixed_lit(&str))];
-
-                        mk().call_expr(fn_path, args)
-                    }
-                    CTypeKind::Double => mk().lit_expr(mk().float_lit(&str, "f64")),
-                    CTypeKind::Float => mk().lit_expr(mk().float_lit(&str, "f32")),
-                    ref k => panic!("Unsupported floating point literal type {:?}", k),
-                };
-                Ok(WithStmts::new_val(val))
+            CLiteral::Floating(value, ref string) => {
+                self.convert_floating_literal(ctx, expected_type_id, literal_type_id, value, string)
             }
 
             CLiteral::String(ref bytes, element_size) => {
@@ -174,6 +122,134 @@ impl<'c> Translation<'c> {
                 }
             }
         }
+    }
+
+    /// Generate an integer literal corresponding to the given type, value, and base.
+    pub(crate) fn convert_integer_literal(
+        &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        mut literal_type_id: CQualTypeId,
+        value: u64,
+        base: IntBase,
+        is_negated: bool,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
+        let Some(literal_integer_kind) = literal_type_kind.integer_kind() else {
+            panic!("type of integer literal is not an integer type: {literal_type_kind:?}");
+        };
+
+        if let Some(expected_type_id) = expected_type_id {
+            let expected_type_kind = &self.ast_context.resolve_type(expected_type_id.ctype).kind;
+
+            if let Some(expected_integer_kind) = expected_type_kind.integer_kind() {
+                // If the value is guaranteed to be in range of the expected type,
+                // or the expected type has replaced the original literal type,
+                // then use the expected type as the literal type.
+                if literal_integer_kind == expected_integer_kind
+                    || expected_integer_kind.is_guaranteed_in_range(value, is_negated)
+                    || self
+                        .ast_context
+                        .kind_has_replaced(expected_type_kind, literal_type_kind)
+                {
+                    literal_type_id = expected_type_id;
+                }
+            }
+        }
+
+        let literal_type_rs = self.convert_type(literal_type_id.ctype)?;
+        let suffix = numeric_literal_suffix(&literal_type_rs);
+        let is_suffix = suffix.is_some();
+
+        let mut lit_str = match base {
+            IntBase::Dec => format!("{value}"),
+            IntBase::Hex => format!("0x{value:x}"),
+            IntBase::Oct => format!("0o{value:o}"),
+        };
+
+        if let Some(suffix) = suffix {
+            lit_str.push_str(&suffix);
+        }
+
+        let mut expr = mk().lit_expr(mk().float_unsuffixed_lit(&lit_str));
+
+        // If the literal is negated and signed, then put the negation inside the cast.
+        // This will create an expression like `-1 as ty` without parentheses,
+        // rather than `-(1 as ty)`.
+        if is_negated && literal_integer_kind.is_signed() {
+            expr = neg_expr(expr);
+        }
+
+        if !is_suffix && !ctx.is_pattern {
+            expr = mk().cast_expr(expr, literal_type_rs);
+        }
+
+        // If the literal is negated and unsigned, we can't call `wrapping_neg` on a bare literal,
+        // because it's an ambiguous type. So we must put it outside the cast.
+        if is_negated && !literal_integer_kind.is_signed() {
+            expr = wrapping_neg_expr(expr);
+        }
+
+        // Finally, if the chosen literal type differs from the expected type, cast it now.
+        self.make_cast(
+            ctx,
+            literal_type_id,
+            expected_type_id.unwrap_or(literal_type_id),
+            expr.into(),
+        )
+    }
+
+    pub(crate) fn convert_floating_literal(
+        &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        mut literal_type_id: CQualTypeId,
+        value: f64,
+        string: &str,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let string: Cow<_> = if string.is_empty() {
+            let mut buffer = dtoa::Buffer::new();
+            Cow::Owned(buffer.format(value).to_string())
+        } else {
+            Cow::Borrowed(string)
+        };
+
+        let target_type_id = expected_type_id.unwrap_or(literal_type_id);
+
+        let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
+        let Some(mut literal_floating_kind) = literal_type_kind.floating_kind() else {
+            panic!("type of floating literal is not a floating type: {literal_type_kind:?}");
+        };
+
+        if let Some(expected_type_id) = expected_type_id {
+            let expected_type_kind = &self.ast_context.resolve_type(expected_type_id.ctype).kind;
+
+            if let Some(expected_floating_kind) = expected_type_kind.floating_kind() {
+                if literal_floating_kind == expected_floating_kind
+                    || expected_floating_kind.is_guaranteed_in_range(value)
+                {
+                    literal_type_id = expected_type_id;
+                    literal_floating_kind = expected_floating_kind;
+                }
+            }
+        }
+
+        // Rust only has `f32` and `f64` literals, so any other kinds must be translated as one of
+        // those two, and then cast.
+        let val = match literal_floating_kind {
+            CFloatingKind::Float => mk().lit_expr(mk().float_lit(&string, "f32")),
+
+            CFloatingKind::Double => mk().lit_expr(mk().float_lit(&string, "f64")),
+
+            CFloatingKind::LongDouble | CFloatingKind::Float128 => {
+                literal_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Double);
+                mk().lit_expr(mk().float_unsuffixed_lit(&string))
+            }
+
+            ref k => panic!("Unsupported floating point literal type {:?}", k),
+        };
+
+        self.make_cast(ctx, literal_type_id, target_type_id, val.into())
     }
 
     /// Returns the bytes of a string literal, including any additional zero bytes to pad the
@@ -359,12 +435,10 @@ impl<'c> Translation<'c> {
             CTypeKind::Struct(struct_id) => {
                 self.convert_struct_literal(ctx, struct_id, ids.as_ref())
             }
-            CTypeKind::Union(union_id) => self.convert_union_literal(
+            CTypeKind::Union(..) => self.convert_union_literal(
                 ctx,
-                union_id,
-                ids.as_ref(),
-                result_type_id,
-                opt_union_field_id,
+                opt_union_field_id.expect("union field ID"),
+                ids.first().copied(),
             ),
             CTypeKind::Vector(CQualTypeId { ctype, .. }, len) => {
                 self.vector_list_initializer(ctx, ids, ctype, len)

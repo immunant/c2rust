@@ -7,6 +7,7 @@ use itertools::Itertools;
 use std::cell::RefCell;
 use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::fmt::{self, Debug, Display};
 use std::ops::Index;
 use std::path::{Path, PathBuf};
@@ -121,6 +122,10 @@ pub struct TypedAstContext {
 
     pub va_list_kind: BuiltinVaListKind,
     pub target: String,
+
+    /// Maps the `PULLBACK_KINDS` to the compiler-provided type that they had originally.
+    /// If a key is not present, it means that the compiler did not provide that type.
+    replaced_type_kinds: HashMap<CTypeKind, CTypeKind>,
 }
 
 /// Information about a single macro invocation.
@@ -1052,6 +1057,16 @@ impl TypedAstContext {
         }
     }
 
+    pub(crate) fn kind_has_replaced(
+        &self,
+        replacement_kind: &CTypeKind,
+        original_kind: &CTypeKind,
+    ) -> bool {
+        self.replaced_type_kinds
+            .get(replacement_kind)
+            .is_some_and(|kind| kind == original_kind)
+    }
+
     /// Extract decl of referenced function.
     /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
     pub fn fn_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
@@ -1305,6 +1320,158 @@ impl TypedAstContext {
             Goto(_label) => false,
             BadStmt => false,
         }
+    }
+
+    fn replace_pullback_kinds(&mut self) {
+        let mut replacements: HashMap<CDeclId, CDecl> = HashMap::new();
+        let mut replaced_type_kinds: HashMap<CTypeKind, CTypeKind> = HashMap::new();
+
+        for (&decl_id, decl) in self.iter_decls() {
+            let CDeclKind::Typedef {
+                ref name,
+                mut typ,
+                is_implicit,
+                ref target_dependent_macro,
+            } = decl.kind else {
+                continue
+            };
+
+            let mut new_type_kind = None;
+
+            fn type_kind_for_macro_name(macro_name: &str) -> Option<CTypeKind> {
+                Some(match macro_name {
+                    // Match names in the order Clang defines them.
+                    "__INTMAX_TYPE__" => CTypeKind::IntMax,
+                    "__UINTMAX_TYPE__" => CTypeKind::UIntMax,
+                    "__PTRDIFF_TYPE__" => CTypeKind::PtrDiff,
+                    "__INTPTR_TYPE__" => CTypeKind::IntPtr,
+                    "__SIZE_TYPE__" => CTypeKind::Size,
+                    "__WCHAR_TYPE__" => CTypeKind::WChar,
+                    // __WINT_TYPE__ is defined by Clang but has no obvious translation
+                    // __CHARn_TYPE__ for n ∈ {8, 16, 32} also lack obvious translation
+                    "__UINTPTR_TYPE__" => CTypeKind::UIntPtr,
+                    _ => {
+                        log::debug!("Unknown target-dependent macro {macro_name}!");
+                        return None;
+                    }
+                })
+            }
+
+            fn is_candidate_header(file_name: &OsStr, typedef_name: &str) -> bool {
+                file_name == "stdint.h"
+                    || file_name == "types.h"
+                    // glibc also declares `ssize_t` in these headers; whichever
+                    // header a TU includes first provides the typedef.
+                    || ((file_name == "stdio.h" || file_name == "unistd.h")
+                        && typedef_name == "ssize_t")
+                    || file_name
+                        .to_str()
+                        .map(|s| s.starts_with("__stddef_"))
+                        .unwrap_or(false)
+                    // for macos
+                    || file_name == "_types.h"
+                    || file_name
+                        .to_str()
+                        .map(|s| s.starts_with("_int") || s.starts_with("_uint"))
+                        .unwrap_or(false)
+            }
+
+            // Other fixed-size types are defined without special compiler involvement, by
+            // standard headers and their transitive includes. In these contexts, we
+            // recognize these typedefs by the name of the typedef type.
+            let type_kind_for_typedef_name =
+                |loc: &SrcSpan, typedef_name: &str| -> Option<CTypeKind> {
+                    let file_name = self
+                        .files
+                        .get(self.file_map[loc.fileid as usize])
+                        .and_then(|file| file.path.as_ref())
+                        .and_then(|path| path.file_name());
+
+                    if file_name.map_or(true, |file| !is_candidate_header(file, typedef_name)) {
+                        return None;
+                    }
+
+                    Some(match typedef_name {
+                        "intmax_t" => CTypeKind::IntMax,
+                        "uintmax_t" => CTypeKind::UIntMax,
+                        "intptr_t" => CTypeKind::IntPtr,
+                        "uintptr_t" => CTypeKind::UIntPtr,
+                        // unlike `size_t`, `ssize_t` does not have a clang-provided `#define`.
+                        "ssize_t" => CTypeKind::SSize,
+                        // macOS defines `ssize_t` from `__darwin_ssize_t` in many headers,
+                        // so we should handle `__darwin_ssize_t` itself.
+                        "__darwin_ssize_t" => CTypeKind::SSize,
+                        "__uint8_t" => CTypeKind::UInt8,
+                        "__uint16_t" => CTypeKind::UInt16,
+                        "__uint32_t" => CTypeKind::UInt32,
+                        "__uint64_t" => CTypeKind::UInt64,
+                        "__uint128_t" => CTypeKind::UInt128,
+                        "__int8_t" => CTypeKind::Int8,
+                        "__int16_t" => CTypeKind::Int16,
+                        "__int32_t" => CTypeKind::Int32,
+                        "__int64_t" => CTypeKind::Int64,
+                        "__int128_t" => CTypeKind::Int128,
+                        // macOS stdint.h typedefs [u]intN_t directly:
+                        "int8_t" => CTypeKind::Int8,
+                        "int16_t" => CTypeKind::Int16,
+                        "int32_t" => CTypeKind::Int32,
+                        "int64_t" => CTypeKind::Int64,
+                        "uint8_t" => CTypeKind::UInt8,
+                        "uint16_t" => CTypeKind::UInt16,
+                        "uint32_t" => CTypeKind::UInt32,
+                        "uint64_t" => CTypeKind::UInt64,
+                        _ => {
+                            log::debug!("Unknown fixed-size type typedef {name}!");
+                            return None;
+                        }
+                    })
+                };
+
+            if let Some(kind) = target_dependent_macro
+                .as_deref()
+                .and_then(type_kind_for_macro_name)
+            {
+                new_type_kind = Some(kind);
+            } else if let Some(kind) = decl
+                .loc
+                .as_ref()
+                .and_then(|loc| type_kind_for_typedef_name(loc, name))
+            {
+                new_type_kind = Some(kind);
+            }
+
+            if let Some(kind) = new_type_kind {
+                log::trace!("Selected kind {kind} for typedef {name}");
+                let new_type_id = CQualTypeId::new(self.type_for_kind(&kind));
+
+                use std::collections::hash_map::Entry;
+                let old_type_kind = self.resolve_type(typ.ctype).kind.clone();
+                match replaced_type_kinds.entry(kind) {
+                    Entry::Occupied(entry) => {
+                        assert_eq!(*entry.into_mut(), old_type_kind);
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(old_type_kind);
+                    }
+                }
+
+                typ = new_type_id;
+            }
+
+            let new_typedef_kind = CDeclKind::Typedef {
+                name: name.clone(),
+                typ,
+                is_implicit,
+                target_dependent_macro: target_dependent_macro.clone(),
+            };
+            replacements.insert(decl_id, decl.with_kind(new_typedef_kind));
+        }
+
+        for (decl_id, decl) in replacements {
+            self.c_decls[&decl_id] = decl;
+        }
+
+        self.replaced_type_kinds = replaced_type_kinds;
     }
 
     /// Eliminates typedefs in various ways. Currently does the following:
@@ -2221,6 +2388,14 @@ impl CastKind {
         }
 
         Some(match (source_ty_kind, target_ty_kind) {
+            (CTypeKind::Atomic(..), _) if !matches!(target_ty_kind, CTypeKind::Atomic(..)) => {
+                CastKind::AtomicToNonAtomic
+            }
+
+            (_, CTypeKind::Atomic(..)) if !matches!(source_ty_kind, CTypeKind::Atomic(..)) => {
+                CastKind::NonAtomicToAtomic
+            }
+
             (CTypeKind::VariableArray(..), CTypeKind::Pointer(..))
             | (CTypeKind::ConstantArray(..), CTypeKind::Pointer(..))
             | (CTypeKind::IncompleteArray(..), CTypeKind::Pointer(..)) => {
