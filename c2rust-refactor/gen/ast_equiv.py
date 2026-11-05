@@ -48,7 +48,7 @@ def comparison(se, method, target1, target2):
 
 @linewise
 def compare_impl(se):
-    yield '#[allow(unused, non_shorthand_field_patterns)]'
+    yield '#[allow(unused, clippy::all, non_shorthand_field_patterns)]'
     yield 'impl AstEquiv for %s {' % se.name
     yield '  fn ast_equiv(&self, other: &Self) -> bool {'
     yield '    // Exhaustiveness check'
@@ -64,7 +64,7 @@ def compare_impl(se):
 
 @linewise
 def eq_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl AstEquiv for %s {' % d.name
     yield '  fn ast_equiv(&self, other: &Self) -> bool {'
     yield '    self == other'
@@ -76,7 +76,7 @@ def eq_impl(d):
 
 @linewise
 def ignore_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl AstEquiv for %s {' % d.name
     yield '  fn ast_equiv(&self, other: &Self) -> bool {'
     yield '    true'

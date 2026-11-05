@@ -46,7 +46,7 @@ def do_nt_match_body(se, target1, target2):
 
 @linewise
 def do_nt_match_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl NtMatch for %s {' % d.name
     yield "  fn nt_match(old: &Self, new: &Self, cx: &mut Ctxt) {"
     yield indent(do_nt_match_body(d, 'old', 'new'), '    ')

@@ -25,7 +25,7 @@ def list_rec(se, target):
 
 @linewise
 def list_impl(se):
-    yield '#[allow(unused, non_shorthand_field_patterns)]'
+    yield '#[allow(unused, clippy::all, non_shorthand_field_patterns)]'
     yield 'impl ListNodeIds for %s {' % se.name
     yield '  fn add_node_ids(&self, node_id_list: &mut Vec<NodeId>) {'
     yield indent(list_rec(se, 'self'), '    ')
@@ -34,7 +34,7 @@ def list_impl(se):
 
 @linewise
 def dummy_impl(se):
-    yield '#[allow(unused, non_shorthand_field_patterns)]'
+    yield '#[allow(unused, clippy::all, non_shorthand_field_patterns)]'
     yield 'impl ListNodeIds for %s {' % se.name
     yield '  fn add_node_ids(&self, _node_id_list: &mut Vec<NodeId>) {'
     yield '    // Do nothing'
