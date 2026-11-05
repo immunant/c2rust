@@ -303,7 +303,7 @@ def do_rewrite_impl(d):
         yield '}'
         return
 
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl Rewrite for %s {' % d.name
     yield '  fn rewrite(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
     if has_field(d, 'id'):
@@ -409,7 +409,7 @@ def do_recursive_body(se, target1, target2):
 @linewise
 def do_recursive_impl(d):
     if 'rewrite_ignore' in d.attrs:
-        yield '#[allow(unused)]'
+        yield '#[allow(unused, clippy::all)]'
         yield 'impl Recursive for %s {' % d.name
         yield '  fn recursive(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
         # Record `new`'s ID at `old`'s span.  A successful `recursive` rewrite
@@ -420,7 +420,7 @@ def do_recursive_impl(d):
         yield '  }'
         yield '}'
 
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl Recursive for %s {' % d.name
     yield '  fn recursive(old: &Self, new: &Self, mut rcx: RewriteCtxtRef) -> bool {'
     # Optimistically record the span.  If match in `do_recursive_body` fails,
@@ -486,7 +486,7 @@ def do_recover_children_match(d):
 def do_recover_children_impl(d):
     impl_recover = type_has_impl(d, 'Recover')
 
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl RecoverChildren for %s {' % d.name
     yield '  fn recover_children(reparsed: &Self, new: &Self, mut rcx: RewriteCtxtRef) {'
     yield indent(do_record_node_span(d, 'reparsed', 'new', 'rcx'), '    ')
@@ -521,7 +521,7 @@ def generate_recover_children_impls(decls):
 
 @linewise
 def do_seq_item_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl SeqItem for %s {' % d.name
     yield '  fn seq_item_id(&self) -> SeqItemId {'
     yield '    SeqItemId::Node(self.id)'
@@ -544,7 +544,7 @@ def do_maybe_rewrite_seq_impl(d):
     supported = type_has_impl(d, 'SeqItem')
 
     for ty in (d.name, 'P<%s>' % d.name):
-        yield '#[allow(unused)]'
+        yield '#[allow(unused, clippy::all)]'
         yield 'impl MaybeRewriteSeq for %s {' % ty
         if supported:
             yield '  fn maybe_rewrite_seq(old: &[Self],'

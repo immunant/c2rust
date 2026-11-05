@@ -72,7 +72,7 @@ def do_collect_macros_body(se, target1, target2):
 
 @linewise
 def do_collect_macros_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl CollectMacros for %s {' % d.name
     yield "  fn collect_macros<'a>(old: &'a Self, new: &'a Self, cx: &mut Ctxt<'a>) {"
     yield indent(do_collect_macros_body(d, 'old', 'new'), '    ')
