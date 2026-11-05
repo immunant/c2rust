@@ -27,7 +27,7 @@ unsafe extern "C" fn called_only_once() -> ::core::ffi::c_int {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn assert_call_only_once() -> ::core::ffi::c_int {
-    if (called_only_once() == 0) as ::core::ffi::c_int as ::core::ffi::c_long != 0 {
+    if called_only_once() == 0 {
         __assert_rtn(
             b"assert_call_only_once\0".as_ptr() as *const ::core::ffi::c_char,
             b"call_only_once.c\0".as_ptr() as *const ::core::ffi::c_char,
