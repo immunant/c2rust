@@ -12,12 +12,13 @@ impl<'c> Translation<'c> {
     pub fn literal_matches_ty(&self, lit: &CLiteral, ty: CQualTypeId, is_negated: bool) -> bool {
         let ty_kind = &self.ast_context.resolve_type(ty.ctype).kind;
         match *lit {
-            CLiteral::Integer(value, _) | CLiteral::Character(value) => ty_kind
+            CLiteral::Character(value) => ty_kind
                 .integer_kind()
                 .is_some_and(|integer_kind| integer_kind.is_guaranteed_in_range(value, is_negated)),
 
-            // `convert_floating_literal` will handle incompatible types itself.
-            CLiteral::Floating(_, _) => true,
+            // `convert_integer_literal` and `convert_floating_literal` will handle incompatible
+            // types themselves.
+            CLiteral::Integer(_, _) | CLiteral::Floating(_, _) => true,
 
             _ => false,
         }
@@ -133,11 +134,29 @@ impl<'c> Translation<'c> {
         base: IntBase,
         is_negated: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        literal_type_id = expected_type_id.unwrap_or(literal_type_id);
         let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
-        let Some(literal_integer_kind) = literal_type_kind.integer_kind() else {
+        let Some(mut literal_integer_kind) = literal_type_kind.integer_kind() else {
             panic!("type of integer literal is not an integer type: {literal_type_kind:?}");
         };
+
+        if let Some(expected_type_id) = expected_type_id {
+            let expected_type_kind = &self.ast_context.resolve_type(expected_type_id.ctype).kind;
+
+            if let Some(expected_integer_kind) = expected_type_kind.integer_kind() {
+                // If the value is guaranteed to be in range of the expected type,
+                // or the expected type has replaced the original literal type,
+                // then use the expected type as the literal type.
+                if literal_integer_kind == expected_integer_kind
+                    || expected_integer_kind.is_guaranteed_in_range(value, is_negated)
+                    || self
+                        .ast_context
+                        .kind_has_replaced(expected_type_kind, literal_type_kind)
+                {
+                    literal_type_id = expected_type_id;
+                    literal_integer_kind = expected_integer_kind;
+                }
+            }
+        }
 
         let literal_type_rs = self.convert_type(literal_type_id.ctype)?;
         let suffix = numeric_literal_suffix(&literal_type_rs);
@@ -172,7 +191,13 @@ impl<'c> Translation<'c> {
             expr = wrapping_neg_expr(expr);
         }
 
-        Ok(expr.into())
+        // Finally, if the chosen literal type differs from the expected type, cast it now.
+        self.make_cast(
+            ctx,
+            literal_type_id,
+            expected_type_id.unwrap_or(literal_type_id),
+            expr.into(),
+        )
     }
 
     pub(crate) fn convert_floating_literal(
