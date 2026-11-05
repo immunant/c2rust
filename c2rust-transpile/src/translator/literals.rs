@@ -134,6 +134,11 @@ impl<'c> Translation<'c> {
         is_negated: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         literal_type_id = expected_type_id.unwrap_or(literal_type_id);
+        let literal_type_kind = &self.ast_context.resolve_type(literal_type_id.ctype).kind;
+        let Some(literal_integer_kind) = literal_type_kind.integer_kind() else {
+            panic!("type of integer literal is not an integer type: {literal_type_kind:?}");
+        };
+
         let literal_type_rs = self.convert_type(literal_type_id.ctype)?;
         let suffix = numeric_literal_suffix(&literal_type_rs);
         let is_suffix = suffix.is_some();
@@ -150,12 +155,21 @@ impl<'c> Translation<'c> {
 
         let mut expr = mk().lit_expr(mk().float_unsuffixed_lit(&lit_str));
 
-        if is_negated {
+        // If the literal is negated and signed, then put the negation inside the cast.
+        // This will create an expression like `-1 as ty` without parentheses,
+        // rather than `-(1 as ty)`.
+        if is_negated && literal_integer_kind.is_signed() {
             expr = neg_expr(expr);
         }
 
         if !is_suffix && !ctx.is_pattern() {
             expr = mk().cast_expr(expr, literal_type_rs);
+        }
+
+        // If the literal is negated and unsigned, we can't call `wrapping_neg` on a bare literal,
+        // because it's an ambiguous type. So we must put it outside the cast.
+        if is_negated && !literal_integer_kind.is_signed() {
+            expr = wrapping_neg_expr(expr);
         }
 
         Ok(expr.into())
