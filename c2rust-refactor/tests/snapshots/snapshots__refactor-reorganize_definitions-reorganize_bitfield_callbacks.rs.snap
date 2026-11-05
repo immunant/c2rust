@@ -1,0 +1,40 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_bitfield_callbacks.rs --edition 2021
+---
+#![feature(extern_types, register_tool)]
+#![register_tool(c2rust)]
+#![allow(dead_code)]
+
+pub mod bits_h {
+    extern "C" {
+        pub type CallbackContext;
+    }
+    #[repr(C)]
+    pub struct DifferentBits {
+        #[bitfield(name = "flag", ty = "u32", bits = "0..=0")]
+        pub tag: [u8; 1],
+        pub callback: for<'a> unsafe extern "C" fn(*mut crate::bits_h::CallbackContext, &'a ()),
+    }
+    // Identical storage does not imply identical generated accessors.
+    #[repr(C)]
+
+    pub struct DifferentBits_1 {
+        #[bitfield(name = "flag", ty = "u32", bits = "1..=1")]
+        pub tag: [u8; 1],
+        pub callback: for<'a> unsafe extern "C" fn(*mut crate::bits_h::CallbackContext, &'a ()),
+    }
+
+    #[repr(C)]
+
+    pub struct SameBits {
+        #[bitfield(name = "flag", ty = "u32", bits = "0..=0")]
+        pub tag: [u8; 1],
+        pub callback: for<'a> unsafe extern "C" fn(*mut crate::bits_h::CallbackContext, &'a ()),
+    }
+}
+pub mod first {}
+
+pub mod second {}
+
+fn main() {}

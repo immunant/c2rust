@@ -1,0 +1,40 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: "c2rust-refactor select target 'item(user); desc(foreign_item);' ';' canonicalize_externs lib --rewrite-mode alongside -- tests/snapshots/canonicalize_externs_incomplete_array.rs --edition 2021"
+---
+#![allow(dead_code)]
+
+pub mod lib {
+    extern "C" {
+        pub static mut TABLE: [::core::ffi::c_int; 0];
+        pub static CONST_TABLE: [::core::ffi::c_int; 0];
+    }
+}
+
+pub mod user {
+    extern "C" {}
+
+    pub unsafe fn get(i: ::core::ffi::c_int) -> ::core::ffi::c_int {
+        (*(::core::ptr::addr_of_mut!(crate::lib::TABLE) as *mut [i32; 3usize]))[i as usize]
+    }
+
+    pub unsafe fn set_first(value: ::core::ffi::c_int) {
+        (*(::core::ptr::addr_of_mut!(crate::lib::TABLE) as *mut [i32; 3usize]))[0] = value;
+    }
+
+    pub unsafe fn ptr() -> *mut ::core::ffi::c_int {
+        (*(::core::ptr::addr_of_mut!(crate::lib::TABLE) as *mut [i32; 3usize])).as_mut_ptr()
+    }
+
+    pub unsafe fn get_const(i: ::core::ffi::c_int) -> ::core::ffi::c_int {
+        (*(::core::ptr::addr_of!(crate::lib::CONST_TABLE) as *const [i32; 3usize]))[i as usize]
+    }
+
+    pub unsafe fn size() -> usize {
+        ::core::mem::size_of_val(
+            &*(::core::ptr::addr_of!(crate::lib::CONST_TABLE) as *const [i32; 3usize]),
+        )
+    }
+}
+
+fn main() {}

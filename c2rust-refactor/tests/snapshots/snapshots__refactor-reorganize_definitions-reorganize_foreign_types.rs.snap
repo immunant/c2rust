@@ -9,7 +9,7 @@ expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- t
 pub mod baz_h {
     pub use crate::foreign1::Foo;
 
-    pub type FooPtr = *mut Foo;
+    pub type FooPtr = *mut crate::foreign1::Foo;
 }
 pub mod foreign1 {
     pub struct Foo(i32);
