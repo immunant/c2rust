@@ -1073,9 +1073,10 @@ impl ConversionContext {
                     let &MacroInvocationInfoRaw {
                         key,
                         macro_id,
-                        ref parameter,
+                        param_id,
                     } = info;
 
+                    let param_id = param_id.map(|param_id| self.visit_decl(param_id));
                     let macro_id = CDeclId(self.visit_node_type(macro_id, MACRO_DECL));
 
                     // Is this a macro invocation ID we've seen previously?
@@ -1091,9 +1092,9 @@ impl ConversionContext {
                     assert_eq!(macro_id, info.macro_id);
 
                     // Fill in the values that were provided in the `MacroInvocationInfoRaw`.
-                    if let Some(parameter) = parameter {
+                    if let Some(param_id) = param_id {
                         // This expression is an argument for a functional macro.
-                        info.arguments.insert(parameter.clone(), expr_id);
+                        info.arguments.insert(param_id, expr_id);
                     } else {
                         // This expression is the result of a macro expansion.
                         assert!(
@@ -2525,17 +2526,17 @@ impl ConversionContext {
                 {
                     let name = from_value::<String>(node.extras[0].clone())
                         .expect("Macros must have a name");
-                    let raw_params = from_value::<Vec<Value>>(node.extras[1].clone())
-                        .expect("Macros must have a parameter list");
-                    let params: Vec<String> = raw_params
-                        .into_iter()
-                        .map(|v| from_value(v).expect("param name"))
+                    let parameters = node
+                        .children
+                        .iter()
+                        .flatten()
+                        .map(|&child| self.visit_decl(child))
                         .collect();
 
                     let mac_object = match node.tag {
                         ASTEntryTag::TagMacroObjectDef => CDeclKind::MacroObject { name },
                         ASTEntryTag::TagMacroFunctionDef => {
-                            CDeclKind::MacroFunction { name, params }
+                            CDeclKind::MacroFunction { name, parameters }
                         }
                         _ => unreachable!("Unexpected tag for macro"),
                     };
@@ -2547,6 +2548,15 @@ impl ConversionContext {
                     // doesn't put them in top_nodes, but we do need to process
                     // them early.
                     self.typed_context.c_decls_top.push(CDeclId(new_id));
+                }
+
+                ASTEntryTag::TagMacroParameterDef if expected_ty & DECL != 0 => {
+                    let name = from_value::<String>(node.extras[0].clone())
+                        .expect("Macro parameters must have a name");
+                    let decl_kind = CDeclKind::MacroParameter { name };
+
+                    self.add_decl(new_id, located(node, decl_kind));
+                    self.processed_nodes.insert(new_id, OTHER_DECL);
                 }
 
                 ASTEntryTag::TagNonCanonicalDecl if expected_ty & DECL != 0 => {

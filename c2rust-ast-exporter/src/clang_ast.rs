@@ -118,7 +118,7 @@ pub struct AstNode {
 pub struct MacroInvocationInfoRaw {
     pub key: u32,
     pub macro_id: u64,
-    pub parameter: Option<String>,
+    pub param_id: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
