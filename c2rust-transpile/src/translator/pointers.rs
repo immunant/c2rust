@@ -33,7 +33,7 @@ impl<'c> Translation<'c> {
             // Array subscript functions as a deref too.
             &CExprKind::ArraySubscript(_, lhs, rhs, _) => {
                 return self.convert_array_subscript(
-                    ctx.needs_address(),
+                    ctx.address_needed(),
                     Some(cqual_type),
                     lhs,
                     rhs,
@@ -48,7 +48,7 @@ impl<'c> Translation<'c> {
             _ => (),
         }
 
-        let val = self.convert_expr(ctx.needs_address(), arg, None)?;
+        let val = self.convert_expr(ctx.address_needed(), arg, None)?;
 
         // & becomes a no-op when applied to a function.
         if self.ast_context.is_function_pointer(cqual_type.ctype) {
@@ -110,7 +110,7 @@ impl<'c> Translation<'c> {
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
-        let mutbl = if ctx.is_const && !pointee_cty.qualifiers.is_const {
+        let mutbl = if ctx.is_const() && !pointee_cty.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
@@ -202,7 +202,7 @@ impl<'c> Translation<'c> {
             return self.convert_expr(ctx, arg, None);
         }
 
-        self.convert_expr(ctx.not_needs_address(), arg, None)?
+        self.convert_expr(ctx.not_address_needed(), arg, None)?
             .try_map(|val: Box<Expr>| {
                 if let CTypeKind::Function(..) =
                     self.ast_context.resolve_type(cqual_type.ctype).kind
@@ -244,7 +244,7 @@ impl<'c> Translation<'c> {
             ));
         }
 
-        let simple_index_array = if ctx.needs_address {
+        let simple_index_array = if ctx.is_address_needed() {
             // We can't necessarily index into an array if we're using
             // that element to compute an address.
             None
@@ -292,13 +292,13 @@ impl<'c> Translation<'c> {
                 ref other => panic!("Unexpected array type {:?}", other),
             };
 
-            let array_rs = self.convert_expr(ctx.not_needs_address(), array_id, None)?;
+            let array_rs = self.convert_expr(ctx.not_address_needed(), array_id, None)?;
 
             // Don't dereference the offset if we're still within the variable portion
             let val = if let Some(elt_type_id) = var_elt_type_id {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
                 let offset_rs = self.convert_expr_with_cast(
-                    ctx.not_needs_address(),
+                    ctx.not_address_needed(),
                     CQualTypeId::new(target_type_id),
                     offset_id,
                 )?;
@@ -308,7 +308,7 @@ impl<'c> Translation<'c> {
             } else {
                 let target_type_id = self.ast_context.type_for_kind(&CTypeKind::Size);
                 let offset_rs = self.convert_expr_with_cast(
-                    ctx.not_needs_address(),
+                    ctx.not_address_needed(),
                     CQualTypeId::new(target_type_id),
                     offset_id,
                 )?;
@@ -333,10 +333,10 @@ impl<'c> Translation<'c> {
 
             // LHS must be ref decayed for the offset method call's self param
             let pointer_rs =
-                self.convert_expr(ctx.not_needs_address().decay_ref(), pointer_id, None)?;
+                self.convert_expr(ctx.not_address_needed().decay_ref(), pointer_id, None)?;
             let target_type_id = self.ast_context.type_for_kind(&CTypeKind::SSize);
             let offset_rs = self.convert_expr_with_cast(
-                ctx.not_needs_address(),
+                ctx.not_address_needed(),
                 CQualTypeId::new(target_type_id),
                 offset_id,
             )?;
@@ -526,7 +526,7 @@ impl<'c> Translation<'c> {
         let target_ty = self.convert_type(target_cty.ctype)?;
 
         if self.ast_context.is_function_pointer(target_cty.ctype) {
-            if ctx.is_const {
+            if ctx.is_const() {
                 return Err(format_translation_err!(
                     None,
                     "cannot transmute integers to Option<fn ...> in `const` context",
@@ -544,7 +544,7 @@ impl<'c> Translation<'c> {
         }
         // Rust 1.90: `const_strict_provenance` feature added
         // Rust 1.91: stabilized
-        else if ctx.is_const && self.tcfg.edition < RustEdition::Edition2024 {
+        else if ctx.is_const() && self.tcfg.edition < RustEdition::Edition2024 {
             if source_ty_kind.is_bool() {
                 self.use_crate(ExternCrate::Libc);
                 Ok(val.map(|mut val| {
@@ -632,7 +632,7 @@ impl<'c> Translation<'c> {
         target_cty: CQualTypeId,
         val: WithStmts<Box<Expr>>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        if ctx.is_const {
+        if ctx.is_const() {
             return Err(format_translation_err!(
                 None,
                 "cannot observe pointer values in `const` context",
@@ -699,7 +699,7 @@ impl<'c> Translation<'c> {
             Ok(expr_rs.map(|expr_rs| mk().method_call_expr(expr_rs, method, vec![])))
         } else {
             // TODO: `pointer::is_null` becomes stably const in Rust 1.84.
-            if ctx.is_const {
+            if ctx.is_const() {
                 return Err(format_translation_err!(
                     None,
                     "cannot check nullity of pointer in `const` context",

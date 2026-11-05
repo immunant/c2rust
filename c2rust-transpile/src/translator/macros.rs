@@ -6,6 +6,7 @@ use std::rc::Rc;
 use syn::{Expr, MacroDelimiter};
 
 use crate::c_ast::{CDeclId, CExprId, CQualTypeId, CTypeId, CTypeKind, MacroInvocationInfo};
+use crate::context::{ExprTreeContext, ItemContext};
 use crate::diagnostics::{TranslationError, TranslationResult};
 use crate::translator::{ConvertedDecl, ConvertedMacro, ExprContext, Translation};
 use crate::with_stmts::WithStmts;
@@ -14,7 +15,7 @@ use crate::TranslateMacros;
 impl<'c> Translation<'c> {
     pub fn convert_macro(
         &self,
-        ctx: ExprContext,
+        ctx: ItemContext,
         decl_id: CDeclId,
         span: Span,
         name: &str,
@@ -60,7 +61,7 @@ impl<'c> Translation<'c> {
     /// this can fail.  Or there could just be a feature we don't yet support.
     fn recreate_const_macro_from_expansions(
         &self,
-        ctx: ExprContext,
+        ctx: ItemContext,
         macro_id: CDeclId,
     ) -> TranslationResult<(Box<Expr>, ConvertedMacro)> {
         struct ConvertedMacroExpr {
@@ -68,7 +69,7 @@ impl<'c> Translation<'c> {
             ty: CTypeId,
         }
 
-        let ctx = ctx.const_().set_expanding_macro(macro_id);
+        let ctx = ExprTreeContext::from(ctx.set_converting_macro(macro_id));
         let canonical = self.ast_context.macro_expansions[&macro_id]
             .iter()
             .try_fold::<Option<ConvertedMacroExpr>, _, _>(None, |canonical, info| {
@@ -81,7 +82,7 @@ impl<'c> Translation<'c> {
                     .kind
                     .get_type()
                     .ok_or_else(|| format_err!("Invalid expression type"))?;
-                let val = self.convert_expr(ctx.used(), expr_id, None)?;
+                let val = self.convert_expr(ctx.const_().used().into(), expr_id, None)?;
                 let new = ConvertedMacroExpr { val, ty };
 
                 // Join ty and cur_ty to the smaller of the two types. If the
@@ -171,7 +172,7 @@ impl<'c> Translation<'c> {
 
         // Find the first macro after the macro we're currently expanding, if any.
         let first_macro = macros
-            .splitn(2, |info| ctx.expanding_macro(&info.macro_id))
+            .splitn(2, |info| ctx.converting_macro() == Some(info.macro_id))
             .last()
             .unwrap()
             .first();
@@ -192,7 +193,7 @@ impl<'c> Translation<'c> {
 
             // We haven't tried to convert it yet.
             None => {
-                self.convert_decl(ctx.not_pattern(), info.macro_id)?;
+                self.convert_decl(ctx.as_item_context(), info.macro_id)?;
                 let maybe_converted = self.converted_macros.borrow().get(&info.macro_id).cloned();
                 if let Some(Some(converted)) = maybe_converted {
                     converted
