@@ -181,48 +181,29 @@ pub struct Options {
     pub plugin_dirs: Vec<String>,
 }
 
-/// Try to find the rustup installation that provides the rustc at the given path.  The input path
-/// should be normalized already.
-fn get_rustup_path(rustc: &Path) -> Option<PathBuf> {
-    use std::ffi::OsStr;
-    use std::fs;
-
-    // `rustc` is already normalized, which resolves the `rustc` -> `rustup` symlink if one is
-    // present.
-    if rustc.file_name() == Some(OsStr::new("rustup")) {
-        return Some(rustc.to_owned());
-    }
-
-    // Otherwise, check for a rustup binary installed alongside rustc.  If they're the same size,
-    // we assume they're the same file (hardlinked or copied).
-    let rustup = rustc.with_file_name("rustup");
-    let rustc_meta = fs::metadata(rustc).ok()?;
-    let rustup_meta = fs::metadata(&rustup).ok()?;
-    if rustc_meta.len() == rustup_meta.len() {
-        return Some(rustup);
-    }
-
-    None
-}
-
+/// Find the real `rustc` binary behind `path`, which may be a rustup proxy or a wrapper script.
+/// The driver infers the sysroot from this path, so ask `rustc` for its sysroot rather than
+/// guessing from the file layout.
 fn get_rustc_executable(path: &Path) -> String {
-    use std::process::{Command, Stdio};
+    use std::process::Command;
 
     let resolved = paths::resolve_executable(path).unwrap();
-    if let Some(rustup_path) = get_rustup_path(&resolved) {
-        let proc = Command::new(rustup_path)
-            .arg("which")
-            .arg("rustc")
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let output = proc.wait_with_output().unwrap();
-        assert!(output.status.success());
-        let s = str::from_utf8(&output.stdout).unwrap();
-        return s.trim().to_owned();
-    }
-
-    resolved.to_str().unwrap().to_owned()
+    let output = Command::new(&resolved)
+        .args(["--print", "sysroot"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "`{} --print sysroot` failed",
+        resolved.display()
+    );
+    let sysroot = str::from_utf8(&output.stdout).unwrap().trim();
+    Path::new(sysroot)
+        .join("bin")
+        .join("rustc")
+        .to_str()
+        .unwrap()
+        .to_owned()
 }
 
 fn get_rustc_arg_strings(src: RustcArgSource) -> Vec<RustcArgs> {
