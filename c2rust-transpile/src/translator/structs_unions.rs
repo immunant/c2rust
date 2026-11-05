@@ -12,6 +12,7 @@ use crate::c_ast::{
 };
 use crate::diagnostics::TranslationResult;
 use crate::renamer::Namespaces;
+use crate::translator::types::mk_size_of_ty_expr;
 use crate::translator::variadic::mk_va_list_ty;
 use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX};
 use crate::with_stmts::WithStmts;
@@ -172,8 +173,8 @@ impl<'a> Translation<'a> {
                 .resolve_decl_suffix_name(decl_id, PADDING_SUFFIX)
                 .to_owned();
             let padding_ty = mk().path_ty(vec!["usize"]);
-            let outer_size = self.mk_size_of_ty_expr(outer_ty)?.to_expr();
-            let inner_size = self.mk_size_of_ty_expr(inner_ty)?.to_expr();
+            let outer_size = mk_size_of_ty_expr(outer_ty)?.to_expr();
+            let inner_size = mk_size_of_ty_expr(inner_ty)?.to_expr();
             let padding_value =
                 mk().binary_expr(BinOp::Sub(Default::default()), outer_size, inner_size);
             let padding_const = mk()
