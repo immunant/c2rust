@@ -683,16 +683,8 @@ impl<'c> Translation<'c> {
         result_type_id: CQualTypeId,
         arg_id: CExprId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let expr_type_id = expected_type_id.unwrap_or(result_type_id);
-        let is_unsigned_integral_type = self
-            .ast_context
-            .resolve_type(expr_type_id.ctype)
-            .kind
-            .is_unsigned_integral_type();
-
-        if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false, false) = (
+        if let (&CExprKind::Literal(_, CLiteral::Integer(val, base)), false) = (
             &self.ast_context.index_unwrap_parens(arg_id).kind,
-            is_unsigned_integral_type,
             self.expr_is_expanded_macro(ctx, arg_id, expected_type_id),
         ) {
             // If we are negating a literal, generate a negated literal directly.
@@ -700,9 +692,12 @@ impl<'c> Translation<'c> {
             // rather than `-(1 as ty)`.
             self.convert_integer_literal(ctx, expected_type_id, result_type_id, val, base, true)
         } else {
+            let result_type_id = expected_type_id.unwrap_or(result_type_id);
+            let result_type_kind = &self.ast_context.resolve_type(result_type_id.ctype).kind;
+
             let val = self.convert_expr(ctx, arg_id, expected_type_id)?;
             let val = val.map(|val| {
-                if is_unsigned_integral_type {
+                if result_type_kind.is_unsigned_integral_type() {
                     wrapping_neg_expr(val)
                 } else {
                     neg_expr(val)

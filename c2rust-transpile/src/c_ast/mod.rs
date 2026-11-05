@@ -1057,6 +1057,16 @@ impl TypedAstContext {
         }
     }
 
+    pub(crate) fn kind_has_replaced(
+        &self,
+        replacement_kind: &CTypeKind,
+        original_kind: &CTypeKind,
+    ) -> bool {
+        self.replaced_type_kinds
+            .get(replacement_kind)
+            .is_some_and(|kind| kind == original_kind)
+    }
+
     /// Extract decl of referenced function.
     /// Looks for ImplicitCast(FunctionToPointerDecay, DeclRef(function_decl))
     pub fn fn_declref_decl(&self, func_expr: CExprId) -> Option<&CDeclKind> {
@@ -2378,6 +2388,14 @@ impl CastKind {
         }
 
         Some(match (source_ty_kind, target_ty_kind) {
+            (CTypeKind::Atomic(..), _) if !matches!(target_ty_kind, CTypeKind::Atomic(..)) => {
+                CastKind::AtomicToNonAtomic
+            }
+
+            (_, CTypeKind::Atomic(..)) if !matches!(source_ty_kind, CTypeKind::Atomic(..)) => {
+                CastKind::NonAtomicToAtomic
+            }
+
             (CTypeKind::VariableArray(..), CTypeKind::Pointer(..))
             | (CTypeKind::ConstantArray(..), CTypeKind::Pointer(..))
             | (CTypeKind::IncompleteArray(..), CTypeKind::Pointer(..)) => {
