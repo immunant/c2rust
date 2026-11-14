@@ -74,6 +74,33 @@ elseif(DEFINED LLVM_TOOLS_BINARY_DIR)
 else()
   message(FATAL_ERROR "Cannot find path to clang binary")
 endif()
+
+# Directory reported by `clang -print-resource-dir` for the clang that matches
+# this build. augment_argv uses it when the prefix reconstructed from
+# CLANG_BIN_PATH does not contain include/stddef.h (split LLVM outputs).
+if(DEFINED ENV{CLANG_RESOURCE_DIR} AND NOT "$ENV{CLANG_RESOURCE_DIR}" STREQUAL "")
+  set(CLANG_RESOURCE_DIR "$ENV{CLANG_RESOURCE_DIR}")
+else()
+  if(DEFINED ENV{CLANG_PATH} AND NOT "$ENV{CLANG_PATH}" STREQUAL "")
+    set(C2RUST_CLANG_FOR_RESOURCE_DIR "$ENV{CLANG_PATH}")
+  else()
+    set(C2RUST_CLANG_FOR_RESOURCE_DIR "clang")
+  endif()
+  execute_process(
+    COMMAND "${C2RUST_CLANG_FOR_RESOURCE_DIR}" -print-resource-dir
+    OUTPUT_VARIABLE CLANG_RESOURCE_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE C2RUST_CLANG_RESOURCE_DIR_RESULT
+    ERROR_QUIET
+  )
+  if(NOT C2RUST_CLANG_RESOURCE_DIR_RESULT EQUAL 0)
+    set(CLANG_RESOURCE_DIR "")
+  endif()
+endif()
+if(NOT CLANG_RESOURCE_DIR STREQUAL "")
+  add_definitions(-DCLANG_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
+endif()
+
 add_definitions(-DCLANG_VERSION_STRING="${LLVM_PACKAGE_VERSION}")
 
 set(LLVM_LINK_COMPONENTS support)
