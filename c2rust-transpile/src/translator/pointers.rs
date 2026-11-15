@@ -127,18 +127,10 @@ impl<'c> Translation<'c> {
 
         // Narrow string literals are translated directly as `[u8; N]` literals when their address
         // is taken, without the transmute. String/byte literals are already references in Rust.
-        if let (
-            Some(&CExprKind::Literal(literal_cty, CLiteral::String(_, element_size @ 1))),
-            false,
-        ) = (expr_kind, expr_is_macro)
+        if let (Some(&CExprKind::Literal(_, CLiteral::String(_, 1))), false) =
+            (expr_kind, expr_is_macro)
         {
-            if is_array_decay {
-                val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-            } else {
-                let size = self.ast_context.array_len(literal_cty.ctype) * element_size as usize;
-                ref_cast_pointee_ty =
-                    Some(mk().array_ty(mk().ident_ty("u8"), mk().lit_expr(size as u128)));
-            }
+            val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
             needs_cast = true;
         }
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
@@ -148,17 +140,12 @@ impl<'c> Translation<'c> {
                 return Err("taking mutable address of string literal or macro".into());
             }
 
-            if is_array_decay {
+            if let Some(element_type_id) = expr_type_kind.array_element_type() {
                 val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
 
                 // If the target pointee type is different from the source element type,
                 // then we need to cast the ptr type as well.
-                if expr_type_kind
-                    .element_ty()
-                    .map_or(false, |element_type_id| {
-                        element_type_id != result_pointee_type_id.ctype
-                    })
-                {
+                if !is_array_decay || element_type_id != result_pointee_type_id.ctype {
                     needs_cast = true;
                 }
             } else {
