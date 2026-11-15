@@ -104,7 +104,10 @@ impl<'c> Translation<'c> {
             .resolve_type(result_pointee_type_id.ctype)
             .kind;
 
-        let mutbl = if ctx.is_const() && !result_pointee_type_id.qualifiers.is_const {
+        let mutbl = if self.tcfg.edition < RustEdition::Edition2024
+            && ctx.is_const()
+            && !result_pointee_type_id.qualifiers.is_const
+        {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
