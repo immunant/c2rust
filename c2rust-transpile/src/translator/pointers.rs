@@ -60,7 +60,7 @@ impl<'c> Translation<'c> {
             .get_qual_type()
             .ok_or_else(|| format_err!("bad source type"))?;
 
-        self.convert_address_of_common(ctx, Some(arg), arg_cty, cqual_type, val, false)
+        self.convert_address_of_common(ctx, cqual_type, Some(arg), arg_cty, val, false)
     }
 
     pub fn convert_array_to_pointer_decay(
@@ -87,46 +87,50 @@ impl<'c> Translation<'c> {
             return Ok(val);
         }
 
-        self.convert_address_of_common(ctx, expr, source_cty, target_cty, val, true)
+        self.convert_address_of_common(ctx, target_cty, expr, source_cty, val, true)
     }
 
     fn convert_address_of_common(
         &self,
         ctx: ExprContext,
-        arg: Option<CExprId>,
-        arg_cty: CQualTypeId,
-        pointer_cty: CQualTypeId,
+        result_type_id: CQualTypeId,
+        expr_id: Option<CExprId>,
+        expr_type_id: CQualTypeId,
         mut val: WithStmts<Box<Expr>>,
         is_array_decay: bool,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let arg_expr_kind = arg.map(|arg| {
-            let arg = self.ast_context.unwrap_predefined_ident(arg);
-            &self.ast_context.index_unwrap_parens(arg).kind
-        });
-        let pointee_cty = self
+        let expr_type_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
+        let result_pointee_type_id = self
             .ast_context
-            .get_pointee_qual_type(pointer_cty.ctype)
+            .get_pointee_qual_type(result_type_id.ctype)
             .ok_or_else(|| TranslationError::generic("Address-of should return a pointer"))?;
-        let arg_is_macro = arg.map_or(false, |arg| self.expr_is_expanded_macro(ctx, arg, None));
 
         let mut needs_cast = false;
         let mut ref_cast_pointee_ty = None;
-        let mutbl = if ctx.is_const() && !pointee_cty.qualifiers.is_const {
+        let mutbl = if ctx.is_const() && !result_pointee_type_id.qualifiers.is_const {
             // const contexts aren't able to use &mut, so we work around that
             // by using & and an extra cast through & to *const to *mut
             // TODO: Rust 1.83: Allowed, so this can be removed.
             needs_cast = true;
             Mutability::Immutable
         } else {
-            pointee_cty.mutability()
+            result_pointee_type_id.mutability()
         };
+
+        let expr_kind = expr_id.map(|expr_id| {
+            let expr_id = self.ast_context.unwrap_predefined_ident(expr_id);
+            &self.ast_context.index_unwrap_parens(expr_id).kind
+        });
+        let expr_is_macro = expr_id.map_or(false, |expr_id| {
+            self.expr_is_expanded_macro(ctx, expr_id, None)
+        });
 
         // Narrow string literals are translated directly as `[u8; N]` literals when their address
         // is taken, without the transmute. String/byte literals are already references in Rust.
         if let (
             Some(&CExprKind::Literal(literal_cty, CLiteral::String(_, element_size @ 1))),
             false,
-        ) = (arg_expr_kind, arg_is_macro)
+        ) = (expr_kind, expr_is_macro)
         {
             if is_array_decay {
                 val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
@@ -139,21 +143,22 @@ impl<'c> Translation<'c> {
         }
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
-        else if arg_is_macro || matches!(arg_expr_kind, Some(CExprKind::Literal(..))) {
-            if !pointee_cty.qualifiers.is_const {
+        else if expr_is_macro || matches!(expr_kind, Some(CExprKind::Literal(..))) {
+            if !result_pointee_type_id.qualifiers.is_const {
                 return Err("taking mutable address of string literal or macro".into());
             }
-
-            let arg_cty_kind = &self.ast_context.resolve_type(arg_cty.ctype).kind;
 
             if is_array_decay {
                 val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
 
                 // If the target pointee type is different from the source element type,
                 // then we need to cast the ptr type as well.
-                if arg_cty_kind.element_ty().map_or(false, |arg_element_cty| {
-                    arg_element_cty != pointee_cty.ctype
-                }) {
+                if expr_type_kind
+                    .element_ty()
+                    .map_or(false, |element_type_id| {
+                        element_type_id != result_pointee_type_id.ctype
+                    })
+                {
                     needs_cast = true;
                 }
             } else {
@@ -162,7 +167,7 @@ impl<'c> Translation<'c> {
                 // Add an intermediate reference-to-pointer cast if the context needs
                 // reference-to-pointer decay, or if another cast follows.
                 if ctx.decay_ref.is_yes() || needs_cast {
-                    ref_cast_pointee_ty = Some(self.convert_pointee_type(arg_cty.ctype)?);
+                    ref_cast_pointee_ty = Some(self.convert_pointee_type(expr_type_id.ctype)?);
                 }
             }
         } else {
@@ -184,8 +189,8 @@ impl<'c> Translation<'c> {
 
         // Perform a final cast to the target type if needed.
         if needs_cast {
-            let pointer_ty = self.convert_type(pointer_cty.ctype)?;
-            val = val.map(|val| mk().cast_expr(val, pointer_ty));
+            let result_type_rs = self.convert_type(result_type_id.ctype)?;
+            val = val.map(|val| mk().cast_expr(val, result_type_rs));
         }
 
         Ok(val)
