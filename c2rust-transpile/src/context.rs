@@ -151,8 +151,6 @@ pub struct ExprContext {
     is_address_needed: bool,
 
     is_bitfield_write: bool,
-
-    pub(crate) decay_ref: DecayRef,
 }
 
 impl ExprContext {
@@ -201,13 +199,6 @@ impl ExprContext {
         self.parent.converting_macro()
     }
 
-    pub(crate) fn decay_ref(self) -> Self {
-        Self {
-            decay_ref: DecayRef::Yes,
-            ..self
-        }
-    }
-
     pub(crate) fn is_pattern(&self) -> bool {
         self.parent.is_pattern()
     }
@@ -240,41 +231,6 @@ impl From<ExprTreeContext> for ExprContext {
         Self {
             parent,
             ..Default::default()
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DecayRef {
-    Yes,
-    #[default]
-    Default,
-    No,
-}
-
-impl DecayRef {
-    // Here we give intrinsic meaning to default to equate to yes/true
-    // when actually evaluated
-    pub(crate) fn is_yes(&self) -> bool {
-        match self {
-            DecayRef::Yes => true,
-            DecayRef::Default => true,
-            DecayRef::No => false,
-        }
-    }
-
-    pub(crate) fn set_default_to_no(&mut self) {
-        if *self == DecayRef::Default {
-            *self = DecayRef::No;
-        }
-    }
-}
-
-impl From<bool> for DecayRef {
-    fn from(b: bool) -> Self {
-        match b {
-            true => DecayRef::Yes,
-            false => DecayRef::No,
         }
     }
 }

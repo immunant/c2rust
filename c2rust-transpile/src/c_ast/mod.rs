@@ -3121,10 +3121,9 @@ impl CTypeKind {
         matches!(self, Self::Vector { .. })
     }
 
-    /// Return the element type of a pointer or array
-    pub fn element_ty(&self) -> Option<CTypeId> {
+    /// Returns the element type of an array.
+    pub(crate) fn array_element_type(&self) -> Option<CTypeId> {
         Some(match *self {
-            Self::Pointer(ty) => ty.ctype,
             Self::ConstantArray(ty, _) => ty,
             Self::IncompleteArray(ty) => ty,
             Self::VariableArray(ty, _) => ty,

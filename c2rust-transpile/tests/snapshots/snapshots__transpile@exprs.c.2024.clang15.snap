@@ -115,4 +115,4 @@ pub unsafe extern "C" fn mut_to_const_ptr_cast(
 #[unsafe(no_mangle)]
 pub static mut global: ::core::ffi::c_int = 0;
 #[unsafe(no_mangle)]
-pub static mut global_ptr: *const ::core::ffi::c_int = &raw const global as *mut ::core::ffi::c_int;
+pub static mut global_ptr: *const ::core::ffi::c_int = &raw mut global;
