@@ -114,32 +114,36 @@ impl<'c> Translation<'c> {
         };
         let mut source_pointee_type_kind = expr_type_kind;
 
-        let expr_kind = expr_id.map(|expr_id| {
-            let expr_id = self.ast_context.unwrap_predefined_ident(expr_id);
-            &self.ast_context.index_unwrap_parens(expr_id).kind
-        });
-        let expr_is_macro = expr_id.map_or(false, |expr_id| {
-            self.expr_is_expanded_macro(ctx, expr_id, None)
-        });
-
-        // Narrow string literals are translated directly as `[u8; N]` literals when their address
-        // is taken, without the transmute. String/byte literals are already references in Rust.
-        if let (Some(&CExprKind::Literal(_, CLiteral::String(_, 1))), false) =
-            (expr_kind, expr_is_macro)
-        {
-            val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-            source_pointee_type_kind = &CTypeKind::UInt8;
-        }
         // Values that translate into const temporaries can't be raw-borrowed in Rust.
         // They must be regular-borrowed first, which will extend the lifetime to static.
-        else if expr_is_macro || matches!(expr_kind, Some(CExprKind::Literal(..))) {
+        if let Some((expr_is_macro, expr_kind)) = expr_id
+            .map(|expr_id| {
+                let expr_is_macro = self.expr_is_expanded_macro(ctx, expr_id, None);
+                let expr_id = self.ast_context.unwrap_predefined_ident(expr_id);
+                let expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
+                (expr_is_macro, expr_kind)
+            })
+            .filter(|&(expr_is_macro, expr_kind)| {
+                expr_is_macro || matches!(expr_kind, CExprKind::Literal(..))
+            })
+        {
             if !result_pointee_type_id.qualifiers.is_const {
                 return Err("taking mutable address of string literal or macro".into());
             }
 
             if let Some(element_type_id) = expr_type_kind.array_element_type() {
                 val = val.map(|val| mk().method_call_expr(val, "as_ptr", vec![]));
-                source_pointee_type_kind = &self.ast_context.resolve_type(element_type_id).kind;
+
+                if matches!(expr_kind, CExprKind::Literal(_, CLiteral::String(_, 1)))
+                    && !expr_is_macro
+                {
+                    // Narrow string literals are translated directly as `[u8; N]` literals when
+                    // their address is taken, without casting/transmuting to `char`.
+                    // TODO: Use C string literals?
+                    source_pointee_type_kind = &CTypeKind::UInt8;
+                } else {
+                    source_pointee_type_kind = &self.ast_context.resolve_type(element_type_id).kind;
+                }
             } else {
                 val = val.map(|val| mk().borrow_expr(val));
 
