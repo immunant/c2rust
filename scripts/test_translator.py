@@ -658,6 +658,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('directory', type=readable_directory)
     parser.add_argument(
+        '--transpiler', dest='transpiler',
+        default=None, help='Override the path to the c2rust transpiler binary'
+    )
+    parser.add_argument(
         '--only-files', dest='regex_files', type=regex,
         default='.*', help="Regular expression to filter which tests to run"
     )
@@ -684,6 +688,10 @@ def main() -> None:
 
     args = parser.parse_args()
     c.update_args(args)
+
+    if args.transpiler is not None:
+        c.TRANSPILER = args.transpiler
+
     test_directories = get_testdirectories(args.directory,
                                            args.regex_files,
                                            args.keep,
