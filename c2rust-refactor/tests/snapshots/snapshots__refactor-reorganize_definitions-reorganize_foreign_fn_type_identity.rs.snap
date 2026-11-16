@@ -1,0 +1,68 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_foreign_fn_type_identity.rs --edition 2021
+---
+#![feature(rustc_private)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(dead_code)]
+
+pub mod io_h {
+    extern "C" {
+        pub fn fill(b: *mut crate::io_h::buf) -> libc::c_int;
+
+        #[link_name = "fill"]
+        pub fn fill_1(b: *mut crate::io_h::buf_1) -> libc::c_int;
+    }
+    use ::libc;
+
+    #[repr(C)]
+
+    pub struct buf {
+        pub len: libc::c_int,
+        pad: libc::c_int,
+    }
+    // Same fields as the other `buf`, but all of them are public, so the
+    // two are not interchangeable.
+    #[repr(C)]
+
+    pub struct buf_1 {
+        pub len: libc::c_int,
+        pub pad: libc::c_int,
+    }
+}
+extern crate libc;
+
+// Each translation unit has its own `buf`, and the two differ in field
+// visibility, so they are not unified and the second is renamed. Both units
+// declare `fill` taking a `*mut buf` — spelled identically, but naming a
+// different type in each unit. The two declarations therefore describe
+// different functions and must not be collapsed into one.
+
+pub mod a {
+    use libc;
+
+    use crate::io_h::buf;
+    use crate::io_h::fill;
+
+    pub unsafe fn run() -> libc::c_int {
+        let mut b = std::mem::zeroed::<crate::io_h::buf>();
+        crate::io_h::fill(&mut b)
+    }
+}
+
+pub mod b {
+    use libc;
+
+    use crate::io_h::buf_1;
+    use crate::io_h::fill_1;
+
+    pub unsafe fn run() -> libc::c_int {
+        let mut b = std::mem::zeroed::<crate::io_h::buf_1>();
+        crate::io_h::fill_1(&mut b)
+    }
+}
+
+fn main() {}
