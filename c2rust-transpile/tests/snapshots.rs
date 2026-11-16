@@ -393,6 +393,11 @@ fn test_factorial() {
 }
 
 #[test]
+fn test_multiple_blocks() {
+    transpile("multiple_blocks.c").run();
+}
+
+#[test]
 fn test_fences() {
     transpile("fences.c").run();
 }
