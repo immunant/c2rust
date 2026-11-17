@@ -2230,12 +2230,15 @@ class TranslateASTVisitor final
 
                 // The rules for when inlined functions are externally visible
                 // are complex, so we export the visibility computed by clang.
+                // `FD` is the canonical declaration, which may be a prototype
+                // without a body (e.g. `int f(int); inline int f(int x) {...}`),
+                // so query the definition instead.
                 bool can_query_inline_visibility = is_inline &&
-                    (FD->doesThisDeclarationHaveABody() ||
-                     FD->willHaveBody() ||
-                     FD->hasAttr<AliasAttr>());
+                    (def->doesThisDeclarationHaveABody() ||
+                     def->willHaveBody() ||
+                     def->hasAttr<AliasAttr>());
                 bool is_inline_externally_visible = can_query_inline_visibility
-                    && FD->isInlineDefinitionExternallyVisible();
+                    && def->isInlineDefinitionExternallyVisible();
                 cbor_encode_boolean(array, is_inline_externally_visible);
 
                 // Encode attribute names and relevant info if supported
