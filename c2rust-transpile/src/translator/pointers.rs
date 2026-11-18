@@ -390,7 +390,11 @@ impl<'c> Translation<'c> {
             .type_id(&self.ast_context)
             .ok_or_else(|| format_err!("Invalid expression type"))?;
         let offset_type_kind = &self.ast_context.resolve_type(offset_type_id.ctype).kind;
-        let offset_is_unsigned = offset_type_kind.is_unsigned_integral_type();
+        let offset_is_unsigned = offset_type_kind.is_unsigned_integral_type()
+            || offset.expr_id().is_some_and(|expr_id| {
+                let expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
+                matches!(expr_kind, CExprKind::Literal(..))
+            });
 
         let offset_expected_type_kind = if offset_is_unsigned {
             &CTypeKind::UIntPtr
