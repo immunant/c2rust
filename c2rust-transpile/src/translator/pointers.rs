@@ -361,7 +361,8 @@ impl<'c> Translation<'c> {
         }
     }
 
-    /// Translate a pointer offset expression.
+    /// Translate a pointer offset expression. Calls `add`, `sub` or `offset` depending on the
+    /// signedness of `offset_type_id` and the value of `neg`.
     pub(crate) fn convert_pointer_offset(
         &self,
         ctx: ExprContext,
@@ -387,27 +388,51 @@ impl<'c> Translation<'c> {
         let pointer_rs = self.convert_expr(ctx.not_address_needed().decay_ref(), pointer, None)?;
 
         let offset = offset.into();
-        let isize_type_id = self.ast_context.type_for_kind(&CTypeKind::IntPtr);
+        let offset_type_id = offset
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
+        let offset_type_kind = &self.ast_context.resolve_type(offset_type_id.ctype).kind;
+        let offset_is_unsigned = offset_type_kind.is_unsigned_integral_type();
+
+        let offset_expected_type_kind = if offset_is_unsigned {
+            &CTypeKind::UIntPtr
+        } else {
+            &CTypeKind::IntPtr
+        };
+        let offset_expected_type_id = self.ast_context.type_for_kind(offset_expected_type_kind);
         let mut offset_rs = self.convert_expr_with_cast(
             ctx.not_address_needed(),
-            CQualTypeId::new(isize_type_id),
+            CQualTypeId::new(offset_expected_type_id),
             offset,
         )?;
 
-        if let Some(mul) = self.make_variable_array_size_multiplier(pointee_type_id.ctype) {
-            let mul = cast_int(mul, "isize", false);
+        if let Some(mut mul) = self.make_variable_array_size_multiplier(pointee_type_id.ctype) {
+            if !offset_is_unsigned {
+                mul = cast_int(mul, "isize", false);
+            }
+
             offset_rs = offset_rs
                 .map(|offset_rs| mk().binary_expr(BinOp::Mul(Default::default()), offset_rs, mul));
         }
 
-        if neg {
-            offset_rs = offset_rs.map(neg_expr);
-        }
+        let method_name = if offset_is_unsigned {
+            if neg {
+                "sub"
+            } else {
+                "add"
+            }
+        } else {
+            if neg {
+                offset_rs = offset_rs.map(neg_expr);
+            }
+
+            "offset"
+        };
 
         Ok(pointer_rs
             .zip(offset_rs)
             .map(|(pointer_rs, offset_rs)| {
-                mk().method_call_expr(pointer_rs, "offset", vec![offset_rs])
+                mk().method_call_expr(pointer_rs, method_name, vec![offset_rs])
             })
             .set_unsafe())
     }

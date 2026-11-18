@@ -67,7 +67,7 @@ pub unsafe extern "C" fn my_printf(mut fmt: *const ::core::ffi::c_char, mut c2ru
     while *fmt != 0 {
         match *fmt as ::core::ffi::c_int {
             37 => {
-                fmt = fmt.offset(1);
+                fmt = fmt.add(1);
                 if *fmt != 0 {
                     match *fmt as ::core::ffi::c_int {
                         105 | 100 => {
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn my_printf(mut fmt: *const ::core::ffi::c_char, mut c2ru
                 putchar(*fmt as ::core::ffi::c_int);
             }
         }
-        fmt = fmt.offset(1);
+        fmt = fmt.add(1);
     }
 }
 #[no_mangle]
