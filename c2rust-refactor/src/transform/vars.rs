@@ -8,7 +8,7 @@ use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::intravisit;
 use rustc_hir::{self as hir, HirId, Node};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, AutoBorrowMutability};
-use rustc_middle::ty::{TyKind, TypeckResults};
+use rustc_middle::ty::{GenericParamDefKind, TyKind, TypeckResults};
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::mem;
@@ -496,8 +496,8 @@ impl Transform for UninitToDefault {
 ///
 /// Removes the type from `let` statements whose initializer would have the same
 /// type without it. Annotations are kept when the initializer's type could depend
-/// on them, as for unsuffixed literals, generic calls, coercions, and locals whose
-/// own types are inferred.
+/// on them, as for unsuffixed literals, generic calls whose type arguments are
+/// inferred, coercions, and locals whose own types are inferred.
 /// For example, replace `let x: u32 = 1u32;` with `let x = 1u32;`
 pub struct RemoveRedundantLetTypes;
 
@@ -566,16 +566,28 @@ impl<'a, 'tcx> IndependentType<'a, 'tcx> {
                 ) => self.non_generic(def_id),
                 _ => false,
             },
-            // A non-generic callee has a fixed signature, and the callee or receiver is
-            // checked without an expected type.
+            // A callee with fixed generics has a fixed signature, and the callee or receiver
+            // is checked without an expected type.
             hir::ExprKind::Call(callee, _) => match self.tables.expr_ty(callee).kind() {
-                TyKind::FnDef(def_id, _) => self.non_generic(*def_id),
+                TyKind::FnDef(def_id, _) => {
+                    let segment = match callee.kind {
+                        hir::ExprKind::Path(hir::QPath::Resolved(_, path)) => path.segments.last(),
+                        hir::ExprKind::Path(hir::QPath::TypeRelative(_, segment)) => Some(segment),
+                        _ => None,
+                    };
+                    self.fixed_generics(*def_id, segment, None)
+                }
+                TyKind::FnPtr(_) => self.expr(callee),
                 _ => false,
             },
-            hir::ExprKind::MethodCall(..) => self
+            hir::ExprKind::MethodCall(segment, receiver, ..) => self
                 .tables
                 .type_dependent_def_id(e.hir_id)
-                .is_some_and(|def_id| self.non_generic(def_id)),
+                .is_some_and(|def_id| self.fixed_generics(def_id, Some(segment), Some(receiver))),
+            // A block's tail is a coercion site, like the initializer itself.
+            hir::ExprKind::Block(block, None) => block.expr.is_some_and(|e| self.uncoerced(e)),
+            // Without an expected type, the branches are coerced to their common type.
+            hir::ExprKind::If(_, then, Some(els)) => self.uncoerced(then) && self.uncoerced(els),
             // `&&`, `||`, and comparisons are always `bool`. Other operators, built-in or
             // overloaded, have an output type determined by their operand types.
             hir::ExprKind::Binary(op, lhs, rhs) => {
@@ -612,6 +624,39 @@ impl<'a, 'tcx> IndependentType<'a, 'tcx> {
         };
         self.locals.insert(id, independent);
         independent
+    }
+
+    /// Whether a callee's type and const parameters are all fixed: its own by explicit
+    /// generic arguments, and an inherent impl's by the receiver's type, in which they
+    /// all appear.
+    fn fixed_generics(
+        &mut self,
+        def_id: DefId,
+        segment: Option<&hir::PathSegment>,
+        receiver: Option<&hir::Expr>,
+    ) -> bool {
+        let tcx = self.cx.ty_ctxt();
+        let generics = tcx.generics_of(def_id);
+        let parent_fixed = generics.parent.map_or(true, |parent| {
+            self.non_generic(parent)
+                || (tcx.def_kind(parent) == DefKind::Impl { of_trait: false }
+                    && receiver.is_some_and(|receiver| self.expr(receiver)))
+        });
+        let own = generics
+            .params
+            .iter()
+            .filter(|param| !matches!(param.kind, GenericParamDefKind::Lifetime))
+            .count();
+        let explicit = segment
+            .map_or(&[][..], |segment| segment.args().args)
+            .iter()
+            .filter(|arg| match arg {
+                hir::GenericArg::Type(ty) => !has_infer(ty),
+                hir::GenericArg::Const(_) => true,
+                _ => false,
+            })
+            .count();
+        parent_fixed && explicit == own
     }
 
     /// Also checks the parent impl's or trait's parameters. Lifetime parameters are
