@@ -8,7 +8,7 @@ use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::intravisit;
 use rustc_hir::{self as hir, HirId, Node};
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, AutoBorrowMutability};
-use rustc_middle::ty::{ParamEnv, TyKind, TypeckResults};
+use rustc_middle::ty::{TyKind, TypeckResults};
 use std::collections::hash_map::{Entry, HashMap};
 use std::collections::HashSet;
 use std::mem;
@@ -658,11 +658,12 @@ impl Transform for RemoveRedundantLetTypes {
             let Some(e_ty) = tables.expr_ty_opt(e) else {
                 return;
             };
-            let e_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), e_ty);
+            // The types are already normalized, but bound regions are distinct per annotation.
+            let e_ty = tcx.erase_regions(e_ty);
 
             let t = mcx.bindings.get::<_, P<Ty>>("$ty").unwrap();
             let t_ty = cx.adjusted_node_type(t.id);
-            let t_ty = tcx.normalize_erasing_regions(ParamEnv::empty(), t_ty);
+            let t_ty = tcx.erase_regions(t_ty);
             let locals = &mut independent_locals;
             if e_ty == t_ty && (IndependentType { cx, tables, locals }).uncoerced(e) {
                 *ast = repl.clone().subst(st, cx, &mcx.bindings);
