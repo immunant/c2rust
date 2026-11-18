@@ -18,10 +18,11 @@ fn main() {
     // The annotation also supplies types through local paths and aggregates.
     let source = 0;
     let from_local: u64 = source;
-    assert_eq!(std::mem::size_of_val(&from_local), 8);
+    // Method calls need the receiver's type, so these fail to compile without the kept annotation.
+    from_local.count_ones();
     let tuple: (u64, f32) = (0, 0.);
     let empty: [u8; 0] = [];
-    assert_eq!(std::mem::size_of_val(&tuple.0), 8);
+    tuple.0.count_ones();
     assert_eq!(empty.len(), 0);
 
     // Preserve coercions at both the outer initializer and aggregate elements.
@@ -166,7 +167,7 @@ fn paths(param: u64, r: &mut u8) {
         let from_closure_param: u64 = x;
         from_closure_param
     };
-    assert_eq!(std::mem::size_of_val(&closure(0)), 8);
+    closure(0).count_ones();
 
     // Keep a reborrow, which would otherwise become a move.
     let reborrow: &mut u8 = r;
@@ -185,10 +186,10 @@ fn aggregates(s: S) {
 
     // A generic ADT gets its type arguments from the annotation.
     let generic: W<u64> = W { x: 0 };
-    assert_eq!(std::mem::size_of_val(&generic.x), 8);
+    generic.x.count_ones();
     let none: Option<u64> = None;
     let some: Option<u64> = Some(0);
-    assert_eq!(std::mem::size_of_val(&some), 16);
+    some.unwrap().count_ones();
 }
 
 // Field types follow from the base's type, including through auto-deref.
@@ -201,7 +202,7 @@ fn fields(s: S, r: &S, tuple: (u64, f32), w: W<u64>) {
     // Keep the annotation when it determines the base's type.
     let inferred = W { x: 0 };
     let inferred_field: u64 = inferred.x;
-    assert_eq!(std::mem::size_of_val(&inferred.x), 8);
+    inferred.x.count_ones();
 }
 
 // Non-generic functions, methods, and constructors return fixed types.
@@ -215,7 +216,7 @@ fn calls(s: S, n: u64) {
     // Generic callees, including through their impl or trait, get their type arguments
     // from the annotation.
     let generic_call: u64 = id(0);
-    assert_eq!(std::mem::size_of_val(&generic_call), 8);
+    generic_call.count_ones();
     let generic_impl: W<u64> = W::new();
     let generic_method: u64 = s.make();
     let trait_method: u64 = Default::default();
@@ -235,8 +236,8 @@ fn operators(a: i32, b: i32, m: M) {
     // Literal operands get their type from the annotation.
     let literal_sum: u64 = 1 + 2;
     let literal_shift: u64 = 1 << a;
-    assert_eq!(std::mem::size_of_val(&literal_sum), 8);
-    assert_eq!(std::mem::size_of_val(&literal_shift), 8);
+    literal_sum.count_ones();
+    literal_shift.count_ones();
 }
 
 // An operand of type `!`, directly or through a local, is coerced to an inference
@@ -293,7 +294,7 @@ unsafe fn pointers(p: *const S, q: *mut i32) {
     // Keep the annotation when it determines what a generic `Box` holds.
     let boxed = Box::new(0);
     let unboxed: u64 = *boxed;
-    assert_eq!(std::mem::size_of_val(&unboxed), 8);
+    unboxed.count_ones();
 }
 
 // Associated types of type parameters can't be normalized, but compare equal as written.
@@ -382,5 +383,5 @@ fn places(
     let from_inferred: u8 = inferred[0usize];
     let inferred_grid = Grid::new();
     let from_inferred_grid: u64 = inferred_grid[0usize];
-    assert_eq!(std::mem::size_of_val(&inferred_grid[0usize]), 8);
+    inferred_grid[0usize].count_ones();
 }
