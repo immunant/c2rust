@@ -143,6 +143,8 @@ fn paths(param: u64, r: &mut u8) {
     let from_suffixed: u8 = suffixed;
     let (first, second): (i32, f32) = (0, 0.);
     let from_pattern: f32 = second;
+    let S { a: field, .. }: S = S::new();
+    let from_field_pattern: i32 = field;
     let constant: u64 = K;
     let static_value: i32 = ST;
     let assoc_const: u32 = u32::MAX;
@@ -150,6 +152,8 @@ fn paths(param: u64, r: &mut u8) {
     // Keep annotations that determine an inferred local's type.
     let partial: Vec<_> = Vec::new();
     let from_partial: Vec<u64> = partial;
+    let W { x: inferred }: W<_> = W { x: 0 };
+    let from_inferred_field_pattern: u64 = inferred;
     let closure = |x| {
         let from_closure_param: u64 = x;
         from_closure_param
