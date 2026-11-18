@@ -1,3 +1,5 @@
+#![feature(raw_ref_op)]
+
 fn main() {
     // Unsuffixed numeric literals and generic calls need the expected type.
     let mut scalar: u64 = 0;
@@ -302,4 +304,76 @@ where
 // Types with bound regions are equal regardless of where they are written.
 fn bound_regions(f: fn(&u8) -> &u8) {
     let callback: fn(&u8) -> &u8 = f;
+}
+
+struct Table;
+
+impl std::ops::Index<usize> for Table {
+    type Output = u16;
+
+    fn index(&self, _: usize) -> &u16 {
+        &0
+    }
+}
+
+struct Grid<T>(Vec<T>);
+
+impl<T> Grid<T> {
+    fn new() -> Self {
+        Grid(Vec::new())
+    }
+}
+
+impl<T> std::ops::Index<usize> for Grid<T> {
+    type Output = T;
+
+    fn index(&self, i: usize) -> &T {
+        &self.0[i]
+    }
+}
+
+// Borrowing or indexing a place of fixed type gives a fixed type, and the indexed element
+// type follows from the base's type, including for overloaded `Index` impls.
+fn places(
+    mut n: u64,
+    mut array: [u8; 4],
+    v: Vec<u8>,
+    slice: &[u8],
+    i: usize,
+    t: Table,
+    g: Grid<u64>,
+) {
+    let shared: &u64 = &n;
+    let exclusive: &mut u64 = &mut n;
+    let raw_const: *const u64 = &raw const n;
+    let raw_mut: *mut u64 = &raw mut n;
+    let from_array: u8 = array[i];
+    let from_vec: u8 = v[i as usize];
+    let from_slice: u8 = slice[3usize];
+    let from_table: u16 = t[i];
+    let from_grid: u64 = g[i];
+    let element_ref: &u8 = &array[i];
+    let element_raw: *mut u8 = &raw mut array[i];
+    let unsized_full: &[u8] = &v[..];
+
+    // Keep annotations that coerce the borrow, including an exclusive reborrow.
+    let mut target = S::new();
+    let pointer: *mut S = &mut target;
+    let const_pointer: *const u64 = &n;
+    let const_raw: *const u64 = &raw mut n;
+    let object: &dyn std::fmt::Debug = &n;
+    let unsized_array: &[u8] = &[1u8, 2u8];
+    let unsized_local: &[u8] = &array;
+    let unsized_range: &[u8] = &v[1..2];
+
+    // Keep annotations that determine the borrowed or indexed type.
+    let literal: &u64 = &0;
+    let scalar = 0;
+    let borrowed: &u64 = &scalar;
+    let first: u8 = array[0];
+    let inferred = Vec::new();
+    let from_inferred: u8 = inferred[0usize];
+    let inferred_grid = Grid::new();
+    let from_inferred_grid: u64 = inferred_grid[0usize];
+    assert_eq!(std::mem::size_of_val(&inferred_grid[0usize]), 8);
 }

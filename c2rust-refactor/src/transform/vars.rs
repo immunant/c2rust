@@ -540,7 +540,10 @@ impl<'a, 'tcx> IndependentType<'a, 'tcx> {
             // `as *const _` still needs context to determine its pointee type.
             hir::ExprKind::Cast(_, ty) => !has_infer(ty),
             // The result follows from the operand's type, including through auto-deref.
-            hir::ExprKind::Unary(_, e) | hir::ExprKind::Field(e, _) => self.expr(e),
+            hir::ExprKind::Unary(_, e)
+            | hir::ExprKind::Field(e, _)
+            | hir::ExprKind::AddrOf(_, _, e) => self.expr(e),
+            hir::ExprKind::Index(base, index) => self.expr(base) && self.uncoerced(index),
             hir::ExprKind::Tup(es) => es.iter().all(|e| self.uncoerced(e)),
             hir::ExprKind::Array(es) => !es.is_empty() && es.iter().all(|e| self.uncoerced(e)),
             hir::ExprKind::Repeat(e, len) => {
