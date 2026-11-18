@@ -323,6 +323,10 @@ impl<T> Grid<T> {
     fn new() -> Self {
         Grid(Vec::new())
     }
+
+    fn me(self) -> Self {
+        self
+    }
 }
 
 impl<T> std::ops::Index<usize> for Grid<T> {
@@ -377,4 +381,73 @@ fn places(
     let inferred_grid = Grid::new();
     let from_inferred_grid: u64 = inferred_grid[0usize];
     inferred_grid[0usize].count_ones();
+}
+
+// A method of a generic inherent impl, such as `offset` from `impl<T> *const T`, gets
+// the impl's type arguments from the receiver's type, and its own from explicit ones.
+unsafe fn receivers(p: *const i32, s: *const S, array: [u8; 4], g: Grid<u64>) {
+    let element: i32 = *p.offset(1);
+    let element_field: i32 = (*s.offset(1)).a;
+    let offset: *const i32 = p.offset(1);
+    let autoref: *const u8 = array.as_ptr();
+    let self_typed: Grid<u64> = g.me();
+    let explicit: *const u8 = p.cast::<u8>();
+
+    // Keep the annotation when it determines a method's own type argument or the
+    // receiver's type.
+    let own: *const u8 = p.cast();
+    let mut inferred = Vec::new();
+    let popped: Option<u64> = inferred.pop();
+}
+
+struct Callbacks {
+    cb: Option<fn(i32) -> i32>,
+}
+
+// A function pointer's signature fixes the call's type, and explicit generic arguments
+// fix a generic function's.
+fn callees(c: &Callbacks, f: fn(u8) -> u64) {
+    let through_option: i32 = c.cb.expect("non-null function pointer")(1);
+    let pointer_call: u64 = f(1);
+    let null: *mut S = std::ptr::null_mut::<S>();
+    let turbofish: u64 = id::<u64>(0);
+
+    // Keep the annotation when it determines an inferred generic argument.
+    let partial: *mut u64 = std::ptr::null_mut::<_>();
+}
+
+extern "C" {
+    static EXT: i32;
+}
+
+// Fails to compile if a kept coercion's annotation is dropped.
+fn want<T>(_: &T) {}
+
+// A block's tail and an `if`'s branches are checked like the initializer itself.
+fn branches(c: bool, n: u64, q: *mut u8, r: *const u8) {
+    let block: S = {
+        let mut init = S { a: 0, b: 0. };
+        init
+    };
+    let unsafe_block: i32 = unsafe { EXT };
+    let ternary: u64 = if c { n } else { n + 1u64 };
+    let chain: *mut u8 = if c {
+        q
+    } else if n > 0 {
+        q
+    } else {
+        q
+    };
+
+    // Keep annotations that coerce a tail, a branch, or a labeled block's `break` value.
+    let tail: *const u8 = { q };
+    want::<*const u8>(&tail);
+    let branch: *const u8 = if c { q } else { q };
+    want::<*const u8>(&branch);
+    let labeled: *const u8 = 'a: {
+        if c {
+            break 'a q;
+        }
+        r
+    };
 }
