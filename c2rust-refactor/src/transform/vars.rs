@@ -662,7 +662,9 @@ impl Transform for RemoveRedundantLetTypes {
             let e_ty = tcx.erase_regions(e_ty);
 
             let t = mcx.bindings.get::<_, P<Ty>>("$ty").unwrap();
-            let t_ty = cx.adjusted_node_type(t.id);
+            let Some(t_ty) = cx.opt_adjusted_node_type(t.id) else {
+                return;
+            };
             let t_ty = tcx.erase_regions(t_ty);
             let locals = &mut independent_locals;
             if e_ty == t_ty && (IndependentType { cx, tables, locals }).uncoerced(e) {
