@@ -289,3 +289,19 @@ unsafe fn pointers(p: *const S, q: *mut i32) {
     let unboxed: u64 = *boxed;
     assert_eq!(std::mem::size_of_val(&unboxed), 8);
 }
+
+// Associated types of type parameters can't be normalized, but compare equal as written.
+fn projections<I: Iterator>(mut iter: I, item: I::Item, r: &I::Item)
+where
+    I::Item: std::fmt::Debug,
+{
+    let by_value = item;
+    let next: Option<I::Item> = iter.next();
+    let debug: &dyn std::fmt::Debug = r;
+    println!("{debug:?}");
+}
+
+// Types with bound regions are equal regardless of where they are written.
+fn bound_regions(f: fn(&u8) -> &u8) {
+    let callback = f;
+}
