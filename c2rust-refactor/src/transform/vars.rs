@@ -594,7 +594,8 @@ impl<'a, 'tcx> IndependentType<'a, 'tcx> {
         let hir = self.cx.ty_ctxt().hir();
         // A binding nested in a pattern gets its type from the whole pattern.
         let mut parents = hir.parent_iter(id).map(|(_, node)| node);
-        let independent = match parents.find(|node| !matches!(node, Node::Pat(_))) {
+        let parent = parents.find(|node| !matches!(node, Node::Pat(_) | Node::PatField(_)));
+        let independent = match parent {
             Some(Node::Local(local)) => match local.ty {
                 Some(ty) => !has_infer(ty),
                 None => local.init.is_some_and(|init| self.uncoerced(init)),
