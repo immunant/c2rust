@@ -48,7 +48,7 @@ def expr_kind_match(d, mode):
 
 @linewise
 def expr_kind_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield indent(expr_kind_match(d, 'rvalue'), '    ')
@@ -63,7 +63,7 @@ def expr_kind_impl(d):
 
 @linewise
 def expr_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '    self.node.fold_rvalue(lr);'
@@ -81,7 +81,7 @@ def expr_impl(d):
 
 @linewise
 def null_impl(d):
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl LRExpr for %s {' % d.name
     yield '  fn fold_rvalue<LR: LRRewrites>(&mut self, lr: &mut LR) {'
     yield '  }'

@@ -6,7 +6,7 @@ from util import *
 def do_ast_deref_impl(d):
     supported = 'rewrite_seq_item' in d.attrs
 
-    yield '#[allow(unused)]'
+    yield '#[allow(unused, clippy::all)]'
     yield 'impl AstDeref for %s {' % d.name
     yield '  type Target = Self;'
     yield '  fn ast_deref(&self) -> &Self { self }'

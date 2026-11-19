@@ -7,7 +7,7 @@ from util import *
 def do_ast_names_impl(d):
     if not isinstance(d, (Struct, Enum)):
         return
-    yield '#[allow(unused, non_shorthand_field_patterns)]'
+    yield '#[allow(unused, clippy::all, non_shorthand_field_patterns)]'
     yield 'impl AstName for %s {' % d.name
     yield '  fn ast_name(&self) -> String {'
 
