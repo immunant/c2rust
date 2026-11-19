@@ -1,0 +1,36 @@
+---
+source: c2rust-refactor/tests/snapshots.rs
+expression: c2rust-refactor reorganize_definitions --rewrite-mode alongside -- tests/snapshots/reorganize_opaque_type_src_loc.rs --edition 2021
+---
+#![feature(extern_types, register_tool)]
+#![register_tool(c2rust)]
+
+pub mod api_h {
+    extern "C" {
+        pub type Ctx;
+    }
+    #[derive(Copy, Clone)]
+    #[repr(C)]
+    pub struct Api {
+        pub call: Option<unsafe extern "C" fn(*mut crate::api_h::Ctx)>,
+    }
+}
+pub mod a {
+
+    pub use crate::api_h::Api;
+    pub use crate::api_h::Ctx;
+}
+
+pub mod b {
+
+    pub use crate::api_h::Api;
+    pub use crate::api_h::Ctx;
+
+    #[no_mangle]
+
+    pub unsafe extern "C" fn invoke(api: *const crate::api_h::Api, ctx: *mut crate::api_h::Ctx) {
+        (*api).call.expect("non-null function pointer")(ctx);
+    }
+}
+
+fn main() {}

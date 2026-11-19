@@ -623,6 +623,15 @@ fn test_reorganize_non_ascii_ident() {
         .test();
 }
 
+/// A callback and its caller must use the same opaque type when two headers
+/// contain copies of the declarations at different source locations.
+#[test]
+fn test_reorganize_opaque_type_src_loc() {
+    refactor("reorganize_definitions")
+        .named("reorganize_opaque_type_src_loc.rs")
+        .test();
+}
+
 #[test]
 fn test_reorganize_self_import_destination() {
     refactor("reorganize_definitions")
