@@ -2283,6 +2283,12 @@ impl<'a, 'tcx> HeaderDeclarations<'a, 'tcx> {
                                 ForeignItemKind::Fn(box Fn { sig: sig2, .. }),
                             ) => self.cx.compatible_fn_prototypes(&sig1.decl, &sig2.decl),
 
+                            // Extern types come from incomplete C structs. In C, two of those in
+                            // separate translation units are compatible if their tags match,
+                            // regardless of source location (C11 6.2.7p1). The names already match,
+                            // and `ast_equiv` would also compare attributes such as `src_loc`.
+                            (ForeignItemKind::TyAlias(..), ForeignItemKind::TyAlias(..)) => true,
+
                             _ => existing_foreign.ast_equiv(item),
                         };
                         if matches_existing {
