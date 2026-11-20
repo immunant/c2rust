@@ -108,8 +108,8 @@ pub unsafe extern "C" fn entry() {
         as *mut [::core::ffi::c_char; 4];
     let mut past_end: *mut ::core::ffi::c_char = (&raw mut static_char_array
         as *mut ::core::ffi::c_char)
-        .offset(::core::mem::size_of::<[::core::ffi::c_char; 9]>() as isize);
-    past_end = static_char_ptr.offset(8isize);
+        .add(::core::mem::size_of::<[::core::ffi::c_char; 9]>() as usize);
+    past_end = static_char_ptr.add(8usize);
 }
 #[no_mangle]
 pub unsafe extern "C" fn short_initializer() {
@@ -140,7 +140,7 @@ pub unsafe extern "C" fn variable_length() {
     let mut size: size_t = vla * ::core::mem::size_of::<::core::ffi::c_int>();
     let mut i: size_t = 0 as size_t;
     while i < length {
-        *arr.as_mut_ptr().offset(i as isize) = i as ::core::ffi::c_int;
+        *arr.as_mut_ptr().add(i as usize) = i as ::core::ffi::c_int;
         i = i.wrapping_add(1);
     }
     let vla_0 = 2 as ::core::ffi::c_int as usize;
@@ -149,19 +149,13 @@ pub unsafe extern "C" fn variable_length() {
     let mut nested_size: size_t = vla_0 * vla_1 * ::core::mem::size_of::<::core::ffi::c_int>();
     let mut i_0: size_t = 0 as size_t;
     while i_0 < length {
-        *nested
-            .as_mut_ptr()
-            .offset(0isize * vla_1 as isize)
-            .offset(i_0 as isize) = i_0 as ::core::ffi::c_int;
-        *nested
-            .as_mut_ptr()
-            .offset(1isize * vla_1 as isize)
-            .offset(i_0 as isize) = i_0 as ::core::ffi::c_int;
+        *nested.as_mut_ptr().add(0usize * vla_1).add(i_0 as usize) = i_0 as ::core::ffi::c_int;
+        *nested.as_mut_ptr().add(1usize * vla_1).add(i_0 as usize) = i_0 as ::core::ffi::c_int;
         i_0 = i_0.wrapping_add(1);
     }
     let vla_2 = length as usize;
     let mut first: *mut ::core::ffi::c_int =
-        nested.as_mut_ptr().offset(1isize * vla_1 as isize) as *mut ::core::ffi::c_int;
+        nested.as_mut_ptr().add(1usize * vla_1) as *mut ::core::ffi::c_int;
     let vla_3 = length as usize;
     let mut second: *mut ::core::ffi::c_int =
         first.offset(1 as ::core::ffi::c_int as isize * vla_2 as isize) as *mut ::core::ffi::c_int;
@@ -172,7 +166,7 @@ pub unsafe extern "C" fn addr_of_subscript() {
     let mut array: *mut ::core::ffi::c_int =
         (&raw mut my_array as *mut ::core::ffi::c_int).offset(my_indexes[0usize] as isize);
     let mut call: *mut ::core::ffi::c_int =
-        (&raw mut my_array as *mut ::core::ffi::c_int).offset(my_index() as isize);
+        (&raw mut my_array as *mut ::core::ffi::c_int).add(my_index() as usize);
 }
 #[no_mangle]
 pub unsafe extern "C" fn func_ptr_array() {

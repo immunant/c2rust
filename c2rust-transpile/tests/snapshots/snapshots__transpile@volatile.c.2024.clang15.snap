@@ -32,7 +32,7 @@ pub unsafe extern "C" fn test_volatile() {
     ::core::ptr::write_volatile(
         &raw mut volatile_global_struct.p,
         ::core::ptr::read_volatile::<*mut ::core::ffi::c_int>(&raw const volatile_global_struct.p)
-            .offset(-1),
+            .sub(1),
     );
     ::core::ptr::read_volatile::<::core::ffi::c_int>(&raw const vi);
     ::core::ptr::read_volatile::<::core::ffi::c_int>(&raw const vi);
