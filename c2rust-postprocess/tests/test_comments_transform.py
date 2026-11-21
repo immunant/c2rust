@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -79,12 +80,14 @@ pub unsafe extern "C" fn enabled() -> libc::c_int {
     cache = StaticCache(response)
     transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
 
-    transform.apply_ident(
-        rust_source_file=Path("unused.rs"),
-        rust_definition=rust_definition,
-        c_definition=c_definition,
-        identifier="enabled",
-        update_rust=False,
+    asyncio.run(
+        transform.apply_ident(
+            rust_source_file=Path("unused.rs"),
+            rust_definition=rust_definition,
+            c_definition=c_definition,
+            identifier="enabled",
+            update_rust=False,
+        )
     )
 
     transforms = [transform for transform, _ in cache.lookups]
@@ -128,12 +131,14 @@ pub unsafe extern "C" fn f() -> libc::c_int {
 
     monkeypatch.setattr(base, "update_rust_definition", fake_update)
 
-    transform.apply_ident(
-        rust_source_file=Path("unused.rs"),
-        rust_definition=RUST_DEFINITION_NO_COMMENTS,
-        c_definition=C_DEFINITION_BODY_COMMENT,
-        identifier="f",
-        update_rust=True,
+    asyncio.run(
+        transform.apply_ident(
+            rust_source_file=Path("unused.rs"),
+            rust_definition=RUST_DEFINITION_NO_COMMENTS,
+            c_definition=C_DEFINITION_BODY_COMMENT,
+            identifier="f",
+            update_rust=True,
+        )
     )
 
     assert "/// @note" not in merged["f"]
@@ -150,12 +155,14 @@ pub unsafe extern "C" fn f( -> libc::c_int {
     transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
 
     with pytest.raises(TransformError, match="not syntactically valid"):
-        transform.apply_ident(
-            rust_source_file=Path("unused.rs"),
-            rust_definition=RUST_DEFINITION_NO_COMMENTS,
-            c_definition=C_DEFINITION_BODY_COMMENT,
-            identifier="f",
-            update_rust=False,
+        asyncio.run(
+            transform.apply_ident(
+                rust_source_file=Path("unused.rs"),
+                rust_definition=RUST_DEFINITION_NO_COMMENTS,
+                c_definition=C_DEFINITION_BODY_COMMENT,
+                identifier="f",
+                update_rust=False,
+            )
         )
 
 
@@ -169,12 +176,14 @@ pub unsafe extern "C" fn f() -> libc::c_int {
     transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
 
     with pytest.raises(TransformError, match="non-comment Rust code changed"):
-        transform.apply_ident(
-            rust_source_file=Path("unused.rs"),
-            rust_definition=RUST_DEFINITION_NO_COMMENTS,
-            c_definition=C_DEFINITION_BODY_COMMENT,
-            identifier="f",
-            update_rust=False,
+        asyncio.run(
+            transform.apply_ident(
+                rust_source_file=Path("unused.rs"),
+                rust_definition=RUST_DEFINITION_NO_COMMENTS,
+                c_definition=C_DEFINITION_BODY_COMMENT,
+                identifier="f",
+                update_rust=False,
+            )
         )
 
 
@@ -191,12 +200,14 @@ pub unsafe extern "C" fn f(
     cache = StaticCache(response)
     transform = CommentsTransform(cache=cache, model=MockGenerativeModel())
 
-    result = transform.apply_ident(
-        rust_source_file=Path("unused.rs"),
-        rust_definition=RUST_DEFINITION_NO_COMMENTS,
-        c_definition=C_DEFINITION_BODY_COMMENT,
-        identifier="f",
-        update_rust=False,
+    result = asyncio.run(
+        transform.apply_ident(
+            rust_source_file=Path("unused.rs"),
+            rust_definition=RUST_DEFINITION_NO_COMMENTS,
+            c_definition=C_DEFINITION_BODY_COMMENT,
+            identifier="f",
+            update_rust=False,
+        )
     )
 
     assert result is not None
@@ -246,7 +257,7 @@ class QueuedModel(AbstractGenerativeModel):
         self.responses = responses
         self.calls = 0
 
-    def generate_with_tools(self, messages, tools=(), max_tool_loops=5):
+    async def generate_with_tools(self, messages, tools=(), max_tool_loops=5):
         self.calls += 1
         return self.responses.pop(0)
 
@@ -273,12 +284,14 @@ def apply_to_body_comment_fn(
     cache: AbstractCache, model: AbstractGenerativeModel
 ) -> str | None:
     transform = CommentsTransform(cache=cache, model=model)
-    return transform.apply_ident(
-        rust_source_file=Path("unused.rs"),
-        rust_definition=RUST_DEFINITION_NO_COMMENTS,
-        c_definition=C_DEFINITION_BODY_COMMENT,
-        identifier="f",
-        update_rust=False,
+    return asyncio.run(
+        transform.apply_ident(
+            rust_source_file=Path("unused.rs"),
+            rust_definition=RUST_DEFINITION_NO_COMMENTS,
+            c_definition=C_DEFINITION_BODY_COMMENT,
+            identifier="f",
+            update_rust=False,
+        )
     )
 
 
