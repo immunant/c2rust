@@ -185,7 +185,11 @@ fn immediate_decl_children(kind: &CDeclKind) -> Vec<SomeId> {
         Struct { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
         Union { ref fields, .. } => fields.iter().flatten().map(|&x| x.into()).collect(),
         Field { typ, .. } => intos![typ.ctype],
-        MacroObject { .. } | MacroFunction { .. } => vec![],
+        MacroObject { .. } => vec![],
+        MacroFunction { ref parameters, .. } => {
+            parameters.iter().map(|&x| -> SomeId { x.into() }).collect()
+        }
+        MacroParameter { .. } => vec![],
         NonCanonicalDecl { canonical_decl } => intos![canonical_decl],
         StaticAssert { assert_expr, .. } => intos![assert_expr],
     }
