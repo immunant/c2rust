@@ -5,7 +5,6 @@ c2rust-postprocess: Transfer comments from C functions to Rust functions using L
 import argparse
 import logging
 import os
-from argparse import BooleanOptionalAction
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -104,11 +103,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--update-rust",
-        required=False,
+        action=argparse.BooleanOptionalAction,
         default=True,
-        action=BooleanOptionalAction,
         help="Update the Rust in-place",
     )
+
 
     parser.add_argument(
         "--on-error",
