@@ -14,8 +14,6 @@ impl<'c> Translation<'c> {
         compute_lhs_type_id: Option<CQualTypeId>,
         compute_res_type_id: Option<CQualTypeId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let expr_type_id = expected_type_id.unwrap_or(result_type_id);
-
         let lhs_loc = &self.ast_context.index_unwrap_parens(lhs).loc;
         let rhs_loc = &self.ast_context.index_unwrap_parens(rhs).loc;
         use CBinOp::*;
@@ -23,7 +21,7 @@ impl<'c> Translation<'c> {
             Comma => {
                 // The value of the LHS of a comma expression is always discarded
                 self.convert_expr(ctx.unused(), lhs, None)?
-                    .and_then_try(|_| self.convert_expr(ctx, rhs, Some(expr_type_id)))
+                    .and_then_try(|_| self.convert_expr(ctx, rhs, expected_type_id))
             }
 
             op if op.is_logical() => {
@@ -84,21 +82,20 @@ impl<'c> Translation<'c> {
                 // expected type down to the translation of our argument expressions.
                 let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
                 let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
-                let expr_type_kind = &self.ast_context.resolve_type(expr_type_id.ctype).kind;
 
                 // Addition and subtraction can accept one pointer argument for .offset(), in which
                 // case we don't want to homogenize arg types.
-                if !lhs_type_kind.is_pointer()
-                    && !rhs_type_kind.is_pointer()
-                    && !expr_type_kind.is_pointer()
-                {
+                if !lhs_type_kind.is_pointer() && !rhs_type_kind.is_pointer() {
                     if op.is_arithmetic() {
-                        lhs_type_id = expr_type_id;
-                        rhs_type_id = expr_type_id;
-                        result_type_id = expr_type_id;
+                        result_type_id = expected_type_id.unwrap_or(result_type_id);
+                        lhs_type_id = result_type_id;
+                        rhs_type_id = result_type_id;
+
+                        let result_type_kind =
+                            &self.ast_context.resolve_type(result_type_id.ctype).kind;
 
                         // For complex arithmetic, complex and real values can be mixed.
-                        if let &CTypeKind::Complex(result_scalar_type_id) = expr_type_kind {
+                        if let &CTypeKind::Complex(result_scalar_type_id) = result_type_kind {
                             if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
                                 lhs_type_id.ctype = result_scalar_type_id;
                             }
@@ -108,9 +105,12 @@ impl<'c> Translation<'c> {
                             }
                         }
                     } else if op.is_bitwise() {
-                        lhs_type_id = expr_type_id;
-                        rhs_type_id = expr_type_id;
-                        result_type_id = expr_type_id;
+                        result_type_id = expected_type_id.unwrap_or(result_type_id);
+                        lhs_type_id = result_type_id;
+                        rhs_type_id = result_type_id;
+                    } else if op.is_bitshift() {
+                        result_type_id = expected_type_id.unwrap_or(result_type_id);
+                        lhs_type_id = result_type_id;
                     } else if op.input_types_same() && lhs_type_kind != rhs_type_kind {
                         // Ops like comparisons require argument types to match, but the result type
                         // doesn't inform us what type to choose. Select a synthetic definition of a
@@ -127,9 +127,6 @@ impl<'c> Translation<'c> {
                         };
                         lhs_type_id = ty;
                         rhs_type_id = ty;
-                    } else if matches!(op, ShiftLeft | ShiftRight) {
-                        lhs_type_id = expr_type_id;
-                        result_type_id = expr_type_id;
                     }
                 }
 
