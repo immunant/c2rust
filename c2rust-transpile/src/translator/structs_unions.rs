@@ -8,7 +8,7 @@ use super::named_references::NamedReference;
 use super::TranslationError;
 use crate::c_ast::{
     CBinOp, CDeclId, CDeclKind, CExprId, CExprKind, CFieldId, CQualTypeId, CRecordId, CTypeId,
-    CUnOp, MemberKind,
+    CTypeKind, CUnOp, MemberKind,
 };
 use crate::diagnostics::TranslationResult;
 use crate::renamer::Namespaces;
@@ -597,49 +597,62 @@ impl<'a> Translation<'a> {
         Ok(val)
     }
 
-    pub fn convert_union_literal(
+    pub(crate) fn convert_union_literal(
         &self,
         ctx: ExprContext,
-        union_id: CRecordId,
-        ids: &[CExprId],
-        _ty: CQualTypeId,
-        opt_union_field_id: Option<CFieldId>,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
+        field_id: CFieldId,
+        expr: Option<CExprId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let union_field_id = opt_union_field_id.expect("union field ID");
+        let CDeclKind::Field { typ: field_type_id, .. } = self.ast_context[field_id].kind else {
+            panic!("Expected field decl");
+        };
+        let union_id = self.ast_context.parents[&field_id];
 
-        match self.ast_context.index(union_id).kind {
-            CDeclKind::Union { .. } => {
-                let union_name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_decl_name(union_id)
-                    .unwrap();
-                log::debug!("importing union {union_name}, id {union_id:?}");
-                self.add_import(union_id, &union_name);
-                match self.ast_context.index(union_field_id).kind {
-                    CDeclKind::Field { typ: field_ty, .. } => {
-                        let val = if ids.is_empty() {
-                            self.implicit_default_expr(ctx, field_ty.ctype)?
-                        } else {
-                            self.convert_expr(ctx, ids[0], None)?
-                        };
+        assert!(
+            matches!(self.ast_context[union_id].kind, CDeclKind::Union { .. }),
+            "Expected union decl"
+        );
+        assert!(
+            matches!(
+                self.ast_context.resolve_type(result_type_id.ctype).kind,
+                CTypeKind::Union(type_decl_id)
+                if type_decl_id == union_id,
+            ),
+            "Result type does not match field's parent union"
+        );
 
-                        Ok(val.map(|v| {
-                            let name = vec![mk().path_segment(union_name)];
-                            let field_name = self
-                                .type_converter
-                                .borrow()
-                                .resolve_field_name(Some(union_id), union_field_id)
-                                .unwrap();
-                            let fields = vec![mk().field(field_name, v)];
-                            mk().struct_expr(name, fields)
-                        }))
-                    }
-                    _ => panic!("Union field decl mismatch"),
-                }
-            }
-            _ => panic!("Expected union decl"),
+        let union_name = self
+            .type_converter
+            .borrow()
+            .resolve_decl_name(union_id)
+            .expect("required union name");
+        let field_name = self
+            .type_converter
+            .borrow()
+            .resolve_field_name(Some(union_id), field_id)
+            .expect("field name required");
+
+        log::debug!("importing union {union_name}, id {union_id:?}");
+        self.add_import(union_id, &union_name);
+
+        let mut val = expr.map_or_else(
+            || self.implicit_default_expr(ctx, field_type_id.ctype),
+            |expr| self.convert_expr(ctx, expr, Some(field_type_id)),
+        )?;
+        val = val.map(|val| {
+            mk().struct_expr(
+                vec![mk().path_segment(union_name)],
+                vec![mk().field(field_name, val)],
+            )
+        });
+
+        if let Some(expected_type_id) = expected_type_id {
+            val = self.make_cast(ctx, result_type_id, expected_type_id, val)?;
         }
+
+        Ok(val)
     }
 
     /// This method handles zero-initializing bitfield structs including bitfields
@@ -1115,30 +1128,6 @@ impl<'a> Translation<'a> {
         }
 
         Ok(val)
-    }
-
-    pub fn convert_cast_to_union(
-        &self,
-        val: WithStmts<Box<Expr>>,
-        opt_field_id: Option<CFieldId>,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let field_id = opt_field_id.expect("Missing field ID in union cast");
-        let union_id = self.ast_context.parents[&field_id];
-
-        let union_name = self
-            .type_converter
-            .borrow()
-            .resolve_decl_name(union_id)
-            .expect("required union name");
-        let field_name = self
-            .type_converter
-            .borrow()
-            .resolve_field_name(Some(union_id), field_id)
-            .expect("field name required");
-
-        Ok(val.map(|x| {
-            mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
-        }))
     }
 }
 
