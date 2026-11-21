@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <clang/AST/Type.h>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -12,7 +13,9 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
 // Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
@@ -3227,6 +3230,192 @@ constexpr size_t size(const _Tp (&)[_Sz]) noexcept {
     return _Sz;
 }
 
+static bool ref_starts_with(StringRef text, StringRef prefix) {
+#if CLANG_VERSION_MAJOR >= 18
+    return text.starts_with(prefix);
+#else
+    return text.startswith(prefix);
+#endif
+}
+
+// `-extra-arg=` is how both `c2rust transpile` and direct ClangTool
+// invocations forward a clang argument into the compilation.
+static const char resource_dir_arg_prefix[] = "-extra-arg=-resource-dir=";
+
+static bool is_resource_dir_arg(StringRef arg) {
+    return ref_starts_with(arg, resource_dir_arg_prefix);
+}
+
+static StringRef resource_dir_from_arg(StringRef arg) {
+    return arg.drop_front(sizeof(resource_dir_arg_prefix) - 1);
+}
+
+// Builtin headers such as stddef.h live in <resource-dir>/include.
+static bool resource_dir_has_stddef(StringRef resource_dir) {
+    if (resource_dir.empty())
+        return false;
+    SmallString<256> header(resource_dir);
+    llvm::sys::path::append(header, "include", "stddef.h");
+    return llvm::sys::fs::exists(header);
+}
+
+// A `clang -print-resource-dir` result is usable only when it belongs to the
+// libclang this exporter was linked against.
+static bool resource_dir_matches_linked_major(StringRef resource_dir) {
+    while (resource_dir.size() > 1 &&
+           (resource_dir.back() == '/' || resource_dir.back() == '\\'))
+        resource_dir = resource_dir.drop_back();
+    StringRef component = llvm::sys::path::filename(resource_dir);
+    std::string major = std::to_string(CLANG_VERSION_MAJOR);
+    StringRef major_ref(major);
+    if (component == major_ref)
+        return true;
+    return component.size() > major_ref.size() &&
+           component[major_ref.size()] == '.' &&
+           ref_starts_with(component, major_ref);
+}
+
+static bool acceptable_printed_resource_dir(StringRef resource_dir) {
+    return resource_dir_matches_linked_major(resource_dir) &&
+           resource_dir_has_stddef(resource_dir);
+}
+
+// <CLANG_BIN_PATH>/../lib<suffix>/clang/<major>, or the same path with `lib`
+// when `with_libdir_suffix` is false. Clang's Driver::GetResourcesPath uses
+// `lib/clang/<version>` even on lib64 systems.
+static std::string linked_clang_resource_dir(bool with_libdir_suffix) {
+    SmallString<128> path(CLANG_BIN_PATH);
+    std::string libdir = "lib";
+    if (with_libdir_suffix)
+        libdir += CLANG_LIBDIR_SUFFIX;
+    llvm::sys::path::append(path, "..", libdir, "clang",
+                            std::to_string(CLANG_VERSION_MAJOR));
+    return path.str().str();
+}
+
+// `clang -print-resource-dir` prints one path. Zero would wait forever, so a
+// hung clang stalls every transpile. Ten seconds is enough to print a path.
+static constexpr unsigned kPrintResourceDirTimeoutSeconds = 10;
+// Cap the captured stdout. The extra byte distinguishes a path that fills the
+// cap from one that runs past it.
+static constexpr size_t kMaxPrintedResourceDir = 4096;
+
+static std::string run_print_resource_dir(StringRef program) {
+    if (program.empty())
+        return {};
+
+    SmallString<128> output_file;
+    if (llvm::sys::fs::createTemporaryFile("c2rust-resource-dir", "txt",
+                                           output_file))
+        return {};
+
+    std::string program_storage = program.str();
+    StringRef args[] = {program_storage, "-print-resource-dir"};
+    std::string err;
+    bool failed = false;
+    int rc;
+#if CLANG_VERSION_MAJOR < 16
+    Optional<StringRef> redirects[3] = {StringRef(), StringRef(output_file),
+                                        StringRef()};
+    rc = llvm::sys::ExecuteAndWait(program_storage, args, None, redirects,
+                                   kPrintResourceDirTimeoutSeconds, 0, &err,
+                                   &failed);
+#else
+    std::optional<StringRef> redirects[3] = {
+        StringRef(), StringRef(output_file), StringRef()};
+    rc = llvm::sys::ExecuteAndWait(program_storage, args, std::nullopt,
+                                   redirects, kPrintResourceDirTimeoutSeconds,
+                                   0, &err, &failed);
+#endif
+
+    std::string printed;
+    if (!failed && rc == 0) {
+        std::ifstream in(output_file.c_str(), std::ios::in | std::ios::binary);
+        char buf[kMaxPrintedResourceDir + 1];
+        in.read(buf, static_cast<std::streamsize>(sizeof buf));
+        if (!in.bad()) {
+            std::streamsize got = in.gcount();
+            if (got > 0) {
+                size_t n = static_cast<size_t>(got);
+                size_t line_end = 0;
+                while (line_end < n && buf[line_end] != '\n' &&
+                       buf[line_end] != '\r')
+                    ++line_end;
+                if (line_end <= kMaxPrintedResourceDir)
+                    printed = StringRef(buf, line_end).trim().str();
+            }
+        }
+    }
+    std::error_code remove_ec = llvm::sys::fs::remove(output_file);
+    if (remove_ec) {
+        errs() << "warning: failed to remove temporary file "
+               << output_file.c_str() << ": " << remove_ec.message() << "\n";
+    }
+    if (!acceptable_printed_resource_dir(printed))
+        return {};
+    return printed;
+}
+
+// Run only after every baked candidate has missed, so a working install does
+// not spawn a process. `$CLANG_PATH` is the clang that matches libclang;
+// `clang` on PATH is the fallback.
+static std::string runtime_clang_resource_dir() {
+    std::string tried;
+    if (const char *clang_path = std::getenv("CLANG_PATH")) {
+        if (clang_path[0] != '\0') {
+            auto found = llvm::sys::findProgramByName(clang_path);
+            if (found) {
+                tried = *found;
+                std::string dir = run_print_resource_dir(tried);
+                if (!dir.empty())
+                    return dir;
+            }
+        }
+    }
+
+    auto found = llvm::sys::findProgramByName("clang");
+    if (found && *found != tried)
+        return run_print_resource_dir(*found);
+    return {};
+}
+
+// First candidate whose include/stddef.h exists. Callers append exactly one
+// `-resource-dir` for the result, or none when this is empty.
+static std::string choose_resource_dir(int argc, const char *argv[]) {
+    for (int i = 0; i < argc; ++i) {
+        if (!argv[i])
+            continue;
+        StringRef arg(argv[i]);
+        if (!is_resource_dir_arg(arg))
+            continue;
+        StringRef dir = resource_dir_from_arg(arg);
+        if (resource_dir_has_stddef(dir))
+            return dir.str();
+    }
+
+    if (const char *env = std::getenv("C2RUST_CLANG_RESOURCE_DIR")) {
+        if (resource_dir_has_stddef(env))
+            return std::string(env);
+    }
+
+    std::string with_suffix = linked_clang_resource_dir(true);
+    if (resource_dir_has_stddef(with_suffix))
+        return with_suffix;
+
+    if (CLANG_LIBDIR_SUFFIX[0] != '\0') {
+        std::string plain_lib = linked_clang_resource_dir(false);
+        if (resource_dir_has_stddef(plain_lib))
+            return plain_lib;
+    }
+
+#ifdef CLANG_RESOURCE_DIR
+    if (acceptable_printed_resource_dir(CLANG_RESOURCE_DIR))
+        return std::string(CLANG_RESOURCE_DIR);
+#endif
+
+    return runtime_clang_resource_dir();
+}
+
 // We augment the command line arguments to ensure that comments are always
 // parsed and string literals are always treated as constant.
 static std::vector<const char *> augment_argv(int argc, const char *argv[]) {
@@ -3245,25 +3434,36 @@ static std::vector<const char *> augment_argv(int argc, const char *argv[]) {
         "-extra-arg=-DC2RUST=1",
     };
 
-    // Build a -resource-dir argument based on the path to the linked clang
-    // installation. Without this, ClangTool builds the resource directory from
-    // the path to the tool (in this case, the binary running the AST Exporter).
-    SmallString<128> P("-extra-arg=-resource-dir=" CLANG_BIN_PATH);
-    llvm::sys::path::append(P, "..", Twine("lib") + CLANG_LIBDIR_SUFFIX,
-                            "clang", std::to_string(CLANG_VERSION_MAJOR));
-    std::string resource_dir = P.str().str();
-    char *resource_dir_cstr = new char[resource_dir.length() + 1];
-    strncpy(resource_dir_cstr, resource_dir.c_str(), resource_dir.length() + 1);
+    // Without an explicit resource directory, ClangTool builds one from the
+    // path of this process, which does not contain the builtin headers.
+    std::string chosen = choose_resource_dir(argc, argv);
 
     auto argv_ = std::vector<const char *>();
     argv_.reserve(argc + size(extras) + 2);
 
-    auto pusher = std::back_inserter(argv_);
-    std::copy_n(argv, argc, pusher);
-    std::copy_n(extras, size(extras), pusher);
-    *pusher++ = resource_dir_cstr;
-    *pusher++ =
-        nullptr; // The value of argv[argc] is guaranteed to be a null pointer.
+    // Drop every incoming resource directory. A stale one must not outrank the
+    // directory chosen above, and the chosen directory is appended once.
+    for (int i = 0; i < argc; ++i) {
+        if (argv[i] && is_resource_dir_arg(argv[i]))
+            continue;
+        argv_.push_back(argv[i]);
+    }
+    for (const char *extra : extras)
+        argv_.push_back(extra);
+
+    if (!chosen.empty()) {
+        std::string arg = std::string(resource_dir_arg_prefix) + chosen;
+        // Lives for the rest of process(); ClangTool borrows the pointer.
+        char *resource_dir_cstr = new char[arg.size() + 1];
+        memcpy(resource_dir_cstr, arg.c_str(), arg.size() + 1);
+        argv_.push_back(resource_dir_cstr);
+    } else {
+        errs() << "warning: could not find a clang resource directory "
+                  "containing include/stddef.h; set C2RUST_CLANG_RESOURCE_DIR "
+                  "or ensure `clang -print-resource-dir` points at one\n";
+    }
+    argv_.push_back(
+        nullptr); // The value of argv[argc] is guaranteed to be a null pointer.
 
     return argv_;
 }
