@@ -164,10 +164,8 @@ impl<'c> Translation<'c> {
                             expected_type_id,
                             result_type_id,
                             op,
-                            lhs_type_id,
-                            rhs_type_id,
-                            lhs_val,
-                            rhs_val,
+                            (lhs_val, lhs_type_id),
+                            (rhs_val, rhs_type_id),
                         )
                     })
                 }
@@ -386,10 +384,8 @@ impl<'c> Translation<'c> {
                         Some(lhs_type_id),
                         compute_res_type_id,
                         underlying_op,
-                        compute_lhs_type_id,
-                        rhs_type_id,
-                        lhs,
-                        rhs,
+                        (lhs, compute_lhs_type_id),
+                        (rhs, rhs_type_id),
                     )
                 })?;
 
@@ -467,22 +463,11 @@ impl<'c> Translation<'c> {
         expected_type_id: Option<CQualTypeId>,
         result_type_id: CQualTypeId,
         op: CBinOp,
-        lhs_type: CQualTypeId,
-        rhs_type: CQualTypeId,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
+        lhs: impl Into<IdOrExpr>,
+        rhs: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if op.is_arithmetic() {
-            self.convert_arithmetic_operator(
-                ctx,
-                expected_type_id,
-                result_type_id,
-                op,
-                lhs_type,
-                rhs_type,
-                lhs,
-                rhs,
-            )
+            self.convert_arithmetic_operator(ctx, expected_type_id, result_type_id, op, lhs, rhs)
         } else if op.is_comparison() {
             self.convert_comparison_operator(ctx, expected_type_id, result_type_id, op, lhs, rhs)
         } else {
@@ -490,7 +475,12 @@ impl<'c> Translation<'c> {
                 unimplemented!("Translation of binary operator {op:?}");
             }
 
-            let expr_rs = WithStmts::new_val(mk().binary_expr(BinOp::from(op), lhs, rhs));
+            let lhs_rs = self.convert_expr(ctx, lhs, None)?;
+            let rhs_rs = self.convert_expr(ctx, rhs, None)?;
+
+            let expr_rs = lhs_rs
+                .zip(rhs_rs)
+                .map(|(lhs_rs, rhs_rs)| mk().binary_expr(BinOp::from(op), lhs_rs, rhs_rs));
 
             self.make_cast(
                 ctx,
@@ -507,29 +497,43 @@ impl<'c> Translation<'c> {
         expected_type_id: Option<CQualTypeId>,
         result_type_id: CQualTypeId,
         op: CBinOp,
-        lhs_type_id: CQualTypeId,
-        rhs_type_id: CQualTypeId,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
+        lhs: impl Into<IdOrExpr>,
+        rhs: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let lhs = lhs.into();
+        let lhs_type_id = lhs
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
         let lhs_type_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
+
+        let rhs = rhs.into();
+        let rhs_type_id = rhs
+            .type_id(&self.ast_context)
+            .ok_or_else(|| format_err!("Invalid expression type"))?;
         let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
         let expr_rs = if let &CTypeKind::Pointer(_) = rhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             if op == CBinOp::Subtract {
-                self.convert_pointer_difference(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id))?
+                self.convert_pointer_difference(ctx, lhs, rhs)?
             } else {
-                self.convert_pointer_offset(ctx, (rhs, rhs_type_id), (lhs, lhs_type_id), false)?
+                self.convert_pointer_offset(ctx, rhs, lhs, false)?
             }
         } else if let &CTypeKind::Pointer(_) = lhs_type_kind {
             assert!(matches!(op, CBinOp::Add | CBinOp::Subtract));
             let is_negative = op == CBinOp::Subtract;
-            self.convert_pointer_offset(ctx, (lhs, lhs_type_id), (rhs, rhs_type_id), is_negative)?
-        } else if lhs_type_kind.is_unsigned_integral_type() {
-            WithStmts::new_val(mk().method_call_expr(lhs, op.wrapping_method(), vec![rhs]))
+            self.convert_pointer_offset(ctx, lhs, rhs, is_negative)?
         } else {
-            WithStmts::new_val(mk().binary_expr(BinOp::from(op), lhs, rhs))
+            let lhs_rs = self.convert_expr(ctx, lhs, None)?;
+            let rhs_rs = self.convert_expr(ctx, rhs, None)?;
+
+            lhs_rs.zip(rhs_rs).map(|(lhs_rs, rhs_rs)| {
+                if lhs_type_kind.is_unsigned_integral_type() {
+                    mk().method_call_expr(lhs_rs, op.wrapping_method(), vec![rhs_rs])
+                } else {
+                    mk().binary_expr(BinOp::from(op), lhs_rs, rhs_rs)
+                }
+            })
         };
 
         self.make_cast(
@@ -546,12 +550,17 @@ impl<'c> Translation<'c> {
         expected_type_id: Option<CQualTypeId>,
         result_type_id: CQualTypeId,
         op: CBinOp,
-        lhs_rs: Box<Expr>,
-        rhs_rs: Box<Expr>,
+        lhs: impl Into<IdOrExpr>,
+        rhs: impl Into<IdOrExpr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let bool_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Bool));
 
-        let expr_rs = WithStmts::new_val(mk().binary_expr(BinOp::from(op), lhs_rs, rhs_rs));
+        let lhs_rs = self.convert_expr(ctx, lhs, None)?;
+        let rhs_rs = self.convert_expr(ctx, rhs, None)?;
+
+        let expr_rs = lhs_rs
+            .zip(rhs_rs)
+            .map(|(lhs_rs, rhs_rs)| mk().binary_expr(BinOp::from(op), lhs_rs, rhs_rs));
 
         self.make_cast(
             ctx,
