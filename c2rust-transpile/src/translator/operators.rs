@@ -465,7 +465,7 @@ impl<'c> Translation<'c> {
         &self,
         ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
-        mut result_type_id: CQualTypeId,
+        result_type_id: CQualTypeId,
         op: CBinOp,
         lhs_type: CQualTypeId,
         rhs_type: CQualTypeId,
@@ -483,23 +483,20 @@ impl<'c> Translation<'c> {
                 lhs,
                 rhs,
             )
+        } else if op.is_comparison() {
+            self.convert_comparison_operator(ctx, expected_type_id, result_type_id, op, lhs, rhs)
         } else {
-            let expected_type_id = expected_type_id.unwrap_or(result_type_id);
+            if !(op.is_bitwise() || op.is_bitshift()) {
+                unimplemented!("Translation of binary operator {op:?}");
+            }
 
-            let expr_rs = if op.is_bitwise() || op.is_bitshift() {
-                mk().binary_expr(BinOp::from(op), lhs, rhs)
-            } else if op.is_comparison() {
-                result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
-                mk().binary_expr(BinOp::from(op), lhs, rhs)
-            } else {
-                unimplemented!("Translation of binary operator {:?}", op)
-            };
+            let expr_rs = WithStmts::new_val(mk().binary_expr(BinOp::from(op), lhs, rhs));
 
             self.make_cast(
                 ctx,
                 result_type_id,
-                expected_type_id,
-                WithStmts::new_val(expr_rs),
+                expected_type_id.unwrap_or(result_type_id),
+                expr_rs,
             )
         }
     }
@@ -538,6 +535,27 @@ impl<'c> Translation<'c> {
         self.make_cast(
             ctx,
             result_type_id,
+            expected_type_id.unwrap_or(result_type_id),
+            expr_rs,
+        )
+    }
+
+    fn convert_comparison_operator(
+        &self,
+        ctx: ExprContext,
+        expected_type_id: Option<CQualTypeId>,
+        result_type_id: CQualTypeId,
+        op: CBinOp,
+        lhs_rs: Box<Expr>,
+        rhs_rs: Box<Expr>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        let bool_type_id = CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Bool));
+
+        let expr_rs = WithStmts::new_val(mk().binary_expr(BinOp::from(op), lhs_rs, rhs_rs));
+
+        self.make_cast(
+            ctx,
+            bool_type_id,
             expected_type_id.unwrap_or(result_type_id),
             expr_rs,
         )
