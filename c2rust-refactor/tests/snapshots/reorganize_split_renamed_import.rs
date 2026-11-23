@@ -44,11 +44,11 @@ pub mod dest {
     pub fn dest_fn() {}
 }
 
-// The `user` module holds one simple import resolving in both the type and
-// value namespaces. After the reorganization the two targets have different
-// paths (`tick_1` vs `tick`), so a second import must be added for the value
-// namespace: the retained import only covers the renamed type.
 pub mod user {
+    // One simple import resolving in both the type and value namespaces.
+    // After the reorganization the two targets have different paths
+    // (`tick_1` vs `tick`), so a second import must be added for the value
+    // namespace: the retained import only covers the renamed type.
     use crate::dest::dest_h::tick;
 
     pub fn make(x: i32) -> tick {
