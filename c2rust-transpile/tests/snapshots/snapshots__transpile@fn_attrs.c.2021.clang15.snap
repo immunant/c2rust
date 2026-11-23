@@ -53,6 +53,14 @@ unsafe extern "C" fn always_inline_gnu_inline_extern() {}
 #[inline]
 unsafe extern "C" fn gnu_inline_non_canonical_definition_extern() {}
 #[no_mangle]
+#[inline]
+#[linkage = "external"]
+pub unsafe extern "C" fn inline_with_prototype() {}
+#[no_mangle]
+#[inline]
+#[linkage = "external"]
+pub unsafe extern "C" fn inline_with_prototype_unused() {}
+#[no_mangle]
 pub unsafe extern "C" fn ensure_use() {
     always_inline_static();
     always_inline_nonstatic();
@@ -69,4 +77,5 @@ pub unsafe extern "C" fn ensure_use() {
     gnu_inline_extern();
     always_inline_gnu_inline_extern();
     gnu_inline_non_canonical_definition_extern();
+    inline_with_prototype();
 }
