@@ -5,7 +5,7 @@ use super::*;
 impl<'c> Translation<'c> {
     pub fn convert_binary_expr(
         &self,
-        mut ctx: ExprContext,
+        ctx: ExprContext,
         expected_type_id: Option<CQualTypeId>,
         mut result_type_id: CQualTypeId,
         op: CBinOp,
@@ -55,14 +55,6 @@ impl<'c> Translation<'c> {
             ),
 
             _ => {
-                // Comparing references to pointers isn't consistently supported by rust
-                // and so we need to decay references to pointers to do so. See
-                // https://github.com/rust-lang/rust/issues/53772. This might be removable
-                // once the above issue is resolved.
-                if op == CBinOp::EqualEqual || op == CBinOp::NotEqual {
-                    ctx = ctx.decay_ref();
-                }
-
                 let lhs_kind = &self.ast_context.index_unwrap_parens(lhs).kind;
                 let lhs_type_id = lhs_kind.get_qual_type().ok_or_else(|| {
                     format_translation_err!(
@@ -84,11 +76,17 @@ impl<'c> Translation<'c> {
                 let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
                 let mut lhs_expected_type_id = None;
                 let mut rhs_expected_type_id = None;
+                let mut lhs_ctx = ctx;
 
                 if op.is_arithmetic() {
                     // Addition and subtraction can accept one pointer argument for .offset(),
                     // in which case we don't want to homogenize arg types.
-                    if !(lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer()) {
+                    if lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer() {
+                        // When we use methods on pointers (ie wrapping_offset_from or offset)
+                        // we must ensure we have an explicit raw ptr for the self param, as
+                        // self references do not decay
+                        lhs_ctx = lhs_ctx.decay_ref();
+                    } else {
                         result_type_id = expected_type_id.unwrap_or(result_type_id);
                         let lhs_expected_type_id = lhs_expected_type_id.insert(result_type_id);
                         let rhs_expected_type_id = rhs_expected_type_id.insert(result_type_id);
@@ -114,59 +112,57 @@ impl<'c> Translation<'c> {
                 } else if op.is_bitshift() {
                     result_type_id = expected_type_id.unwrap_or(result_type_id);
                     lhs_expected_type_id = Some(result_type_id);
-                } else if op.is_comparison()
-                    && !(lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer())
-                    && lhs_type_kind != rhs_type_kind
-                {
-                    // Comparisons require argument types to match, but the result type
-                    // doesn't inform us what type to choose. Select a synthetic definition of a
-                    // portable rust type (e.g. u64 or usize) if either arg is one.
-                    trace!(
-                        "Binary op arg types differ: {:?} vs {:?}",
-                        lhs_type_kind,
-                        rhs_type_kind
-                    );
-                    let ty = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
-                        lhs_type_id
-                    } else {
-                        rhs_type_id
-                    };
-                    lhs_expected_type_id = Some(ty);
-                    rhs_expected_type_id = Some(ty);
-                }
-
-                let rhs_ctx = ctx;
-
-                // When we use methods on pointers (ie wrapping_offset_from or offset)
-                // we must ensure we have an explicit raw ptr for the self param, as
-                // self references do not decay
-                if op.is_pointer_arithmetic() {
-                    let ty_kind = &self.ast_context.resolve_type(lhs_type_id.ctype).kind;
-
-                    if let CTypeKind::Pointer(_) = ty_kind {
-                        ctx = ctx.decay_ref();
-                    }
-                }
-
-                // Using `.is_none()` and `.is_some()` for null comparison means we don't
-                // have to rely on `trait PartialEq` as much and it is also more idiomatic.
-                if matches!(op, CBinOp::EqualEqual | CBinOp::NotEqual) {
-                    let is_null = op == CBinOp::EqualEqual;
-                    let expected_type_id = expected_type_id.unwrap_or(result_type_id);
-
-                    if self.ast_context.is_null_expr(lhs) {
-                        let val = self.convert_pointer_is_null(rhs_ctx, rhs, is_null)?;
-                        result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
-                        return self.make_cast(ctx, result_type_id, expected_type_id, val);
+                } else if op.is_comparison() {
+                    let pointer_is_null_operand = if self.ast_context.is_null_expr(lhs) {
+                        Some(rhs)
                     } else if self.ast_context.is_null_expr(rhs) {
-                        let val = self.convert_pointer_is_null(ctx, lhs, is_null)?;
-                        result_type_id.ctype = self.ast_context.type_for_kind(&CTypeKind::Bool);
-                        return self.make_cast(ctx, result_type_id, expected_type_id, val);
+                        Some(lhs)
+                    } else {
+                        None
+                    };
+
+                    // Using `.is_none()` and `.is_some()` for null comparison means we don't
+                    // have to rely on `trait PartialEq` as much and it is also more idiomatic.
+                    if let Some(operand) = pointer_is_null_operand {
+                        let val =
+                            self.convert_pointer_is_null(ctx, operand, op == CBinOp::EqualEqual)?;
+                        let bool_type_id =
+                            CQualTypeId::new(self.ast_context.type_for_kind(&CTypeKind::Bool));
+                        return self.make_cast(
+                            ctx,
+                            bool_type_id,
+                            expected_type_id.unwrap_or(result_type_id),
+                            val,
+                        );
+                    }
+
+                    if lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer() {
+                        // Comparing references to pointers isn't consistently supported by rust
+                        // and so we need to decay references to pointers to do so. See
+                        // https://github.com/rust-lang/rust/issues/53772. This might be removable
+                        // once the above issue is resolved.
+                        lhs_ctx = lhs_ctx.decay_ref();
+                    } else if lhs_type_kind != rhs_type_kind {
+                        // Comparisons require argument types to match, but the result type
+                        // doesn't inform us what type to choose. Select a synthetic definition of a
+                        // portable rust type (e.g. u64 or usize) if either arg is one.
+                        trace!(
+                            "Binary op arg types differ: {:?} vs {:?}",
+                            lhs_type_kind,
+                            rhs_type_kind
+                        );
+                        let ty = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
+                            lhs_type_id
+                        } else {
+                            rhs_type_id
+                        };
+                        lhs_expected_type_id = Some(ty);
+                        rhs_expected_type_id = Some(ty);
                     }
                 }
 
-                let lhs_val = self.convert_expr(ctx, lhs, lhs_expected_type_id)?;
-                let rhs_val = self.convert_expr(rhs_ctx, rhs, rhs_expected_type_id)?;
+                let lhs_val = self.convert_expr(lhs_ctx, lhs, lhs_expected_type_id)?;
+                let rhs_val = self.convert_expr(ctx, rhs, rhs_expected_type_id)?;
 
                 lhs_val.zip(rhs_val).and_then_try(|(lhs_val, rhs_val)| {
                     self.convert_binary_operator(
