@@ -3,6 +3,7 @@ c2rust-postprocess: Transfer comments from C functions to Rust functions using L
 """
 
 import argparse
+import asyncio
 import logging
 import os
 from argparse import BooleanOptionalAction
@@ -20,7 +21,7 @@ from postprocess.models.gpt import GPTModel
 from postprocess.models.mock import MockGenerativeModel
 from postprocess.transforms import get_transform_by_id
 from postprocess.transforms.base import TransformError, TransformResult
-from postprocess.utils import existing_file
+from postprocess.utils import existing_file, positive_int
 from postprocess.validate import BaselineError, make_validator
 
 DEFAULT_LLM_MODEL = "gpt-5.6-luna"
@@ -35,6 +36,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "root_rust_source_file",
         type=existing_file,
         help="Path to Rust source file referenced by Cargo.toml",
+    )
+
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=positive_int,
+        default=4,
+        help="Maximum concurrent function transformations per file (default: 4)",
     )
 
     parser.add_argument(
@@ -170,22 +179,36 @@ def get_model(model_id: str) -> AbstractGenerativeModel:
 
 def main(argv: Sequence[str] | None = None):
     try:
-        parser = build_arg_parser()
-        args = parser.parse_args(argv)
+        return asyncio.run(_main(argv))
+    except BaselineError as error:
+        logging.error(error)
+        return 1
+    except TransformError as error:
+        logging.exception(f"Aborting at first transform failure: {error}")
+        return 1
+    except KeyboardInterrupt:
+        logging.warning("Interrupted by user, terminating...")
+        return 130  # 128 + SIGINT(2)
 
-        logging.basicConfig(level=logging.getLevelName(args.log_level.upper()))
 
-        if args.cache_dir is not None:
-            cache = DirectoryCache(args.cache_dir)
-        else:
-            cache = getattr(DirectoryCache, args.cache_scope)()
-        if args.update_cache and args.prune_cache_days > 0:
-            cache.prune(args.prune_cache_days)
-        if not args.update_cache:
-            cache = FrozenCache(cache)
+async def _main(argv: Sequence[str] | None = None) -> int:
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
 
-        model = get_model(args.llm_model)
+    logging.basicConfig(level=logging.getLevelName(args.log_level.upper()))
 
+    if args.cache_dir is not None:
+        cache = DirectoryCache(args.cache_dir)
+    else:
+        cache = getattr(DirectoryCache, args.cache_scope)()
+    if args.update_cache and args.prune_cache_days > 0:
+        cache.prune(args.prune_cache_days)
+    if not args.update_cache:
+        cache = FrozenCache(cache)
+
+    model = get_model(args.llm_model)
+
+    try:
         # sort transform IDs to transforms always run in the same order to
         # maximize cache hits even if the user passed them in a different order
         transform_ids = sorted(
@@ -214,7 +237,7 @@ def main(argv: Sequence[str] | None = None):
         )
         for transform in transforms:
             result.extend(
-                transform.apply_dir(
+                await transform.apply_dir(
                     root_rust_source_file=args.root_rust_source_file,
                     exclude_list=IdentifierExcludeList(src_path=args.exclude_file),
                     ident_filter=args.ident_filter,
@@ -222,6 +245,7 @@ def main(argv: Sequence[str] | None = None):
                     keep_going=args.on_error != "abort",
                     failure_log_level=failure_log_level,
                     validator=validator,
+                    jobs=args.jobs,
                 )
             )
 
@@ -237,12 +261,5 @@ def main(argv: Sequence[str] | None = None):
                 return 1
 
         return 0
-    except BaselineError as error:
-        logging.error(error)
-        return 1
-    except TransformError as error:
-        logging.exception(f"Aborting at first transform failure: {error}")
-        return 1
-    except KeyboardInterrupt:
-        logging.warning("Interrupted by user, terminating...")
-        return 130  # 128 + SIGINT(2)
+    finally:
+        await model.aclose()
