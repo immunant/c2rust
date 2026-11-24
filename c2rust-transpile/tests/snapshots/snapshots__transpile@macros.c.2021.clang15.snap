@@ -64,12 +64,8 @@ pub const MIXED_ARITHMETIC: ::core::ffi::c_double = LITERAL_INT as ::core::ffi::
     + NESTED_FLOAT * LITERAL_CHAR as ::core::ffi::c_double
     - r#true as ::core::ffi::c_double;
 pub const PARENS: ::core::ffi::c_int = NESTED_INT * (LITERAL_CHAR + r#true);
-pub const PTR_ARITHMETIC: *const ::core::ffi::c_char = unsafe {
-    LITERAL_STR
-        .as_ptr()
-        .offset(5 as ::core::ffi::c_int as isize)
-        .offset(-(3 as ::core::ffi::c_int as isize))
-};
+pub const PTR_ARITHMETIC: *const ::core::ffi::c_char =
+    unsafe { LITERAL_STR.as_ptr().offset(5isize).offset(-3isize) };
 pub const WIDENING_CAST: ::core::ffi::c_ulonglong = LITERAL_INT as ::core::ffi::c_ulonglong;
 pub const NARROWING_CAST: ::core::ffi::c_char = LITERAL_INT as ::core::ffi::c_char;
 pub const CONVERSION_CAST: ::core::ffi::c_double = LITERAL_INT as ::core::ffi::c_double;
