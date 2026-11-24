@@ -109,7 +109,7 @@ pub unsafe extern "C" fn entry() {
     let mut past_end: *mut ::core::ffi::c_char = (&raw mut static_char_array
         as *mut ::core::ffi::c_char)
         .add(::core::mem::size_of::<[::core::ffi::c_char; 9]>() as usize);
-    past_end = static_char_ptr.offset(8isize);
+    past_end = static_char_ptr.add(8usize);
 }
 #[no_mangle]
 pub unsafe extern "C" fn short_initializer() {
@@ -149,19 +149,13 @@ pub unsafe extern "C" fn variable_length() {
     let mut nested_size: size_t = vla_0 * vla_1 * ::core::mem::size_of::<::core::ffi::c_int>();
     let mut i_0: size_t = 0 as size_t;
     while i_0 < length {
-        *nested
-            .as_mut_ptr()
-            .offset(0isize * vla_1 as isize)
-            .add(i_0 as usize) = i_0 as ::core::ffi::c_int;
-        *nested
-            .as_mut_ptr()
-            .offset(1isize * vla_1 as isize)
-            .add(i_0 as usize) = i_0 as ::core::ffi::c_int;
+        *nested.as_mut_ptr().add(0usize * vla_1).add(i_0 as usize) = i_0 as ::core::ffi::c_int;
+        *nested.as_mut_ptr().add(1usize * vla_1).add(i_0 as usize) = i_0 as ::core::ffi::c_int;
         i_0 = i_0.wrapping_add(1);
     }
     let vla_2 = length as usize;
     let mut first: *mut ::core::ffi::c_int =
-        nested.as_mut_ptr().offset(1isize * vla_1 as isize) as *mut ::core::ffi::c_int;
+        nested.as_mut_ptr().add(1usize * vla_1) as *mut ::core::ffi::c_int;
     let vla_3 = length as usize;
     let mut second: *mut ::core::ffi::c_int =
         first.offset(1isize * vla_2 as isize) as *mut ::core::ffi::c_int;
