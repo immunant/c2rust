@@ -359,25 +359,25 @@ impl<'c> Translation<'c> {
             let lhs = lhs.into();
             let rhs = rhs.into();
 
-            let mut lhs_expected_type_id = None;
             let mut rhs_expected_type_id = None;
 
             if op.is_bitwise() {
                 if lhs.expr_id().is_some() && rhs.expr_id().is_some() {
+                    // Propagate expected type to operands.
                     result_type_id = expected_type_id.unwrap_or(result_type_id);
-                    lhs_expected_type_id = Some(result_type_id);
-                    rhs_expected_type_id = Some(result_type_id);
                 }
+
+                rhs_expected_type_id = Some(result_type_id);
             } else if op.is_bitshift() {
-                if lhs.expr_id().is_some() && rhs.expr_id().is_some() {
+                if lhs.expr_id().is_some() {
+                    // Propagate expected type to lhs.
                     result_type_id = expected_type_id.unwrap_or(result_type_id);
-                    lhs_expected_type_id = Some(result_type_id);
                 }
             } else {
                 unimplemented!("Translation of binary operator {op:?}");
             }
 
-            let lhs_rs = self.convert_expr(ctx, lhs, lhs_expected_type_id)?;
+            let lhs_rs = self.convert_expr(ctx, lhs, Some(result_type_id))?;
             let rhs_rs = self.convert_expr(ctx, rhs, rhs_expected_type_id)?;
 
             let expr_rs = lhs_rs
@@ -426,30 +426,29 @@ impl<'c> Translation<'c> {
             let is_negative = op == CBinOp::Subtract;
             self.convert_pointer_offset(ctx, lhs, rhs, is_negative)?
         } else {
-            let mut lhs_expected_type_id = None;
-            let mut rhs_expected_type_id = None;
-
             if lhs.expr_id().is_some() && rhs.expr_id().is_some() {
+                // Propagate expected type to operands.
                 result_type_id = expected_type_id.unwrap_or(result_type_id);
-                let lhs_expected_type_id = lhs_expected_type_id.insert(result_type_id);
-                let rhs_expected_type_id = rhs_expected_type_id.insert(result_type_id);
+            }
 
-                let result_type_kind = &self.ast_context.resolve_type(result_type_id.ctype).kind;
+            let mut lhs_expected_type_id = result_type_id;
+            let mut rhs_expected_type_id = result_type_id;
 
-                // For complex arithmetic, complex and real values can be mixed.
-                if let &CTypeKind::Complex(result_scalar_type_id) = result_type_kind {
-                    if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
-                        lhs_expected_type_id.ctype = result_scalar_type_id;
-                    }
+            let result_type_kind = &self.ast_context.resolve_type(result_type_id.ctype).kind;
 
-                    if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
-                        rhs_expected_type_id.ctype = result_scalar_type_id;
-                    }
+            // For complex arithmetic, complex and real values can be mixed.
+            if let &CTypeKind::Complex(result_scalar_type_id) = result_type_kind {
+                if !matches!(lhs_type_kind, CTypeKind::Complex(..)) {
+                    lhs_expected_type_id.ctype = result_scalar_type_id;
+                }
+
+                if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
+                    rhs_expected_type_id.ctype = result_scalar_type_id;
                 }
             }
 
-            let lhs_rs = self.convert_expr(ctx, lhs, lhs_expected_type_id)?;
-            let rhs_rs = self.convert_expr(ctx, rhs, rhs_expected_type_id)?;
+            let lhs_rs = self.convert_expr(ctx, lhs, Some(lhs_expected_type_id))?;
+            let rhs_rs = self.convert_expr(ctx, rhs, Some(rhs_expected_type_id))?;
 
             lhs_rs.zip(rhs_rs).map(|(lhs_rs, rhs_rs)| {
                 if lhs_type_kind.is_unsigned_integral_type() {
@@ -491,8 +490,6 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("Invalid expression type"))?;
         let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        let mut lhs_expected_type_id = None;
-        let mut rhs_expected_type_id = None;
         let mut lhs_ctx = ctx;
 
         if let (Some(lhs_id), Some(rhs_id)) = (lhs.expr_id(), rhs.expr_id()) {
@@ -524,23 +521,30 @@ impl<'c> Translation<'c> {
                 // https://github.com/rust-lang/rust/issues/53772. This might be removable
                 // once the above issue is resolved.
                 lhs_ctx = lhs_ctx.decay_ref();
-            } else if lhs_type_kind != rhs_type_kind {
-                // Comparisons require argument types to match, but the result type
-                // doesn't inform us what type to choose. Select a synthetic definition of a
-                // portable rust type (e.g. u64 or usize) if either arg is one.
-                trace!(
-                    "Binary op arg types differ: {:?} vs {:?}",
-                    lhs_type_kind,
-                    rhs_type_kind
-                );
-                let ty = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
-                    lhs_type_id
-                } else {
-                    rhs_type_id
-                };
-                lhs_expected_type_id = Some(ty);
-                rhs_expected_type_id = Some(ty);
             }
+        }
+
+        let mut lhs_expected_type_id = None;
+        let mut rhs_expected_type_id = None;
+
+        if lhs_type_kind != rhs_type_kind
+            && !(lhs_type_kind.is_pointer() || rhs_type_kind.is_pointer())
+        {
+            // Comparisons require argument types to match, but the result type
+            // doesn't inform us what type to choose. Select a synthetic definition of a
+            // portable rust type (e.g. u64 or usize) if either arg is one.
+            trace!(
+                "Binary op arg types differ: {:?} vs {:?}",
+                lhs_type_kind,
+                rhs_type_kind
+            );
+            let ty = if CTypeKind::PULLBACK_KINDS.contains(lhs_type_kind) {
+                lhs_type_id
+            } else {
+                rhs_type_id
+            };
+            lhs_expected_type_id = Some(ty);
+            rhs_expected_type_id = Some(ty);
         }
 
         let lhs_rs = self.convert_expr(lhs_ctx, lhs, lhs_expected_type_id)?;
