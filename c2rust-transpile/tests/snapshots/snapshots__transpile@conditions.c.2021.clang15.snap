@@ -141,25 +141,25 @@ pub unsafe extern "C" fn binary_conditional_operator(
         id(3 as ::core::ffi::c_int)
     };
     if add(
-        buf.offset(2 as ::core::ffi::c_int as isize),
+        buf.offset(2isize),
         2 as ::core::ffi::c_int,
         0 as ::core::ffi::c_int,
     ) == 0
     {
         add(
-            buf.offset(3 as ::core::ffi::c_int as isize),
+            buf.offset(3isize),
             3 as ::core::ffi::c_int,
             0 as ::core::ffi::c_int,
         );
     }
     if add(
-        buf.offset(4 as ::core::ffi::c_int as isize),
+        buf.offset(4isize),
         4 as ::core::ffi::c_int,
         1 as ::core::ffi::c_int,
     ) == 0
     {
         add(
-            buf.offset(5 as ::core::ffi::c_int as isize),
+            buf.offset(5isize),
             5 as ::core::ffi::c_int,
             0 as ::core::ffi::c_int,
         );
