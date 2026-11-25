@@ -744,7 +744,7 @@ impl<'a> Translation<'a> {
         rhs_expr: Box<Expr>,
         field_id: CDeclId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let named_reference = self.name_reference_write_read(ctx.used().bitfield_write(), lhs)?;
+        let named_reference = self.name_reference_write_read(ctx.used(), lhs)?;
         named_reference.and_then_try(
             |NamedReference {
                  lvalue: lhs_expr, ..
@@ -1091,19 +1091,20 @@ impl<'a> Translation<'a> {
             _ => unreachable!("Found a member which is not a field"),
         };
         if is_bitfield {
-            // Convert a bitfield member one of four ways:
-            // A) bf.a()
-            // B) (*bf).a()
-            // C) bf
-            // D) (*bf)
+            // Accesses to bitfield members are translated with getter and setter methods:
+            // - . operator + read:   bf.a()
+            // - -> operator + read:  (*bf).a()
+            // - . operator + write:  bf.set_a(x)
+            // - -> operator + write: (*bf).set_a(x)
             //
-            // The first two are when we know this bitfield member is going to be read
-            // from (default), possibly requiring a dereference first. The latter two
-            // are generated when we are expecting to require a write, which will need
-            // to make a method call with some input which we do not yet have access
-            // to and will have to be handled elsewhere, IE `bf.set_a(1)`
-            if !ctx.is_bitfield_write() {
-                // Cases A and B above
+            // If this member expression is an RValue, then it is being read, and we add the getter
+            // method call here. If it is an LValue, then we only translate the base expression
+            // without the method call, as we cannot know the final expression form yet.
+            // It will depend on the surrounding context:
+            // - an `LValueToRValue` cast will trigger a read
+            // - an assignment operator will trigger a write
+            // - a compound assignment operator will trigger a read followed by a write
+            if lrvalue.is_rvalue() {
                 val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
             }
         } else {

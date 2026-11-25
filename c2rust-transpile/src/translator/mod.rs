@@ -2938,11 +2938,12 @@ impl<'c> Translation<'c> {
     }
 
     /// Makes an expression to read from `lvalue_rs`.
-    /// Handles volatile values appropriately.
+    /// Handles volatile values and bitfields appropriately.
     pub(crate) fn make_lvalue_read(
         &self,
         lvalue_rs: Box<Expr>,
         lvalue_type_id: CQualTypeId,
+        lvalue_bitfield_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if lvalue_type_id.qualifiers.is_volatile {
             let lvalue_ptr_rs = self.make_lvalue_ptr(lvalue_rs, lvalue_type_id, false)?;
@@ -2961,6 +2962,21 @@ impl<'c> Translation<'c> {
                 WithStmts::new_val(mk().call_expr(callee, vec![lvalue_ptr_rs])).set_unsafe();
 
             Ok(expr_rs)
+        } else if let Some(field_id) = lvalue_bitfield_id {
+            // Reads of bitfield members are translated with getter methods:
+            // - . operator:  bf.a()
+            // - -> operator: (*bf).a()
+            // `convert_member_expr` will convert LValue bitfield member expressions into only
+            // the base expression, without the method call: `bf` or `*bf`. When we cast to
+            // RValue and read the field, we must add the getter method call ourselves.
+            let field_name = self
+                .type_converter
+                .borrow()
+                .resolve_field_name(None, field_id)
+                .unwrap();
+            let expr_rs = mk().method_call_expr(lvalue_rs, field_name, vec![]);
+
+            Ok(expr_rs.into())
         } else {
             Ok(lvalue_rs.into())
         }

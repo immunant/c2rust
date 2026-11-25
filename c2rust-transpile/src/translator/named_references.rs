@@ -83,7 +83,8 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad reference type"))?;
 
         let is_pure = self.ast_context.is_expr_pure(reference);
-        let read = |write| self.make_lvalue_read(write, reference_ty);
+        let read =
+            |write| self.make_lvalue_read(write, reference_ty, self.expr_bitfield_id(reference));
         let reference = self.convert_expr(ctx, reference, Some(reference_ty))?;
         reference.and_then_try(|reference| {
             if is_lvalue(&reference) && (is_pure || !uses_read) {
