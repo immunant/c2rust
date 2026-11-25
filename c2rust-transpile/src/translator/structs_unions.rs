@@ -1140,6 +1140,26 @@ impl<'a> Translation<'a> {
             mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
         }))
     }
+
+    pub(crate) fn expr_bitfield_id(&self, expr_id: CExprId) -> Option<CFieldId> {
+        let expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
+
+        if let CExprKind::Member(_, _, field_id, _, _) = *expr_kind {
+            let field_kind = &self.ast_context[field_id].kind;
+
+            if matches!(
+                field_kind,
+                CDeclKind::Field {
+                    bitfield_width: Some(_),
+                    ..
+                }
+            ) {
+                return Some(field_id);
+            }
+        }
+
+        None
+    }
 }
 
 #[allow(clippy::large_enum_variant)]

@@ -277,25 +277,9 @@ impl<'c> Translation<'c> {
         let lhs_type_id = lhs_kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
+        let lhs_bitfield_id = self.expr_bitfield_id(lhs);
 
-        let bitfield_id = match *lhs_kind {
-            CExprKind::Member(_, _, decl_id, _, _) => {
-                let kind = &self.ast_context[decl_id].kind;
-
-                if let CDeclKind::Field {
-                    bitfield_width: Some(_),
-                    ..
-                } = kind
-                {
-                    Some(decl_id)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        if let Some(field_id) = bitfield_id {
+        if let Some(field_id) = lhs_bitfield_id {
             let ty = self.convert_type(lhs_type_id.ctype)?;
             let rhs_expr = mk().cast_expr(rhs_translation.to_expr(), ty);
             return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
