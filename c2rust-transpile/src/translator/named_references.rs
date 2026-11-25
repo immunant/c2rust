@@ -61,15 +61,6 @@ impl<'c> Translation<'c> {
             .map(|ws| ws.map(|named_ref| named_ref.map_rvalue(|rvalue| rvalue.expect(msg))))
     }
 
-    /// Given the LHS access to a variable, produce the RHS one
-    fn read(&self, reference_ty: CQualTypeId, write: Box<Expr>) -> TranslationResult<Box<Expr>> {
-        if reference_ty.qualifiers.is_volatile {
-            self.volatile_read(write, reference_ty)
-        } else {
-            Ok(write)
-        }
-    }
-
     /// This function transforms an expression that should refer to a memory location (a C lvalue)
     /// into a Rust lvalue for writing to that location.
     ///
@@ -92,16 +83,22 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad reference type"))?;
 
         let is_pure = self.ast_context.is_expr_pure(reference);
-        let read = |write| self.read(reference_ty, write);
+        let read = |write| self.make_lvalue_read(write, reference_ty);
         let reference = self.convert_expr(ctx, reference, Some(reference_ty))?;
         reference.and_then_try(|reference| {
             if is_lvalue(&reference) && (is_pure || !uses_read) {
-                let rvalue = uses_read.then(|| read(reference.clone())).transpose()?;
-
-                Ok(WithStmts::new_val(NamedReference {
-                    lvalue: reference,
-                    rvalue,
-                }))
+                if uses_read {
+                    let rvalue = read(reference.clone())?;
+                    Ok(rvalue.map(|rvalue| NamedReference {
+                        lvalue: reference,
+                        rvalue: Some(rvalue),
+                    }))
+                } else {
+                    Ok(WithStmts::new_val(NamedReference {
+                        lvalue: reference,
+                        rvalue: None,
+                    }))
+                }
             } else {
                 // This is the case where we explicitly need to factor out possible side-effects.
 
@@ -122,14 +119,17 @@ impl<'c> Translation<'c> {
 
                 let write =
                     mk().unary_expr(UnOp::Deref(Default::default()), mk().ident_expr(&ptr_name));
+                let rvalue = read(write.clone())?;
 
-                Ok(WithStmts::new(
-                    vec![compute_ref],
-                    NamedReference {
-                        lvalue: write.clone(),
-                        rvalue: Some(read(write)?),
-                    },
-                ))
+                Ok(rvalue.and_then(|rvalue| {
+                    WithStmts::new(
+                        vec![compute_ref],
+                        NamedReference {
+                            lvalue: write,
+                            rvalue: Some(rvalue),
+                        },
+                    )
+                }))
             }
         })
     }

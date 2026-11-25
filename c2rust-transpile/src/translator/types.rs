@@ -227,7 +227,7 @@ impl<'c> Translation<'c> {
                     // needs to be included even if the expression is unused.
                     let val = self
                         .convert_expr(ctx.used(), expr, None)?
-                        .try_map(|val| self.volatile_read(val, source_ty))?;
+                        .and_then_try(|val| self.make_lvalue_read(val, source_ty))?;
                     self.convert_side_effects_expr(
                         ctx,
                         val,
@@ -235,6 +235,7 @@ impl<'c> Translation<'c> {
                     )
                 } else {
                     self.convert_expr(ctx, expr, None)?
+                        .and_then_try(|val| self.make_lvalue_read(val, source_ty))?
                 };
 
                 // if the context wants a different type, add a cast

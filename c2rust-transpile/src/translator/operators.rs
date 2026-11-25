@@ -354,8 +354,6 @@ impl<'c> Translation<'c> {
         compute_lhs_type_id: CQualTypeId,
         compute_res_type_id: CQualTypeId,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let is_volatile = lhs_type_id.qualifiers.is_volatile;
-
         let NamedReference {
             lvalue: write,
             rvalue: read,
@@ -393,23 +391,13 @@ impl<'c> Translation<'c> {
                     )
                 })?;
 
-                if is_volatile {
-                    val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
-                        .set_unsafe()
-                } else {
-                    val.map(|val| mk().assign_expr(write, val))
-                }
+                val.and_then_try(|val| self.make_lvalue_write(write, lhs_type_id, val))?
             } else {
                 WithStmts::new_val(mk().assign_op_expr(BinOp::from(op), write, rhs))
             }
         } else {
             // Regular assignment
-
-            if is_volatile {
-                WithStmts::new_val(self.volatile_write(write, lhs_type_id, rhs)?).set_unsafe()
-            } else {
-                WithStmts::new_val(mk().assign_expr(write, rhs))
-            }
+            self.make_lvalue_write(write, lhs_type_id, rhs)?
         };
 
         let assign_result = if ctx.is_used() {

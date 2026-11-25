@@ -22,8 +22,8 @@ use syn::{
     ExprParen, ExprReturn, ExprUnary, Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
     ForeignItemStatic, ForeignItemType, Ident, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
     ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct, ItemTrait,
-    ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, PathSegment, ReturnType,
-    Stmt, Type, TypeTuple, UnOp, UseTree, Visibility,
+    ItemTraitAlias, ItemType, ItemUnion, ItemUse, Lit, MacroDelimiter, ReturnType, Stmt, Type,
+    TypeTuple, UnOp, UseTree, Visibility,
 };
 
 use crate::context::{DecayRef, ExprContext, ExprTreeContext, FuncContext, ItemContext};
@@ -2884,78 +2884,86 @@ impl<'c> Translation<'c> {
         Ok(ConvertedVariable { ty, mutbl, init })
     }
 
-    fn addr_lhs(
+    fn make_lvalue_ptr(
         &self,
-        lhs: Box<Expr>,
-        lhs_type: CQualTypeId,
+        lvalue_rs: Box<Expr>,
+        lvalue_type_id: CQualTypeId,
         write: bool,
     ) -> TranslationResult<Box<Expr>> {
-        let addr_lhs = match *lhs {
-            Expr::Unary(ExprUnary {
-                op: UnOp::Deref(_),
-                expr: e,
-                ..
-            }) => {
-                if write && lhs_type.qualifiers.is_const {
-                    let lhs_type = self.convert_type(lhs_type.ctype)?;
-                    let ty = mk().set_mutbl(Mutability::Mutable).ptr_ty(lhs_type);
-
-                    mk().cast_expr(e, ty)
-                } else {
-                    e
-                }
+        if let Expr::Unary(ExprUnary {
+            op: UnOp::Deref(_),
+            mut expr,
+            ..
+        }) = *lvalue_rs
+        {
+            if write && lvalue_type_id.qualifiers.is_const {
+                let lvalue_type_rs = self.convert_type(lvalue_type_id.ctype)?;
+                let ptr_type_rs = mk().set_mutbl(Mutability::Mutable).ptr_ty(lvalue_type_rs);
+                expr = mk().cast_expr(expr, ptr_type_rs);
             }
-            _ => {
-                let mutbl = if write {
-                    Mutability::Mutable
-                } else {
-                    Mutability::Immutable
-                };
 
-                self.use_feature("raw_ref_op");
-                mk().set_mutbl(mutbl).raw_borrow_expr(lhs)
-            }
-        };
-        Ok(addr_lhs)
-    }
+            Ok(expr)
+        } else {
+            let mutbl = if write {
+                Mutability::Mutable
+            } else {
+                Mutability::Immutable
+            };
 
-    /// Write to a `lhs` that is volatile
-    pub fn volatile_write(
-        &self,
-        lhs: Box<Expr>,
-        lhs_type: CQualTypeId,
-        rhs: Box<Expr>,
-    ) -> TranslationResult<Box<Expr>> {
-        let addr_lhs = self.addr_lhs(lhs, lhs_type, true)?;
-
-        Ok(mk().call_expr(
-            mk().abs_path_expr(vec!["core", "ptr", "write_volatile"]),
-            vec![addr_lhs, rhs],
-        ))
-    }
-
-    /// Read from a `lhs` that is volatile
-    pub fn volatile_read(
-        &self,
-        lhs: Box<Expr>,
-        lhs_type: CQualTypeId,
-    ) -> TranslationResult<Box<Expr>> {
-        let addr_lhs = self.addr_lhs(lhs, lhs_type, false)?;
-
-        // We explicitly annotate the type of pointer we're reading from
-        // in order to avoid omitted bit-casts to const from causing the
-        // wrong type to be inferred via the result of the pointer.
-        let mut path_parts: Vec<PathSegment> = vec![];
-        for elt in ["core", "ptr"] {
-            path_parts.push(mk().path_segment(elt))
+            self.use_feature("raw_ref_op");
+            Ok(mk().set_mutbl(mutbl).raw_borrow_expr(lvalue_rs))
         }
-        let elt_ty = self.convert_type(lhs_type.ctype)?;
-        let ty_params = mk().angle_bracketed_args(vec![elt_ty]);
-        let elt = mk().path_segment_with_args("read_volatile", ty_params);
-        path_parts.push(elt);
+    }
 
-        let read_volatile_expr = mk().abs_path_expr(path_parts);
-        Ok(mk().call_expr(read_volatile_expr, vec![addr_lhs]))
+    /// Makes an expression to write `rvalue_rs` to `lvalue_rs`.
+    /// Handles volatile values appropriately.
+    pub(crate) fn make_lvalue_write(
+        &self,
+        lvalue_rs: Box<Expr>,
+        lvalue_type_id: CQualTypeId,
+        rvalue_rs: Box<Expr>,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if lvalue_type_id.qualifiers.is_volatile {
+            let lvalue_ptr_rs = self.make_lvalue_ptr(lvalue_rs, lvalue_type_id, true)?;
+
+            let callee = mk().abs_path_expr(vec!["core", "ptr", "write_volatile"]);
+            let expr_rs =
+                WithStmts::new_val(mk().call_expr(callee, vec![lvalue_ptr_rs, rvalue_rs]))
+                    .set_unsafe();
+
+            Ok(expr_rs)
+        } else {
+            Ok(mk().assign_expr(lvalue_rs, rvalue_rs).into())
+        }
+    }
+
+    /// Makes an expression to read from `lvalue_rs`.
+    /// Handles volatile values appropriately.
+    pub(crate) fn make_lvalue_read(
+        &self,
+        lvalue_rs: Box<Expr>,
+        lvalue_type_id: CQualTypeId,
+    ) -> TranslationResult<WithStmts<Box<Expr>>> {
+        if lvalue_type_id.qualifiers.is_volatile {
+            let lvalue_ptr_rs = self.make_lvalue_ptr(lvalue_rs, lvalue_type_id, false)?;
+
+            // We explicitly annotate the type of pointer we're reading from
+            // in order to avoid omitted bit-casts to const from causing the
+            // wrong type to be inferred via the result of the pointer.
+            let type_rs = self.convert_type(lvalue_type_id.ctype)?;
+            let type_params = mk().angle_bracketed_args(vec![type_rs]);
+            let callee = mk().abs_path_expr(vec![
+                mk().path_segment("core"),
+                mk().path_segment("ptr"),
+                mk().path_segment_with_args("read_volatile", type_params),
+            ]);
+            let expr_rs =
+                WithStmts::new_val(mk().call_expr(callee, vec![lvalue_ptr_rs])).set_unsafe();
+
+            Ok(expr_rs)
+        } else {
+            Ok(lvalue_rs.into())
+        }
     }
 
     // Compute the offset multiplier for variable length array indexing
