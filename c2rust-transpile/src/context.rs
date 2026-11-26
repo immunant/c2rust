@@ -150,8 +150,6 @@ pub struct ExprContext {
     /// address in function pointer literals.
     is_address_needed: bool,
 
-    is_bitfield_write: bool,
-
     pub(crate) decay_ref: DecayRef,
 }
 
@@ -178,17 +176,6 @@ impl ExprContext {
     pub(crate) fn not_address_needed(self) -> Self {
         Self {
             is_address_needed: false,
-            ..self
-        }
-    }
-
-    pub(crate) fn is_bitfield_write(&self) -> bool {
-        self.is_bitfield_write
-    }
-
-    pub(crate) fn bitfield_write(self) -> Self {
-        Self {
-            is_bitfield_write: true,
             ..self
         }
     }

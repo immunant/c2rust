@@ -14,6 +14,7 @@ expression: cat tests/snapshots/bitfields.2024.clang15.rs
 )]
 unsafe extern "C" {
     unsafe fn printf(_: *const ::core::ffi::c_char, ...) -> ::core::ffi::c_int;
+    unsafe fn get_h() -> *mut PacketHeader;
 }
 #[derive(Copy, Clone, ::c2rust_bitfields::BitfieldStruct)]
 #[repr(C)]
@@ -30,7 +31,7 @@ pub struct PacketHeader {
 #[derive(Copy, Clone, ::c2rust_bitfields::BitfieldStruct)]
 #[repr(C)]
 pub struct SingleRawIdent {
-    #[bitfield(name = "r#as", ty = "::core::ffi::c_uchar", bits = "0..=2")]
+    #[bitfield(name = "r#as", ty = "::core::ffi::c_schar", bits = "0..=2")]
     pub r#as: [u8; 1],
 }
 #[unsafe(no_mangle)]
@@ -47,8 +48,8 @@ pub unsafe extern "C" fn test_bitfields() {
         init.set_length(0);
         init
     };
-    h.set_version(5 as ::core::ffi::c_uchar as ::core::ffi::c_uchar);
-    h.set_sequence(513 as ::core::ffi::c_ushort as ::core::ffi::c_ushort);
+    h.set_version(5 as ::core::ffi::c_uchar);
+    h.set_sequence(513 as ::core::ffi::c_ushort);
     printf(
         b"version=%u sequence=%u\n\0".as_ptr() as *const ::core::ffi::c_char,
         h.version() as ::core::ffi::c_int,
@@ -56,7 +57,19 @@ pub unsafe extern "C" fn test_bitfields() {
     );
     let mut s: SingleRawIdent = {
         let mut init = SingleRawIdent { r#as: [0; 1] };
-        init.set_as(0 as ::core::ffi::c_uchar);
+        init.set_as(0 as ::core::ffi::c_schar);
         init
     };
+    s.set_as(s.r#as() + 1);
+    let mut prefix_signed: ::core::ffi::c_schar = s.r#as();
+    let c2rust_fresh0 = s.r#as();
+    s.set_as(s.r#as() + 1);
+    let mut postfix_signed: ::core::ffi::c_schar = c2rust_fresh0;
+    let c2rust_lvalue_ptr = &raw mut *get_h();
+    (*c2rust_lvalue_ptr).set_version((*c2rust_lvalue_ptr).version().wrapping_add(1));
+    let mut prefix_unsigned: ::core::ffi::c_uchar = (*c2rust_lvalue_ptr).version();
+    let c2rust_lvalue_ptr_0 = &raw mut *get_h();
+    let c2rust_fresh1 = (*c2rust_lvalue_ptr_0).version();
+    (*c2rust_lvalue_ptr_0).set_version((*c2rust_lvalue_ptr_0).version().wrapping_add(1));
+    let mut postfix_unsigned: ::core::ffi::c_uchar = c2rust_fresh1;
 }

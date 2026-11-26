@@ -227,14 +227,16 @@ impl<'c> Translation<'c> {
                     // needs to be included even if the expression is unused.
                     let val = self
                         .convert_expr(ctx.used(), expr, None)?
-                        .try_map(|val| self.volatile_read(val, source_ty))?;
+                        .and_then_try(|val| self.make_lvalue_read(val, source_ty, None))?;
                     self.convert_side_effects_expr(
                         ctx,
                         val,
                         "LValueToRValue value is not supposed to be used",
                     )
                 } else {
-                    self.convert_expr(ctx, expr, None)?
+                    self.convert_expr(ctx, expr, None)?.and_then_try(|val| {
+                        self.make_lvalue_read(val, source_ty, self.expr_bitfield_id(expr))
+                    })?
                 };
 
                 // if the context wants a different type, add a cast

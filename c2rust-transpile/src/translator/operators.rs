@@ -277,29 +277,7 @@ impl<'c> Translation<'c> {
         let lhs_type_id = lhs_kind
             .get_qual_type()
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
-
-        let bitfield_id = match *lhs_kind {
-            CExprKind::Member(_, _, decl_id, _, _) => {
-                let kind = &self.ast_context[decl_id].kind;
-
-                if let CDeclKind::Field {
-                    bitfield_width: Some(_),
-                    ..
-                } = kind
-                {
-                    Some(decl_id)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        if let Some(field_id) = bitfield_id {
-            let ty = self.convert_type(lhs_type_id.ctype)?;
-            let rhs_expr = mk().cast_expr(rhs_translation.to_expr(), ty);
-            return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
-        }
+        let lhs_bitfield_id = self.expr_bitfield_id(lhs);
 
         let compute_res_type_id = compute_res_type_id.unwrap_or(lhs_type_id);
         let compute_lhs_type_id = compute_lhs_type_id.unwrap_or(lhs_type_id);
@@ -309,6 +287,7 @@ impl<'c> Translation<'c> {
                     underlying_op,
                     lhs_type_id,
                     compute_lhs_type_id,
+                    lhs_bitfield_id,
                 )
             });
 
@@ -325,18 +304,19 @@ impl<'c> Translation<'c> {
 
         rhs_translation
             .zip(lhs_translation)
-            .and_then_try(|(rhs, lhs)| {
+            .and_then_try(|(rhs_rs, lhs_rs)| {
                 self.make_assignment_operator(
                     ctx,
                     expected_type_id,
                     result_type_id,
                     op,
-                    lhs,
+                    lhs_rs,
                     lhs_type_id,
-                    rhs,
+                    rhs_rs,
                     rhs_type_id,
                     compute_lhs_type_id,
                     compute_res_type_id,
+                    lhs_bitfield_id,
                 )
             })
     }
@@ -353,9 +333,8 @@ impl<'c> Translation<'c> {
         rhs_type_id: CQualTypeId,
         compute_lhs_type_id: CQualTypeId,
         compute_res_type_id: CQualTypeId,
+        lhs_bitfield_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let is_volatile = lhs_type_id.qualifiers.is_volatile;
-
         let NamedReference {
             lvalue: write,
             rvalue: read,
@@ -370,6 +349,7 @@ impl<'c> Translation<'c> {
                 underlying_op,
                 lhs_type_id,
                 compute_lhs_type_id,
+                lhs_bitfield_id,
             ) {
                 // Cast the lhs to the compute lhs type, do the compute, and then
                 // cast the compute result to the final lhs type.
@@ -393,23 +373,15 @@ impl<'c> Translation<'c> {
                     )
                 })?;
 
-                if is_volatile {
-                    val.try_map(|val| self.volatile_write(write, lhs_type_id, val))?
-                        .set_unsafe()
-                } else {
-                    val.map(|val| mk().assign_expr(write, val))
-                }
+                val.and_then_try(|val| {
+                    self.make_lvalue_write(write, lhs_type_id, lhs_bitfield_id, val)
+                })?
             } else {
                 WithStmts::new_val(mk().assign_op_expr(BinOp::from(op), write, rhs))
             }
         } else {
             // Regular assignment
-
-            if is_volatile {
-                WithStmts::new_val(self.volatile_write(write, lhs_type_id, rhs)?).set_unsafe()
-            } else {
-                WithStmts::new_val(mk().assign_expr(write, rhs))
-            }
+            self.make_lvalue_write(write, lhs_type_id, lhs_bitfield_id, rhs)?
         };
 
         let assign_result = if ctx.is_used() {
@@ -437,6 +409,7 @@ impl<'c> Translation<'c> {
         underlying_op: CBinOp,
         lhs_type_id: CQualTypeId,
         compute_lhs_type_id: CQualTypeId,
+        lhs_bitfield_id: Option<CFieldId>,
     ) -> bool {
         let is_volatile = lhs_type_id.qualifiers.is_volatile;
 
@@ -453,6 +426,7 @@ impl<'c> Translation<'c> {
         };
 
         is_volatile
+            || lhs_bitfield_id.is_some()
             || is_unsigned_arith
             || underlying_op.is_pointer_arithmetic() && pointer_lhs.is_some()
             || self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
@@ -670,6 +644,7 @@ impl<'c> Translation<'c> {
                         one_type_id,
                         compute_lhs_type_id,
                         compute_res_type_id,
+                        self.expr_bitfield_id(arg),
                     )?;
 
                     // Replace the assignment result with the old value

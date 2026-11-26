@@ -4,14 +4,12 @@
 use std::collections::HashSet;
 use std::ops::Index;
 
-use super::named_references::NamedReference;
 use super::TranslationError;
 use crate::c_ast::{
-    CBinOp, CDeclId, CDeclKind, CExprId, CExprKind, CFieldId, CQualTypeId, CRecordId, CTypeId,
-    CUnOp, MemberKind,
+    CDeclId, CDeclKind, CExprId, CExprKind, CFieldId, CQualTypeId, CRecordId, CTypeId, CUnOp,
+    MemberKind,
 };
 use crate::diagnostics::TranslationResult;
-use crate::renamer::Namespaces;
 use crate::translator::types::mk_size_of_ty_expr;
 use crate::translator::variadic::mk_va_list_ty;
 use crate::translator::{ConvertedDecl, ExprContext, Translation, PADDING_SUFFIX};
@@ -21,10 +19,7 @@ use c2rust_ast_builder::mk;
 use c2rust_ast_exporter::clang_ast::LRValue;
 use c2rust_ast_printer::pprust;
 use proc_macro2::Span;
-use syn::{
-    self, BinOp, Expr, ExprAssign, ExprBinary, ExprBlock, ExprCast, ExprMethodCall, ExprUnary,
-    Field, Stmt, Type, UnOp,
-};
+use syn::{self, BinOp, Expr, Field, Type, UnOp};
 
 use itertools::EitherOrBoth::{Both, Right};
 use itertools::Itertools;
@@ -726,102 +721,6 @@ impl<'a> Translation<'a> {
             .map(|fields| mk().struct_expr(name.as_str(), fields)))
     }
 
-    /// This method handles conversion of assignment operators on bitfields.
-    /// Regular fields would look like this:
-    /// A) bf.a = 1;
-    /// B) bf.a += 1;
-    ///
-    /// However, since we need to call methods for read and write, we generate this:
-    /// A) bf.set_a(1);
-    /// B) bf.set_a(bf.a() + 1);
-    ///
-    /// Note that B) requires NLL to be valid rust
-    pub fn convert_bitfield_assignment_op_with_rhs(
-        &self,
-        ctx: ExprContext,
-        op: CBinOp,
-        lhs: CExprId,
-        rhs_expr: Box<Expr>,
-        field_id: CDeclId,
-    ) -> TranslationResult<WithStmts<Box<Expr>>> {
-        let named_reference = self.name_reference_write_read(ctx.used().bitfield_write(), lhs)?;
-        named_reference.and_then_try(
-            |NamedReference {
-                 lvalue: lhs_expr, ..
-             }| {
-                let field_name = self
-                    .type_converter
-                    .borrow()
-                    .resolve_field_name(None, field_id)
-                    .ok_or("Could not find bitfield name")?;
-                let plain_field_name = field_name.strip_prefix("r#").unwrap_or(&field_name);
-                let setter_name = format!("set_{}", plain_field_name);
-                let lhs_expr_read = mk().method_call_expr(lhs_expr.clone(), field_name, Vec::new());
-                // Allow the value of this assignment to be used as the RHS of other assignments
-                let val = lhs_expr_read.clone();
-                let param_expr = if let Some(op) = op.underlying_assignment() {
-                    mk().binary_expr(BinOp::from(op), lhs_expr_read, rhs_expr)
-                } else if op == CBinOp::Assign {
-                    rhs_expr
-                } else {
-                    panic!("Cannot convert non-assignment operator")
-                };
-
-                let mut stmts = vec![];
-
-                // If there's just one statement we should be able to be able to fit it into one line without issue
-                // If there's a block we can flatten it into the current scope, and if the expr contains a block it's
-                // likely complex enough to warrant putting it into a temporary variable to avoid borrowing issues
-                match *param_expr {
-                    Expr::Block(ExprBlock { block, .. }) => {
-                        let last = block.stmts.len() - 1;
-
-                        for (i, stmt) in block.stmts.iter().enumerate() {
-                            if i == last {
-                                break;
-                            }
-
-                            stmts.push(stmt.clone());
-                        }
-
-                        let last_expr = match block.stmts[last] {
-                            Stmt::Expr(ref expr, None) => expr.clone(),
-                            _ => return Err(TranslationError::generic("Expected Expr Stmt")),
-                        };
-                        let method_call =
-                            mk().method_call_expr(lhs_expr, setter_name, vec![Box::new(last_expr)]);
-
-                        stmts.push(mk().semi_stmt(method_call));
-                    }
-                    _ if contains_block(&param_expr) => {
-                        let name = self
-                            .renamer
-                            .borrow_mut()
-                            .pick_name("c2rust_rhs", Namespaces::values());
-                        let name_ident = mk().mutbl().ident_pat(name.clone());
-                        let temporary_stmt = mk().local(name_ident, None, Some(param_expr.clone()));
-                        let assignment_expr = mk().method_call_expr(
-                            lhs_expr,
-                            setter_name,
-                            vec![mk().ident_expr(name)],
-                        );
-
-                        stmts.push(mk().local_stmt(Box::new(temporary_stmt)));
-                        stmts.push(mk().semi_stmt(assignment_expr));
-                    }
-                    _ => {
-                        let assignment_expr =
-                            mk().method_call_expr(lhs_expr, setter_name, vec![param_expr.clone()]);
-
-                        stmts.push(mk().semi_stmt(assignment_expr));
-                    }
-                };
-
-                Ok(WithStmts::new(stmts, val))
-            },
-        )
-    }
-
     /// This method aggregates bitfield struct field information by way of:
     /// 1. Collecting consecutive bytes of bitfields into a single FieldType::BitfieldGroup
     /// 2. Summing up the number of padding bytes between fields (or at the end of a struct)
@@ -1091,19 +990,20 @@ impl<'a> Translation<'a> {
             _ => unreachable!("Found a member which is not a field"),
         };
         if is_bitfield {
-            // Convert a bitfield member one of four ways:
-            // A) bf.a()
-            // B) (*bf).a()
-            // C) bf
-            // D) (*bf)
+            // Accesses to bitfield members are translated with getter and setter methods:
+            // - . operator + read:   bf.a()
+            // - -> operator + read:  (*bf).a()
+            // - . operator + write:  bf.set_a(x)
+            // - -> operator + write: (*bf).set_a(x)
             //
-            // The first two are when we know this bitfield member is going to be read
-            // from (default), possibly requiring a dereference first. The latter two
-            // are generated when we are expecting to require a write, which will need
-            // to make a method call with some input which we do not yet have access
-            // to and will have to be handled elsewhere, IE `bf.set_a(1)`
-            if !ctx.is_bitfield_write() {
-                // Cases A and B above
+            // If this member expression is an RValue, then it is being read, and we add the getter
+            // method call here. If it is an LValue, then we only translate the base expression
+            // without the method call, as we cannot know the final expression form yet.
+            // It will depend on the surrounding context:
+            // - an `LValueToRValue` cast will trigger a read
+            // - an assignment operator will trigger a write
+            // - a compound assignment operator will trigger a read followed by a write
+            if lrvalue.is_rvalue() {
                 val = val.map(|v| mk().method_call_expr(v, field_name, vec![]));
             }
         } else {
@@ -1140,6 +1040,26 @@ impl<'a> Translation<'a> {
             mk().struct_expr(mk().path(vec![union_name]), vec![mk().field(field_name, x)])
         }))
     }
+
+    pub(crate) fn expr_bitfield_id(&self, expr_id: CExprId) -> Option<CFieldId> {
+        let expr_kind = &self.ast_context.index_unwrap_parens(expr_id).kind;
+
+        if let CExprKind::Member(_, _, field_id, _, _) = *expr_kind {
+            let field_kind = &self.ast_context[field_id].kind;
+
+            if matches!(
+                field_kind,
+                CDeclKind::Field {
+                    bitfield_width: Some(_),
+                    ..
+                }
+            ) {
+                return Some(field_id);
+            }
+        }
+
+        None
+    }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -1173,17 +1093,4 @@ enum FieldType {
         use_inner_type: bool,
         is_va_list: bool,
     }, // would be 562 bytes
-}
-
-fn contains_block(expr_kind: &Expr) -> bool {
-    use Expr::*;
-    match expr_kind {
-        Block(..) => true,
-        Assign(ExprAssign { left, right, .. }) | Binary(ExprBinary { left, right, .. }) => {
-            [left, right].iter().any(|expr| contains_block(expr))
-        }
-        Unary(ExprUnary { expr, .. }) | Cast(ExprCast { expr, .. }) => contains_block(expr),
-        MethodCall(ExprMethodCall { args, .. }) => args.iter().any(contains_block),
-        _ => false,
-    }
 }

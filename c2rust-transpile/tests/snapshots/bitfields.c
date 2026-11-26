@@ -9,8 +9,10 @@ struct PacketHeader {
 };
 
 struct SingleRawIdent {
-    unsigned char as : 3;
+    signed char as : 3;
 };
+
+struct PacketHeader* get_h(void);
 
 void test_bitfields(void) {
     struct PacketHeader h = {0};
@@ -18,4 +20,9 @@ void test_bitfields(void) {
     h.sequence = 513;
     printf("version=%u sequence=%u\n", h.version, h.sequence);
     struct SingleRawIdent s = {0};
+
+    signed char prefix_signed = ++s.as;
+    signed char postfix_signed = s.as++;
+    unsigned char prefix_unsigned = ++get_h()->version;
+    unsigned char postfix_unsigned = get_h()->version++;
 }
