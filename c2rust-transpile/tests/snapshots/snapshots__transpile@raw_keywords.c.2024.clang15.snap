@@ -40,8 +40,8 @@ pub unsafe extern "C" fn r#impl(mut r#in: r#type) {
     let mut r#trait: r#type = super_0;
     let mut r#let: r#as = r#as::r#async;
     let mut r#mod: r#dyn = r#dyn { r#false: 0 };
-    r#mod.r#false = 0 as ::core::ffi::c_int as r#type;
+    r#mod.r#false = 0 as r#type;
     let mut r#mut: r#fn = r#fn { r#where: 0 };
-    r#mut.r#where = 0 as ::core::ffi::c_int as r#type;
+    r#mut.r#where = 0 as r#type;
     r#pub(r#mut.r#where);
 }
