@@ -279,12 +279,6 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad initial lhs type"))?;
         let lhs_bitfield_id = self.expr_bitfield_id(lhs);
 
-        if let Some(field_id) = lhs_bitfield_id {
-            let ty = self.convert_type(lhs_type_id.ctype)?;
-            let rhs_expr = mk().cast_expr(rhs_translation.to_expr(), ty);
-            return self.convert_bitfield_assignment_op_with_rhs(ctx, op, lhs, rhs_expr, field_id);
-        }
-
         let compute_res_type_id = compute_res_type_id.unwrap_or(lhs_type_id);
         let compute_lhs_type_id = compute_lhs_type_id.unwrap_or(lhs_type_id);
         let compound_assignment_needs_desugaring =
