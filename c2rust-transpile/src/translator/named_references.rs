@@ -4,20 +4,6 @@
 
 use super::*;
 
-/// Check if something is a valid Rust lvalue. Inspired by `librustc::ty::expr_is_lval`.
-fn is_lvalue(e: &Expr) -> bool {
-    use Expr::*;
-    matches!(
-        unparen(e),
-        Unary(ExprUnary {
-            op: syn::UnOp::Deref(_),
-            ..
-        }) | Path(..)
-            | Field(..)
-            | Index(..)
-    )
-}
-
 pub struct NamedReference<R> {
     pub lvalue: Box<Expr>,
     pub rvalue: R,
@@ -95,7 +81,7 @@ impl<'c> Translation<'c> {
         let read = |write| self.read(reference_ty, write);
         let reference = self.convert_expr(ctx, reference, Some(reference_ty))?;
         reference.and_then_try(|reference| {
-            if is_lvalue(&reference) && (is_pure || !uses_read) {
+            if is_pure || !uses_read {
                 let rvalue = uses_read.then(|| read(reference.clone())).transpose()?;
 
                 Ok(WithStmts::new_val(NamedReference {
