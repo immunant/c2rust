@@ -293,6 +293,7 @@ impl<'c> Translation<'c> {
                     underlying_op,
                     lhs_type_id,
                     compute_lhs_type_id,
+                    lhs_bitfield_id,
                 )
             });
 
@@ -309,18 +310,19 @@ impl<'c> Translation<'c> {
 
         rhs_translation
             .zip(lhs_translation)
-            .and_then_try(|(rhs, lhs)| {
+            .and_then_try(|(rhs_rs, lhs_rs)| {
                 self.make_assignment_operator(
                     ctx,
                     expected_type_id,
                     result_type_id,
                     op,
-                    lhs,
+                    lhs_rs,
                     lhs_type_id,
-                    rhs,
+                    rhs_rs,
                     rhs_type_id,
                     compute_lhs_type_id,
                     compute_res_type_id,
+                    lhs_bitfield_id,
                 )
             })
     }
@@ -337,6 +339,7 @@ impl<'c> Translation<'c> {
         rhs_type_id: CQualTypeId,
         compute_lhs_type_id: CQualTypeId,
         compute_res_type_id: CQualTypeId,
+        lhs_bitfield_id: Option<CFieldId>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         let NamedReference {
             lvalue: write,
@@ -352,6 +355,7 @@ impl<'c> Translation<'c> {
                 underlying_op,
                 lhs_type_id,
                 compute_lhs_type_id,
+                lhs_bitfield_id,
             ) {
                 // Cast the lhs to the compute lhs type, do the compute, and then
                 // cast the compute result to the final lhs type.
@@ -375,13 +379,15 @@ impl<'c> Translation<'c> {
                     )
                 })?;
 
-                val.and_then_try(|val| self.make_lvalue_write(write, lhs_type_id, val))?
+                val.and_then_try(|val| {
+                    self.make_lvalue_write(write, lhs_type_id, lhs_bitfield_id, val)
+                })?
             } else {
                 WithStmts::new_val(mk().assign_op_expr(BinOp::from(op), write, rhs))
             }
         } else {
             // Regular assignment
-            self.make_lvalue_write(write, lhs_type_id, rhs)?
+            self.make_lvalue_write(write, lhs_type_id, lhs_bitfield_id, rhs)?
         };
 
         let assign_result = if ctx.is_used() {
@@ -409,6 +415,7 @@ impl<'c> Translation<'c> {
         underlying_op: CBinOp,
         lhs_type_id: CQualTypeId,
         compute_lhs_type_id: CQualTypeId,
+        lhs_bitfield_id: Option<CFieldId>,
     ) -> bool {
         let is_volatile = lhs_type_id.qualifiers.is_volatile;
 
@@ -425,6 +432,7 @@ impl<'c> Translation<'c> {
         };
 
         is_volatile
+            || lhs_bitfield_id.is_some()
             || is_unsigned_arith
             || underlying_op.is_pointer_arithmetic() && pointer_lhs.is_some()
             || self.ast_context.resolve_type_id(compute_lhs_type_id.ctype)
@@ -642,6 +650,7 @@ impl<'c> Translation<'c> {
                         one_type_id,
                         compute_lhs_type_id,
                         compute_res_type_id,
+                        self.expr_bitfield_id(arg),
                     )?;
 
                     // Replace the assignment result with the old value

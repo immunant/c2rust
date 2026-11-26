@@ -2916,11 +2916,12 @@ impl<'c> Translation<'c> {
     }
 
     /// Makes an expression to write `rvalue_rs` to `lvalue_rs`.
-    /// Handles volatile values appropriately.
+    /// Handles volatile values and bitfields appropriately.
     pub(crate) fn make_lvalue_write(
         &self,
         lvalue_rs: Box<Expr>,
         lvalue_type_id: CQualTypeId,
+        lvalue_bitfield_id: Option<CFieldId>,
         rvalue_rs: Box<Expr>,
     ) -> TranslationResult<WithStmts<Box<Expr>>> {
         if lvalue_type_id.qualifiers.is_volatile {
@@ -2932,6 +2933,23 @@ impl<'c> Translation<'c> {
                     .set_unsafe();
 
             Ok(expr_rs)
+        } else if let Some(field_id) = lvalue_bitfield_id {
+            // Writes to bitfield members are translated with setter methods:
+            // - . operator:  bf.set_a(x)
+            // - -> operator: (*bf).set_a(x)
+            // `convert_member_expr` will convert LValue bitfield member expressions into only
+            // the base expression, without the method call: `bf` or `*bf`. When we write to the
+            // field, we must add the setter method call ourselves.
+            let field_name = self
+                .type_converter
+                .borrow()
+                .resolve_field_name(None, field_id)
+                .ok_or("Could not find bitfield name")?;
+            let plain_field_name = field_name.strip_prefix("r#").unwrap_or(&field_name);
+            let setter_name = format!("set_{}", plain_field_name);
+            let expr_rs = mk().method_call_expr(lvalue_rs, setter_name, vec![rvalue_rs]);
+
+            Ok(expr_rs.into())
         } else {
             Ok(mk().assign_expr(lvalue_rs, rvalue_rs).into())
         }
