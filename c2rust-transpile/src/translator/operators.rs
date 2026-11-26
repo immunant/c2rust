@@ -216,39 +216,32 @@ impl<'c> Translation<'c> {
             .ok_or_else(|| format_err!("bad assignment rhs type"))?;
         let rhs_type_kind = &self.ast_context.resolve_type(rhs_type_id.ctype).kind;
 
-        // First, translate the rhs.
-        let mut rhs_translation = self.convert_expr(ctx.used(), rhs, Some(rhs_type_id))?;
+        let mut rhs_expected_type_id = None;
 
-        let lhs_rhs_types_must_match = {
-            // Addition and subtraction can accept one pointer argument for .offset(), in which
-            // case we don't want to homogenize arg types.
-            let neither_ptr = !lhs_type_kind.is_pointer() && !rhs_type_kind.is_pointer();
+        // Does the rhs type need to match the lhs type?
+        let lhs_rhs_types_must_match = op.underlying_assignment().map_or(true, |op| {
+            if op.is_arithmetic() {
+                // For pointer arithmetic, we don't want to homogenize arg types.
+                !lhs_type_kind.is_pointer()
+            } else {
+                op.is_bitwise()
+            }
+        });
 
-            op.underlying_assignment().map_or(true, |op| {
-                if op.is_pointer_arithmetic() {
-                    neither_ptr
-                } else {
-                    op.is_arithmetic() || op.is_bitwise()
-                }
-            })
-        };
         if lhs_rhs_types_must_match {
-            // If the rhs must match the lhs but doesn't, add a cast.
             // For compound assignment, use the compute type; for regular assignment, use lhs type
-            let mut effective_lhs_ty = compute_lhs_type_id.unwrap_or(lhs_type_id);
+            let rhs_expected_type_id =
+                rhs_expected_type_id.insert(compute_lhs_type_id.unwrap_or(lhs_type_id));
 
             // For complex arithmetic, complex and real values can be mixed.
             if let &CTypeKind::Complex(lhs_scalar_type_id) = lhs_type_kind {
                 if !matches!(rhs_type_kind, CTypeKind::Complex(..)) {
-                    effective_lhs_ty.ctype = lhs_scalar_type_id;
+                    rhs_expected_type_id.ctype = lhs_scalar_type_id;
                 }
             }
-
-            if effective_lhs_ty.ctype != rhs_type_id.ctype {
-                let new_rhs_ty = self.convert_type(effective_lhs_ty.ctype)?;
-                rhs_translation = rhs_translation.map(|val| mk().cast_expr(val, new_rhs_ty));
-            }
         }
+
+        let rhs_translation = self.convert_expr(ctx.used(), rhs, rhs_expected_type_id)?;
 
         // Now that we've translated the rhs, finish translating the assignment operator.
         self.convert_assignment_operator_with_rhs(
